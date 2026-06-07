@@ -51,19 +51,14 @@ const {
 } = require("./inspection");
 const {
     internalInvalidate,
-    internalPropagateOutdated,
     internalUnsafeInvalidate,
 } = require("./invalidate");
-const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { makeConcreteNodeCache } = require("./lru_cache");
 const {
     internalPull,
-    internalPullByNodeKeyDuringPull,
     internalSafePullWithStatus,
     internalUnsafePull,
 } = require("./pull");
-const { internalMaybeRecalculate } = require("./recompute");
-const { txAllocateNodeIdentifier } = require("./database");
 
 class IncrementalGraphClass {
     /** @type {Map<import('./types').NodeName, CompiledNode>} */
@@ -113,21 +108,6 @@ class IncrementalGraphClass {
     }
 
     /**
-     * @param {import('./types').NodeIdentifier} changedKey
-     * @param {BatchBuilder} batch
-     * @param {Set<string>} [nodesBecomingOutdated]
-     * @returns {Promise<void>}
-     */
-    async propagateOutdated(changedKey, batch, nodesBecomingOutdated = new Set()) {
-        await internalPropagateOutdated(
-            this,
-            changedKey,
-            batch,
-            nodesBecomingOutdated
-        );
-    }
-
-    /**
      * @param {string} nodeName
      * @param {Array<ConstValue>} bindings
      * @returns {Promise<void>}
@@ -143,74 +123,6 @@ class IncrementalGraphClass {
      */
     async invalidate(nodeName, bindings = []) {
         await internalInvalidate(this, nodeName, bindings);
-    }
-
-    /**
-     * @param {import('./types').NodeKeyString} concreteKeyCanonical
-     * @param {CompiledNode} compiledNode
-     * @param {Array<ConstValue>} bindings
-     * @returns {ConcreteNode}
-     */
-    getOrCreateConcreteNode(concreteKeyCanonical, compiledNode, bindings) {
-        return internalGetOrCreateConcreteNode(
-            this,
-            concreteKeyCanonical,
-            compiledNode,
-            bindings
-        );
-    }
-
-    /**
-     * Look up the semantic node key for a given identifier.
-     * This is a lock-free read from the active in-memory lookup.
-     * @param {NodeIdentifier} nodeIdentifier
-     * @returns {import('./types').NodeKeyString | undefined}
-     */
-    lookupNodeKey(nodeIdentifier) {
-        return this.rootDatabase.nodeIdToKey(nodeIdentifier);
-    }
-
-    /**
-     * Look up the identifier for a given semantic node key.
-     * This is a lock-free read from the active in-memory lookup.
-     * @param {import('./types').NodeKeyString} nodeKey
-     * @returns {NodeIdentifier | undefined}
-     */
-    lookupNodeIdentifier(nodeKey) {
-        return this.rootDatabase.nodeKeyToId(nodeKey);
-    }
-
-    /**
-     * Resolve the target identifier.
-     *
-     * @param {ConcreteNode} concreteNode
-     * @param {Transaction} tx
-     * @returns {Promise<ResolvedConcreteNode>}
-     */
-    async resolveConcreteNode(concreteNode, tx) {
-        const outputIdentifier = txAllocateNodeIdentifier(
-            tx.identifierLookup,
-            concreteNode.output,
-            () => this.rootDatabase.generateNodeIdentifier(),
-            this.rootDatabase,
-        );
-
-        return {
-            outputKey: concreteNode.output,
-            inputKeys: concreteNode.inputs,
-            outputIdentifier,
-            computor: concreteNode.computor,
-        };
-    }
-
-    /**
-     * @param {ResolvedConcreteNode} nodeDefinition
-     * @param {Transaction} tx
-     * @param {(diff: import('./graph_state').RevdepDiff) => void} reportRevdepDiff
-     * @returns {Promise<RecomputeResult>}
-     */
-    async maybeRecalculate(nodeDefinition, tx, reportRevdepDiff) {
-        return await internalMaybeRecalculate(this, nodeDefinition, tx, reportRevdepDiff);
     }
 
     /**
@@ -238,17 +150,6 @@ class IncrementalGraphClass {
      */
     async pullWithStatus(nodeName, bindings = []) {
         return await internalSafePullWithStatus(this, nodeName, bindings);
-    }
-
-    /**
-     * Internal method for pulling a dependency during an existing pull operation.
-     * Each call creates its own Transaction and commits atomically.
-     *
-     * @param {NodeKeyString} nodeKeyStr
-     * @returns {Promise<ComputedValue>}
-     */
-    async _pullDuringPull(nodeKeyStr) {
-        return await internalPullByNodeKeyDuringPull(this, nodeKeyStr);
     }
 
     /**

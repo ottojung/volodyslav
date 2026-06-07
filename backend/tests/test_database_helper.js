@@ -95,7 +95,7 @@ function makeSemanticStorage(graph) {
         return {
             async get(key) {
                 const jsonKey = toJsonKey(key);
-                const nodeIdentifier = graph.lookupNodeIdentifier(jsonKey);
+                const nodeIdentifier = graph.rootDatabase.nodeKeyToId(jsonKey);
                 if (nodeIdentifier === undefined) {
                     return undefined;
                 }
@@ -106,7 +106,7 @@ function makeSemanticStorage(graph) {
                 if (databaseName === "inputs") {
                     return {
                         inputs: value.inputs.map((inputIdentifier) => {
-                            const nodeKey = graph.lookupNodeKey(
+                            const nodeKey = graph.rootDatabase.nodeIdToKey(
                                 nodeIdentifierFromString(inputIdentifier)
                             );
                             if (nodeKey === undefined) {
@@ -121,7 +121,7 @@ function makeSemanticStorage(graph) {
                 }
                 if (databaseName === "revdeps") {
                     return value.map((nodeIdentifierValue) => {
-                        const nodeKey = graph.lookupNodeKey(nodeIdentifierValue);
+                        const nodeKey = graph.rootDatabase.nodeIdToKey(nodeIdentifierValue);
                         if (nodeKey === undefined) {
                             throw new Error(
                                 `Missing semantic node key for revdep identifier in get(): ${nodeIdentifierValue}`
@@ -174,7 +174,7 @@ function makeSemanticStorage(graph) {
             },
             async del(key) {
                 const jsonKey = toJsonKey(key);
-                const nodeIdentifier = graph.lookupNodeIdentifier(jsonKey);
+                const nodeIdentifier = graph.rootDatabase.nodeKeyToId(jsonKey);
                 if (nodeIdentifier === undefined) {
                     return;
                 }

@@ -27,7 +27,9 @@
  * @property {import('./graph_state').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {(nodeKeyStr: NodeKeyString) => Promise<ComputedValue>} _pullDuringPull
+ * @property {Map<import('./types').NodeName, import('./types').CompiledNode>} headIndex
+ * @property {import('./database/root_database').RootDatabase} rootDatabase
+ * @property {import('./lru_cache').ConcreteNodeCache} concreteInstantiations
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
@@ -143,8 +145,9 @@ async function internalMaybeRecalculate(
         if (inputKey === undefined) {
             throw new Error(`Missing input key for node ${nodeDefinition.outputKey}`);
         }
+        const { internalPullByNodeKeyDuringPull } = require("./pull");
         const inputValue =
-            await incrementalGraph._pullDuringPull(inputKey);
+            await internalPullByNodeKeyDuringPull(incrementalGraph, inputKey);
         inputValues.push(inputValue);
 
         const inputIdentifier = lookupNodeIdentifier(tx, inputKey);

@@ -41,8 +41,10 @@ const { stringToNodeName } = require("./database");
 const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { nighttimeActivity, telescopeActivity } = require("./lock");
-const { deserializeNodeKey, serializeNodeKey } = require("./database");
+const { deserializeNodeKey, serializeNodeKey, txAllocateNodeIdentifier } = require("./database");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
+const { internalGetOrCreateConcreteNode } = require("./instantiation");
+const { internalMaybeRecalculate } = require("./recompute");
 
 /**
  * @typedef {object} IncrementalGraphPullAccess
@@ -50,10 +52,8 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
  * @property {import('./database/root_database').RootDatabase} rootDatabase
- * @property {(nodeKey: NodeKeyString) => NodeIdentifier | undefined} lookupNodeIdentifier
- * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => Promise<ResolvedConcreteNode>} resolveConcreteNode
- * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
- * @property {(nodeDefinition: ResolvedConcreteNode, tx: Transaction, reportRevdepDiff: (diff: import('./graph_state').RevdepDiff) => void) => Promise<RecomputeResult>} maybeRecalculate
+ * @property {import('./lru_cache').ConcreteNodeCache} concreteInstantiations
+ * @property {import('../../datetime').Datetime} datetime
  */
 
 /**
@@ -73,13 +73,13 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
         throw makeInvalidNodeError(nodeKey.head);
     }
     checkArity(compiledNode, nodeKey.args);
-    const concreteNode = graph.getOrCreateConcreteNode(nodeKeyStr, compiledNode, nodeKey.args);
+    const concreteNode = internalGetOrCreateConcreteNode(graph, nodeKeyStr, compiledNode, nodeKey.args);
 
         // Early freshness check against committed storage — no Transaction needed.
         // await sites below: graph.storage.freshness and .values are getters that
         // call rootDatabase.getSchemaStorage() at each access.
         // Protected by dome nighttime activity — no concurrent replica switch.
-        const committedIdentifier = graph.lookupNodeIdentifier(nodeKeyStr);
+        const committedIdentifier = graph.rootDatabase.nodeKeyToId(nodeKeyStr);
         if (committedIdentifier !== undefined) {
             const nodeFreshness = await graph.storage.freshness.get(committedIdentifier);
             if (nodeFreshness === "up-to-date") {
@@ -97,10 +97,16 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
         // at entry (via rootDatabase.getSchemaStorage/getActiveIdentifierLookup).
         // Protected by dome nighttime activity — replica cannot change.
     const result = await graph.storage.withTransaction(async (tx) => {
-            const nodeDefinition = await graph.resolveConcreteNode(
-                concreteNode,
-                tx,
+            const outputIdentifier = txAllocateNodeIdentifier(
+                tx.identifierLookup,
+                concreteNode.output,
+                () => graph.rootDatabase.generateNodeIdentifier(),
+                graph.rootDatabase,
             );
+            const outputKey = concreteNode.output;
+            const inputKeys = concreteNode.inputs;
+            const computor = concreteNode.computor;
+            const nodeDefinition = { outputKey, inputKeys, outputIdentifier, computor };
 
             /** @type {Array<import('./graph_state').RevdepDiff>} */
             const revdepDiffs = [];
@@ -124,7 +130,8 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
             // mayRecalculate delegates to internalMaybeRecalculate in recompute.js
             // which runs inside the transaction scope. All awaits inside are
             // protected by dome nighttime activity via the caller.
-            const computeResult = await graph.maybeRecalculate(
+            const computeResult = await internalMaybeRecalculate(
+                graph,
                 nodeDefinition,
                 tx,
                 (diff) => revdepDiffs.push(diff)
