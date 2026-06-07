@@ -7,9 +7,10 @@ database. It serves as the namespace suffix in node identifiers
 (`<base36-index>-<fingerprint>`), making them globally unique across hosts
 even when the same local index values are allocated.
 
-It is stored in replica-global metadata and is generated once during first
-database initialization. It never changes during the lifetime of a live
-database.
+Each host obtains a distinct fingerprint through a supported lifecycle
+transition (fresh creation). The fingerprint is stored in replica-global
+metadata and is generated once during first database initialization. It never
+changes during the lifetime of a live database.
 
 ## Storage location
 
@@ -37,10 +38,28 @@ the project's seeded PRNG. It is generated exactly once:
    it is imported alongside the rest of the replica data via the standard
    scan-from-filesystem path.
 
+   This path exists for a host recovering its **own** previously-synchronized
+   state (see `database-lifecycle.md` §4.2). The fingerprint is preserved
+   because the host is resuming its own allocation namespace.
+
 3. **Reset/import into an existing live database**: The live database already
    has a local fingerprint. The pre-import local fingerprint is explicitly
    written back into the target replica's global sublevel before the replica
    pointer switch, so the live database preserves its local identity.
+
+### Cross-host snapshot cloning is unsupported
+
+Taking a rendered snapshot from one host and using it to bootstrap a second,
+concurrently-writing host is outside the supported lifecycle model (see
+`database-lifecycle.md` §10). If performed anyway, the two hosts would share
+a fingerprint and could allocate colliding identifiers. Sync merge would
+detect this as an `IdentifierLookupConflictError` (the same identifier
+mapped to different semantic keys) and fail cleanly for the affected host
+without corrupting either side.
+
+New hosts obtain a distinct fingerprint through the fresh-creation path
+(`database-lifecycle.md` §4.3). There is no supported "clone this database
+onto a new concurrently-writing host" transition.
 
 ## Format
 
@@ -89,7 +108,9 @@ remote hosts during sync/reset. However:
 
 - **First-boot restore**: There is no existing local fingerprint. The
   snapshot's `r/global/fingerprint` becomes the local allocation fingerprint.
+  This is the supported path for a host recovering its own prior synchronized
+  state. Cross-host snapshot cloning is unsupported (see Generation above).
 
-Each machine thus has its own allocation fingerprint for its lifetime. This
-is what makes node identifiers globally unique across hosts even when the
-same local index values are allocated.
+Through the supported lifecycle transitions, each independently-created host
+obtains a distinct fingerprint. This is what makes node identifiers globally
+unique across hosts even when the same local index values are allocated.
