@@ -334,11 +334,23 @@ function makeGraphStorage(rootDatabase, sleeper) {
           * cutover (`setCurrentReplicaPointer`) replaces `_computed` and would
           * leave your captured references pointing at the old replica.
          *
-          * In normal operation the caller (pullNode) holds the dome activity
-           * in "nighttime" mode, which prevents setCurrentReplicaPointer from
-           * running concurrently (it needs the dome activity in "holiday" mode).
-           * The references captured here (activeSchemaStorage, txLookup, etc.)
-           * are therefore safe across all awaits inside the transaction.
+         * ## Locking preconditions
+         *
+         * The caller MUST already hold the dome activity lock in one of the
+         * following modes.  `withTransaction` does not acquire the dome lock
+         * itself — it relies on the caller for stale-reference safety.
+         *
+         *   | Caller              | Must hold                |
+         *   |---------------------|--------------------------|
+         *   | pullNode (pull.js)  | dome nighttime + telescope(node) |
+         *   | internalUnsafeInvalidate (invalidate.js) | dome daytime |
+         *   | makeSemanticStorage (test helper) | none (test-only; single-threaded) |
+         *
+         * The dome lock prevents `setCurrentReplicaPointer` (which needs
+         * dome holiday) from running concurrently, so the `activeSchemaStorage`
+         * and `txLookup` references captured at entry remain valid across all
+         * awaits inside the transaction body.  The commit finalisation
+         * acquires the per-replica darkroom lock internally.
          *
          * @template T
          * @param {(tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<RevdepDiff>}>} fn
