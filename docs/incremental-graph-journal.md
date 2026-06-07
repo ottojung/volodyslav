@@ -33,6 +33,27 @@ The detailed public meaning of `PossibleNodeChange` and `possibleMaybeChanges` i
 docs/specs/incremental-graph-journal-api.md
 ```
 
+## Querying possible changes
+
+The main query interface is:
+
+```js
+possibleMaybeChanges(
+    since: PossibleNodeChange,
+    to: NodeFilter,
+): AsyncIterator<PossibleNodeChange>
+```
+
+The operation starts from the supplied `since` change and returns later possible changes matching the `to` filter.
+
+A typical consumer stores a `PossibleNodeChange` together with its computed result. On a later recomputation, it passes that value to `possibleMaybeChanges` and updates only the affected derived state.
+
+The detailed scan order, initial value behavior, cursor advancement, filtering behavior, and result semantics are specified in:
+
+```text
+docs/specs/incremental-graph-journal-api.md
+```
+
 ## Node filters
 
 Journal queries are restricted by `NodeFilter`.
@@ -65,27 +86,6 @@ The detailed emission behavior is specified in:
 
 ```text
 docs/specs/incremental-graph-journal-emission.md
-```
-
-## Querying possible changes
-
-The main query interface is:
-
-```js
-possibleMaybeChanges(
-    since: PossibleNodeChange,
-    to: NodeFilter,
-): AsyncIterator<PossibleNodeChange>
-```
-
-The operation starts from the supplied `since` change and returns later possible changes matching the `to` filter.
-
-A typical consumer stores a `PossibleNodeChange` together with its computed result. On a later recomputation, it passes that value to `possibleMaybeChanges` and updates only the affected derived state.
-
-The detailed scan order, initial value behavior, cursor advancement, filtering behavior, and result semantics are specified in:
-
-```text
-docs/specs/incremental-graph-journal-api.md
 ```
 
 ## Interaction with computors
