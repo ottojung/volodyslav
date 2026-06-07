@@ -108,8 +108,13 @@ or any other punctuation besides the single separator hyphen.
 ### Format is specification-only
 
 The format regex `/^[0-9a-z]+-[a-z]{9,}$/` is a specification invariant only.
-Runtime code does not validate the documented format at conversion boundaries.
-The existing code style treats node identifiers as nominal strings.
+Runtime code does not validate the documented format at internal conversion
+boundaries. Every identifier in the system originates from `makeNodeIdentifier()`,
+which assembles it from components that are valid by construction (a fingerprint
+validated at lifecycle boundaries and a local allocation index). No supported
+lifecycle transition introduces externally-sourced identifier strings (see
+`docs/specs/database-lifecycle.md` §4, §5, §11–12), so runtime validation at
+internal boundaries would be redundant.
 
 ### Example values
 

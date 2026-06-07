@@ -8,10 +8,16 @@ const {
  * The index is a base36 integer, the fingerprint is a machine-local
  * stable string of at least 9 lowercase ASCII letters.
  *
- * All identifiers are generated internally by `makeNodeIdentifier()` and are
- * never parsed from user input.  Therefore there is no
- * runtime validation of identifier strings — the pattern defined here exists
- * only as a specification / documentation constraint.
+ * Every `NodeIdentifier` in the system originates from `makeNodeIdentifier()`,
+ * which assembles the string from a valid fingerprint (validated at lifecycle
+ * boundaries by `requireValidFingerprint()`) and a local allocation index.
+ * No supported lifecycle transition introduces externally-sourced identifier
+ * strings that would need re-validation (see
+ * `docs/specs/database-lifecycle.md` §4, §5, §11–12).
+ *
+ * Therefore `nodeIdentifierFromString()` does not validate — the pattern
+ * defined here exists only as a specification / documentation constraint.
+ * Validation at hot internal boundaries would be redundant.
  */
 const NODE_IDENTIFIER_PATTERN = /^[0-9a-z]+-[a-z]{9,}$/;
 
@@ -40,12 +46,15 @@ function makeNodeIdentifier(fingerprint, index) {
 /**
  * Convert a plain string to the NodeIdentifier nominal type.
  *
- * Does NOT validate the string — all identifiers in the system are generated
- * internally by `makeNodeIdentifier()` and are never parsed from external
- * input, so runtime validation would serve no purpose. The returned value is
- * simply the input string cast to the nominal type.
+ * Does NOT validate the string — every identifier in the system originates
+ * from `makeNodeIdentifier()`, which assembles it from components that are
+ * valid by construction (a fingerprint validated at lifecycle boundaries and
+ * a base36 local index). No supported lifecycle transition introduces
+ * externally-sourced identifier strings (see
+ * `docs/specs/database-lifecycle.md` §4, §5, §11–12). Validation at this
+ * internal boundary would be redundant.
  *
- * @param {string} identifier - A string that is already known to be a valid identifier.
+ * @param {string} identifier - A string already known to be a valid identifier.
  * @returns {NodeIdentifier}
  */
 function nodeIdentifierFromString(identifier) {
