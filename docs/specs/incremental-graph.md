@@ -351,7 +351,6 @@ await graph.pull("full_event", [{id: "123"}]);
 
 **REQ-MAT-01 (Materialization Triggers):** Materialization occurs through:
 * `pull(nodeName, bindings)` — materializes `NodeInstance`, computes and stores value, marks `up-to-date`
-* `invalidate(nodeName, bindings)` — materializes `NodeInstance`, marks `potentially-outdated`
 
 **REQ-MAT-02 (Persistent Materialization):** Once materialized, a node instance MUST remain materialized across restarts (required by REQ-PERSIST-01 behavioral equivalence).
 
@@ -652,9 +651,9 @@ Three modes are defined:
 
 | Mode | Description |
 |------|-------------|
-| `observe` | Non-`pull` graph operations (inspection reads plus `invalidate`). Multiple `observe`-mode callers may execute concurrently. |
-| `pull` | Recomputation operations. Multiple `pull`-mode callers may execute concurrently at the graph level (but are serialized per-node). |
-| `exclusive` | Lifecycle operations (database opens, schema migrations). Blocks all other modes. |
+| `daytime` | Non-`pull` graph operations (inspection reads plus `invalidate`). Multiple `daytime`-mode callers may execute concurrently. |
+| `nighttime` | Recomputation operations. Multiple `nighttime`-mode callers may execute concurrently at the graph level (but are serialized per-node). |
+| `holiday` | Lifecycle operations (database opens, schema migrations). Blocks all other modes. |
 
 Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to prevent two concurrent pulls from recomputing the same node simultaneously.
 
@@ -662,13 +661,13 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 
 | Method | Lock mode | Can run concurrently with |
 |--------|-----------|--------------------------|
-| `pull()` | `pull` (+ per-node mutex) | Other `pull()` calls on different nodes; **NOT** with `observe`-mode methods |
-| `invalidate()` | `observe` | Other `observe`-mode methods; **NOT** with `pull()` |
-| `getFreshness()` | `observe` | Other `observe`-mode methods; **NOT** with `pull()` |
-| `getValue()` | `observe` | Other `observe`-mode methods; **NOT** with `pull()` |
-| `listMaterializedNodes()` | `observe` | Other `observe`-mode methods; **NOT** with `pull()` |
-| `getCreationTime()` | `observe` | Other `observe`-mode methods; **NOT** with `pull()` |
-| `getModificationTime()` | `observe` | Other `observe`-mode methods; **NOT** with `pull()` |
+| `pull()` | `nighttime` (+ per-node mutex) | Other `pull()` calls on different nodes; **NOT** with `daytime`-mode methods |
+| `invalidate()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
+| `getFreshness()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
+| `getValue()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
+| `listMaterializedNodes()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
+| `getCreationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
+| `getModificationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
 | `getSchemas()` | none (in-memory read) | Everything |
 | `getSchemaByHead()` | none (in-memory read) | Everything |
 | `getDbVersion()` | none (in-memory read) | Everything |
@@ -682,4 +681,4 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 
 **REQ-CONCUR-03 (Read-only Safety):** All read-only methods MUST NOT modify any stored graph state (values, freshness, timestamps, materialization records).
 
-**REQ-CONCUR-04 (Observe-mode Atomicity):** An `observe`-mode method MUST NOT observe a partial write from a concurrent `pull()`. Either the full effect of a `pull()` is visible, or none of it is.
+**REQ-CONCUR-04 (Daytime-mode Atomicity):** A `daytime`-mode method MUST NOT observe a partial write from a concurrent `pull()`. Either the full effect of a `pull()` is visible, or none of it is.
