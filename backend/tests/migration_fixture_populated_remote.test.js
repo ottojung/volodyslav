@@ -2,7 +2,7 @@ const path = require("path");
 const { makeInterface } = require("../src/generators/interface");
 const { DATABASE_SUBPATH } = require("../src/generators/incremental_graph/database");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment, stubDatetime, stubLogger } = require("./stubs");
+const { stubEnvironment, stubDatetime, stubLogger, stubRandomSeed } = require("./stubs");
 const { stubIncrementalDatabaseRemoteBranches } = require("./stub_incremental_database_remote");
 const { forceVersion, assertDirectoriesExactlyEqual } = require("./migration_fixture_helpers");
 
@@ -13,6 +13,7 @@ function getTestCapabilities() {
     stubEnvironment(capabilities);
     stubDatetime(capabilities);
     stubLogger(capabilities);
+    stubRandomSeed(capabilities);
     forceVersion(capabilities, "0.0.0-dev");
     return capabilities;
 }
@@ -43,7 +44,8 @@ describe("populated rendered fixture migration", () => {
             expect(await capabilities.checker.directoryExists(clonedRemote)).toBeTruthy();
             await assertDirectoriesExactlyEqual(
                 path.join(clonedRemote, DATABASE_SUBPATH),
-                path.join(__dirname, "mock-incremental-database-remote-populated", DATABASE_SUBPATH)
+                path.join(__dirname, "mock-incremental-database-remote-populated", DATABASE_SUBPATH),
+                new Set(["_meta/current_replica", "r/global/fingerprint", "r/global/last_node_index"])
             );
         } finally {
             await capabilities.deleter.deleteDirectory(clonedRemote);

@@ -1,3 +1,4 @@
+/* eslint volodyslav/max-lines-per-file: "off" */
 /**
  * Migration runner for incremental-graph database version upgrades.
  *
@@ -10,15 +11,21 @@
  */
 
 const { compileNodeDef } = require("./compiled_node");
-const { stringToNodeKeyString } = require("./database");
-const { withExclusiveMode } = require("./lock");
+const {
+    compareNodeIdentifier,
+    IDENTIFIERS_KEY,
+    LAST_NODE_INDEX_KEY,
+    nodeIdentifierToString,
+    stringToNodeIdentifier,
+} = require("./database");
+const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { checkpointMigration } = require("./database");
-const { compareNodeKeyStringByNodeKey } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
+/** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Counter} Counter */
@@ -30,6 +37,7 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./migration_storage').MigrationStorage} MigrationStorage */
+/** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 /** @typedef {import('./migration_storage').Decision} Decision */
 
 /**
@@ -68,21 +76,24 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
  * @property {Environment} environment - An environment instance
  * @property {Datetime} datetime - Datetime utilities.
  * @property {Interface} interface - An interface instance with an update() method.
+ * @property {import('../../random/seed').NonDeterministicSeed} seed - Random seed capability.
  */
 
 /**
  * Collect all materialized node keys from a schema storage.
  * @param {SchemaStorage} storage
- * @returns {Promise<NodeKeyString[]>}
+ * @returns {Promise<NodeIdentifier[]>}
  */
 async function loadMaterializedNodes(storage) {
-    /** @type {NodeKeyString[]} */
+    /** @type {NodeIdentifier[]} */
     const nodes = [];
     for await (const key of storage.inputs.keys()) {
         nodes.push(key);
     }
     return nodes;
 }
+
+
 
 /**
  * Build the desired revdeps map from decisions, reading inputs from prevStorage.
@@ -91,12 +102,12 @@ async function loadMaterializedNodes(storage) {
  * values are retained.  Reads from prevStorage are streaming (one InputsRecord
  * at a time).
  *
- * @param {SchemaStorage} prevStorage
- * @param {Map<NodeKeyString, Decision>} decisions
- * @returns {Promise<Map<NodeKeyString, NodeKeyString[]>>}
+ * @param {ReadableMigrationStorage} prevStorage
+ * @param {Map<NodeIdentifier, Decision>} decisions
+ * @returns {Promise<Map<NodeIdentifier, NodeIdentifier[]>>}
  */
 async function buildDesiredRevdeps(prevStorage, decisions) {
-    /** @type {Map<string, Set<NodeKeyString>>} */
+    /** @type {Map<string, Set<NodeIdentifier>>} */
     const revdepSets = new Map();
 
     for (const [nodeKey, decision] of decisions) {
@@ -106,7 +117,7 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
         if (!inputsRecord) continue;
 
         for (const inputStr of inputsRecord.inputs) {
-            const inputKey = stringToNodeKeyString(inputStr);
+            const inputKey = stringToNodeIdentifier(inputStr);
             const inputDecision = decisions.get(inputKey);
             if (inputDecision && inputDecision.kind === "delete") continue;
             const existing = revdepSets.get(inputStr);
@@ -118,11 +129,11 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
         }
     }
 
-    /** @type {Map<NodeKeyString, NodeKeyString[]>} */
+    /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const result = new Map();
     for (const [inputStr, depSet] of revdepSets) {
-        const inputKey = stringToNodeKeyString(inputStr);
-        result.set(inputKey, [...depSet].sort(compareNodeKeyStringByNodeKey));
+        const inputKey = stringToNodeIdentifier(inputStr);
+        result.set(inputKey, [...depSet].sort(compareNodeIdentifier));
     }
     return result;
 }
@@ -138,41 +149,74 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
  * keys() to check existence, once during readSource()) — this is an I/O
  * trade-off that avoids per-value memory retention.
  *
- * @param {SchemaStorage} prevStorage
- * @param {Map<NodeKeyString, Decision>} decisions
- * @param {Map<NodeKeyString, NodeKeyString[]>} desiredRevdeps
+ * @param {ReadableMigrationStorage} prevStorage
+ * @param {Map<NodeIdentifier, Decision>} decisions
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredRevdeps
  * @param {import('./database/types').Version} newVersion
+ * @param {import('../../datetime').Datetime} datetime - Datetime capability for generating timestamps.
+ * @param {number} maxAllocatedIndex - The max allocated local index during this migration.
+ * @param {string} fingerprint - The database fingerprint to carry forward.
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion) {
-    // Sort decision keys once so every sublevel's keys() yields in the same
-    // order as LevelDB.  Keys are latin1 strings (no "!!" substring), so JS
-    // default string sort matches LevelDB byte order.
-    // TODO: ConstValue arguments may contain non-latin1 characters; that case
-    // is tracked separately and will be addressed in a future change.
-    const sortedDecisionKeys = [...decisions.keys()].sort();
+function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion, datetime, maxAllocatedIndex, fingerprint) {
+    const sortedDecisionOutputKeys = [...decisions.keys()]
+        .sort(compareNodeIdentifier);
 
     const sortedRevdepKeys = [...desiredRevdeps.keys()].sort();
+
+    /**
+     * Build the identifiers_keys_map that reflects all decisions:
+     * - Existing entries for keep/override/invalidate nodes are kept as-is.
+     * - Entries for deleted nodes are removed.
+     * - Entries for created nodes are added using the stored nodeKeyString.
+     * @param {ReadableMigrationStorage} prevStorage
+     * @param {Map<NodeIdentifier, Decision>} decisions
+     * @returns {Promise<Array<[string, string]>>}
+     */
+    async function buildDecisionsMap(prevStorage, decisions) {
+        const oldEntries = await prevStorage.global.get(IDENTIFIERS_KEY);
+
+        /** @type {Map<string, string>} */
+        const idToKey = new Map();
+        if (Array.isArray(oldEntries)) {
+            for (const [id, nodeKeyJson] of oldEntries) {
+                const decision = decisions.get(stringToNodeIdentifier(id));
+                if (!decision || decision.kind !== "delete") {
+                    idToKey.set(String(id), String(nodeKeyJson));
+                }
+            }
+        }
+
+        for (const [nodeKey, decision] of decisions) {
+            if (decision.kind === "create" && decision.nodeKeyString !== undefined) {
+                const idStr = nodeIdentifierToString(nodeKey);
+                if (!idToKey.has(idStr)) {
+                    idToKey.set(idStr, decision.nodeKeyString);
+                }
+            }
+        }
+
+        return [...idToKey.entries()]
+            .sort(([leftId], [rightId]) => String(leftId).localeCompare(String(rightId)));
+    }
 
     return {
         values: {
             async *keys() {
-                for (const nodeKey of sortedDecisionKeys) {
-                    const decision = decisions.get(nodeKey);
-                    if (!decision) continue;
-                    if (decision.kind === "delete") continue;
+                for (const outputKey of sortedDecisionOutputKeys) {
+                    const decision = decisions.get(outputKey);
+                    if (!decision || decision.kind === "delete") continue;
                     if (decision.kind === "create" || decision.kind === "override") {
-                        yield nodeKey;
+                        yield outputKey;
                     } else if (decision.kind === "keep") {
-                        const v = await prevStorage.values.get(nodeKey);
-                        if (v !== undefined) yield nodeKey;
+                        const v = await prevStorage.values.get(outputKey);
+                        if (v !== undefined) yield outputKey;
                     }
-                    // 'invalidate': no value in values sublevel
                 }
             },
-            async get(/** @type {NodeKeyString} */ key) {
+            async get(key) {
                 const decision = decisions.get(key);
-                if (!decision) return undefined;
+                if (!decision || decision.kind === "delete") return undefined;
                 if (decision.kind === "create" || decision.kind === "override") {
                     return await decision.value(key);
                 }
@@ -181,21 +225,20 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
         },
         freshness: {
             async *keys() {
-                for (const nodeKey of sortedDecisionKeys) {
-                    const decision = decisions.get(nodeKey);
-                    if (!decision) continue;
-                    if (decision.kind === "delete") continue;
+                for (const outputKey of sortedDecisionOutputKeys) {
+                    const decision = decisions.get(outputKey);
+                    if (!decision || decision.kind === "delete") continue;
                     if (decision.kind === "create" || decision.kind === "override" || decision.kind === "invalidate") {
-                        yield nodeKey;
+                        yield outputKey;
                     } else if (decision.kind === "keep") {
-                        const f = await prevStorage.freshness.get(nodeKey);
-                        if (f !== undefined) yield nodeKey;
+                        const f = await prevStorage.freshness.get(outputKey);
+                        if (f !== undefined) yield outputKey;
                     }
                 }
             },
-            async get(/** @type {NodeKeyString} */ key) {
+            async get(key) {
                 const decision = decisions.get(key);
-                if (!decision) return undefined;
+                if (!decision || decision.kind === "delete") return undefined;
                 if (decision.kind === "create" || decision.kind === "override") return "up-to-date";
                 if (decision.kind === "invalidate") return "potentially-outdated";
                 return await prevStorage.freshness.get(key);
@@ -203,19 +246,18 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
         },
         inputs: {
             async *keys() {
-                for (const nodeKey of sortedDecisionKeys) {
-                    const decision = decisions.get(nodeKey);
-                    if (!decision) continue;
-                    if (decision.kind === "delete") continue;
+                for (const outputKey of sortedDecisionOutputKeys) {
+                    const decision = decisions.get(outputKey);
+                    if (!decision || decision.kind === "delete") continue;
                     if (decision.kind === "create") {
-                        yield nodeKey;
+                        yield outputKey;
                     } else {
-                        const ir = await prevStorage.inputs.get(nodeKey);
-                        if (ir !== undefined) yield nodeKey;
+                        const ir = await prevStorage.inputs.get(outputKey);
+                        if (ir !== undefined) yield outputKey;
                     }
                 }
             },
-            async get(/** @type {NodeKeyString} */ key) {
+            async get(key) {
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
                 if (decision.kind === "create") return { inputs: [], inputCounters: [] };
@@ -228,25 +270,24 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                     yield key;
                 }
             },
-            async get(/** @type {NodeKeyString} */ key) {
+            async get(/** @type {NodeIdentifier} */ key) {
                 return desiredRevdeps.get(key);
             },
         },
         counters: {
             async *keys() {
-                for (const nodeKey of sortedDecisionKeys) {
-                    const decision = decisions.get(nodeKey);
-                    if (!decision) continue;
-                    if (decision.kind === "delete") continue;
+                for (const outputKey of sortedDecisionOutputKeys) {
+                    const decision = decisions.get(outputKey);
+                    if (!decision || decision.kind === "delete") continue;
                     if (decision.kind === "create" || decision.kind === "override") {
-                        yield nodeKey;
+                        yield outputKey;
                     } else {
-                        const c = await prevStorage.counters.get(nodeKey);
-                        if (c !== undefined) yield nodeKey;
+                        const c = await prevStorage.counters.get(outputKey);
+                        if (c !== undefined) yield outputKey;
                     }
                 }
             },
-            async get(/** @type {NodeKeyString} */ key) {
+            async get(key) {
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
                 if (decision.kind === "create") return 1;
@@ -259,26 +300,51 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
         },
         timestamps: {
             async *keys() {
-                for (const nodeKey of sortedDecisionKeys) {
-                    const decision = decisions.get(nodeKey);
-                    if (!decision) continue;
-                    if (decision.kind === "delete" || decision.kind === "create") continue;
-                    const ts = await prevStorage.timestamps.get(nodeKey);
-                    if (ts !== undefined) yield nodeKey;
+                for (const outputKey of sortedDecisionOutputKeys) {
+                    const decision = decisions.get(outputKey);
+                    if (!decision || decision.kind === "delete") continue;
+                    if (decision.kind === "create") {
+                        yield outputKey;
+                        continue;
+                    }
+                    const ts = await prevStorage.timestamps.get(outputKey);
+                    if (ts !== undefined) yield outputKey;
                 }
             },
-            async get(/** @type {NodeKeyString} */ key) {
+            async get(key) {
                 const decision = decisions.get(key);
-                if (!decision || decision.kind === "delete" || decision.kind === "create") return undefined;
+                if (!decision || decision.kind === "delete") return undefined;
+                if (decision.kind === "create") {
+                    const nowIso = datetime.now().toISOString();
+                    return { createdAt: nowIso, modifiedAt: nowIso };
+                }
                 return await prevStorage.timestamps.get(key);
             },
         },
         global: {
             async *keys() {
                 yield 'version';
+                yield IDENTIFIERS_KEY;
+                yield LAST_NODE_INDEX_KEY;
+                yield 'fingerprint';
             },
-            async get(/** @type {string} */ _key) {
-                return newVersion;
+            async get(key) {
+                if (key === 'version') {
+                    return newVersion;
+                }
+                if (key === IDENTIFIERS_KEY) {
+                    return await buildDecisionsMap(prevStorage, decisions);
+                }
+                if (key === LAST_NODE_INDEX_KEY) {
+                    const prevLastNodeIndex = await prevStorage.global.get(LAST_NODE_INDEX_KEY);
+                    const prevValue = (typeof prevLastNodeIndex === 'number' && Number.isInteger(prevLastNodeIndex) && prevLastNodeIndex >= 0)
+                        ? prevLastNodeIndex : 0;
+                    return Math.max(prevValue, maxAllocatedIndex);
+                }
+                if (key === 'fingerprint') {
+                    return fingerprint;
+                }
+                return await prevStorage.global.get(key);
             },
         },
     };
@@ -301,11 +367,11 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
  * @param {RootDatabase} rootDatabase - Opened root database
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
- * @returns {Promise<void>}
+ * @returns {Promise<RootDatabase>}
  */
 async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
-    return await withExclusiveMode(capabilities.sleeper, async () => {
-        await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback);
+    return await holidayActivity(capabilities.sleeper, async () => {
+        return await runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback);
     });
 }
 
@@ -320,11 +386,11 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
  * @param {RootDatabase} rootDatabase - Opened root database
  * @param {Array<NodeDef>} nodeDefs - New-version schema node definitions
  * @param {(storage: MigrationStorage) => Promise<void>} callback
- * @returns {Promise<void>}
+ * @returns {Promise<RootDatabase>}
  */
 async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback)
 {
-    const currentVersion = rootDatabase.version;
+    const currentVersion = rootDatabase.getVersion();
     const activeReplica = rootDatabase.currentReplicaName();
     const inactiveReplica = rootDatabase.otherReplicaName();
 
@@ -346,8 +412,8 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             'Migration not required: no stored version found in active replica; marking fresh database with current version'
         );
         // No previous version recorded; fresh database: record current version, nothing to migrate.
-        await rootDatabase.setGlobalVersion(rootDatabase.version);
-        return;
+        await rootDatabase.setGlobalVersion(rootDatabase.getVersion());
+        return rootDatabase;
     }
 
     if (prevVersion === currentVersion) {
@@ -356,7 +422,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             'Migration not required: stored version already matches current application version'
         );
         // Already on the current version.
-        return;
+        return rootDatabase;
     }
 
     capabilities.logger.logDebug(
@@ -391,7 +457,9 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const migrationStorage = makeMigrationStorage(
                 prevStorage,
                 newHeadIndex,
-                materializedNodes
+                materializedNodes,
+                rootDatabase.getFingerprint(),
+                rootDatabase.getLastNodeIndex()
             );
 
             // Execute user migration callback.
@@ -404,33 +472,43 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
             // Build the desired revdeps map.  Reads inputs from prevStorage once
             // per non-create/non-delete node; stores only key strings, O(|keys|) mem.
-            const desiredRevdeps = await buildDesiredRevdeps(prevStorage, decisions);
+            const desiredRevdeps = await buildDesiredRevdeps(
+                prevStorage,
+                decisions,
+            );
 
             // Create a lazy source that computes desired values on demand.
             // Combined with makeDbToDbAdapter + unifyStores this keeps peak
             // memory at O(|max value| + |keys|), matching the sync path.
-            const lazySource = makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, currentVersion);
+            const lazySource = makeLazyMigrationSource(
+                prevStorage,
+                decisions,
+                desiredRevdeps,
+                currentVersion,
+                capabilities.datetime,
+                migrationStorage.getMaxAllocatedIndex(),
+                rootDatabase.getFingerprint()
+            );
 
             // Gently unify the desired state into the target replica.
             // Only changed keys are written; stale keys are deleted first.
             // The new version is included in the lazy source's global sublevel,
             // so it is written atomically with the data — no separate version write.
             await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
-
             // One final fsync: all unification writes use sync:false for performance;
             // _rawSync() issues an empty batch with sync:true to flush the WAL
             // without rewriting any keys.
             await rootDatabase._rawSync();
 
-            // Switch the active replica pointer to the target replica.
-            // This is the atomic cutover: only runs after all writes succeed.
-            await rootDatabase.switchToReplica(toReplica);
+            // Persist the new active replica pointer after all writes succeed.
+            await rootDatabase.setCurrentReplicaPointer(toReplica);
         }
     );
 
     capabilities.logger.logInfo({
         prevVersion, currentVersion
     }, `Migration from ${String(prevVersion)} to ${String(currentVersion)} completed successfully.`);
+    return rootDatabase;
 }
 
 module.exports = {

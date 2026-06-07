@@ -2,30 +2,26 @@
 
 ## Status
 
-This document describes the locking model that the incremental graph SHOULD use
-in the follow-up implementation PR.
+This document describes the locking model that the incremental graph MUST.
 
-This PR only adds the sleeper primitives needed by the design and removes the
-unsafe `withoutMutex` mechanism. The graph itself still uses its existing coarse
-mutex until the follow-up PR wires in the design below.
-
-## Problem
-
-The old design relied on a single graph-wide mutex plus `withoutMutex`, which
-temporarily dropped the mutex while a computor ran. That gave concurrency, but
-it also created a gap where unrelated graph work could interleave with an
-in-flight recomputation and observe or produce inconsistent intermediate states.
+## Summary
 
 The target behavior is:
 
-1. `invalidate()` is exclusive with any `pull()`, but not with other
-   `invalidate()` calls.
-2. Inspection reads such as `getValue()` and
-   `listMaterializedNodes()` are allowed to run concurrently with
-   `invalidate()`.
-3. `pull()` is exclusive with inspection reads.
-4. `pull()` is exclusive with other `pull()` calls on the same node.
-5. `pull()` calls on different nodes should not block each other.
+1. Daytime activity (`getValue()`, `getFreshness()`, `listMaterializedNodes()`,
+   `invalidate()`) is exclusive with nighttime observation (`pull()`), but not
+   exclusive with other daytime activities.
+2. Inspection reads such as `getValue()` and `listMaterializedNodes()` are
+   allowed to run concurrently with `invalidate()`.
+3. Nighttime observation (`pull()`) is exclusive with daytime activity.
+4. Observations of the same concrete node must not coexist (telescope
+   mutex).
+5. Observations of different concrete nodes may coexist.
+6. Migration and replica cutover suspend all graph activity (daytime,
+   nighttime, and other exclusive work).
+7. Transaction commits for the same replica are serialized (the commit
+   mutex is per-replica, not global, so commits to different replicas
+   proceed concurrently).
 
 ## Sleeper Primitives
 
@@ -42,7 +38,7 @@ It remains the right primitive for **per-node pull exclusion**.
 
 ### `withModeMutex(key, mode, procedure)`
 
-This PR adds a new grouped lock:
+This is a grouped lock:
 
 - callers with the same `(key, mode)` may run concurrently;
 - callers with the same `key` but a different `mode` are mutually exclusive;
@@ -55,7 +51,7 @@ other.
 
 ## Lock Keys
 
-The future implementation SHOULD derive two families of keys.
+The implementation SHOULD derive two families of keys.
 
 ### 1. Graph activity key
 
@@ -90,7 +86,7 @@ different nodes.
 
 ### `invalidate(node)`
 
-1. Acquire `withModeMutex(GRAPH_ACTIVITY_KEY, "observe", ...)`.
+1. Acquire `daytimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "observe", ...)`).
 2. Run the invalidation logic.
 3. Release the mode lock.
 
@@ -98,7 +94,7 @@ No per-node mutex is needed.
 
 ### inspection read
 
-1. Acquire `withModeMutex(GRAPH_ACTIVITY_KEY, "observe", ...)`.
+1. Acquire `daytimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "observe", ...)`).
 2. Read the requested inspection data.
 3. Release the mode lock.
 
@@ -106,11 +102,33 @@ No per-node mutex is needed.
 
 ### `pull(node)`
 
-1. Acquire `withModeMutex(GRAPH_ACTIVITY_KEY, "pull", ...)`.
-2. Acquire `withMutex(PULL_NODE_KEY(nodeKeyString), ...)`.
-3. Pull dependencies and compute/write back the node value while holding both.
-4. Release the node mutex.
-5. Release the mode lock.
+1. Acquire `nighttimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "pull", ...)`).
+2. Acquire `telescopeActivity(nodeKeyString, ...)` (internally
+   `withMutex(PULL_NODE_KEY(nodeKeyString), ...)`).
+3. Open a transaction (acquires `darkroomActivity` for the active replica).
+4. Pull dependencies and compute/write back the node value while holding
+    the graph-activity mode lock, the per-node mutex, and the darkroom lock.
+5. Flush the batch and release the darkroom lock.
+6. Release the per-node mutex.
+7. Release the graph-activity mode lock.
+
+The darkroom lock is per-replica, so commits to different replicas never
+contend. Nested pulls (dependencies) reuse the same graph-activity mode
+("pull") but acquire their own per-node mutex for each dependency node.
+Each nested pull creates its own Transaction (acquiring its own darkroom
+lock) and submits its batch independently. This matches the volatile-
+consistency spec: every call to pullNode is structurally identical,
+whether top-level or nested.
+
+### `migration / replica cutover`
+
+1. Acquire `holidayActivity(...)`.
+2. Run the migration or cutover.
+3. Release the holiday lock.
+
+The two-step acquisition (`MUTEX_KEY` → `GRAPH_ACTIVITY_KEY("exclusive")`)
+is deadlock-free because pull/observe operations only ever acquire
+`GRAPH_ACTIVITY_KEY`.
 
 The computor stays inside the pull critical section. This is safe because the
 critical section is no longer graph-global: other pulls may still proceed on
@@ -120,16 +138,17 @@ other nodes, while invalidates and inspection reads are excluded.
 
 ### Invalidates with invalidates
 
-Both use `GRAPH_ACTIVITY_KEY` in mode `"observe"`, so they are compatible.
+Both use `daytimeActivity(...)`, so they are compatible.
 
 ### Invalidates with reads
 
-Both use `GRAPH_ACTIVITY_KEY` in mode `"observe"`, so they are compatible.
+Both use `daytimeActivity(...)`, so they are compatible.
 
 ### Pulls with reads or invalidates
 
-Pulls use mode `"pull"` while reads and invalidates use mode `"observe"`. Those
-modes conflict, so these operations are mutually exclusive.
+Nighttime observations (`pull()`) use mode `"pull"` while reads and invalidates
+use mode `"observe"` (daytime). Those modes conflict, so these operations are
+mutually exclusive.
 
 ### Pulls on the same node
 
@@ -142,7 +161,7 @@ keys, so they may proceed concurrently.
 
 ## Deadlock Discipline
 
-The follow-up implementation MUST keep this acquisition discipline:
+The implementation MUST keep this acquisition discipline:
 
 1. acquire the graph activity mode lock first;
 2. acquire any per-node pull mutexes after that;

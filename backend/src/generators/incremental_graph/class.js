@@ -1,17 +1,28 @@
 /**
  * IncrementalGraph class for propagating data through dependency edges.
+ *
+ * This implementation follows the transaction model specified in:
+ * docs/specs/incremental-graph-volatile-consistency.md
+ *
+ * Key principles:
+ * - Explicit over ambient: Transaction context is passed as a direct function argument
+ * - No global state, no async_hooks
+ * - Disk before memory: in-memory state is updated only after LevelDB batch flushes
  */
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./types').NodeDef} NodeDef */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').ConcreteNode} ConcreteNode */
+/** @typedef {import('./types').ResolvedConcreteNode} ResolvedConcreteNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
-/** @typedef {import('./graph_storage').GraphStorage} GraphStorage */
-/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').GraphStorage} GraphStorage */
+/** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').Transaction} Transaction */
 /** @typedef {import('./lru_cache').ConcreteNodeCache} ConcreteNodeCache */
 /** @typedef {import('../../datetime').DateTime} DateTime */
 /** @typedef {import('../../datetime').Datetime} Datetime */
@@ -25,7 +36,9 @@ const {
     validateNoOverlap,
     validateSingleArityPerHead,
 } = require("./compiled_node");
-const { makeGraphStorage } = require("./graph_storage");
+const {
+    makeGraphStorage,
+} = require("./graph_state");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -38,19 +51,11 @@ const {
 } = require("./inspection");
 const {
     internalInvalidate,
-    internalPropagateOutdated,
-    internalUnsafeInvalidate,
 } = require("./invalidate");
-const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { makeConcreteNodeCache } = require("./lru_cache");
 const {
     internalPull,
-    internalPullByNodeKeyStringWithStatusDuringPull,
-    internalPullByNodeKeyStringWithStatus,
-    internalSafePullWithStatus,
-    internalUnsafePull,
 } = require("./pull");
-const { internalMaybeRecalculate } = require("./recompute");
 
 class IncrementalGraphClass {
     /** @type {Map<import('./types').NodeName, CompiledNode>} */
@@ -71,6 +76,9 @@ class IncrementalGraphClass {
     /** @type {Datetime} */
     datetime;
 
+    /** @type {RootDatabase} */
+    rootDatabase;
+
     /**
      * @param {IncrementalGraphCapabilities} capabilities
      * @param {RootDatabase} rootDatabase
@@ -83,8 +91,9 @@ class IncrementalGraphClass {
         validateSingleArityPerHead(compiledNodes);
         validateInputArities(compiledNodes);
 
-        this.storage = makeGraphStorage(rootDatabase);
-        this.dbVersion = rootDatabase.version;
+        this.storage = makeGraphStorage(rootDatabase, capabilities.sleeper);
+        this.rootDatabase = rootDatabase;
+        this.dbVersion = rootDatabase.getVersion();
         this.headIndex = new Map();
         for (const compiledNode of compiledNodes) {
             this.headIndex.set(compiledNode.head, compiledNode);
@@ -93,30 +102,6 @@ class IncrementalGraphClass {
         this.concreteInstantiations = makeConcreteNodeCache();
         this.sleeper = capabilities.sleeper;
         this.datetime = capabilities.datetime;
-    }
-
-    /**
-     * @param {NodeKeyString} changedKey
-     * @param {BatchBuilder} batch
-     * @param {Set<NodeKeyString>} [nodesBecomingOutdated]
-     * @returns {Promise<void>}
-     */
-    async propagateOutdated(changedKey, batch, nodesBecomingOutdated = new Set()) {
-        await internalPropagateOutdated(
-            this,
-            changedKey,
-            batch,
-            nodesBecomingOutdated
-        );
-    }
-
-    /**
-     * @param {string} nodeName
-     * @param {Array<ConstValue>} bindings
-     * @returns {Promise<void>}
-     */
-    async unsafeInvalidate(nodeName, bindings) {
-        await internalUnsafeInvalidate(this, nodeName, bindings);
     }
 
     /**
@@ -129,73 +114,12 @@ class IncrementalGraphClass {
     }
 
     /**
-     * @param {NodeKeyString} concreteKeyCanonical
-     * @param {CompiledNode} compiledNode
-     * @param {Array<ConstValue>} bindings
-     * @returns {ConcreteNode}
-     */
-    getOrCreateConcreteNode(concreteKeyCanonical, compiledNode, bindings) {
-        return internalGetOrCreateConcreteNode(
-            this,
-            concreteKeyCanonical,
-            compiledNode,
-            bindings
-        );
-    }
-
-    /**
-     * @param {ConcreteNode} nodeDefinition
-     * @param {BatchBuilder} batch
-     * @returns {Promise<RecomputeResult>}
-     */
-    async maybeRecalculate(nodeDefinition, batch) {
-        return await internalMaybeRecalculate(this, nodeDefinition, batch);
-    }
-
-    /**
-     * @param {string} nodeName
-     * @param {Array<ConstValue>} bindings
-     * @returns {Promise<ComputedValue>}
-     */
-    async unsafePull(nodeName, bindings) {
-        return await internalUnsafePull(this, nodeName, bindings);
-    }
-
-    /**
      * @param {string} nodeName
      * @param {Array<ConstValue>} [bindings=[]]
      * @returns {Promise<ComputedValue>}
      */
     async pull(nodeName, bindings = []) {
         return await internalPull(this, nodeName, bindings);
-    }
-
-    /**
-     * @param {import('./types').NodeName} nodeName
-     * @param {Array<ConstValue>} [bindings=[]]
-     * @returns {Promise<RecomputeResult>}
-     */
-    async pullWithStatus(nodeName, bindings = []) {
-        return await internalSafePullWithStatus(this, nodeName, bindings);
-    }
-
-    /**
-     * @param {NodeKeyString} nodeKeyStr
-     * @returns {Promise<RecomputeResult>}
-     */
-    async pullByNodeKeyStringWithStatus(nodeKeyStr) {
-        return await internalPullByNodeKeyStringWithStatus(this, nodeKeyStr);
-    }
-
-    /**
-     * @param {NodeKeyString} nodeKeyStr
-     * @returns {Promise<RecomputeResult>}
-     */
-    async pullByNodeKeyStringWithStatusDuringPull(nodeKeyStr) {
-        return await internalPullByNodeKeyStringWithStatusDuringPull(
-            this,
-            nodeKeyStr
-        );
     }
 
     /**

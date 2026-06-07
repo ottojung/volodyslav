@@ -25,7 +25,12 @@
  * Receives inputs, optional old value, and positional bindings array.
  * Bindings are matched to argument positions by position (not by variable name).
  * Each binding must be a ConstValue (JSON-serializable primitives, arrays, or records).
- * @typedef {(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>} NodeDefComputor
+ *
+ * @typedef {(
+ *     inputs: Array<ComputedValue>,
+ *     oldValue: ComputedValue | undefined,
+ *     bindings: Array<ConstValue>
+ * ) => Promise<ComputedValue | Unchanged>} NodeDefComputor
  */
 
 /**
@@ -34,7 +39,11 @@
 
 /**
  * Simpler computor without bindings parameter (used for concrete instantiated nodes).
- * @typedef {(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined) => Promise<ComputedValue | Unchanged>} ConcreteNodeComputor
+ *
+ * @typedef {(
+ *     inputs: Array<ComputedValue>,
+ *     oldValue: ComputedValue | undefined
+ * ) => Promise<ComputedValue | Unchanged>} ConcreteNodeComputor
  */
 
 /**
@@ -48,6 +57,11 @@
  */
 
 /**
+ * Stable identifier used for persisted IncrementalGraph state.
+ * @typedef {import('./database/types').NodeIdentifier} NodeIdentifier
+ */
+
+/**
  * The head/functor part of SchemaPattern.
  * @typedef {import('./database/types').NodeName} NodeName
  */
@@ -56,9 +70,20 @@
  * A concrete node definition with resolved inputs and output.
  * Used for runtime instantiations of pattern nodes.
  * @typedef {object} ConcreteNode
- * @property {NodeKeyString} output - Serialized concrete output key
- * @property {Array<NodeKeyString>} inputs - Array of serialized concrete input keys
+ * @property {NodeKeyString} output - Concrete output semantic node key
+ * @property {Array<NodeKeyString>} inputs - Array of concrete input semantic node keys
  * @property {ConcreteNodeComputor} computor - Function that computes the output from inputs and old value
+ */
+
+/**
+ * A concrete node definition enriched with identifiers for one operation.
+ * Input identifiers are not pre-allocated; callers resolve them post-pull
+ * via lookupNodeIdentifier(tx, inputKey).
+ * @typedef {object} ResolvedConcreteNode
+ * @property {NodeKeyString} outputKey - Concrete output semantic node key (used for messages).
+ * @property {Array<NodeKeyString>} inputKeys - Concrete input semantic node keys used for recursive pulls.
+ * @property {NodeIdentifier} outputIdentifier - Persisted identifier of the output node.
+ * @property {ConcreteNodeComputor} computor - Function that computes the output from inputs and old value.
  */
 
 /**

@@ -1,5 +1,9 @@
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
 const {
+    IDENTIFIERS_KEY,
+    nodeIdentifierToString,
+} = require("../src/generators/incremental_graph/database");
+const {
     isUndecidedNodes,
     isPartialDeleteFanIn,
     isDecisionConflict,
@@ -13,16 +17,28 @@ jest.mock('../src/generators/incremental_graph/database', () => ({
 }));
 const { checkpointMigration: mockCheckpointMigration } = require('../src/generators/incremental_graph/database');
 
+/**
+ * Get the migrated identifier for a given node key from the storage's global IDENTIFIERS_KEY.
+ * @param {import('../src/generators/incremental_graph/database').SchemaStorage} storage
+ * @param {string} nodeKey
+ * @returns {Promise<string>}
+ */
+async function getMigratedKey(storage, nodeKey) {
+    const entries = await storage.global.get(IDENTIFIERS_KEY);
+    if (!entries) return nodeKey;
+    const entry = entries.find(([, key]) => String(key) === nodeKey);
+    return entry ? nodeIdentifierToString(entry[0]) : nodeKey;
+}
+
 function makeInMemoryDb(table) {
     const store = new Map();
     return {
         async get(key) { return store.get(key); },
         async put(key, value) { store.set(key, value); },
-        async rawPut(key, value) { store.set(key, value); },
+        async noFlushPut(key, value) { store.set(key, value); },
         async del(key) { store.delete(key); },
-        async rawDel(key) { store.delete(key); },
+        async noFlushDel(key) { store.delete(key); },
         putOp(key, value) { return { type: "put", table, key, value }; },
-        rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
         async *keys() {
             for (const key of [...store.keys()].sort()) yield key;
@@ -47,6 +63,25 @@ function makeSchemaStorage() {
     const revdeps = makeInMemoryDb("revdeps");
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
+
+    // Tests use simplified mocks where the "NodeIdentifier" string is the same
+    // as the semantic node key JSON string. When identifiers_keys_map is not
+    // explicitly seeded, fall back to an identity mapping derived from the
+    // currently materialized inputs keys.
+    const originalGlobalGet = global.get.bind(global);
+    global.get = async (key) => {
+        if (key !== IDENTIFIERS_KEY) {
+            return await originalGlobalGet(key);
+        }
+        const stored = await originalGlobalGet(key);
+        if (stored !== undefined) return stored;
+
+        const out = [];
+        for await (const k of inputs.keys()) {
+            out.push([k, k]);
+        }
+        return out;
+    };
 
     return {
         values,
@@ -77,11 +112,11 @@ function makeSchemaStorage() {
  * @param {string} opts.currentVersion - version field on rootDatabase
  * @param {object} opts.xStorage - the x-namespace SchemaStorage
  * @param {object} opts.yStorage - the y-namespace SchemaStorage
- * @returns {{ rootDatabase: any, switchToReplicaCalled: boolean }}
+ * @returns {{ rootDatabase: any, setCurrentReplicaPointerCalled: boolean }}
  */
 function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage }) {
-    let switchToReplicaCalled = false;
-    let switchToReplicaCalledWith = undefined;
+    let setCurrentReplicaPointerCalled = false;
+    let setCurrentReplicaPointerCalledWith = undefined;
     let clearReplicaStorageCalledWith = undefined;
     let setGlobalVersionCalledWith = undefined;
 
@@ -101,20 +136,25 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
             throw new Error(`Unexpected replica name: ${name}`);
         },
         async clearReplicaStorage(name) { clearReplicaStorageCalledWith = name; },
-        async switchToReplica(name) {
-            switchToReplicaCalled = true;
-            switchToReplicaCalledWith = name;
+        async setCurrentReplicaPointer(name) {
+            setCurrentReplicaPointerCalled = true;
+            setCurrentReplicaPointerCalledWith = name;
         },
         async setGlobalVersion(v) {
             setGlobalVersionCalledWith = v;
         },
         async _rawSync() {},
+        getFingerprint() { return 'testmigrfinprt'; },
+        getVersion() { return this.version; },
+        getLastNodeIndex() { return this._computed.lastNodeIndex; },
+        advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
+        _computed: { lastNodeIndex: 0 },
     };
 
     return {
         rootDatabase,
-        get switchToReplicaCalled() { return switchToReplicaCalled; },
-        get switchToReplicaCalledWith() { return switchToReplicaCalledWith; },
+        get setCurrentReplicaPointerCalled() { return setCurrentReplicaPointerCalled; },
+        get setCurrentReplicaPointerCalledWith() { return setCurrentReplicaPointerCalledWith; },
         get clearReplicaStorageCalledWith() { return clearReplicaStorageCalledWith; },
         get setGlobalVersionCalledWith() { return setGlobalVersionCalledWith; },
     };
@@ -202,8 +242,9 @@ describe("runMigration", () => {
             await storage.invalidate(nodeKey);
         });
 
-        await expect(currentStorage.counters.get(nodeKey)).resolves.toBe(5);
-        await expect(currentStorage.freshness.get(nodeKey)).resolves.toBe("potentially-outdated");
+        const migratedKey = await getMigratedKey(currentStorage, nodeKey);
+        await expect(currentStorage.counters.get(migratedKey)).resolves.toBe(5);
+        await expect(currentStorage.freshness.get(migratedKey)).resolves.toBe("potentially-outdated");
     });
 
     describe("fresh database (getGlobalVersion returns undefined)", () => {
@@ -223,7 +264,7 @@ describe("runMigration", () => {
                 throw new Error("callback must not be called for a fresh database");
             });
 
-            expect(mock.switchToReplicaCalled).toBe(false);
+            expect(mock.setCurrentReplicaPointerCalled).toBe(false);
         });
 
         test("records current version via setGlobalVersion so future upgrades are detected", async () => {
@@ -275,7 +316,7 @@ describe("runMigration", () => {
                 throw new Error("callback must not be called when version matches");
             });
 
-            expect(mock.switchToReplicaCalled).toBe(false);
+            expect(mock.setCurrentReplicaPointerCalled).toBe(false);
         });
 
         test("does not call checkpointMigration", async () => {
@@ -323,25 +364,26 @@ describe("runMigration", () => {
             });
 
             // y namespace is populated with the migrated node's inputs record.
-            const migratedInputs = await yStorage.inputs.get(nodeKey);
+            const migratedKey = await getMigratedKey(yStorage, nodeKey);
+            const migratedInputs = await yStorage.inputs.get(migratedKey);
             expect(migratedInputs).toBeDefined();
         });
 
-        test("writes version to y/global/version before calling switchToReplica", async () => {
+        test("writes version to y/global/version before calling setCurrentReplicaPointer", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
             await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
             const callOrder = [];
-            let switchToReplicaCalled = false;
+            let setCurrentReplicaPointerCalled = false;
             const yStorage = makeSchemaStorage();
 
-            // Intercept yStorage.global.rawPut to record when version is written.
-            const originalRawPut = yStorage.global.rawPut.bind(yStorage.global);
-            yStorage.global.rawPut = async (key, value) => {
+            // Intercept yStorage.global.noFlushPut to record when version is written.
+            const originalNoFlushPut = yStorage.global.noFlushPut.bind(yStorage.global);
+            yStorage.global.noFlushPut = async (key, value) => {
                 callOrder.push({ action: "globalRawPut", key: String(key), value });
-                return originalRawPut(key, value);
+                return originalNoFlushPut(key, value);
             };
 
             const rootDatabase = {
@@ -352,12 +394,17 @@ describe("runMigration", () => {
                 otherReplicaName() { return 'y'; },
                 schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
                 async clearReplicaStorage(_name) {},
-                async switchToReplica(name) {
-                    callOrder.push({ action: "switchToReplica", name });
-                    switchToReplicaCalled = true;
+                async setCurrentReplicaPointer(name) {
+                    callOrder.push({ action: "setCurrentReplicaPointer", name });
+                    setCurrentReplicaPointerCalled = true;
                 },
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
+                getFingerprint() { return 'testmigrfinprt'; },
+                getVersion() { return this.version; },
+                getLastNodeIndex() { return this._computed.lastNodeIndex; },
+                advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
+                _computed: { lastNodeIndex: 0 },
             };
 
             const nodeDefs = [{
@@ -372,19 +419,19 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            expect(switchToReplicaCalled).toBe(true);
-            // Version must be written to y before switchToReplica is called.
+            expect(setCurrentReplicaPointerCalled).toBe(true);
+            // Version must be written to y before setCurrentReplicaPointer is called.
             const versionWriteIdx = callOrder.findIndex(
                 (e) => e.action === "globalRawPut" && e.key === "version" && e.value === "2.0.0"
             );
-            const switchIdx = callOrder.findIndex((e) => e.action === "switchToReplica");
+            const switchIdx = callOrder.findIndex((e) => e.action === "setCurrentReplicaPointer");
             expect(versionWriteIdx).toBeGreaterThanOrEqual(0);
             expect(switchIdx).toBeGreaterThan(versionWriteIdx);
             // Also verify the value is readable from yStorage after migration.
             await expect(yStorage.global.get("version")).resolves.toBe("2.0.0");
         });
 
-        test("calls switchToReplica with 'y' on successful migration", async () => {
+        test("calls setCurrentReplicaPointer with 'y' on successful migration", async () => {
             const capabilities = await getTestCapabilities();
             const previousStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
@@ -413,7 +460,7 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            expect(mock.switchToReplicaCalled).toBe(true);
+            expect(mock.setCurrentReplicaPointerCalled).toBe(true);
         });
 
         test("calls checkpointMigration once for the whole migration", async () => {
@@ -463,7 +510,7 @@ describe("runMigration", () => {
             expect(postMessage).toContain("2.0.0");
         });
 
-        test("pre-migration commit happens before switchToReplica inside the checkpointMigration", async () => {
+        test("pre-migration commit happens before setCurrentReplicaPointer inside the checkpointMigration", async () => {
             const capabilities = await getTestCapabilities();
             const callOrder = [];
             capabilities.checkpointMigration.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
@@ -485,9 +532,14 @@ describe("runMigration", () => {
                 otherReplicaName() { return 'y'; },
                 schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
                 async clearReplicaStorage(_name) {},
-                async switchToReplica(name) { callOrder.push(`switchToReplica:${name}`); },
+                async setCurrentReplicaPointer(name) { callOrder.push(`setCurrentReplicaPointer:${name}`); },
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
+                getFingerprint() { return 'testmigrfinprt'; },
+                getVersion() { return this.version; },
+                getLastNodeIndex() { return this._computed.lastNodeIndex; },
+                advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
+                _computed: { lastNodeIndex: 0 },
             };
             const nodeDefs = [{
                 output: "A",
@@ -502,12 +554,12 @@ describe("runMigration", () => {
             });
 
             const preIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("checkpoint:pre-migration"));
-            const switchIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("switchToReplica:"));
+            const switchIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("setCurrentReplicaPointer:"));
             expect(preIdx).toBeGreaterThanOrEqual(0);
             expect(switchIdx).toBeGreaterThan(preIdx);
         });
 
-        test("post-migration commit happens after switchToReplica inside the checkpointMigration", async () => {
+        test("post-migration commit happens after setCurrentReplicaPointer inside the checkpointMigration", async () => {
             const capabilities = await getTestCapabilities();
             const callOrder = [];
             capabilities.checkpointMigration.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
@@ -529,9 +581,14 @@ describe("runMigration", () => {
                 otherReplicaName() { return 'y'; },
                 schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
                 async clearReplicaStorage(_name) {},
-                async switchToReplica(name) { callOrder.push(`switchToReplica:${name}`); },
+                async setCurrentReplicaPointer(name) { callOrder.push(`setCurrentReplicaPointer:${name}`); },
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
+                getFingerprint() { return 'testmigrfinprt'; },
+                getVersion() { return this.version; },
+                getLastNodeIndex() { return this._computed.lastNodeIndex; },
+                advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
+                _computed: { lastNodeIndex: 0 },
             };
             const nodeDefs = [{
                 output: "A",
@@ -546,13 +603,13 @@ describe("runMigration", () => {
             });
 
             const postIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("checkpoint:post-migration"));
-            const switchIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("switchToReplica:"));
+            const switchIdx = callOrder.findIndex((e) => typeof e === "string" && e.startsWith("setCurrentReplicaPointer:"));
             expect(postIdx).toBeGreaterThan(switchIdx);
         });
     });
 
     describe("failure cases", () => {
-        test("callback throws: switchToReplica is NOT called and error propagates", async () => {
+        test("callback throws: setCurrentReplicaPointer is NOT called and error propagates", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
@@ -581,10 +638,10 @@ describe("runMigration", () => {
                 })
             ).rejects.toBe(callbackError);
 
-            expect(mock.switchToReplicaCalled).toBe(false);
+            expect(mock.setCurrentReplicaPointerCalled).toBe(false);
         });
 
-        test("finalize throws UndecidedNodesError when a node has no decision: switchToReplica is NOT called", async () => {
+        test("finalize throws UndecidedNodesError when a node has no decision: setCurrentReplicaPointer is NOT called", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
@@ -617,7 +674,7 @@ describe("runMigration", () => {
             }
 
             expect(isUndecidedNodes(caughtError)).toBe(true);
-            expect(mock.switchToReplicaCalled).toBe(false);
+            expect(mock.setCurrentReplicaPointerCalled).toBe(false);
         });
 
         test("callback throws: unification is not attempted and error propagates", async () => {
@@ -649,7 +706,7 @@ describe("runMigration", () => {
             ).rejects.toThrow("intentional failure");
 
             // unification was never attempted so y namespace is still empty
-            expect(mock.switchToReplicaCalled).toBe(false);
+            expect(mock.setCurrentReplicaPointerCalled).toBe(false);
         });
 
         test("callback throws: checkpointMigration attempts the pre-migration commit step before failing", async () => {
@@ -913,19 +970,19 @@ describe("x-namespace state preserved on migration failure", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("rawPut() throws during unification into y: x-namespace data unchanged, switchToReplica not called", async () => {
+    test("noFlushPut() throws during unification into y: x-namespace data unchanged, setCurrentReplicaPointer not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 99 });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
-        // Build a yStorage whose rawPut throws on all sublevels
+        // Build a yStorage whose noFlushPut throws on all sublevels
         const yStorage = makeSchemaStorage();
         const writeError = new Error("write failure");
         for (const name of ['values', 'freshness', 'global', 'inputs', 'revdeps', 'counters', 'timestamps']) {
-            yStorage[name].rawPut = async () => { throw writeError; };
-            yStorage[name].rawDel = async () => { throw writeError; };
+            yStorage[name].noFlushPut = async () => { throw writeError; };
+            yStorage[name].noFlushDel = async () => { throw writeError; };
         }
 
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -935,22 +992,22 @@ describe("x-namespace state preserved on migration failure", () => {
                 async (storage) => { await storage.keep(nodeKey); })
         ).rejects.toMatchObject({ cause: writeError });
 
-        expect(mock.switchToReplicaCalled).toBe(false);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("global.rawPut throws during version write: x-namespace data unchanged, switchToReplica not called", async () => {
+    test("global.noFlushPut throws during version write: x-namespace data unchanged, setCurrentReplicaPointer not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 7 });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
-        const globalWriteError = new Error("global rawPut failure");
+        const globalWriteError = new Error("global noFlushPut failure");
         const yStorage = makeSchemaStorage();
-        // Make yStorage.global.rawPut throw so the version write during unification fails.
-        yStorage.global.rawPut = async () => { throw globalWriteError; };
-        yStorage.global.rawDel = async () => { throw globalWriteError; };
+        // Make yStorage.global.noFlushPut throw so the version write during unification fails.
+        yStorage.global.noFlushPut = async () => { throw globalWriteError; };
+        yStorage.global.noFlushDel = async () => { throw globalWriteError; };
 
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1",
@@ -967,7 +1024,7 @@ describe("x-namespace state preserved on migration failure", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("switchToReplica throws: error propagates and x had not been modified before the throw", async () => {
+    test("setCurrentReplicaPointer throws: error propagates and x had not been modified before the throw", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -976,7 +1033,7 @@ describe("x-namespace state preserved on migration failure", () => {
 
         const swapError = new Error("swap failed");
         const yStorage = makeSchemaStorage();
-        // Override switchToReplica to throw without touching xStorage
+        // Override setCurrentReplicaPointer to throw without touching xStorage
         const rootDatabase = {
             version: "2",
             async getGlobalVersion() { return "1"; },
@@ -985,9 +1042,14 @@ describe("x-namespace state preserved on migration failure", () => {
             otherReplicaName() { return 'y'; },
             schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
             async clearReplicaStorage(_name) {},
-            async switchToReplica() { throw swapError; },
+            async setCurrentReplicaPointer() { throw swapError; },
             async setGlobalVersion() {},
             async _rawSync() {},
+            getFingerprint() { return 'testmigrfinprt'; },
+            getVersion() { return this.version; },
+            getLastNodeIndex() { return this._computed.lastNodeIndex; },
+            advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
+            _computed: { lastNodeIndex: 0 },
         };
 
         await expect(
@@ -995,7 +1057,7 @@ describe("x-namespace state preserved on migration failure", () => {
                 async (storage) => { await storage.keep(nodeKey); })
         ).rejects.toBe(swapError);
 
-        // x was never modified by migration code — only switchToReplica would do that
+        // x was never modified by migration code — only setCurrentReplicaPointer would do that
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
@@ -1258,19 +1320,24 @@ describe("infrastructure failures", () => {
         const capabilities = await getTestCapabilities();
         const metaError = new Error("getGlobalVersion failure");
         const xStorage = makeSchemaStorage();
-        const yStorage = makeSchemaStorage();
-        const rootDatabase = {
-            version: "2",
-            async getGlobalVersion() { throw metaError; },
-            getSchemaStorage() { return xStorage; },
-            currentReplicaName() { return 'x'; },
-            otherReplicaName() { return 'y'; },
-            schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
-            async clearReplicaStorage(_name) {},
-            async switchToReplica() {},
-            async setGlobalVersion() {},
-            async _rawSync() {},
-        };
+            const yStorage = makeSchemaStorage();
+            const callOrder = [];
+            const rootDatabase = {
+                version: "2.0.0",
+                getVersion() { return this.version; },
+                async getGlobalVersion() { throw metaError; },
+                getSchemaStorage() { return xStorage; },
+                currentReplicaName() { return 'x'; },
+                otherReplicaName() { return 'y'; },
+                schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
+                async clearReplicaStorage(_name) {},
+                async setCurrentReplicaPointer(name) { callOrder.push(`setCurrentReplicaPointer:${name}`); },
+                async setGlobalVersion(_v) {},
+                async _rawSync() {},
+                getFingerprint() { return 'testmigrfinprt'; },
+                getLastNodeIndex() { return 0; },
+                advanceLastNodeIndex(_value) {},
+            };
 
         let caught;
         try {
@@ -1283,7 +1350,7 @@ describe("infrastructure failures", () => {
         expect(capabilities.checkpointMigration).not.toHaveBeenCalled();
     });
 
-    test("unification rawPut throws: error propagates, callback was run, switchToReplica not called", async () => {
+    test("unification noFlushPut throws: error propagates, callback was run, setCurrentReplicaPointer not called", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -1292,8 +1359,8 @@ describe("infrastructure failures", () => {
         const unificationError = new Error("unification write failure");
         const yStorage = makeSchemaStorage();
         for (const name of ['values', 'freshness', 'global', 'inputs', 'revdeps', 'counters', 'timestamps']) {
-            yStorage[name].rawPut = async () => { throw unificationError; };
-            yStorage[name].rawDel = async () => { throw unificationError; };
+            yStorage[name].noFlushPut = async () => { throw unificationError; };
+            yStorage[name].noFlushDel = async () => { throw unificationError; };
         }
         const rootDatabase = {
             version: "2",
@@ -1302,9 +1369,14 @@ describe("infrastructure failures", () => {
             currentReplicaName() { return 'x'; },
             otherReplicaName() { return 'y'; },
             schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
-            async switchToReplica() {},
+            async setCurrentReplicaPointer() {},
             async setGlobalVersion() {},
             async _rawSync() {},
+            getFingerprint() { return 'testmigrfinprt'; },
+            getVersion() { return this.version; },
+            getLastNodeIndex() { return this._computed.lastNodeIndex; },
+            advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
+            _computed: { lastNodeIndex: 0 },
         };
 
         let callbackRan = false;
@@ -1317,7 +1389,7 @@ describe("infrastructure failures", () => {
         expect(callbackRan).toBe(true);
     });
 
-    test("checkpointMigration setup throws: migration does not run, switchToReplica not called", async () => {
+    test("checkpointMigration setup throws: migration does not run, setCurrentReplicaPointer not called", async () => {
         const capabilities = await getTestCapabilities();
         const checkpointError = new Error("checkpoint failure");
         capabilities.checkpointMigration.mockRejectedValueOnce(checkpointError);
@@ -1325,7 +1397,7 @@ describe("infrastructure failures", () => {
         const { nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-        // We need a fresh mock so we can check switchToReplicaCalled
+        // We need a fresh mock so we can check setCurrentReplicaPointerCalled
         const freshXStorage = makeSchemaStorage();
         await freshXStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
         const { yStorage } = makeYDb(makeSchemaStorage());
@@ -1340,7 +1412,7 @@ describe("infrastructure failures", () => {
         ).rejects.toBe(checkpointError);
 
         expect(callbackRan).toBe(false);
-        expect(freshMock.switchToReplicaCalled).toBe(false);
+        expect(freshMock.setCurrentReplicaPointerCalled).toBe(false);
     });
 
     test("checkpointMigration setup throws: x-namespace data unchanged", async () => {
@@ -1377,7 +1449,7 @@ describe("infrastructure failures", () => {
         const { nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
         await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
 
-        // Rebuild with a mock that tracks the replica switch cutover via switchToReplicaCalled
+        // Rebuild with a mock that tracks the replica switch cutover via setCurrentReplicaPointerCalled
         const freshXStorage = makeSchemaStorage();
         await freshXStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
         const { yStorage } = makeYDb(makeSchemaStorage());
@@ -1394,7 +1466,7 @@ describe("infrastructure failures", () => {
 
         // The error came from the post-checkpoint, but the migration DID complete
         expect(caught).toBe(postError);
-        expect(freshMock.switchToReplicaCalled).toBe(true);
+        expect(freshMock.setCurrentReplicaPointerCalled).toBe(true);
     });
 });
 
@@ -1403,7 +1475,7 @@ describe("infrastructure failures", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("retry after failure", () => {
-    test("failed migration followed by correct migration: second call applies migration and calls switchToReplica", async () => {
+    test("failed migration followed by correct migration: second call applies migration and calls setCurrentReplicaPointer", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
@@ -1418,13 +1490,13 @@ describe("retry after failure", () => {
                 async () => { throw new Error("first attempt failure"); })
         ).rejects.toThrow("first attempt failure");
 
-        expect(mock.switchToReplicaCalled).toBe(false);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
 
         // Second attempt succeeds
         await runMigration(capabilities, mock.rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
             async (storage) => { await storage.keep(nodeKey); });
 
-        expect(mock.switchToReplicaCalled).toBe(true);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(true);
     });
 
     test("failed migration followed by correct migration: two pre/post checkpoint pairs are recorded", async () => {
@@ -1474,7 +1546,7 @@ describe("retry after failure", () => {
         } catch (e) { caughtRetry = e; }
         expect(isUndecidedNodes(caughtRetry)).toBe(true);
 
-        expect(mock.switchToReplicaCalled).toBe(false);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
 
         // Second attempt: correct, decides both nodes
         await runMigration(capabilities, mock.rootDatabase, makeTwoNodeDefs(), async (storage) => {
@@ -1482,6 +1554,6 @@ describe("retry after failure", () => {
             await storage.keep(nkB);
         });
 
-        expect(mock.switchToReplicaCalled).toBe(true);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(true);
     });
 });

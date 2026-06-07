@@ -101,7 +101,7 @@ async function collectRawEntries(db) {
 }
 
 // ---------------------------------------------------------------------------
-// keyToRelativePath() — unit tests for the new head/arg1/arg2 encoding
+// keyToRelativePath() — unit tests for identifier-native key encoding
 // ---------------------------------------------------------------------------
 
 describe('keyToRelativePath()', () => {
@@ -109,84 +109,64 @@ describe('keyToRelativePath()', () => {
         expect(keyToRelativePath('!x!!global!version')).toBe('x/global/version');
     });
 
-    test('zero-arg NodeKey', () => {
-        expect(keyToRelativePath('!x!!values!{"head":"all_events","args":[]}')).toBe(
-            'x/values/all_events'
+    test('identifier key is emitted as a single segment', () => {
+        expect(keyToRelativePath('!x!!values!all_events')).toBe('x/values/all_events');
+    });
+
+    test('identifier keys can include slash-like logical segments', () => {
+        expect(keyToRelativePath('!x!!values!event/abc123')).toBe('x/values/event%2Fabc123');
+    });
+
+    test('identifier keys percent-encode slash characters', () => {
+        expect(keyToRelativePath('!x!!values!transcription//audio/file.mp3')).toBe(
+            'x/values/transcription%2F%2Faudio%2Ffile.mp3'
         );
     });
 
-    test('one-arg NodeKey with plain string arg', () => {
-        expect(keyToRelativePath('!x!!values!{"head":"event","args":["abc123"]}')).toBe(
-            'x/values/event/abc123'
-        );
+    test('identifier keys escape bang characters', () => {
+        expect(keyToRelativePath('!x!!values!a!b')).toBe('x/values/a%21b');
     });
 
-    test('one-arg NodeKey with "/" in arg', () => {
-        expect(keyToRelativePath(
-            '!x!!values!{"head":"transcription","args":["/audio/file.mp3"]}'
-        )).toBe('x/values/transcription/%2Faudio%2Ffile.mp3');
+    test('identifier keys keep repeated bang characters', () => {
+        expect(keyToRelativePath('!x!!values!a!!b')).toBe('x/values/a%21%21b');
     });
 
-    test('one-arg NodeKey with "!" in arg (P1 fix)', () => {
-        expect(keyToRelativePath(
-            '!x!!values!{"head":"event","args":["a!b"]}'
-        )).toBe('x/values/event/a%21b');
-    });
-
-    test('one-arg NodeKey with "!!" in arg keeps content intact', () => {
-        expect(keyToRelativePath(
-            '!x!!values!{"head":"event","args":["a!!b"]}'
-        )).toBe('x/values/event/a%21%21b');
-    });
-
-    test('one-arg NodeKey with "%" in arg', () => {
-        expect(keyToRelativePath(
-            '!x!!values!{"head":"event","args":["50%off"]}'
-        )).toBe('x/values/event/50%25off');
+    test('identifier keys encode percent literals', () => {
+        expect(keyToRelativePath('!x!!values!50%off')).toBe('x/values/50%25off');
     });
 
     test('dot segments are escaped so they remain literal path values', () => {
-        expect(keyToRelativePath(
-            '!x!!values!{"head":"event","args":[".",".."]}'
-        )).toBe('x/values/event/%2E/%2E%2E');
+        expect(keyToRelativePath('!x!!values!.')).toBe('x/values/%2E');
+        expect(keyToRelativePath('!x!!values!..')).toBe('x/values/%2E%2E');
         expect(keyToRelativePath('!_meta!..')).toBe('_meta/%2E%2E');
     });
 
-    test('string arg beginning with "~" is escaped to stay distinct from non-string args', () => {
-        expect(keyToRelativePath(
-            '!x!!values!{"head":"event","args":["~42"]}'
-        )).toBe('x/values/event/~~42');
+    test('identifier keys preserve leading "~" as ordinary content', () => {
+        expect(keyToRelativePath('!x!!values!~42')).toBe('x/values/~42');
     });
 
-    test('two-arg NodeKey', () => {
-        expect(keyToRelativePath(
-            '!x!!values!{"head":"event_transcription","args":["evtId","/audio/x.mp3"]}'
-        )).toBe('x/values/event_transcription/evtId/%2Faudio%2Fx.mp3');
-    });
-
-    test('non-string arg (number) uses ~ prefix', () => {
-        const encodedPath = keyToRelativePath('!x!!values!{"head":"event","args":[42]}');
-        expect(encodedPath).toBe('x/values/event/~42');
-    });
-
-    test('different sublevel (freshness) uses same head/arg encoding', () => {
-        expect(keyToRelativePath('!x!!freshness!{"head":"all_events","args":[]}')).toBe(
-            'x/freshness/all_events'
+    test('slash-containing identifier keys are encoded as one path segment', () => {
+        expect(keyToRelativePath('!x!!values!event_transcription/evtId//audio/x.mp3')).toBe(
+            'x/values/event_transcription%2FevtId%2F%2Faudio%2Fx.mp3'
         );
     });
 
-    test('mixed non-string args encode via JSON segments', () => {
-        expect(keyToRelativePath(
-            '!x!!values!{"head":"event","args":[true,null,{"nested":["x",1]},["a",2]]}'
-        )).toBe(
-            'x/values/event/~true/~null/~{"nested":["x",1]}/~["a",2]'
+    test('numeric-looking identifier keys remain plain identifier strings', () => {
+        expect(keyToRelativePath('!x!!values!42')).toBe('x/values/42');
+    });
+
+    test('freshness sublevel is identifier-native too', () => {
+        expect(keyToRelativePath('!x!!freshness!all_events')).toBe('x/freshness/all_events');
+    });
+
+    test('JSON-like identifier content is encoded literally', () => {
+        expect(keyToRelativePath('!x!!values!~{"nested":["x",1]}')).toBe(
+            'x/values/~{"nested":["x",1]}'
         );
     });
 
-    test('throws for non-plain sublevel key content that is not NodeKey JSON', () => {
-        expect(() => keyToRelativePath('!x!!values!not-json')).toThrow(
-            'expected NodeKey JSON'
-        );
+    test('identifier sublevels accept non-JSON content as valid identifiers', () => {
+        expect(keyToRelativePath('!x!!values!not-json')).toBe('x/values/not-json');
     });
 
     test('throws for raw keys without the required leading "!"', () => {
@@ -217,72 +197,46 @@ describe('relativePathToKey()', () => {
         expect(relativePathToKey('x/global/version')).toBe('!x!!global!version');
     });
 
-    test('zero-arg NodeKey path', () => {
-        expect(relativePathToKey('x/values/all_events')).toBe(
-            '!x!!values!{"head":"all_events","args":[]}'
+    test('relative identifier path decodes to identifier key', () => {
+        expect(relativePathToKey('x/values/all_events')).toBe('!x!!values!all_events');
+    });
+
+    test('decodes slash escapes in identifier keys', () => {
+        expect(relativePathToKey('x/values/transcription%2F%2Faudio%2Ffile.mp3')).toBe(
+            '!x!!values!transcription//audio/file.mp3'
         );
     });
 
-    test('one-arg NodeKey with plain string', () => {
-        expect(relativePathToKey('x/values/event/abc123')).toBe(
-            '!x!!values!{"head":"event","args":["abc123"]}'
-        );
+    test('identifier path decoding restores bang characters', () => {
+        expect(relativePathToKey('x/values/a%21b')).toBe('!x!!values!a!b');
     });
 
-    test('decodes "%2F" back to "/" in arg', () => {
-        expect(relativePathToKey('x/values/transcription/%2Faudio%2Ffile.mp3')).toBe(
-            '!x!!values!{"head":"transcription","args":["/audio/file.mp3"]}'
-        );
+    test('decodes repeated bang escapes in identifier keys', () => {
+        expect(relativePathToKey('x/values/a%21%21b')).toBe('!x!!values!a!!b');
     });
 
-    test('decodes "%21" back to "!" in arg (P1 fix)', () => {
-        expect(relativePathToKey('x/values/event/a%21b')).toBe(
-            '!x!!values!{"head":"event","args":["a!b"]}'
-        );
-    });
-
-    test('decodes "%21%21" back to "!!" in arg', () => {
-        expect(relativePathToKey('x/values/event/a%21%21b')).toBe(
-            '!x!!values!{"head":"event","args":["a!!b"]}'
-        );
-    });
-
-    test('decodes "%25" back to "%" in arg', () => {
-        expect(relativePathToKey('x/values/event/50%25off')).toBe(
-            '!x!!values!{"head":"event","args":["50%off"]}'
-        );
+    test('decodes percent escapes in identifier keys', () => {
+        expect(relativePathToKey('x/values/50%25off')).toBe('!x!!values!50%off');
     });
 
     test('decodes escaped dot segments back to literal "." and ".."', () => {
-        expect(relativePathToKey('x/values/event/%2E/%2E%2E')).toBe(
-            '!x!!values!{"head":"event","args":[".",".."]}'
-        );
+        expect(relativePathToKey('x/values/%2E')).toBe('!x!!values!.');
+        expect(relativePathToKey('x/values/%2E%2E')).toBe('!x!!values!..');
         expect(relativePathToKey('_meta/%2E%2E')).toBe('!_meta!..');
     });
 
-    test('two-arg NodeKey path', () => {
-        expect(relativePathToKey('x/values/event_transcription/evtId/%2Faudio%2Fx.mp3')).toBe(
-            '!x!!values!{"head":"event_transcription","args":["evtId","/audio/x.mp3"]}'
-        );
+    test('tilde-prefixed identifiers remain strings', () => {
+        expect(relativePathToKey('x/values/~42')).toBe('!x!!values!~42');
     });
 
-    test('non-string arg with ~ prefix decodes to number', () => {
-        expect(relativePathToKey('x/values/event/~42')).toBe(
-            '!x!!values!{"head":"event","args":[42]}'
-        );
+    test('double-tilde content is preserved literally', () => {
+        expect(relativePathToKey('x/values/~~42')).toBe('!x!!values!~~42');
     });
 
-    test('string arg with leading "~" remains a string', () => {
-        expect(relativePathToKey('x/values/event/~~42')).toBe(
-            '!x!!values!{"head":"event","args":["~42"]}'
-        );
-    });
-
-    test('mixed JSON-encoded arg segments decode back to original values', () => {
-        expect(relativePathToKey(
-            'x/values/event/~true/~null/~{"nested":["x",1]}/~["a",2]'
-        )).toBe(
-            '!x!!values!{"head":"event","args":[true,null,{"nested":["x",1]},["a",2]]}'
+    test('JSON-like identifier segments decode literally', () => {
+        expect(relativePathToKey('x/values/~true')).toBe('!x!!values!~true');
+        expect(relativePathToKey('x/values/~{"nested":["x",1]}')).toBe(
+            '!x!!values!~{"nested":["x",1]}'
         );
     });
 
@@ -291,12 +245,15 @@ describe('relativePathToKey()', () => {
         expect(() => relativePathToKey('')).toThrow();
     });
 
-    test('throws when plain-key sublevels have extra path segments', () => {
+    test('throws when paths have extra key segments', () => {
         expect(() => relativePathToKey('_meta/current_replica/extra')).toThrow(
-            'plain-key sublevels require exactly one key segment'
+            'expected exactly one key segment'
         );
         expect(() => relativePathToKey('x/global/version/extra')).toThrow(
-            'plain-key sublevels require exactly one key segment'
+            'expected exactly one key segment'
+        );
+        expect(() => relativePathToKey('x/values/a/b')).toThrow(
+            'expected exactly one key segment'
         );
     });
 });
@@ -362,10 +319,10 @@ describe('keyToRelativePath / relativePathToKey bijection', () => {
         );
     });
 
-    test('empty-string argument round-trips via a dedicated sentinel', () => {
-        const key = '!x!!values!{"head":"event","args":[""]}';
+    test('empty identifier keys round-trip via a dedicated sentinel', () => {
+        const key = '!x!!values!';
         const rel = keyToRelativePath(key);
-        expect(rel).toBe('x/values/event/%00');
+        expect(rel).toBe('x/values/%00');
         expect(relativePathToKey(rel)).toBe(key);
     });
 });
@@ -375,10 +332,10 @@ describe('keyToRelativePath / relativePathToKey bijection', () => {
 // ---------------------------------------------------------------------------
 
 describe('renderToFilesystem()', () => {
-    test('zero-arg node produces human-readable path without JSON blob', async () => {
+    test('identifier key renders as contained single-segment path', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const db = await makeSeededDatabase(capabilities, [
-            ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
+            ['!x!!values!all_events', { type: 'all_events', events: [] }],
         ]);
         try {
             const outputDir = path.join(tmpDir, 'render-readable', 'x');
@@ -435,7 +392,7 @@ describe('renderToFilesystem()', () => {
     test('dot-segment keys render to contained encoded paths', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const db = await makeSeededDatabase(capabilities, [
-            ['!x!!values!{"head":"event","args":[".."]}', { type: 'event', value: 'safe' }],
+            ['!x!!values!..', { type: 'event', value: 'safe' }],
             ['!_meta!..', 'meta-dotdot'],
         ]);
         try {
@@ -448,10 +405,14 @@ describe('renderToFilesystem()', () => {
                 ...collectFiles(xOutputDir).map((entry) => ({ ...entry, relPath: `x/${entry.relPath}` })),
                 ...collectFiles(metaOutputDir).map((entry) => ({ ...entry, relPath: `_meta/${entry.relPath}` })),
             ].sort((a, b) => a.relPath.localeCompare(b.relPath));
+            const fingerprint = String(db.getFingerprint());
             expect(files).toEqual([
                 { relPath: '_meta/%2E%2E', content: JSON.stringify('meta-dotdot') },
-                { relPath: '_meta/current_replica', content: JSON.stringify('x') },
-                { relPath: 'x/values/event/%2E%2E', content: JSON.stringify({ type: 'event', value: 'safe' }, null, 2) },
+            { relPath: '_meta/current_replica', content: JSON.stringify('x') },
+            { relPath: 'x/global/fingerprint', content: JSON.stringify(fingerprint) },
+            { relPath: 'x/global/identifiers_keys_map', content: '[]' },
+                { relPath: 'x/global/last_node_index', content: '0' },
+                { relPath: 'x/values/%2E%2E', content: JSON.stringify({ type: 'event', value: 'safe' }, null, 2) },
             ]);
         } finally {
             await db.close();
@@ -468,14 +429,14 @@ describe('renderToFilesystem()', () => {
             },
         };
         const db = await makeSeededDatabase(capabilities, [
-            ['!x!!values!{"head":"event","args":["pretty"]}', value],
+            ['!x!!values!pretty', value],
         ]);
         try {
             const outputDir = path.join(tmpDir, 'render-pretty', 'x');
             await renderToFilesystem(capabilities, db, outputDir, 'x');
 
             const files = collectFiles(outputDir);
-            const renderedFile = files.find(f => f.relPath === 'values/event/pretty');
+            const renderedFile = files.find(f => f.relPath === 'values/pretty');
             expect(renderedFile).toBeDefined();
             expect(renderedFile.content).toBe(JSON.stringify(value, null, 2));
         } finally {
@@ -489,7 +450,7 @@ describe('renderToFilesystem()', () => {
         const outputDir = path.join(tmpDir, 'render-shrink');
         const staleRelPath = 'values/stale_node';
         const firstDb = await makeSeededDatabase(firstCapabilities, [
-                        ['!x!!values!{"head":"stale_node","args":[]}', { stale: true }],
+                        ['!x!!values!stale_node', { stale: true }],
         ]);
         const isolatedTmpDir = await secondCapabilities.creator.createTemporaryDirectory(
         );
@@ -558,7 +519,7 @@ describe('renderToFilesystem()', () => {
         }
     });
 
-    test('rejects non-NodeKey content in data sublevels without deleting an existing snapshot', async () => {
+    test('accepts non-JSON identifier keys in data sublevels and replaces stale snapshot content', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const outputDir = path.join(tmpDir, 'render-invalid-raw-key', 'x');
         await capabilities.creator.createDirectory(path.join(outputDir, 'values'));
@@ -568,17 +529,15 @@ describe('renderToFilesystem()', () => {
         await capabilities.writer.writeFile(existingFile, JSON.stringify('previous-snapshot'));
 
         const db = await makeSeededDatabase(capabilities, [
-            ['!x!!values!{"head":"all_events","args":[]}', { ok: true }],
+            ['!x!!values!all_events', { ok: true }],
             ['!x!!values!not-json', { broken: true }],
         ]);
         try {
-            await expect(
-                renderToFilesystem(capabilities, db, outputDir, 'x')
-            ).rejects.toThrow('expected NodeKey JSON');
+            await renderToFilesystem(capabilities, db, outputDir, 'x');
             const files = collectFiles(outputDir);
-            expect(files).toEqual([
-                { relPath: 'values/existing', content: JSON.stringify('previous-snapshot') },
-            ]);
+            expect(files.some((file) => file.relPath === 'values/not-json')).toBe(true);
+            expect(files.some((file) => file.relPath === 'values/all_events')).toBe(true);
+            expect(files.some((file) => file.relPath === 'values/existing')).toBe(false);
         } finally {
             await db.close();
         }
@@ -680,8 +639,11 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         const entries = await collectRawEntries(db);
 
         // scanned key is replaced; non-scanned sublevel key survives
-        expect(entries.size).toBe(2);
+        expect(entries.size).toBe(5);
         expect(entries.get('!_meta!current_replica')).toBe('x');
+        expect(entries.has('!x!!global!identifiers_keys_map')).toBe(true);
+        expect(entries.has('!x!!global!last_node_index')).toBe(true);
+        expect(entries.has('!x!!global!fingerprint')).toBe(true);
         expect(entries.has('!x!!values!{"head":"extra","args":[]}')).toBe(true);
 
         await db.close();
@@ -755,7 +717,7 @@ describe('scanFromFilesystem() — stale key deletion (P2)', () => {
         ]);
         try {
             await expect(scanFromFilesystem(capabilities, db, inputDir, '_meta')).rejects.toThrow(
-                'plain-key sublevels require exactly one key segment'
+                'expected exactly one key segment'
             );
         } finally {
             await db.close();
@@ -1011,7 +973,7 @@ describe('sublevel parameter', () => {
     test('renderToFilesystem writes only the requested top-level database sublevel', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const db = await makeSeededDatabase(capabilities, [
-                        ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
+                        ['!x!!values!all_events', { type: 'all_events', events: [] }],
         ]);
         try {
             const outputDir = path.join(tmpDir, 'sublevel-test', 'x');
@@ -1045,8 +1007,8 @@ describe('sublevel parameter', () => {
     test('two different database sublevels can be rendered side-by-side', async () => {
         const { capabilities: capA, tmpDir } = makeTestCapabilities();
         const dbA = await makeSeededDatabase(capA, [
-                        ['!x!!values!{"head":"node_a","args":[]}', { type: 'node_a' }],
-            ['!y!!values!{"head":"node_b","args":[]}', { type: 'node_b' }],
+                        ['!x!!values!node_a', { type: 'node_a' }],
+            ['!y!!values!node_b', { type: 'node_b' }],
         ]);
         const outputDir = path.join(tmpDir, 'shared-output', 'rendered');
         try {
@@ -1260,7 +1222,7 @@ describe('additional reliability tests', () => {
         const db = await getRootDatabase(capabilities);
         try {
             await expect(scanFromFilesystem(capabilities, db, inputDir, '_meta')).rejects.toThrow(
-                'plain-key sublevels require exactly one key segment'
+                'expected exactly one key segment'
             );
         } finally {
             await db.close();
@@ -1296,7 +1258,7 @@ describe('additional reliability tests', () => {
             await db._rawPutAll(entries);
             expect(batchSpy).toHaveBeenCalledTimes(2);
             const storedEntries = await collectRawEntries(db);
-            expect(storedEntries.size).toBe(entriesCount + 1);
+            expect(storedEntries.size).toBe(entriesCount + 4);
             expect(
                 storedEntries.get(
                     `!x!!values!{"head":"event","args":["${entriesCount - 1}"]}`

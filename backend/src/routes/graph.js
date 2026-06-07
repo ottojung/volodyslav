@@ -9,11 +9,12 @@ const {
 /** @typedef {import('../generators').Interface} Interface */
 /** @typedef {import('../generators/incremental_graph/types').CompiledNode} CompiledNode */
 /** @typedef {import('../generators/incremental_graph/types').ConstValue} ConstValue */
+/** @typedef {import('../generators/incremental_graph').IncrementalGraph} IncrementalGraph */
 
 /**
  * @typedef {object} GraphRouteInterface
  * @property {() => boolean} isInitialized
- * @property {() => Promise<void>} ensureInitialized
+ * @property {() => Promise<IncrementalGraph>} ensureInitialized
  * @property {() => Array<CompiledNode>} getSchemas
  * @property {(head: string) => CompiledNode | null} getSchemaByHead
  * @property {() => Promise<Array<[string, Array<ConstValue>]>>} listMaterializedNodes

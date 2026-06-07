@@ -45,7 +45,7 @@ class ConcreteNodeCacheClass {
 
     /**
      * Get a cached concrete node.
-     * @param {NodeKeyString} key - Node key
+     * @param {NodeKeyString} key - Semantic node key
      * @returns {ConcreteNode | undefined}
      */
     get(key) {
@@ -54,7 +54,7 @@ class ConcreteNodeCacheClass {
 
     /**
      * Cache a concrete node.
-     * @param {NodeKeyString} key - Node key
+     * @param {NodeKeyString} key - Semantic node key
      * @param {ConcreteNode} value - Concrete node to cache
      */
     set(key, value) {

@@ -18,7 +18,7 @@ node addressing. It describes the model as it is meant to be.
 
 - **NodeKey**: the schema-derived identity of a concrete node instance, based on
   `(head, args)`
-- **NodeIdentifier**: the opaque random identifier attached to a materialized node
+- **NodeIdentifier**: the deterministic persisted identifier attached to a materialized node
 - **graph-state sublevels**: `values`, `freshness`, `inputs`, `revdeps`, `counters`,
   `timestamps`
 
@@ -74,31 +74,63 @@ HTTP concrete-node routes remain `head + args` based to preserve existing API be
 
 ## NodeIdentifier requirements
 
-A `NodeIdentifier` is an opaque random identifier with the following properties:
+A `NodeIdentifier` is a deterministic, globally-namespaced identifier with the
+following properties:
 
+- globally and forever unique
 - stable for the lifetime of that materialized node in storage
 - round-trippable as a nominal type
-- unique within the database
 - suitable for direct use as persisted key content and as a filesystem path segment
-- matches `/^[a-z]*$/` (full-string match)
+- matches `/^[0-9a-z]+-[a-z]{9,}$/` (full-string match)
 
-So the allowed character set is:
+### Format
+
+```
+<base36-local-node-index>-<fingerprint>
+```
+
+- The index prefix is a base36 integer (characters `0-9a-z`), no padding or alignment.
+- The fingerprint is a lowercase ASCII string of at least 9 characters (`[a-z]{9,}`).
+- The separator is a single hyphen `-`.
+
+### Character set
+
+Allowed characters in a `NodeIdentifier`:
 
 - lowercase ASCII letters `a-z`
+- digits `0-9`
+- hyphen `-` (as separator between index and fingerprint)
 
-No other characters are permitted in a `NodeIdentifier`. In particular, a
+No other characters are permitted. In particular, a
 `NodeIdentifier` MUST NOT contain `/`, `\`, `.`, whitespace, control characters, `!`,
-or any other punctuation.
+or any other punctuation besides the single separator hyphen.
 
-These requirements are part of the `NodeIdentifier` value definition itself. So any
-implementation that constructs, parses, or accepts a `NodeIdentifier` must enforce
-them, not just the documentation.
+### Format is specification-only
 
-Example values:
+The format regex `/^[0-9a-z]+-[a-z]{9,}$/` is a specification invariant only.
+Runtime code does not validate the documented format at internal conversion
+boundaries. Every identifier in the system originates from `makeNodeIdentifier()`,
+which assembles it from components that are valid by construction (a fingerprint
+validated at lifecycle boundaries and a local allocation index). No supported
+lifecycle transition introduces externally-sourced identifier strings (see
+`docs/specs/database-lifecycle.md` §4, §5, §11–12), so runtime validation at
+internal boundaries would be redundant.
 
-- `aaaaaaaaa`
-- `nodecachex`
-- `zzzzzzzzz`
+### Example values
+
+- `1-abcdefghi`
+- `2-abcdefghi`
+- `z-abcdefghi`
+- `10-abcdefghi`
+
+### Allocation
+
+Identifiers are allocated as `${nextIndex.toString(36)}-${fingerprint}` where
+`nextIndex` is a monotonic counter starting at `1` and `fingerprint` is the
+machine-local database fingerprint (see `docs/specs/incremental-graph-fingerprint.md`).
+
+Gaps in the index sequence are acceptable (caused by failed or interleaved
+transactions). The `last_node_index` watermark tracks the largest committed index.
 
 ## Persisted storage model
 
@@ -166,7 +198,10 @@ Every materialized node has exactly one `NodeIdentifier`.
 When a concrete `NodeKey` becomes materialized:
 
 - if it already has an identifier, that identifier is reused
-- otherwise a fresh identifier is allocated and recorded in both lookup sublevels
+- otherwise a fresh identifier is allocated using the current local node index
+  and the database fingerprint: `${nextIndex.toString(36)}-${fingerprint}`
+- the new identifier is recorded in both lookup sublevels and the
+  `last_node_index` watermark is advanced
 
 Recompute, invalidate, cache-hit, and migration-preserve flows keep the existing
 identifier.
@@ -178,7 +213,13 @@ Delete removes:
 - `nodeIdToKey(id)`
 
 Migration preserves identifiers for `keep`, `override`, and `invalidate`, and allocates
-fresh identifiers for `create`.
+fresh identifiers for `create` using the same fingerprint/index scheme.
+
+### last_node_index
+
+The `last_node_index` watermark (see `docs/specs/incremental-graph-last-node-index.md`)
+is stored at the active replica's global sublevel under the key `"last_node_index"`.
+It is a monotonic allocation watermark, not a node count. Gaps are acceptable.
 
 ## Determinism
 

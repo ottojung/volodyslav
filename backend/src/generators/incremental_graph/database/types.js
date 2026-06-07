@@ -58,6 +58,64 @@ function nodeKeyStringToString(nodeKeyString) {
  * @typedef {NodeKeyStringClass} NodeKeyString
  */
 
+class NodeIdentifierClass {
+    /**
+     * @private
+     * @type {undefined}
+     */
+    __brand;
+    constructor() {
+        if (this.__brand !== undefined) {
+            throw new Error("NodeIdentifier cannot be instantiated");
+        }
+    }
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is NodeIdentifier}
+ */
+function castToNodeIdentifierUnsafe(value) {
+    return typeof value === "string";
+}
+
+/**
+ * Unsafe nominal cast from string to NodeIdentifier.
+ * @param {unknown} nodeIdentifierStr
+ * @returns {NodeIdentifier}
+ */
+function unsafeStringToNodeIdentifier(nodeIdentifierStr) {
+    if (castToNodeIdentifierUnsafe(nodeIdentifierStr)) {
+        return nodeIdentifierStr;
+    }
+    throw new Error("Invalid node identifier string");
+}
+
+/**
+ * Convert a string to a NodeIdentifier.
+ * @param {string} nodeIdentifierStr
+ * @returns {NodeIdentifier}
+ */
+function stringToNodeIdentifier(nodeIdentifierStr) {
+    return unsafeStringToNodeIdentifier(nodeIdentifierStr);
+}
+
+/**
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {string}
+ */
+function nodeIdentifierToString(nodeIdentifier) {
+    if (typeof nodeIdentifier === "string") {
+        return nodeIdentifier;
+    }
+    throw new Error("Invalid node identifier type");
+}
+
+/**
+ * Opaque persisted identifier for a materialized graph node.
+ * @typedef {NodeIdentifierClass} NodeIdentifier
+ */
+
 class NodeNameClass {
     /**
      * @private
@@ -121,6 +179,7 @@ function nodeNameToString(nodeName) {
  * @property {Logger} logger - A logger instance
  * @property {LevelDatabase} levelDatabase - A level database instance
  * @property {Command} git - A command instance for Git operations.
+ * @property {import('../../../random/seed').NonDeterministicSeed} seed - Random seed capability.
  */
 
 class VersionClass {
@@ -145,7 +204,7 @@ function castToVersion(_value) {
 }
 
 /**
- * @param {string} VersionStr 
+ * @param {string} VersionStr
  * @returns {Version}
  */
 function stringToVersion(VersionStr) {
@@ -367,7 +426,11 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {ComputedValue | Freshness | InputsRecord | NodeKeyString[] | Counter | TimestampRecord} DatabaseStoredValue
+ * @typedef {readonly [NodeIdentifier, NodeKeyString][]} IdentifiersKeysMap
+ */
+
+/**
+ * @typedef {ComputedValue | Freshness | InputsRecord | NodeIdentifier[] | Counter | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
  */
 
 /**
@@ -394,13 +457,13 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeKeyString[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeKeyString[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
  */
 
 /**
  * A record storing the input dependencies of a node and their counters.
  * @typedef {object} InputsRecord
- * @property {string[]} inputs - Array of canonical input node names
+ * @property {string[]} inputs - Array of materialized input identifiers
  * @property {number[]} inputCounters - Array of counter values for each input (required when inputs.length > 0)
  */
 
@@ -426,7 +489,7 @@ function castToSchemaPattern(_value) {
 }
 
 /**
- * @param {string} schemaPatternStr 
+ * @param {string} schemaPatternStr
  * @returns {SchemaPattern}
  */
 function stringToSchemaPattern(schemaPatternStr) {
@@ -468,8 +531,8 @@ function schemaPatternToString(schemaPattern) {
  * @typedef {import('abstract-level').AbstractSublevel<D, F, K, V>} AbstractSublevel
  */
 
-/** 
- * @typedef {NodeKeyString} DatabaseKey
+/**
+ * @typedef {NodeIdentifier | 'version' | 'identifiers_keys_map'} DatabaseKey
  */
 
 /**
@@ -485,12 +548,12 @@ function schemaPatternToString(schemaPattern) {
  */
 
 /**
- * @typedef {AbstractSublevel<SchemaSublevelType, SublevelFormat, string, Version>} GlobalSublevelType
+ * @typedef {AbstractSublevel<SchemaSublevelType, SublevelFormat, string, Version | IdentifiersKeysMap | number | string>} GlobalSublevelType
  */
 
 /**
  * @template T
- * @template [K=NodeKeyString]
+ * @template [K=DatabaseKey]
  * @typedef {AbstractSublevel<AbstractSublevel<RootLevelType, SublevelFormat, DatabaseKey, DatabaseStoredValue>, SublevelFormat, K, T>} SimpleSublevel
  */
 
@@ -498,6 +561,10 @@ module.exports = {
     versionToString,
     stringToVersion,
     VersionClass,
+    nodeIdentifierToString,
+    stringToNodeIdentifier,
+    unsafeStringToNodeIdentifier,
+    NodeIdentifierClass,
     nodeNameToString,
     stringToNodeName,
     NodeNameClass,

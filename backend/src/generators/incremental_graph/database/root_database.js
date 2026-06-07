@@ -1,3 +1,4 @@
+/* eslint volodyslav/max-lines-per-file: "off" */
 /**
  * RootDatabase module.
  * Provides replica-pointer-aware storage using LevelDB sublevels.
@@ -5,9 +6,25 @@
  */
 
 const { getVersion } = require('../../../version');
+const random = require('../../../random');
 const { makeTypedDatabase } = require('./typed_database');
-const { stringToVersion, stringToNodeKeyString, versionToString } = require('./types');
+const {
+    stringToVersion,
+    unsafeStringToNodeIdentifier,
+    versionToString,
+} = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
+const {
+    IDENTIFIERS_KEY,
+    cloneIdentifierLookup,
+    makeEmptyIdentifierLookup,
+    makeIdentifierLookup,
+    nodeIdToKeyFromLookup,
+    nodeKeyToIdFromLookup,
+} = require('./identifier_lookup');
+const { makeNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
+const { requireValidFingerprint } = require('./fingerprint');
+
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
     clearHostnameStorage: clearHostnameStorageHelper,
@@ -22,6 +39,10 @@ const {
     isSwitchReplicaError,
     SchemaBatchVersionError,
     isSchemaBatchVersionError,
+    MalformedIdentifierLookupError,
+    isMalformedIdentifierLookupError,
+    MissingIdentifierLookupError,
+    isMissingIdentifierLookupError,
 } = require('./replica_errors');
 
 /** @typedef {import('./types').RootLevelType} RootLevelType */
@@ -35,8 +56,46 @@ const {
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
-/** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').Version} Version */
+/** @typedef {import('./types').IdentifiersKeysMap} IdentifiersKeysMap */
+/** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
+/**
+ * Compiled active-replica state that CAN be reconstructed from a database
+ * snapshot. Every field in this struct is derivable from the persisted on-disk
+ * state: opening any replica's sublevels and reading its `identifiers_keys_map`
+ * yields the same `ActiveReplicaComputed`. Nothing here is ephemeral or
+ * in-process-only — it is an *injection* of the durable database into memory.
+ *
+ * This matters because replica switches (`setCurrentReplicaPointer`) and
+ * database reopens rebuild `_computed` from scratch. Any field that cannot be
+ * reloaded from disk (e.g. in-flight transaction state) must live outside this
+ * struct so it is not lost on every pointer change.
+ *
+ * **Stale-reference warning:** Callers must not capture sub-properties of an
+ * `ActiveReplicaComputed` (e.g. `_computed.schemaStorage`,
+ * `_computed.identifierLookup`) across `await` boundaries without holding the
+ * appropriate lock. A concurrent `setCurrentReplicaPointer` replaces
+ * `_computed` atomically, leaving any captured sub-property pointing at the old
+ * replica's state. Use `getSchemaStorage()` / `getActiveIdentifierLookup()` /
+ * `cloneActiveIdentifierLookup()` inside each async tick instead of storing
+ * references in local variables that cross `await`.
+ *
+ * @typedef {object} ActiveReplicaComputed
+ * @property {ReplicaName} replicaName
+ * @property {SchemaSublevelType} namespaceSublevel
+ * @property {GlobalSublevelType} globalSublevel
+ * @property {SchemaStorage} schemaStorage
+ * @property {IdentifierLookup} identifierLookup
+ * @property {number} lastNodeIndex
+ * @property {string} fingerprint
+ */
+
+/**
+ * Global metadata key for the monotonic node allocation watermark.
+ * Stored in the active replica's global sublevel.
+ */
+const LAST_NODE_INDEX_KEY = "last_node_index";
 
 /**
  * Common base type for any abstract-level database instance at any nesting depth.
@@ -71,58 +130,58 @@ function assertNeverReplicaName(name) {
 
 /**
  * Database for storing node output values.
- * Key: canonical node name (e.g., "user('alice')")
+ * Key: persisted node identifier (e.g., "1-abcdefghi")
  * Value: the computed value (object with type field)
- * @typedef {GenericDatabase<ComputedValue, NodeKeyString>} ValuesDatabase
+ * @typedef {GenericDatabase<ComputedValue, NodeIdentifier>} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
- * Key: canonical node name (e.g., "user('alice')")
+ * Key: persisted node identifier (e.g., "1-abcdefghi")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
- * @typedef {GenericDatabase<Freshness, NodeKeyString>} FreshnessDatabase
+ * @typedef {GenericDatabase<Freshness, NodeIdentifier>} FreshnessDatabase
  */
 
 /**
  * A record storing the input dependencies of a node and their counters.
  * @typedef {object} InputsRecord
- * @property {string[]} inputs - Array of canonical input node names
+ * @property {string[]} inputs - Array of persisted input identifiers, kept in the original input order.
  * @property {number[]} inputCounters - Array of counter values for each input (required when inputs.length > 0)
  */
 
 /**
  * Database for storing node input dependencies.
- * Key: canonical node name
- * Value: inputs record with array of dependency names
- * @typedef {GenericDatabase<InputsRecord, NodeKeyString>} InputsDatabase
+ * Key: persisted node identifier
+ * Value: inputs record with identifier-addressed dependencies
+ * @typedef {GenericDatabase<InputsRecord, NodeIdentifier>} InputsDatabase
  */
 
 /**
  * Database for reverse dependency index.
- * Key: canonical input node name
- * Value: array of canonical dependent node names
- * @typedef {GenericDatabase<NodeKeyString[], NodeKeyString>} RevdepsDatabase
+ * Key: persisted input identifier
+ * Value: array of dependent identifiers sorted lexicographically by identifier
+ * @typedef {GenericDatabase<NodeIdentifier[], NodeIdentifier>} RevdepsDatabase
  */
 
 /**
  * Database for storing node counters.
- * Key: canonical node name
+ * Key: persisted node identifier
  * Value: counter (monotonic integer tracking value changes)
- * @typedef {GenericDatabase<Counter, NodeKeyString>} CountersDatabase
+ * @typedef {GenericDatabase<Counter, NodeIdentifier>} CountersDatabase
  */
 
 /**
  * Database for storing node timestamps (creation and modification times).
- * Key: canonical node name
+ * Key: persisted node identifier
  * Value: timestamp record with createdAt and modifiedAt ISO strings
- * @typedef {GenericDatabase<TimestampRecord, NodeKeyString>} TimestampsDatabase
+ * @typedef {GenericDatabase<TimestampRecord, NodeIdentifier>} TimestampsDatabase
  */
 
 /**
- * Database for storing replica-level global state (e.g., version).
- * Key: plain string (e.g., 'version')
- * Value: version string
- * @typedef {GenericDatabase<Version, string>} GlobalVersionDatabase
+ * Database for storing replica-level global state.
+ * Key: plain string (e.g., 'version', 'identifiers_keys_map', 'last_node_index', 'fingerprint')
+ * Value: version string, identifier lookup metadata, last_node_index number, fingerprint string
+ * @typedef {GenericDatabase<Version | import('./types').IdentifiersKeysMap | number | string, string>} GlobalVersionDatabase
  */
 
 /**
@@ -135,13 +194,34 @@ function assertNeverReplicaName(name) {
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
  * @property {CountersDatabase} counters - Node counters (monotonic integers)
  * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
- * @property {GlobalVersionDatabase} global - Replica-level global state (version)
+ * @property {GlobalVersionDatabase} global - Replica-level global state (version + identifiers lookup metadata)
  * @property {(operations: DatabaseBatchOperation[]) => Promise<void>} batch - Batch operation interface for atomic writes
  */
 
 /**
+ * Read the persisted identifier lookup from a replica's global sublevel.
+ * Missing or malformed records cause immediate hard failure — no fallback,
+ * no scanning, no self-healing.
+ *
+ * @param {GlobalSublevelType} globalSublevel
+ * @param {string} context
+ * @returns {Promise<IdentifierLookup>}
+ */
+async function loadIdentifierLookupFromGlobal(globalSublevel, context) {
+    const rawEntries = await globalSublevel.get(IDENTIFIERS_KEY);
+    if (rawEntries === undefined) {
+        throw new MissingIdentifierLookupError(context);
+    }
+    if (!Array.isArray(rawEntries)) {
+        throw new MalformedIdentifierLookupError(rawEntries);
+    }
+    return makeIdentifierLookup(rawEntries);
+}
+
+/**
  * @template T
- * @typedef {import('./types').SimpleSublevel<T>} SimpleSublevel
+ * @template [K=DatabaseKey]
+ * @typedef {import('./types').SimpleSublevel<T, K>} SimpleSublevel
  */
 
 /**
@@ -159,17 +239,17 @@ function assertNeverReplicaName(name) {
  * @returns {SchemaStorage}
  */
 function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
-    /** @type {SimpleSublevel<ComputedValue>} */
+    /** @type {SimpleSublevel<ComputedValue, NodeIdentifier>} */
     const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Freshness>} */
+    /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<InputsRecord>} */
+    /** @type {SimpleSublevel<InputsRecord, NodeIdentifier>} */
     const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<NodeKeyString[]>} */
+    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Counter>} */
+    /** @type {SimpleSublevel<Counter, NodeIdentifier>} */
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<TimestampRecord>} */
+    /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
     // True once this closure's first batch() verifies/writes global/version.
@@ -187,9 +267,12 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
             if (existing === undefined) {
                 // New or freshly-cleared namespace: write version to global to initialise.
                 await globalSublevel.put('version', version);
-            } else if (existing !== version) {
+            } else if (typeof existing !== 'string' || existing !== versionToString(version)) {
                 // Version mismatch indicates a logic error in migration or usage of staging namespace.
-                throw new SchemaBatchVersionError(versionToString(version), versionToString(existing));
+                const foundVersion = typeof existing === 'string'
+                    ? stringToVersion(existing)
+                    : stringToVersion('invalid-version-record');
+                throw new SchemaBatchVersionError(versionToString(version), versionToString(foundVersion));
             }
             touchedSchema = true;
         }
@@ -211,9 +294,18 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
 /**
  * Root database class with replica-pointer awareness.
  *
- * Maintains a cached `_meta/current_replica` pointer (always "x" or "y") and
- * exposes both schema storages so that migration can write to the inactive
- * replica without touching the active one.
+ * Maintains a cached `_meta/current_replica` pointer (always "x" or "y").
+ * All active, replica-derived runtime state is represented by `_computed`.
+ *
+ * `_computed` is an *injection* of the durable database into memory: every
+ * field can be reconstructed by opening the replica's sublevels and reading
+ * its persisted metadata (version, identifiers_keys_map, last_node_index).
+ * Because of this, `setCurrentReplicaPointer` and `clearReplicaStorage`
+ * rebuild `_computed` from the on-disk state each time.
+ *
+ * Ephemeral, in-process-only state (such as `_pendingAllocations` for
+ * concurrent identifier allocation) lives directly on the class, NOT inside
+ * `_computed`, so it is never discarded on a pointer switch.
  */
 class RootDatabaseClass {
     /**
@@ -224,11 +316,10 @@ class RootDatabaseClass {
     db;
 
     /**
-     * Cached name of the currently active replica ("x" or "y").
      * @private
-     * @type {ReplicaName}
+     * @type {Version}
      */
-    _cachedValueOfCurrentReplica;
+    version;
 
     /**
      * Root-level `_meta` sublevel used to persist the replica pointer.
@@ -237,65 +328,82 @@ class RootDatabaseClass {
     _rootMetaSublevel;
 
     /**
-     * Global sublevels for each replica (used by getGlobalVersion / setGlobalVersion).
-     * @private
-     * @type {GlobalSublevelType}
-     */
-    _xGlobalSublevel;
+      * @private
+      * @type {import('../../../random/seed').NonDeterministicSeed}
+      */
+    _seed;
 
     /**
-     * @private
-     * @type {GlobalSublevelType}
-     */
-    _yGlobalSublevel;
+      * Active-replica state that is an injection from the durable database.
+      * Reconstructed on every replica switch / reopen — never holds ephemeral data.
+      * @private
+      * @type {ActiveReplicaComputed}
+      */
+    _computed;
 
     /**
-     * Top-level namespace sublevels for each replica (used by clearReplicaStorage).
-     * @private
-     * @type {SchemaSublevelType}
-     */
-    _xNamespaceSublevel;
+      * Monotonic counter for the next available node index.
+      * Volatile — lives outside `_computed` so it is never discarded on a
+      * pointer switch (but is reset from _computed.lastNodeIndex + 1 on
+      * every rebuild).
+      * @private
+      * @type {number}
+      */
+    _nextNodeIndex;
 
     /**
-     * @private
-     * @type {SchemaSublevelType}
-     */
-    _yNamespaceSublevel;
+      * Key→identifier mappings that have been reserved by in-flight
+      * (not-yet-committed) transactions but are not yet in the committed
+      * `identifierLookup`.
+      * Lives outside `_computed` because it is purely ephemeral — it must NOT
+      * be reconstructed from a database snapshot.
+      * @private
+      * @type {Map<string, string>}
+      */
+    _pendingAllocations;
 
     /**
-     * Pre-built schema storages for each replica.
-     * @private
-     * @type {SchemaStorage}
-     */
-    _xSchemaStorage;
-
-    /**
-     * @private
-     * @type {SchemaStorage}
-     */
-    _ySchemaStorage;
+      * Reverse map of _pendingAllocations: identifierString → keyString.
+      * Maintained alongside the forward map for O(1) collision checks during
+      * identifier reservation — never iterate _pendingAllocations.values().
+      * @private
+      * @type {Map<string, string>}
+      */
+    _pendingAllocationsById;
 
     /**
      * @constructor
      * @param {RootLevelType} db - The Level database instance
      * @param {Version} version - The current application version
      * @param {ReplicaName} currentReplicaName - The initially active replica ("x" or "y")
+     * @param {import('../../../random/seed').NonDeterministicSeed} seed - Random seed for fingerprint generation.
      */
-    constructor(db, version, currentReplicaName) {
+    constructor(db, version, currentReplicaName, seed) {
         this.db = db;
         this.version = version;
-        this._cachedValueOfCurrentReplica = currentReplicaName;
+        this._seed = seed;
 
         // Root-level _meta sublevel for the replica pointer.
         this._rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
 
-        // Build per-replica sublevels and schema storages.
-        this._xNamespaceSublevel = db.sublevel('x', { valueEncoding: 'json' });
-        this._yNamespaceSublevel = db.sublevel('y', { valueEncoding: 'json' });
-        this._xGlobalSublevel = this._xNamespaceSublevel.sublevel('global', { valueEncoding: 'json' });
-        this._yGlobalSublevel = this._yNamespaceSublevel.sublevel('global', { valueEncoding: 'json' });
-        this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xGlobalSublevel, version);
-        this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yGlobalSublevel, version);
+        const namespaceSublevel = this.replicaNamespaceSublevel(currentReplicaName);
+        const globalSublevel = this.replicaGlobalSublevel(currentReplicaName);
+        this._computed = {
+            replicaName: currentReplicaName,
+            namespaceSublevel,
+            globalSublevel,
+            schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, version),
+            identifierLookup: makeEmptyIdentifierLookup(),
+            lastNodeIndex: 0,
+            fingerprint: '',
+        };
+
+        this._nextNodeIndex = 1;
+
+        // Pending allocations map: purely ephemeral, lives outside _computed
+        // because it must not be reconstructed from a database snapshot.
+        this._pendingAllocations = new Map();
+        this._pendingAllocationsById = new Map();
     }
 
     /**
@@ -304,7 +412,245 @@ class RootDatabaseClass {
      * @returns {ReplicaName}
      */
     currentReplicaName() {
-        return this._cachedValueOfCurrentReplica;
+        return this._computed.replicaName;
+    }
+
+    /**
+     * @returns {IdentifierLookup}
+     */
+    cloneActiveIdentifierLookup() {
+        return cloneIdentifierLookup(this._computed.identifierLookup);
+    }
+
+    /**
+     * Return a direct (non-cloned) reference to the active identifier lookup.
+     * The caller must treat it as read-only; only `commitTransactionLookup`
+     * (called inside `withComputedStateMutex` after a successful flush) may
+     * mutate it.
+     *
+     * This reads `_computed` at call time, so it is safe to call across `await`
+     * boundaries. Do NOT capture the returned reference across `await` if a
+     * concurrent `setCurrentReplicaPointer` could replace `_computed`.
+     * @returns {IdentifierLookup}
+     */
+    getActiveIdentifierLookup() {
+        return this._computed.identifierLookup;
+    }
+
+    /**
+     * @param {IdentifierLookup} lookup
+     * @returns {void}
+     */
+    replaceActiveIdentifierLookup(lookup) {
+        this._computed.identifierLookup = lookup;
+    }
+
+    /**
+     * @param {import('./types').NodeKeyString} nodeKey
+     * @returns {NodeIdentifier | undefined}
+     */
+    nodeKeyToId(nodeKey) {
+        return nodeKeyToIdFromLookup(this._computed.identifierLookup, nodeKey);
+    }
+
+    /**
+     * @param {NodeIdentifier} nodeIdentifier
+     * @returns {import('./types').NodeKeyString | undefined}
+     */
+    nodeIdToKey(nodeIdentifier) {
+        return nodeIdToKeyFromLookup(this._computed.identifierLookup, nodeIdentifier);
+    }
+
+    /**
+     * Get the database fingerprint.
+     * @returns {string}
+     */
+    getFingerprint() {
+        return this._computed.fingerprint;
+    }
+
+    /**
+     * Allocate a new node identifier using the next available index and the
+     * database fingerprint. Returns a deterministic identifier.
+     * @returns {NodeIdentifier}
+     */
+    generateNodeIdentifier() {
+        const index = this._nextNodeIndex++;
+        return makeNodeIdentifier(this._computed.fingerprint, index);
+    }
+
+    /**
+     * Get the current allocation watermark (the largest index allocated so
+     * far). Used by the transaction commit path to persist the durable
+     * `last_node_index`.
+     * @returns {number}
+     */
+    getCurrentAllocationWatermark() {
+        return this._nextNodeIndex - 1;
+    }
+
+    /**
+     * Get the application version known to this database instance.
+     * @returns {Version}
+     */
+    getVersion() {
+        return this.version;
+    }
+
+    /**
+     * Get the committed last node index from in-memory computed state.
+     * @returns {number}
+     */
+    getLastNodeIndex() {
+        return this._computed.lastNodeIndex;
+    }
+
+    /**
+     * Advance the in-memory last node index watermark if the given value
+     * is greater than the current one.
+     * @param {number} value
+     * @returns {void}
+     */
+    advanceLastNodeIndex(value) {
+        this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value);
+    }
+
+    /**
+      * Allocate a unique identifier for a node key and claim it in
+      * _pendingAllocations for the current in-flight transaction.
+      * Synchronous — no await between the read and write, so JavaScript's
+      * single-threaded execution guarantees atomicity.
+      *
+      * The caller must hold the telescope lock for keyString (see pull.js),
+      * which serialises all concurrent allocation attempts for the same key.
+      * Consequently, _pendingAllocations MUST NOT already contain keyString —
+      * if it does, a locking bug exists.
+      *
+      * Node identifiers are derived from a monotonic counter and the database
+      * fingerprint, so collisions are impossible. No retry loop is needed.
+      *
+      * @param {string} keyString - Serialized node key string.
+      * @param {() => NodeIdentifier} makeIdentifier - Synchronous identifier factory.
+      * @param {IdentifierLookup} committedLookup - The committed lookup (used for correctness assertion only).
+      * @returns {NodeIdentifier} The newly allocated identifier.
+      */
+    _allocateKeyIdentifier(keyString, makeIdentifier, committedLookup) {
+        // The telescope lock per keyString guarantees no concurrent in-flight
+        // allocation for this key, so _pendingAllocations must be clean.
+        if (this._pendingAllocations.has(keyString)) {
+            throw new Error(
+                `BUG: pending allocation for key ${keyString} found during allocation under telescope lock`
+            );
+        }
+
+        const candidate = makeIdentifier();
+        const candidateStr = nodeIdentifierToString(candidate);
+
+        // With fingerprint-prefixed identifiers, collisions are impossible
+        // within a single database. These checks exist as correctness
+        // assertions only.
+        if (committedLookup.idToKey.get(candidateStr) !== undefined) {
+            throw new Error(
+                `BUG: identifier collision with committed lookup: ${candidateStr}`
+            );
+        }
+        if (this._pendingAllocationsById.has(candidateStr)) {
+            throw new Error(
+                `BUG: identifier collision with pending allocation: ${candidateStr}`
+            );
+        }
+
+        this._pendingAllocations.set(keyString, candidateStr);
+        this._pendingAllocationsById.set(candidateStr, keyString);
+        return candidate;
+    }
+
+    /**
+      * Release pending allocations for keys that this transaction owned.
+      * Called in the finally block after commit success or failure.
+      * @param {Set<string>} ownedKeys - Key strings owned by the transaction.
+      * @returns {void}
+      */
+    releaseIdentifierReservations(ownedKeys) {
+        for (const keyString of ownedKeys) {
+            const idStr = this._pendingAllocations.get(keyString);
+            this._pendingAllocations.delete(keyString);
+            if (idStr !== undefined) {
+                this._pendingAllocationsById.delete(idStr);
+            }
+        }
+    }
+
+    /**
+     * Write an empty identifiers_keys_map, initial last_node_index, and
+     * fingerprint for a fresh replica. Used by makeRootDatabase to ensure
+     * loadIdentifierLookupFromGlobal never encounters a missing map.
+     * @returns {Promise<void>}
+     */
+    async writeEmptyIdentifierLookup() {
+        await this._computed.globalSublevel.put(IDENTIFIERS_KEY, []);
+        await this._computed.globalSublevel.put(LAST_NODE_INDEX_KEY, 0);
+        const fingerprint = random.basicString({ seed: this._seed });
+        await this._computed.globalSublevel.put('fingerprint', fingerprint);
+        this._computed.fingerprint = fingerprint;
+    }
+
+    /**
+     * Load identifier lookup, last_node_index, and fingerprint from the
+     * active replica's global sublevel. Called on database open and replica
+     * switch for versioned replicas.
+     * @returns {Promise<void>}
+     */
+    async initializeActiveIdentifierLookup() {
+        this._computed.identifierLookup = await loadIdentifierLookupFromGlobal(
+            this._computed.globalSublevel,
+            `active replica '${this.currentReplicaName()}'`
+        );
+        const rawLastNodeIndex = await this._computed.globalSublevel.get(LAST_NODE_INDEX_KEY);
+        if (typeof rawLastNodeIndex === 'number' && Number.isInteger(rawLastNodeIndex) && rawLastNodeIndex >= 0) {
+            this._computed.lastNodeIndex = rawLastNodeIndex;
+            this._nextNodeIndex = rawLastNodeIndex + 1;
+        } else {
+            throw new MissingIdentifierLookupError(
+                `active replica '${this.currentReplicaName()}' has a version but missing or invalid last_node_index`
+            );
+        }
+        const storedFingerprint = await this._computed.globalSublevel.get('fingerprint');
+        this._computed.fingerprint = requireValidFingerprint(
+            storedFingerprint,
+            `active replica '${this.currentReplicaName()}' global metadata`
+        );
+    }
+
+    /**
+     * Load the last_node_index from the active replica's global sublevel.
+     * Throws if a versioned replica has missing or invalid last_node_index.
+     * Returns 0 only for genuinely fresh (un-versioned) replicas.
+     * @param {boolean} hasVersion - Whether the replica has a version entry.
+     * @returns {Promise<number>}
+     */
+    async loadLastNodeIndex(hasVersion) {
+        const value = await this._computed.globalSublevel.get(LAST_NODE_INDEX_KEY);
+        if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+            return value;
+        }
+        if (hasVersion) {
+            throw new MissingIdentifierLookupError(
+                `active replica '${this.currentReplicaName()}' has a version but missing or invalid last_node_index`
+            );
+        }
+        return 0;
+    }
+
+    /**
+     * @param {ReplicaName} name
+     * @returns {Promise<IdentifierLookup>}
+     */
+    async loadIdentifierLookupForReplica(name) {
+        return loadIdentifierLookupFromGlobal(
+            this.replicaGlobalSublevel(name),
+            `replica '${name}'`
+        );
     }
 
     /**
@@ -312,25 +658,26 @@ class RootDatabaseClass {
      * @returns {ReplicaName}
      */
     otherReplicaName() {
-        const current = this._cachedValueOfCurrentReplica;
+        const current = this._computed.replicaName;
         if (current === 'x') {
             return 'y';
-        } else if (current === 'y') {
-            return 'x';
-        } else {
-            return assertNeverReplicaName(current);
         }
+        if (current === 'y') {
+            return 'x';
+        }
+        return assertNeverReplicaName(current);
     }
 
     /**
-     * Switch the active replica pointer to `name`.
-     * Writes the new value to `_meta/current_replica` and updates the cache.
+     * Persist a new active replica pointer in `_meta/current_replica`.
+     * On success, refreshes in-memory active replica and active identifier lookup
+     * so subsequent calls in the same process immediately observe the cutover.
      * Throws `InvalidReplicaPointerError` for unrecognised names.
-     * Throws `SwitchReplicaError` if the write fails.
+     * Throws `SwitchReplicaError` if persisting or refreshing active state fails.
      * @param {ReplicaName} name
      * @returns {Promise<void>}
      */
-    async switchToReplica(name) {
+    async setCurrentReplicaPointer(name) {
         if (name === 'x') {
             // x is valid
         } else if (name === 'y') {
@@ -339,27 +686,72 @@ class RootDatabaseClass {
             assertNeverReplicaName(name);
         }
         try {
+            const namespaceSublevel = this.replicaNamespaceSublevel(name);
+            const globalSublevel = this.replicaGlobalSublevel(name);
+            const schemaStorage = buildSchemaStorage(namespaceSublevel, globalSublevel, this.version);
+            const hasVersion = await globalSublevel.get('version');
+            let identifierLookup;
+            let lastNodeIndex;
+            let fingerprint;
+            if (hasVersion === undefined) {
+                identifierLookup = makeEmptyIdentifierLookup();
+                lastNodeIndex = 0;
+                // Carry forward the existing fingerprint so the machine-local
+                // fingerprint is preserved across replica switches.
+                fingerprint = this._computed.fingerprint;
+                // Write an empty map, initial last_node_index, and fingerprint.
+                await globalSublevel.put(IDENTIFIERS_KEY, []);
+                await globalSublevel.put(LAST_NODE_INDEX_KEY, 0);
+                if (!fingerprint) {
+                    fingerprint = random.basicString({ seed: this._seed });
+                }
+                await globalSublevel.put('fingerprint', fingerprint);
+            } else {
+                identifierLookup = await loadIdentifierLookupFromGlobal(
+                    globalSublevel,
+                    `replica '${name}'`
+                );
+                const rawLastNodeIndex = await globalSublevel.get(LAST_NODE_INDEX_KEY);
+                if (typeof rawLastNodeIndex === 'number' && Number.isInteger(rawLastNodeIndex) && rawLastNodeIndex >= 0) {
+                    lastNodeIndex = rawLastNodeIndex;
+                } else {
+                    throw new MissingIdentifierLookupError(
+                        `replica '${name}' has a version but missing or invalid last_node_index`
+                    );
+                }
+                const storedFingerprint = await globalSublevel.get('fingerprint');
+                fingerprint = requireValidFingerprint(
+                    storedFingerprint,
+                    `replica '${name}' global metadata`
+                );
+            }
             await this._rootMetaSublevel.put('current_replica', name);
+            this._computed = {
+                replicaName: name,
+                namespaceSublevel,
+                globalSublevel,
+                schemaStorage,
+                identifierLookup,
+                lastNodeIndex,
+                fingerprint,
+            };
+            this._nextNodeIndex = lastNodeIndex + 1;
         } catch (err) {
             throw new SwitchReplicaError(name, err);
         }
-        this._cachedValueOfCurrentReplica = name;
     }
 
     /**
      * Get the SchemaStorage for the currently active replica.
-     * Reflects pointer changes made by `switchToReplica`.
+     * Reflects the currently cached active replica pointer.
+     *
+     * This reads `_computed` at call time — it is safe to call across `await`
+     * boundaries. Do NOT capture the returned reference across `await` if a
+     * concurrent `setCurrentReplicaPointer` could replace `_computed`.
      * @returns {SchemaStorage}
      */
     getSchemaStorage() {
-        const current = this._cachedValueOfCurrentReplica;
-        if (current === 'x') {
-            return this._xSchemaStorage;
-        } else if (current === 'y') {
-            return this._ySchemaStorage;
-        } else {
-            return assertNeverReplicaName(current);
-        }
+        return this._computed.schemaStorage;
     }
 
     /**
@@ -370,13 +762,11 @@ class RootDatabaseClass {
      * @returns {SchemaStorage}
      */
     schemaStorageForReplica(name) {
-        if (name === 'x') {
-            return this._xSchemaStorage;
-        } else if (name === 'y') {
-            return this._ySchemaStorage;
-        } else {
-            return assertNeverReplicaName(name);
-        }
+        return buildSchemaStorage(
+            this.replicaNamespaceSublevel(name),
+            this.replicaGlobalSublevel(name),
+            this.version
+        );
     }
 
     /**
@@ -385,16 +775,8 @@ class RootDatabaseClass {
      * @returns {Promise<Version | undefined>}
      */
     async getGlobalVersion() {
-        const current = this._cachedValueOfCurrentReplica;
-        let globalSublevel;
-        if (current === 'x') {
-            globalSublevel = this._xGlobalSublevel;
-        } else if (current === 'y') {
-            globalSublevel = this._yGlobalSublevel;
-        } else {
-            return assertNeverReplicaName(current);
-        }
-        return await globalSublevel.get('version');
+        const value = await this._computed.globalSublevel.get('version');
+        return typeof value === 'string' ? stringToVersion(value) : undefined;
     }
 
     /**
@@ -403,16 +785,7 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async setGlobalVersion(version) {
-        const current = this._cachedValueOfCurrentReplica;
-        let globalSublevel;
-        if (current === 'x') {
-            globalSublevel = this._xGlobalSublevel;
-        } else if (current === 'y') {
-            globalSublevel = this._yGlobalSublevel;
-        } else {
-            return assertNeverReplicaName(current);
-        }
-        await globalSublevel.put('version', version);
+        await this._computed.globalSublevel.put('version', version);
     }
 
     /**
@@ -426,17 +799,40 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async clearReplicaStorage(name) {
-        if (name === 'x') {
-            await this._xNamespaceSublevel.clear();
-            // Rebuild to reset the version-initialisation cache in the new closure.
-            this._xSchemaStorage = buildSchemaStorage(this._xNamespaceSublevel, this._xGlobalSublevel, this.version);
-        } else if (name === 'y') {
-            await this._yNamespaceSublevel.clear();
-            // Rebuild to reset the version-initialisation cache in the new closure.
-            this._ySchemaStorage = buildSchemaStorage(this._yNamespaceSublevel, this._yGlobalSublevel, this.version);
-        } else {
-            return assertNeverReplicaName(name);
+        const namespaceSublevel = this.replicaNamespaceSublevel(name);
+        const globalSublevel = this.replicaGlobalSublevel(name);
+        await namespaceSublevel.clear();
+        if (this.currentReplicaName() === name) {
+            this._computed = {
+                replicaName: name,
+                namespaceSublevel,
+                globalSublevel,
+                schemaStorage: buildSchemaStorage(namespaceSublevel, globalSublevel, this.version),
+                identifierLookup: makeEmptyIdentifierLookup(),
+                lastNodeIndex: 0,
+                fingerprint: this._computed.fingerprint,
+            };
+            this._nextNodeIndex = 1;
         }
+    }
+
+    /**
+     * @param {ReplicaName} name
+     * @returns {SchemaSublevelType}
+     */
+    replicaNamespaceSublevel(name) {
+        if (name === 'x' || name === 'y') {
+            return this.db.sublevel(name, { valueEncoding: 'json' });
+        }
+        return assertNeverReplicaName(name);
+    }
+
+    /**
+     * @param {ReplicaName} name
+     * @returns {GlobalSublevelType}
+     */
+    replicaGlobalSublevel(name) {
+        return this.replicaNamespaceSublevel(name).sublevel('global', { valueEncoding: 'json' });
     }
 
     /**
@@ -475,7 +871,7 @@ class RootDatabaseClass {
      * Write a key/value pair into a hostname's staging global sublevel.
      * @param {string} hostname
      * @param {string} key - The key to write (e.g. 'version').
-     * @param {*} value - The value to store.
+     * @param {DatabaseStoredValue} value - The value to store.
      * @returns {Promise<void>}
      */
     async setHostnameGlobal(hostname, key, value) {
@@ -542,7 +938,7 @@ class RootDatabaseClass {
     async _rawGetInSublevel(sublevelName, innerKey) {
         /** @type {SchemaSublevelType} */
         const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
-        return await sublevel.get(stringToNodeKeyString(innerKey));
+        return await sublevel.get(unsafeStringToNodeIdentifier(innerKey));
     }
 
     /**
@@ -565,14 +961,14 @@ class RootDatabaseClass {
      * Call _rawSync() once after all bulk unification writes are done to
      * ensure the writes are flushed to durable storage.
      *
-     * The `stringToNodeKeyString` conversion is required to satisfy the JSDoc
+     * The `unsafeStringToNodeIdentifier` conversion is required to satisfy the JSDoc
      * static typing expectations: `this.db` is documented as using
-     * `NodeKeyString` keys, so its `put` method is typed to require a
-     * `NodeKeyString`. At runtime `stringToNodeKeyString` is effectively a
+     * `NodeIdentifier` keys, so its `put` method is typed to require a
+     * `NodeIdentifier`. At runtime `unsafeStringToNodeIdentifier` is effectively a
      * no-op, so the raw sublevel-prefixed key passes through unchanged.
      *
      * @param {string} key
-     * @param {*} value
+     * @param {unknown} value
      * @returns {Promise<void>}
      */
     async _rawPut(key, value) {
@@ -583,7 +979,7 @@ class RootDatabaseClass {
         // AbstractPutOptions property and satisfies the weak-type check without
         // changing runtime behaviour.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.db.put(stringToNodeKeyString(key), value, opts);
+        await this.db.put(unsafeStringToNodeIdentifier(key), value, opts);
     }
 
     /**
@@ -602,7 +998,7 @@ class RootDatabaseClass {
         // Pass sync:false to avoid per-write fsyncs during bulk unification.
         // See _rawPut() for the keyEncoding:undefined weak-type-check workaround.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.db.del(stringToNodeKeyString(key), opts);
+        await this.db.del(unsafeStringToNodeIdentifier(key), opts);
     }
 
     /**
@@ -638,14 +1034,14 @@ class RootDatabaseClass {
     async _rawPutAll(entries) {
         /**
          * Converts a plain raw-entry object into a LevelDB batch put operation,
-         * applying the JSDoc-level NodeKeyString wrapper expected by this.db.
+         * applying the JSDoc-level NodeIdentifier wrapper expected by this.db.
          * @param {{ key: string, value: * }} entry
-         * @returns {{ type: 'put', key: NodeKeyString, value: * }}
+         * @returns {{ type: 'put', key: DatabaseKey, value: * }}
          */
         function makePutOp(entry) {
             return {
                 type: 'put',
-                key: stringToNodeKeyString(entry.key),
+                key: unsafeStringToNodeIdentifier(entry.key),
                 value: entry.value,
             };
         }
@@ -666,7 +1062,7 @@ class RootDatabaseClass {
      * @returns {Promise<void>}
      */
     async _rawDeleteKeys(keys) {
-        await this.db.batch(keys.map(k => ({ type: 'del', key: stringToNodeKeyString(k) })));
+        await this.db.batch(keys.map(k => ({ type: 'del', key: unsafeStringToNodeIdentifier(k) })));
     }
 
     /**
@@ -706,6 +1102,7 @@ class RootDatabaseClass {
  * @property {Logger} logger - A logger instance.
  * @property {FileReader} reader - A file reader instance.
  * @property {FileChecker} checker - A file checker instance.
+ * @property {import('../../../random/seed').NonDeterministicSeed} seed - Random seed capability for fingerprint generation.
  */
 
 /**
@@ -747,16 +1144,38 @@ async function makeRootDatabase(capabilities, databasePath) {
 
     const rootMetaSublevel = db.sublevel('_meta', { valueEncoding: 'json' });
     const storedReplica = await rootMetaSublevel.get('current_replica');
+
     if (storedReplica === undefined) {
-        await rootMetaSublevel.put('current_replica', 'x');
-        return new RootDatabaseClass(db, version, 'x');
+        const replicaName = 'x';
+        // Construct the RootDatabase before writing anything so _computed
+        // has the correct sublevel handles for the fresh replica.
+        const rootDatabase = new RootDatabaseClass(db, version, replicaName, capabilities.seed);
+        const hasVersion = await rootDatabase.getGlobalVersion();
+        if (hasVersion === undefined) {
+            // Write all active-replica metadata first, then write the
+            // replica pointer last as the crash-atomic commit step.  If a
+            // crash occurs before the pointer write, the next open sees no
+            // storedReplica and re-initialises cleanly.
+            await rootDatabase.writeEmptyIdentifierLookup();
+            await rootMetaSublevel.put('current_replica', replicaName);
+            return rootDatabase;
+        }
+        // Version exists but no current_replica pointer — the active
+        // metadata survived a crash that occurred after the metadata
+        // writes but before the pointer write in a previous session.
+        // Load what is there and write the pointer.
+        await rootDatabase.initializeActiveIdentifierLookup();
+        await rootMetaSublevel.put('current_replica', replicaName);
+        return rootDatabase;
     }
     if (storedReplica !== 'x' && storedReplica !== 'y') {
         await db.close();
         throw new InvalidReplicaPointerError(storedReplica);
     }
 
-    return new RootDatabaseClass(db, version, storedReplica);
+    const rootDatabase = new RootDatabaseClass(db, version, storedReplica, capabilities.seed);
+    await rootDatabase.initializeActiveIdentifierLookup();
+    return rootDatabase;
 }
 
 /**
@@ -776,5 +1195,9 @@ module.exports = {
     isInvalidReplicaPointerError,
     isSwitchReplicaError,
     isSchemaBatchVersionError,
+    isMalformedIdentifierLookupError,
+    MissingIdentifierLookupError,
+    isMissingIdentifierLookupError,
+    LAST_NODE_INDEX_KEY,
     RAW_BATCH_CHUNK_SIZE,
 };

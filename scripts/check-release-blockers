@@ -1,0 +1,23 @@
+#! /bin/sh
+
+set -eu
+
+cd -- "${0%/*}"/..
+
+# Construct the marker from split literals so the checker source
+# does not contain the contiguous marker string.
+MARKER='THIS-MARKER-BLOCKS-VOLODYSLAV-RELEASE''-63461325'
+MATCHES="$(git grep -nI --fixed-strings -- "$MARKER" || true)"
+
+if [ -z "$MATCHES" ]; then
+    exit 0
+fi
+
+printf 'ERROR: Volodyslav installation/release is blocked because the\n' >&2
+printf 'repository contains release-blocker markers:\n\n' >&2
+printf '%s\n' "$MATCHES" >&2
+printf '\n' >&2
+printf 'Remove the marker(s) and resolve the underlying issue before\n' >&2
+printf 'deploying/releasing.  For non-release CI/testing only, set\n' >&2
+printf 'VOLODYSLAV_ALLOW_RELEASE_BLOCKERS=1 to bypass this check.\n' >&2
+exit 1

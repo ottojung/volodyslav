@@ -64,14 +64,15 @@ const {
  * @property {Datetime} datetime
  * @property {Interface} interface
  * @property {LevelDatabase} levelDatabase
+ * @property {import('../../../random/seed').NonDeterministicSeed} seed
  */
 
 /**
  * @param {Capabilities} capabilities
- * @param {RootDatabase} rootDatabase
+ * @param {{ rootDatabase: RootDatabase }} state
  * @returns {Promise<void>}
  */
-async function mergeRemoteHostBranches(capabilities, rootDatabase) {
+async function mergeRemoteHostBranches(capabilities, state) {
     const workDir = path.join(
         capabilities.environment.workingDirectory(),
         CHECKPOINT_WORKING_PATH
@@ -127,11 +128,19 @@ async function mergeRemoteHostBranches(capabilities, rootDatabase) {
             const remoteRDir = path.join(tmpDir, DATABASE_SUBPATH, 'r');
             await scanFromFilesystem(
                 capabilities,
-                rootDatabase,
+                state.rootDatabase,
                 remoteRDir,
                 '_h_' + hostname
             );
-            await mergeHostIntoReplica(capabilities.logger, rootDatabase, hostname);
+            const switchedReplica = await mergeHostIntoReplica(
+                capabilities.logger,
+                state.rootDatabase,
+                hostname
+            );
+            if (switchedReplica) {
+                await state.rootDatabase.close();
+                state.rootDatabase = await getRootDatabase(capabilities);
+            }
 
             capabilities.logger.logInfo(
                 { hostname },
@@ -174,7 +183,7 @@ async function mergeRemoteHostBranches(capabilities, rootDatabase) {
             }
 
             try {
-                await rootDatabase.clearHostnameStorage(hostname);
+                await state.rootDatabase.clearHostnameStorage(hostname);
             } catch (cleanupErr) {
                 recordHostFailure(
                     hostname,
@@ -247,7 +256,12 @@ async function synchronizeNoLock(capabilities, options) {
             { ...options, mergeHostBranches: false }
         );
 
-        await mergeRemoteHostBranches(capabilities, rootDatabase);
+        const state = { rootDatabase };
+        try {
+            await mergeRemoteHostBranches(capabilities, state);
+        } finally {
+            rootDatabase = state.rootDatabase;
+        }
     } finally {
         if (rootDatabase !== undefined) {
             await rootDatabase.close();

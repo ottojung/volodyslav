@@ -10,6 +10,15 @@ const {
     makeUnchanged,
     isUnchanged,
 } = require("../src/generators/incremental_graph");
+const {
+    makeEmptyIdentifierLookup,
+    cloneIdentifierLookup,
+    nodeIdToKeyFromLookup,
+    nodeKeyToIdFromLookup,
+    nodeIdentifierFromString,
+    nodeIdentifierToString,
+} = require("../src/generators/incremental_graph/database");
+const { makeSemanticStorage } = require("./test_database_helper");
 const { toJsonKey } = require("./test_json_key_helper");
 const { getMockedRootCapabilities } = require("./spies");
 
@@ -44,6 +53,82 @@ class InMemoryDatabase {
         this.getValueLog = [];
         /** @type {string} */
         this.version = 'test-version';
+        this._identifierLookup = makeEmptyIdentifierLookup();
+        this._identifierCounter = 0;
+        /** @type {Map<string, string>} */
+        this._pendingAllocations = new Map();
+        this._computed = { lastNodeIndex: 0, fingerprint: 'testspecfingerprint' };
+    }
+
+    currentReplicaName() { return 'x'; }
+
+    cloneActiveIdentifierLookup() {
+        return cloneIdentifierLookup(this._identifierLookup);
+    }
+
+    getActiveIdentifierLookup() {
+        return this._identifierLookup;
+    }
+
+    replaceActiveIdentifierLookup(lookup) {
+        this._identifierLookup = lookup;
+    }
+
+    nodeIdToKey(nodeIdentifier) {
+        return nodeIdToKeyFromLookup(this._identifierLookup, nodeIdentifier);
+    }
+
+    nodeKeyToId(nodeKey) {
+        return nodeKeyToIdFromLookup(this._identifierLookup, nodeKey);
+    }
+
+    generateNodeIdentifier() {
+        this._identifierCounter++;
+        let n = this._identifierCounter;
+        let id = '';
+        for (let i = 0; i < 9; i++) {
+            id = String.fromCharCode(97 + (n % 26)) + id;
+            n = Math.floor(n / 26);
+        }
+        return nodeIdentifierFromString(id);
+    }
+
+    getCurrentAllocationWatermark() {
+        return this._identifierCounter;
+    }
+
+    getFingerprint() {
+        return 'testspecfingerprint';
+    }
+
+    getVersion() { return this.version; }
+
+    getLastNodeIndex() { return this._computed.lastNodeIndex; }
+
+    advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); }
+
+    _allocateKeyIdentifier(keyString, makeIdentifier, committedLookup) {
+        if (this._pendingAllocations.has(keyString)) {
+            throw new Error(`BUG: pending allocation for key ${keyString} found during allocation under telescope lock`);
+        }
+        const candidate = makeIdentifier();
+        const candidateStr = nodeIdentifierToString(candidate);
+        if (committedLookup.idToKey.get(candidateStr) !== undefined) {
+            throw new Error(`BUG: identifier collision with committed lookup: ${candidateStr}`);
+        }
+        for (const idStr of this._pendingAllocations.values()) {
+            if (idStr === candidateStr) {
+                throw new Error(`BUG: identifier collision with pending allocation: ${candidateStr}`);
+            }
+        }
+        this._pendingAllocations.set(keyString, candidateStr);
+        return candidate;
+    }
+
+    releaseIdentifierReservations(ownedKeys) {
+        for (const keyString of ownedKeys) {
+            this._pendingAllocations.delete(keyString);
+        }
     }
 
     getSchemaStorage() {
@@ -108,6 +193,7 @@ class InMemoryDatabase {
         const revdeps = createSublevel('revdeps');
         const counters = createSublevel('counters');
         const timestamps = createSublevel('timestamps');
+        const global = createSublevel('global');
 
         return {
             values,
@@ -116,6 +202,7 @@ class InMemoryDatabase {
             revdeps,
             counters,
             timestamps,
+            global,
             batch: async (operations) => {
                 // Track batch calls - use this to access current array
                 this.batchLog.push({ ops: deepClone(operations.map(op => ({
@@ -798,8 +885,9 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
             },
         ]);
 
-        db.resetLogs();
         aCell.value = { n: 123 };
+        await g.pull("a");
+        db.resetLogs();
         await g.invalidate("a");
         expect(db.batchLog.length).toBe(1);
     });
@@ -867,6 +955,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         await expect(g.getFreshness("c")).resolves.toBe("missing");
 
         aCell.value = { s: "a()" };
+        await g.pull("a");
         await g.invalidate("a");
 
         await expect(g.getFreshness("a")).resolves.toBe("potentially-outdated");
@@ -943,6 +1032,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         await expect(g.getFreshness("c")).resolves.toBe("missing");
 
         aCell.value = { s: "a()" };
+        await g.pull("a");
         await g.invalidate("a");
 
         await expect(g.getFreshness("a")).resolves.toBe("potentially-outdated");
@@ -1411,7 +1501,7 @@ describe("Inspection interface", () => {
         expect(fb).toBe("up-to-date");
     });
 
-    test("invalidate() on source node must include it in listMaterializedNodes", async () => {
+    test("pull() on source node materializes it and invalidate() preserves materialization", async () => {
         const db = new InMemoryDatabase();
         const sourceCell = { value: { n: 0 } };
         const g = buildGraph(db, [
@@ -1428,16 +1518,22 @@ describe("Inspection interface", () => {
         const list0 = await g.listMaterializedNodes();
         expect(list0).not.toContainEqual(["source", []]);
 
-        // After set, source must be materialized
+        // Pull materializes source.
         sourceCell.value = { n: 42 };
-        await g.invalidate("source");
+        await g.pull("source");
 
         const list1 = await g.listMaterializedNodes();
         expect(list1).toContainEqual(["source", []]);
 
+        // Invalidate must only change freshness, not materialization.
+        await g.invalidate("source");
+
+        const list2 = await g.listMaterializedNodes();
+        expect(list2).toContainEqual(["source", []]);
+
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
-        const storage = g.storage;
+        const storage = makeSemanticStorage(g);
         let inputsRecord;
         await storage.withBatch(async (batch) => {
             inputsRecord = await storage.getInputs(toJsonKey("source"), batch);
@@ -1471,7 +1567,7 @@ describe("Inspection interface", () => {
 
         // Also verify that the node is properly indexed (has an inputs record)
         // This is important for restart resilience
-        const storage = g.storage;
+        const storage = makeSemanticStorage(g);
         let inputsRecord;
         await storage.withBatch(async (batch) => {
             inputsRecord = await storage.getInputs(toJsonKey("leaf"), batch);
@@ -1948,6 +2044,8 @@ describe("12. (Optional) Concurrent pulls of the same node", () => {
             expect(result1).toEqual({ n: 11 });
             expect(result2).toEqual({ n: 11 });
 
+            // PULL_NODE_KEY serializes same-node pulls: only the first pull
+            // computes; the second pulls sees "up-to-date" and hits the cache.
             expect(counter.calls).toBe(1);
         });
 });

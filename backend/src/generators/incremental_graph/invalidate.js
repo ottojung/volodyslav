@@ -1,50 +1,55 @@
 /**
  * Invalidation operations for IncrementalGraph.
+ *
+ * Transaction context is passed explicitly through the call stack.
  */
 
-/** @typedef {import('./graph_storage').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
+/** @typedef {import('./graph_state').Transaction} Transaction */
 /** @typedef {import('./types').ConstValue} ConstValue */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
+
 /**
  * @typedef {object} IncrementalGraphInvalidateAccess
  * @property {Map<import('./types').NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
- * @property {import('./graph_storage').GraphStorage} storage
- * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
+ * @property {import('./graph_state').GraphStorage} storage
  */
 
-const { stringToNodeName } = require("./database");
+const { stringToNodeName, nodeIdentifierToString, serializeNodeKey } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
-const { withObserveMode } = require("./lock");
-const { serializeNodeKey } = require("./database");
+const { daytimeActivity } = require("./lock");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
+const { lookupNodeIdentifier } = require("./graph_state");
 
 /**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
- * @param {NodeKeyString} changedKey
+ * @param {import('./database/types').NodeIdentifier} changedIdentifier
  * @param {BatchBuilder} batch
- * @param {Set<NodeKeyString>} [nodesBecomingOutdated]
+ * @param {Set<string>} [nodesBecomingOutdated]
  * @returns {Promise<void>}
  */
 async function internalPropagateOutdated(
     incrementalGraph,
-    changedKey,
+    changedIdentifier,
     batch,
     nodesBecomingOutdated = new Set()
 ) {
     const dynamicDependents = await incrementalGraph.storage.listDependents(
-        changedKey,
+        changedIdentifier,
         batch
     );
     for (const output of dynamicDependents) {
-        if (nodesBecomingOutdated.has(output)) {
+        const outputIdentifierString = nodeIdentifierToString(output);
+        if (nodesBecomingOutdated.has(outputIdentifierString)) {
             continue;
         }
 
         const currentFreshness = await batch.freshness.get(output);
         if (currentFreshness === "up-to-date") {
             batch.freshness.put(output, "potentially-outdated");
-            nodesBecomingOutdated.add(output);
+            nodesBecomingOutdated.add(outputIdentifierString);
             await internalPropagateOutdated(
                 incrementalGraph,
                 output,
@@ -63,7 +68,7 @@ async function internalPropagateOutdated(
         /** @type {never} */
         const freshness = currentFreshness;
         throw new Error(
-            `Unexpected freshness value ${freshness} for node ${output}`
+            `Unexpected freshness value ${freshness} for node ${outputIdentifierString}`
         );
     }
 }
@@ -90,39 +95,23 @@ async function internalUnsafeInvalidate(
 
     const nodeKey = { head: nodeNameTyped, args: bindings };
     const concreteKey = serializeNodeKey(nodeKey);
-    const nodeDefinition = incrementalGraph.getOrCreateConcreteNode(
-        concreteKey,
-        compiledNode,
-        bindings
-    );
 
-    /**
-     * @param {BatchBuilder} batch
-     * @returns {Promise<void>}
-     */
-    const run = async (batch) => {
-        batch.freshness.put(nodeDefinition.output, "potentially-outdated");
-
-        const inputCounters = [];
-        for (const inputKey of nodeDefinition.inputs) {
-            const counter = await batch.counters.get(inputKey);
-            inputCounters.push(counter !== undefined ? counter : 0);
+    await incrementalGraph.storage.withTransaction(async (tx) => {
+        const outputIdentifier = lookupNodeIdentifier(tx, concreteKey);
+        if (outputIdentifier === undefined) {
+            return { value: undefined, revdepDiffs: [] };
         }
 
-        await incrementalGraph.storage.ensureMaterialized(
-            nodeDefinition.output,
-            nodeDefinition.inputs,
-            inputCounters,
-            batch
-        );
-        await internalPropagateOutdated(
-            incrementalGraph,
-            nodeDefinition.output,
-            batch
-        );
-    };
+        const inputsRecord = await tx.batch.inputs.get(outputIdentifier);
+        if (inputsRecord === undefined) {
+            return { value: undefined, revdepDiffs: [] };
+        }
 
-    await incrementalGraph.storage.withBatch(run);
+        tx.batch.freshness.put(outputIdentifier, "potentially-outdated");
+        await internalPropagateOutdated(incrementalGraph, outputIdentifier, tx.batch);
+
+        return { value: undefined, revdepDiffs: [] };
+    });
 }
 
 /**
@@ -136,7 +125,7 @@ async function internalInvalidate(
     nodeName,
     bindings = []
 ) {
-    return withObserveMode(incrementalGraph.sleeper, () =>
+    return daytimeActivity(incrementalGraph.sleeper, () =>
         internalUnsafeInvalidate(incrementalGraph, nodeName, bindings)
     );
 }
@@ -144,5 +133,4 @@ async function internalInvalidate(
 module.exports = {
     internalInvalidate,
     internalPropagateOutdated,
-    internalUnsafeInvalidate,
 };

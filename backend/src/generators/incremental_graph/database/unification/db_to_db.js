@@ -30,9 +30,21 @@
 
 /** @typedef {import('../root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./core').UnificationAdapter} UnificationAdapter */
-/** @typedef {import('../types').NodeKeyString} NodeKeyString */
+/** @typedef {import('../types').NodeIdentifier} NodeIdentifier */
 
-const { stringToNodeKeyString } = require('../types');
+const { stringToNodeIdentifier } = require('../types');
+
+/**
+ * Narrow unknown to the typed value expected by the target sublevel.
+ * This conversion happens here, at the source of the unknown value (the
+ * unification adapter's readSource), not in typed_database.js which exposes the
+ * typed noFlushPut interface.
+ * @param {unknown} value
+ * @returns {*}
+ */
+function convertUnknownToStoredValue(value) {
+    return value;
+}
 
 /**
  * Read-only view of a single sublevel — the minimum interface required by the
@@ -40,8 +52,8 @@ const { stringToNodeKeyString } = require('../types');
  * InMemorySchemaStorage sublevels satisfy this interface.
  *
  * @typedef {object} ReadableNodeSublevel
- * @property {(key: NodeKeyString) => Promise<unknown>} get
- * @property {() => AsyncIterable<NodeKeyString>} keys
+ * @property {(key: NodeIdentifier) => Promise<unknown>} get
+ * @property {() => AsyncIterable<NodeIdentifier>} keys
  */
 
 /**
@@ -184,12 +196,12 @@ function makeDbToDbAdapter(source, target, options = {}) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
             if (sublevel === 'global') return await source.global.get(nodeKey);
             switch (sublevel) {
-                case 'values': return await source.values.get(stringToNodeKeyString(nodeKey));
-                case 'freshness': return await source.freshness.get(stringToNodeKeyString(nodeKey));
-                case 'inputs': return await source.inputs.get(stringToNodeKeyString(nodeKey));
-                case 'revdeps': return await source.revdeps.get(stringToNodeKeyString(nodeKey));
-                case 'counters': return await source.counters.get(stringToNodeKeyString(nodeKey));
-                case 'timestamps': return await source.timestamps.get(stringToNodeKeyString(nodeKey));
+                case 'values': return await source.values.get(stringToNodeIdentifier(nodeKey));
+                case 'freshness': return await source.freshness.get(stringToNodeIdentifier(nodeKey));
+                case 'inputs': return await source.inputs.get(stringToNodeIdentifier(nodeKey));
+                case 'revdeps': return await source.revdeps.get(stringToNodeIdentifier(nodeKey));
+                case 'counters': return await source.counters.get(stringToNodeIdentifier(nodeKey));
+                case 'timestamps': return await source.timestamps.get(stringToNodeIdentifier(nodeKey));
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -198,12 +210,12 @@ function makeDbToDbAdapter(source, target, options = {}) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
             if (sublevel === 'global') return await target.global.get(nodeKey);
             switch (sublevel) {
-                case 'values': return await target.values.get(stringToNodeKeyString(nodeKey));
-                case 'freshness': return await target.freshness.get(stringToNodeKeyString(nodeKey));
-                case 'inputs': return await target.inputs.get(stringToNodeKeyString(nodeKey));
-                case 'revdeps': return await target.revdeps.get(stringToNodeKeyString(nodeKey));
-                case 'counters': return await target.counters.get(stringToNodeKeyString(nodeKey));
-                case 'timestamps': return await target.timestamps.get(stringToNodeKeyString(nodeKey));
+                case 'values': return await target.values.get(stringToNodeIdentifier(nodeKey));
+                case 'freshness': return await target.freshness.get(stringToNodeIdentifier(nodeKey));
+                case 'inputs': return await target.inputs.get(stringToNodeIdentifier(nodeKey));
+                case 'revdeps': return await target.revdeps.get(stringToNodeIdentifier(nodeKey));
+                case 'counters': return await target.counters.get(stringToNodeIdentifier(nodeKey));
+                case 'timestamps': return await target.timestamps.get(stringToNodeIdentifier(nodeKey));
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -215,16 +227,16 @@ function makeDbToDbAdapter(source, target, options = {}) {
         async putTarget(compositeKey, value) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
             if (sublevel === 'global') {
-                await target.global.rawPut(nodeKey, value);
+                await target.global.noFlushPut(nodeKey, convertUnknownToStoredValue(value));
                 return;
             }
             switch (sublevel) {
-                case 'values': await target.values.rawPut(stringToNodeKeyString(nodeKey), value); return;
-                case 'freshness': await target.freshness.rawPut(stringToNodeKeyString(nodeKey), value); return;
-                case 'inputs': await target.inputs.rawPut(stringToNodeKeyString(nodeKey), value); return;
-                case 'revdeps': await target.revdeps.rawPut(stringToNodeKeyString(nodeKey), value); return;
-                case 'counters': await target.counters.rawPut(stringToNodeKeyString(nodeKey), value); return;
-                case 'timestamps': await target.timestamps.rawPut(stringToNodeKeyString(nodeKey), value); return;
+                case 'values': await target.values.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
+                case 'freshness': await target.freshness.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
+                case 'inputs': await target.inputs.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
+                case 'revdeps': await target.revdeps.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
+                case 'counters': await target.counters.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
+                case 'timestamps': await target.timestamps.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -232,16 +244,16 @@ function makeDbToDbAdapter(source, target, options = {}) {
         async deleteTarget(compositeKey) {
             const { sublevel, nodeKey } = parseCompositeKey(compositeKey);
             if (sublevel === 'global') {
-                await target.global.rawDel(nodeKey);
+                await target.global.noFlushDel(nodeKey);
                 return;
             }
             switch (sublevel) {
-                case 'values': await target.values.rawDel(stringToNodeKeyString(nodeKey)); return;
-                case 'freshness': await target.freshness.rawDel(stringToNodeKeyString(nodeKey)); return;
-                case 'inputs': await target.inputs.rawDel(stringToNodeKeyString(nodeKey)); return;
-                case 'revdeps': await target.revdeps.rawDel(stringToNodeKeyString(nodeKey)); return;
-                case 'counters': await target.counters.rawDel(stringToNodeKeyString(nodeKey)); return;
-                case 'timestamps': await target.timestamps.rawDel(stringToNodeKeyString(nodeKey)); return;
+                case 'values': await target.values.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'freshness': await target.freshness.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'inputs': await target.inputs.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'revdeps': await target.revdeps.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'counters': await target.counters.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'timestamps': await target.timestamps.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -314,25 +326,17 @@ function makeInMemorySchemaStorage() {
             async put(/** @type {string} */ key, /** @type {unknown} */ value) {
                 store.set(String(key), value);
             },
-            // rawPut() is identical to put() at runtime — the distinction exists
-            // only at the JSDoc/type level so unification adapters can call it
-            // without the TValue constraint while normal callers keep the typed API.
-            async rawPut(/** @type {string} */ key, /** @type {*} */ value) {
+            async noFlushPut(/** @type {string} */ key, /** @type {unknown} */ value) {
                 store.set(String(key), value);
             },
             async del(/** @type {string} */ key) {
                 store.delete(String(key));
             },
-            // rawDel() is identical to del() at runtime — mirrors rawPut().
-            async rawDel(/** @type {string} */ key) {
+            async noFlushDel(/** @type {string} */ key) {
                 store.delete(String(key));
             },
             /** @returns {InMemoryPutOp} */
             putOp(/** @type {string} */ key, /** @type {unknown} */ value) {
-                return { type: 'put', sublevelTag: sublevelName, key: String(key), value };
-            },
-            /** @returns {InMemoryPutOp} */
-            rawPutOp(/** @type {string} */ key, /** @type {*} */ value) {
                 return { type: 'put', sublevelTag: sublevelName, key: String(key), value };
             },
             /** @returns {InMemoryDelOp} */
@@ -345,7 +349,11 @@ function makeInMemorySchemaStorage() {
                 // JS default string comparison matches byte order.
                 const sorted = [...store.keys()].sort();
                 for (const k of sorted) {
-                    yield stringToNodeKeyString(k);
+                    if (sublevelName === 'global') {
+                        yield k;
+                    } else {
+                        yield stringToNodeIdentifier(k);
+                    }
                 }
             },
             async clear() {

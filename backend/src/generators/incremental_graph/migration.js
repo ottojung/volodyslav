@@ -2,7 +2,6 @@
 // This file contains the current migration callback.
 
 const { stringToNodeName } = require("./database");
-const { deserializeNodeKey } = require("./database");
 
 /**
  * @typedef {import('../interface/types').GeneratorsCapabilities} GeneratorsCapabilities
@@ -13,7 +12,7 @@ const { deserializeNodeKey } = require("./database");
  */
 
 /**
- * @typedef {import('./errors').NodeKeyString} NodeKeyString
+ * @typedef {import('./database/types').NodeIdentifier} NodeIdentifier
  */
 
 /**
@@ -27,8 +26,8 @@ async function keepNodeType(nodeName, storage) {
     const nodeNameTyped = stringToNodeName(nodeName);
     const nodeKeys = storage.listMaterializedNodes();
     for await (const nodeKey of nodeKeys) {
-        const parsed = deserializeNodeKey(nodeKey);
-        if (parsed.head === nodeNameTyped) {
+        const resolved = await storage.resolveNodeKey(nodeKey);
+        if (resolved !== undefined && resolved.head === nodeNameTyped) {
             await storage.keep(nodeKey);
         }
     }
@@ -45,8 +44,8 @@ async function deleteNodeType(nodeName, storage) {
     const nodeNameTyped = stringToNodeName(nodeName);
     const nodeKeys = storage.listMaterializedNodes();
     for await (const nodeKey of nodeKeys) {
-        const parsed = deserializeNodeKey(nodeKey);
-        if (parsed.head === nodeNameTyped) {
+        const resolved = await storage.resolveNodeKey(nodeKey);
+        if (resolved !== undefined && resolved.head === nodeNameTyped) {
             await storage.delete(nodeKey);
         }
     }

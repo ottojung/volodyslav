@@ -11,6 +11,7 @@ COPY backend/package.json ./backend/
 RUN npm ci
 COPY . .
 ARG VOLODYSLAV_BASEURL='/volodyslav'
+ARG VOLODYSLAV_ALLOW_RELEASE_BLOCKERS
 RUN npm run build
 RUN sh scripts/link-targeted "$PWD" /usr/local
 ENTRYPOINT [ "volodyslav" ]

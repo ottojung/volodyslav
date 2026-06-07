@@ -6,13 +6,13 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/incremental_graph/database");
+const { getRootDatabase, IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/database");
 const {
     makeIncrementalGraph,
     makeUnchanged,
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
-const { makeTestDatabase } = require("./test_database_helper");
+const { makeSemanticStorage, makeTestDatabase } = require("./test_database_helper");
 const { stubLogger, stubEnvironment } = require("./stubs");
 const { toJsonKey } = require("./test_json_key_helper");
 
@@ -28,6 +28,14 @@ function getTestCapabilities() {
     stubLogger(capabilities);
     stubEnvironment(capabilities);
     return { ...capabilities, tmpDir };
+}
+
+/**
+ * @param {import('../src/generators/incremental_graph').IncrementalGraph} graph
+ * @returns {Promise<unknown>}
+ */
+async function getPersistedIdentifiersKeysMap(graph) {
+    return await graph.rootDatabase.getSchemaStorage().global.get(IDENTIFIERS_KEY);
 }
 
 describe("Incremental graph persistence and restart", () => {
@@ -167,12 +175,109 @@ describe("Incremental graph persistence and restart", () => {
             await graph2.pull("B");
 
             // Verify that schema2 can list dependents properly
-            const storage2 = graph2.storage;
+            const storage2 = makeSemanticStorage(graph2);
             let dependents2;
             await storage2.withBatch(async (batch) => {
                 dependents2 = await storage2.listDependents(toJsonKey("A"), batch);
             });
             expect(dependents2).toContain(toJsonKey("B"));
+
+            await db.close();
+        });
+    });
+
+    describe("Invalidate does not materialize missing nodes", () => {
+        test("invalidate on a never-pulled node is a no-op and stays missing after reopen", async () => {
+            const capabilities = getTestCapabilities();
+            const db1 = await getRootDatabase(capabilities);
+            const schemas = [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => ({ value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ];
+            const graph1 = makeIncrementalGraph(capabilities, db1, schemas);
+
+            const before = await getPersistedIdentifiersKeysMap(graph1);
+
+            await graph1.invalidate("source");
+
+            expect(await graph1.getFreshness("source")).toBe("missing");
+            expect(await graph1.listMaterializedNodes()).toEqual([]);
+            expect(await getPersistedIdentifiersKeysMap(graph1)).toEqual(before);
+
+            await db1.close();
+
+            const db2 = await getRootDatabase(capabilities);
+            const graph2 = makeIncrementalGraph(capabilities, db2, schemas);
+
+            expect(await graph2.getFreshness("source")).toBe("missing");
+            expect(await graph2.listMaterializedNodes()).toEqual([]);
+            expect(await getPersistedIdentifiersKeysMap(graph2)).toEqual(before);
+
+            await db2.close();
+        });
+
+        test("invalidate on a never-materialized dependent does not materialize its inputs", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => ({ value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "derived",
+                    inputs: ["source"],
+                    computor: async ([source]) => ({ value: source.value + 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await graph.invalidate("derived");
+
+            expect(await graph.getFreshness("source")).toBe("missing");
+            expect(await graph.getFreshness("derived")).toBe("missing");
+            expect(await graph.listMaterializedNodes()).toEqual([]);
+
+            await db.close();
+        });
+
+        test("invalidate on a materialized source preserves materialization and propagates freshness", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => ({ value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "derived",
+                    inputs: ["source"],
+                    computor: async ([source]) => ({ value: source.value + 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await graph.pull("derived");
+            const before = await graph.listMaterializedNodes();
+
+            await graph.invalidate("source");
+
+            expect(await graph.getFreshness("source")).toBe("potentially-outdated");
+            expect(await graph.getFreshness("derived")).toBe("potentially-outdated");
+            expect(await graph.listMaterializedNodes()).toEqual(before);
 
             await db.close();
         });

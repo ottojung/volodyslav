@@ -250,9 +250,13 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "empty repo checkpoint", db);
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(commitCount(capabilities, gitDir)).toBe(1);
-            expect(topLevelEntries(capabilities, gitDir)).toEqual([]);
-            expect(allTrackedFiles(capabilities, gitDir)).toEqual([]);
+            expect(commitCount(capabilities, gitDir)).toBe(2);
+            expect(topLevelEntries(capabilities, gitDir)).toEqual([DATABASE_SUBPATH]);
+            expect(allTrackedFiles(capabilities, gitDir)).toEqual([
+                `${DATABASE_SUBPATH}/r/global/fingerprint`,
+                `${DATABASE_SUBPATH}/r/global/identifiers_keys_map`,
+                `${DATABASE_SUBPATH}/r/global/last_node_index`,
+            ]);
         } finally {
             await db.close();
         }
@@ -278,7 +282,7 @@ describe("checkpointDatabase", () => {
     test("rendered database files are tracked inside DATABASE_SUBPATH in the commit tree", async () => {
         const capabilities = getTestCapabilities();
         const db = await seedDatabase(capabilities, [
-                        ['!x!!values!{"head":"event","args":["one"]}', { name: "first" }],
+                        ['!x!!values!nodecache', { name: "first" }],
             ['!x!!global!version', "1.2.3"],
         ]);
         try {
@@ -287,7 +291,7 @@ describe("checkpointDatabase", () => {
             const gitDir = checkpointGitDir(capabilities);
             const tracked = allTrackedFiles(capabilities, gitDir);
             expect(tracked).toContain(
-                `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!{"head":"event","args":["one"]}')}`
+                `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!nodecache')}`
             );
             expect(tracked).toContain(`${DATABASE_SUBPATH}/r/global/version`);
         } finally {
@@ -338,8 +342,8 @@ describe("checkpointDatabase", () => {
 
     test("files written in earlier calls remain in git history", async () => {
         const capabilities = getTestCapabilities();
-        const oldKey = '!x!!values!{"head":"event","args":["old"]}';
-        const newKey = '!x!!values!{"head":"event","args":["new"]}';
+        const oldKey = '!x!!values!oldvaluex';
+        const newKey = '!x!!values!newvaluex';
         const db = await seedDatabase(capabilities, [[oldKey, { value: "old content" }]]);
         try {
             await checkpointDatabase(capabilities, "first", db);

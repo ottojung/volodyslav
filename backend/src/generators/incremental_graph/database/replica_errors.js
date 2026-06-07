@@ -78,6 +78,65 @@ function isSchemaBatchVersionError(object) {
     return object instanceof SchemaBatchVersionError;
 }
 
+class MalformedIdentifierLookupError extends Error {
+    /**
+     * @param {unknown} value
+     */
+    constructor(value) {
+        super(`Malformed identifiers_keys_map record: expected an array, got ${Array.isArray(value) ? 'array' : typeof value}.`);
+        this.name = 'MalformedIdentifierLookupError';
+        this.value = value;
+    }
+}
+
+class MissingIdentifierLookupError extends Error {
+    /**
+     * @param {string} context
+     */
+    constructor(context) {
+        super(
+            `Missing identifiers_keys_map record in ${context}. ` +
+            `This identifier-native graph snapshot is incomplete and cannot be used.`
+        );
+        this.name = 'MissingIdentifierLookupError';
+        this.context = context;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is MissingIdentifierLookupError}
+ */
+function isMissingIdentifierLookupError(object) {
+    return object instanceof MissingIdentifierLookupError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is MalformedIdentifierLookupError}
+ */
+function isMalformedIdentifierLookupError(object) {
+    return object instanceof MalformedIdentifierLookupError;
+}
+
+class IdentifierLookupConflictError extends Error {
+    /**
+     * @param {string} message
+     */
+    constructor(message) {
+        super(message);
+        this.name = 'IdentifierLookupConflictError';
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is IdentifierLookupConflictError}
+ */
+function isIdentifierLookupConflictError(object) {
+    return object instanceof IdentifierLookupConflictError;
+}
+
 module.exports = {
     InvalidReplicaPointerError,
     isInvalidReplicaPointerError,
@@ -85,4 +144,10 @@ module.exports = {
     isSwitchReplicaError,
     SchemaBatchVersionError,
     isSchemaBatchVersionError,
+    MalformedIdentifierLookupError,
+    isMalformedIdentifierLookupError,
+    MissingIdentifierLookupError,
+    isMissingIdentifierLookupError,
+    IdentifierLookupConflictError,
+    isIdentifierLookupConflictError,
 };

@@ -15,7 +15,15 @@ const {
     unifyStores,
 } = require('../src/generators/incremental_graph/database/unification');
 
-const { stringToNodeKeyString } = require('../src/generators/incremental_graph/database/types');
+const { nodeIdentifierFromString } = require('../src/generators/incremental_graph/database');
+
+// Stable current-format NodeIdentifiers for the test fingerprint used as test node keys.
+const NODE_FOO = nodeIdentifierFromString('1-abcdefghi');
+const NODE_BAR = nodeIdentifierFromString('2-abcdefghi');
+const NODE_BAZ = nodeIdentifierFromString('3-abcdefghi');
+const NODE_K   = nodeIdentifierFromString('4-abcdefghi');
+const NODE_N   = nodeIdentifierFromString('5-abcdefghi');
+const NODE_S   = nodeIdentifierFromString('6-abcdefghi');
 
 // ---------------------------------------------------------------------------
 // makeInMemorySchemaStorage tests
@@ -24,7 +32,7 @@ const { stringToNodeKeyString } = require('../src/generators/incremental_graph/d
 describe('makeInMemorySchemaStorage', () => {
     test('put / get / keys round-trip for all sublevels', async () => {
         const storage = makeInMemorySchemaStorage();
-        const nodeKey = stringToNodeKeyString('{"head":"foo","args":[]}');
+        const nodeKey = NODE_FOO;
 
         await storage.values.put(nodeKey, { result: 42 });
         await storage.freshness.put(nodeKey, 'fresh');
@@ -40,7 +48,7 @@ describe('makeInMemorySchemaStorage', () => {
 
     test('batch with put ops writes to the correct sublevel', async () => {
         const storage = makeInMemorySchemaStorage();
-        const nodeKey = stringToNodeKeyString('{"head":"bar","args":[]}');
+        const nodeKey = NODE_BAR;
 
         const ops = [
             storage.freshness.putOp(nodeKey, 'outdated'),
@@ -56,7 +64,7 @@ describe('makeInMemorySchemaStorage', () => {
 
     test('batch with del ops deletes from the correct sublevel', async () => {
         const storage = makeInMemorySchemaStorage();
-        const nodeKey = stringToNodeKeyString('{"head":"baz","args":[]}');
+        const nodeKey = NODE_BAZ;
         await storage.values.put(nodeKey, 'to-be-deleted');
 
         const ops = [storage.values.delOp(nodeKey)];
@@ -97,22 +105,14 @@ function makeFakeSchemaStorage() {
         return {
             async get(key) { return store.get(String(key)); },
             async put(key, value) { store.set(String(key), value); },
-            async rawPut(key, value) {
-                allOps.push({ _sublevel: name, type: 'put', key: String(key), value });
+            async noFlushPut(key, value) {
                 store.set(String(key), value);
             },
             async del(key) {
                 store.delete(String(key));
             },
-            async rawDel(key) {
-                allOps.push({ _sublevel: name, type: 'del', key: String(key) });
+            async noFlushDel(key) {
                 store.delete(String(key));
-            },
-            putOp(key, value) {
-                return { _sublevel: name, type: 'put', key: String(key), value };
-            },
-            rawPutOp(key, value) {
-                return { _sublevel: name, type: 'put', key: String(key), value };
             },
             delOp(key) {
                 return { _sublevel: name, type: 'del', key: String(key) };
@@ -146,25 +146,25 @@ function makeFakeSchemaStorage() {
 describe('makeDbToDbAdapter', () => {
     test('copies all source entries to empty target', async () => {
         const { storage: src } = makeFakeSchemaStorage();
-        await src.values.put('k1', { v: 1 });
-        await src.freshness.put('k1', 'fresh');
-        await src.inputs.put('k1', { inputs: [], inputCounters: [] });
+        await src.values.put(NODE_K, { v: 1 });
+        await src.freshness.put(NODE_K, 'fresh');
+        await src.inputs.put(NODE_K, { inputs: [], inputCounters: [] });
 
         const { storage: dst, data: dstData } = makeFakeSchemaStorage();
 
         await unifyStores(makeDbToDbAdapter(src, dst));
 
-        expect(dstData.values.get('k1')).toEqual({ v: 1 });
-        expect(dstData.freshness.get('k1')).toBe('fresh');
-        expect(dstData.inputs.get('k1')).toEqual({ inputs: [], inputCounters: [] });
+        expect(dstData.values.get(String(NODE_K))).toEqual({ v: 1 });
+        expect(dstData.freshness.get(String(NODE_K))).toBe('fresh');
+        expect(dstData.inputs.get(String(NODE_K))).toEqual({ inputs: [], inputCounters: [] });
     });
 
     test('does not rewrite unchanged entries', async () => {
         const { storage: src } = makeFakeSchemaStorage();
-        await src.values.put('k1', { v: 1 });
+        await src.values.put(NODE_K, { v: 1 });
 
         const { storage: dst, ops: dstOps } = makeFakeSchemaStorage();
-        await dst.values.put('k1', { v: 1 });
+        await dst.values.put(NODE_K, { v: 1 });
 
         await unifyStores(makeDbToDbAdapter(src, dst));
 
@@ -174,34 +174,34 @@ describe('makeDbToDbAdapter', () => {
 
     test('rewrites an entry whose value changed', async () => {
         const { storage: src } = makeFakeSchemaStorage();
-        await src.values.put('k1', { v: 2 });
+        await src.values.put(NODE_K, { v: 2 });
 
         const { storage: dst, data: dstData } = makeFakeSchemaStorage();
-        await dst.values.put('k1', { v: 1 });
+        await dst.values.put(NODE_K, { v: 1 });
 
         const stats = await unifyStores(makeDbToDbAdapter(src, dst));
 
         expect(stats.putCount).toBe(1);
-        expect(dstData.values.get('k1')).toEqual({ v: 2 });
+        expect(dstData.values.get(String(NODE_K))).toEqual({ v: 2 });
     });
 
     test('deletes target entries absent from source', async () => {
         const { storage: src } = makeFakeSchemaStorage();
 
         const { storage: dst, data: dstData } = makeFakeSchemaStorage();
-        await dst.values.put('stale', 'old');
-        await dst.freshness.put('stale', 'fresh');
+        await dst.values.put(NODE_S, 'old');
+        await dst.freshness.put(NODE_S, 'fresh');
 
         const stats = await unifyStores(makeDbToDbAdapter(src, dst));
 
         expect(stats.deleteCount).toBe(2);
-        expect(dstData.values.has('stale')).toBe(false);
-        expect(dstData.freshness.has('stale')).toBe(false);
+        expect(dstData.values.has(String(NODE_S))).toBe(false);
+        expect(dstData.freshness.has(String(NODE_S))).toBe(false);
     });
 
     test('covers all data sublevels: values, freshness, global, inputs, revdeps, counters, timestamps', async () => {
         const { storage: src } = makeFakeSchemaStorage();
-        const k = 'node-key';
+        const k = NODE_N;
         await src.values.put(k, 'val');
         await src.freshness.put(k, 'fresh');
         await src.global.put('version', '1.0.0');
@@ -215,18 +215,18 @@ describe('makeDbToDbAdapter', () => {
         const stats = await unifyStores(makeDbToDbAdapter(src, dst));
 
         expect(stats.putCount).toBe(7);
-        expect(dstData.values.get(k)).toBe('val');
-        expect(dstData.freshness.get(k)).toBe('fresh');
+        expect(dstData.values.get(String(k))).toBe('val');
+        expect(dstData.freshness.get(String(k))).toBe('fresh');
         expect(dstData.global.get('version')).toBe('1.0.0');
-        expect(dstData.inputs.get(k)).toEqual({ inputs: [], inputCounters: [] });
-        expect(dstData.revdeps.get(k)).toEqual(['dep1']);
-        expect(dstData.counters.get(k)).toBe(1);
-        expect(dstData.timestamps.get(k)).toEqual({ createdAt: 'x', modifiedAt: 'y' });
+        expect(dstData.inputs.get(String(k))).toEqual({ inputs: [], inputCounters: [] });
+        expect(dstData.revdeps.get(String(k))).toEqual(['dep1']);
+        expect(dstData.counters.get(String(k))).toBe(1);
+        expect(dstData.timestamps.get(String(k))).toEqual({ createdAt: 'x', modifiedAt: 'y' });
     });
 
     test('idempotent: second unification writes nothing', async () => {
         const { storage: src } = makeFakeSchemaStorage();
-        await src.values.put('k', { x: 1 });
+        await src.values.put(NODE_K, { x: 1 });
 
         const { storage: dst, ops: dstOps } = makeFakeSchemaStorage();
 
@@ -241,18 +241,18 @@ describe('makeDbToDbAdapter', () => {
 
     test('in-memory source → real target: unification applies desired state', async () => {
         const desired = makeInMemorySchemaStorage();
-        const k = stringToNodeKeyString('{"head":"foo","args":[]}');
+        const k = NODE_FOO;
         await desired.values.put(k, { computed: true });
         await desired.freshness.put(k, 'fresh');
 
         const { storage: dst, data: dstData } = makeFakeSchemaStorage();
         // Target starts with a stale entry
-        await dst.values.put('stale', 'remove-me');
+        await dst.values.put(String(NODE_S), 'remove-me');
 
         await unifyStores(makeDbToDbAdapter(desired, dst));
 
         expect(dstData.values.get(String(k))).toEqual({ computed: true });
         expect(dstData.freshness.get(String(k))).toBe('fresh');
-        expect(dstData.values.has('stale')).toBe(false);
+        expect(dstData.values.has(String(NODE_S))).toBe(false);
     });
 });

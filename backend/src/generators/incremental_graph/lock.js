@@ -1,107 +1,184 @@
+/**
+ * Think of a cosmic observatory.
+ *
+ * During the day, people may walk around the dome. They may inspect
+ * instruments, update notebooks, and mark old observations as stale.
+ *
+ * During the night, the dome is dark and observations begin. Many telescopes
+ * may work at once, but each telescope may only perform one observation at a
+ * time.
+ *
+ * During a holiday, the observatory is closed. Nobody enters the dome.
+ *
+ * This is the locking model of the incremental graph.
+ */
+
 const { makeUniqueFunctor } = require("../../unique_functor");
-const { nodeKeyStringToString } = require("./database");
 
 /**
- * Mutex key for serializing *exclusive* incremental-graph operations with
- * respect to each other (for example, database opens or migrations).
+ * Daytime activity:
+ *   getValue()
+ *   getFreshness()
+ *   listMaterializedNodes()
+ *   invalidate()
  *
- * Acquiring this key alone does *not* exclude pull/observe activity; it only
- * ensures that two exclusive callers do not run concurrently. To fully
- * exclude all graph activity (pulls, observes, and other exclusive work),
- * use {@link withExclusiveMode}, which combines this key with
- * GRAPH_ACTIVITY_KEY in "exclusive" mode.
+ * Nighttime activity:
+ *   pull()
  *
- * Regular pull/invalidate/inspection paths should use GRAPH_ACTIVITY_KEY
- * mode locking instead (see withObserveMode/withPullMode).
+ * Telescope activity:
+ *   one concrete node's telescope
+ *
+ * Darkroom activity:
+ *   one replica's finished transaction being developed into the settled record
+ *
+ * Holiday activity:
+ *   migrate()
+ *   cut over replica
  */
-const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
-const GRAPH_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-activity").instantiate([]);
-const PULL_NODE_KEY = makeUniqueFunctor("incremental-graph-pull-node");
+
+/**
+ * Small holiday gate:
+ * it serializes *holiday callers with each other*.
+ */
+const HOLIDAY_GATE_KEY = makeUniqueFunctor("incremental-graph-holiday-gate").instantiate([]);
+
+/**
+ * Dome activity key:
+ * it gates whether the dome is in daytime (inspection), nighttime (evaluation),
+ * or holiday (closed for maintenance) mode.
+ */
+const DOME_ACTIVITY_KEY = makeUniqueFunctor("incremental-graph-dome-activity").instantiate([]);
+
+const DOME_CONDITION_DAYTIME = "daytime";
+const DOME_CONDITION_NIGHTTIME = "nighttime";
+const DOME_CONDITION_HOLIDAY = "holiday";
+
+/**
+ * Darkroom functor: per-replica serialization of the short finalization step
+ * where finished work becomes part of that replica's settled record.
+ */
+const DARKROOM_FUNCTOR = makeUniqueFunctor("incremental-graph-darkroom");
+
+/**
+ * Telescope functor: per-node serialization of concurrent pulls so a node
+ * cannot allocate duplicate identifiers or overwrite each other's results.
+ */
+const TELESCOPE_FUNCTOR = makeUniqueFunctor("incremental-graph-telescope");
+
 
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 
 /**
- * Executes a procedure while holding the global incremental-graph mutex
- * (`MUTEX_KEY`), ensuring that only one *exclusive* operation using this
- * helper runs at a time.
- *
- * This helper only serializes callers that explicitly opt into using
- * `MUTEX_KEY`; it does *not* by itself block pull/observe activity. For a
- * higher-level primitive that prevents all concurrent graph activity (pulls,
- * observes, and other exclusive operations), use {@link withExclusiveMode}.
- *
- * @template T
- * @param {SleepCapability} sleeper - The sleeper capability used to acquire the mutex lock.
- * @param {() => Promise<T>} procedure - The asynchronous procedure to execute while holding the lock.
- * @returns {Promise<T>} - A promise that resolves with the result of the procedure when it has completed execution.
- */
-function withMutex(sleeper, procedure) {
-    return sleeper.withMutex(MUTEX_KEY, procedure);
-}
-
-/**
  * @template T
  * @param {SleepCapability} sleeper
  * @param {() => Promise<T>} procedure
  * @returns {Promise<T>}
  */
-function withObserveMode(sleeper, procedure) {
-    return sleeper.withModeMutex(GRAPH_ACTIVITY_KEY, "observe", procedure);
-}
-
-/**
- * @template T
- * @param {SleepCapability} sleeper
- * @param {() => Promise<T>} procedure
- * @returns {Promise<T>}
- */
-function withPullMode(sleeper, procedure) {
-    return sleeper.withModeMutex(GRAPH_ACTIVITY_KEY, "pull", procedure);
-}
-
-/**
- * @template T
- * @param {SleepCapability} sleeper
- * @param {NodeKeyString} nodeKeyStr
- * @param {() => Promise<T>} procedure
- * @returns {Promise<T>}
- */
-function withPullNodeMutex(sleeper, nodeKeyStr, procedure) {
-    return sleeper.withMutex(
-        PULL_NODE_KEY.instantiate([nodeKeyStringToString(nodeKeyStr)]),
+function daytimeActivity(sleeper, procedure) {
+    return sleeper.withModeMutex(
+        DOME_ACTIVITY_KEY,
+        DOME_CONDITION_DAYTIME,
         procedure
     );
 }
 
 /**
- * Acquires an exclusive lock that prevents all concurrent graph activity:
- * pulls, observes, and other exclusive operations (database opens, migrations).
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function nighttimeActivity(sleeper, procedure) {
+    return sleeper.withModeMutex(
+        DOME_ACTIVITY_KEY,
+        DOME_CONDITION_NIGHTTIME,
+        procedure
+    );
+}
+
+/**
+ * Telescope activity:
+ *   exclusive use of one concrete node's telescope.
  *
- * Internally this acquires MUTEX_KEY first (to serialize concurrent exclusive
- * callers with each other) and then acquires GRAPH_ACTIVITY_KEY in "exclusive"
- * mode (to block any in-flight pulls or observe-mode operations from running
- * concurrently with the critical section).
+ * Nighttime admits many observations, but each telescope belongs to one node
+ * and may only perform one observation at a time. Pulls of different nodes
+ * use different telescopes and do not contend here.
  *
- * Acquisition order: MUTEX_KEY → GRAPH_ACTIVITY_KEY("exclusive").
- * Pull and observe operations only ever acquire GRAPH_ACTIVITY_KEY, so the
- * ordering is acyclic and deadlock-free.
+ * Acquisition order:
+ *   dome nighttime → telescope(node) → darkroom(replica), if a commit follows.
+ *
+ * Recursive pulls acquire telescopes for each dependency node; different keys
+ * never contend, and a self-deadlock would require a dependency cycle (which
+ * the graph constructor rejects).
+ *
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {NodeKeyString} nodeKeyStr - Serialized node key string identifying the concrete node.
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function telescopeActivity(sleeper, nodeKeyStr, procedure) {
+    return sleeper.withMutex(
+        TELESCOPE_FUNCTOR.instantiate([String(nodeKeyStr)]),
+        procedure
+    );
+}
+
+/**
+ * Darkroom activity:
+ *   the short per-replica finalization step where finished graph work becomes
+ *   part of the settled replica record.
+ *
+ * Many telescopes may finish observations, but finished plates from the same
+ * observatory copy pass through one darkroom. The darkroom does not decide
+ * whether the dome is in daytime, nighttime, or holiday mode. It only ensures
+ * that one replica develops one transaction into the settled record at a time.
+ *
+ * Commit-snapshot reads also use the darkroom, so they see the replica between
+ * finalization steps rather than midway through one.
+ *
+ * @template T
+ * @param {SleepCapability} sleeper
+ * @param {string} replicaName
+ * @param {() => Promise<T>} procedure
+ * @returns {Promise<T>}
+ */
+function darkroomActivity(sleeper, replicaName, procedure) {
+    return sleeper.withMutex(DARKROOM_FUNCTOR.instantiate([replicaName]), procedure);
+}
+
+/**
+ * Holiday activity:
+ *   close the dome for maintenance.
+ *
+ * Holiday activity waits for daytime and nighttime activity to leave the dome,
+ * then prevents new daytime or nighttime activity until the holiday work is
+ * done. A small holiday gate is acquired first so two holiday callers do not
+ * try to close the dome at the same time.
+ *
+ * Acquisition order:
+ *   holiday gate → dome holiday condition
  *
  * @template T
  * @param {SleepCapability} sleeper
  * @param {() => Promise<T>} procedure
  * @returns {Promise<T>}
  */
-function withExclusiveMode(sleeper, procedure) {
-    return sleeper.withMutex(MUTEX_KEY, () =>
-        sleeper.withModeMutex(GRAPH_ACTIVITY_KEY, "exclusive", procedure)
+function holidayActivity(sleeper, procedure) {
+    return sleeper.withMutex(HOLIDAY_GATE_KEY, () =>
+        sleeper.withModeMutex(
+            DOME_ACTIVITY_KEY,
+            DOME_CONDITION_HOLIDAY,
+            procedure
+        )
     );
 }
 
 module.exports = {
-    withMutex,
-    withExclusiveMode,
-    withObserveMode,
-    withPullMode,
-    withPullNodeMutex,
+    holidayActivity,
+    daytimeActivity,
+    nighttimeActivity,
+    telescopeActivity,
+    darkroomActivity,
 };

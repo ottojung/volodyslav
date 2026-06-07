@@ -7,6 +7,10 @@
  */
 
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
+const {
+    IDENTIFIERS_KEY,
+    nodeIdentifierToString,
+} = require("../src/generators/incremental_graph/database");
 const { toJsonKey } = require("./test_json_key_helper");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
@@ -20,16 +24,40 @@ const { checkpointMigration: mockCheckpointMigration } = require('../src/generat
 // Shared test infrastructure
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Read an entry from yStorage using the migrated identifier for the given node key.
+ * @template T
+ * @param {{ get: (key: string) => Promise<T | undefined> }} sublevel
+ * @param {import('../src/generators/incremental_graph/database').SchemaStorage} yStorage
+ * @param {string} nodeKey
+ * @returns {Promise<T | undefined>}
+ */
+async function yGet(sublevel, yStorage, nodeKey) {
+    const entries = await yStorage.global.get(IDENTIFIERS_KEY);
+    if (!entries) return sublevel.get(nodeKey);
+    const entry = entries.find(([, key]) => String(key) === nodeKey);
+    const id = entry ? nodeIdentifierToString(entry[0]) : nodeKey;
+    return sublevel.get(id);
+}
+
+/** Collect all keys from a sublevel (preserves whether a key exists even if its value is `undefined`). */
+async function collectKeys(sublevel) {
+    const out = [];
+    for await (const key of sublevel.keys()) {
+        out.push(key);
+    }
+    return out;
+}
+
 function makeInMemoryDb(table) {
     const store = new Map();
     return {
         async get(key) { return store.get(key); },
         async put(key, value) { store.set(key, value); },
-        async rawPut(key, value) { store.set(key, value); },
+        async noFlushPut(key, value) { store.set(key, value); },
         async del(key) { store.delete(key); },
-        async rawDel(key) { store.delete(key); },
+        async noFlushDel(key) { store.delete(key); },
         putOp(key, value) { return { type: "put", table, key, value }; },
-        rawPutOp(key, value) { return { type: "put", table, key, value }; },
         delOp(key) { return { type: "del", table, key }; },
         async *keys() {
             for (const key of [...store.keys()].sort()) yield key;
@@ -55,6 +83,25 @@ function makeSchemaStorage() {
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
 
+    // Tests use simplified mocks where the "NodeIdentifier" string is the same
+    // as the semantic node key JSON string. When identifiers_keys_map is not
+    // explicitly seeded, fall back to an identity mapping derived from the
+    // currently materialized inputs keys.
+    const originalGlobalGet = global.get.bind(global);
+    global.get = async (key) => {
+        if (key !== IDENTIFIERS_KEY) {
+            return await originalGlobalGet(key);
+        }
+        const stored = await originalGlobalGet(key);
+        if (stored !== undefined) return stored;
+
+        const out = [];
+        for await (const k of inputs.keys()) {
+            out.push([k, k]);
+        }
+        return out;
+    };
+
     return {
         values, freshness, global, inputs, revdeps, counters, timestamps,
         async batch(operations) {
@@ -74,13 +121,18 @@ function makeSchemaStorage() {
 function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage }) {
     const rootDatabase = {
         version: currentVersion,
+        _computed: { lastNodeIndex: 0, fingerprint: "testfingerprnt" },
+        getFingerprint() { return "testfingerprnt"; },
+        getVersion() { return this.version; },
+        getLastNodeIndex() { return this._computed.lastNodeIndex; },
+        advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
         async getGlobalVersion() { return prevVersion; },
         getSchemaStorage() { return xStorage; },
         currentReplicaName() { return 'x'; },
         otherReplicaName() { return 'y'; },
         schemaStorageForReplica(name) { return name === 'x' ? xStorage : yStorage; },
         async clearReplicaStorage(_name) {},
-        async switchToReplica(_name) {},
+        async setCurrentReplicaPointer(_name) {},
         async setGlobalVersion(_v) {},
         async _rawSync() {},
     };
@@ -162,7 +214,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             await storage.keep(nodeKey);
         });
 
-        await expect(yStorage.timestamps.get(nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
     });
 
     test("createdAt is preserved exactly after keep", async () => {
@@ -180,7 +232,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             await storage.keep(nodeKey);
         });
 
-        const result = await yStorage.timestamps.get(nodeKey);
+        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
         expect(result.createdAt).toBe(OLD_TIMESTAMP.createdAt);
     });
 
@@ -199,7 +251,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             await storage.keep(nodeKey);
         });
 
-        const result = await yStorage.timestamps.get(nodeKey);
+        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
         expect(result.modifiedAt).toBe(OLD_TIMESTAMP.modifiedAt);
     });
 
@@ -218,7 +270,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             await storage.keep(nodeKey);
         });
 
-        await expect(yStorage.timestamps.get(nodeKey)).resolves.toBeUndefined();
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toBeUndefined();
     });
 
     test("multiple nodes: all timestamps copied correctly on keep", async () => {
@@ -244,8 +296,8 @@ describe("keep decision: timestamps copied to new storage", () => {
             await storage.keep(nkB);
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        await expect(yStorage.timestamps.get(nkB)).resolves.toEqual(NEW_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 });
 
@@ -269,7 +321,7 @@ describe("override decision: timestamps copied to new storage", () => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
 
-        await expect(yStorage.timestamps.get(nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
     });
 
     test("override without previous timestamp leaves timestamps absent", async () => {
@@ -287,7 +339,7 @@ describe("override decision: timestamps copied to new storage", () => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
 
-        await expect(yStorage.timestamps.get(nodeKey)).resolves.toBeUndefined();
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toBeUndefined();
     });
 
     test("override createdAt survives when modifiedAt differs", async () => {
@@ -306,8 +358,84 @@ describe("override decision: timestamps copied to new storage", () => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
 
-        const result = await yStorage.timestamps.get(nodeKey);
+        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
         expect(result.createdAt).toBe(ts.createdAt);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// create decision writes timestamps
+// ---------------------------------------------------------------------------
+
+describe("create decision: timestamps written to new storage", () => {
+    test("create writes createdAt and modifiedAt both set to migration time", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const nodeKey = toJsonKey("A");
+
+        const { rootDatabase } = makeRootDatabaseMock({
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
+        });
+
+        await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
+            await storage.create(nodeKey, async () => ({ type: "all_events", events: [] }));
+        });
+
+        const allKeys = [];
+        for await (const k of yStorage.timestamps.keys()) {
+            allKeys.push(k);
+        }
+        expect(allKeys.length).toBeGreaterThanOrEqual(1);
+
+        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
+        expect(result).not.toBeUndefined();
+        expect(result.createdAt).toBe("2024-01-01T00:00:00.000Z");
+        expect(result.modifiedAt).toBe("2024-01-01T00:00:00.000Z");
+    });
+
+    test("create node timestamp is defined (not undefined)", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const nodeKey = toJsonKey("A");
+
+        const { rootDatabase } = makeRootDatabaseMock({
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
+        });
+
+        await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
+            await storage.create(nodeKey, async () => ({ type: "all_events", events: [] }));
+        });
+
+        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
+        expect(result).not.toBeUndefined();
+        expect(typeof result.createdAt).toBe("string");
+        expect(typeof result.modifiedAt).toBe("string");
+    });
+
+    test("create multiple nodes: each gets fresh timestamps", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const nkA = toJsonKey("A");
+        const nkB = toJsonKey("B");
+
+        const { rootDatabase } = makeRootDatabaseMock({
+            prevVersion: "1", currentVersion: "2", xStorage, yStorage,
+        });
+
+        await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
+            await storage.create(nkA, async () => ({ type: "all_events", events: [] }));
+            await storage.create(nkB, async () => ({ type: "all_events", events: [] }));
+        });
+
+        const aResult = await yGet(yStorage.timestamps, yStorage, nkA);
+        const bResult = await yGet(yStorage.timestamps, yStorage, nkB);
+        expect(aResult.createdAt).toBe("2024-01-01T00:00:00.000Z");
+        expect(aResult.modifiedAt).toBe("2024-01-01T00:00:00.000Z");
+        expect(bResult.createdAt).toBe("2024-01-01T00:00:00.000Z");
+        expect(bResult.modifiedAt).toBe("2024-01-01T00:00:00.000Z");
     });
 });
 
@@ -331,7 +459,7 @@ describe("invalidate decision: timestamps copied to new storage", () => {
             await storage.invalidate(nodeKey);
         });
 
-        await expect(yStorage.timestamps.get(nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
     });
 
     test("invalidate without previous timestamp leaves timestamps absent", async () => {
@@ -349,7 +477,7 @@ describe("invalidate decision: timestamps copied to new storage", () => {
             await storage.invalidate(nodeKey);
         });
 
-        await expect(yStorage.timestamps.get(nodeKey)).resolves.toBeUndefined();
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toBeUndefined();
     });
 
     test("invalidate preserves createdAt even though value is stale", async () => {
@@ -368,7 +496,7 @@ describe("invalidate decision: timestamps copied to new storage", () => {
             await storage.invalidate(nodeKey);
         });
 
-        const result = await yStorage.timestamps.get(nodeKey);
+        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
         expect(result.createdAt).toBe(ts.createdAt);
     });
 });
@@ -402,8 +530,57 @@ describe("delete decision: timestamps not present in new storage", () => {
             await storage.delete(nkB);
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toBeUndefined();
-        await expect(yStorage.timestamps.get(nkB)).resolves.toBeUndefined();
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toBeUndefined();
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toBeUndefined();
+    });
+});
+
+describe("delete decision: sublevels do not retain deleted keys", () => {
+    test("deleted nodes are removed from inputs/counters/timestamps key lists", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const nkA = toJsonKey("A");
+        const nkB = toJsonKey("B");
+
+        await seedNode(xStorage, nkA, {
+            timestamps: OLD_TIMESTAMP,
+            inputs: [],
+            inputCounters: [],
+            counter: 11,
+            freshness: "up-to-date",
+        });
+        await seedNode(xStorage, nkB, {
+            timestamps: NEW_TIMESTAMP,
+            inputs: [nkA],
+            inputCounters: [1],
+            counter: 22,
+            freshness: "up-to-date",
+        });
+        await xStorage.revdeps.put(nkA, [nkB]);
+
+        const { rootDatabase } = makeRootDatabaseMock({
+            prevVersion: "1",
+            currentVersion: "2",
+            xStorage,
+            yStorage,
+        });
+
+        await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
+            await storage.delete(nkA);
+            await storage.delete(nkB);
+        });
+
+        const inputKeys = await collectKeys(yStorage.inputs);
+        const counterKeys = await collectKeys(yStorage.counters);
+        const timestampKeys = await collectKeys(yStorage.timestamps);
+
+        expect(inputKeys).not.toContain(nkA);
+        expect(inputKeys).not.toContain(nkB);
+        expect(counterKeys).not.toContain(nkA);
+        expect(counterKeys).not.toContain(nkB);
+        expect(timestampKeys).not.toContain(nkA);
+        expect(timestampKeys).not.toContain(nkB);
     });
 });
 
@@ -438,8 +615,8 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             await storage.keep(nkB);
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        await expect(yStorage.timestamps.get(nkB)).resolves.toEqual(NEW_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 
     test("keep A, invalidate B: both timestamps preserved", async () => {
@@ -454,8 +631,8 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             await storage.invalidate(nkB);
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        await expect(yStorage.timestamps.get(nkB)).resolves.toEqual(NEW_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 
     test("keep A, override B: A timestamp preserved; B timestamp preserved (createdAt unchanged)", async () => {
@@ -470,8 +647,8 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             await storage.override(nkB, async () => ({ type: "all_events", events: [] }));
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        const bResult = await yStorage.timestamps.get(nkB);
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        const bResult = await yGet(yStorage.timestamps, yStorage, nkB);
         expect(bResult.createdAt).toBe(NEW_TIMESTAMP.createdAt);
     });
 
@@ -488,8 +665,8 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             // nkB is auto-invalidated by override(nkA)
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        await expect(yStorage.timestamps.get(nkB)).resolves.toEqual(NEW_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 
     test("invalidate A, invalidate B: both timestamps preserved", async () => {
@@ -504,8 +681,8 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             await storage.invalidate(nkB);
         });
 
-        await expect(yStorage.timestamps.get(nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        await expect(yStorage.timestamps.get(nkB)).resolves.toEqual(NEW_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 });
 

@@ -15,7 +15,7 @@ function getTestCapabilities() {
 }
 
 describe("incremental_graph atomicity without external batches", () => {
-    test("dependency writes remain committed when derived recomputation fails", async () => {
+    test("dependency writes remain committed when parent recomputation fails", async () => {
         let sourceComputations = 0;
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
@@ -42,8 +42,13 @@ describe("incremental_graph atomicity without external batches", () => {
         ]);
 
         await expect(graph.pull("derived")).rejects.toThrow("derived-fails");
+        // source WAS computed (as a dependency of derived)
         expect(sourceComputations).toBe(1);
+        // In the new design, each pull creates its own Transaction.
+        // source's pull (triggered by derived's computation) committed independently,
+        // so source IS committed to disk even though derived's computor threw.
         expect(await graph.getFreshness("source")).toBe("up-to-date");
+        // pulling source directly returns its already-committed value
         expect(await graph.pull("source")).toEqual({
             type: "all_events",
             events: [],

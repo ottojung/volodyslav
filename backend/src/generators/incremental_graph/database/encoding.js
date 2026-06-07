@@ -11,30 +11,22 @@
  * ------------
  * LevelDB sublevel keys are structured as:
  *
- *   !namespace!!sublevel!{"head":"all_events","args":[]}
+ *   !namespace!!sublevel!keyContent
  *
  * The `!!` separator marks the boundary between nested sublevel names.
  * The actual stored key follows after the last `!` in the prefix chain.
  *
- * Two types of stored key exist in this database:
+ * All sublevels use the same key-shape convention:
+ *   - Expected path shape on disk: namespace/sublevel/key
+ *   - Exactly one key segment is required.
+ *   - The keyContent is opaque to the encoding layer and never interpreted.
  *
- *   1. NodeKey JSON keys (data sublevels: values, freshness, inputs, revdeps,
- *      counters, timestamps):
- *        {"head":"event","args":["abc"]}
- *      Encoded as: namespace/sublevel/event/abc
- *
- *   2. Plain string keys (meta sublevels: _meta, meta):
- *        format, version
- *      Encoded as: namespace/sublevel/format
- *
- * Argument encoding
- * -----------------
- * String arguments are percent-encoded: `/` → `%2F`, `%` → `%25`,
- * `!` → `%21` (critical for bijection since `!` is the LevelDB separator).
- * Non-string arguments (numbers, booleans, arrays, objects) are JSON-encoded
- * and prefixed with `~` to distinguish them from plain strings.
- * Literal dot-segment path components `.` and `..` are encoded as `%2E` and
- * `%2E%2E` to prevent directory traversal.
+ * Segment encoding
+ * ----------------
+ * Path segments use percent-like escaping for key round-tripping:
+ * `/` → `%2F`, `%` → `%25`, `!` → `%21`.
+ * Literal `.` and `..` segments are encoded as `%2E` / `%2E%2E` sentinels
+ * to prevent directory traversal semantics in snapshot paths.
  *
  * Value serialisation
  * -------------------
@@ -47,23 +39,6 @@
  * relativePathToKey are exact inverses:
  *   relativePathToKey(keyToRelativePath(key)) === key
  */
-
-const { serializeNodeKey, deserializeNodeKey, nodeNameToString, stringToNodeName, stringToNodeKeyString, nodeKeyStringToString } = require('./node_key');
-
-/** @typedef {import('../types').ConstValue} ConstValue */
-
-/**
- * Sublevel names that store plain string keys rather than NodeKey JSON keys.
- * @type {Set<string>}
- */
-const PLAIN_KEY_SUBLEVELS = new Set(['_meta', 'global']);
-
-/**
- * Prefix used to distinguish non-string arguments from plain strings.
- * A path segment starting with '~' holds a JSON-encoded non-string value.
- */
-const NON_STRING_ARG_PREFIX = '~';
-const ESCAPED_STRING_ARG_PREFIX = NON_STRING_ARG_PREFIX + NON_STRING_ARG_PREFIX;
 
 // Use uppercase sentinels as the canonical on-disk form for special segments so
 // renderToFilesystem() is deterministic; decode accepts lowercase too so
@@ -187,57 +162,10 @@ function decodeSegment(s) {
 }
 
 /**
- * Encodes a single key argument value as a filesystem path segment.
- *
- * String arguments are percent-encoded directly.
- * Non-string arguments (number, boolean, null, array, object) are
- * JSON-serialized and prefixed with NON_STRING_ARG_PREFIX (`~`) so they
- * can be distinguished from plain strings during decoding.
- *
- * @param {unknown} arg - A key argument value.
- * @returns {string}
- */
-function encodeArg(arg) {
-    if (typeof arg === 'string') {
-        if (arg.startsWith(NON_STRING_ARG_PREFIX)) {
-            // Escape a leading '~' in string args so "~42" stays distinct from
-            // the encoded non-string number 42, which is also prefixed with '~'.
-            return ESCAPED_STRING_ARG_PREFIX + encodeSegment(arg.slice(1));
-        }
-        return encodeSegment(arg);
-    }
-    return NON_STRING_ARG_PREFIX + encodeSegment(JSON.stringify(arg));
-}
-
-/**
- * Decodes a path segment back to a key argument value.
- * Inverse of encodeArg().
- *
- * @param {string} segment
- * @returns {ConstValue}
- */
-function decodeArg(segment) {
-    if (segment.startsWith(ESCAPED_STRING_ARG_PREFIX)) {
-        return NON_STRING_ARG_PREFIX + decodeSegment(
-            segment.slice(ESCAPED_STRING_ARG_PREFIX.length)
-        );
-    }
-    if (segment.startsWith(NON_STRING_ARG_PREFIX)) {
-        return JSON.parse(decodeSegment(segment.slice(NON_STRING_ARG_PREFIX.length)));
-    }
-    return decodeSegment(segment);
-}
-
-/**
  * Converts a raw LevelDB key to a relative filesystem path.
  *
- * For NodeKey JSON keys stored in data sublevels (values, freshness,
- * inputs, revdeps, counters, timestamps), the stored key is decomposed into
- * human-readable path segments using serializeNodeKey/deserializeNodeKey:
- *   namespace/sublevel/head/arg1/arg2/...
- *
- * For plain string keys stored in meta sublevels (_meta, meta), the key
- * is used as a single percent-encoded segment:
+ * For both identifier-key sublevels and plain-key sublevels, keyContent is
+ * emitted as one encoded path segment:
  *   namespace/sublevel/key
  *
  * @param {string} rawKey - Raw LevelDB key.
@@ -245,25 +173,7 @@ function decodeArg(segment) {
  */
 function keyToRelativePath(rawKey) {
     const { sublevels, keyContent } = parseRawKey(rawKey);
-    const lastSublevel = sublevels[sublevels.length - 1] ?? '';
-    const isPlainKey = PLAIN_KEY_SUBLEVELS.has(lastSublevel);
-
-    if (isPlainKey) {
-        return [...sublevels, encodeSegment(keyContent)].join('/');
-    }
-
-    const nodeKey = (() => {
-        try {
-            return deserializeNodeKey(stringToNodeKeyString(keyContent));
-        } catch (_err) {
-            throw new Error(
-                `Invalid database key: expected NodeKey JSON for sublevel '${lastSublevel}', got '${keyContent}'`
-            );
-        }
-    })();
-    const headStr = nodeNameToString(nodeKey.head);
-    const argSegments = nodeKey.args.map(encodeArg);
-    return [...sublevels, headStr, ...argSegments].join('/');
+    return [...sublevels, encodeSegment(keyContent)].join('/');
 }
 
 /**
@@ -274,13 +184,12 @@ function keyToRelativePath(rawKey) {
  *   - If the first segment is `_meta` → depth 1 (1-level nesting)
  *   - Otherwise → depth 2 (2-level nesting: namespace + sublevel)
  *
- * Key type convention (determined by the last sublevel name):
- *   - `_meta` or `meta` → plain string key
- *   - All other sublevels → NodeKey JSON key
+ * All sublevels require exactly one key segment.
  *
  * @param {string} relPath - Relative path from keyToRelativePath().
  * @returns {string} Raw LevelDB key.
- * @throws {Error} If relPath has fewer than two segments.
+ * @throws {Error} If relPath has fewer than two segments, or if the key
+ *   portion does not contain exactly one segment.
  */
 function relativePathToKey(relPath) {
     const segments = relPath.split('/');
@@ -300,25 +209,14 @@ function relativePathToKey(relPath) {
 
     const sublevels = segments.slice(0, depth);
     const keyComponents = segments.slice(depth);
-    const lastSublevel = sublevels[sublevels.length - 1] ?? '';
-    const isPlainKey = PLAIN_KEY_SUBLEVELS.has(lastSublevel);
 
-    let keyContent;
-    if (isPlainKey) {
-        if (keyComponents.length !== 1) {
-            throw new Error(
-                `Invalid database path '${relPath}': plain-key sublevels require exactly one key segment`
-            );
-        }
-        keyContent = decodeSegment(keyComponents[0] ?? '');
-    } else {
-        const headStr = keyComponents[0] ?? '';
-        const args = keyComponents.slice(1).map(decodeArg);
-        const nodeKey = { head: stringToNodeName(headStr), args };
-        keyContent = nodeKeyStringToString(serializeNodeKey(nodeKey));
+    if (keyComponents.length !== 1) {
+        throw new Error(
+            `Invalid database path '${relPath}': expected exactly one key segment, got ${keyComponents.length}`
+        );
     }
 
-    return buildRawKey(sublevels, keyContent);
+    return buildRawKey(sublevels, decodeSegment(keyComponents[0] ?? ''));
 }
 
 /**
