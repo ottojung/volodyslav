@@ -136,12 +136,15 @@ function serializeIdentifierLookupFromMaps(lookup) {
 }
 
 /**
- * Convert the lookup back into its persisted form, sorted by identifier string.
+ * Return the lookup in its persisted form, sorted by identifier string.
+ * Returns the cached `serialized` array — all mutations that add entries
+ * (makeIdentifierLookup, commitTransactionLookup, mergeIdentifierLookups)
+ * keep the cache up to date, so no rebuild is needed.
  * @param {IdentifierLookup} lookup
  * @returns {IdentifiersKeysMap}
  */
 function serializeIdentifierLookup(lookup) {
-    return serializeIdentifierLookupFromMaps(lookup);
+    return lookup.serialized;
 }
 
 /**
