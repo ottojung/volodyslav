@@ -26,7 +26,7 @@ A journal-using computor follows this lifecycle:
 
 ```js
 // First run or baseline recomputation
-let lastChange = graph.baselinePossibleNodeChange();
+let lastChange = baselinePossibleNodeChange();
 for await (const change of graph.possibleMaybeChanges({
     since: lastChange,
     to: myFilter,
@@ -37,7 +37,7 @@ for await (const change of graph.possibleMaybeChanges({
 await storeToken("my-computor-state", lastChange);
 ```
 
-The `graph.baselinePossibleNodeChange()` call provides a sentinel that causes `graph.possibleMaybeChanges` to return all available matching changes. The computor processes each change and remembers the last one.
+The `baselinePossibleNodeChange()` call provides a sentinel that causes `graph.possibleMaybeChanges` to return all available matching changes. The computor processes each change and remembers the last one.
 
 ### Step 2: Incremental update
 
@@ -137,7 +137,7 @@ The journal is most valuable when a computor cannot statically enumerate all its
 In these cases, the computor:
 
 1. Uses a `NodeFilter` that covers the family (e.g., `makeGroundFilter(head, [makeWildcard()])`).
-2. On first run, processes all matching nodes (via `graph.baselinePossibleNodeChange` or by pulling the current state).
+2. On first run, processes all matching nodes (via `baselinePossibleNodeChange` or by pulling the current state).
 3. On subsequent runs, uses `graph.possibleMaybeChanges` to discover only the nodes that may have changed.
 
 ---
@@ -173,7 +173,7 @@ REQ-JC-COMP-11: A `PossibleNodeChange` token is only correctness-preserving acro
 In this state, there are two acceptable behaviors:
 
 1. **Defer**: Do not use the token for incremental maintenance until synchronization reaches or passes the token's index.
-2. **Fall back**: Treat the token as uninterpretable and perform a full recomputation using `graph.baselinePossibleNodeChange()`.
+2. **Fall back**: Treat the token as uninterpretable and perform a full recomputation using `baselinePossibleNodeChange()`.
 
 "Skipping the missing index and continuing" MUST NOT be presented as a generally safe incremental interpretation for unsynchronized hosts.
 
@@ -205,7 +205,7 @@ The journal is intended for computors that maintain derived indexes, summaries, 
 
 Tests for journal-using computors should verify:
 
-1. That a full computation (using `graph.baselinePossibleNodeChange`) correctly initializes derived state.
+1. That a full computation (using `baselinePossibleNodeChange`) correctly initializes derived state.
 2. That an incremental update (using a stored token) correctly detects only changes since the last run.
 3. That redundant/conservative journal results do not corrupt derived state (test by simulating duplicate entries).
 4. That stored tokens survive process restart (test by persisting a token, restarting, and re-querying).

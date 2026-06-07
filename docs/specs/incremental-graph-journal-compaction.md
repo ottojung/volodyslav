@@ -20,7 +20,7 @@ REQ-JC-03: Compaction MUST NOT renumber journal entries. If compaction removes e
 
 ### Sparse storage
 
-REQ-JC-04: Compaction MAY leave sparse journal storage — missing entries at some index positions. The journal storage layer and query code MUST tolerate missing entries (see REQ-JA-08).
+REQ-JC-04: Compaction MAY leave sparse journal storage — missing entries at some index positions. The journal storage layer and query code MUST tolerate missing entries (see REQ-JA-04).
 
 REQ-JC-05: After compaction, scanning the journal index sequence must not fail or error when encountering a missing index. The scanner must skip missing entries and continue to the next available index.
 
@@ -71,7 +71,7 @@ REQ-JC-12: Compaction is responsible for ensuring that any `PossibleNodeChange` 
 
 REQ-JC-13: `graph.possibleMaybeChanges` MUST NOT reconstruct or re-yield entries whose payloads have been compacted away. The query operation skips absent entries and yields only surviving entries. Correctness of this skipping depends on compaction having preserved entries that stored tokens reference.
 
-REQ-JC-14: The `graph.baselinePossibleNodeChange()` sentinel is inherently safe from compaction because it does not reference any specific journal index. It conceptually represents "before any entry." Compaction cannot invalidate it.
+REQ-JC-14: The `baselinePossibleNodeChange()` sentinel is inherently safe from compaction because it does not reference any specific journal index. It conceptually represents "before any entry." Compaction cannot invalidate it.
 
 ---
 

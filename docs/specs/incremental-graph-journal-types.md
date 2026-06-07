@@ -242,7 +242,7 @@ Public consumers may inspect these fields. Public consumers may pass a `Possible
  * - This type can only be introduced through these operations:
  *   - `graph.possibleMaybeChanges(...)`: satisfies the property because it only yields
  *     PossibleNodeChange values derived from committed journal entries.
- *   - `graph.baselinePossibleNodeChange()`: satisfies the property because it returns
+ *   - `baselinePossibleNodeChange()`: satisfies the property because it returns
  *     a sentinel PossibleNodeChange whose public fields represent "before any
  *     journal entry" and whose only valid use is as a `since` argument. The
  *     baseline token is a sentinel, not derived from a committed journal entry.
