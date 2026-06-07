@@ -35,11 +35,9 @@ The name `possibleMaybeChanges` is the stable public API name. It MUST NOT be re
 
 A previously observed `PossibleNodeChange`, typically obtained from a prior call to `possibleMaybeChanges` or from a baseline initialization operation.
 
-The `since` value acts as a cursor: the returned iterator yields possible changes that were recorded at or after the position of `since`. The `since` value itself is NOT included in the returned iterator.
+The `since` value acts as a cursor: the returned iterator yields surviving matching entries strictly after the journal position referenced by `since`. The `since` value itself is NOT included in the returned iterator.
 
-REQ-JA-01: The `since` parameter has type `PossibleNodeChange`. `PossibleNodeChange` values are introduced only by journal APIs (`possibleMaybeChanges` and `baselinePossibleNodeChange`). The normal contract of `possibleMaybeChanges` assumes its `since` argument is already a `PossibleNodeChange`. Validation of untyped or externally deserialized data into `PossibleNodeChange` occurs at the storage or serialization boundary, not at every call site.
-
-REQ-JA-02: If the journal entry at the position referenced by `since` has been deleted or compacted away, `possibleMaybeChanges` MUST skip that absent entry and continue scanning forward from the next surviving journal index.
+REQ-JA-01: If the journal entry at the position referenced by `since` has been deleted or compacted away, `possibleMaybeChanges` MUST skip that absent entry and continue scanning forward from the next surviving journal index.
 
 `possibleMaybeChanges` MUST NOT recreate, reconstruct, or re-yield entries whose payloads have been deleted by compaction. If an entry is absent, it is skipped. If all entries after `since` that would otherwise have matched the filter are absent, the iterator returns nothing.
 
@@ -47,15 +45,13 @@ The safety of stored `since` tokens is carried by compaction (see `incremental-g
 
 **`to: NodeFilter`**
 
-Restricts the returned possible changes to nodes whose keys match the filter. See `docs/specs/incremental-graph-node-filter.md` for filter matching rules.
-
-REQ-JA-03: The `to` parameter has type `NodeFilter`. `NodeFilter` values are introduced only by the filter construction functions (`makeWildcard`, `makeGroundFilter`, `makeUnionFilter`). The normal contract of `possibleMaybeChanges` assumes its `to` argument is already a `NodeFilter`. Validation of untyped or externally deserialized data into `NodeFilter` occurs at the construction or deserialization boundary.
+Restricts the returned possible changes to nodes whose keys match the filter. See `docs/specs/incremental-graph-node-filter.md` for filter matching rules. `NodeFilter` values are constructed via `makeWildcard`, `makeGroundFilter`, and `makeUnionFilter`.
 
 ### Return value
 
 `possibleMaybeChanges` returns an `AsyncIterator<PossibleNodeChange>`. Each yielded value is a `PossibleNodeChange` that:
 
-1. was recorded at a journal position at or after `since`;
+1. was recorded at a journal position strictly after the position referenced by `since`;
 2. matches `to` according to `DEF-NF-MATCH-01`;
 3. has public fields (`nodeName`, `bindings`, `action`, `time`) that accurately describe the change.
 
@@ -69,7 +65,7 @@ REQ-JA-05: The iterator MUST eventually terminate. It MUST NOT block indefinitel
 
 REQ-JA-06: Returned `PossibleNodeChange` values MUST be yielded in ascending journal-index order (physical insertion order). This is equivalent to ascending `time` order for entries from the same host with a monotonic clock, but the authoritative ordering is journal-index order, not timestamp order.
 
-REQ-JA-07: The ordering guarantee is best-effort with respect to `time`: entries with equal `time` values (possible when clocks are coarse or across hosts during sync) are ordered arbitrarily within their shared index position. Consumers MUST NOT depend on strict timestamp ordering for correctness.
+REQ-JA-07: If multiple returned entries have equal timestamps, their relative order is still determined by journal-index order. Consumers MUST NOT depend on timestamp order for correctness.
 
 ---
 
@@ -157,6 +153,6 @@ REQ-JA-16: `possibleMaybeChanges` MUST NOT return compacted-away entries. If all
 
 ## Concurrency
 
-REQ-JA-17: `possibleMaybeChanges` operates under the `observe` locking mode (see `docs/specs/incremental-graph-locking-design.md`). It MUST NOT block concurrent `pull` operations indefinitely.
+REQ-JA-17: `possibleMaybeChanges` operates under `daytimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "daytime", ...)`). It MUST NOT block concurrent `pull` operations indefinitely. See `docs/specs/incremental-graph-locking-design.md`.
 
 REQ-JA-18: The returned async iterator captures a snapshot of the journal state at the time of the call. New journal entries committed after the iterator is created MAY or MAY NOT be reflected in the iteration. This is implementation-defined, but the implementation MUST guarantee that the iterator is internally consistent — no entry is seen twice or missed due to concurrent writes within the iterator's observed span.

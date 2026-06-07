@@ -168,11 +168,16 @@ REQ-JC-COMP-10: If the entry is absent because it was compacted or deleted accor
 
 **Absent because the host is not synchronized:**
 
-REQ-JC-COMP-11: If the entry is absent because the receiving host has not yet been synchronized up to the index referenced by the token, the host does not have enough journal state to interpret the token completely. `possibleMaybeChanges` skips the absent index and continues from the next surviving entry, if any. The consumer may not see all possible changes that the token's original host intended to convey.
+REQ-JC-COMP-11: A `PossibleNodeChange` token is only correctness-preserving across synchronized hosts. If the receiving host has not been synchronized up to the token's journal index, the token cannot be fully interpreted on that host. The host lacks the journal state needed to determine which changes the token's original host has already accounted for.
 
-This specification does not require exposing host synchronization status to journal consumers. The `PossibleNodeChange` type remains portable in the sense that a consumer can pass it to `possibleMaybeChanges` on any host without error. The consumer should be aware that on a partially synchronized host, an absent token entry means some changes may not yet be reflected.
+In this state, there are two acceptable behaviors:
 
-REQ-JC-COMP-12: A journal-consuming computor whose derived value may be synchronized across hosts SHOULD treat an unsynchronized token as a signal to perform a full recomputation (using `baselinePossibleNodeChange`) rather than assuming the token can be used for incremental maintenance on the receiving host.
+1. **Defer**: Do not use the token for incremental maintenance until synchronization reaches or passes the token's index.
+2. **Fall back**: Treat the token as uninterpretable and perform a full recomputation using `baselinePossibleNodeChange()`.
+
+"Skipping the missing index and continuing" MUST NOT be presented as a generally safe incremental interpretation for unsynchronized hosts.
+
+REQ-JC-COMP-12: A journal-consuming computor whose derived value may be synchronized across hosts MUST NOT assume an unsynchronized token supports a correctness-preserving incremental update. The computor SHOULD either defer incremental maintenance or fall back to a full recomputation.
 
 ---
 

@@ -97,4 +97,4 @@ A suggested compaction approach:
 4. For deleted nodes, remove all entries if the deletion is older than the retention window.
 5. Update no metadata except the journal storage itself.
 
-This strategy satisfies all requirements while keeping compaction simple and predictable.
+This strategy satisfies the requirements only when combined with the stored-token safety checks from REQ-JC-11 and REQ-JC-12. Without those checks, removing a latest-per-node-key entry that a stored token references could make that token unsafe.

@@ -135,13 +135,17 @@ function hostnameToString(hostname)
 
 ```js
 /**
- * An opaque numeric index into the journal storage.
- * Monotonic, non-reusable, used only by the journal storage layer.
+ * A replicated physical journal position.
+ * Allocated monotonically by a host. After synchronization, each index
+ * has cross-host meaning: all synchronized hosts agree that the entry
+ * at a given index is either the same JournalEntry or absent.
+ * Divergent entries at the same index are temporary and must be
+ * resolved by synchronization.
  * @typedef {number} JournalIndex
  */
 ```
 
-A `JournalIndex` is a monotonic allocation watermark for journal entries. It is analogous to `last_node_index` in the node identifier system.
+A `JournalIndex` is a replicated physical journal position. Hosts may allocate journal entries independently before sync, producing divergent entries at the same index temporarily. Synchronization resolves that divergence so that after sync each index is consistent across all synchronized hosts (see `incremental-graph-journal-sync.md` REQ-JS-15).
 
 REQ-JT-05: `JournalIndex` values MUST NOT be reused.
 
@@ -214,12 +218,13 @@ Public consumers may inspect these fields. Public consumers may pass a `Possible
 ┌──────────────────────────────────────────┐
 │           Public API boundary            │
 │                                          │
-│  possibleMaybeChanges(                   │
-│      since: PossibleNodeChange,          │
-│      to: NodeFilter,                     │
-│  ): AsyncIterator<PossibleNodeChange>     │
+│  possibleMaybeChanges({                  │
+│      since,                              │
+│      to,                                 │
+│  }): AsyncIterator<PossibleNodeChange>    │
 │                                          │
-│  Public fields: node key, action, time   │
+│  Public fields: nodeName, bindings,      │
+│                 action, time             │
 │  Internal fields: NOT visible            │
 └──────────────────────────────────────────┘
 ```
@@ -237,13 +242,20 @@ Public consumers may inspect these fields. Public consumers may pass a `Possible
  * - This type can only be introduced through these functions:
  *   - `possibleMaybeChanges(...)`: satisfies the property because it only yields
  *     PossibleNodeChange values derived from committed journal entries.
+ *   - `baselinePossibleNodeChange()`: satisfies the property because it returns
+ *     a sentinel PossibleNodeChange whose public fields represent "before any
+ *     journal entry" and whose only valid use is as a `since` argument. The
+ *     baseline token is a sentinel, not derived from a committed journal entry.
  *
  * Plain objects must not be treated as PossibleNodeChange values unless they pass
  * through this introduction path.
  * @typedef {object} PossibleNodeChange
  * @property {NodeName} nodeName - The head/functor of the affected node.
  * @property {Array<ConstValue>} bindings - The positional bindings of the affected node.
- * @property {JournalAction} action - The kind of possible change.
+ * @property {JournalAction} action - The kind of possible change. Because
+ *   `possibleMaybeChanges` is conservative, the `action` field describes the
+ *   journal entry that produced the possible change; consumers MUST NOT treat
+ *   it as an exactly-once semantic event.
  * @property {UnixTimestamp} time - When the change was recorded.
  */
 ```
@@ -253,6 +265,8 @@ REQ-JT-10: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, an
 REQ-JT-11: A `PossibleNodeChange` returned by `possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
 
 ### Type guard
+
+`isPossibleNodeChange(value)` is a type guard for use at storage, deserialization, and serialization boundaries where untyped `unknown` data is converted into the nominal `PossibleNodeChange` type. Ordinary callers of `possibleMaybeChanges` receive already-typed `PossibleNodeChange` values and do not need to re-verify them at the call site.
 
 ```js
 /**

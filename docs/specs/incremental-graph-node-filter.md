@@ -98,9 +98,9 @@ function makeGroundFilter(head, args)
 
 Returns a `GroundFilter` with the given head and argument list.
 
-`args` MUST NOT contain values other than `ConstValue` instances and `Wildcard` instances. Implementations SHOULD validate this at construction and throw if the array contains invalid elements.
+REQ-NF-01: At the construction boundary, untyped input for `head` MUST be validated. `makeGroundFilter` MUST throw `InvalidNodeNameError` if the supplied `head` value (after conversion from its source representation) is not a valid `NodeName` (per `ident` grammar in `incremental-graph.md` §1.3). At internal call sites where `head` is already a `NodeName`, re-validation is not required.
 
-REQ-NF-01: `makeGroundFilter` MUST throw `InvalidNodeNameError` if `head` is not a valid `NodeName` (per `ident` grammar in `incremental-graph.md` §1.3).
+`args` MUST NOT contain values other than `ConstValue` instances and `Wildcard` instances. Implementations SHOULD validate this at construction and throw if the array contains invalid elements.
 
 ### makeUnionFilter
 
