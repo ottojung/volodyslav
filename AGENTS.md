@@ -314,6 +314,132 @@ Do not introduce a nominal type for:
 
 The point is not nominal typing for its own sake. The point is to capture useful facts in the type structure so later code can rely on them without re-checking them.
 
+### Make impossible states unrepresentable
+
+When designing APIs, types, constructors, and data flow, prefer representations that make invalid states impossible to express.
+
+This is broader than nominal typing. Nominal types are one useful tool, but many impossible states can be eliminated with ordinary object shapes, unions, required parameters, separate functions, explicit state variants, module boundaries, and careful API design.
+
+The rule is:
+
+> Do not represent invalid, dangerous or meaningless states if the API can be designed so those states cannot be constructed.
+
+Before adding a type or function, ask:
+
+1. What bad states or bad calls would this design allow?
+2. Can the API be shaped so those states or calls are impossible?
+3. Can separate functions, stronger parameter types, required fields, or explicit state variants remove ambiguity?
+4. Can the boundary validate once and then expose only a safer representation to the rest of the codebase?
+
+Bad:
+
+```js
+function scheduleTask(name, cron, callback, retryDelay, lastSuccessTime, lastFailureTime, pendingRetryUntil, schedulerIdentifier) {
+    // Many combinations of these parameters are meaningless.
+}
+```
+
+Good:
+
+```js
+function makeRunningTask(name, cron, callback, retryDelay, lastAttemptTime, schedulerIdentifier) {
+    // Running tasks require the fields that make a running task meaningful.
+}
+
+function makeAwaitingRetryTask(name, cron, callback, retryDelay, lastAttemptTime, lastFailureTime, pendingRetryUntil) {
+    // Retry tasks require retry-specific fields.
+}
+
+function makeAwaitingRunTask(name, cron, callback, retryDelay, lastSuccessTime, lastAttemptTime) {
+    // Awaiting-run tasks only carry awaiting-run fields.
+}
+```
+
+Bad:
+
+```js
+function writeEvent(event, overwrite = false, validate = true) {
+    // Boolean and optional arguments create unclear call states.
+}
+```
+
+Good:
+
+```js
+function createEvent(event) {
+    // Creates a new event.
+}
+
+function replaceEvent(event) {
+    // Replaces an existing event.
+}
+
+function writeValidatedEvent(event) {
+    // Accepts only an already-validated event.
+}
+```
+
+Bad:
+
+```js
+/**
+ * @typedef {object} SaveResult
+ * @property {boolean} success
+ * @property {string | undefined} error
+ * @property {string | undefined} eventId
+ */
+```
+
+This allows meaningless values such as `{ success: true, error: "failed" }`.
+
+Good:
+
+```js
+/**
+ * @typedef {object} SaveSuccess
+ * @property {'success'} status
+ * @property {EventId} eventId
+ */
+
+/**
+ * @typedef {object} SaveFailure
+ * @property {'failure'} status
+ * @property {SaveEventError} error
+ */
+
+/**
+ * @typedef {SaveSuccess | SaveFailure} SaveResult
+ */
+```
+
+Bad:
+
+```js
+function processInput(input) {
+    // Accepts raw strings, parsed expressions, and validated expressions.
+}
+```
+
+Good:
+
+```js
+function parseInput(rawInput) {
+    // Converts raw input into a parsed value or a parse error.
+}
+
+function validateParsedInput(parsedInput) {
+    // Converts parsed input into a validated value or a validation error.
+}
+
+function processValidatedInput(validatedInput) {
+    // Only accepts the representation that has already crossed the boundary.
+}
+```
+
+The purpose is not to prove every property in a comment. The purpose is to design the code so fewer bad situations can arise at all.
+
+Boundary data may be weakly represented when it first enters the system. After validation, parsing, deserialization, or migration, convert it into a stronger representation and keep the weak representation out of internal code.
+
 ### Validate, Don't Verify
 When creating typed instances, ensure parsing validates all guarantees. Once you have an instance, don't re-check:
 
