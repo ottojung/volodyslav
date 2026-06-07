@@ -66,7 +66,10 @@ A release-blocker marker is a unique string placed next to a known unresolved re
 THIS-MARKER-BLOCKS-VOLODYSLAV-RELEASE-63461325
 ```
 
-The install path scans tracked files for this marker. If the marker is present, installation fails and reports the matching locations.
+The `link-targeted` step in the install path scans tracked files for this marker.
+If the marker is present, installation fails and reports the matching locations.
+This covers `make install`, `scripts/install`, and any path that eventually links
+installed files — the shared final step for all install entry points.
 
 This is intentionally stronger than a comment. A comment informs a reader; a release-blocker marker changes program behavior. It turns a known unsafe repository state into an executable guardrail.
 
