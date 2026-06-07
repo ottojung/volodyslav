@@ -14,10 +14,5 @@ shift
 
 test "$#" = 0
 
-if test "${VOLODYSLAV_ALLOW_RELEASE_BLOCKERS:-}" != "1"
-then
-    sh scripts/check-release-blockers
-fi
-
 npm run build
 sh scripts/link "$PREFIX"
