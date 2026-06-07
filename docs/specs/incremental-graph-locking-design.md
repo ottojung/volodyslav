@@ -46,7 +46,7 @@ This is a grouped lock:
   the current mode cannot skip ahead of an earlier conflicting mode.
 
 This is the right primitive for **global graph phases** where we want
-`pull`/`observe` exclusion without forcing all pulls to serialize with each
+`nighttime`/`daytime` exclusion without forcing all pulls to serialize with each
 other.
 
 ## Lock Keys
@@ -63,8 +63,8 @@ This key is acquired through `withModeMutex`.
 
 Two modes are sufficient:
 
-- `"observe"` for `invalidate()` and inspection reads;
-- `"pull"` for all pull activity.
+- `"daytime"` for `invalidate()` and inspection reads;
+- `"nighttime"` for all pull activity.
 
 Because same-mode holders are compatible, many invalidates may overlap and many
 pulls may overlap. Because different modes are incompatible, no pull may overlap
@@ -86,7 +86,7 @@ different nodes.
 
 ### `invalidate(node)`
 
-1. Acquire `daytimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "observe", ...)`).
+1. Acquire `daytimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "daytime", ...)`).
 2. Run the invalidation logic.
 3. Release the mode lock.
 
@@ -94,7 +94,7 @@ No per-node mutex is needed.
 
 ### inspection read
 
-1. Acquire `daytimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "observe", ...)`).
+1. Acquire `daytimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "daytime", ...)`).
 2. Read the requested inspection data.
 3. Release the mode lock.
 
@@ -102,7 +102,7 @@ No per-node mutex is needed.
 
 ### `pull(node)`
 
-1. Acquire `nighttimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "pull", ...)`).
+1. Acquire `nighttimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "nighttime", ...)`).
 2. Acquire `telescopeActivity(nodeKeyString, ...)` (internally
    `withMutex(PULL_NODE_KEY(nodeKeyString), ...)`).
 3. Open a transaction (acquires `darkroomActivity` for the active replica).
@@ -114,7 +114,7 @@ No per-node mutex is needed.
 
 The darkroom lock is per-replica, so commits to different replicas never
 contend. Nested pulls (dependencies) reuse the same graph-activity mode
-("pull") but acquire their own per-node mutex for each dependency node.
+("nighttime") but acquire their own per-node mutex for each dependency node.
 Each nested pull creates its own Transaction (acquiring its own darkroom
 lock) and submits its batch independently. This matches the volatile-
 consistency spec: every call to pullNode is structurally identical,
@@ -126,8 +126,8 @@ whether top-level or nested.
 2. Run the migration or cutover.
 3. Release the holiday lock.
 
-The two-step acquisition (`MUTEX_KEY` → `GRAPH_ACTIVITY_KEY("exclusive")`)
-is deadlock-free because pull/observe operations only ever acquire
+The two-step acquisition (`MUTEX_KEY` → `GRAPH_ACTIVITY_KEY("holiday")`)
+is deadlock-free because nighttime and daytime operations only ever acquire
 `GRAPH_ACTIVITY_KEY`.
 
 The computor stays inside the pull critical section. This is safe because the
@@ -146,8 +146,8 @@ Both use `daytimeActivity(...)`, so they are compatible.
 
 ### Pulls with reads or invalidates
 
-Nighttime observations (`pull()`) use mode `"pull"` while reads and invalidates
-use mode `"observe"` (daytime). Those modes conflict, so these operations are
+Nighttime observations (`pull()`) use mode `"nighttime"` while reads and invalidates
+use mode `"daytime"`. Those modes conflict, so these operations are
 mutually exclusive.
 
 ### Pulls on the same node
@@ -156,7 +156,7 @@ They contend on the same `PULL_NODE_KEY(nodeKeyString)`, so they serialize.
 
 ### Pulls on different nodes
 
-They share the compatible global `"pull"` mode and use different per-node mutex
+They share the compatible global `"nighttime"` mode and use different per-node mutex
 keys, so they may proceed concurrently.
 
 ## Deadlock Discipline
@@ -165,7 +165,7 @@ The implementation MUST keep this acquisition discipline:
 
 1. acquire the graph activity mode lock first;
 2. acquire any per-node pull mutexes after that;
-3. never acquire `"observe"` while holding a per-node pull mutex.
+3. never acquire `"daytime"` while holding a per-node pull mutex.
 
 Inspection reads and invalidates only take the global mode lock, so they cannot
 participate in a node-level cycle.

@@ -124,30 +124,30 @@ The incremental-graph subsystem uses two cooperating primitives to implement
 three access levels:
 
 ```
-withExclusiveMode (database open / migration / synchronize / DB reset)
+withHolidayMode (database open / migration / synchronize / DB reset)
   ├─ acquires MUTEX_KEY       → serialises concurrent exclusive operations
-  └─ acquires GRAPH_ACTIVITY_KEY("exclusive") → blocks pulls and observes
+  └─ acquires GRAPH_ACTIVITY_KEY("holiday") → blocks nighttime and daytime
 
-withPullMode (pull)
-  └─ acquires GRAPH_ACTIVITY_KEY("pull")    → concurrent pulls allowed;
-                                               blocks observes and exclusive
+withNighttimeMode (pull)
+  └─ acquires GRAPH_ACTIVITY_KEY("nighttime") → concurrent nighttime allowed;
+                                               blocks daytime and holiday
 
-withObserveMode (invalidate / inspection read)
-  └─ acquires GRAPH_ACTIVITY_KEY("observe") → concurrent observes allowed;
-                                               blocks pulls and exclusive
+withDaytimeMode (invalidate / inspection read)
+  └─ acquires GRAPH_ACTIVITY_KEY("daytime") → concurrent daytime allowed;
+                                               blocks nighttime and holiday
 ```
 
 **Acquisition order:** `MUTEX_KEY` is always acquired before
-`GRAPH_ACTIVITY_KEY`.  Pull and observe operations never acquire `MUTEX_KEY`,
+`GRAPH_ACTIVITY_KEY`.  Nighttime and daytime operations never acquire `MUTEX_KEY`,
 so the ordering is acyclic and deadlock-free.
 
 **Exclusion matrix:**
 
-| | exclusive | pull | observe |
+| | holiday | nighttime | daytime |
 |---|---|---|---|
-| **exclusive** | serialised (via MUTEX_KEY) | ✗ exclusive | ✗ exclusive |
-| **pull** | ✗ exclusive | ✓ concurrent | ✗ exclusive |
-| **observe** | ✗ exclusive | ✗ exclusive | ✓ concurrent |
+| **holiday** | serialised (via MUTEX_KEY) | ✗ exclusive | ✗ exclusive |
+| **nighttime** | ✗ exclusive | ✓ concurrent | ✗ exclusive |
+| **daytime** | ✗ exclusive | ✗ exclusive | ✓ concurrent |
 
 ---
 
