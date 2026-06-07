@@ -181,6 +181,8 @@ function makeSublevelBatch(db, operations) {
             }
             const pending = puts.get(k);
             if (pending !== undefined) {
+                // Note: the whole database has this invariant that `undefined` is not permitted as a value,
+                // so seeing `pending === undefined` guarantees `puts.has(k) === false`.
                 return pending;
             }
             return await db.get(key);
