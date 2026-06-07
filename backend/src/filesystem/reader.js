@@ -13,6 +13,7 @@
  */
 
 const fs = require("fs").promises;
+const nativeFs = require("fs");
 
 /**
  * Error thrown when file reading fails.
@@ -77,11 +78,10 @@ async function readFileAsBuffer(filePath) {
  * @throws {ReaderError} - If the stream cannot be created (synchronously throws for missing file, etc.)
  */
 function createReadStream(file) {
-    const fsModule = require("fs");
     try {
         // Leave encoding undefined so consumers can decide how to interpret the
         // data. This keeps the reader suitable for both text and binary files.
-        return fsModule.createReadStream(file.path);
+        return nativeFs.createReadStream(file.path);
     } catch (err) {
         throw new ReaderError(
             `Failed to create read stream: ${file.path}`,
