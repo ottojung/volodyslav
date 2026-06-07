@@ -44,4 +44,4 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         with:
           model: ${{ steps.select-model.outputs.model }}
-          mentions: /opencode-pro,/opencode,/oc
+          mentions: /opencode-pro,/opencode,plsoc
