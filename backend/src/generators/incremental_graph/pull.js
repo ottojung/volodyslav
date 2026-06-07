@@ -22,8 +22,8 @@
  * like `graph.storage.freshness.get(key)` always resolve against the
  * currently active replica — no captured reference survives across await
  * unless the lock guarantees the replica cannot change.
- * internalUnsafePull and internalUnsafeInvalidate shift the locking
- * responsibility to the caller (documented by their "unsafe" names).
+ * internalUnsafeInvalidate shifts the locking
+ * responsibility to the caller (documented by its "unsafe" naming).
  */
 
 /** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
@@ -189,20 +189,6 @@ async function internalSafePullWithStatus(graph, nodeName, bindings = []) {
     ensureNodeNameIsHead(nodeName);
     const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
     return nighttimeActivity(graph.sleeper, () => telescopeActivity(graph.sleeper, nodeKeyStr, () => pullNodeWithTelescopeHeld(graph, nodeKeyStr)));
-}
-
-/**
- * Unsafe pull — caller must already hold the pull-mode lock.
- * @param {IncrementalGraphPullAccess} graph
- * @param {string} nodeName
- * @param {Array<ConstValue>} bindings
- * @returns {Promise<ComputedValue>}
- */
-async function internalUnsafePull(graph, nodeName, bindings) {
-    ensureNodeNameIsHead(nodeName);
-    const nodeKeyStr = serializeNodeKey({ head: stringToNodeName(nodeName), args: bindings });
-    const { value } = await telescopeActivity(graph.sleeper, nodeKeyStr, () => pullNodeWithTelescopeHeld(graph, nodeKeyStr));
-    return value;
 }
 
 module.exports = {
