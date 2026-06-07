@@ -3,13 +3,10 @@ This is a JavaScript project with JSDoc typing for a highly reliable event loggi
 
 # Initial Setup (Required for Fresh Repository)
 
-**Mandatory workflow when working on a fresh clone:**
+When working on a fresh clone, this command is useful:
 
 ```bash
 npm install   # install dependencies in root and all workspaces
-npm test      # run the full test suite to verify setup
-npm run static-analysis # type checking, linting, etc.
-npm run build # verify the project builds successfully
 ```
 
 # Core Programming Conventions
