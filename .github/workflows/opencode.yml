@@ -14,20 +14,53 @@ jobs:
       contains(github.event.comment.body, ' /opencode') ||
       startsWith(github.event.comment.body, '/opencode')
     runs-on: ubuntu-latest
+
     permissions:
       id-token: write
       contents: read
       pull-requests: read
       issues: read
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           persist-credentials: false
 
+      - name: Preflight OpenCode key
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          test -n "$OPENCODE_API_KEY" || {
+            echo "OPENCODE_API_KEY is missing"
+            exit 1
+          }
+
       - name: Run opencode
+        id: opencode
+        continue-on-error: true
         uses: anomalyco/opencode/github@latest
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         with:
           model: opencode/deepseek-v4-flash
+          share: false
+
+      - name: Print OpenCode logs
+        if: always()
+        run: |
+          echo "::group::OpenCode log files"
+          find "$HOME/.local/share/opencode/log" -maxdepth 1 -type f -print || true
+          echo "::endgroup::"
+
+          echo "::group::OpenCode log tails"
+          for f in "$HOME"/.local/share/opencode/log/*.log; do
+            [ -f "$f" ] || continue
+            echo "===== $f ====="
+            tail -n 300 "$f"
+          done
+          echo "::endgroup::"
+
+      - name: Fail if OpenCode failed
+        if: steps.opencode.outcome == 'failure'
+        run: exit 1
