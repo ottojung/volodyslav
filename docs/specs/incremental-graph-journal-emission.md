@@ -109,7 +109,7 @@ Calling `invalidate` without a subsequent `pull` produces no new journal entry.
 
 ### P6 — Atomic journal+graph write
 
-If a journal entry is visible (via `possibleMaybeChanges`), the corresponding graph-state change must also be visible. If a graph-state write fails, no stale journal entry for it must be visible.
+If a journal entry is visible (via `graph.possibleMaybeChanges`), the corresponding graph-state change must also be visible. If a graph-state write fails, no stale journal entry for it must be visible.
 
 ### P7 — Monotonic last_journal_index
 

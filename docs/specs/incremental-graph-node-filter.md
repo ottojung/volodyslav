@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A `NodeFilter` restricts journal queries to a specific set of node keys. It is used as the `to` parameter of `possibleMaybeChanges` so that journal consumers ask only about changes to the part of the graph they depend on.
+A `NodeFilter` restricts journal queries to a specific set of node keys. It is used as the `to` parameter of `graph.possibleMaybeChanges` so that journal consumers ask only about changes to the part of the graph they depend on.
 
 `NodeFilter` is an **object API**, not a parseable string language.
 
@@ -34,7 +34,7 @@ A `NodeFilter` is one of the following concrete variants.
 
 A `Wildcard` has two distinct meanings depending on context:
 
-- **As a top-level `NodeFilter`:** `Wildcard` matches every node key. Passing `makeWildcard()` directly as the `to` parameter of `possibleMaybeChanges` returns possible changes for all nodes.
+- **As a top-level `NodeFilter`:** `Wildcard` matches every node key. Passing `makeWildcard()` directly as the `to` parameter of `graph.possibleMaybeChanges` returns possible changes for all nodes.
 
 - **Inside `GroundFilter.args`:** A `Wildcard` at a particular argument position matches any single `ConstValue` at that position. It does not match arbitrary-length or zero-length sequences. It does not match nested structure.
 
@@ -97,8 +97,6 @@ function makeGroundFilter(head, args)
 ```
 
 Returns a `GroundFilter` with the given head and argument list.
-
-REQ-NF-01: At the construction boundary, untyped input for `head` MUST be validated. `makeGroundFilter` MUST throw `InvalidNodeNameError` if the supplied `head` value (after conversion from its source representation) is not a valid `NodeName` (per `ident` grammar in `incremental-graph.md` §1.3). At internal call sites where `head` is already a `NodeName`, re-validation is not required.
 
 `args` MUST NOT contain values other than `ConstValue` instances and `Wildcard` instances. Implementations SHOULD validate this at construction and throw if the array contains invalid elements.
 

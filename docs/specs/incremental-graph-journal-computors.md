@@ -15,7 +15,7 @@ This document uses normative language for requirements on journal-using computor
 A journal-using computor follows this lifecycle:
 
 1. **Full computation**: On first run (or when no prior token is available), compute derived state for all relevant nodes. Store the last `PossibleNodeChange` seen during the scan.
-2. **Incremental update**: On subsequent runs, call `possibleMaybeChanges` with the stored token and an appropriate `NodeFilter`. Update only the affected portion of derived state.
+2. **Incremental update**: On subsequent runs, call `graph.possibleMaybeChanges` with the stored token and an appropriate `NodeFilter`. Update only the affected portion of derived state.
 3. **Store token**: After processing, store the last `PossibleNodeChange` from the scan for use as the next `since` value.
 
 ---
@@ -26,8 +26,8 @@ A journal-using computor follows this lifecycle:
 
 ```js
 // First run or baseline recomputation
-let lastChange = baselinePossibleNodeChange();
-for await (const change of possibleMaybeChanges({
+let lastChange = graph.baselinePossibleNodeChange();
+for await (const change of graph.possibleMaybeChanges({
     since: lastChange,
     to: myFilter,
 })) {
@@ -37,14 +37,14 @@ for await (const change of possibleMaybeChanges({
 await storeToken("my-computor-state", lastChange);
 ```
 
-The `baselinePossibleNodeChange()` call provides a sentinel that causes `possibleMaybeChanges` to return all available matching changes. The computor processes each change and remembers the last one.
+The `graph.baselinePossibleNodeChange()` call provides a sentinel that causes `graph.possibleMaybeChanges` to return all available matching changes. The computor processes each change and remembers the last one.
 
 ### Step 2: Incremental update
 
 ```js
 // Subsequent run
 const since = await loadToken("my-computor-state");
-for await (const change of possibleMaybeChanges({
+for await (const change of graph.possibleMaybeChanges({
     since,
     to: myFilter,
 })) {
@@ -56,7 +56,7 @@ for await (const change of possibleMaybeChanges({
 
 REQ-JC-COMP-01: A journal-consuming computor MUST store its token (`PossibleNodeChange`) persistently across restarts. The stored token is the computor's memory of where it left off in the journal.
 
-REQ-JC-COMP-02: A journal-consuming computor MUST use its stored token as the `since` argument to `possibleMaybeChanges`. It MUST NOT construct a token value directly.
+REQ-JC-COMP-02: A journal-consuming computor MUST use its stored token as the `since` argument to `graph.possibleMaybeChanges`. It MUST NOT construct a token value directly.
 
 ### Choosing the NodeFilter
 
@@ -91,7 +91,7 @@ REQ-JC-COMP-03: A computor MUST use a `NodeFilter` that is broad enough to cover
 
 ## Handling conservative results
 
-The journal API is conservative: `possibleMaybeChanges` may return `PossibleNodeChange` values that do not correspond to a material change in the consumer's view.
+The journal API is conservative: `graph.possibleMaybeChanges` may return `PossibleNodeChange` values that do not correspond to a material change in the consumer's view.
 
 REQ-JC-COMP-04: A journal-consuming computor MUST be robust to conservative results. It SHOULD:
 
@@ -102,7 +102,7 @@ REQ-JC-COMP-04: A journal-consuming computor MUST be robust to conservative resu
 **Example of robust handling:**
 
 ```js
-for await (const change of possibleMaybeChanges({ since, to: myFilter })) {
+for await (const change of graph.possibleMaybeChanges({ since, to: myFilter })) {
     // Recompute the affected portion of derived state from
     // the current graph values, not from the change metadata alone.
     const currentValue = await graph.getValue(change.nodeName, change.bindings);
@@ -115,7 +115,7 @@ for await (const change of possibleMaybeChanges({ since, to: myFilter })) {
 ```js
 // RISKY: non-idempotent counting based on journal actions
 let count = await loadCount();
-for await (const change of possibleMaybeChanges({ since, to: myFilter })) {
+for await (const change of graph.possibleMaybeChanges({ since, to: myFilter })) {
     if (change.action === 'add') count++;
     if (change.action === 'delete') count--;
 }
@@ -137,8 +137,8 @@ The journal is most valuable when a computor cannot statically enumerate all its
 In these cases, the computor:
 
 1. Uses a `NodeFilter` that covers the family (e.g., `makeGroundFilter(head, [makeWildcard()])`).
-2. On first run, processes all matching nodes (via `baselinePossibleNodeChange` or by pulling the current state).
-3. On subsequent runs, uses `possibleMaybeChanges` to discover only the nodes that may have changed.
+2. On first run, processes all matching nodes (via `graph.baselinePossibleNodeChange` or by pulling the current state).
+3. On subsequent runs, uses `graph.possibleMaybeChanges` to discover only the nodes that may have changed.
 
 ---
 
@@ -146,7 +146,7 @@ In these cases, the computor:
 
 REQ-JC-COMP-06: A journal-using computor's stored state — the data it persists alongside the `PossibleNodeChange` token — MUST be consistent with the token's position. The token represents "derived state is up to date with respect to the journal through this position."
 
-REQ-JC-COMP-07: If a computor fails or is interrupted during an incremental update (e.g., process crash), it MUST treat the stored token as still valid. On restart, it re-queries `possibleMaybeChanges` from the stored token and re-processes any changes after it. Because update logic is idempotent (REQ-JC-COMP-04), re-processing is safe.
+REQ-JC-COMP-07: If a computor fails or is interrupted during an incremental update (e.g., process crash), it MUST treat the stored token as still valid. On restart, it re-queries `graph.possibleMaybeChanges` from the stored token and re-processes any changes after it. Because update logic is idempotent (REQ-JC-COMP-04), re-processing is safe.
 
 ---
 
@@ -164,7 +164,7 @@ A `PossibleNodeChange` token's underlying journal entry may be absent on the rec
 
 **Absent because compacted or deleted under the journal rules:**
 
-REQ-JC-COMP-10: If the entry is absent because it was compacted or deleted according to the rules of this specification (see `incremental-graph-journal-compaction.md` and `incremental-graph-journal-sync.md`), the absence is safe. `possibleMaybeChanges` skips the absent index and resumes from the next surviving entry. The safety of this skip is guaranteed by the compaction rules (REQ-JC-11), which ensure that no stored token references an entry that has been compacted away unless the absence is harmless for the consumer.
+REQ-JC-COMP-10: If the entry is absent because it was compacted or deleted according to the rules of this specification (see `incremental-graph-journal-compaction.md` and `incremental-graph-journal-sync.md`), the absence is safe. `graph.possibleMaybeChanges` skips the absent index and resumes from the next surviving entry. The safety of this skip is guaranteed by the compaction rules (REQ-JC-11), which ensure that no stored token references an entry that has been compacted away unless the absence is harmless for the consumer.
 
 **Absent because the host is not synchronized:**
 
@@ -173,7 +173,7 @@ REQ-JC-COMP-11: A `PossibleNodeChange` token is only correctness-preserving acro
 In this state, there are two acceptable behaviors:
 
 1. **Defer**: Do not use the token for incremental maintenance until synchronization reaches or passes the token's index.
-2. **Fall back**: Treat the token as uninterpretable and perform a full recomputation using `baselinePossibleNodeChange()`.
+2. **Fall back**: Treat the token as uninterpretable and perform a full recomputation using `graph.baselinePossibleNodeChange()`.
 
 "Skipping the missing index and continuing" MUST NOT be presented as a generally safe incremental interpretation for unsynchronized hosts.
 
@@ -205,7 +205,7 @@ The journal is intended for computors that maintain derived indexes, summaries, 
 
 Tests for journal-using computors should verify:
 
-1. That a full computation (using `baselinePossibleNodeChange`) correctly initializes derived state.
+1. That a full computation (using `graph.baselinePossibleNodeChange`) correctly initializes derived state.
 2. That an incremental update (using a stored token) correctly detects only changes since the last run.
 3. That redundant/conservative journal results do not corrupt derived state (test by simulating duplicate entries).
 4. That stored tokens survive process restart (test by persisting a token, restarting, and re-querying).

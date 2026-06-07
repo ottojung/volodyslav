@@ -24,7 +24,7 @@ All journal types follow the existing nominal/opaque typing discipline used by `
  */
 ```
 
-A `JournalEntry` is an internal type. It is NOT exposed through the public `possibleMaybeChanges` API. The public API surface uses `PossibleNodeChange` (see below).
+A `JournalEntry` is an internal type. It is NOT exposed through the public `graph.possibleMaybeChanges` API. The public API surface uses `PossibleNodeChange` (see below).
 
 ### JournalAction
 
@@ -151,7 +151,7 @@ REQ-JT-05: `JournalIndex` values MUST NOT be reused.
 
 REQ-JT-06: Gaps in `JournalIndex` sequence are acceptable.
 
-REQ-JT-07: `JournalIndex` MUST NOT be exposed in the public `possibleMaybeChanges` API signature. It is an internal journal-storage concern.
+REQ-JT-07: `JournalIndex` MUST NOT be exposed in the public `graph.possibleMaybeChanges` API signature. It is an internal journal-storage concern.
 
 ### Nominal typing
 
@@ -180,7 +180,7 @@ function journalIndexToNumber(index)
 
 ### Journal index storage
 
-The next journal index to allocate is maintained in volatile state (analogous to the `_nextNodeIndex` pattern in identifier allocation).
+The next journal index to allocate is maintained in volatile state (analogous to the `_nextNodeIndex` pattern in identifier allocation). A host allocates indices independently; since `JournalIndex` is a plain numeric position with no host-specific namespace, two hosts can allocate the same index before sync, producing temporary divergent entries. Synchronization resolves such divergence (see `incremental-graph-journal-sync.md` REQ-JS-16). Divergent entries are not stable across sync until physical convergence resolves them.
 
 The last committed journal index watermark is stored in global metadata:
 
@@ -190,7 +190,7 @@ rendered/r/global/last_journal_index
 
 REQ-JT-08: `last_journal_index` MUST NOT decrease.
 
-REQ-JT-09: `last_journal_index` is the greatest journal index that has been durably committed. Gaps below it are allowed.
+REQ-JT-09: After synchronization, `last_journal_index` MUST be at least the greatest index that is present or known-absent due to synchronized journal state. This includes indices from remote hosts that were adopted, indices that were resolved by divergent-index resolution, and freshly allocated indices from conservative appends. Gaps below the watermark are allowed.
 
 ---
 
@@ -198,7 +198,7 @@ REQ-JT-09: `last_journal_index` is the greatest journal index that has been dura
 
 ### Purpose
 
-`PossibleNodeChange` is the public unit of journal observation. It is returned by `possibleMaybeChanges` and can be stored by consumers to pass as the `since` argument in future calls.
+`PossibleNodeChange` is the public unit of journal observation. It is returned by `graph.possibleMaybeChanges` and can be stored by consumers to pass as the `since` argument in future calls.
 
 ### Public view
 
@@ -208,7 +208,7 @@ From the perspective of a public consumer, a `PossibleNodeChange` carries:
 - The kind of possible change (`JournalAction`).
 - The time when the change was recorded (`UnixTimestamp`).
 
-Public consumers may inspect these fields. Public consumers may pass a `PossibleNodeChange` value back to `possibleMaybeChanges`. Public consumers MUST NOT construct `PossibleNodeChange` values directly.
+Public consumers may inspect these fields. Public consumers may pass a `PossibleNodeChange` value back to `graph.possibleMaybeChanges`. Public consumers MUST NOT construct `PossibleNodeChange` values directly.
 
 ### Nominal boundary
 
@@ -218,7 +218,7 @@ Public consumers may inspect these fields. Public consumers may pass a `Possible
 ┌──────────────────────────────────────────┐
 │           Public API boundary            │
 │                                          │
-│  possibleMaybeChanges({                  │
+│  graph.possibleMaybeChanges({            │
 │      since,                              │
 │      to,                                 │
 │  }): AsyncIterator<PossibleNodeChange>    │
@@ -234,15 +234,15 @@ Public consumers may inspect these fields. Public consumers may pass a `Possible
 ```js
 /**
  * The properties that this type carries are:
- * - The value came from the journal system (returned by possibleMaybeChanges).
+ * - The value came from the journal system (returned by graph.possibleMaybeChanges).
  * - It represents a possible change to a graph node.
  * - The public fields (nodeKey, action, time) accurately describe the change.
  *
  * The proof of those properties is guaranteed by:
- * - This type can only be introduced through these functions:
- *   - `possibleMaybeChanges(...)`: satisfies the property because it only yields
+ * - This type can only be introduced through these operations:
+ *   - `graph.possibleMaybeChanges(...)`: satisfies the property because it only yields
  *     PossibleNodeChange values derived from committed journal entries.
- *   - `baselinePossibleNodeChange()`: satisfies the property because it returns
+ *   - `graph.baselinePossibleNodeChange()`: satisfies the property because it returns
  *     a sentinel PossibleNodeChange whose public fields represent "before any
  *     journal entry" and whose only valid use is as a `since` argument. The
  *     baseline token is a sentinel, not derived from a committed journal entry.
@@ -253,7 +253,7 @@ Public consumers may inspect these fields. Public consumers may pass a `Possible
  * @property {NodeName} nodeName - The head/functor of the affected node.
  * @property {Array<ConstValue>} bindings - The positional bindings of the affected node.
  * @property {JournalAction} action - The kind of possible change. Because
- *   `possibleMaybeChanges` is conservative, the `action` field describes the
+ *   `graph.possibleMaybeChanges` is conservative, the `action` field describes the
  *   journal entry that produced the possible change; consumers MUST NOT treat
  *   it as an exactly-once semantic event.
  * @property {UnixTimestamp} time - When the change was recorded.
@@ -262,11 +262,11 @@ Public consumers may inspect these fields. Public consumers may pass a `Possible
 
 REQ-JT-10: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as the only public fields. It MUST NOT expose `NodeIdentifier`, `JournalIndex`, `Hostname`, or any other journal-internal metadata to ordinary public API callers.
 
-REQ-JT-11: A `PossibleNodeChange` returned by `possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
+REQ-JT-11: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
 
 ### Type guard
 
-`isPossibleNodeChange(value)` is a type guard for use at storage, deserialization, and serialization boundaries where untyped `unknown` data is converted into the nominal `PossibleNodeChange` type. Ordinary callers of `possibleMaybeChanges` receive already-typed `PossibleNodeChange` values and do not need to re-verify them at the call site.
+`isPossibleNodeChange(value)` is a type guard for use at storage, deserialization, and serialization boundaries where untyped `unknown` data is converted into the nominal `PossibleNodeChange` type. Ordinary callers of `graph.possibleMaybeChanges` receive already-typed `PossibleNodeChange` values and do not need to re-verify them at the call site.
 
 ```js
 /**

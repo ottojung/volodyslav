@@ -51,7 +51,7 @@ REQ-JM-06: `storage.delete` MUST remove or purge journal information associated 
 
 REQ-JM-07: `storage.delete` MUST NOT automatically emit a user-visible `delete` journal entry (with `action: "delete"`). Migration deletion is schema-level housekeeping, not a graph change that journal consumers need to observe.
 
-Rationale: Migration deletions happen during version upgrades. The nodes being deleted belong to the old schema version and would not appear in `possibleMaybeChanges` queries scoped to the new schema version anyway. Emitting `delete` entries would create noise for journal consumers that operate across schema boundaries, which is not a supported use case for the initial journal design.
+Rationale: Migration deletions happen during version upgrades. The nodes being deleted belong to the old schema version and would not appear in `graph.possibleMaybeChanges` queries scoped to the new schema version anyway. Emitting `delete` entries would create noise for journal consumers that operate across schema boundaries, which is not a supported use case for the initial journal design.
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document specifies how journal storage may be compacted — which entries may be removed, what invariants must be preserved, and how compaction interacts with synchronization and the `possibleMaybeChanges` API.
+This document specifies how journal storage may be compacted — which entries may be removed, what invariants must be preserved, and how compaction interacts with synchronization and the `graph.possibleMaybeChanges` API.
 
 Compaction is a maintenance operation. It reduces journal storage size by removing entries that are no longer needed for correctness while preserving the safety of journal queries.
 
@@ -44,7 +44,7 @@ REQ-JC-06: Compaction MAY remove older journal entries when a newer entry exists
 
 REQ-JC-07: Compaction MUST NOT remove an `add` entry if no later `add` or `edit` entry exists for the same node key, UNLESS the node is no longer materialized (in which case REQ-JC-08 applies).
 
-Rationale: `possibleMaybeChanges` consumers scanning forward must see at least one entry per materialized node whose position is at or after a supplied `since` token. If compaction removes all entries for a materialized node, a consumer starting from a `since` token before those entries might miss the node entirely.
+Rationale: `graph.possibleMaybeChanges` consumers scanning forward must see at least one entry per materialized node whose position is at or after a supplied `since` token. If compaction removes all entries for a materialized node, a consumer starting from a `since` token before those entries might miss the node entirely.
 
 ### Entries for deleted nodes
 
@@ -58,20 +58,20 @@ REQ-JC-10: If a node's journal entry has been compacted away before sync, sync u
 
 ---
 
-## Compaction and `possibleMaybeChanges` safety
+## Compaction and `graph.possibleMaybeChanges` safety
 
-Compaction must not break `possibleMaybeChanges`.
+Compaction must not break `graph.possibleMaybeChanges`.
 
-REQ-JC-11: Compaction MAY delete only entries whose deletion preserves the intended behavior of future `possibleMaybeChanges` calls. Concretely: if deleting an entry would make a stored `PossibleNodeChange` token unsafe (because a consumer holding that token could no longer correctly resume from the next surviving entry), that entry MUST NOT be compacted.
+REQ-JC-11: Compaction MAY delete only entries whose deletion preserves the intended behavior of future `graph.possibleMaybeChanges` calls. Concretely: if deleting an entry would make a stored `PossibleNodeChange` token unsafe (because a consumer holding that token could no longer correctly resume from the next surviving entry), that entry MUST NOT be compacted.
 
 REQ-JC-12: Compaction is responsible for ensuring that any `PossibleNodeChange` token a consumer might store remains usable after compaction. Strategies include:
 
 1. Track the journal index of every `PossibleNodeChange` token that consumers may store. During compaction, delete only entries at indices definitively earlier than all known stored tokens.
 2. If enumerating all stored tokens is infeasible, apply a retention floor: never delete entries newer than a safety threshold that exceeds the maximum plausible token age.
 
-REQ-JC-13: `possibleMaybeChanges` MUST NOT reconstruct or re-yield entries whose payloads have been compacted away. The query operation skips absent entries and yields only surviving entries. Correctness of this skipping depends on compaction having preserved entries that stored tokens reference.
+REQ-JC-13: `graph.possibleMaybeChanges` MUST NOT reconstruct or re-yield entries whose payloads have been compacted away. The query operation skips absent entries and yields only surviving entries. Correctness of this skipping depends on compaction having preserved entries that stored tokens reference.
 
-REQ-JC-14: The `baselinePossibleNodeChange()` sentinel is inherently safe from compaction because it does not reference any specific journal index. It conceptually represents "before any entry." Compaction cannot invalidate it.
+REQ-JC-14: The `graph.baselinePossibleNodeChange()` sentinel is inherently safe from compaction because it does not reference any specific journal index. It conceptually represents "before any entry." Compaction cannot invalidate it.
 
 ---
 

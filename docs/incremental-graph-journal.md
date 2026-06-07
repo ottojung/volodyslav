@@ -7,7 +7,7 @@ The IncrementalGraph journal records graph changes so that later computations, s
 The journal is primarily exposed through a change-query operation:
 
 ```js
-possibleMaybeChanges({
+graph.possibleMaybeChanges({
     since,
     to,
 }): AsyncIterator<PossibleNodeChange>
@@ -15,7 +15,7 @@ possibleMaybeChanges({
 
 A caller provides a previous `PossibleNodeChange` as a cursor-like reference point and a `NodeFilter` describing the portion of the graph it cares about. The result is a stream of later possible changes relevant to that filter.
 
-The function takes its arguments as a single object parameter with `since` and `to` fields.
+The method takes its arguments as a single object parameter with `since` and `to` fields.
 
 This overview describes the role of the journal in the system. Detailed behavior is specified by the dedicated journal specification documents.
 
@@ -25,7 +25,7 @@ The journal is a graph-level change record. It lets code ask questions of the fo
 
 > Since this previously observed change, which matching nodes may have changed?
 
-The answer is expressed as `PossibleNodeChange` values. A `PossibleNodeChange` is the public unit of journal observation. It can be inspected for its public change information, stored by consumers, and passed back to future calls to `possibleMaybeChanges`.
+The answer is expressed as `PossibleNodeChange` values. A `PossibleNodeChange` is the public unit of journal observation. It can be inspected for its public change information, stored by consumers, and passed back to future calls to `graph.possibleMaybeChanges`.
 
 The journal is designed for incremental graph maintenance. A computation can remember the most recent relevant `PossibleNodeChange`, then later ask for possible changes after that point instead of rediscovering everything from scratch.
 
@@ -40,12 +40,12 @@ docs/specs/incremental-graph-journal-api.md
 The main query interface is:
 
 ```js
-possibleMaybeChanges({ since, to }): AsyncIterator<PossibleNodeChange>
+graph.possibleMaybeChanges({ since, to }): AsyncIterator<PossibleNodeChange>
 ```
 
 The operation starts from the supplied `since` change and returns later possible changes matching the `to` filter.
 
-A typical consumer stores a `PossibleNodeChange` together with its computed result. On a later recomputation, it passes `{ since: storedToken, to: itsFilter }` to `possibleMaybeChanges` and updates only the affected derived state.
+A typical consumer stores a `PossibleNodeChange` together with its computed result. On a later recomputation, it passes `{ since: storedToken, to: itsFilter }` to `graph.possibleMaybeChanges` and updates only the affected derived state.
 
 The detailed scan order, initial value behavior, cursor advancement, filtering behavior, and result semantics are specified in:
 
@@ -94,7 +94,7 @@ Computors may use the journal to maintain derived values incrementally.
 A journal-using computor typically has three responsibilities:
 
 1. remember the last relevant `PossibleNodeChange`;
-2. call `possibleMaybeChanges({ since: storedToken, to: itsFilter })` with an appropriate `NodeFilter`;
+2. call `graph.possibleMaybeChanges({ since: storedToken, to: itsFilter })` with an appropriate `NodeFilter`;
 3. update its derived value based on the returned possible changes.
 
 The journal is especially useful for computors that depend on an open-ended family of nodes, such as all nodes with a given head or all nodes matching a pattern.

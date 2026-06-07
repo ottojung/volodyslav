@@ -53,7 +53,7 @@ REQ-JS-05: The resolution algorithm MUST be deterministic and commutative: two h
 
 ## Conservative journal append
 
-REQ-JS-06: If synchronization changes graph state in a way that could affect journal consumers, sync MUST make that change visible through later `possibleMaybeChanges` results. This is achieved by appending additional journal entries during sync.
+REQ-JS-06: If synchronization changes graph state in a way that could affect journal consumers, sync MUST make that change visible through later `graph.possibleMaybeChanges` results. This is achieved by appending additional journal entries during sync.
 
 Specifically:
 
@@ -155,13 +155,13 @@ REQ-JS-19: After all hosts have completed synchronization and no further graph m
 
 1. **Graph state converges**: For every node key, all hosts agree on the node's value (or absence).
 2. **Physical journal converges**: Per REQ-JS-15, all hosts agree on each index's state.
-3. **Journal-observable behavior converges**: Any host calling `possibleMaybeChanges` after convergence sees a consistent set of possible changes representing the converged graph state.
+3. **Journal-observable behavior converges**: Any host calling `graph.possibleMaybeChanges` after convergence sees a consistent set of possible changes representing the converged graph state.
 
 ---
 
 ## Host identity and journal consumers
 
-REQ-JS-20: Public journal consumers (users of `possibleMaybeChanges`) MUST NOT be required to understand or inspect host identities (`Hostname` values) or raw journal indices (`JournalIndex` values). Host identity is a journal-internal concern used only during synchronization.
+REQ-JS-20: Public journal consumers (users of `graph.possibleMaybeChanges`) MUST NOT be required to understand or inspect host identities (`Hostname` values) or raw journal indices (`JournalIndex` values). Host identity is a journal-internal concern used only during synchronization.
 
 The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalIndex` from its public fields. Consumers see only `nodeName`, `bindings`, `action`, and `time`.
 
