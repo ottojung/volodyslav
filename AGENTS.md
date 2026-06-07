@@ -499,19 +499,21 @@ function isPathLike(object) {
 
 # Testing and Validation
 
-## Running Tests
+## How to run tests
+
 - **Specific tests**: `npx jest --testNamePattern="test name"`
 - **Full test suite**: `npm test`
 - **Build verification**: `npm run build`
 
 ## Test Conventions
+
 - Test files are located in `backend/tests/` and `frontend/tests/`
 - Use descriptive test names
 - Mock external dependencies using the patterns established in `backend/tests/stubs.js`
 
 # Complete Workflow for Independent Agents
 
-Must follow this workflow when making changes:
+Must follow this workflow when making changes to the source code:
 
 1. **Setup**: `npm install` (install all dependencies)
 2. **Understand**: Read relevant code and tests to understand the context
