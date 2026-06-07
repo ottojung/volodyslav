@@ -910,7 +910,7 @@ describe('generators/database', () => {
                     await heldSectionReleased;
 
                     // Release as the transaction's finally block does.
-                    db._releaseAllocations(new Set(['testKey']));
+                    db.releaseIdentifierReservations(new Set(['testKey']));
                     expect(db._pendingAllocations.size).toBe(0);
                 });
 

@@ -65,7 +65,7 @@ function makeMockRootDatabase() {
             pendingAllocationIdentifiers.add(candidateStr);
             return candidate;
         },
-        _releaseAllocations(_ownedKeys) {},
+        releaseIdentifierReservations(_ownedKeys) {},
     };
 }
 

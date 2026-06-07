@@ -438,7 +438,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 // After a successful commit the identifiers are in the base
                 // lookup; after a failure they must be released so the map
                 // does not leak.
-                rootDatabase._releaseAllocations(txLookup.ownedKeys);
+                rootDatabase.releaseIdentifierReservations(txLookup.ownedKeys);
             }
         },
         ensureMaterialized,

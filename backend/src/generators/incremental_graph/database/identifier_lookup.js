@@ -67,7 +67,7 @@ function isIdentifierLookupError(object) {
  * @property {Map<string, NodeIdentifier>} keyToId - New allocations in this transaction only.
  * @property {Map<string, NodeKeyString>} idToKey  - New allocations in this transaction only (inverse).
  * @property {IdentifierLookup} base               - Read-only reference to the committed lookup.
- * @property {Set<string>} ownedKeys              - Key strings allocated by this transaction (tracked for _releaseAllocations cleanup).
+ * @property {Set<string>} ownedKeys              - Key strings allocated by this transaction (tracked for releaseIdentifierReservations cleanup).
  */
 
 /**
@@ -137,13 +137,21 @@ function serializeIdentifierLookupFromMaps(lookup) {
 
 /**
  * Return the lookup in its persisted form, sorted by identifier string.
- * Returns the cached `serialized` array — all mutations that add entries
- * (makeIdentifierLookup, commitTransactionLookup, mergeIdentifierLookups)
- * keep the cache up to date, so no rebuild is needed.
+ *
+ * Returns the cached `serialized` array when the cache is consistent with
+ * the Maps.  Batch mutations (commitTransactionLookup, mergeIdentifierLookups)
+ * update the cache themselves.  Individual mutations (setIdentifierMapping,
+ * deleteIdentifierMappingForNodeKey) mutate only the Maps; the next call
+ * here detects the size mismatch and rebuilds.  This keeps individual
+ * mutations O(1) and rebuilds O(n log n) only when actually stale.
+ *
  * @param {IdentifierLookup} lookup
  * @returns {IdentifiersKeysMap}
  */
 function serializeIdentifierLookup(lookup) {
+    if (lookup.serialized.length !== lookup.idToKey.size) {
+        lookup.serialized = serializeIdentifierLookupFromMaps(lookup);
+    }
     return lookup.serialized;
 }
 

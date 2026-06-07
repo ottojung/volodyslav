@@ -54,7 +54,7 @@ function makeRootDatabase() {
             pendingAllocations.set(keyString, candidateStr);
             return candidate;
         },
-        _releaseAllocations(ownedKeys) {
+        releaseIdentifierReservations(ownedKeys) {
             for (const keyString of ownedKeys) {
                 pendingAllocations.delete(keyString);
             }

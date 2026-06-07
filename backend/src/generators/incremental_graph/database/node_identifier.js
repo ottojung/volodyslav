@@ -99,6 +99,7 @@ function compareNodeIdentifier(a, b) {
 }
 
 module.exports = {
+    NODE_IDENTIFIER_PATTERN,
     compareNodeIdentifier,
     databaseKeyToNodeIdentifier,
     makeNodeIdentifier,

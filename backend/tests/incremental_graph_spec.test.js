@@ -125,7 +125,7 @@ class InMemoryDatabase {
         return candidate;
     }
 
-    _releaseAllocations(ownedKeys) {
+    releaseIdentifierReservations(ownedKeys) {
         for (const keyString of ownedKeys) {
             this._pendingAllocations.delete(keyString);
         }

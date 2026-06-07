@@ -571,7 +571,7 @@ class RootDatabaseClass {
       * @param {Set<string>} ownedKeys - Key strings owned by the transaction.
       * @returns {void}
       */
-    _releaseAllocations(ownedKeys) {
+    releaseIdentifierReservations(ownedKeys) {
         for (const keyString of ownedKeys) {
             const idStr = this._pendingAllocations.get(keyString);
             this._pendingAllocations.delete(keyString);
