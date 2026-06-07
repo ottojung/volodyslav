@@ -69,7 +69,7 @@ Journal storage may contain gaps because of compaction, reconciliation, failed t
 
 REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When scanning forward from `since`, missing indices MUST NOT cause errors or aborted iteration. The iterator silently advances past absent entries and yields the next surviving entry, if any. Compacted-away entries MUST NOT be reconstructed or re-yielded. If all matching entries strictly after `since` are absent, the iterator returns nothing.
 
-REQ-JA-05: The safety of stored `since` tokens is carried by compaction (see `incremental-graph-journal-compaction.md` REQ-JC-11, REQ-JC-12). Compaction must not delete entries whose absence would make any stored token unsafe.
+REQ-JA-05: The safety of stored `since` tokens is carried by compaction (see `incremental-graph-journal-compaction.md` REQ-JC-13, REQ-JC-14). Compaction must not delete entries whose absence would make any stored token unsafe.
 
 ---
 
@@ -80,7 +80,7 @@ REQ-JA-06: The method MAY yield a `PossibleNodeChange` that describes a change w
 - Synchronization or compaction may cause a change to be reported more than once for the same node.
 - A change may be reported even when the consumer's specific view of the node's value did not change.
 
-This is not a bug. It is a design property that keeps the journal API tractable for incremental maintenance.
+This is intentional behavior. It is a design property that keeps the journal API tractable for incremental maintenance.
 
 ---
 
@@ -102,11 +102,11 @@ REQ-JA-07: The system MUST expose a standalone function to obtain a baseline sen
 function baselinePossibleNodeChange()
 ```
 
-The returned value is a universal sentinel. It is NOT derived from a specific journal entry. Its only valid use is as a `since` argument. Its public fields (`nodeName`, `bindings`, `action`, `time`) carry no meaningful value and MUST NOT be inspected (see REQ-JT-10a). Its effect is interpreted by the graph instance when passed to `graph.possibleMaybeChanges`: the graph treats it as a position before any committed journal entry and yields all currently available surviving journal-backed possible changes.
+The returned value is a `BaselinePossibleNodeChange` (see `incremental-graph-journal-types.md`). It is NOT derived from a specific journal entry. Despite its type, the baseline sentinel does not represent a possible node change. Its only valid use is as a `since` argument. When passed to `graph.possibleMaybeChanges`, the graph treats it as a position before any committed journal entry and yields all currently available surviving journal-backed possible changes.
 
 REQ-JA-08: `baselinePossibleNodeChange()` MUST be callable at any time. It MUST NOT require a prior call to `graph.possibleMaybeChanges`.
 
-REQ-JA-09: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` MUST return all currently available surviving journal-backed `PossibleNodeChange` values matching `to`. This produces every surviving journal entry whose node key matches the filter. It does not, by itself, enumerate current graph state unless compaction guarantees that at least one surviving journal entry exists for every materialized matching node (see REQ-JC-19).
+REQ-JA-09: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` MUST return all currently available surviving journal-backed `PossibleNodeChange` values matching `to`. This produces every surviving journal entry whose node key matches the filter. It does not, by itself, enumerate current graph state unless compaction guarantees that at least one surviving journal entry exists for every materialized matching node (see REQ-JC-08).
 
 ### Convention: remember last yielded value
 

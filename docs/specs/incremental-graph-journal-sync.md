@@ -147,7 +147,7 @@ REQ-JS-17: Sync MUST apply remote journal entries in ascending `JournalIndex` or
 
 ### Remote compaction
 
-REQ-JS-18: During sync, a host MAY transmit the set of `JournalIndex` values it has compacted away. The receiving host MAY then compact the corresponding entries from its own journal storage, provided doing so satisfies REQ-JC-11 (stored token safety).
+REQ-JS-18: During sync, a host MAY transmit the set of `JournalIndex` values it has compacted away. The receiving host MAY then compact the corresponding entries from its own journal storage, provided doing so satisfies REQ-JC-13 (stored token safety).
 
 ## Eventual consistency (logical)
 

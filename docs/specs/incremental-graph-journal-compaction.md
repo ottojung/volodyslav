@@ -42,27 +42,27 @@ This specification does not mandate a specific quota policy. Any policy is valid
 
 REQ-JC-06: Compaction MAY remove older journal entries when a newer entry exists for the same node key. For example, if a node has entries at indices 10 (`add`), 15 (`edit`), and 20 (`edit`), compaction MAY remove entries 10 and 15, keeping only entry 20. The key constraint is:
 
-REQ-JC-07: Compaction MUST NOT remove an `add` entry if no later `add` or `edit` entry exists for the same node key, UNLESS the node is no longer materialized (in which case REQ-JC-08 applies).
+REQ-JC-07: Compaction MUST NOT remove an `add` entry if no later `add` or `edit` entry exists for the same node key, UNLESS the node is no longer materialized (in which case REQ-JC-10 applies).
 
 Rationale: `graph.possibleMaybeChanges` consumers scanning forward must see at least one entry per materialized node whose position is at or after a supplied `since` token. If compaction removes all entries for a materialized node, a consumer starting from a `since` token before those entries might miss the node entirely.
 
 ### Materialized-node preservation
 
-REQ-JC-19: For every key of a node that is currently materialized in the graph, compaction MUST preserve at least one surviving journal entry with `action: "add"` or `action: "edit"` for that key. This invariant ensures that a baseline scan (passing `baselinePossibleNodeChange()` as `since`) always yields at least one entry for every materialized matching node.
+REQ-JC-08: For every key of a node that is currently materialized in the graph, compaction MUST preserve at least one surviving journal entry with `action: "add"` or `action: "edit"` for that key. This invariant ensures that a baseline scan (passing `baselinePossibleNodeChange()` as `since`) always yields at least one entry for every materialized matching node.
 
-REQ-JC-20: If a materialized node has only `delete` entries surviving after removal of redundant entries (e.g., because all its `add`/`edit` entries were compacted away and only a `delete` remains), compaction MUST treat the node as having no surviving representation and MUST NOT remove the last `add` or `edit` entry that precedes the `delete`.
+REQ-JC-09: Compaction MUST NOT compact a materialized node key into a state where the only surviving journal entries for that key are `delete` entries. If the key is materialized, at least one surviving `add` or `edit` entry for that key must remain.
 
-The combined effect of REQ-JC-07 and REQ-JC-19 is: compaction may thin the journal by keeping only the most recent add/edit entry per materialized node key, but it must keep at least that one entry.
+The combined effect of REQ-JC-07 and REQ-JC-08 is: compaction may thin the journal by keeping only the most recent add/edit entry per materialized node key, but it must keep at least that one entry.
 
 ### Entries for deleted nodes
 
-REQ-JC-08: Compaction MAY remove all journal entries for a node that has been deleted (whose `NodeIdentifier` no longer exists in the graph state) once the deletion is sufficiently old or once all hosts in the sync mesh are known to have processed the deletion. The exact policy for determining "sufficiently old" is implementation-defined.
+REQ-JC-10: Compaction MAY remove all journal entries for a node that has been deleted (whose `NodeIdentifier` no longer exists in the graph state) once the deletion is sufficiently old or once all hosts in the sync mesh are known to have processed the deletion. The exact policy for determining "sufficiently old" is implementation-defined.
 
 ### Interaction with synchronization
 
-REQ-JC-09: Compaction MUST NOT remove journal entries that are still needed for pending or in-progress synchronization. If sync needs a journal entry to resolve a conflict (e.g., to compare timestamps for a node key), that entry must not be removed before sync completes.
+REQ-JC-11: Compaction MUST NOT remove journal entries that are still needed for pending or in-progress synchronization. If sync needs a journal entry to resolve a conflict (e.g., to compare timestamps for a node key), that entry must not be removed before sync completes.
 
-REQ-JC-10: If a node's journal entry has been compacted away before sync, sync uses the node's `timestamps` sublevel record for conflict comparison (see REQ-JS-21). This fallback means compaction of journal entries is safe for sync correctness as long as the `timestamps` sublevel records are preserved.
+REQ-JC-12: If a node's journal entry has been compacted away before sync, sync uses the node's `timestamps` sublevel record for conflict comparison (see REQ-JS-21). This fallback means compaction of journal entries is safe for sync correctness as long as the `timestamps` sublevel records are preserved.
 
 ---
 
@@ -70,28 +70,28 @@ REQ-JC-10: If a node's journal entry has been compacted away before sync, sync u
 
 Compaction must not break `graph.possibleMaybeChanges`.
 
-REQ-JC-11: Compaction MAY delete only entries whose deletion preserves the intended behavior of future `graph.possibleMaybeChanges` calls. Concretely: if deleting an entry would make a stored `PossibleNodeChange` token unsafe (because a consumer holding that token could no longer correctly resume from the next surviving entry), that entry MUST NOT be compacted.
+REQ-JC-13: Compaction MAY delete only entries whose deletion preserves the intended behavior of future `graph.possibleMaybeChanges` calls. Concretely: if deleting an entry would make a stored `PossibleNodeChange` token unsafe (because a consumer holding that token could no longer correctly resume from the next surviving entry), that entry MUST NOT be compacted.
 
-REQ-JC-12: Compaction is responsible for ensuring that any `PossibleNodeChange` token a consumer might store remains usable after compaction. Strategies include:
+REQ-JC-14: Compaction is responsible for ensuring that any `PossibleNodeChange` token a consumer might store remains usable after compaction. Strategies include:
 
 1. Track the journal index of every `PossibleNodeChange` token that consumers may store. During compaction, delete only entries at indices definitively earlier than all known stored tokens.
 2. If enumerating all stored tokens is infeasible, apply a retention floor: never delete entries newer than a safety threshold that exceeds the maximum plausible token age.
 
-REQ-JC-13: `graph.possibleMaybeChanges` MUST NOT reconstruct or re-yield entries whose payloads have been compacted away. The query operation skips absent entries and yields only surviving entries. Correctness of this skipping depends on compaction having preserved entries that stored tokens reference.
+REQ-JC-15: `graph.possibleMaybeChanges` MUST NOT reconstruct or re-yield entries whose payloads have been compacted away. The query operation skips absent entries and yields only surviving entries. Correctness of this skipping depends on compaction having preserved entries that stored tokens reference.
 
-REQ-JC-14: The `baselinePossibleNodeChange()` sentinel is inherently safe from compaction because it does not reference any specific journal index. It conceptually represents "before any entry." Compaction cannot invalidate it.
+REQ-JC-16: The `baselinePossibleNodeChange()` sentinel is inherently safe from compaction because it does not reference any specific journal index. It conceptually represents "before any entry." Compaction cannot invalidate it.
 
 ---
 
 ## What compaction MUST NOT do
 
-REQ-JC-15: Compaction MUST NOT remove the `last_journal_index` metadata from `rendered/r/global/last_journal_index`.
+REQ-JC-17: Compaction MUST NOT remove the `last_journal_index` metadata from `rendered/r/global/last_journal_index`.
 
-REQ-JC-16: Compaction MUST NOT rewrite or reinterpret the `time` field of surviving journal entries.
+REQ-JC-18: Compaction MUST NOT rewrite or reinterpret the `time` field of surviving journal entries.
 
-REQ-JC-17: Compaction MUST NOT change the `action` field of surviving journal entries.
+REQ-JC-19: Compaction MUST NOT change the `action` field of surviving journal entries.
 
-REQ-JC-18: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
+REQ-JC-20: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
 
 ---
 
@@ -105,4 +105,4 @@ A suggested compaction approach:
 4. For deleted nodes, remove all entries if the deletion is older than the retention window.
 5. Update no metadata except the journal storage itself.
 
-This strategy satisfies the requirements only when combined with the stored-token safety checks from REQ-JC-11 and REQ-JC-12. Without those checks, removing a latest-per-node-key entry that a stored token references could make that token unsafe.
+This strategy satisfies the requirements only when combined with the stored-token safety checks from REQ-JC-13 and REQ-JC-14. Without those checks, removing a latest-per-node-key entry that a stored token references could make that token unsafe.

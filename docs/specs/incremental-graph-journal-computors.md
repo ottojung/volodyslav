@@ -41,7 +41,7 @@ await storeToken("my-computor-state", lastChange);
 
 The `baselinePossibleNodeChange()` call provides a sentinel that causes `graph.possibleMaybeChanges` to return all surviving matching journal entries. The computor processes each change and remembers the last one.
 
-**Important**: This initialization walks surviving journal entries, not the full set of currently materialized nodes. Its correctness depends on compaction preserving at least one surviving add/edit entry for every materialized matching node (see REQ-JC-19). If a true full enumeration of current graph state is required — for example, when a computor's derived state depends on every currently materialized node and cannot trust the journal to contain an entry for each — the computor SHOULD enumerate graph state directly (e.g., via a graph enumeration API) rather than relying solely on `possibleMaybeChanges` with the baseline sentinel.
+**Important**: This initialization walks surviving journal entries, not the full set of currently materialized nodes. Its correctness depends on compaction preserving at least one surviving add/edit entry for every materialized matching node (see REQ-JC-08). If a true full enumeration of current graph state is required — for example, when a computor's derived state depends on every currently materialized node and cannot trust the journal to contain an entry for each — the computor SHOULD enumerate graph state directly (e.g., via a graph enumeration API) rather than relying solely on `possibleMaybeChanges` with the baseline sentinel.
 
 ### Step 2: Incremental update
 
@@ -167,7 +167,7 @@ A `PossibleNodeChange` token's underlying journal entry may be absent on the rec
 
 **Absent because compacted or deleted under the journal rules:**
 
-REQ-JC-COMP-10: If the entry is absent because it was compacted or deleted according to the rules of this specification (see `incremental-graph-journal-compaction.md` and `incremental-graph-journal-sync.md`), the absence is safe. `graph.possibleMaybeChanges` skips the absent index and resumes from the next surviving entry. The safety of this skip is guaranteed by the compaction rules (REQ-JC-11), which ensure that no stored token references an entry that has been compacted away unless the absence is harmless for the consumer.
+REQ-JC-COMP-10: If the entry is absent because it was compacted or deleted according to the rules of this specification (see `incremental-graph-journal-compaction.md` and `incremental-graph-journal-sync.md`), the absence is safe. `graph.possibleMaybeChanges` skips the absent index and resumes from the next surviving entry. The safety of this skip is guaranteed by the compaction rules (REQ-JC-13), which ensure that no stored token references an entry that has been compacted away unless the absence is harmless for the consumer.
 
 **Absent because the host is not synchronized:**
 
@@ -209,7 +209,7 @@ The journal is intended for computors that maintain derived indexes, summaries, 
 Tests for journal-using computors should verify:
 
 1. That a journal-backed initialization (using `baselinePossibleNodeChange`) correctly initializes derived state from surviving journal entries.
-2. That an incremental update (using a stored token) correctly detects only changes since the last run.
+2. That an incremental update (using a stored token) detects/reprocesses all relevant possible changes since the last run, while tolerating conservative or duplicate results.
 3. That redundant/conservative journal results do not corrupt derived state (test by simulating duplicate entries).
 4. That stored tokens survive process restart (test by persisting a token, restarting, and re-querying).
 5. That the computor correctly handles `delete` entries for nodes that disappear due to sync resolution.
