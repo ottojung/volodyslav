@@ -14,7 +14,7 @@ This document uses normative language for requirements on journal-using computor
 
 A journal-using computor follows this lifecycle:
 
-1. **Full computation**: On first run (or when no prior token is available), compute derived state for all relevant nodes. Store the last `PossibleNodeChange` seen during the scan.
+1. **Journal-backed initialization**: On first run (or when no prior token is available), initialize derived state from surviving journal entries. Store the last `PossibleNodeChange` seen during the scan.
 2. **Incremental update**: On subsequent runs, call `graph.possibleMaybeChanges` with the stored token and an appropriate `NodeFilter`. Update only the affected portion of derived state.
 3. **Store token**: After processing, store the last `PossibleNodeChange` from the scan for use as the next `since` value.
 
@@ -22,10 +22,12 @@ A journal-using computor follows this lifecycle:
 
 ## Pattern in detail
 
-### Step 1: Full computation
+### Step 1: Journal-backed initialization
+
+A computor initializes its derived state from the journal by starting from the baseline sentinel and processing every surviving matching journal entry:
 
 ```js
-// First run or baseline recomputation
+// Journal-backed initialization
 let lastChange = baselinePossibleNodeChange();
 for await (const change of graph.possibleMaybeChanges({
     since: lastChange,
@@ -37,7 +39,9 @@ for await (const change of graph.possibleMaybeChanges({
 await storeToken("my-computor-state", lastChange);
 ```
 
-The `baselinePossibleNodeChange()` call provides a sentinel that causes `graph.possibleMaybeChanges` to return all available matching changes. The computor processes each change and remembers the last one.
+The `baselinePossibleNodeChange()` call provides a sentinel that causes `graph.possibleMaybeChanges` to return all surviving matching journal entries. The computor processes each change and remembers the last one.
+
+**Important**: This initialization walks surviving journal entries, not the full set of currently materialized nodes. Its correctness depends on compaction preserving at least one surviving add/edit entry for every materialized matching node (see REQ-JC-19). If a true full enumeration of current graph state is required — for example, when a computor's derived state depends on every currently materialized node and cannot trust the journal to contain an entry for each — the computor SHOULD enumerate graph state directly (e.g., via a graph enumeration API) rather than relying solely on `possibleMaybeChanges` with the baseline sentinel.
 
 ### Step 2: Incremental update
 
@@ -137,8 +141,7 @@ The journal is most valuable when a computor cannot statically enumerate all its
 In these cases, the computor:
 
 1. Uses a `NodeFilter` that covers the family (e.g., `makeGroundFilter(head, [makeWildcard()])`).
-2. On first run, processes all matching nodes (via `baselinePossibleNodeChange` or by pulling the current state).
-3. On subsequent runs, uses `graph.possibleMaybeChanges` to discover only the nodes that may have changed.
+2. On initialization, processes all matching nodes (via the journal-backed initialization pattern above, or by pulling current graph state if the journal may have gaps that matter for correctness).
 
 ---
 
@@ -205,7 +208,7 @@ The journal is intended for computors that maintain derived indexes, summaries, 
 
 Tests for journal-using computors should verify:
 
-1. That a full computation (using `baselinePossibleNodeChange`) correctly initializes derived state.
+1. That a journal-backed initialization (using `baselinePossibleNodeChange`) correctly initializes derived state from surviving journal entries.
 2. That an incremental update (using a stored token) correctly detects only changes since the last run.
 3. That redundant/conservative journal results do not corrupt derived state (test by simulating duplicate entries).
 4. That stored tokens survive process restart (test by persisting a token, restarting, and re-querying).

@@ -102,18 +102,18 @@ REQ-JA-07: The system MUST expose a standalone function to obtain a baseline sen
 function baselinePossibleNodeChange()
 ```
 
-The returned value is a universal sentinel. It is NOT derived from a specific journal entry. Its only valid use is as a `since` argument. Its effect is interpreted by the graph instance when passed to `graph.possibleMaybeChanges`: the graph treats it as a position before any committed journal entry and yields all currently available matching possible changes.
+The returned value is a universal sentinel. It is NOT derived from a specific journal entry. Its only valid use is as a `since` argument. Its public fields (`nodeName`, `bindings`, `action`, `time`) carry no meaningful value and MUST NOT be inspected (see REQ-JT-10a). Its effect is interpreted by the graph instance when passed to `graph.possibleMaybeChanges`: the graph treats it as a position before any committed journal entry and yields all currently available surviving journal-backed possible changes.
 
 REQ-JA-08: `baselinePossibleNodeChange()` MUST be callable at any time. It MUST NOT require a prior call to `graph.possibleMaybeChanges`.
 
-REQ-JA-09: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` MUST return all currently available `PossibleNodeChange` values matching `to`.
+REQ-JA-09: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` MUST return all currently available surviving journal-backed `PossibleNodeChange` values matching `to`. This produces every surviving journal entry whose node key matches the filter. It does not, by itself, enumerate current graph state unless compaction guarantees that at least one surviving journal entry exists for every materialized matching node (see REQ-JC-19).
 
 ### Convention: remember last yielded value
 
 An alternative to `baselinePossibleNodeChange` is to remember the last `PossibleNodeChange` yielded in a previous full scan as the starting point for the next incremental call. This is the recommended pattern:
 
 ```js
-// First full computation
+// Journal-backed initialization
 let lastChange = baselinePossibleNodeChange();
 for await (const change of graph.possibleMaybeChanges({ since: lastChange, to: myFilter })) {
     // ... process change ...

@@ -46,6 +46,14 @@ REQ-JC-07: Compaction MUST NOT remove an `add` entry if no later `add` or `edit`
 
 Rationale: `graph.possibleMaybeChanges` consumers scanning forward must see at least one entry per materialized node whose position is at or after a supplied `since` token. If compaction removes all entries for a materialized node, a consumer starting from a `since` token before those entries might miss the node entirely.
 
+### Materialized-node preservation
+
+REQ-JC-19: For every key of a node that is currently materialized in the graph, compaction MUST preserve at least one surviving journal entry with `action: "add"` or `action: "edit"` for that key. This invariant ensures that a baseline scan (passing `baselinePossibleNodeChange()` as `since`) always yields at least one entry for every materialized matching node.
+
+REQ-JC-20: If a materialized node has only `delete` entries surviving after removal of redundant entries (e.g., because all its `add`/`edit` entries were compacted away and only a `delete` remains), compaction MUST treat the node as having no surviving representation and MUST NOT remove the last `add` or `edit` entry that precedes the `delete`.
+
+The combined effect of REQ-JC-07 and REQ-JC-19 is: compaction may thin the journal by keeping only the most recent add/edit entry per materialized node key, but it must keep at least that one entry.
+
 ### Entries for deleted nodes
 
 REQ-JC-08: Compaction MAY remove all journal entries for a node that has been deleted (whose `NodeIdentifier` no longer exists in the graph state) once the deletion is sufficiently old or once all hosts in the sync mesh are known to have processed the deletion. The exact policy for determining "sufficiently old" is implementation-defined.

@@ -202,13 +202,14 @@ REQ-JT-09: After synchronization, `last_journal_index` MUST be at least the grea
 
 ### Public view
 
-From the perspective of a public consumer, a `PossibleNodeChange` carries:
+`PossibleNodeChange` has two distinct sources, and the meaning of its public fields depends on the source:
 
-- The identity of a node that may have changed (expressed as a node key: `NodeName` and bindings).
-- The kind of possible change (`JournalAction`).
-- The time when the change was recorded (`UnixTimestamp`).
+- **Values yielded by `graph.possibleMaybeChanges`**: These are derived from committed journal entries. Public consumers may inspect `nodeName`, `bindings`, `action`, and `time` to learn about the recorded change.
+- **The sentinel returned by `baselinePossibleNodeChange()`**: This is a universal sentinel representing "before any journal entry." It is NOT derived from a committed journal entry. Its public fields (`nodeName`, `bindings`, `action`, `time`) carry no meaningful value and MUST NOT be inspected. The sentinel's only valid use is as a `since` argument to `graph.possibleMaybeChanges`.
 
-Public consumers may inspect these fields. Public consumers may pass a `PossibleNodeChange` value back to `graph.possibleMaybeChanges`. Public consumers MUST NOT construct `PossibleNodeChange` values directly.
+Regardless of source, public consumers may pass any `PossibleNodeChange` value back to `graph.possibleMaybeChanges`. Public consumers MUST NOT construct `PossibleNodeChange` values directly.
+
+REQ-JT-10a: Public consumers MUST NOT inspect `nodeName`, `bindings`, `action`, or `time` on the baseline sentinel returned by `baselinePossibleNodeChange()`. These fields are meaningful only on values yielded by `graph.possibleMaybeChanges`.
 
 ### Nominal boundary
 
@@ -234,29 +235,48 @@ Public consumers may inspect these fields. Public consumers may pass a `Possible
 ```js
 /**
  * The properties that this type carries are:
- * - The value came from the journal system (returned by graph.possibleMaybeChanges).
- * - It represents a possible change to a graph node.
- * - The public fields (nodeKey, action, time) accurately describe the change.
+ *
+ * For values yielded by `graph.possibleMaybeChanges`:
+ * - The value is derived from a committed journal entry.
+ * - `nodeName`, `bindings`, `action`, and `time` accurately describe the
+ *   recorded change.
+ *
+ * For the sentinel returned by `baselinePossibleNodeChange()`:
+ * - The value represents "before any journal entry."
+ * - `nodeName`, `bindings`, `action`, and `time` carry no meaningful value
+ *   and MUST NOT be inspected.
+ * - The sentinel's only valid use is as a `since` argument to
+ *   `graph.possibleMaybeChanges`.
+ *
+ * For all values of this type:
+ * - The value may be stored and passed as `since` to
+ *   `graph.possibleMaybeChanges`.
  *
  * The proof of those properties is guaranteed by:
  * - This type can only be introduced through these operations:
- *   - `graph.possibleMaybeChanges(...)`: satisfies the property because it only yields
- *     PossibleNodeChange values derived from committed journal entries.
+ *   - `graph.possibleMaybeChanges(...)`: satisfies the property because it only
+ *     yields PossibleNodeChange values derived from committed journal entries,
+ *     and each yielded value carries the public fields of that entry.
  *   - `baselinePossibleNodeChange()`: satisfies the property because it returns
- *     a sentinel PossibleNodeChange whose public fields represent "before any
- *     journal entry" and whose only valid use is as a `since` argument. The
- *     baseline token is a sentinel, not derived from a committed journal entry.
+ *     a sentinel PossibleNodeChange representing a position before any
+ *     committed journal entry. The sentinel is not derived from any journal
+ *     entry, and its public fields are not defined.
  *
- * Plain objects must not be treated as PossibleNodeChange values unless they pass
- * through this introduction path.
+ * Plain objects must not be treated as PossibleNodeChange values unless they
+ * pass through this introduction path.
  * @typedef {object} PossibleNodeChange
  * @property {NodeName} nodeName - The head/functor of the affected node.
- * @property {Array<ConstValue>} bindings - The positional bindings of the affected node.
+ *   Meaningful only on values yielded by `graph.possibleMaybeChanges`.
+ * @property {Array<ConstValue>} bindings - The positional bindings of the
+ *   affected node. Meaningful only on values yielded by
+ *   `graph.possibleMaybeChanges`.
  * @property {JournalAction} action - The kind of possible change. Because
- *   `graph.possibleMaybeChanges` is conservative, the `action` field describes the
- *   journal entry that produced the possible change; consumers MUST NOT treat
- *   it as an exactly-once semantic event.
- * @property {UnixTimestamp} time - When the change was recorded.
+ *   `graph.possibleMaybeChanges` is conservative, the `action` field describes
+ *   the journal entry that produced the possible change; consumers MUST NOT
+ *   treat it as an exactly-once semantic event. Meaningful only on values
+ *   yielded by `graph.possibleMaybeChanges`.
+ * @property {UnixTimestamp} time - When the change was recorded. Meaningful
+ *   only on values yielded by `graph.possibleMaybeChanges`.
  */
 ```
 
