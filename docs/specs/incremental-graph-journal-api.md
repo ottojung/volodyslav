@@ -21,7 +21,7 @@ class IncrementalGraph {
      * restricted to nodes matching the given filter.
      *
      * @param {object} params
-     * @param {PossibleNodeChange} params.since - The cursor-like reference point.
+     * @param {PossibleNodeChange | BaselinePossibleNodeChange} params.since - The cursor-like reference point.
      * @param {NodeFilter} params.to - Restricts results to nodes matching this filter.
      * @returns {AsyncIterator<PossibleNodeChange>}
      */
@@ -33,9 +33,9 @@ The name `possibleMaybeChanges` is the stable public API name. It MUST NOT be re
 
 ### Parameters
 
-**`since: PossibleNodeChange`**
+**`since: PossibleNodeChange | BaselinePossibleNodeChange`**
 
-A previously observed `PossibleNodeChange`, typically obtained from a prior call to `graph.possibleMaybeChanges` or from `baselinePossibleNodeChange()`.
+A previously observed `PossibleNodeChange` (typically obtained from a prior call to `graph.possibleMaybeChanges`) or a `BaselinePossibleNodeChange` (obtained from `baselinePossibleNodeChange()`).
 
 The `since` value acts as a cursor: the returned iterator yields surviving matching entries strictly after the journal position referenced by `since`. The `since` value itself is NOT included in the returned iterator.
 
@@ -86,23 +86,23 @@ This is intentional behavior. It is a design property that keeps the journal API
 
 ## Initial and baseline tokens
 
-Callers following the typical computor pattern (see `incremental-graph-journal-computors.md`) need an initial `PossibleNodeChange` to pass as `since` on the first call.
+Callers following the typical computor pattern (see `incremental-graph-journal-computors.md`) need an initial value to pass as `since` on the first call.
 
 REQ-JA-07: The system MUST expose a standalone function to obtain a baseline sentinel:
 
 ```js
 /**
- * Return a sentinel PossibleNodeChange that represents a position
+ * Return a sentinel BaselinePossibleNodeChange that represents a position
  * before any journal entry. When passed as `since` to
  * `graph.possibleMaybeChanges`, the graph returns all currently
  * available matching possible changes.
  *
- * @returns {PossibleNodeChange}
+ * @returns {BaselinePossibleNodeChange}
  */
 function baselinePossibleNodeChange()
 ```
 
-The returned value is a `BaselinePossibleNodeChange` (see `incremental-graph-journal-types.md`). It is NOT derived from a specific journal entry. Despite its type, the baseline sentinel does not represent a possible node change. Its only valid use is as a `since` argument. When passed to `graph.possibleMaybeChanges`, the graph treats it as a position before any committed journal entry and yields all currently available surviving journal-backed possible changes.
+The returned value is a `BaselinePossibleNodeChange` (see `incremental-graph-journal-types.md`). It is NOT derived from a specific journal entry. The baseline sentinel does not represent a possible node change. Its only valid use is as a `since` argument. When passed to `graph.possibleMaybeChanges`, the graph treats it as a position before any committed journal entry and yields all currently available surviving journal-backed `PossibleNodeChange` values.
 
 REQ-JA-08: `baselinePossibleNodeChange()` MUST be callable at any time. It MUST NOT require a prior call to `graph.possibleMaybeChanges`.
 
@@ -130,7 +130,7 @@ for await (const change of graph.possibleMaybeChanges({ since, to: myFilter })) 
 }
 ```
 
-This pattern works because each `PossibleNodeChange` is also a valid `since` input. The consumer never needs to know about `JournalIndex` or underlying positioning mechanics.
+This pattern works because `lastChange` is used as a `since` value whose type is `PossibleNodeChange | BaselinePossibleNodeChange`: it starts as `BaselinePossibleNodeChange` and becomes `PossibleNodeChange` after the first iteration. The values yielded from the iterator are always `PossibleNodeChange`. The consumer never needs to know about `JournalIndex` or underlying positioning mechanics.
 
 ---
 

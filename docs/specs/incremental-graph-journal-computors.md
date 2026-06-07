@@ -14,8 +14,8 @@ This document uses normative language for requirements on journal-using computor
 
 A journal-using computor follows this lifecycle:
 
-1. **Journal-backed initialization**: On first run (or when no prior token is available), initialize derived state from surviving journal entries. Store the last `PossibleNodeChange` seen during the scan.
-2. **Incremental update**: On subsequent runs, call `graph.possibleMaybeChanges` with the stored token and an appropriate `NodeFilter`. Update only the affected portion of derived state.
+1. **Journal-backed initialization**: On first run (or when no prior token is available), initialize derived state from surviving journal entries. Start from the baseline sentinel (`BaselinePossibleNodeChange`). Each value yielded by the iterator is a `PossibleNodeChange`. Store the last `PossibleNodeChange` seen during the scan.
+2. **Incremental update**: On subsequent runs, call `graph.possibleMaybeChanges` with the stored `PossibleNodeChange` and an appropriate `NodeFilter`. Update only the affected portion of derived state.
 3. **Store token**: After processing, store the last `PossibleNodeChange` from the scan for use as the next `since` value.
 
 ---
@@ -28,6 +28,9 @@ A computor initializes its derived state from the journal by starting from the b
 
 ```js
 // Journal-backed initialization
+// lastChange starts as BaselinePossibleNodeChange; values from the iterator
+// are always PossibleNodeChange, so lastChange becomes PossibleNodeChange
+// after the first iteration.
 let lastChange = baselinePossibleNodeChange();
 for await (const change of graph.possibleMaybeChanges({
     since: lastChange,
@@ -39,7 +42,7 @@ for await (const change of graph.possibleMaybeChanges({
 await storeToken("my-computor-state", lastChange);
 ```
 
-The `baselinePossibleNodeChange()` call provides a sentinel that causes `graph.possibleMaybeChanges` to return all surviving matching journal entries. The computor processes each change and remembers the last one.
+The `baselinePossibleNodeChange()` call provides a `BaselinePossibleNodeChange` sentinel that causes `graph.possibleMaybeChanges` to return all surviving matching journal entries. Each yielded value is a `PossibleNodeChange` with meaningful `nodeName`, `bindings`, `action`, and `time` fields. The computor processes each change and remembers the last one.
 
 **Important**: This initialization walks surviving journal entries, not the full set of currently materialized nodes. Its correctness depends on compaction preserving at least one surviving add/edit entry for every materialized matching node (see REQ-JC-08). If a true full enumeration of current graph state is required — for example, when a computor's derived state depends on every currently materialized node and cannot trust the journal to contain an entry for each — the computor SHOULD enumerate graph state directly (e.g., via a graph enumeration API) rather than relying solely on `possibleMaybeChanges` with the baseline sentinel.
 
