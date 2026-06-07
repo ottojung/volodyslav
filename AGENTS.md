@@ -3,13 +3,10 @@ This is a JavaScript project with JSDoc typing for a highly reliable event loggi
 
 # Initial Setup (Required for Fresh Repository)
 
-**Mandatory workflow when working on a fresh clone:**
+When working on a fresh clone, this command is useful:
 
 ```bash
 npm install   # install dependencies in root and all workspaces
-npm test      # run the full test suite to verify setup
-npm run static-analysis # type checking, linting, etc.
-npm run build # verify the project builds successfully
 ```
 
 # Core Programming Conventions
@@ -502,26 +499,28 @@ function isPathLike(object) {
 
 # Testing and Validation
 
-## Running Tests
+## How to run tests
+
 - **Specific tests**: `npx jest --testNamePattern="test name"`
 - **Full test suite**: `npm test`
 - **Build verification**: `npm run build`
 
 ## Test Conventions
+
 - Test files are located in `backend/tests/` and `frontend/tests/`
 - Use descriptive test names
 - Mock external dependencies using the patterns established in `backend/tests/stubs.js`
 
 # Complete Workflow for Independent Agents
 
-Must follow this workflow when making changes:
+Must follow this workflow when making changes to the source code:
 
 1. **Setup**: `npm install` (install all dependencies)
 2. **Understand**: Read relevant code and tests to understand the context
 3. **Implement**: Make changes following the capabilities pattern and JSDoc conventions
 4. **Test**: Run `npx jest path/to/specific/test.js` for focused testing
-5. **Validate**: Run full test suite with `npm test`
-6. **Build**: Run `npm run build` to ensure the project builds successfully
+5. **Validate**: Run full test suite with `npm test`. Don't need to run `npm test` if not changing any javascript code.
+6. **Build**: Run `npm run build` if need to ensure the project builds successfully
 
 ## Backwards compatibility
 
@@ -535,8 +534,6 @@ The client (frontend) is assumed to be **non-adversarial** — it is the same de
 - **No DoS protection**: Rate limits, upload-size caps, fragment-count caps, concurrency limits, and any other latency or resource-consumption limits are **banned**. They introduce large complexity for zero benefit in this context.
 - **No authorization**: Session IDs will not be forged. Authentication and authorization checks on API endpoints are unnecessary.
 - **Shape validation is still required**: Even with a trusted client, client and server may drift (e.g., during development or after a schema change). All incoming data **must** be validated against the expected shape (correct types, expected field names, valid enum values) and rejected with a clear error if it does not match. This is about correctness, not security.
-
-Summary: validate shapes, skip everything else.
 
 ## Additional Guidelines
 
