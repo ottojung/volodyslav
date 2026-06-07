@@ -109,20 +109,46 @@ REQ-JS-14: The local `last_journal_index` is advanced to cover all journal entri
 
 ---
 
-## Eventual consistency
+## Physical journal convergence
 
-REQ-JS-15: After all hosts have completed synchronization and no further graph mutations occur, the following must hold:
+Synchronization must bring journal storage into physical agreement, not merely logical agreement. This is necessary because `PossibleNodeChange` tokens can be stored in computed values and later used on other hosts (see `incremental-graph-journal-computors.md` §Token portability).
+
+REQ-JS-15: After synchronization completes, for every `JournalIndex` `i`, all synchronized hosts MUST agree that `rendered/r/journal/i` is either:
+
+- the **same** `JournalEntry` value (byte-for-byte identical), or
+- **absent** (compacted or deleted on that host).
+
+The "absent" case allows for compaction and deletion. What is NOT allowed is host A having one `JournalEntry` at index `i` while host B has a different `JournalEntry` at the same index `i`.
+
+### Resolving divergent indices
+
+REQ-JS-16: If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, sync MUST resolve this divergence. Neither entry may remain at index `i` on a host where it is not the authoritative value. The resolution procedure is:
+
+1. Determine which entry (if any) is authoritative. If the entries describe the same node key with the same timestamp, both are equally valid and either may be retained.
+2. Delete the non-authoritative entry from index `i`.
+3. If the non-authoritative entry described a change that is still needed for journal consumer visibility, append a new `JournalEntry` describing that change at a fresh `JournalIndex` allocated from the local watermark.
+
+### Sync order
+
+REQ-JS-17: Sync MUST apply remote journal entries in ascending `JournalIndex` order, interleaving them with local entries according to the conflict resolution rules above. This ensures that any causal relationships encoded in index ordering are preserved.
+
+### Remote compaction
+
+REQ-JS-18: During sync, a host MAY transmit the set of `JournalIndex` values it has compacted away. The receiving host MAY then compact the corresponding entries from its own journal storage, provided doing so satisfies REQ-JC-11 (stored token safety).
+
+## Eventual consistency (logical)
+
+REQ-JS-19: After all hosts have completed synchronization and no further graph mutations occur, the following must hold:
 
 1. **Graph state converges**: For every node key, all hosts agree on the node's value (or absence).
-2. **Journal-observable behavior converges**: Any host calling `possibleMaybeChanges` after convergence sees a consistent set of possible changes representing the converged graph state.
-
-REQ-JS-16: Physical journal storage MAY contain missing or redundant entries after sync. Two hosts that have converged on graph state may have different journal storage layouts (different indices, different numbers of redundant entries, different compaction gaps). This is acceptable as long as the public `possibleMaybeChanges` behavior is consistent with the converged graph state.
+2. **Physical journal converges**: Per REQ-JS-15, all hosts agree on each index's state.
+3. **Journal-observable behavior converges**: Any host calling `possibleMaybeChanges` after convergence sees a consistent set of possible changes representing the converged graph state.
 
 ---
 
 ## Host identity and journal consumers
 
-REQ-JS-17: Public journal consumers (users of `possibleMaybeChanges`) MUST NOT be required to understand or inspect host identities (`Hostname` values) or raw journal indices (`JournalIndex` values). Host identity is a journal-internal concern used only during synchronization.
+REQ-JS-20: Public journal consumers (users of `possibleMaybeChanges`) MUST NOT be required to understand or inspect host identities (`Hostname` values) or raw journal indices (`JournalIndex` values). Host identity is a journal-internal concern used only during synchronization.
 
 The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalIndex` from its public fields. Consumers see only `nodeName`, `bindings`, `action`, and `time`.
 
@@ -136,4 +162,4 @@ Sync operates on the journal storage that exists at sync time. Compaction may ha
 2. Conflict resolution uses timestamps from surviving journal entries or from node metadata (the `timestamps` sublevel records creation and modification times per node identifier).
 3. If a node's journal entry has been compacted away, the node's modification timestamp from the `timestamps` sublevel is used as the authoritative comparison value.
 
-REQ-JS-18: During conflict resolution, if a node's journal entry no longer exists, sync MUST use the node's modification timestamp from the `timestamps` sublevel. If neither exists (should not happen for a materialized node with identifier-lookup integrity), sync MUST treat the node's timestamp as `0` (earliest possible) for conflict comparison purposes.
+REQ-JS-21: During conflict resolution, if a node's journal entry no longer exists, sync MUST use the node's modification timestamp from the `timestamps` sublevel. If neither exists (should not happen for a materialized node with identifier-lookup integrity), sync MUST treat the node's timestamp as `0` (earliest possible) for conflict comparison purposes.

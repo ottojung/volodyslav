@@ -150,6 +150,26 @@ REQ-JC-COMP-07: If a computor fails or is interrupted during an incremental upda
 
 ---
 
+## Token portability across hosts
+
+A computor's stored state — including its `PossibleNodeChange` token — may be synchronized across hosts as part of the graph's value storage. When a token created on host A is loaded on host B after synchronization, its behavior must be well-defined.
+
+REQ-JC-COMP-08: A `PossibleNodeChange` token is valid across synchronized hosts. The physical journal convergence guarantee (see `incremental-graph-journal-sync.md` REQ-JS-15) ensures that for any `JournalIndex` `i`, all synchronized hosts agree that `rendered/r/journal/i` is either the same `JournalEntry` or absent.
+
+As a consequence:
+
+- If the token's underlying journal entry exists and is identical on host B, `possibleMaybeChanges({ since: token, to: filter })` on host B behaves identically to host A.
+- If the token's underlying journal entry has been compacted away on host B (the entry is absent at that index), `possibleMaybeChanges` follows the compaction resumption rules: it skips the absent index and yields all matching possible changes from the next available index. This is safe because compaction must not delete entries that would make stored tokens unusable (see `incremental-graph-journal-compaction.md` REQ-JC-11).
+- If the token's underlying entry is absent on host B but the entry has simply not yet been synced, `possibleMaybeChanges` skips the absent index. The consumer will not see possible changes from entries that have not yet arrived; this is the correct behavior for a partially synchronized host.
+
+REQ-JC-COMP-09: Public journal consumers MUST NOT need to understand host identity or raw journal indices to use a token on any host. The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalIndex` from its public fields. Token portability is achieved through the physical journal convergence guarantee, not through consumer-level host-awareness.
+
+### Edge case: unsynchronized token
+
+REQ-JC-COMP-10: If a `PossibleNodeChange` token refers to a `JournalIndex` that does not exist and has never existed on the current host (because the host's journal has not yet allocated that index), `possibleMaybeChanges` MUST treat the missing index as a gap (per REQ-JA-08) and resume from the next available entry. If no higher index exists, the iterator yields nothing — the host has no journal entries past that point yet.
+
+---
+
 ## Non-journal computors
 
 Not all computors benefit from the journal. Computors with static, closed sets of inputs do not need it:

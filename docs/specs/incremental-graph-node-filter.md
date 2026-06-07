@@ -25,13 +25,18 @@ A `NodeFilter` is one of the following concrete variants.
 
 ```js
 /**
- * Matches exactly one top-level argument position with any value.
+ * When used as a top-level NodeFilter, matches every node key.
+ * When used inside GroundFilter.args, matches one top-level argument value.
  * @typedef {object} Wildcard
  * @property {'wildcard'} variant
  */
 ```
 
-A `Wildcard` matches any single `ConstValue` at one argument position. It does not match arbitrary-length or zero-length sequences. It does not match nested structure.
+A `Wildcard` has two distinct meanings depending on context:
+
+- **As a top-level `NodeFilter`:** `Wildcard` matches every node key. Passing `makeWildcard()` directly as the `to` parameter of `possibleMaybeChanges` returns possible changes for all nodes.
+
+- **Inside `GroundFilter.args`:** A `Wildcard` at a particular argument position matches any single `ConstValue` at that position. It does not match arbitrary-length or zero-length sequences. It does not match nested structure.
 
 ### GroundFilter
 
@@ -118,10 +123,10 @@ Returns a `UnionFilter` combining `left` and `right`.
 
 A `NodeFilter` `F` matches a node key `K = (nodeName, bindings)` if and only if:
 
-- `F` is a `Wildcard` — matches any single position. This is used only as a filter argument inside `GroundFilter.args`; as a top-level filter it is equivalent to `makeUnionFilter(wildcard, wildcard)` — it does not match a complete node key.
+- `F` is a `Wildcard` — matches every node key unconditionally. This covers the case where `Wildcard` is used as a top-level filter.
 - `F` is a `GroundFilter` — `F.head` equals `nodeName` AND `bindings.length` equals `F.args.length` AND for every position `i`, `F.args[i]` matches `bindings[i]`:
   - If `F.args[i]` is a `ConstValue`: `isEqual(F.args[i], bindings[i])` returns `true`.
-  - If `F.args[i]` is a `Wildcard`: always matches.
+  - If `F.args[i]` is a `Wildcard`: always matches. This covers the case where `Wildcard` is used inside `GroundFilter.args`.
 - `F` is a `UnionFilter` — `F.left` matches `K` OR `F.right` matches `K`.
 
 REQ-NF-02: A `GroundFilter` with `args = []` matches only arity-0 nodes with the given head.

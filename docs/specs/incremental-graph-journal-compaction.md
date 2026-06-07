@@ -62,27 +62,29 @@ REQ-JC-10: If a node's journal entry has been compacted away before sync, sync u
 
 The most important constraint on compaction is that it must not break `possibleMaybeChanges`.
 
-REQ-JC-11: After compaction, `possibleMaybeChanges({ since, to })` MUST still return correct results. "Correct" means that no `PossibleNodeChange` that a consumer would have seen before compaction is silently omitted, unless the entry was a redundant duplicate and a later entry for the same node key still exists at a position ≥ `since`.
+REQ-JC-11: Compaction MAY delete only entries whose deletion preserves future `possibleMaybeChanges` safety for all stored `PossibleNodeChange` tokens. Concretely: if deleting an entry would make a stored `PossibleNodeChange` token unsafe (because a consumer holding that token could no longer correctly resume), that entry MUST NOT be compacted.
 
-REQ-JC-12: If compaction removes entries that a stored `since` token depends on, `possibleMaybeChanges` MUST fall back to conservative behavior (see REQ-JA-16) rather than silently skipping changes. The preferred implementation strategy is:
+REQ-JC-12: Compaction is responsible for ensuring that any `PossibleNodeChange` token a consumer might store remains usable. The preferred implementation strategy is:
 
-1. When `since` maps to a `JournalIndex` that no longer exists, find the smallest available index strictly greater than `since`'s index.
-2. Start scanning from that index.
-3. If no greater index is available (all entries after `since` were compacted), return either an empty iterator or the full remaining journal (conservative fallback), depending on what best preserves correctness for the caller.
+1. Track the journal index of every `PossibleNodeChange` token that consumers may store.
+2. During compaction, only delete entries whose indices are definitively earlier than all known stored tokens.
+3. If this constraint is infeasible (because the system cannot enumerate all stored tokens), apply a retention floor: never delete entries newer than a safety threshold that exceeds the maximum plausible token age.
 
-REQ-JC-13: Compaction MUST ensure that `baselinePossibleNodeChange()` continues to work. The baseline token must not become invalid after compaction. This is trivially satisfied because the baseline token is a sentinel that does not reference any specific journal index — it conceptually represents "index 0" or "before any entry."
+REQ-JC-13: `possibleMaybeChanges` MUST NOT be required to reconstruct or re-yield entries whose payloads have been compacted away. If an entry is gone, it is gone. The query implementation safely skips compacted positions by resuming from the next available index. The correctness of that resumption depends on compaction having not deleted entries that stored tokens reference.
+
+REQ-JC-14: The `baselinePossibleNodeChange()` sentinel is inherently safe from compaction because it does not reference any specific journal index. It conceptually represents "before any entry." Compaction cannot invalidate it.
 
 ---
 
 ## What compaction MUST NOT do
 
-REQ-JC-14: Compaction MUST NOT remove the `last_journal_index` metadata from `rendered/r/global/last_journal_index`.
+REQ-JC-15: Compaction MUST NOT remove the `last_journal_index` metadata from `rendered/r/global/last_journal_index`.
 
-REQ-JC-15: Compaction MUST NOT rewrite or reinterpret the `time` field of surviving journal entries.
+REQ-JC-16: Compaction MUST NOT rewrite or reinterpret the `time` field of surviving journal entries.
 
-REQ-JC-16: Compaction MUST NOT change the `action` field of surviving journal entries.
+REQ-JC-17: Compaction MUST NOT change the `action` field of surviving journal entries.
 
-REQ-JC-17: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
+REQ-JC-18: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
 
 ---
 
