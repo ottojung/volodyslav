@@ -50,7 +50,6 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
  * @property {import('./database/root_database').RootDatabase} rootDatabase
- * @property {<T>(procedure: (tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<import('./graph_state').RevdepDiff>}>) => Promise<T>} withTransaction
  * @property {(nodeKey: NodeKeyString) => NodeIdentifier | undefined} lookupNodeIdentifier
  * @property {(nodeDefinition: import('./types').ConcreteNode, tx: Transaction) => Promise<ResolvedConcreteNode>} resolveConcreteNode
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
@@ -94,11 +93,10 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
             }
         }
 
-        // Full computation with its own Transaction
-        // withTransaction captures fresh schemaStorage + identifierLookup at
-        // entry (via rootDatabase.getSchemaStorage/getActiveIdentifierLookup).
+        // storage.withTransaction captures fresh schemaStorage + identifierLookup
+        // at entry (via rootDatabase.getSchemaStorage/getActiveIdentifierLookup).
         // Protected by dome nighttime activity — replica cannot change.
-    const result = await graph.withTransaction(async (tx) => {
+    const result = await graph.storage.withTransaction(async (tx) => {
             const nodeDefinition = await graph.resolveConcreteNode(
                 concreteNode,
                 tx,

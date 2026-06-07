@@ -134,7 +134,7 @@ function makeSemanticStorage(graph) {
             },
             async put(key, value) {
                 const jsonKey = toJsonKey(key);
-                await graph.withTransaction(async (tx) => {
+                await graph.storage.withTransaction(async (tx) => {
                     const nodeIdentifier = getOrAllocateNodeIdentifierForTest(
                         tx,
                         graph.rootDatabase,
@@ -178,7 +178,7 @@ function makeSemanticStorage(graph) {
                 if (nodeIdentifier === undefined) {
                     return;
                 }
-                await graph.withTransaction(async (tx) => {
+                await graph.storage.withTransaction(async (tx) => {
                     tx.batch[databaseName].del(nodeIdentifier);
                     return { value: undefined, revdepDiffs: [] };
                 });
@@ -218,7 +218,7 @@ function makeSemanticStorage(graph) {
             return record ? record.inputs : null;
         },
         async withBatch(run) {
-            return await graph.withTransaction(async (tx) => {
+            return await graph.storage.withTransaction(async (tx) => {
                 /**
                  * @param {"values" | "freshness" | "inputs" | "revdeps" | "counters" | "timestamps"} databaseName
                  */

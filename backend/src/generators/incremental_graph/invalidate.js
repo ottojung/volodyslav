@@ -15,7 +15,6 @@
  * @property {Map<import('./types').NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
- * @property {<T>(procedure: (tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<import('./graph_state').RevdepDiff>}>) => Promise<T>} withTransaction
  * @property {(nodeKeyStr: NodeKeyString, compiledNode: import('./types').CompiledNode, bindings: Array<ConstValue>) => import('./types').ConcreteNode} getOrCreateConcreteNode
  */
 
@@ -98,7 +97,7 @@ async function internalUnsafeInvalidate(
     const nodeKey = { head: nodeNameTyped, args: bindings };
     const concreteKey = serializeNodeKey(nodeKey);
 
-    await incrementalGraph.withTransaction(async (tx) => {
+    await incrementalGraph.storage.withTransaction(async (tx) => {
         const outputIdentifier = lookupNodeIdentifier(tx, concreteKey);
         if (outputIdentifier === undefined) {
             return { value: undefined, revdepDiffs: [] };

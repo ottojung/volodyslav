@@ -181,19 +181,6 @@ class IncrementalGraphClass {
     }
 
     /**
-     * Execute a procedure within a transaction that provides a batch writer
-     * and identifier lookup. The batch is flushed and in-memory state updated
-     * only if the procedure succeeds.
-     *
-     * @template T
-     * @param {(tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<import('./graph_state').RevdepDiff>}>} procedure
-     * @returns {Promise<T>}
-     */
-    async withTransaction(procedure) {
-        return this.storage.withTransaction(procedure);
-    }
-
-    /**
      * Resolve the target identifier.
      *
      * @param {ConcreteNode} concreteNode
