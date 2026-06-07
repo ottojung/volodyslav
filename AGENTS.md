@@ -71,7 +71,7 @@ Classes are never exported directly from modules to prevent external constructor
 
 - **Export factory functions**: Use `makeFoo` instead of exporting the class
 - **Export type guards**: Use `isFoo` instead of relying on `instanceof`
-- **Nominal typing**: Use `__brand: undefined` fields for type safety where beneficial
+- **Nominal typing**: Use `__brand: undefined` fields for type safety where beneficial (see [Nominal types and proof-carrying comments](#nominal-types-and-proof-carrying-comments))
 
 #### Encapsulation Levels
 This project achieves encapsulation in two ways:
@@ -165,29 +165,154 @@ function synchronize(capabilities) {
 }
 ```
 
-### Make Impossible States Unrepresentable
-Use nominal types with `__brand` fields to prevent invalid states:
+### Nominal types and proof-carrying comments
 
-```javascript
-// ✅ Correct: Nominal type prevents direct instantiation
-class ExistingFileClass {
-    /** @type {undefined} */
-    __brand = undefined; // nominal typing brand
-    
-    constructor(path) {
-        this.path = path;
-        if (this.__brand !== undefined) {
-            throw new Error("ExistingFile is a nominal type");
-        }
-    }
-}
+The rule is:
 
-// Factory function ensures file actually exists
-async function makeEmpty(path) {
-    await fs.writeFile(path, "");
-    return new ExistingFileClass(path);
-}
+> If a nominal type can capture a useful property, it should.
+
+A nominal type is valuable when it prevents plain structural data from being confused with data that carries a proof, invariant, origin, validation, or capability.
+
+Every nominal type must have a nearby comment explaining:
+
+1. the properties it carries, and
+2. the explicit proof that those properties hold.
+
+The proof must not be described vaguely. Do not merely say "by checking all constructors" or "by case analysis." Instead, write out the cases.
+
+Use this required comment shape:
+
+```js
+/**
+ * The properties that this class carries are:
+ * - ...
+ *
+ * The proof of those properties is guaranteed by:
+ * - This class/type can only be introduced through these functions:
+ *   - `makeA(...)`: satisfies the property because ...
+ *   - `fromB(...)`: satisfies the property because ...
+ *   - `parseC(...)`: satisfies the property because ...
+ */
 ```
+
+For typedef-only nominal aliases, use the same shape near the typedef. If the type itself cannot enforce the property structurally, the proof must explicitly describe the allowed introduction sites or caller paths.
+
+Example for an `ExistingFile` nominal type:
+
+```js
+/**
+ * The properties that this class carries are:
+ * - `path` points to a file that exists in the filesystem at the time the
+ *   `ExistingFile` value is created.
+ *
+ * The proof of those properties is guaranteed by:
+ * - This class can only be introduced through these functions:
+ *   - `makeEmpty(path)`: satisfies the property because it creates the file
+ *     at `path` before returning `ExistingFile`.
+ *   - `fromExisting(path, proof)`: satisfies the property because it requires
+ *     a `FileExistenceProof` for the same path before returning `ExistingFile`.
+ *   - `makeCopy(existingFile, destinationPath)`: satisfies the property because
+ *     it copies an already-existing file to `destinationPath` before returning
+ *     `ExistingFile` for the destination.
+ */
+```
+
+Example for a typedef-only nominal type such as `NodeIdentifier`:
+
+```js
+/**
+ * The properties that this type carries are:
+ * - The string is an actual node identifier that exists in the database, or an
+ *   identifier allocated for insertion into the database.
+ *
+ * The proof of those properties is guaranteed by:
+ * - `lookupNodeIdentifier(...)`: returns `NodeIdentifier` only after reading an
+ *   existing identifier from the database.
+ * - `allocateNodeIdentifier(...)`: returns `NodeIdentifier` only after creating
+ *   a fresh identifier intended to be inserted into the database.
+ * - `ensureNodeIdentifier(...)`: returns `NodeIdentifier` only by either
+ *   reusing an existing database identifier or allocating a new one for the
+ *   current database transaction.
+ *
+ * Plain strings must not be treated as `NodeIdentifier` values unless they
+ * pass through one of these introduction paths.
+ */
+```
+
+Example for a parsed syntax type:
+
+```js
+/**
+ * The properties that this class carries are:
+ * - The expression is syntactically valid.
+ * - The expression has already been normalized into canonical form.
+ *
+ * The proof of those properties is guaranteed by:
+ * - This class can only be introduced through these functions:
+ *   - `parseExpression(source)`: satisfies syntactic validity because it returns
+ *     an error instead of an expression when parsing fails.
+ *   - `parseExpression(source)`: satisfies canonical form because it calls
+ *     `normalizeParsedExpression(...)` before constructing the value.
+ */
+```
+
+Example for a validated client payload:
+
+```js
+/**
+ * The properties that this class carries are:
+ * - The value came from a client request body.
+ * - All required fields are present.
+ * - All fields have the expected runtime types.
+ * - Unknown fields have been rejected or explicitly ignored according to the
+ *   boundary contract.
+ *
+ * The proof of those properties is guaranteed by:
+ * - This class can only be introduced through these functions:
+ *   - `tryDeserializeClientPayload(value)`: satisfies the property because it
+ *     checks the object shape, validates every required field, validates every
+ *     field type, and returns a specific deserialization error instead of a
+ *     payload when validation fails.
+ */
+```
+
+The proof comment must be kept accurate when introduction functions change. If a new constructor, factory, parser, deserializer, database reader, migration path, or caller path starts producing the nominal type, the comment must be updated in the same change.
+
+When the proof depends on callers rather than constructors, say so explicitly. For example:
+
+```js
+/**
+ * The properties that this type carries are:
+ * - ...
+ *
+ * The proof of those properties is guaranteed by:
+ * - This typedef cannot enforce the property by construction.
+ * - Therefore every function that returns this type is part of the proof.
+ * - The current return sites are:
+ *   - `...`: satisfies the property because ...
+ *   - `...`: satisfies the property because ...
+ */
+```
+
+Introduce nominal types for:
+
+* validated filesystem paths
+* persisted identifiers
+* parsed syntax
+* validated user/client data
+* database keys
+* timestamps with project-specific guarantees
+* capabilities/proofs/permissions
+* state variants where impossible states should be ruled out
+* values whose origin matters even if their runtime representation is a string/object/number
+
+Do not introduce a nominal type for:
+
+* a local throwaway record with no invariant
+* a shape that carries no useful property
+* plain data that is immediately validated into a stronger value elsewhere
+
+The point is not nominal typing for its own sake. The point is to capture useful facts in the type structure so later code can rely on them without re-checking them.
 
 ### Validate, Don't Verify
 When creating typed instances, ensure parsing validates all guarantees. Once you have an instance, don't re-check:
