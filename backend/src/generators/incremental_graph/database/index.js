@@ -45,7 +45,6 @@ const {
     nodeIdentifierToDatabaseKey,
     nodeIdentifierFromString,
     nodeIdentifierToString,
-    isValidNodeIdentifier,
 } = require('./node_identifier');
 const {
     IDENTIFIERS_KEY,
@@ -135,7 +134,6 @@ module.exports = {
     nodeIdentifierToDatabaseKey,
     nodeIdentifierFromString,
     nodeIdentifierToString,
-    isValidNodeIdentifier,
     IDENTIFIERS_KEY,
     allocateNodeIdentifier,
     cloneIdentifierLookup,

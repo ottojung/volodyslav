@@ -25,15 +25,6 @@ const NODE_IDENTIFIER_PATTERN = /^[0-9a-z]+-[a-z]{9,}$/;
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 
 /**
- * Check whether a plain string satisfies the documented NodeIdentifier format.
- * @param {string} identifier
- * @returns {boolean}
- */
-function isValidNodeIdentifier(identifier) {
-    return NODE_IDENTIFIER_PATTERN.test(identifier);
-}
-
-/**
  * Allocate a deterministic node identifier from a fingerprint and a local index.
  * @param {string} fingerprint - The machine-local database fingerprint.
  * @param {number} index - The local node allocation index.
@@ -110,7 +101,6 @@ function compareNodeIdentifier(a, b) {
 module.exports = {
     compareNodeIdentifier,
     databaseKeyToNodeIdentifier,
-    isValidNodeIdentifier,
     makeNodeIdentifier,
     nodeIdentifierToDatabaseKey,
     nodeIdentifierFromString,
