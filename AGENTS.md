@@ -519,8 +519,8 @@ Must follow this workflow when making changes to the source code:
 2. **Understand**: Read relevant code and tests to understand the context
 3. **Implement**: Make changes following the capabilities pattern and JSDoc conventions
 4. **Test**: Run `npx jest path/to/specific/test.js` for focused testing
-5. **Validate**: Run full test suite with `npm test`
-6. **Build**: Run `npm run build` to ensure the project builds successfully
+5. **Validate**: Run full test suite with `npm test`. Don't need to run `npm test` if not changing any javascript code.
+6. **Build**: Run `npm run build` if need to ensure the project builds successfully
 
 ## Backwards compatibility
 
