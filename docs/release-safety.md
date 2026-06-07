@@ -36,15 +36,6 @@ Many operations update several records that only make sense together. In the inc
 
 Release-safe persistence code should therefore preserve atomicity at the level of the logical operation, not merely at the level of an individual key-value write.
 
-This includes several concrete practices:
-
-* stage writes before publication;
-* flush durable writes before updating volatile in-memory mirrors;
-* avoid exposing newly allocated identifiers before their persisted lookup exists;
-* write candidate merged state into an inactive replica before changing the active pointer;
-* rebuild derived indexes from authoritative records rather than treating them as independent sources of truth;
-* fail loudly when required metadata is missing, malformed, or contradictory.
-
 For incremental graph persistence, this means durable writes are committed before the corresponding volatile identifier lookup is published. The important invariant is that observable memory should not claim a persisted fact that the database does not yet contain.
 
 For synchronization and migration, this means incoming or transformed state should be prepared in staging storage or an inactive replica. The active state should change only after the candidate state has been checked and written successfully.
