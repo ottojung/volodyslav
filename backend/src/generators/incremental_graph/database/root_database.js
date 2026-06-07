@@ -1147,14 +1147,25 @@ async function makeRootDatabase(capabilities, databasePath) {
 
     if (storedReplica === undefined) {
         const replicaName = 'x';
-        await rootMetaSublevel.put('current_replica', replicaName);
+        // Construct the RootDatabase before writing anything so _computed
+        // has the correct sublevel handles for the fresh replica.
         const rootDatabase = new RootDatabaseClass(db, version, replicaName, capabilities.seed);
         const hasVersion = await rootDatabase.getGlobalVersion();
         if (hasVersion === undefined) {
+            // Write all active-replica metadata first, then write the
+            // replica pointer last as the crash-atomic commit step.  If a
+            // crash occurs before the pointer write, the next open sees no
+            // storedReplica and re-initialises cleanly.
             await rootDatabase.writeEmptyIdentifierLookup();
+            await rootMetaSublevel.put('current_replica', replicaName);
             return rootDatabase;
         }
+        // Version exists but no current_replica pointer — the active
+        // metadata survived a crash that occurred after the metadata
+        // writes but before the pointer write in a previous session.
+        // Load what is there and write the pointer.
         await rootDatabase.initializeActiveIdentifierLookup();
+        await rootMetaSublevel.put('current_replica', replicaName);
         return rootDatabase;
     }
     if (storedReplica !== 'x' && storedReplica !== 'y') {
