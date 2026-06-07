@@ -1,5 +1,5 @@
 # Project Overview
-This is a JavaScript project with JSDoc typing for a personal event logging system. It consists of a Node.js backend and a React frontend in a monorepo structure.
+This is a JavaScript project with JSDoc typing for a highly reliable event logging system. It consists of a Node.js backend and a React frontend in a monorepo structure.
 
 # Initial Setup (Required for Fresh Repository)
 
@@ -530,7 +530,7 @@ Must follow this workflow when making changes:
 
 ## Non-Adversarial Client Policy
 
-This application is a personal tool. The client (frontend) is assumed to be **non-adversarial** — it is the same developer who runs the server. This has important implications:
+The client (frontend) is assumed to be **non-adversarial** — it is the same developer who runs the server. This has important implications:
 
 - **No DoS protection**: Rate limits, upload-size caps, fragment-count caps, concurrency limits, and any other latency or resource-consumption limits are **banned**. They introduce large complexity for zero benefit in this context.
 - **No authorization**: Session IDs will not be forged. Authentication and authorization checks on API endpoints are unnecessary.
