@@ -132,6 +132,7 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
             // protected by dome nighttime activity via the caller.
             const computeResult = await internalMaybeRecalculate(
                 graph,
+                (nodeKeyStr) => internalPullByNodeKeyDuringPull(graph, nodeKeyStr),
                 nodeDefinition,
                 tx,
                 (diff) => revdepDiffs.push(diff)
