@@ -9,7 +9,7 @@
  *
  * Version migration ("version mismatch → migrate") is handled by the caller
  * (`internalEnsureInitializedWithMigration` in lifecycle.js) via
- * `runMigrationUnsafe` after this function returns.
+ * `runMigration` after this function returns.
  *
  * Recovery when the live LevelDB directory is missing (for example, deleted
  * or lost after a format-mismatch crash) is handled by the caller

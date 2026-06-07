@@ -380,7 +380,9 @@ async function runMigration(capabilities, rootDatabase, nodeDefs, callback) {
  */
 
 /**
- * The unlocked version of runMigration. Should not be called directly.
+ * The unlocked implementation of runMigration.  The caller must already hold
+ * holidayActivity (or the caller may let runMigration acquire it — it is
+ * same-mode re-entrant via withModeMutex).
  *
  * @param {Capabilities} capabilities - Capabilities needed to run the migration
  * @param {RootDatabase} rootDatabase - Opened root database
@@ -513,5 +515,4 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
 module.exports = {
     runMigration,
-    runMigrationUnsafe,
 };

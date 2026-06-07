@@ -22,7 +22,7 @@ const path = require('path');
 const {
     makeIncrementalGraph,
     getRootDatabase,
-    runMigrationUnsafe,
+    runMigration,
     synchronizeNoLock,
     holidayActivity,
     migrationCallback,
@@ -77,7 +77,7 @@ async function internalEnsureInitialized(interfaceInstance) {
             await internalBootstrap(capabilities);
         }
 
-        const ret = await internalEnsureInitializedWithMigration(interfaceInstance, runMigrationUnsafe);
+        const ret = await internalEnsureInitializedWithMigration(interfaceInstance, runMigration);
 
         capabilities.logger.logInfo(
             {},
@@ -325,7 +325,7 @@ async function internalSynchronizeDatabaseNoLock(interfaceInstance, options) {
         capabilities.logger.logDebug({ options }, 'Synchronize: reopening interface and re-running migration gate after sync/reset');
         await internalEnsureInitializedWithMigration(
             interfaceInstance,
-            runMigrationUnsafe
+            runMigration
         );
     } catch (error) {
         reopenFailure = error;
