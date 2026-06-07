@@ -38,6 +38,13 @@
  * returns or throws.
  */
 
+// THIS-MARKER-BLOCKS-VOLODYSLAV-RELEASE-63461325
+// Release blocker: identifier-native sync does not yet repair the case where
+// two hosts assign different NodeIdentifiers to the same semantic node key.
+// The current merge policy rejects or avoids identifier conflicts but cannot
+// merge diverged identifier assignments.  This format must not be deployed
+// until the conflict-resolution design is implemented.  See issue #1410.
+
 const { isTopologicalSortCycleError } = require('./topo_sort');
 const { versionToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
