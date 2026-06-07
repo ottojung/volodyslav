@@ -101,11 +101,13 @@ REQ-JS-11: If the remote host has deleted a node that the local host has materia
 
 ## Journal storage during sync
 
-REQ-JS-12: Sync MUST NOT reuse `JournalIndex` values from either host. All journal entries appended during sync (whether primary or conservative) receive fresh `JournalIndex` values from the local allocation watermark.
+`JournalIndex` is a replicated physical journal position. Hosts may allocate entries independently before sync, so divergent entries at the same index can exist temporarily. Synchronization resolves such divergence so that after sync, each index is consistent across all synchronized hosts.
 
-REQ-JS-13: The remote host's `last_journal_index` is NOT adopted. Journal indices are meaningful only within their local allocation namespace (together with the local fingerprint, analogous to node identifier allocation). See `docs/specs/incremental-graph-last-node-index.md` for the parallel rule for `last_node_index`.
+REQ-JS-12: During sync, entries that are received from the remote host at journal indices already occupied by the local host must be resolved according to REQ-JS-16 (divergent-index resolution). After resolution, at most one surviving entry remains at each index on a given host, and all synchronized hosts agree on which entry (or absence) occupies each index.
 
-REQ-JS-14: The local `last_journal_index` is advanced to cover all journal entries appended during sync.
+REQ-JS-13: New journal entries appended during sync (conservative entries, conflict-resolution notifications) MUST receive fresh `JournalIndex` values. These are allocated from the local watermark and are appended at the current head of the journal, not interleaved into already-occupied indices.
+
+REQ-JS-14: After sync, the local `last_journal_index` MUST be advanced to cover the maximum of the pre-sync local value, the pre-sync remote value, and any freshly allocated indices from resolution or conservative appends. This ensures the watermark reflects all indices present on any synchronized host.
 
 ---
 
@@ -122,11 +124,22 @@ The "absent" case allows for compaction and deletion. What is NOT allowed is hos
 
 ### Resolving divergent indices
 
-REQ-JS-16: If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, sync MUST resolve this divergence. Neither entry may remain at index `i` on a host where it is not the authoritative value. The resolution procedure is:
+REQ-JS-16: If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, sync MUST resolve this divergence deterministically so that all hosts arrive at the same outcome. Neither entry may remain at index `i` on a host where it is not the authoritative value.
 
-1. Determine which entry (if any) is authoritative. If the entries describe the same node key with the same timestamp, both are equally valid and either may be retained.
-2. Delete the non-authoritative entry from index `i`.
-3. If the non-authoritative entry described a change that is still needed for journal consumer visibility, append a new `JournalEntry` describing that change at a fresh `JournalIndex` allocated from the local watermark.
+The authoritative entry is determined by the following total order applied lexicographically:
+
+1. `JournalEntry.time` (later wins).
+2. `JournalEntry.creator` (lexicographic on `hostnameToString`, lower wins).
+3. `JournalEntry.id` (lexicographic on `nodeIdentifierToString`, lower wins).
+4. `JournalEntry.action` (lexicographic: `"add"` < `"delete"` < `"edit"`).
+5. `JournalEntry.key` (lexicographic on the serialized `NodeKey` string).
+
+This total order is deterministic: every host evaluating the same pair of conflicting entries chooses the same authoritative entry.
+
+Once the authoritative entry is determined:
+
+1. The non-authoritative entry is deleted from index `i`.
+2. If the non-authoritative entry described a change that is still needed for journal consumer visibility, a new `JournalEntry` describing that change is appended at a fresh `JournalIndex`.
 
 ### Sync order
 

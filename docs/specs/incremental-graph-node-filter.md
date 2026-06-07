@@ -139,7 +139,7 @@ REQ-NF-04: A `GroundFilter` MUST NOT match a node key whose arity differs from `
 
 ## Type guards
 
-REQ-NF-05: Implementations MUST expose the following type guards:
+REQ-NF-05: Implementations MUST expose type guards for use at serialization, deserialization, and storage boundaries where untyped `unknown` data is converted into the nominal `NodeFilter` type. At internal call sites where the type is already known, runtime re-verification is not required.
 
 ```js
 /**

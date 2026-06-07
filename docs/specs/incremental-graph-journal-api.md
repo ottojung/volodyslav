@@ -37,17 +37,19 @@ A previously observed `PossibleNodeChange`, typically obtained from a prior call
 
 The `since` value acts as a cursor: the returned iterator yields possible changes that were recorded at or after the position of `since`. The `since` value itself is NOT included in the returned iterator.
 
-REQ-JA-01: If `since` is not a valid `PossibleNodeChange` (as determined by `isPossibleNodeChange`), `possibleMaybeChanges` MUST throw an error.
+REQ-JA-01: The `since` parameter has type `PossibleNodeChange`. `PossibleNodeChange` values are introduced only by journal APIs (`possibleMaybeChanges` and `baselinePossibleNodeChange`). The normal contract of `possibleMaybeChanges` assumes its `since` argument is already a `PossibleNodeChange`. Validation of untyped or externally deserialized data into `PossibleNodeChange` occurs at the storage or serialization boundary, not at every call site.
 
-REQ-JA-02: If `since` refers to a journal position that no longer exists (e.g., the entry at its underlying index has been compacted away), `possibleMaybeChanges` MUST treat the missing position as if the consumer had advanced past it. It MUST yield all matching possible changes from the earliest available journal entry whose index is strictly greater than the missing position, up to the current journal head.
+REQ-JA-02: If the journal entry at the position referenced by `since` has been deleted or compacted away, `possibleMaybeChanges` MUST skip that absent entry and continue scanning forward from the next surviving journal index.
 
-`possibleMaybeChanges` MUST NOT recreate, reconstruct, or re-yield entries whose payloads have been deleted by compaction. If an entry was compacted away, it is gone and cannot be yielded. The safety of stored `since` tokens is carried by compaction (see `incremental-graph-journal-compaction.md`), which must not delete entries that would make a stored token unsafe.
+`possibleMaybeChanges` MUST NOT recreate, reconstruct, or re-yield entries whose payloads have been deleted by compaction. If an entry is absent, it is skipped. If all entries after `since` that would otherwise have matched the filter are absent, the iterator returns nothing.
+
+The safety of stored `since` tokens is carried by compaction (see `incremental-graph-journal-compaction.md` REQ-JC-11). Compaction must not delete entries whose absence would make stored tokens unsafe.
 
 **`to: NodeFilter`**
 
 Restricts the returned possible changes to nodes whose keys match the filter. See `docs/specs/incremental-graph-node-filter.md` for filter matching rules.
 
-REQ-JA-03: If `to` is not a valid `NodeFilter` (as determined by `isNodeFilter`), `possibleMaybeChanges` MUST throw an error.
+REQ-JA-03: The `to` parameter has type `NodeFilter`. `NodeFilter` values are introduced only by the filter construction functions (`makeWildcard`, `makeGroundFilter`, `makeUnionFilter`). The normal contract of `possibleMaybeChanges` assumes its `to` argument is already a `NodeFilter`. Validation of untyped or externally deserialized data into `NodeFilter` occurs at the construction or deserialization boundary.
 
 ### Return value
 
@@ -73,11 +75,11 @@ REQ-JA-07: The ordering guarantee is best-effort with respect to `time`: entries
 
 ## Missing journal entries
 
-Journal storage may contain gaps because of compaction or reconciliation. These gaps manifest as missing journal entries at certain `JournalIndex` values.
+Journal storage may contain gaps because of compaction, reconciliation, or failed transactions. These gaps manifest as missing journal entries at certain `JournalIndex` values.
 
-REQ-JA-08: `possibleMaybeChanges` MUST tolerate missing journal entries. When scanning forward from `since`, gaps in the journal index sequence MUST NOT cause errors, aborted iteration, or skipped results beyond the gap.
+REQ-JA-08: `possibleMaybeChanges` MUST skip absent journal entries. When scanning forward from `since`, missing indices MUST NOT cause errors or aborted iteration. The iterator silently advances past absent entries and yields the next surviving entry, if any.
 
-REQ-JA-09: When the `since` value maps to a `JournalIndex` that has been compacted away, the implementation MUST resume scanning from the earliest available index strictly greater than the missing position. This is safe because compaction must not delete entries that would make stored tokens unusable (see `incremental-graph-journal-compaction.md` REQ-JC-11). The implementation does not need to reconstruct missing entries — it simply skips past them.
+REQ-JA-09: `possibleMaybeChanges` MUST NOT reconstruct, restore, or fabricate journal entries that have been deleted. Only surviving entries in the journal storage are yielded. If all matching entries after `since` are absent, the iterator returns nothing.
 
 ---
 
@@ -145,11 +147,11 @@ This pattern works because each `PossibleNodeChange` is also a valid `since` inp
 
 A stored `PossibleNodeChange` may become "old" relative to the journal state — entries between its position and the current journal head may have been compacted away.
 
-REQ-JA-14: If `since` is old but the underlying journal entry still exists, `possibleMaybeChanges` MUST return all matching possible changes between `since` and the current journal head.
+REQ-JA-14: If `since` is old but the underlying journal entry still exists, `possibleMaybeChanges` MUST return all matching surviving entries between `since` and the current journal head.
 
-REQ-JA-15: If the underlying journal entry for `since` has been compacted away, `possibleMaybeChanges` MUST resume from the earliest available index strictly greater than the missing index. It MUST NOT attempt to recover or reconstruct compacted-away entry payloads.
+REQ-JA-15: If the underlying journal entry for `since` has been compacted away, `possibleMaybeChanges` MUST skip the absent position and resume from the next surviving index strictly greater than the missing index.
 
-REQ-JA-16: Compaction, not `possibleMaybeChanges`, carries the safety obligation for stored tokens. Compaction MUST NOT delete an entry if doing so would make any stored `PossibleNodeChange` token unsafe (see `incremental-graph-journal-compaction.md` REQ-JC-11, REQ-JC-12). As a result, a consumer that stores a token and later passes it as `since` can rely on its underlying entry still existing at query time.
+REQ-JA-16: `possibleMaybeChanges` MUST NOT return compacted-away entries. If all surviving entries after the absent `since` position have also been compacted or do not match the filter, the iterator returns nothing. The safety obligation for stored tokens is carried by compaction (see `incremental-graph-journal-compaction.md` REQ-JC-11, REQ-JC-12), which must not delete entries whose absence would make any stored token unsafe.
 
 ---
 

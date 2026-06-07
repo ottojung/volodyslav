@@ -17,7 +17,6 @@ REQ-JE-01: When a node becomes materialized for the first time (i.e., a new `Nod
 First materialization occurs during:
 
 - A `pull(nodeName, bindings)` call for a previously unmaterialized node.
-- An `invalidate(nodeName, bindings)` call for a previously unmaterialized node.
 - A migration `storage.create(nodeKey, value)` call that allocates a fresh `NodeIdentifier`.
 
 REQ-JE-02: The `add` entry MUST be emitted in the same durable transaction as the node's identifier allocation, value write, and identifier-lookup insertion. If any part of that transaction fails, the journal entry MUST NOT be committed.

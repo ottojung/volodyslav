@@ -156,17 +156,23 @@ A computor's stored state — including its `PossibleNodeChange` token — may b
 
 REQ-JC-COMP-08: A `PossibleNodeChange` token is valid across synchronized hosts. The physical journal convergence guarantee (see `incremental-graph-journal-sync.md` REQ-JS-15) ensures that for any `JournalIndex` `i`, all synchronized hosts agree that `rendered/r/journal/i` is either the same `JournalEntry` or absent.
 
-As a consequence:
-
-- If the token's underlying journal entry exists and is identical on host B, `possibleMaybeChanges({ since: token, to: filter })` on host B behaves identically to host A.
-- If the token's underlying journal entry has been compacted away on host B (the entry is absent at that index), `possibleMaybeChanges` follows the compaction resumption rules: it skips the absent index and yields all matching possible changes from the next available index. This is safe because compaction must not delete entries that would make stored tokens unusable (see `incremental-graph-journal-compaction.md` REQ-JC-11).
-- If the token's underlying entry is absent on host B but the entry has simply not yet been synced, `possibleMaybeChanges` skips the absent index. The consumer will not see possible changes from entries that have not yet arrived; this is the correct behavior for a partially synchronized host.
-
 REQ-JC-COMP-09: Public journal consumers MUST NOT need to understand host identity or raw journal indices to use a token on any host. The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalIndex` from its public fields. Token portability is achieved through the physical journal convergence guarantee, not through consumer-level host-awareness.
 
-### Edge case: unsynchronized token
+### When a token's underlying entry is absent
 
-REQ-JC-COMP-10: If a `PossibleNodeChange` token refers to a `JournalIndex` that does not exist and has never existed on the current host (because the host's journal has not yet allocated that index), `possibleMaybeChanges` MUST treat the missing index as a gap (per REQ-JA-08) and resume from the next available entry. If no higher index exists, the iterator yields nothing — the host has no journal entries past that point yet.
+A `PossibleNodeChange` token's underlying journal entry may be absent on the receiving host. The correct behavior depends on the reason for absence.
+
+**Absent because compacted or deleted under the journal rules:**
+
+REQ-JC-COMP-10: If the entry is absent because it was compacted or deleted according to the rules of this specification (see `incremental-graph-journal-compaction.md` and `incremental-graph-journal-sync.md`), the absence is safe. `possibleMaybeChanges` skips the absent index and resumes from the next surviving entry. The safety of this skip is guaranteed by the compaction rules (REQ-JC-11), which ensure that no stored token references an entry that has been compacted away unless the absence is harmless for the consumer.
+
+**Absent because the host is not synchronized:**
+
+REQ-JC-COMP-11: If the entry is absent because the receiving host has not yet been synchronized up to the index referenced by the token, the host does not have enough journal state to interpret the token completely. `possibleMaybeChanges` skips the absent index and continues from the next surviving entry, if any. The consumer may not see all possible changes that the token's original host intended to convey.
+
+This specification does not require exposing host synchronization status to journal consumers. The `PossibleNodeChange` type remains portable in the sense that a consumer can pass it to `possibleMaybeChanges` on any host without error. The consumer should be aware that on a partially synchronized host, an absent token entry means some changes may not yet be reflected.
+
+REQ-JC-COMP-12: A journal-consuming computor whose derived value may be synchronized across hosts SHOULD treat an unsynchronized token as a signal to perform a full recomputation (using `baselinePossibleNodeChange`) rather than assuming the token can be used for incremental maintenance on the receiving host.
 
 ---
 
