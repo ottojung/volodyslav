@@ -38,7 +38,7 @@
  */
 
 const { isTopologicalSortCycleError } = require('./topo_sort');
-const { versionToString, nodeKeyStringToString } = require('./types');
+const { versionToString, nodeKeyStringToString, nodeIdentifierToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     IDENTIFIERS_KEY,
@@ -348,12 +348,24 @@ async function applyNodeDecisions(
                 if (targetId !== undefined && targetId !== sourceId && targetId !== finalId) {
                     await writer.pushAll(buildDeleteOps(targetStorage, targetId));
                 }
-            } else {
-                // initial keep: target already has the structure; just set freshness.
-                await writer.push(targetStorage.freshness.putOp(finalId, 'potentially-outdated'));
-            }
+        } else {
+            // initial keep: rewrite inputs and set freshness.
+            const existingInputs = await targetStorage.inputs.get(finalId);
+            await writer.push(targetStorage.inputs.putOp(finalId, {
+                inputs: loweredInputs.map(id => nodeIdentifierToString(id)),
+                inputCounters: existingInputs?.inputCounters ?? [],
+            }));
+            await writer.push(targetStorage.freshness.putOp(finalId, 'potentially-outdated'));
         }
+    } else if (decision === 'keep') {
+        // Rewrite inputs; dependency identifiers may have changed.
+        const existingInputs = await targetStorage.inputs.get(finalId);
+        await writer.push(targetStorage.inputs.putOp(finalId, {
+            inputs: loweredInputs.map(id => nodeIdentifierToString(id)),
+            inputCounters: existingInputs?.inputCounters ?? [],
+        }));
     }
+}
 
     await writer.flush();
 }

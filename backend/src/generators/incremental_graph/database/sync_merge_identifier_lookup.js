@@ -2,6 +2,7 @@ const {
     makeIdentifierLookup,
 } = require('./identifier_lookup');
 const { nodeKeyStringToString } = require('./types');
+const { nodeIdentifierToString } = require('./node_identifier');
 const {
     IdentifierLookupConflictError,
     MalformedIdentifierLookupError,
@@ -62,7 +63,8 @@ function assertNoIdentifierLookupConflicts(targetLookup, hostLookup) {
 
 /**
  * Validate that the final lookup is a strict bijection: no duplicate semantic
- * keys and no duplicate identifiers.
+ * keys, no duplicate identifiers, and every forward mapping is consistent with
+ * its reverse.
  *
  * @param {IdentifierLookup} lookup
  * @param {string} context
@@ -75,6 +77,20 @@ function assertFinalLookupIsBisection(lookup, context) {
             `${context}: final lookup is not a bijection — `
             + `${lookup.keyToId.size} semantic keys vs ${lookup.idToKey.size} identifiers.`
         );
+    }
+
+    for (const [keyString, id] of lookup.keyToId) {
+        const reverseKey = lookup.idToKey.get(nodeIdentifierToString(id));
+        if (reverseKey === undefined) {
+            throw new IdentifierLookupConflictError(
+                `${context}: key "${keyString}" maps to identifier "${nodeIdentifierToString(id)}" which has no reverse mapping.`
+            );
+        }
+        if (nodeKeyStringToString(reverseKey) !== keyString) {
+            throw new IdentifierLookupConflictError(
+                `${context}: key "${keyString}" maps to identifier "${nodeIdentifierToString(id)}" which maps back to different key "${nodeKeyStringToString(reverseKey)}".`
+            );
+        }
     }
 }
 

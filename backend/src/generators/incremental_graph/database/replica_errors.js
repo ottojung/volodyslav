@@ -137,6 +137,31 @@ function isIdentifierLookupConflictError(object) {
     return object instanceof IdentifierLookupConflictError;
 }
 
+class MissingInputIdentifierError extends Error {
+    /**
+     * @param {string} identifierString
+     * @param {string} context
+     */
+    constructor(identifierString, context) {
+        super(
+            `Input identifier ${identifierString} is missing from the ${context} ` +
+            `identifier lookup. This indicates a corrupt graph: a node depends on ` +
+            `this identifier, but it has no mapping to a semantic key.`
+        );
+        this.name = 'MissingInputIdentifierError';
+        this.identifierString = identifierString;
+        this.context = context;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is MissingInputIdentifierError}
+ */
+function isMissingInputIdentifierError(object) {
+    return object instanceof MissingInputIdentifierError;
+}
+
 module.exports = {
     InvalidReplicaPointerError,
     isInvalidReplicaPointerError,
@@ -150,4 +175,6 @@ module.exports = {
     isMissingIdentifierLookupError,
     IdentifierLookupConflictError,
     isIdentifierLookupConflictError,
+    MissingInputIdentifierError,
+    isMissingInputIdentifierError,
 };

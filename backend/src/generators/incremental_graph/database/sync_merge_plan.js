@@ -2,6 +2,7 @@ const { compareIsoTimestamps } = require('./sync_merge_timestamps');
 const { stringToNodeIdentifier, stringToNodeKeyString, nodeKeyStringToString } = require('./types');
 const { nodeIdentifierToString } = require('./node_identifier');
 const { TopologicalSortCycleError } = require('./topo_sort');
+const { MissingInputIdentifierError } = require('./replica_errors');
 
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
@@ -60,6 +61,11 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
     }
 
+    /** @type {Set<NodeKeyString>} */
+    const targetOnlyKeys = new Set();
+    /** @type {Set<NodeKeyString>} */
+    const sharedKeys = new Set();
+
     // Phase 1: Timestamp comparison at the semantic-key level.
     /** @type {Map<NodeKeyString, 'keep' | 'take'>} */
     const initialDecisions = new Map();
@@ -70,6 +76,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
 
     for (const [, info] of semanticInfo) {
         if (info.targetId !== undefined && info.hostId !== undefined) {
+            sharedKeys.add(info.nodeKey);
             // Shared node: compare timestamps.
             const tTimestamps = await T.timestamps.get(info.targetId);
             const hTimestamps = await H.timestamps.get(info.hostId);
@@ -87,6 +94,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         } else if (info.targetId !== undefined) {
             // Target-only node.
             initialDecisions.set(info.nodeKey, 'keep');
+            targetOnlyKeys.add(info.nodeKey);
         }
         // Host-only nodes (info.hostId !== undefined, info.targetId === undefined)
         // are handled separately below.
@@ -113,17 +121,17 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
                 const inputIds = record
                     ? record.inputs.map(input => stringToNodeIdentifier(input))
                     : [];
-                semanticMergedInputs.set(info.nodeKey, inputIds.map(id =>
-                    idToNodeKey(hostLookup, id)
-                ).filter(key => key !== undefined));
+                semanticMergedInputs.set(info.nodeKey, mapInputIdsToKeys(
+                    inputIds, hostLookup, 'host lookup'
+                ));
             } else if (initialDecision === 'keep') {
                 const record = await T.inputs.get(info.targetId);
                 const inputIds = record
                     ? record.inputs.map(input => stringToNodeIdentifier(input))
                     : [];
-                semanticMergedInputs.set(info.nodeKey, inputIds.map(id =>
-                    idToNodeKey(targetLookup, id)
-                ).filter(key => key !== undefined));
+                semanticMergedInputs.set(info.nodeKey, mapInputIdsToKeys(
+                    inputIds, targetLookup, 'target lookup'
+                ));
             }
         } else if (info.targetId !== undefined) {
             // Target-only node.
@@ -131,18 +139,18 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             const inputIds = record
                 ? record.inputs.map(input => stringToNodeIdentifier(input))
                 : [];
-            semanticMergedInputs.set(info.nodeKey, inputIds.map(id =>
-                idToNodeKey(targetLookup, id)
-            ).filter(key => key !== undefined));
+            semanticMergedInputs.set(info.nodeKey, mapInputIdsToKeys(
+                inputIds, targetLookup, 'target lookup'
+            ));
         } else if (info.hostId !== undefined) {
             // Host-only node.
             const record = await H.inputs.get(info.hostId);
             const inputIds = record
                 ? record.inputs.map(input => stringToNodeIdentifier(input))
                 : [];
-            semanticMergedInputs.set(info.nodeKey, inputIds.map(id =>
-                idToNodeKey(hostLookup, id)
-            ).filter(key => key !== undefined));
+            semanticMergedInputs.set(info.nodeKey, mapInputIdsToKeys(
+                inputIds, hostLookup, 'host lookup'
+            ));
         }
     }
 
@@ -189,6 +197,13 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         if (keepTainted.has(key)) {
             hOnlyNeedsInvalidateKeys.add(key);
         }
+    }
+
+    // Target-only nodes must remain 'keep' regardless of taint: they have no
+    // host-side counterpart, so 'take' would attempt to copy from non-existent
+    // host storage, and 'invalidate' would discard the only copy of data.
+    for (const key of targetOnlyKeys) {
+        decisions.set(key, 'keep');
     }
 
     // Phase 6: Build final identifier for every semantic key.
@@ -285,6 +300,28 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
 function idToNodeKey(lookup, id) {
     const idStr = nodeIdentifierToString(id);
     return lookup.idToKey.get(idStr) ?? undefined;
+}
+
+/**
+ * Map an array of input identifiers to semantic node keys, throwing on any
+ * missing identifier instead of silently dropping it.
+ * @param {NodeIdentifier[]} inputIds
+ * @param {IdentifierLookup} lookup
+ * @param {string} context - Human-readable context for error messages.
+ * @returns {NodeKeyString[]}
+ * @throws {MissingInputIdentifierError}
+ */
+function mapInputIdsToKeys(inputIds, lookup, context) {
+    return inputIds.map(id => {
+        const key = idToNodeKey(lookup, id);
+        if (key === undefined) {
+            throw new MissingInputIdentifierError(
+                nodeIdentifierToString(id),
+                context
+            );
+        }
+        return key;
+    });
 }
 
 /**
