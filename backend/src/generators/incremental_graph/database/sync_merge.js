@@ -264,6 +264,7 @@ async function deleteNodeOps(writer, targetStorage, identifier) {
  * @param {Map<NodeKeyString, 'keep' | 'take'>} initialDecisions
  * @param {Map<NodeKeyString, MergeDecision>} decisions
  * @param {Set<NodeKeyString>} hostOnlyNodesNeedingInvalidation
+ * @param {Set<NodeKeyString>} reloweredInputNodes
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
  * @returns {Promise<void>}
@@ -276,6 +277,7 @@ async function applyNodeDecisions(
     initialDecisions,
     decisions,
     hostOnlyNodesNeedingInvalidation,
+    reloweredInputNodes,
     finalIdentifierForKey,
     mergedInputsMap
 ) {
@@ -294,7 +296,9 @@ async function applyNodeDecisions(
         const sourceId = sourceLookup.keyToId.get(String(nodeKey));
         if (sourceId === undefined) throw new IdentifierLookupConflictError(`Missing source identifier for ${String(nodeKey)}`);
 
-        if (decision !== 'keep' || sourceId !== destinationId) {
+        const shouldCopy = decision !== 'keep' || sourceId !== destinationId ||
+            reloweredInputNodes.has(nodeKey);
+        if (shouldCopy) {
             await writer.pushAll(await copyNodeOps({
                 targetStorage,
                 sourceStorage,
@@ -304,7 +308,11 @@ async function applyNodeDecisions(
             }));
         }
 
-        if (decision === 'invalidate' || hostOnlyNodesNeedingInvalidation.has(nodeKey)) {
+        if (
+            decision === 'invalidate' ||
+            hostOnlyNodesNeedingInvalidation.has(nodeKey) ||
+            reloweredInputNodes.has(nodeKey)
+        ) {
             await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
             if (initial === 'take') {
                 const hostTimestamps = await hostStorage.timestamps.get(sourceId);
@@ -445,6 +453,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap,
         decisions,
         hOnlyNeedsInvalidate,
+        reloweredInputNodes,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierChanges,
@@ -463,6 +472,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         initialDecisions,
         decisions,
         hOnlyNeedsInvalidate,
+        reloweredInputNodes,
         finalIdentifierForKey,
         mergedInputsMap
     );

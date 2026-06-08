@@ -862,6 +862,53 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
+    test('invalidates a host-only node when equal-timestamp input is relowered to target identifier', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const targetCId = nodeIdentifierFromString('44-abcdefghi');
+            const hostCId = nodeIdentifierFromString('45-abcdefghi');
+            const hostAId = nodeIdentifierFromString('46-abcdefghi');
+            const keyC = stringToNodeKeyString('{"head":"C-equal-relowered","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"A-host-only-relowered","args":[]}');
+            const hostAValue = {
+                value: { id: 'a-host', type: 'test', description: 'computed from host C' },
+                isDirty: false,
+            };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetCId, TS1, [], undefined);
+            await L.counters.put(targetCId, 4);
+            await writeIdentifierLookup(L, [[targetCId, keyC]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, hostCId, TS1, [], undefined);
+            await H.counters.put(hostCId, 9);
+            await writeNode(H, hostAId, TS1, [hostCId], hostAValue);
+            await H.inputs.put(hostAId, { inputs: [hostCId], inputCounters: [9] });
+            await writeIdentifierLookup(H, [[hostCId, keyC], [hostAId, keyA]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            const T = db.getSchemaStorage();
+            expect(await T.inputs.get(hostAId)).toEqual({
+                inputs: [targetCId],
+                inputCounters: [9],
+            });
+            expect(await T.values.get(hostAId)).toEqual(hostAValue);
+            expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
+            expect(await T.revdeps.get(targetCId)).toEqual([hostAId]);
+            expect(await T.inputs.get(hostCId)).toBeUndefined();
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     test('invalidates a target-only node whose semantic input is taken from host', async () => {
         const capabilities = getTestCapabilities();
         let db;

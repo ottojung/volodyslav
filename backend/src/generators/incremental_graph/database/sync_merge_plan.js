@@ -39,6 +39,7 @@ async function semanticInputs(storage, lookup, identifier) {
  *   mergedInputsMap: Map<NodeIdentifier, NodeIdentifier[]>,
  *   decisions: Map<NodeKeyString, 'keep' | 'take' | 'invalidate'>,
  *   hOnlyNeedsInvalidate: Set<NodeKeyString>,
+ *   reloweredInputNodes: Set<NodeKeyString>,
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
  *   hasIdentifierChanges: boolean
@@ -161,6 +162,8 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
 
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const mergedInputsMap = new Map();
+    /** @type {Set<NodeKeyString>} */
+    const reloweredInputNodes = new Set();
     for (const [nodeKey, decision] of decisions) {
         const initial = initialDecisions.get(nodeKey);
         const structuralSide = decision === 'invalidate' ? initial : decision;
@@ -171,12 +174,21 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         if (sourceId === undefined || finalId === undefined) {
             throw new IdentifierLookupConflictError(`Missing lowered identifier for ${String(nodeKey)}`);
         }
+        const sourceInputs = await storage.inputs.get(sourceId);
         const inputKeys = await semanticInputs(storage, lookup, sourceId);
-        mergedInputsMap.set(finalId, inputKeys.map(inputKey => {
+        const finalInputIds = inputKeys.map(inputKey => {
             const inputId = finalIdentifierForKey.get(inputKey);
             if (inputId === undefined) throw new IdentifierLookupConflictError(`Missing lowered input identifier for ${String(inputKey)}`);
             return inputId;
-        }));
+        });
+        mergedInputsMap.set(finalId, finalInputIds);
+        const sourceInputIds = sourceInputs?.inputs ?? [];
+        if (
+            sourceInputIds.length !== finalInputIds.length ||
+            sourceInputIds.some((inputId, index) => String(inputId) !== String(finalInputIds[index]))
+        ) {
+            reloweredInputNodes.add(nodeKey);
+        }
     }
 
     return {
@@ -184,6 +196,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         mergedInputsMap,
         decisions,
         hOnlyNeedsInvalidate,
+        reloweredInputNodes,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierChanges,
