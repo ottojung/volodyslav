@@ -1,6 +1,7 @@
 const {
     makeIdentifierLookup,
 } = require('./identifier_lookup');
+const { nodeKeyStringToString } = require('./types');
 const {
     IdentifierLookupConflictError,
     MalformedIdentifierLookupError,
@@ -8,6 +9,8 @@ const {
 } = require('./replica_errors');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
+/** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
 
 /**
  * TODO: when we get a better opportunity, this module must grow
@@ -32,10 +35,11 @@ function parseIdentifierLookup(rawEntries, context) {
 }
 
 /**
- * Detect conflicts between host and target lookup snapshots.
+ * Detect same-identifier/different-semantic-key conflicts between lookups.
  *
- * The module-level doc comment explains the rationale — single-origin
- * assumption makes conflicts unrecoverable by design.
+ * Same-semantic-key/different-identifier is NOT a conflict — it is a
+ * normal merge scenario handled by the semantic-key-based planner.
+ * Same-identifier/different-semantic-key IS corruption and remains hard.
  *
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
@@ -43,24 +47,12 @@ function parseIdentifierLookup(rawEntries, context) {
  * @throws {IdentifierLookupConflictError}
  */
 function assertNoIdentifierLookupConflicts(targetLookup, hostLookup) {
-    for (const [nodeKeyString, targetIdentifier] of targetLookup.keyToId.entries()) {
-        const hostIdentifier = hostLookup.keyToId.get(nodeKeyString);
-        if (hostIdentifier !== undefined && hostIdentifier !== targetIdentifier) {
-            throw new IdentifierLookupConflictError(
-                `Conflicting identifier assignment for node key ${nodeKeyString}: `
-                + `target=${String(targetIdentifier)}, host=${String(hostIdentifier)}. `
-                + `Volodyslav will not resolve this automatically; manually fix the `
-                + `identifiers_keys_map records before synchronizing again.`
-            );
-        }
-    }
-
     for (const [identifierString, targetNodeKey] of targetLookup.idToKey.entries()) {
         const hostNodeKey = hostLookup.idToKey.get(identifierString);
         if (hostNodeKey !== undefined && hostNodeKey !== targetNodeKey) {
             throw new IdentifierLookupConflictError(
                 `Conflicting node key assignment for identifier ${identifierString}: `
-                + `target=${String(targetNodeKey)}, host=${String(hostNodeKey)}. `
+                + `target=${nodeKeyStringToString(targetNodeKey)}, host=${nodeKeyStringToString(hostNodeKey)}. `
                 + `Volodyslav will not resolve this automatically; manually fix the `
                 + `identifiers_keys_map records before synchronizing again.`
             );
@@ -68,7 +60,26 @@ function assertNoIdentifierLookupConflicts(targetLookup, hostLookup) {
     }
 }
 
+/**
+ * Validate that the final lookup is a strict bijection: no duplicate semantic
+ * keys and no duplicate identifiers.
+ *
+ * @param {IdentifierLookup} lookup
+ * @param {string} context
+ * @returns {void}
+ * @throws {IdentifierLookupConflictError}
+ */
+function assertFinalLookupIsBisection(lookup, context) {
+    if (lookup.keyToId.size !== lookup.idToKey.size) {
+        throw new IdentifierLookupConflictError(
+            `${context}: final lookup is not a bijection — `
+            + `${lookup.keyToId.size} semantic keys vs ${lookup.idToKey.size} identifiers.`
+        );
+    }
+}
+
 module.exports = {
     assertNoIdentifierLookupConflicts,
+    assertFinalLookupIsBisection,
     parseIdentifierLookup,
 };

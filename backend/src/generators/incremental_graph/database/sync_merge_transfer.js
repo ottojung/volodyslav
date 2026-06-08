@@ -1,4 +1,5 @@
 const { makeDbToDbAdapter, unifyStores } = require('./unification');
+const { nodeIdentifierToString } = require('./node_identifier');
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./root_database').ReplicaName} ReplicaName */
@@ -75,7 +76,87 @@ async function buildTakeOps(T, H, key) {
     return ops;
 }
 
+/**
+ * Copy a node from sourceStorage to targetStorage, potentially under a
+ * different destination identifier, with inputs rewritten to lowered
+ * final identifiers.
+ *
+ * @param {object} opts
+ * @param {SchemaStorage} opts.targetStorage
+ * @param {SchemaStorage} opts.sourceStorage
+ * @param {NodeIdentifier} opts.sourceId
+ * @param {NodeIdentifier} opts.destinationId
+ * @param {NodeIdentifier[]} opts.finalInputs
+ * @returns {Promise<Array<*>>}
+ */
+async function copyNodeOps({ targetStorage, sourceStorage, sourceId, destinationId, finalInputs }) {
+    /** @type {Array<*>} */
+    const ops = [];
+
+    const srcValue = await sourceStorage.values.get(sourceId);
+    if (srcValue !== undefined) {
+        ops.push(targetStorage.values.putOp(destinationId, srcValue));
+    } else {
+        ops.push(targetStorage.values.delOp(destinationId));
+    }
+
+    const srcFreshness = await sourceStorage.freshness.get(sourceId);
+    ops.push(targetStorage.freshness.putOp(destinationId, srcFreshness ?? 'potentially-outdated'));
+
+    const srcTimestamps = await sourceStorage.timestamps.get(sourceId);
+    if (srcTimestamps !== undefined) {
+        ops.push(targetStorage.timestamps.putOp(destinationId, srcTimestamps));
+    } else {
+        ops.push(targetStorage.timestamps.delOp(destinationId));
+    }
+
+    const srcInputs = await sourceStorage.inputs.get(sourceId);
+    if (srcInputs !== undefined) {
+        ops.push(targetStorage.inputs.putOp(destinationId, {
+            inputs: finalInputs.map(id => nodeIdentifierToString(id)),
+            inputCounters: srcInputs.inputCounters,
+        }));
+    } else {
+        // Use the provided finalInputs even if source has no inputs record.
+        ops.push(targetStorage.inputs.putOp(destinationId, {
+            inputs: finalInputs.map(id => nodeIdentifierToString(id)),
+            inputCounters: [],
+        }));
+    }
+
+    const srcCounter = await sourceStorage.counters.get(sourceId);
+    if (srcCounter !== undefined) {
+        ops.push(targetStorage.counters.putOp(destinationId, srcCounter));
+    } else {
+        ops.push(targetStorage.counters.delOp(destinationId));
+    }
+
+    return ops;
+}
+
+/**
+ * Build delete operations to remove a losing identifier from all sublevels in
+ * the target storage.
+ *
+ * Revdeps are NOT included here; they are rebuilt from scratch.
+ *
+ * @param {SchemaStorage} storage
+ * @param {NodeIdentifier} key
+ * @returns {Array<*>}
+ */
+function buildDeleteOps(storage, key) {
+    return [
+        storage.values.delOp(key),
+        storage.freshness.delOp(key),
+        storage.inputs.delOp(key),
+        storage.counters.delOp(key),
+        storage.timestamps.delOp(key),
+    ];
+}
+
 module.exports = {
+    buildDeleteOps,
     buildTakeOps,
+    copyNodeOps,
     copyReplicaGently,
 };
