@@ -1,3 +1,5 @@
+const { IdentifierLookupConflictError } = require('./replica_errors');
+
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 
@@ -70,8 +72,29 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
     }
 }
 
+/**
+ * Validate that every materialized node in storage has a corresponding entry
+ * in the identifier lookup, and vice versa. Call this before building a merge
+ * plan so corrupt snapshots are rejected before the planner can silently
+ * ignore unreferenced materialized nodes.
+ * @param {SchemaStorage} storage
+ * @param {IdentifierLookup} lookup
+ * @param {string} context
+ * @returns {Promise<void>}
+ */
+async function assertLookupCoversMaterializedNodes(storage, lookup, context) {
+    for await (const id of storage.inputs.keys()) {
+        if (!lookup.idToKey.has(String(id))) {
+            throw new IdentifierLookupConflictError(
+                `${context}: materialized node ${String(id)} has no identifiers_keys_map entry`
+            );
+        }
+    }
+}
+
 module.exports = {
     assertValidFinalMergeState,
+    assertLookupCoversMaterializedNodes,
     FinalMergeStateError,
     isFinalMergeStateError,
 };
