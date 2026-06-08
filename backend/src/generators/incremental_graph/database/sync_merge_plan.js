@@ -39,10 +39,11 @@ async function semanticInputs(storage, lookup, identifier) {
  *   mergedInputsMap: Map<NodeIdentifier, NodeIdentifier[]>,
  *   decisions: Map<NodeKeyString, 'keep' | 'take' | 'invalidate'>,
  *   hOnlyNeedsInvalidate: Set<NodeKeyString>,
- *   reloweredInputNodes: Set<NodeKeyString>,
+ *   directlyReloweredNodes: Set<NodeKeyString>,
+ *   reloweringInvalidatedNodes: Set<NodeKeyString>,
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
- *   hasIdentifierChanges: boolean
+ *   hasIdentifierReconciliation: boolean
  * }>} 
  */
 async function buildMergePlan(T, H, targetLookup, hostLookup) {
@@ -142,7 +143,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     const finalIdentifierForKey = new Map();
     /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
     const finalEntries = [];
-    let hasIdentifierChanges = false;
+    let hasIdentifierReconciliation = false;
     for (const [nodeKey, initial] of initialDecisions) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
@@ -155,7 +156,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         finalIdentifierForKey.set(nodeKey, finalId);
         finalEntries.push([finalId, nodeKey]);
         if (targetId !== hostId && targetId !== undefined && hostId !== undefined) {
-            hasIdentifierChanges = true;
+            hasIdentifierReconciliation = true;
         }
     }
     const finalIdentifierLookup = makeIdentifierLookup(finalEntries);
@@ -163,7 +164,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const mergedInputsMap = new Map();
     /** @type {Set<NodeKeyString>} */
-    const reloweredInputNodes = new Set();
+    const directlyReloweredNodes = new Set();
     for (const [nodeKey, decision] of decisions) {
         const initial = initialDecisions.get(nodeKey);
         const structuralSide = decision === 'invalidate' ? initial : decision;
@@ -187,7 +188,26 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             sourceInputIds.length !== finalInputIds.length ||
             sourceInputIds.some((inputId, index) => String(inputId) !== String(finalInputIds[index]))
         ) {
-            reloweredInputNodes.add(nodeKey);
+            directlyReloweredNodes.add(nodeKey);
+        }
+    }
+
+    /** @type {Set<NodeKeyString>} */
+    const reloweringInvalidatedNodes = new Set(directlyReloweredNodes);
+    const invalidatedIdentifiers = new Set(
+        [...directlyReloweredNodes].map(nodeKey => String(finalIdentifierForKey.get(nodeKey)))
+    );
+    for (const identifier of topologicalSortFromMap(mergedInputsMap)) {
+        const inputs = mergedInputsMap.get(identifier) ?? [];
+        if (inputs.some(input => invalidatedIdentifiers.has(String(input)))) {
+            invalidatedIdentifiers.add(String(identifier));
+            const nodeKey = finalIdentifierLookup.idToKey.get(String(identifier));
+            if (nodeKey === undefined) {
+                throw new IdentifierLookupConflictError(
+                    `Missing semantic key for invalidated identifier ${String(identifier)}`
+                );
+            }
+            reloweringInvalidatedNodes.add(nodeKey);
         }
     }
 
@@ -196,10 +216,11 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         mergedInputsMap,
         decisions,
         hOnlyNeedsInvalidate,
-        reloweredInputNodes,
+        directlyReloweredNodes,
+        reloweringInvalidatedNodes,
         finalIdentifierForKey,
         finalIdentifierLookup,
-        hasIdentifierChanges,
+        hasIdentifierReconciliation,
     };
 }
 

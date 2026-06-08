@@ -20,11 +20,10 @@ const {
     isMissingIdentifierLookupError,
     makeIdentifierLookup,
     nodeIdentifierFromString,
-    nodeIdentifierToString,
-    nodeKeyStringToString,
     serializeIdentifierLookup,
     stringToNodeKeyString,
 } = require('../src/generators/incremental_graph/database');
+const { makeIncrementalGraph } = require('../src/generators/incremental_graph');
 const {
     IdentifierLookupConflictError,
     isIdentifierLookupConflictError,
@@ -862,7 +861,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('invalidates a host-only node when equal-timestamp input is relowered to target identifier', async () => {
+    test('pull recomputes a directly relowered node even when dependency counters collide', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -872,38 +871,131 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(db.version);
             await db.setHostnameGlobal(hostname, 'version', db.version);
 
-            const targetCId = nodeIdentifierFromString('44-abcdefghi');
-            const hostCId = nodeIdentifierFromString('45-abcdefghi');
-            const hostAId = nodeIdentifierFromString('46-abcdefghi');
-            const keyC = stringToNodeKeyString('{"head":"C-equal-relowered","args":[]}');
-            const keyA = stringToNodeKeyString('{"head":"A-host-only-relowered","args":[]}');
-            const hostAValue = {
-                value: { id: 'a-host', type: 'test', description: 'computed from host C' },
-                isDirty: false,
-            };
+            const targetCId = nodeIdentifierFromString('47-abcdefghi');
+            const hostCId = nodeIdentifierFromString('48-abcdefghi');
+            const hostAId = nodeIdentifierFromString('49-abcdefghi');
+            const keyC = stringToNodeKeyString('{"head":"c_counter_collision","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"a_counter_collision","args":[]}');
+            const targetCValue = { source: 'target C' };
+            const staleAValue = { source: 'A computed from host C' };
 
             const L = db.schemaStorageForReplica('x');
-            await writeNode(L, targetCId, TS1, [], undefined);
-            await L.counters.put(targetCId, 4);
+            await writeNode(L, targetCId, TS1, [], targetCValue);
+            await L.counters.put(targetCId, 1);
             await writeIdentifierLookup(L, [[targetCId, keyC]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await writeNode(H, hostCId, TS1, [], undefined);
-            await H.counters.put(hostCId, 9);
-            await writeNode(H, hostAId, TS1, [hostCId], hostAValue);
-            await H.inputs.put(hostAId, { inputs: [hostCId], inputCounters: [9] });
+            await writeNode(H, hostCId, TS1, [], { source: 'host C' });
+            await H.counters.put(hostCId, 1);
+            await writeNode(H, hostAId, TS1, [hostCId], staleAValue);
+            await H.inputs.put(hostAId, { inputs: [hostCId], inputCounters: [1] });
+            await H.counters.put(hostAId, 1);
             await writeIdentifierLookup(H, [[hostCId, keyC], [hostAId, keyA]]);
 
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
-            const T = db.getSchemaStorage();
-            expect(await T.inputs.get(hostAId)).toEqual({
-                inputs: [targetCId],
-                inputCounters: [9],
+            expect(await db.getSchemaStorage().values.get(hostAId)).toBeUndefined();
+            const computeA = jest.fn(async ([input]) => ({ source: `recomputed from ${input.source}` }));
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: 'c_counter_collision',
+                    inputs: [],
+                    computor: async () => targetCValue,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: 'a_counter_collision',
+                    inputs: ['c_counter_collision'],
+                    computor: computeA,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await expect(graph.pull('a_counter_collision')).resolves.toEqual({
+                source: 'recomputed from target C',
             });
-            expect(await T.values.get(hostAId)).toEqual(hostAValue);
+            expect(computeA).toHaveBeenCalledTimes(1);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('relowered invalidation propagates transitively and pull recomputes dependents', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const targetCId = nodeIdentifierFromString('53-abcdefghi');
+            const hostCId = nodeIdentifierFromString('54-abcdefghi');
+            const hostAId = nodeIdentifierFromString('55-abcdefghi');
+            const hostDId = nodeIdentifierFromString('56-abcdefghi');
+            const keyC = stringToNodeKeyString('{"head":"c_transitive_relower","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"a_transitive_relower","args":[]}');
+            const keyD = stringToNodeKeyString('{"head":"d_transitive_relower","args":[]}');
+            const targetCValue = { source: 'target C' };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetCId, TS1, [], targetCValue);
+            await L.counters.put(targetCId, 1);
+            await writeIdentifierLookup(L, [[targetCId, keyC]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, hostCId, TS1, [], { source: 'host C' });
+            await H.counters.put(hostCId, 1);
+            await writeNode(H, hostAId, TS1, [hostCId], { source: 'stale A' });
+            await H.inputs.put(hostAId, { inputs: [hostCId], inputCounters: [1] });
+            await H.counters.put(hostAId, 1);
+            await writeNode(H, hostDId, TS1, [hostAId], { source: 'stale D' });
+            await H.inputs.put(hostDId, { inputs: [hostAId], inputCounters: [1] });
+            await H.counters.put(hostDId, 1);
+            await writeIdentifierLookup(H, [
+                [hostCId, keyC],
+                [hostAId, keyA],
+                [hostDId, keyD],
+            ]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            const T = db.getSchemaStorage();
             expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
-            expect(await T.revdeps.get(targetCId)).toEqual([hostAId]);
-            expect(await T.inputs.get(hostCId)).toBeUndefined();
+            expect(await T.freshness.get(hostDId)).toBe('potentially-outdated');
+
+            const computeA = jest.fn(async ([input]) => ({ source: `A from ${input.source}` }));
+            const computeD = jest.fn(async ([input]) => ({ source: `D from ${input.source}` }));
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: 'c_transitive_relower',
+                    inputs: [],
+                    computor: async () => targetCValue,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: 'a_transitive_relower',
+                    inputs: ['c_transitive_relower'],
+                    computor: computeA,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: 'd_transitive_relower',
+                    inputs: ['a_transitive_relower'],
+                    computor: computeD,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await expect(graph.pull('d_transitive_relower')).resolves.toEqual({
+                source: 'D from A from target C',
+            });
+            expect(computeA).toHaveBeenCalledTimes(1);
+            expect(computeD).toHaveBeenCalledTimes(1);
         } finally {
             if (db) await db.close();
         }
@@ -952,590 +1044,11 @@ describe('mergeHostIntoReplica', () => {
                 inputs: [hostCId],
                 inputCounters: [],
             });
-            expect(await T.values.get(targetDId)).toEqual(targetDValue);
+            expect(await T.values.get(targetDId)).toBeUndefined();
             expect(await T.counters.get(targetDId)).toBe(2);
             expect(await T.freshness.get(targetDId)).toBe('potentially-outdated');
             expect(await T.revdeps.get(hostCId)).toEqual([targetDId]);
             expect(await T.inputs.get(targetCId)).toBeUndefined();
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
-    test('same semantic key with different identifiers and equal timestamps: merge succeeds, single identity survives', async () => {
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const logger = makeLogger();
-            const hostname = 'peer';
-            const appVersionStr = db.version;
-            await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
-
-            const SAME_KEY = stringToNodeKeyString('{"head":"event","args":["id123"]}');
-            const T_ID = nodeIdentifierFromString('1-abcdefghi');
-            const H_ID = nodeIdentifierFromString('10-abcdefghi');
-            const tValue = { value: { id: 'local', type: 'test', description: 'local value' }, isDirty: false };
-            const hValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
-
-            const L = db.schemaStorageForReplica('x');
-            await writeNode(L, T_ID, TS1, [], tValue);
-            await writeIdentifierLookup(L, [[T_ID, SAME_KEY]]);
-
-            const H = db.hostnameSchemaStorage(hostname);
-            await writeNode(H, H_ID, TS1, [], hValue);
-            await writeIdentifierLookup(H, [[H_ID, SAME_KEY]]);
-
-            // Merge must NOT throw
-            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
-
-            // Active replica stays 'x' (equal timestamps → keep → no data changes, but identifier reconciliation still counts)
-            const newActive = db.currentReplicaName();
-            const T = db.schemaStorageForReplica(newActive);
-
-            // Final lookup must be a strict bijection: SAME_KEY -> T_ID only
-            const serialized = await T.global.get(IDENTIFIERS_KEY);
-            const finalLookup = makeIdentifierLookup(serialized ? serializeIdentifierLookup(makeIdentifierLookup(serialized)) : []);
-            expect(finalLookup.keyToId.get(nodeKeyStringToString(SAME_KEY))).toBe(T_ID);
-            expect(finalLookup.keyToId.size).toBe(1);
-            expect(finalLookup.idToKey.size).toBe(1);
-
-            // Target identifier data survives
-            const merged = await T.values.get(T_ID);
-            expect(merged).toEqual(tValue);
-
-            // Stale host identifier must NOT be in T storage (host data was in H, not L/T)
-            const hValInT = await T.values.get(H_ID);
-            expect(hValInT).toBeUndefined();
-            const hFreshInT = await T.freshness.get(H_ID);
-            expect(hFreshInT).toBeUndefined();
-            const hInputsInT = await T.inputs.get(H_ID);
-            expect(hInputsInT).toBeUndefined();
-            const hCounterInT = await T.counters.get(H_ID);
-            expect(hCounterInT).toBeUndefined();
-            const hTsInT = await T.timestamps.get(H_ID);
-            expect(hTsInT).toBeUndefined();
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
-    test('same semantic key with different identifiers and target-newer: keep, target id survives', async () => {
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const logger = makeLogger();
-            const hostname = 'peer';
-            const appVersionStr = db.version;
-            await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
-
-            const SAME_KEY = stringToNodeKeyString('{"head":"event","args":["id456"]}');
-            const T_ID = nodeIdentifierFromString('2-abcdefghi');
-            const H_ID = nodeIdentifierFromString('20-abcdefghi');
-            const tValue = { value: { id: 'local', type: 'test', description: 'local newer' }, isDirty: false };
-
-            const L = db.schemaStorageForReplica('x');
-            await writeNode(L, T_ID, TS3, [], tValue);
-            await writeIdentifierLookup(L, [[T_ID, SAME_KEY]]);
-
-            const H = db.hostnameSchemaStorage(hostname);
-            await writeNode(H, H_ID, TS1, [], undefined);
-            await writeIdentifierLookup(H, [[H_ID, SAME_KEY]]);
-
-            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
-
-            const T = db.schemaStorageForReplica(db.currentReplicaName());
-
-            // Final lookup: SAME_KEY -> T_ID
-            const raw = await T.global.get(IDENTIFIERS_KEY);
-            const finalLookup = raw ? makeIdentifierLookup(raw) : null;
-            const keyStr = nodeKeyStringToString(SAME_KEY);
-            expect(finalLookup ? finalLookup.keyToId.get(keyStr) : undefined).toBe(T_ID);
-            expect(finalLookup ? finalLookup.keyToId.size : 0).toBe(1);
-
-            // Host identifier NOT in final lookup
-            expect(finalLookup ? finalLookup.idToKey.has(nodeIdentifierToString(H_ID)) : false).toBe(false);
-
-            // Target identifier data survives
-            const val = await T.values.get(T_ID);
-            expect(val).toEqual(tValue);
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
-    test('same semantic key with different identifiers and host-newer: take, host id survives, target id removed', async () => {
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const logger = makeLogger();
-            const hostname = 'peer';
-            const appVersionStr = db.version;
-            await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
-
-            const SAME_KEY = stringToNodeKeyString('{"head":"event","args":["id789"]}');
-            const T_ID = nodeIdentifierFromString('3-abcdefghi');
-            const H_ID = nodeIdentifierFromString('30-abcdefghi');
-            const tValue = { value: { id: 'local', type: 'test', description: 'local older' }, isDirty: false };
-            const hValue = { value: { id: 'remote', type: 'test', description: 'remote newer' }, isDirty: false };
-
-            const L = db.schemaStorageForReplica('x');
-            await writeNode(L, T_ID, TS1, [], tValue);
-            await writeIdentifierLookup(L, [[T_ID, SAME_KEY]]);
-
-            const H = db.hostnameSchemaStorage(hostname);
-            await writeNode(H, H_ID, TS3, [], hValue);
-            await writeIdentifierLookup(H, [[H_ID, SAME_KEY]]);
-
-            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
-
-            const newActive = db.currentReplicaName();
-            expect(newActive).toBe('y');
-            const T = db.schemaStorageForReplica(newActive);
-
-            // Final lookup: SAME_KEY -> H_ID (host identifier survives)
-            const raw = await T.global.get(IDENTIFIERS_KEY);
-            const finalLookup = raw ? makeIdentifierLookup(raw) : null;
-            const keyStr = nodeKeyStringToString(SAME_KEY);
-            expect(finalLookup ? finalLookup.keyToId.get(keyStr) : undefined).toBe(H_ID);
-            expect(finalLookup ? finalLookup.keyToId.size : 0).toBe(1);
-            expect(finalLookup ? finalLookup.idToKey.size : 0).toBe(1);
-
-            // Host identifier data is in T (copied from H)
-            const valAtH = await T.values.get(H_ID);
-            expect(valAtH).toEqual(hValue);
-
-            // Losing target identifier must be removed from T storage
-            const valAtT = await T.values.get(T_ID);
-            expect(valAtT).toBeUndefined();
-            const freshAtT = await T.freshness.get(T_ID);
-            expect(freshAtT).toBeUndefined();
-            const inputsAtT = await T.inputs.get(T_ID);
-            expect(inputsAtT).toBeUndefined();
-            const counterAtT = await T.counters.get(T_ID);
-            expect(counterAtT).toBeUndefined();
-            const tsAtT = await T.timestamps.get(T_ID);
-            expect(tsAtT).toBeUndefined();
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
-    test('H-only node depending on semantic node whose target id survives: inputs lowered, potentially-outdated', async () => {
-        // Graph: A depends on B and C.
-        // Target has B (tId) and C (C_t).
-        // Host has B (hId, same key but different id), C (C_h, same key but different id),
-        //   and A (A_h) depending on [B, C_h].
-        // Merge keeps target's C_t (equal timestamps → keep).
-        // A is taken (host-only), but its inputs are lowered so it depends on [B_final, C_t].
-        // A is marked potentially-outdated because it was computed with C_h, not C_t.
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const logger = makeLogger();
-            const hostname = 'peer';
-            const appVersionStr = db.version;
-            await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
-
-            const KEY_A = stringToNodeKeyString('{"head":"A","args":[]}');
-            const KEY_B = stringToNodeKeyString('{"head":"B","args":[]}');
-            const KEY_C = stringToNodeKeyString('{"head":"C","args":[]}');
-
-            const B_T_ID = nodeIdentifierFromString('1-abcdefghi');
-            const C_T_ID = nodeIdentifierFromString('2-abcdefghi');
-            const B_H_ID = nodeIdentifierFromString('11-abcdefghi');
-            const C_H_ID = nodeIdentifierFromString('22-abcdefghi');
-            const A_H_ID = nodeIdentifierFromString('33-abcdefghi');
-
-            const tValB = { value: { id: 'b', type: 'test' }, isDirty: false };
-            const tValC = { value: { id: 'c', type: 'test' }, isDirty: false };
-            const hValA = { value: { id: 'a', type: 'test' }, isDirty: false };
-
-            // Target (L) has B at B_T_ID (same ts), C at C_T_ID (newer → force-keep)
-            const L = db.schemaStorageForReplica('x');
-            await writeNode(L, B_T_ID, TS1, [], tValB);
-            await writeNode(L, C_T_ID, TS3, [], tValC);
-            await writeIdentifierLookup(L, [
-                [B_T_ID, KEY_B],
-                [C_T_ID, KEY_C],
-            ]);
-
-            // Host (H) has B at B_H_ID, C at C_H_ID, A at A_H_ID depending on [B_H_ID, C_H_ID]
-            const H = db.hostnameSchemaStorage(hostname);
-            await writeNode(H, B_H_ID, TS1, [], undefined);
-            await writeNode(H, C_H_ID, TS1, [], undefined);
-            await writeNode(H, A_H_ID, TS2, [B_H_ID, C_H_ID], hValA);
-            await writeIdentifierLookup(H, [
-                [B_H_ID, KEY_B],
-                [C_H_ID, KEY_C],
-                [A_H_ID, KEY_A],
-            ]);
-
-            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
-
-            const T = db.schemaStorageForReplica(db.currentReplicaName());
-
-            // A must exist and have been taken
-            const aValue = await T.values.get(A_H_ID);
-            expect(aValue).toEqual(hValA);
-
-            // A's freshness: potentially-outdated (computed with C_h, but C_t survived)
-            const aFreshness = await T.freshness.get(A_H_ID);
-            expect(aFreshness).toBe('potentially-outdated');
-
-            // A's inputs must be lowered: should reference final identifiers for B and C
-            // B keep → B_T_ID survives, C keep → C_T_ID survives
-            const aInputs = await T.inputs.get(A_H_ID);
-            expect(aInputs).not.toBeUndefined();
-            const loweredInputStrings = aInputs ? aInputs.inputs.map(id => String(id)) : [];
-            expect(loweredInputStrings).toContain(String(B_T_ID));
-            expect(loweredInputStrings).toContain(String(C_T_ID));
-            // Must NOT contain host identifiers
-            expect(loweredInputStrings).not.toContain(String(B_H_ID));
-            expect(loweredInputStrings).not.toContain(String(C_H_ID));
-
-            // Revdeps should point from B_T_ID and C_T_ID to A_H_ID
-            const bRevdeps = await T.revdeps.get(B_T_ID);
-            expect(bRevdeps).not.toBeUndefined();
-            expect(bRevdeps ? bRevdeps.map(d => String(d)) : []).toContain(String(A_H_ID));
-            const cRevdeps = await T.revdeps.get(C_T_ID);
-            expect(cRevdeps).not.toBeUndefined();
-            expect(cRevdeps ? cRevdeps.map(d => String(d)) : []).toContain(String(A_H_ID));
-
-            // Final lookup must be a strict bijection
-            const raw = await T.global.get(IDENTIFIERS_KEY);
-            const finalLookup = raw ? makeIdentifierLookup(raw) : null;
-            expect(finalLookup ? finalLookup.keyToId.size : 0).toBe(finalLookup ? finalLookup.idToKey.size : 0);
-            // B → B_T_ID, C → C_T_ID, A → A_H_ID
-            expect(finalLookup ? finalLookup.keyToId.get(nodeKeyStringToString(KEY_B)) : undefined).toBe(B_T_ID);
-            expect(finalLookup ? finalLookup.keyToId.get(nodeKeyStringToString(KEY_C)) : undefined).toBe(C_T_ID);
-            expect(finalLookup ? finalLookup.keyToId.get(nodeKeyStringToString(KEY_A)) : undefined).toBe(A_H_ID);
-
-            // B_T_ID and C_T_ID data should still be in T
-            expect(await T.values.get(B_T_ID)).toBeDefined();
-            expect(await T.values.get(C_T_ID)).toBeDefined();
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
-    test('mixed ancestry invalidation works with semantic-key-based planner', async () => {
-        // Same scenario as the existing invalidation test, but using different identifiers
-        // for the same key on the two sides.
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const logger = makeLogger();
-            const hostname = 'peer';
-            const appVersionStr = db.version;
-            await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
-
-            const KEY_A = stringToNodeKeyString('{"head":"A","args":[]}');
-            const KEY_B = stringToNodeKeyString('{"head":"B","args":[]}');
-
-            const A_T_ID = nodeIdentifierFromString('1-abcdefghi');
-            const B_T_ID = nodeIdentifierFromString('2-abcdefghi');
-            const A_H_ID = nodeIdentifierFromString('11-abcdefghi');
-            const B_H_ID = nodeIdentifierFromString('22-abcdefghi');
-
-            const localValueB = { value: { id: 'b-local', type: 'test', description: 'local B' }, isDirty: false };
-            const remoteValueB = { value: { id: 'b-remote', type: 'test', description: 'remote B' }, isDirty: false };
-
-            const L = db.schemaStorageForReplica('x');
-            // A is force-kept (T-newer); B is initially 'take' (H-newer) and depends on A
-            await writeNode(L, A_T_ID, TS3, [], undefined);
-            await writeNode(L, B_T_ID, TS1, [], localValueB);
-            await L.counters.put(B_T_ID, 1);
-            await writeIdentifierLookup(L, [
-                [A_T_ID, KEY_A],
-                [B_T_ID, KEY_B],
-            ]);
-
-            const H = db.hostnameSchemaStorage(hostname);
-            await writeNode(H, A_H_ID, TS1, [], undefined);
-            await writeNode(H, B_H_ID, TS2, [A_H_ID], remoteValueB);
-            await H.counters.put(B_H_ID, 2);
-            await writeIdentifierLookup(H, [
-                [A_H_ID, KEY_A],
-                [B_H_ID, KEY_B],
-            ]);
-
-            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
-
-            const T = db.schemaStorageForReplica(db.currentReplicaName());
-
-            // A is keep → A_T_ID survives
-            // B is initially take → B_H_ID should carry the data; but invalidated
-            // B should be invalidated: both keepTainted (via A) and takeTainted (B itself)
-            const bFreshness = await T.freshness.get(B_H_ID);
-            expect(bFreshness).toBe('potentially-outdated');
-
-            // B's stored inputs should point to final identifiers (A_T_ID, not A_H_ID)
-            const bInputs = await T.inputs.get(B_H_ID);
-            expect(bInputs).not.toBeUndefined();
-            expect(bInputs ? bInputs.inputs.map(id => String(id)) : []).toEqual([String(A_T_ID)]);
-
-            // B's counter and value from H should be preserved
-            const bCounter = await T.counters.get(B_H_ID);
-            expect(bCounter).toBe(2);
-            const bValue = await T.values.get(B_H_ID);
-            expect(bValue).toEqual(remoteValueB);
-
-            // B's modifiedAt advanced to H's TS2
-            const bTimestamps = await T.timestamps.get(B_H_ID);
-            expect(bTimestamps?.modifiedAt).toBe(TS2);
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
-    test('same identifier mapped to different semantic keys remains a hard error', async () => {
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const logger = makeLogger();
-            const hostname = 'peer';
-            const appVersionStr = db.version;
-            await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
-
-            const idA = nodeIdentifierFromString('1-abcdefghi');
-            const keyA = stringToNodeKeyString('{"head":"event","args":["a"]}');
-            const keyB = stringToNodeKeyString('{"head":"event","args":["b"]}');
-
-            const L = db.schemaStorageForReplica('x');
-            await writeIdentifierLookup(L, [[idA, keyA]]);
-
-            const H = db.hostnameSchemaStorage(hostname);
-            await writeIdentifierLookup(H, [[idA, keyB]]);
-
-            let error;
-            try {
-                await mergeHostIntoReplica(logger, db, hostname);
-            } catch (caught) {
-                error = caught;
-            }
-
-            expect(isIdentifierLookupConflictError(error)).toBe(true);
-            expect(String(error?.message)).toContain('Conflicting node key assignment for identifier');
-            expect(db.currentReplicaName()).toBe('x');
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
-    test('identifier-only reconciliation causes replica cutover', async () => {
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const logger = makeLogger();
-            const hostname = 'peer';
-            const appVersionStr = db.version;
-            await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
-
-            const SAME_KEY = stringToNodeKeyString('{"head":"event","args":["cutover-test"]}');
-            const T_ID = nodeIdentifierFromString('1-abcdefghi');
-            const H_ID = nodeIdentifierFromString('10-abcdefghi');
-
-            const L = db.schemaStorageForReplica('x');
-            await writeNode(L, T_ID, TS1, [], { value: { id: 'val' }, isDirty: false });
-            await writeIdentifierLookup(L, [[T_ID, SAME_KEY]]);
-
-            const H = db.hostnameSchemaStorage(hostname);
-            await writeNode(H, H_ID, TS1, [], { value: { id: 'val' }, isDirty: false });
-            await writeIdentifierLookup(H, [[H_ID, SAME_KEY]]);
-
-            // Precondition: active replica is 'x'
-            expect(db.currentReplicaName()).toBe('x');
-
-            const switched = await mergeHostIntoReplica(logger, db, hostname);
-
-            // Even though no graph data changed (equal timestamps → keep),
-            // identifier reconciliation means the merge IS a change:
-            // the final lookup must be committed and the replica must be switched.
-            expect(switched).toBe(true);
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
-    test('throws MissingInputIdentifierError when node depends on identifier not in any lookup', async () => {
-        // Corrupt graph: host has a node whose inputs reference an identifier
-        // that is missing from both lookups.  The planner must throw instead
-        // of silently dropping the dependency.
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const logger = makeLogger();
-            const hostname = 'peer';
-            const appVersionStr = db.version;
-            await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
-
-            const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
-            const A_T_ID = nodeIdentifierFromString('1-abcdefghi');
-            const B_H_ID = nodeIdentifierFromString('2-abcdefghi');
-            const MYSTERY_ID = nodeIdentifierFromString('99-abcdefghi');
-            const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
-
-            const L = db.schemaStorageForReplica('x');
-            await writeNode(L, A_T_ID, TS1, [], undefined);
-            await writeIdentifierLookup(L, [[A_T_ID, keyA]]);
-
-            const H = db.hostnameSchemaStorage(hostname);
-            // B depends on MYSTERY_ID, which is NOT in either lookup.
-            await writeNode(H, B_H_ID, TS2, [MYSTERY_ID], undefined);
-            await writeIdentifierLookup(H, [[B_H_ID, keyB]]);
-
-            let error;
-            try {
-                await mergeHostIntoReplica(logger, db, hostname);
-            } catch (caught) {
-                error = caught;
-            }
-
-            expect(isIdentifierLookupConflictError(error)).toBe(true);
-            expect(String(error?.message)).toContain(String(MYSTERY_ID));
-            expect(db.currentReplicaName()).toBe('x');
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
-    test('target-only nodes remain keep despite taint from host-newer ancestor', async () => {
-        // Scenario:
-        //   Target: A_t (key K) TS1, D_t (key K2) TS1, inputs=[A_t]
-        //   Host:   A_h (key K) TS3 (newer), no D
-        // A is shared, host-newer → take (A_h wins). D is target-only → keep.
-        // Without the fix, D inherits takeTainted from A and becomes 'take',
-        // which copies from non-existent host storage, losing D's data.
-        // After the fix, D stays 'keep' with its data preserved and inputs
-        // lowered to the final identifier for A (A_h).
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const logger = makeLogger();
-            const hostname = 'peer';
-            const appVersionStr = db.version;
-            await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
-
-            const KEY_A = stringToNodeKeyString('{"head":"A","args":[]}');
-            const KEY_D = stringToNodeKeyString('{"head":"D","args":[]}');
-            const A_T_ID = nodeIdentifierFromString('1-abcdefghi');
-            const A_H_ID = nodeIdentifierFromString('11-abcdefghi');
-            const D_T_ID = nodeIdentifierFromString('2-abcdefghi');
-            const targetValueD = { value: { id: 'd-target', type: 'test', description: 'target-only D' }, isDirty: false };
-
-            const L = db.schemaStorageForReplica('x');
-            await writeNode(L, A_T_ID, TS1, [], undefined);
-            await writeNode(L, D_T_ID, TS1, [A_T_ID], targetValueD);
-            await writeIdentifierLookup(L, [
-                [A_T_ID, KEY_A],
-                [D_T_ID, KEY_D],
-            ]);
-
-            const H = db.hostnameSchemaStorage(hostname);
-            await writeNode(H, A_H_ID, TS3, [], undefined);
-            await writeIdentifierLookup(H, [[A_H_ID, KEY_A]]);
-
-            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
-
-            const T = db.schemaStorageForReplica(db.currentReplicaName());
-
-            // D_T_ID must still exist (data preserved)
-            const dValue = await T.values.get(D_T_ID);
-            expect(dValue).toEqual(targetValueD);
-            const dFreshness = await T.freshness.get(D_T_ID);
-            expect(dFreshness).toBeDefined();
-
-            // D's inputs must be lowered: they should reference A_H_ID (final ident for key A)
-            const dInputs = await T.inputs.get(D_T_ID);
-            expect(dInputs).not.toBeUndefined();
-            const loweredDInputs = dInputs ? dInputs.inputs.map(id => String(id)) : [];
-            expect(loweredDInputs).toContain(String(A_H_ID));
-
-            // A_T_ID should be gone (losing target identifier deleted)
-            const aTVal = await T.values.get(A_T_ID);
-            expect(aTVal).toBeUndefined();
-
-            // Final lookup must be a strict bijection: A→A_H_ID, D→D_T_ID
-            const raw = await T.global.get(IDENTIFIERS_KEY);
-            const finalLookup = raw ? makeIdentifierLookup(raw) : null;
-            const keyStrA = nodeKeyStringToString(KEY_A);
-            const keyStrD = nodeKeyStringToString(KEY_D);
-            expect(finalLookup ? finalLookup.keyToId.get(keyStrA) : undefined).toBe(A_H_ID);
-            expect(finalLookup ? finalLookup.keyToId.get(keyStrD) : undefined).toBe(D_T_ID);
-            expect(finalLookup ? finalLookup.keyToId.size : 0).toBe(2);
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
-    test('kept node with changed dependency identifier gets inputs rewritten', async () => {
-        // Scenario:
-        //   Target: A_t (key K) TS1, B_t (key K2) TS1, inputs=[A_t]
-        //   Host:   A_h (key K) TS3 (newer), no B
-        // A is shared, host-newer → take (A_h wins). B is target-only → force-kept.
-        // B's stored inputs=[A_t] must be rewritten to=[A_h] because A_h is the
-        // final identifier for key K. Without the fix, B's inputs still point to
-        // the deleted A_t identifier.
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const logger = makeLogger();
-            const hostname = 'peer';
-            const appVersionStr = db.version;
-            await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
-
-            const KEY_A = stringToNodeKeyString('{"head":"A","args":[]}');
-            const KEY_B = stringToNodeKeyString('{"head":"B","args":[]}');
-            const A_T_ID = nodeIdentifierFromString('1-abcdefghi');
-            const A_H_ID = nodeIdentifierFromString('11-abcdefghi');
-            const B_T_ID = nodeIdentifierFromString('2-abcdefghi');
-
-            const L = db.schemaStorageForReplica('x');
-            await writeNode(L, A_T_ID, TS1, [], undefined);
-            await writeNode(L, B_T_ID, TS1, [A_T_ID], undefined);
-            await writeIdentifierLookup(L, [
-                [A_T_ID, KEY_A],
-                [B_T_ID, KEY_B],
-            ]);
-
-            const H = db.hostnameSchemaStorage(hostname);
-            await writeNode(H, A_H_ID, TS3, [], undefined);
-            await writeIdentifierLookup(H, [[A_H_ID, KEY_A]]);
-
-            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
-
-            const T = db.schemaStorageForReplica(db.currentReplicaName());
-
-            // B_T_ID's inputs must be rewritten to reference A_H_ID (not A_T_ID)
-            const bInputs = await T.inputs.get(B_T_ID);
-            expect(bInputs).not.toBeUndefined();
-            const loweredBInputs = bInputs ? bInputs.inputs.map(id => String(id)) : [];
-            expect(loweredBInputs).toContain(String(A_H_ID));
-            expect(loweredBInputs).not.toContain(String(A_T_ID));
-
-            // B must still exist (its identifier unchanged)
-            const bFreshness = await T.freshness.get(B_T_ID);
-            expect(bFreshness).toBeDefined();
         } finally {
             if (db) await db.close();
         }

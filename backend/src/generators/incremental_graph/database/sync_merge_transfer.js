@@ -18,8 +18,31 @@ async function copyReplicaGently(rootDatabase, from, to) {
 }
 
 /**
+ * Build operations that remove every primary record for a discarded identifier.
+ * Reverse dependencies are rebuilt from the final lowered graph.
+ * @param {SchemaStorage} targetStorage
+ * @param {NodeIdentifier} identifier
+ * @returns {Array<*>}
+ */
+function buildDeleteNodeOps(targetStorage, identifier) {
+    return [
+        targetStorage.values.delOp(identifier),
+        targetStorage.freshness.delOp(identifier),
+        targetStorage.inputs.delOp(identifier),
+        targetStorage.counters.delOp(identifier),
+        targetStorage.timestamps.delOp(identifier),
+    ];
+}
+
+/**
  * Build operations that copy a node between potentially different identifiers.
  * Inputs are supplied by the semantic planner after lowering to final identifiers.
+ *
+ * `inputCounters` describe the source computation and are copied only as
+ * historical dependency metadata. If lowering changes any input identifier,
+ * the caller must delete the copied value and mark the node outdated so these
+ * counters can never authorize reuse of a value computed against another
+ * storage identity.
  *
  * @param {object} options
  * @param {SchemaStorage} options.targetStorage
@@ -69,4 +92,4 @@ async function copyNodeOps({
     return ops;
 }
 
-module.exports = { copyNodeOps, copyReplicaGently };
+module.exports = { buildDeleteNodeOps, copyNodeOps, copyReplicaGently };

@@ -53,7 +53,7 @@ const {
     FinalMergeStateError,
     isFinalMergeStateError,
 } = require('./sync_merge_validation');
-const { copyNodeOps, copyReplicaGently } = require('./sync_merge_transfer');
+const { buildDeleteNodeOps, copyNodeOps, copyReplicaGently } = require('./sync_merge_transfer');
 const {
     assertNoIdentifierCollisions,
     parseIdentifierLookup,
@@ -238,23 +238,6 @@ async function loadTargetLookup(targetStorage) {
 }
 
 /**
- * Delete all identifier-keyed records for a losing target storage identity.
- * @param {ReplicaBatchWriter} writer
- * @param {SchemaStorage} targetStorage
- * @param {NodeIdentifier} identifier
- * @returns {Promise<void>}
- */
-async function deleteNodeOps(writer, targetStorage, identifier) {
-    await writer.pushAll([
-        targetStorage.values.delOp(identifier),
-        targetStorage.freshness.delOp(identifier),
-        targetStorage.inputs.delOp(identifier),
-        targetStorage.counters.delOp(identifier),
-        targetStorage.timestamps.delOp(identifier),
-    ]);
-}
-
-/**
  * Apply semantic decisions by copying the selected side into the final storage
  * identifier and writing planner-lowered inputs.
  * @param {SchemaStorage} targetStorage
@@ -264,7 +247,8 @@ async function deleteNodeOps(writer, targetStorage, identifier) {
  * @param {Map<NodeKeyString, 'keep' | 'take'>} initialDecisions
  * @param {Map<NodeKeyString, MergeDecision>} decisions
  * @param {Set<NodeKeyString>} hostOnlyNodesNeedingInvalidation
- * @param {Set<NodeKeyString>} reloweredInputNodes
+ * @param {Set<NodeKeyString>} directlyReloweredNodes
+ * @param {Set<NodeKeyString>} reloweringInvalidatedNodes
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
  * @returns {Promise<void>}
@@ -277,7 +261,8 @@ async function applyNodeDecisions(
     initialDecisions,
     decisions,
     hostOnlyNodesNeedingInvalidation,
-    reloweredInputNodes,
+    directlyReloweredNodes,
+    reloweringInvalidatedNodes,
     finalIdentifierForKey,
     mergedInputsMap
 ) {
@@ -297,7 +282,7 @@ async function applyNodeDecisions(
         if (sourceId === undefined) throw new IdentifierLookupConflictError(`Missing source identifier for ${String(nodeKey)}`);
 
         const shouldCopy = decision !== 'keep' || sourceId !== destinationId ||
-            reloweredInputNodes.has(nodeKey);
+            directlyReloweredNodes.has(nodeKey);
         if (shouldCopy) {
             await writer.pushAll(await copyNodeOps({
                 targetStorage,
@@ -307,11 +292,14 @@ async function applyNodeDecisions(
                 finalInputsForDestination: mergedInputsMap.get(destinationId) ?? [],
             }));
         }
+        if (directlyReloweredNodes.has(nodeKey)) {
+            await writer.push(targetStorage.values.delOp(destinationId));
+        }
 
         if (
             decision === 'invalidate' ||
             hostOnlyNodesNeedingInvalidation.has(nodeKey) ||
-            reloweredInputNodes.has(nodeKey)
+            reloweringInvalidatedNodes.has(nodeKey)
         ) {
             await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
             if (initial === 'take') {
@@ -337,7 +325,7 @@ async function applyNodeDecisions(
             throw new IdentifierLookupConflictError(`Target lookup is not bijective for ${targetIdString}`);
         }
         if (finalId !== undefined && finalId !== targetId) {
-            await deleteNodeOps(writer, targetStorage, targetId);
+            await writer.pushAll(buildDeleteNodeOps(targetStorage, targetId));
         }
     }
     await writer.flush();
@@ -453,10 +441,11 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap,
         decisions,
         hOnlyNeedsInvalidate,
-        reloweredInputNodes,
+        directlyReloweredNodes,
+        reloweringInvalidatedNodes,
         finalIdentifierForKey,
         finalIdentifierLookup,
-        hasIdentifierChanges,
+        hasIdentifierReconciliation,
     } = await buildMergePlan(
         targetStorage,
         hostStorage,
@@ -472,7 +461,8 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         initialDecisions,
         decisions,
         hOnlyNeedsInvalidate,
-        reloweredInputNodes,
+        directlyReloweredNodes,
+        reloweringInvalidatedNodes,
         finalIdentifierForKey,
         mergedInputsMap
     );
@@ -480,7 +470,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
 
     const summary = summarizeDecisions(decisions.values());
-    const hasChanges = summary.hasChanges || hasIdentifierChanges;
+    const hasChanges = summary.hasChanges || hasIdentifierReconciliation;
     if (hasChanges) {
         await commitChangedMerge(
             rootDatabase,
