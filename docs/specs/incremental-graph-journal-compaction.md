@@ -6,6 +6,10 @@ This document specifies how journal storage may be compacted — which entries m
 
 Compaction is a maintenance operation. It reduces journal storage size by removing entries that are no longer needed. Compaction may remove journal entries while preserving index/watermark invariants. Journal queries tolerate sparse storage by skipping absent entries and never reconstructing deleted entries.
 
+**Compaction scope and stored-cursor safety.** This PR specifies only same-process, in-memory journal tokens (see `incremental-graph-journal-types.md`). Since tokens are not persisted across process restarts, compaction does not need to guarantee long-lived cursor validity. A future spec may define checkpoint/lease-based compaction safety for persistent stored cursors; this PR does not specify such a mechanism.
+
+**Baseline scans are not full-state initialization.** `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` yields only surviving journal entries; it does not enumerate all currently materialized nodes. If a materialized node has had all its journal entries compacted away, a baseline scan will not include it. Callers that need full graph-state enumeration must use direct graph-state APIs (not the journal) for initialization.
+
 ---
 
 ## Compaction rules

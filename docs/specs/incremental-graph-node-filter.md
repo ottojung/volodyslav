@@ -175,7 +175,7 @@ function isUnionFilter(value)
 
 ## Equality and normalization
 
-REQ-NF-06: Two `NodeFilter` values represent the same set of node keys if and only if they are structurally equal according to the following rules:
+REQ-NF-06: Two `NodeFilter` values are **structurally equal** (as used by the implementation for identity, deduplication, and comparison) if and only if they satisfy the following structural equality rules:
 
 1. All `Wildcard` values are equal to each other. Two freshly constructed `Wildcard` values are always equal.
 2. Two `GroundFilter` values are equal if their `head` values are equal (same `NodeName`) AND their `args` arrays are position-wise equal, where each argument pair is compared as follows:
@@ -184,7 +184,13 @@ REQ-NF-06: Two `NodeFilter` values represent the same set of node keys if and on
    - `Wildcard` does not equal any `ConstValue`, and vice versa.
 3. Two `UnionFilter` values are equal if `(left₁ = left₂ AND right₁ = right₂)` OR `(left₁ = right₂ AND right₁ = left₂)`. Union is commutative.
 
-Implementations MAY normalize `NodeFilter` values during construction or comparison, but they MUST NOT change the matching behavior of a filter. Normalization is an optimization, not a semantic requirement.
+This is structural equality, not semantic set equality. Two filters that represent the same set of node keys may not be structurally equal under these rules. For example:
+
+- `Union(A, Union(B, C))` and `Union(Union(A, B), C)` represent the same set (union is associative), but are not structurally equal.
+- `Union(A, A)` and `A` represent the same set (union is idempotent), but are not structurally equal.
+- `Union(Wildcard, A)` and `Wildcard` represent the same set (union with wildcard absorbs), but are not structurally equal.
+
+Implementations MAY normalize filters into a canonical structural form during construction. They MUST NOT introduce or eliminate match results as a consequence of normalization.
 
 REQ-NF-07: Implementations MAY normalize nested unions into a canonical form (e.g., flatten `Union(Union(A, B), C)` into a flat set). They MUST NOT introduce or eliminate match results as a consequence of normalization.
 

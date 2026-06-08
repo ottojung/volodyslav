@@ -23,7 +23,7 @@ class IncrementalGraph {
      * @param {object} params
      * @param {PossibleNodeChange | BaselinePossibleNodeChange} params.since - The cursor-like reference point.
      * @param {NodeFilter} params.to - Restricts results to nodes matching this filter.
-     * @returns {AsyncIterator<PossibleNodeChange>}
+     * @returns {AsyncIterableIterator<PossibleNodeChange>}
      */
     async *possibleMaybeChanges({ since, to })
 }
@@ -51,7 +51,7 @@ Restricts the returned possible changes to nodes whose keys match the filter. Se
 
 ### Return value
 
-`graph.possibleMaybeChanges` returns an `AsyncIterator<PossibleNodeChange>`. Each yielded value is a `PossibleNodeChange` that:
+`graph.possibleMaybeChanges` returns an `AsyncIterableIterator<PossibleNodeChange>`. Each yielded value is a `PossibleNodeChange` that:
 
 1. was recorded at a journal position strictly after the position referenced by `since`;
 2. matches `to` according to `DEF-NF-MATCH-01`;
@@ -117,4 +117,4 @@ REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to
 
 REQ-JA-09: `IncrementalGraph.prototype.possibleMaybeChanges` operates under the graph instance's `daytimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "daytime", ...)`). It may run concurrently with other daytime activities as allowed by the locking spec. It MUST NOT overlap with nighttime pull activity except as allowed by that spec. See `docs/specs/incremental-graph-locking-design.md`.
 
-REQ-JA-10: The returned async iterator captures a snapshot of the journal state at the time of the call. New journal entries committed after the iterator is created MAY or MAY NOT be reflected in the iteration. This is implementation-defined, but the implementation MUST guarantee that the iterator is internally consistent: within one iterator over one observed span, the same surviving journal index MUST NOT be yielded twice, and no surviving journal index in the observed span may be skipped because of concurrent writes.
+REQ-JA-10: New journal entries committed after the iterator is created MAY or MAY NOT be reflected in the iteration. This is implementation-defined. The implementation MUST guarantee that the iterator is internally consistent: within one iterator over one observed span, the same surviving journal index MUST NOT be yielded twice, and no surviving journal index in the observed span may be skipped because of concurrent writes.

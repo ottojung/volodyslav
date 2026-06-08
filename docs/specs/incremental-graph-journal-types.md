@@ -165,14 +165,14 @@ class JournalIndexClass {
 /** @typedef {JournalIndexClass} JournalIndex */
 ```
 
-REQ-JT-10: `JournalIndex` represents a real journal index. Only non-negative integers are valid real indices. Sentinel values (e.g., -1, 0) that represent "before any entry" are NOT `JournalIndex` values. See `PrivateSincePosition` for the internal since-position encoding.
+REQ-JT-10: `JournalIndex` represents a real journal index. Only positive integers (≥ 1) are valid real journal indices. The value `0` is NOT a valid `JournalIndex` value; it serves as the initial `last_journal_index` watermark before any journal entry has been committed, mirroring the `last_node_index` convention (see `docs/specs/incremental-graph-last-node-index.md`). Sentinel values that represent "before any entry" (e.g., -1, 0) are NOT `JournalIndex` values. See `PrivateSincePosition` for the internal since-position encoding.
 
 Conversion functions:
 
 ```js
 /**
- * Unsafe cast: wraps a non-negative integer as a JournalIndex.
- * Caller MUST ensure value is a non-negative integer representing
+ * Unsafe cast: wraps a positive integer (≥ 1) as a JournalIndex.
+ * Caller MUST ensure value is a positive integer representing
  * a real journal position.
  *
  * @param {number} value
@@ -197,7 +197,7 @@ The next journal index to allocate is maintained in volatile state (analogous to
 rendered/r/global/last_journal_index
 ```
 
-REQ-JT-11: `last_journal_index` MUST NOT decrease.
+REQ-JT-11: `last_journal_index` MUST NOT decrease. A fresh replica starts with `last_journal_index = 0`. The first committed journal entry uses index `1`, mirroring the `last_node_index` convention.
 
 REQ-JT-12: After synchronization, `last_journal_index` MUST be at least the greatest index that is present or known-absent due to synchronized journal state. A known-absent index still contributes to the watermark so that future local allocations do not reuse or overwrite an index that another synchronized host has already allocated, compacted, or poisoned.
 
@@ -288,9 +288,9 @@ The internal widening follows the same pattern as `unsafeStringToNodeIdentifier`
 
 ### Purpose
 
-`PossibleNodeChange` is the public unit of journal observation. It is yielded by `graph.possibleMaybeChanges` and may be passed back as the `since` argument to a later call in the same API context. Every `PossibleNodeChange` is derived from a committed journal entry.
+`PossibleNodeChange` is the public unit of journal observation. It is yielded by `graph.possibleMaybeChanges` and may be passed back as the `since` argument to a later call in the same process session. Every `PossibleNodeChange` is derived from a committed journal entry.
 
-Persistence and long-lived validity of `PossibleNodeChange` values across restarts, migrations, or sync boundaries is out of scope for this PR.
+**This PR specifies only same-process, in-memory journal token usage.** A `PossibleNodeChange` yielded during a process session is valid as `since` for subsequent calls within that same session. Persistence of these tokens across process restarts, synchronization boundaries, or migration boundaries, and the corresponding long-lived validity guarantees, are out of scope for this PR and deferred to a future computor/cursor-persistence specification.
 
 ```js
 class PossibleNodeChangeClass {
@@ -331,6 +331,8 @@ class PossibleNodeChangeClass {
 ```
 
 REQ-JT-13: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. Private journal fields (`id`, `key`, `creator`, `index`) may physically exist on the runtime object (see `PrivatePossibleNodeChange`), but they are not part of the public type/API contract. Callers MUST NOT depend on or inspect fields beyond those listed in the public `PossibleNodeChange` type.
+
+The opacity of private fields is a type-level contract (JSDoc nominal narrowing), not a runtime guarantee that these fields are inaccessible. In plain JavaScript, callers could technically inspect, serialize, clone, or forge these objects. The implementation SHOULD use an appropriate runtime discipline — such as `WeakMap`, `Symbol`-keyed properties, or non-enumerable fields — to make accidental or naive inspection unlikely. Regardless of the runtime technique, the specification contract remains: public consumers MUST NOT depend on any fields beyond `nodeName`, `bindings`, `action`, and `time`.
 
 REQ-JT-14: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
 
@@ -428,7 +430,7 @@ The journal implementation internally uses `PrivatePossibleNodeChange` (which in
 │  graph.possibleMaybeChanges({                │
 │      since,                                  │
 │      to,                                     │
-│  }): AsyncIterator<PossibleNodeChange>       │
+│  }): AsyncIterableIterator<PossibleNodeChange>       │
 │                                              │
 │  baselinePossibleNodeChange():               │
 │      BaselinePossibleNodeChange              │
