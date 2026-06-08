@@ -51,7 +51,9 @@ REQ-JM-06: `storage.delete` MUST remove or purge journal information associated 
 
 REQ-JM-07: `storage.delete` MUST NOT automatically emit a user-visible `delete` journal entry (with `action: "delete"`). Migration deletion is schema-level housekeeping, not a graph change that journal consumers need to observe.
 
-REQ-JM-10: Migration journal purges from `storage.delete` are not subject to the stored-token safety rules that govern compaction (see REQ-JC-13). Migration invalidates journal tokens across the schema boundary: a `PossibleNodeChange` token stored before a migration that changes the schema version MUST NOT be reused for `graph.possibleMaybeChanges` queries in the new schema version. Consumers that need incremental maintenance across a migration boundary MUST re-initialize from `baselinePossibleNodeChange()`.
+REQ-JM-08: Migration invalidates stored journal tokens across the schema boundary: a stored `PossibleNodeChange | BaselinePossibleNodeChange` token from before a schema-changing migration MUST NOT be reused for `graph.possibleMaybeChanges` queries in the new schema version. Consumers that need incremental maintenance across a migration boundary MUST reinitialize using a fresh `baselinePossibleNodeChange()`.
+
+A fresh `baselinePossibleNodeChange()` call is always valid. What does not survive a schema-changing migration is a stored journal token from the old schema context. The `baselinePossibleNodeChange()` function itself is not bound to any particular schema; only the stored token it returns records a position relative to the old schema's journal.
 
 Rationale: Migration deletions happen during version upgrades. The nodes being deleted belong to the old schema version and would not appear in `graph.possibleMaybeChanges` queries scoped to the new schema version anyway. Emitting `delete` entries would create noise for journal consumers that operate across schema boundaries, which is not a supported use case for the initial journal design.
 
@@ -77,6 +79,6 @@ The journal distinguishes migration-originated state from ordinary graph changes
 
 ## Atomicity
 
-REQ-JM-08: Migration journal operations MUST be part of the migration's atomic batch. If the migration batch fails, no journal entries from migration actions (including `storage.create` `add` entries) must be visible in the journal.
+REQ-JM-09: Migration journal operations MUST be part of the migration's atomic batch. If the migration batch fails, no journal entries from migration actions (including `storage.create` `add` entries) must be visible in the journal.
 
-REQ-JM-09: Migration journal purges (`storage.delete` removing journal records) MUST also be part of the same atomic batch. Partial purge (some journal records removed, others left) in the event of a failure must not be observable.
+REQ-JM-10: Migration journal purges (`storage.delete` removing journal records) MUST also be part of the same atomic batch. Partial purge (some journal records removed, others left) in the event of a failure must not be observable.
