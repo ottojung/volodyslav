@@ -108,3 +108,20 @@ jobs:
 
             - name: Run docker image entrypoint
               run: docker run ghcr.io/ottojung/volodyslav --version
+
+    eslint-plugin-tests:
+        runs-on: ubuntu-latest
+        permissions:
+          contents: read
+        steps:
+            - name: Use Node.js ${{ matrix.node-version }}
+              uses: actions/setup-node@v6
+              with:
+                  node-version: ${{ matrix.node-version }}
+                  cache: "npm"
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Test Eslint plugins
+              run: npm run rules:test
