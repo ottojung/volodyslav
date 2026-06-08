@@ -12,7 +12,6 @@
  * if the graph contains a cycle (which is treated as data corruption).
  */
 
-const { compareNodeIdentifier } = require('./node_identifier');
 const { stringToNodeIdentifier } = require('./types');
 
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
@@ -132,10 +131,11 @@ class MinHeap {
  * Thrown when the node graph contains a cycle, which violates the DAG
  * invariant required by the incremental-graph model.  A cycle indicates data
  * corruption and the merge should abort for the affected host.
+ * @template T
  */
 class TopologicalSortCycleError extends Error {
     /**
-     * @param {NodeIdentifier[]} cycle - A representative subset of nodes involved in the cycle.
+     * @param {T[]} cycle - A representative subset of nodes involved in the cycle.
      */
     constructor(cycle) {
         const sample = cycle.slice(0, CYCLE_MESSAGE_SAMPLE_LIMIT);
@@ -185,9 +185,10 @@ async function collectAllNodes(storage) {
  * `topologicalSort` (reads from SchemaStorage) and `topologicalSortFromMap`
  * (operates directly on an already-built map).
  *
- * @param {Map<NodeIdentifier, NodeIdentifier[]>} inputsMap
+ * @template T
+ * @param {Map<T, T[]>} inputsMap
  *   A map from each node to the list of its input nodes.
- * @returns {NodeIdentifier[]}
+ * @returns {T[]}
  * @throws {TopologicalSortCycleError} If the graph contains a cycle.
  */
 function topologicalSortFromMap(inputsMap) {
@@ -198,9 +199,9 @@ function topologicalSortFromMap(inputsMap) {
     }
 
     // Build: inDegree map and adjacency list (node → list of dependents).
-    /** @type {Map<NodeIdentifier, number>} */
+    /** @type {Map<T, number>} */
     const inDegree = new Map();
-    /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
+    /** @type {Map<T, T[]>} */
     const dependents = new Map();
 
     for (const node of allNodes) {
@@ -227,16 +228,16 @@ function topologicalSortFromMap(inputsMap) {
     }
 
     // Initialize priority queue with all nodes having in-degree 0.
-    const heap = new MinHeap(compareNodeIdentifier);
+    const heap = new MinHeap((a, b) => String(a).localeCompare(String(b)));
     for (const [node, degree] of inDegree) {
         if (degree === 0) {
             heap.push(node);
         }
     }
 
-    /** @type {NodeIdentifier[]} */
+    /** @type {T[]} */
     const sorted = [];
-    /** @type {Map<NodeIdentifier, number>} */
+    /** @type {Map<T, number>} */
     const remaining = new Map(inDegree);
 
     while (heap.size > 0) {
