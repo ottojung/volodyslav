@@ -120,7 +120,7 @@ The "absent" case allows for compaction and deletion. What is NOT allowed is hos
 
 REQ-JS-15: If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, that index is poisoned. Both conflicting entries MUST be deleted from index `i`. Any still-relevant possible changes described by the conflicting entries MUST be appended at fresh `JournalIndex` values greater than `max(local.last_journal_index, remote.last_journal_index)` computed before allocating the re-appended entries. This may produce duplicate or redundant possible changes but avoids silent missed changes.
 
-This is the safer rule: choosing one authoritative entry to remain at the original index could make a stored token that had already consumed the losing entry accidentally skip the winning entry. Poisoning the index and re-appending avoids that risk.
+This is the safer rule: choosing one authoritative entry to remain at the original index could make a caller using a previous `since` value skip a change it has not observed. Poisoning the index and re-appending avoids that risk.
 
 REQ-JS-16: Gaps produced by poisoned indices follow REQ-JC-04 (sparse storage is tolerated).
 

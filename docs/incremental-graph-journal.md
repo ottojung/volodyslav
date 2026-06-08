@@ -25,7 +25,7 @@ The journal is a graph-level change record. It lets code ask questions of the fo
 
 > Since this previously observed change, which matching nodes may have changed?
 
-The answer is expressed as `PossibleNodeChange` values. A `PossibleNodeChange` is the public unit of journal observation. It can be inspected for its public change information and passed back to future calls to `graph.possibleMaybeChanges`.
+The answer is expressed as `PossibleNodeChange` values. A `PossibleNodeChange` is the public unit of journal observation. It can be inspected for its public change information and passed as `since` to a later `graph.possibleMaybeChanges` call in the same API context. Persistence and long-lived validity of such values are out of scope for this PR.
 
 The journal is designed for incremental graph maintenance. A caller can pass a previously observed `PossibleNodeChange` as the `since` argument, or use `baselinePossibleNodeChange()` to start from before any journal entry. The journal returns later possible changes so callers can focus on affected nodes without rediscovering everything from scratch.
 

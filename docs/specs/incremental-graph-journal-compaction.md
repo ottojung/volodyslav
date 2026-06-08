@@ -64,9 +64,9 @@ REQ-JC-12: `graph.possibleMaybeChanges` NEVER reconstructs deleted entries.
 
 ### Queries and absent entries
 
-REQ-JC-13: When a query's `since` position has been compacted away, `graph.possibleMaybeChanges` skips the absent index and resumes from the next available entry. The query still starts before the first surviving scan position, and compaction affects the result only by determining which journal entries still exist. Queries never reconstruct deleted entries.
+REQ-JC-13: When the `since` argument is a `PossibleNodeChange`, the journal module widens it to `PrivatePossibleNodeChange` and scans indices strictly greater than `since.index`. Missing entries are skipped. Deleted entries are not reconstructed. The query continues from the private index embedded in the `since` value, tolerating absent entries.
 
-REQ-JC-14: The `baselinePossibleNodeChange()` sentinel represents a position before any journal entry. Compaction cannot invalidate it because it does not reference a specific journal index. A baseline scan iterates surviving journal entries in order; it does not enumerate current graph state unless compaction preserves at least one entry per materialized matching node.
+REQ-JC-14: When a fresh `BaselinePossibleNodeChange` is supplied as `since` to `graph.possibleMaybeChanges`, scanning starts before the first journal entry. Compaction affects the result only by determining which journal entries still exist.
 
 ---
 

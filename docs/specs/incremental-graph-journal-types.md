@@ -288,7 +288,9 @@ The internal widening follows the same pattern as `unsafeStringToNodeIdentifier`
 
 ### Purpose
 
-`PossibleNodeChange` is the public unit of journal observation. It is yielded by `graph.possibleMaybeChanges` and may be passed as the `since` argument in future calls. Every `PossibleNodeChange` is derived from a committed journal entry.
+`PossibleNodeChange` is the public unit of journal observation. It is yielded by `graph.possibleMaybeChanges` and may be passed back as the `since` argument to a later call in the same API context. Every `PossibleNodeChange` is derived from a committed journal entry.
+
+Persistence and long-lived validity of `PossibleNodeChange` values across restarts, migrations, or sync boundaries is out of scope for this PR.
 
 ```js
 class PossibleNodeChangeClass {
@@ -328,7 +330,7 @@ class PossibleNodeChangeClass {
  */
 ```
 
-REQ-JT-13: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. It MUST NOT expose `NodeIdentifier`, `JournalIndex`, `Hostname`, or any other journal-internal metadata.
+REQ-JT-13: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. Private journal fields (`id`, `key`, `creator`, `index`) may physically exist on the runtime object (see `PrivatePossibleNodeChange`), but they are not part of the public type/API contract. Callers MUST NOT depend on or inspect fields beyond those listed in the public `PossibleNodeChange` type.
 
 REQ-JT-14: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
 
