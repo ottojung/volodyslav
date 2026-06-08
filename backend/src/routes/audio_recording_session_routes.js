@@ -32,6 +32,7 @@ const {
     enqueuePendingQuestionsFetch,
     dequeueSession,
 } = require("./audio_recording_session_analysis_queue");
+const { registerPushPcmRoute } = require("./audio_recording_session_push_pcm");
 
 /** @typedef {import('../environment').Environment} Environment */
 /** @typedef {import('../logger').Logger} Logger */
@@ -103,7 +104,6 @@ function makeRouter(capabilities) {
         }
     });
 
-    const { registerPushPcmRoute } = require("./audio_recording_session_push_pcm");
     registerPushPcmRoute(
         router,
         capabilities,

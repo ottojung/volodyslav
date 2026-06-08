@@ -86,6 +86,21 @@ module.exports = {
                 "ignorePatterns": ["**/tests/**", "**/test/**", "scripts/**"]
             }
         ],
+
+        // All require/import must be at the module top level
+        "volodyslav/no-non-toplevel-imports": [
+            "error",
+            {
+                "ignorePatterns": [
+                    // Test files and scripts commonly use lazy requires
+                    "**/tests/**", "**/test/**", "scripts/**",
+                    // Files with lazy requires to break circular dependencies:
+                    "**/scheduler/expression/structure.js",
+                    "**/generators/incremental_graph/database/node_key.js",
+                    "**/generators/incremental_graph/database/gitstore.js",
+                ]
+            }
+        ],
     },
     overrides: [
         {

@@ -72,6 +72,8 @@ const {
     parseStructuredInput,
 } = require("./parsers");
 
+const { getConfig } = require("../config_api");
+
 /**
  * Applies shortcuts recursively to transform the input.
  * @param {ShortcutCapabilities} capabilities - The capabilities object
@@ -79,7 +81,6 @@ const {
  * @returns {Promise<string>} - The transformed input
  */
 async function applyShortcuts(capabilities, input) {
-    const { getConfig } = require("../config_api");
     
     const configObj = await getConfig(capabilities);
     
