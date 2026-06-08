@@ -87,24 +87,6 @@ The detailed emission behavior is specified in:
 docs/specs/incremental-graph-journal-emission.md
 ```
 
-## Interaction with computors
-
-Computors may use the journal to maintain derived values incrementally.
-
-A journal-using computor typically has three responsibilities:
-
-1. remember the last relevant `PossibleNodeChange`;
-2. call `graph.possibleMaybeChanges({ since: storedToken, to: itsFilter })` with an appropriate `NodeFilter`;
-3. update its derived value based on the returned possible changes.
-
-The journal is especially useful for computors that depend on an open-ended family of nodes, such as all nodes with a given head or all nodes matching a pattern.
-
-Recommended computor patterns, stored-state conventions, and examples are specified in:
-
-```text
-docs/specs/incremental-graph-journal-computors.md
-```
-
 ## Synchronization
 
 The journal participates in synchronization between hosts.
@@ -157,7 +139,6 @@ docs/specs/incremental-graph-journal-emission.md
 docs/specs/incremental-graph-journal-sync.md
 docs/specs/incremental-graph-journal-migrations.md
 docs/specs/incremental-graph-journal-compaction.md
-docs/specs/incremental-graph-journal-computors.md
 ```
 
 Together, these documents define the role of the journal, its public API, its storage behavior, and its interactions with the rest of IncrementalGraph.

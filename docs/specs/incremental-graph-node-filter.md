@@ -177,8 +177,11 @@ function isUnionFilter(value)
 
 REQ-NF-06: Two `NodeFilter` values represent the same set of node keys if and only if they are structurally equal according to the following rules:
 
-1. Two `Wildcard` values are always equal to each other.
-2. Two `GroundFilter` values are equal if their `head` values are equal (same `NodeName`) AND their `args` arrays are position-wise equal using `isEqual` for `ConstValue` entries and structural identity for `Wildcard` entries.
+1. All `Wildcard` values are equal to each other. Two freshly constructed `Wildcard` values are always equal.
+2. Two `GroundFilter` values are equal if their `head` values are equal (same `NodeName`) AND their `args` arrays are position-wise equal, where each argument pair is compared as follows:
+   - `Wildcard` equals `Wildcard`.
+   - `ConstValue` equals `ConstValue` when `isEqual` returns `true`.
+   - `Wildcard` does not equal any `ConstValue`, and vice versa.
 3. Two `UnionFilter` values are equal if `(left₁ = left₂ AND right₁ = right₂)` OR `(left₁ = right₂ AND right₁ = left₂)`. Union is commutative.
 
 Implementations MAY normalize `NodeFilter` values during construction or comparison, but they MUST NOT change the matching behavior of a filter. Normalization is an optimization, not a semantic requirement.

@@ -2,19 +2,22 @@
 
 ## Purpose
 
-This document defines the core types used by the IncrementalGraph journal: journal entries, timestamps, host identifiers, journal indices, and the public `PossibleNodeChange` observation token.
+This document defines the core types used by the IncrementalGraph journal: journal entries, timestamps, host identifiers, journal indices, and the public `PossibleNodeChange` and `BaselinePossibleNodeChange` tokens.
 
 All journal types follow the existing nominal/opaque typing discipline used by `NodeIdentifier`, `NodeKeyString`, `NodeName`, and related IncrementalGraph types. See `backend/src/generators/incremental_graph/database/types.js` and `docs/specs/keys-design.md` for the established patterns.
 
 ---
 
-## JournalEntry
+## JournalEntry (internal)
 
 ### Shape
 
 ```js
 /**
  * A single journal entry recording a graph change.
+ * This is an internal structural type, NOT exposed through the public
+ * `graph.possibleMaybeChanges` API.
+ *
  * @typedef {object} JournalEntry
  * @property {JournalAction} action - The kind of change recorded.
  * @property {NodeIdentifier} id - The node identifier of the affected node.
@@ -24,7 +27,7 @@ All journal types follow the existing nominal/opaque typing discipline used by `
  */
 ```
 
-A `JournalEntry` is an internal type. It is NOT exposed through the public `graph.possibleMaybeChanges` API. The public API surface uses `PossibleNodeChange` (see below).
+A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChanges` do not receive `JournalEntry` values. The public API surface uses `PossibleNodeChange`.
 
 ### JournalAction
 
@@ -37,28 +40,21 @@ A `JournalEntry` is an internal type. It is NOT exposed through the public `grap
 
 - `'add'` — a node became materialized for the first time.
 - `'edit'` — a node's stored value materially changed.
-- `'delete'` — a node was removed or superseded (by synchronization, migration, or conflict resolution).
+- `'delete'` — a node was removed or superseded (by synchronization or conflict resolution).
 
 ---
 
 ## UnixTimestamp
 
-```js
-/**
- * An integer count of milliseconds since the Unix epoch (January 1, 1970, 00:00:00 UTC).
- * @typedef {number} UnixTimestamp
- */
-```
-
-`UnixTimestamp` is a number representing milliseconds since the Unix epoch. This is consistent with JavaScript's `Date.now()` and `Date.prototype.getTime()`.
+`UnixTimestamp` is an integer count of milliseconds since the Unix epoch (January 1, 1970, 00:00:00 UTC). This is consistent with JavaScript's `Date.now()` and `Date.prototype.getTime()`.
 
 REQ-JT-01: The unit of `UnixTimestamp` MUST be integer milliseconds. Fractional timestamps MUST NOT be used.
 
-REQ-JT-02: Implementations SHOULD record journal timestamps using the local system clock at the time of emission. As with all distributed-system clocks, incorrect host clocks may affect conflict resolution outcomes (see `incremental-graph-journal-sync.md`).
+REQ-JT-02: Implementations SHOULD record journal timestamps using the local system clock at the time of emission. Host clocks are not assumed to be synchronized across hosts.
 
 ### Nominal typing
 
-`UnixTimestamp` is a typedef-only nominal type:
+`UnixTimestamp` follows the same nominal class pattern as `NodeIdentifier`:
 
 ```js
 class UnixTimestampClass {
@@ -69,7 +65,7 @@ class UnixTimestampClass {
 /** @typedef {UnixTimestampClass} UnixTimestamp */
 ```
 
-The following conversion functions MUST be provided:
+Conversion functions:
 
 ```js
 /**
@@ -89,14 +85,7 @@ function unixTimestampToNumber(timestamp)
 
 ## Hostname
 
-```js
-/**
- * An opaque identifier for a host within the synchronization mesh.
- * @typedef {string} Hostname
- */
-```
-
-A `Hostname` is a string that uniquely identifies a host. The specific source of the value (e.g., machine hostname, configured name, stable UUID) is implementation-defined, but the value MUST be stable across restarts of the same host.
+A `Hostname` is a string that uniquely identifies a host within the synchronization mesh. The specific source of the value (e.g., machine hostname, configured name, stable UUID) is implementation-defined, but the value MUST be stable across restarts of the same host.
 
 REQ-JT-03: A `Hostname` MUST be stable for a given host across process restarts and reboots.
 
@@ -104,7 +93,7 @@ REQ-JT-04: Two distinct hosts in the synchronization mesh MUST have different `H
 
 ### Nominal typing
 
-`Hostname` follows the same nominal pattern as `NodeName`:
+`Hostname` follows the same nominal class pattern:
 
 ```js
 class HostnameClass {
@@ -114,6 +103,8 @@ class HostnameClass {
 
 /** @typedef {HostnameClass} Hostname */
 ```
+
+Conversion functions:
 
 ```js
 /**
@@ -133,25 +124,13 @@ function hostnameToString(hostname)
 
 ## JournalIndex
 
-```js
-/**
- * A replicated physical journal position.
- * Allocated monotonically by a host. After synchronization, each index
- * has cross-host meaning: all synchronized hosts agree that the entry
- * at a given index is either the same JournalEntry or absent.
- * Divergent entries at the same index are temporary and must be
- * resolved by synchronization.
- * @typedef {number} JournalIndex
- */
-```
-
-A `JournalIndex` is a replicated physical journal position. Hosts may allocate journal entries independently before sync, producing divergent entries at the same index temporarily. Synchronization resolves that divergence so that after sync each index is consistent across all synchronized hosts (see `incremental-graph-journal-sync.md` REQ-JS-15).
+A `JournalIndex` is a replicated physical journal position within the journal storage system. It is NOT exposed in the public `graph.possibleMaybeChanges` API signature.
 
 REQ-JT-05: `JournalIndex` values MUST NOT be reused.
 
-REQ-JT-06: Gaps in `JournalIndex` sequence are acceptable.
+REQ-JT-06: Gaps in the `JournalIndex` sequence are acceptable.
 
-REQ-JT-07: `JournalIndex` MUST NOT be exposed in the public `graph.possibleMaybeChanges` API signature. It is an internal journal-storage concern.
+REQ-JT-07: `JournalIndex` MUST NOT be exposed in the public `graph.possibleMaybeChanges` API signature.
 
 ### Nominal typing
 
@@ -163,6 +142,8 @@ class JournalIndexClass {
 
 /** @typedef {JournalIndexClass} JournalIndex */
 ```
+
+Conversion functions:
 
 ```js
 /**
@@ -180,9 +161,7 @@ function journalIndexToNumber(index)
 
 ### Journal index storage
 
-The next journal index to allocate is maintained in volatile state (analogous to the `_nextNodeIndex` pattern in identifier allocation). A host allocates indices independently; since `JournalIndex` is a plain numeric position with no host-specific namespace, two hosts can allocate the same index before sync, producing temporary divergent entries. Synchronization resolves such divergence (see `incremental-graph-journal-sync.md` REQ-JS-16). Divergent entries are not stable across sync until physical convergence resolves them.
-
-The last committed journal index watermark is stored in global metadata:
+The next journal index to allocate is maintained in volatile state (analogous to the `_nextNodeIndex` pattern in identifier allocation). The last committed journal index watermark is stored in global metadata:
 
 ```
 rendered/r/global/last_journal_index
@@ -190,69 +169,173 @@ rendered/r/global/last_journal_index
 
 REQ-JT-08: `last_journal_index` MUST NOT decrease.
 
-REQ-JT-09: After synchronization, `last_journal_index` MUST be at least the greatest index that is present or known-absent due to synchronized journal state. This includes indices from remote hosts that were adopted, indices that were resolved by divergent-index resolution, and freshly allocated indices from conservative appends. Gaps below the watermark are allowed.
+REQ-JT-09: After synchronization, `last_journal_index` MUST be at least the greatest index that is present or known-absent due to synchronized journal state.
 
 ---
 
-## PossibleNodeChange and BaselinePossibleNodeChange
+## PrivatePossibleNodeChange (internal)
 
 ### Purpose
 
-`PossibleNodeChange` is the public unit of journal observation. It is yielded by `graph.possibleMaybeChanges` and can be stored by consumers to pass as the `since` argument in future calls.
+The journal implementation internally needs a wider representation that pairs a `JournalEntry` with its storage `JournalIndex`. This internal type is NOT exported as public API. Only journal modules may construct, inspect, or cast through this type.
 
-`BaselinePossibleNodeChange` is a separate sentinel type returned by `baselinePossibleNodeChange()`. It represents a position before any journal entry and is only valid as a `since` argument. It is NOT a `PossibleNodeChange`.
+```js
+/**
+ * Private journal-module-only representation.
+ * This is not exported as public API.
+ *
+ * @typedef {object} PrivatePossibleNodeChange
+ * @property {JournalAction} action
+ * @property {NodeIdentifier} id
+ * @property {NodeKey} key
+ * @property {UnixTimestamp} time
+ * @property {Hostname} creator
+ * @property {JournalIndex} index
+ */
+```
 
-### PossibleNodeChange
+`PrivatePossibleNodeChange` extends `JournalEntry` with the `index` field.
 
-`PossibleNodeChange` is a regular journal-backed possible change. Every `PossibleNodeChange` value is derived from a committed journal entry and is yielded by `graph.possibleMaybeChanges`. Public consumers may inspect its `nodeName`, `bindings`, `action`, and `time` fields to learn about the recorded change.
+### Conversion functions (journal modules only)
+
+```js
+/**
+ * Journal module only.
+ * Converts a private journal entry occurrence into the public nominal token.
+ *
+ * @param {PrivatePossibleNodeChange} change
+ * @returns {PossibleNodeChange}
+ */
+function privatePossibleNodeChangeToPossibleNodeChange(change)
+
+/**
+ * Journal module only.
+ * Unsafe widening from public nominal token back to the private representation.
+ * This is allowed only inside the journal implementation.
+ *
+ * @param {PossibleNodeChange} change
+ * @returns {PrivatePossibleNodeChange}
+ */
+function possibleNodeChangeToPrivatePossibleNodeChangeUnsafe(change)
+```
+
+The important property:
+
+- `PossibleNodeChange` is not itself the structural cursor type.
+- The journal implementation creates it from `PrivatePossibleNodeChange`.
+- The journal implementation may widen it back to `PrivatePossibleNodeChange`.
+- Ordinary public callers MUST NOT inspect or depend on `JournalIndex`, `NodeIdentifier`, or `Hostname`.
+
+The internal widening follows the same pattern as `unsafeStringToNodeIdentifier` in the database types: an unsafe cast that journal modules control at their module boundary. Public callers never see the widened representation.
+
+---
+
+## PossibleNodeChange (public)
+
+### Purpose
+
+`PossibleNodeChange` is the public unit of journal observation. It is yielded by `graph.possibleMaybeChanges` and may be passed as the `since` argument in future calls. Every `PossibleNodeChange` is derived from a committed journal entry.
 
 ```js
 /**
  * A real journal-backed possible node change.
  * Yielded by `graph.possibleMaybeChanges(...)`.
  *
+ * The properties that this type carries are:
+ * - The value is derived from a committed journal entry.
+ * - `nodeName`, `bindings`, `action`, and `time` accurately describe the
+ *   recorded change.
+ * - The value may be passed as `since` to `graph.possibleMaybeChanges`.
+ *
+ * The proof of those properties is guaranteed by:
+ * - This type can only be introduced through this operation:
+ *   - `graph.possibleMaybeChanges(...)`: satisfies the property because it
+ *     only yields PossibleNodeChange values derived from committed journal
+ *     entries, and each yielded value carries the public fields of that entry.
+ *
  * @typedef {object} PossibleNodeChange
  * @property {NodeName} nodeName - The head/functor of the affected node.
  * @property {Array<ConstValue>} bindings - The positional bindings of the
  *   affected node.
- * @property {JournalAction} action - The kind of possible change. Because
- *   `graph.possibleMaybeChanges` is conservative, the `action` field describes
- *   the journal entry that produced the possible change; consumers MUST NOT
- *   treat it as an exactly-once semantic event.
+ * @property {JournalAction} action - The kind of possible change.
  * @property {UnixTimestamp} time - When the change was recorded.
  */
 ```
 
-REQ-JT-10: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. It MUST NOT expose `NodeIdentifier`, `JournalIndex`, `Hostname`, or any other journal-internal metadata to ordinary public API callers.
+REQ-JT-10: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. It MUST NOT expose `NodeIdentifier`, `JournalIndex`, `Hostname`, or any other journal-internal metadata.
 
 REQ-JT-11: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
 
-### BaselinePossibleNodeChange
+---
 
-`BaselinePossibleNodeChange` is a sentinel token returned by `baselinePossibleNodeChange()`. It is NOT a `PossibleNodeChange` — it is a separate type representing a position "before any journal entry" and is not derived from a committed journal entry.
+## BaselinePossibleNodeChange (public)
+
+### Purpose
+
+`BaselinePossibleNodeChange` is a sentinel token returned by `baselinePossibleNodeChange()`. It represents a position before any journal entry and is NOT derived from a committed journal entry. It is a separate type from `PossibleNodeChange`.
 
 ```js
 /**
  * Sentinel returned by `baselinePossibleNodeChange()`.
- * Not a possible node change.
+ * Not a possible node change. Not derived from a journal entry.
  * Only valid as a `since` argument to `graph.possibleMaybeChanges(...)`.
+ *
+ * The properties that this type carries are:
+ * - The value represents "before any journal entry."
+ * - Its only valid use is as a `since` argument.
+ *
+ * The proof of those properties is guaranteed by:
+ * - This type can only be introduced through this operation:
+ *   - `baselinePossibleNodeChange()`: satisfies the property because it
+ *     returns a sentinel representing a position before any committed journal
+ *     entry.
+ *
  * @typedef {object} BaselinePossibleNodeChange
  */
 ```
 
-Despite sharing a similar nominal shape, `BaselinePossibleNodeChange` does not represent a possible node change and carries no change information. Its only valid use is as a `since` argument. When passed as `since`, the graph treats it as a position before any committed journal entry and yields all currently available surviving `PossibleNodeChange` values.
+Despite sharing a similar nominal shape, `BaselinePossibleNodeChange` does not represent a possible node change and carries no change information. Its only valid use is as a `since` argument. When passed as `since`, the graph treats it as a position before any committed journal entry.
 
-REQ-JT-10a: `BaselinePossibleNodeChange` is not derived from a journal entry and carries no change information. The sentinel's only valid use is as a `since` argument.
+### Widening behavior for baseline
 
-### Nominal boundary
+If `since` is `BaselinePossibleNodeChange`, scanning starts before the first journal entry. The journal module may internally widen `BaselinePossibleNodeChange` to a private representation analogous to `PrivatePossibleNodeChange` with a sentinel `index` value (e.g., -1 or 0) that precedes all real indices. Ordinary public callers MUST NOT depend on the internal sentinel index value.
 
-Both `PossibleNodeChange` and `BaselinePossibleNodeChange` are nominal public journal tokens, but they have different public semantics:
+```js
+/**
+ * Journal module only.
+ * Converts the baseline sentinel into a private representation suitable
+ * for internal cursor positioning.
+ *
+ * @param {BaselinePossibleNodeChange} baseline
+ * @returns {PrivateBaselinePossibleNodeChange}
+ */
+function baselinePossibleNodeChangeToPrivateUnsafe(baseline)
 
-- `PossibleNodeChange`: a journal-backed change token with meaningful public fields (`nodeName`, `bindings`, `action`, `time`). Every `PossibleNodeChange` is an actual possible node change derived from a committed journal entry.
+/**
+ * Journal module only.
+ * The private sentinel representation, never exposed publicly.
+ * @typedef {object} PrivateBaselinePossibleNodeChange
+ * @property {JournalIndex} index - A sentinel index before all real indices.
+ */
+```
 
-- `BaselinePossibleNodeChange`: a sentinel token used only as an initial `since` value. It carries no change information and is not derived from a journal entry.
+---
 
-The journal implementation internally uses a wider structural representation that may include journal-specific metadata (such as the underlying `JournalIndex`). The internal widening/casting rules may apply to both token types if the implementation needs hidden cursor metadata. This follows the same pattern as `NodeIdentifier` — the type remains nominal at boundaries, and controlled journal modules may cast or convert it internally.
+## Nominal boundary summary
+
+Both `PossibleNodeChange` and `BaselinePossibleNodeChange` are nominal public journal tokens with different public semantics:
+
+- `PossibleNodeChange`: journal-backed change token with meaningful public fields (`nodeName`, `bindings`, `action`, `time`). Every `PossibleNodeChange` is derived from a committed journal entry via `privatePossibleNodeChangeToPossibleNodeChange`.
+
+- `BaselinePossibleNodeChange`: sentinel token used only as an initial `since` value. It carries no change information and is not derived from a journal entry.
+
+The journal implementation internally uses `PrivatePossibleNodeChange` which includes the `JournalIndex`. The conversion direction is:
+
+| Direction | Function | Permitted in |
+|-----------|----------|--------------|
+| Private → Public | `privatePossibleNodeChangeToPossibleNodeChange` | Journal modules only |
+| Public → Private | `possibleNodeChangeToPrivatePossibleNodeChangeUnsafe` | Journal modules only |
+| Public | `graph.possibleMaybeChanges` yields | Public API |
 
 ```
 ┌──────────────────────────────────────────────┐
@@ -268,59 +351,16 @@ The journal implementation internally uses a wider structural representation tha
 │                                              │
 │  Public fields (PossibleNodeChange):         │
 │      nodeName, bindings, action, time        │
-│  Internal fields: NOT visible                │
+│  Private fields: NOT visible                 │
+│      (id, key, creator, index)               │
 └──────────────────────────────────────────────┘
 ```
 
-### Public representation
+Journal modules maintain internal widening/casting functions that follow the same pattern as `unsafeStringToNodeIdentifier`. Public callers MUST NOT access or depend on the widened representation.
 
-```js
-/**
- * The properties that this type carries are:
- * - The value is derived from a committed journal entry.
- * - `nodeName`, `bindings`, `action`, and `time` accurately describe the
- *   recorded change.
- * - The value may be stored and passed as `since` to
- *   `graph.possibleMaybeChanges`.
- *
- * The proof of those properties is guaranteed by:
- * - This type can only be introduced through this operation:
- *   - `graph.possibleMaybeChanges(...)`: satisfies the property because it
- *     only yields PossibleNodeChange values derived from committed journal
- *     entries, and each yielded value carries the public fields of that entry.
- *
- * Plain objects must not be treated as PossibleNodeChange values unless they
- * pass through this introduction path.
- * @typedef {object} PossibleNodeChange
- * @property {NodeName} nodeName - The head/functor of the affected node.
- * @property {Array<ConstValue>} bindings - The positional bindings of the
- *   affected node.
- * @property {JournalAction} action - The kind of possible change.
- * @property {UnixTimestamp} time - When the change was recorded.
- */
+---
 
-/**
- * The properties that this type carries are:
- * - The value represents "before any journal entry."
- * - It does not represent a possible node change.
- * - Its only valid use is as a `since` argument to
- *   `graph.possibleMaybeChanges`.
- *
- * The proof of those properties is guaranteed by:
- * - This type can only be introduced through this operation:
- *   - `baselinePossibleNodeChange()`: satisfies the property because it
- *     returns a sentinel representing a position before any committed journal
- *     entry.
- *
- * Plain objects must not be treated as BaselinePossibleNodeChange values
- * unless they pass through this introduction path.
- * @typedef {object} BaselinePossibleNodeChange
- */
-```
-
-### Type guards
-
-`isPossibleNodeChange(value)` is a type guard for use at storage, deserialization, and serialization boundaries where untyped `unknown` data is converted into the nominal `PossibleNodeChange` type. Ordinary callers of `graph.possibleMaybeChanges` receive already-typed `PossibleNodeChange` values and do not need to re-verify them at the call site.
+## Type guards
 
 ```js
 /**
@@ -328,11 +368,7 @@ The journal implementation internally uses a wider structural representation tha
  * @returns {value is PossibleNodeChange}
  */
 function isPossibleNodeChange(value)
-```
 
-`isBaselinePossibleNodeChange(value)` is a type guard for `BaselinePossibleNodeChange`. It is needed at the same storage/deserialization boundaries because a computor may store a `BaselinePossibleNodeChange` if the journal iterator yielded no entries (see `incremental-graph-journal-computors.md` §Stored state conventions).
-
-```js
 /**
  * @param {unknown} value
  * @returns {value is BaselinePossibleNodeChange}
@@ -340,24 +376,17 @@ function isPossibleNodeChange(value)
 function isBaselinePossibleNodeChange(value)
 ```
 
-### Validation pattern for `since` values
+These type guards are available for use at storage/deserialization boundaries where untyped `unknown` data is converted into nominal journal token types. Ordinary callers of `graph.possibleMaybeChanges` receive already-typed values and do not need to re-verify them at the call site.
 
-At boundaries where an `unknown` serialized token is recovered and passed to `graph.possibleMaybeChanges`, the validation pattern is:
+---
 
-```js
-/** @param {unknown} storedToken */
-function recoverSinceToken(storedToken) {
-    if (isPossibleNodeChange(storedToken)) return storedToken;
-    if (isBaselinePossibleNodeChange(storedToken)) return storedToken;
-    // Token is unrecognizable; fall back to a fresh baseline.
-    return baselinePossibleNodeChange();
-}
-```
+## Out of scope
 
-This pattern ensures that storage/deserialization can safely recover both allowed token shapes (`PossibleNodeChange | BaselinePossibleNodeChange`) without introducing a named union type in the public API.
+This PR does not specify:
 
-### Internal widening
+- How callers should persist `PossibleNodeChange` values across restarts.
+- How long a stored `since` token remains valid.
+- How stored tokens behave after migration, sync, or storage scenarios.
+- Checkpoint/lease-based compaction safety for long-lived stored cursors.
 
-The journal storage layer internally needs a wider representation that includes the `JournalIndex` so it can scan, compare, and resume from stored positions. This internal representation is NOT the public `PossibleNodeChange` or `BaselinePossibleNodeChange` types — it is a wider type used only inside journal modules. Both public token types may share the same internal widened representation when additional cursor metadata is needed.
-
-The journal modules may use an unsafe cast or widening pattern at their internal boundaries, following the same convention as `unsafeStringToNodeIdentifier` in the database types. Public callers MUST NOT access or depend on the widened representation.
+These concerns are deferred to future specifications.
