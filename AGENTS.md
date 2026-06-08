@@ -535,6 +535,14 @@ The client (frontend) is assumed to be **non-adversarial** — it is the same de
 - **No authorization**: Session IDs will not be forged. Authentication and authorization checks on API endpoints are unnecessary.
 - **Shape validation is still required**: Even with a trusted client, client and server may drift (e.g., during development or after a schema change). All incoming data **must** be validated against the expected shape (correct types, expected field names, valid enum values) and rejected with a clear error if it does not match. This is about correctness, not security.
 
+## Git is good
+
+If you have access to `git`, then:
+- commit frequently,
+- and write helpful commit messages.
+
+It is always safe to commit, do it even if you weren't explicitly told to.
+
 ## Github code of conduct
 
 When posting a comment on github, include `@ottojung` substring at the end.
