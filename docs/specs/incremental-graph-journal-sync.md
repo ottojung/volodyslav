@@ -12,7 +12,7 @@ This document specifies how the journal participates in synchronization between 
 
 2. **Conservative visibility.** Sync may append journal entries to ensure graph-state reconciliation is visible through later `graph.possibleMaybeChanges` results. When in doubt, add a possible change rather than risk silent staleness.
 
-3. **Timestamp-based conflict resolution (v1/default).** For concurrent edits to the same semantic node key, the recorded entry with the later `time` field wins. Since `time` comes from host wall clocks, this is a last-writer-wins-by-recorded-wall-clock policy with deterministic tie-breakers. It is deliberately lossy: incorrect host clocks or clock skew may cause updates to be silently discarded. This is acceptable for v1.
+3. **Timestamp-based conflict resolution.** For concurrent edits to the same semantic node key, the recorded entry with the later `time` field wins. If `time` rule produces a tie, then the node with semantically larger `id : NodeIdentifier` wins. Since `time` comes from host wall clocks, this is a last-writer-wins-by-recorded-wall-clock policy with deterministic tie-breakers.
 
 4. **Host clocks are not trusted.** The system operates correctly under correct clocks; under incorrect clocks, outcomes reflect the incorrect timestamps. Future versions may introduce custom merge logic to refine or replace this rule.
 
