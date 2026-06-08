@@ -8,7 +8,7 @@ Compaction is a maintenance operation. It reduces journal storage size by removi
 
 **Compaction scope and stored-cursor safety.** This PR specifies only same-process, in-memory journal tokens (see `incremental-graph-journal-types.md`). Since tokens are not persisted across process restarts, compaction does not need to guarantee long-lived cursor validity. A future spec may define checkpoint/lease-based compaction safety for persistent stored cursors; this PR does not specify such a mechanism.
 
-**Baseline scans are not full-state initialization.** `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` yields only surviving journal entries; it does not enumerate all currently materialized nodes. If a materialized node has had all its journal entries compacted away, a baseline scan will not include it. Callers that need full graph-state enumeration must use direct graph-state APIs (not the journal) for initialization.
+**Baseline scans and compaction.** A baseline scan starts from the first journal entry, so it yields only surviving journal entries. This is the natural consequence of the baseline being less than any real journal index combined with sparse journal storage after compaction.
 
 ---
 
@@ -70,7 +70,7 @@ REQ-JC-12: `graph.possibleMaybeChanges` NEVER reconstructs deleted entries.
 
 REQ-JC-13: When the `since` argument is a `PossibleNodeChange`, the journal module widens it to `PrivatePossibleNodeChange` and scans indices strictly greater than the widened private change's `index`. Missing entries are skipped. Deleted entries are not reconstructed. The query continues from the private index embedded in the `since` value, tolerating absent entries.
 
-REQ-JC-14: When a fresh `BaselinePossibleNodeChange` is supplied as `since` to `graph.possibleMaybeChanges`, scanning starts before the first journal entry. Compaction affects the result only by determining which journal entries still exist.
+REQ-JC-14: When a `BaselinePossibleNodeChange` is supplied as `since`, scanning starts from the first journal entry. Compaction affects the result only by determining which entries still exist.
 
 ---
 

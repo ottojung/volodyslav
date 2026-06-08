@@ -330,9 +330,7 @@ class PossibleNodeChangeClass {
  */
 ```
 
-REQ-JT-13: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. Private journal fields (`id`, `key`, `creator`, `index`) may physically exist on the runtime object (see `PrivatePossibleNodeChange`), but they are not part of the public type/API contract. Callers MUST NOT depend on or inspect fields beyond those listed in the public `PossibleNodeChange` type.
-
-The opacity of private fields is a type-level contract (JSDoc nominal narrowing), not a runtime guarantee that these fields are inaccessible. In plain JavaScript, callers could technically inspect, serialize, clone, or forge these objects. The implementation SHOULD use an appropriate runtime discipline — such as `WeakMap`, `Symbol`-keyed properties, or non-enumerable fields — to make accidental or naive inspection unlikely. Regardless of the runtime technique, the specification contract remains: public consumers MUST NOT depend on any fields beyond `nodeName`, `bindings`, `action`, and `time`.
+REQ-JT-13: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. Private journal fields (`id`, `key`, `creator`, `index`) are not part of the public nominal type. Callers MUST NOT depend on fields beyond those listed in the public `PossibleNodeChange` type.
 
 REQ-JT-14: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
 
@@ -340,9 +338,7 @@ REQ-JT-14: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST 
 
 ## BaselinePossibleNodeChange (public)
 
-### Purpose
-
-`BaselinePossibleNodeChange` is a sentinel token returned by `baselinePossibleNodeChange()`. It represents a position before any journal entry and is NOT derived from a committed journal entry. It is a separate type from `PossibleNodeChange`.
+`BaselinePossibleNodeChange` is returned by `baselinePossibleNodeChange()`. Its only significant property is that it is less than any real `JournalIndex`.
 
 ```js
 class BaselinePossibleNodeChangeClass {
@@ -350,59 +346,33 @@ class BaselinePossibleNodeChangeClass {
     constructor() { if (this.__brand !== undefined) throw new Error("BaselinePossibleNodeChange cannot be instantiated externally"); }
 }
 
-/**
- * Sentinel returned by `baselinePossibleNodeChange()`.
- * Not a possible node change. Not derived from a journal entry.
- * Only valid as a `since` argument to `graph.possibleMaybeChanges(...)`.
- *
- * The properties that this type carries are:
- * - The value represents "before any journal entry."
- * - Its only valid use is as a `since` argument.
- *
- * The proof of those properties is guaranteed by:
- * - This type can only be introduced through this operation:
- *   - `baselinePossibleNodeChange()`: satisfies the property because it
- *     returns a sentinel representing a position before any committed journal
- *     entry.
- *
- * @typedef {BaselinePossibleNodeChangeClass} BaselinePossibleNodeChange
- */
+/** @typedef {BaselinePossibleNodeChangeClass} BaselinePossibleNodeChange */
 ```
 
-Despite sharing a similar nominal shape, `BaselinePossibleNodeChange` does not represent a possible node change and carries no change information. Its only valid use is as a `since` argument. When passed as `since`, the graph treats it as a position before any committed journal entry.
+When passed as `since`, scanning starts from the first journal entry.
 
 ## Journal-internal since-position encoding
 
-The journal module internally represents the `since` position using a private union type. `JournalIndex` represents a real journal index; a "before-first-entry" position is a different kind of value and MUST NOT be represented as a fake `JournalIndex`.
-
-```js
-/**
- * Journal module only. Never exposed publicly.
- * Internal representation of a since-position for query cursor positioning.
- *
- * @typedef {{ kind: 'baseline' } | { kind: 'journal', change: PrivatePossibleNodeChange }} PrivateSincePosition
- */
-```
-
-Conversion function (journal modules only):
+Internally, the journal module converts the public `since` value into a private cursor position:
 
 ```js
 /**
  * Journal module only.
- * Converts the public `since` value into a private since-position for
- * internal cursor positioning.
  *
+ * @typedef {{ kind: 'baseline' } | { kind: 'journal', change: PrivatePossibleNodeChange }} PrivateSincePosition
+ */
+
+/**
+ * Journal module only.
  * @param {PossibleNodeChange | BaselinePossibleNodeChange} since
  * @returns {PrivateSincePosition}
  */
 function sinceToPrivateSincePosition(since)
 ```
 
-If `since` is `BaselinePossibleNodeChange`, this produces `{ kind: "baseline" }`, and scanning starts before the first journal entry.
+If `since` is `BaselinePossibleNodeChange`, this yields `{ kind: "baseline" }` — a position less than any real journal index.
 
-If `since` is `PossibleNodeChange`, this widens it to `PrivatePossibleNodeChange` via `possibleNodeChangeToPrivatePossibleNodeChangeUnsafe` and produces `{ kind: "journal", change: privateChange }`, scanning strictly after its `index`.
-
-Ordinary public callers MUST NOT depend on the internal `PrivateSincePosition` representation.
+If `since` is `PossibleNodeChange`, this widens it to `PrivatePossibleNodeChange` and yields `{ kind: "journal", change: privateChange }`, scanning strictly after its `index`.
 
 ---
 
@@ -412,9 +382,9 @@ Both `PossibleNodeChange` and `BaselinePossibleNodeChange` are nominal public jo
 
 - `PossibleNodeChange`: journal-backed change token with meaningful public fields (`nodeName`, `bindings`, `action`, `time`). Every `PossibleNodeChange` is derived from a committed journal entry via `privatePossibleNodeChangeToPossibleNodeChange`.
 
-- `BaselinePossibleNodeChange`: sentinel token used only as an initial `since` value. It carries no change information and is not derived from a journal entry.
+- `BaselinePossibleNodeChange`: a position less than any real journal index. It is not derived from a journal entry.
 
-The journal implementation internally uses `PrivatePossibleNodeChange` (which includes the `JournalIndex`) and `PrivateSincePosition` (a union distinguishing baseline from journal positions). The conversion directions are:
+The journal implementation internally uses `PrivatePossibleNodeChange` (which includes the `JournalIndex`) and `PrivateSincePosition`. The conversion directions are:
 
 | Direction | Function | Permitted in |
 |-----------|----------|--------------|

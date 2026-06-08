@@ -25,11 +25,11 @@ The journal is a graph-level change record. It lets code ask questions of the fo
 
 > Since this previously observed change, which matching nodes may have changed?
 
-The answer is expressed as `PossibleNodeChange` values. A `PossibleNodeChange` is the public unit of journal observation. It can be inspected for its public change information and passed as `since` to a later `graph.possibleMaybeChanges` call in the same API context.
+The answer is expressed as `PossibleNodeChange` values. A `PossibleNodeChange` is the public unit of journal observation and can be passed as `since` to a later `graph.possibleMaybeChanges` call in the same API context.
 
 **This PR specifies only same-process, in-memory journal token usage.** A `PossibleNodeChange` yielded during a process session is valid as `since` for subsequent calls within that same session. Persistence of these tokens across process restarts, synchronization boundaries, or migration boundaries, and the corresponding long-lived validity guarantees, are out of scope for this PR and deferred to a future computor/cursor-persistence specification.
 
-The journal is designed for incremental graph maintenance. A caller can pass a previously observed `PossibleNodeChange` as the `since` argument, or use `baselinePossibleNodeChange()` to start from before any journal entry. The journal returns later possible changes so callers can focus on affected nodes without rediscovering everything from scratch.
+The journal is designed for incremental graph maintenance. A caller can pass a previously observed `PossibleNodeChange` as the `since` argument, or use `baselinePossibleNodeChange()` (a position less than any real journal index) to start from the beginning of the journal.
 
 The detailed public meaning of `PossibleNodeChange` and `possibleMaybeChanges` is specified in:
 
@@ -45,7 +45,7 @@ The main query interface is:
 graph.possibleMaybeChanges({ since, to }): AsyncIterableIterator<PossibleNodeChange>
 ```
 
-The operation starts from the supplied `since` value and returns later possible changes matching the `to` filter. The `since` argument accepts `PossibleNodeChange | BaselinePossibleNodeChange`; calling `baselinePossibleNodeChange()` yields a sentinel that scans from before the first journal entry.
+The operation starts from the supplied `since` value and returns later possible changes matching the `to` filter. The `since` argument accepts `PossibleNodeChange | BaselinePossibleNodeChange`; `baselinePossibleNodeChange()` yields a position less than any real journal index.
 
 The detailed scan order, initial value behavior, cursor advancement, filtering behavior, and result semantics are specified in:
 

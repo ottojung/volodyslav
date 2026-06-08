@@ -41,7 +41,7 @@ A previously observed `PossibleNodeChange` (obtained from a prior call to `graph
 
 The `since` value acts as a cursor: the returned iterator yields surviving matching entries strictly after the journal position referenced by `since`. The `since` value itself is NOT included in the returned iterator.
 
-If `since` is `BaselinePossibleNodeChange`, scanning starts before the first journal entry.
+If `since` is `BaselinePossibleNodeChange`, scanning starts from the first journal entry.
 
 If `since` is `PossibleNodeChange`, the journal module widens it to `PrivatePossibleNodeChange` and scans strictly after its `index`.
 
@@ -89,20 +89,18 @@ REQ-JA-05: A yielded `edit` entry describes a graph change or sync reconciliatio
 
 Callers following the typical incremental pattern need an initial value to pass as `since` on the first call.
 
-REQ-JA-06: The system MUST expose a standalone function to obtain a baseline sentinel:
+REQ-JA-06: The system MUST expose a standalone function to obtain a baseline position:
 
 ```js
 /**
- * Return a sentinel that represents a position before any journal entry.
- * When passed as `since` to `graph.possibleMaybeChanges`, the graph
- * returns all currently available matching possible changes.
+ * Return a position less than any real journal index.
+ * When passed as `since` to `graph.possibleMaybeChanges`, the scan
+ * starts from the first journal entry.
  *
  * @returns {BaselinePossibleNodeChange}
  */
 function baselinePossibleNodeChange()
 ```
-
-The returned value is a `BaselinePossibleNodeChange` (see `incremental-graph-journal-types.md`). It is NOT derived from a specific journal entry. The baseline sentinel does not represent a possible node change. Its only valid use is as a `since` argument.
 
 REQ-JA-07: `baselinePossibleNodeChange()` MUST be callable at any time. It MUST NOT require a prior call to `graph.possibleMaybeChanges`.
 
@@ -114,4 +112,4 @@ REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to
 
 REQ-JA-09: `IncrementalGraph.prototype.possibleMaybeChanges` operates under the graph instance's `daytimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "daytime", ...)`). It may run concurrently with other daytime activities as allowed by the locking spec. It MUST NOT overlap with nighttime pull activity except as allowed by that spec. See `docs/specs/incremental-graph-locking-design.md`.
 
-REQ-JA-10: New journal entries committed after the iterator is created MAY or MAY NOT be reflected in the iteration. This is implementation-defined. The implementation MUST guarantee that the iterator is internally consistent: within one iterator over one observed span, the same surviving journal index MUST NOT be yielded twice, and no surviving journal index in the observed span may be skipped because of concurrent writes.
+REQ-JA-10: Because `possibleMaybeChanges` runs under `daytimeActivity` (REQ-JA-09), no other graph mutations can commit concurrently during its execution. The observed journal span is therefore effectively a snapshot: new journal entries committed by concurrent daytime activities do not exist while the iterator is active. The implementation MUST guarantee that within one iterator over one observed span, the same surviving journal index MUST NOT be yielded twice, and no surviving journal index in the observed span may be skipped.
