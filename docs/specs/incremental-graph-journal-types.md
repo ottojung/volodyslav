@@ -56,7 +56,7 @@ REQ-JT-02: The persisted representation of `UnixTimestamp` is a numeric integer 
 
 REQ-JT-03: Implementations SHOULD record journal timestamps using the local system clock at the time of emission. Host clocks are not assumed to be synchronized across hosts.
 
-These timestamps are used by the v1 sync conflict policy. Since they come from host wall clocks, they are not a causality guarantee and may produce lossy last-writer-wins outcomes under clock skew. See `incremental-graph-journal-sync.md` §Conflict resolution.
+These timestamps are used by the v1 sync conflict policy. A particular host's wall clock may be incorrect, but this is the best available signal for conflict ordering — the system trusts hosts and does not rely on external time authorities. See `incremental-graph-journal-sync.md` §Conflict resolution.
 
 ### Nominal typing
 

@@ -12,7 +12,7 @@ This document specifies how the journal participates in synchronization between 
 
 2. **Timestamp-based conflict resolution.** For concurrent edits to the same semantic node key, the recorded entry with the later `time` field wins. If `time` produces a tie, the node with the lexicographically greater `JournalEntry.id` (`NodeIdentifier` converted to string) wins. Since `time` comes from host wall clocks, this is a last-writer-wins-by-recorded-wall-clock policy with deterministic tie-breakers.
 
-3. **Host clocks are not trusted.** The system operates correctly under correct clocks; under incorrect clocks, outcomes reflect the incorrect timestamps. Future versions may introduce custom merge logic to refine or replace this rule.
+3. **Wall-clock-based resolution.** A particular host's wall clock may be incorrect, but this is the best available signal for conflict ordering — the system trusts hosts and does not rely on external time authorities. The timestamp field is the entry's recorded local time, used as-is for conflict comparison.
 
 ---
 
