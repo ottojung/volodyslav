@@ -26,10 +26,7 @@ When synchronizing two hosts, for each node key that appears in both hosts' grap
 
 REQ-JS-01: The host whose journal entry has the later `JournalEntry.time` wins the conflict. The winning host's value is retained; the losing host's identifier and associated records are removed or replaced.
 
-REQ-JS-02: If both hosts have the same `time` for the conflicting node, tie-breaking proceeds in this order:
-
-1. Lexicographic comparison of `JournalEntry.creator` (`Hostname` converted to string).
-2. Lexicographic comparison of `JournalEntry.id` (`NodeIdentifier` converted to string).
+REQ-JS-02: If both hosts have the same `time` for the conflicting node, tie-breaking is decideby via lexicographic comparison of `JournalEntry.id` (`NodeIdentifier` converted to string).
 
 This ensures deterministic resolution on all hosts.
 
@@ -47,7 +44,7 @@ REQ-JS-04: When a node key conflict is resolved in favor of the local host (the 
 - No `delete` entry is emitted for the remote node key on the local host.
 - The remote host will resolve the conflict in the same way when it syncs, producing a `delete` on its side.
 
-REQ-JS-05: The resolution algorithm MUST be deterministic and commutative: two hosts applying the same set of changes in any order must arrive at the same final state. The timestamp-then-creator-then-identifier tie-breaking rules satisfy this.
+REQ-JS-05: The resolution algorithm MUST be deterministic and commutative: two hosts applying the same set of changes in any order must arrive at the same final state. The timestamp-then-identifier tie-breaking rules satisfy this.
 
 ---
 
@@ -61,7 +58,7 @@ Specifically:
 - If a remote node is newly materialized locally (first time seen), an `add` journal entry is appended.
 - If a local node is removed because the remote host deleted it and the remote deletion timestamp wins, a `delete` journal entry is appended.
 
-REQ-JS-07: Sync MAY append a journal entry even when the graph state is already consistent. For example, if two hosts independently computed the same value for a node (same `time`, same `creator`), sync MAY still append a redundant `edit` entry to ensure later queries re-evaluate the node. This is conservative behavior and is allowed.
+REQ-JS-07: Sync MAY append a journal entry even when the graph state is already consistent. For example, if two hosts independently computed the same value for a node (same `time`), sync MAY still append a redundant `edit` entry to ensure later queries re-evaluate the node. This is conservative behavior and is allowed.
 
 REQ-JS-08: Sync MUST NOT omit a journal entry that would be necessary for later `graph.possibleMaybeChanges` queries to observe a material graph change.
 
