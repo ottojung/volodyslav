@@ -23,6 +23,7 @@ const {
     serializeIdentifierLookup,
     stringToNodeKeyString,
 } = require('../src/generators/incremental_graph/database');
+const { makeIncrementalGraph } = require('../src/generators/incremental_graph');
 const {
     IdentifierLookupConflictError,
     isIdentifierLookupConflictError,
@@ -215,16 +216,15 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('throws readable error on conflicting identifier assignments for same semantic key', async () => {
+    test('reconciles different identifiers across multiple semantic nodes', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
             db = await getRootDatabase(capabilities);
             const logger = makeLogger();
             const hostname = 'peer';
-            const appVersionStr = db.version;
-            await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
 
             const targetParent = nodeIdentifierFromString('6-abcdefghi');
             const targetChild = nodeIdentifierFromString('7-abcdefghi');
@@ -235,33 +235,22 @@ describe('mergeHostIntoReplica', () => {
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, targetParent, TS1, [], undefined);
             await writeNode(L, targetChild, TS1, [targetParent], undefined);
-            await writeIdentifierLookup(L, [
-                [targetParent, parentKey],
-                [targetChild, childKey],
-            ]);
+            await writeIdentifierLookup(L, [[targetParent, parentKey], [targetChild, childKey]]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeNode(H, hostParent, TS1, [], undefined);
             await writeNode(H, hostChild, TS2, [hostParent], undefined);
-            await writeIdentifierLookup(H, [
-                [hostParent, parentKey],
+            await writeIdentifierLookup(H, [[hostParent, parentKey], [hostChild, childKey]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            const T = db.getSchemaStorage();
+            expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([
+                [targetParent, parentKey],
                 [hostChild, childKey],
             ]);
-
-            let error;
-            try {
-                await mergeHostIntoReplica(logger, db, hostname);
-            } catch (caught) {
-                error = caught;
-            }
-
-            expect(isIdentifierLookupConflictError(error)).toBe(true);
-            expect(String(error?.message)).toContain('Conflicting identifier assignment for node key');
-            expect(String(error?.message)).toContain(String(parentKey));
-            expect(String(error?.message)).toContain('Volodyslav will not resolve this automatically');
-            expect(String(error?.message)).toContain('manually fix the identifiers_keys_map records');
-
-            expect(db.currentReplicaName()).toBe('x');
+            expect(await T.inputs.get(hostChild)).toEqual({ inputs: [targetParent], inputCounters: [] });
+            expect(await T.inputs.get(targetChild)).toBeUndefined();
+            expect(await T.inputs.get(hostParent)).toBeUndefined();
         } finally {
             if (db) await db.close();
         }
@@ -374,7 +363,7 @@ describe('mergeHostIntoReplica', () => {
             const newActive = db.currentReplicaName();
             const T = db.schemaStorageForReplica(newActive);
 
-            // The H-only node was taken; buildTakeOps emits delOp for missing timestamps.
+            // The H-only node was taken; copyNodeOps emits delOp for missing timestamps.
             const takenTs = await T.timestamps.get(hOnlyNode);
             expect(takenTs).toBeUndefined();
         } finally {
@@ -728,6 +717,341 @@ describe('mergeHostIntoReplica', () => {
         const err = new IdentifierLookupConflictError('test conflict');
         expect(isIdentifierLookupConflictError(err)).toBe(true);
         expect(isIdentifierLookupConflictError(new Error('other'))).toBe(false);
+    });
+
+    test('reconciles equal-timestamp same-key different identifiers into one strict storage identity', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const targetId = nodeIdentifierFromString('10-abcdefghi');
+            const hostId = nodeIdentifierFromString('11-abcdefghi');
+            const dependentId = nodeIdentifierFromString('12-abcdefghi');
+            const sharedKey = stringToNodeKeyString('{"head":"shared","args":[]}');
+            const dependentKey = stringToNodeKeyString('{"head":"dependent","args":[]}');
+            const localValue = { value: { id: 'local', type: 'test', description: 'local' }, isDirty: false };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetId, TS2, [], localValue);
+            await L.counters.put(targetId, 7);
+            await writeNode(L, dependentId, TS2, [targetId], undefined);
+            await writeIdentifierLookup(L, [[targetId, sharedKey], [dependentId, dependentKey]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, hostId, TS2, [], { value: { id: 'host', type: 'test', description: 'host' }, isDirty: false });
+            await H.counters.put(hostId, 9);
+            await writeNode(H, dependentId, TS2, [hostId], undefined);
+            await writeIdentifierLookup(H, [[hostId, sharedKey], [dependentId, dependentKey]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            const T = db.getSchemaStorage();
+            expect(await T.values.get(targetId)).toEqual(localValue);
+            for (const sublevel of [T.values, T.freshness, T.inputs, T.counters, T.timestamps]) {
+                expect(await sublevel.get(hostId)).toBeUndefined();
+            }
+            expect(await T.inputs.get(dependentId)).toEqual({ inputs: [targetId], inputCounters: [] });
+            const serialized = await T.global.get(IDENTIFIERS_KEY);
+            expect(serialized).toEqual([[targetId, sharedKey], [dependentId, dependentKey]]);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('keeps the target identifier for a target-newer semantic node', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+            const targetId = nodeIdentifierFromString('20-abcdefghi');
+            const hostId = nodeIdentifierFromString('21-abcdefghi');
+            const nodeKey = stringToNodeKeyString('{"head":"newer-local","args":[]}');
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetId, TS3, [], undefined);
+            await writeIdentifierLookup(L, [[targetId, nodeKey]]);
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, hostId, TS1, [], undefined);
+            await writeIdentifierLookup(H, [[hostId, nodeKey]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            const T = db.getSchemaStorage();
+            expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([[targetId, nodeKey]]);
+            expect(await T.inputs.get(targetId)).toBeDefined();
+            expect(await T.inputs.get(hostId)).toBeUndefined();
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('takes the host identifier for a host-newer semantic node and removes the target identifier', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+            const targetId = nodeIdentifierFromString('30-abcdefghi');
+            const hostId = nodeIdentifierFromString('31-abcdefghi');
+            const nodeKey = stringToNodeKeyString('{"head":"newer-host","args":[]}');
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetId, TS1, [], undefined);
+            await L.counters.put(targetId, 1);
+            await writeIdentifierLookup(L, [[targetId, nodeKey]]);
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, hostId, TS3, [], undefined);
+            await H.counters.put(hostId, 3);
+            await writeIdentifierLookup(H, [[hostId, nodeKey]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            const T = db.getSchemaStorage();
+            expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([[hostId, nodeKey]]);
+            expect(await T.inputs.get(hostId)).toEqual({ inputs: [], inputCounters: [] });
+            for (const sublevel of [T.values, T.freshness, T.inputs, T.counters, T.timestamps]) {
+                expect(await sublevel.get(targetId)).toBeUndefined();
+            }
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('lowers host-only inputs to surviving identifiers and invalidates mixed ancestry', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+            const bId = nodeIdentifierFromString('40-abcdefghi');
+            const targetCId = nodeIdentifierFromString('41-abcdefghi');
+            const hostCId = nodeIdentifierFromString('42-abcdefghi');
+            const hostAId = nodeIdentifierFromString('43-abcdefghi');
+            const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+            const keyC = stringToNodeKeyString('{"head":"C","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, bId, TS2, [], undefined);
+            await writeNode(L, targetCId, TS3, [], undefined);
+            await writeIdentifierLookup(L, [[bId, keyB], [targetCId, keyC]]);
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, bId, TS2, [], undefined);
+            await writeNode(H, hostCId, TS1, [], undefined);
+            await writeNode(H, hostAId, TS2, [bId, hostCId], undefined);
+            await writeIdentifierLookup(H, [[bId, keyB], [hostCId, keyC], [hostAId, keyA]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            const T = db.getSchemaStorage();
+            expect(await T.inputs.get(hostAId)).toEqual({ inputs: [bId, targetCId], inputCounters: [] });
+            expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
+            expect(await T.revdeps.get(targetCId)).toEqual([hostAId]);
+            expect(await T.inputs.get(hostCId)).toBeUndefined();
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('pull recomputes a directly relowered node even when dependency counters collide', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const targetCId = nodeIdentifierFromString('47-abcdefghi');
+            const hostCId = nodeIdentifierFromString('48-abcdefghi');
+            const hostAId = nodeIdentifierFromString('49-abcdefghi');
+            const keyC = stringToNodeKeyString('{"head":"c_counter_collision","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"a_counter_collision","args":[]}');
+            const targetCValue = { source: 'target C' };
+            const staleAValue = { source: 'A computed from host C' };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetCId, TS1, [], targetCValue);
+            await L.counters.put(targetCId, 1);
+            await writeIdentifierLookup(L, [[targetCId, keyC]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, hostCId, TS1, [], { source: 'host C' });
+            await H.counters.put(hostCId, 1);
+            await writeNode(H, hostAId, TS1, [hostCId], staleAValue);
+            await H.inputs.put(hostAId, { inputs: [hostCId], inputCounters: [1] });
+            await H.counters.put(hostAId, 1);
+            await writeIdentifierLookup(H, [[hostCId, keyC], [hostAId, keyA]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            expect(await db.getSchemaStorage().values.get(hostAId)).toBeUndefined();
+            const computeA = jest.fn(async ([input]) => ({ source: `recomputed from ${input.source}` }));
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: 'c_counter_collision',
+                    inputs: [],
+                    computor: async () => targetCValue,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: 'a_counter_collision',
+                    inputs: ['c_counter_collision'],
+                    computor: computeA,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await expect(graph.pull('a_counter_collision')).resolves.toEqual({
+                source: 'recomputed from target C',
+            });
+            expect(computeA).toHaveBeenCalledTimes(1);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('relowered invalidation propagates transitively and pull recomputes dependents', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const targetCId = nodeIdentifierFromString('53-abcdefghi');
+            const hostCId = nodeIdentifierFromString('54-abcdefghi');
+            const hostAId = nodeIdentifierFromString('55-abcdefghi');
+            const hostDId = nodeIdentifierFromString('56-abcdefghi');
+            const keyC = stringToNodeKeyString('{"head":"c_transitive_relower","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"a_transitive_relower","args":[]}');
+            const keyD = stringToNodeKeyString('{"head":"d_transitive_relower","args":[]}');
+            const targetCValue = { source: 'target C' };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetCId, TS1, [], targetCValue);
+            await L.counters.put(targetCId, 1);
+            await writeIdentifierLookup(L, [[targetCId, keyC]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, hostCId, TS1, [], { source: 'host C' });
+            await H.counters.put(hostCId, 1);
+            await writeNode(H, hostAId, TS1, [hostCId], { source: 'stale A' });
+            await H.inputs.put(hostAId, { inputs: [hostCId], inputCounters: [1] });
+            await H.counters.put(hostAId, 1);
+            await writeNode(H, hostDId, TS1, [hostAId], { source: 'stale D' });
+            await H.inputs.put(hostDId, { inputs: [hostAId], inputCounters: [1] });
+            await H.counters.put(hostDId, 1);
+            await writeIdentifierLookup(H, [
+                [hostCId, keyC],
+                [hostAId, keyA],
+                [hostDId, keyD],
+            ]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            const T = db.getSchemaStorage();
+            expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
+            expect(await T.freshness.get(hostDId)).toBe('potentially-outdated');
+
+            const computeA = jest.fn(async ([input]) => ({ source: `A from ${input.source}` }));
+            const computeD = jest.fn(async ([input]) => ({ source: `D from ${input.source}` }));
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: 'c_transitive_relower',
+                    inputs: [],
+                    computor: async () => targetCValue,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: 'a_transitive_relower',
+                    inputs: ['c_transitive_relower'],
+                    computor: computeA,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: 'd_transitive_relower',
+                    inputs: ['a_transitive_relower'],
+                    computor: computeD,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await expect(graph.pull('d_transitive_relower')).resolves.toEqual({
+                source: 'D from A from target C',
+            });
+            expect(computeA).toHaveBeenCalledTimes(1);
+            expect(computeD).toHaveBeenCalledTimes(1);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('invalidates a target-only node whose semantic input is taken from host', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const targetCId = nodeIdentifierFromString('50-abcdefghi');
+            const hostCId = nodeIdentifierFromString('51-abcdefghi');
+            const targetDId = nodeIdentifierFromString('52-abcdefghi');
+            const keyC = stringToNodeKeyString('{"head":"C-target-input","args":[]}');
+            const keyD = stringToNodeKeyString('{"head":"D-target-only","args":[]}');
+            const targetDValue = {
+                value: { id: 'd-local', type: 'test', description: 'local D' },
+                isDirty: false,
+            };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetCId, TS1, [], undefined);
+            await writeNode(L, targetDId, TS2, [targetCId], targetDValue);
+            await L.counters.put(targetDId, 2);
+            await writeIdentifierLookup(L, [
+                [targetCId, keyC],
+                [targetDId, keyD],
+            ]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, hostCId, TS3, [], undefined);
+            await writeIdentifierLookup(H, [[hostCId, keyC]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            const T = db.getSchemaStorage();
+            expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([
+                [hostCId, keyC],
+                [targetDId, keyD],
+            ]);
+            expect(await T.inputs.get(targetDId)).toEqual({
+                inputs: [hostCId],
+                inputCounters: [],
+            });
+            expect(await T.values.get(targetDId)).toBeUndefined();
+            expect(await T.counters.get(targetDId)).toBe(2);
+            expect(await T.freshness.get(targetDId)).toBe('potentially-outdated');
+            expect(await T.revdeps.get(hostCId)).toEqual([targetDId]);
+            expect(await T.inputs.get(targetCId)).toBeUndefined();
+        } finally {
+            if (db) await db.close();
+        }
     });
 
     test('throws IdentifierLookupConflictError when same identifier maps to different semantic keys', async () => {

@@ -13,69 +13,83 @@ const { makeDbToDbAdapter, unifyStores } = require('./unification');
 async function copyReplicaGently(rootDatabase, from, to) {
     const src = rootDatabase.schemaStorageForReplica(from);
     const dst = rootDatabase.schemaStorageForReplica(to);
-
-    // Exclude revdeps: they will be recomputed from mergedInputsMap by
-    // unifyRevdeps() after the merge.  Copying them here wastes I/O.
     await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
-
-    // One final fsync: all unification writes use sync:false for performance;
-    // _rawSync() issues an empty batch with sync:true to durably flush the
-    // WAL/database state without mutating any keys.
     await rootDatabase._rawSync();
 }
 
 /**
- * Build "take" batch operations that copy a node's full data from H into T.
- * Copies value, freshness, timestamps, inputs, and counters.
- * revdeps are NOT copied here; they are rebuilt from scratch at the end.
+ * Build operations that remove every primary record for a discarded identifier.
+ * Reverse dependencies are rebuilt from the final lowered graph.
+ * @param {SchemaStorage} targetStorage
+ * @param {NodeIdentifier} identifier
+ * @returns {Array<*>}
+ */
+function buildDeleteNodeOps(targetStorage, identifier) {
+    return [
+        targetStorage.values.delOp(identifier),
+        targetStorage.freshness.delOp(identifier),
+        targetStorage.inputs.delOp(identifier),
+        targetStorage.counters.delOp(identifier),
+        targetStorage.timestamps.delOp(identifier),
+    ];
+}
+
+/**
+ * Build operations that copy a node between potentially different identifiers.
+ * Inputs are supplied by the semantic planner after lowering to final identifiers.
  *
- * @param {SchemaStorage} T - Target (inactive) replica storage.
- * @param {SchemaStorage} H - Hostname staging storage.
- * @param {NodeIdentifier} key - Identifier to copy.
+ * `inputCounters` describe the source computation and are copied only as
+ * historical dependency metadata. If lowering changes any input identifier,
+ * the caller must delete the copied value and mark the node outdated so these
+ * counters can never authorize reuse of a value computed against another
+ * storage identity.
+ *
+ * @param {object} options
+ * @param {SchemaStorage} options.targetStorage
+ * @param {SchemaStorage} options.sourceStorage
+ * @param {NodeIdentifier} options.sourceId
+ * @param {NodeIdentifier} options.destinationId
+ * @param {NodeIdentifier[]} options.finalInputsForDestination
  * @returns {Promise<Array<*>>}
  */
-async function buildTakeOps(T, H, key) {
+async function copyNodeOps({
+    targetStorage,
+    sourceStorage,
+    sourceId,
+    destinationId,
+    finalInputsForDestination,
+}) {
     /** @type {Array<*>} */
     const ops = [];
+    const sourceValue = await sourceStorage.values.get(sourceId);
+    ops.push(sourceValue === undefined
+        ? targetStorage.values.delOp(destinationId)
+        : targetStorage.values.putOp(destinationId, sourceValue));
 
-    const hValue = await H.values.get(key);
-    if (hValue !== undefined) {
-        ops.push(T.values.putOp(key, hValue));
-    } else {
-        ops.push(T.values.delOp(key));
-    }
+    const sourceFreshness = await sourceStorage.freshness.get(sourceId);
+    ops.push(targetStorage.freshness.putOp(
+        destinationId,
+        sourceFreshness ?? 'potentially-outdated'
+    ));
 
-    const hFreshness = await H.freshness.get(key);
-    ops.push(T.freshness.putOp(key, hFreshness !== undefined ? hFreshness : 'potentially-outdated'));
+    const sourceTimestamps = await sourceStorage.timestamps.get(sourceId);
+    ops.push(sourceTimestamps === undefined
+        ? targetStorage.timestamps.delOp(destinationId)
+        : targetStorage.timestamps.putOp(destinationId, sourceTimestamps));
 
-    const hTimestamps = await H.timestamps.get(key);
-    if (hTimestamps !== undefined) {
-        ops.push(T.timestamps.putOp(key, hTimestamps));
-    } else {
-        ops.push(T.timestamps.delOp(key));
-    }
-
-    const hInputs = await H.inputs.get(key);
-    if (hInputs !== undefined) {
-        ops.push(T.inputs.putOp(key, {
-            inputs: hInputs.inputs,
-            inputCounters: hInputs.inputCounters,
+    const sourceInputs = await sourceStorage.inputs.get(sourceId);
+    ops.push(sourceInputs === undefined
+        ? targetStorage.inputs.delOp(destinationId)
+        : targetStorage.inputs.putOp(destinationId, {
+            inputs: finalInputsForDestination.map(input => String(input)),
+            inputCounters: sourceInputs.inputCounters,
         }));
-    } else {
-        ops.push(T.inputs.delOp(key));
-    }
 
-    const hCounter = await H.counters.get(key);
-    if (hCounter !== undefined) {
-        ops.push(T.counters.putOp(key, hCounter));
-    } else {
-        ops.push(T.counters.delOp(key));
-    }
-
+    const sourceCounter = await sourceStorage.counters.get(sourceId);
+    ops.push(sourceCounter === undefined
+        ? targetStorage.counters.delOp(destinationId)
+        : targetStorage.counters.putOp(destinationId, sourceCounter));
     return ops;
 }
 
-module.exports = {
-    buildTakeOps,
-    copyReplicaGently,
-};
+module.exports = { buildDeleteNodeOps, copyNodeOps, copyReplicaGently };

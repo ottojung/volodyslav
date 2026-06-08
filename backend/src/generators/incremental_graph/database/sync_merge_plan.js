@@ -1,121 +1,213 @@
 const { topologicalSortFromMap } = require('./topo_sort');
 const { compareIsoTimestamps } = require('./sync_merge_timestamps');
-const { stringToNodeIdentifier } = require('./types');
+const { makeIdentifierLookup } = require('./identifier_lookup');
+const { IdentifierLookupConflictError } = require('./replica_errors');
 
+/** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
+/** @typedef {import('./types').NodeKeyString} NodeKeyString */
 
 /**
- * Compute merged graph inputs and final node decisions for host merge.
+ * Resolve identifier-keyed inputs into semantic node keys.
+ * @param {SchemaStorage} storage
+ * @param {IdentifierLookup} lookup
+ * @param {NodeIdentifier} identifier
+ * @returns {Promise<NodeKeyString[]>}
+ */
+async function semanticInputs(storage, lookup, identifier) {
+    const record = await storage.inputs.get(identifier);
+    if (record === undefined) return [];
+    return record.inputs.map(input => {
+        const nodeKey = lookup.idToKey.get(String(input));
+        if (nodeKey === undefined) {
+            throw new IdentifierLookupConflictError(`Input identifier ${String(input)} is absent from identifiers_keys_map`);
+        }
+        return nodeKey;
+    });
+}
+
+/**
+ * Compute the semantic merge plan, then lower its graph back to final storage identifiers.
  *
  * @param {SchemaStorage} T
  * @param {SchemaStorage} H
+ * @param {IdentifierLookup} targetLookup
+ * @param {IdentifierLookup} hostLookup
  * @returns {Promise<{
- *   initialDecisions: Map<NodeIdentifier, 'keep' | 'take'>,
+ *   initialDecisions: Map<NodeKeyString, 'keep' | 'take'>,
  *   mergedInputsMap: Map<NodeIdentifier, NodeIdentifier[]>,
- *   decisions: Map<NodeIdentifier, 'keep' | 'take' | 'invalidate'>,
- *   hOnlyNeedsInvalidate: Set<NodeIdentifier>
+ *   decisions: Map<NodeKeyString, 'keep' | 'take' | 'invalidate'>,
+ *   hOnlyNeedsInvalidate: Set<NodeKeyString>,
+ *   directlyReloweredNodes: Set<NodeKeyString>,
+ *   reloweringInvalidatedNodes: Set<NodeKeyString>,
+ *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
+ *   finalIdentifierLookup: IdentifierLookup,
+ *   hasIdentifierReconciliation: boolean
  * }>} 
  */
-async function buildMergePlan(T, H) {
-    /** @type {Map<NodeIdentifier, 'keep' | 'take'>} */
+async function buildMergePlan(T, H, targetLookup, hostLookup) {
+    /** @type {Map<NodeKeyString, 'keep' | 'take'>} */
     const initialDecisions = new Map();
-    /** @type {Set<NodeIdentifier>} */
+    /** @type {Set<NodeKeyString>} */
     const forceKeepRoots = new Set();
-    /** @type {Set<NodeIdentifier>} */
+    /** @type {Set<NodeKeyString>} */
     const forceTakeRoots = new Set();
+    /** @type {Set<NodeKeyString>} */
+    const allNodeKeys = new Set();
 
-    for await (const node of T.inputs.keys()) {
-        const tTimestamps = await T.timestamps.get(node);
-        const hTimestamps = await H.timestamps.get(node);
+    for (const nodeKey of targetLookup.idToKey.values()) allNodeKeys.add(nodeKey);
+    for (const nodeKey of hostLookup.idToKey.values()) allNodeKeys.add(nodeKey);
 
-        const cmp = compareIsoTimestamps(tTimestamps?.modifiedAt, hTimestamps?.modifiedAt);
-
-        if (hTimestamps === undefined || cmp >= 0) {
-            initialDecisions.set(node, 'keep');
-            if (cmp > 0) {
-                forceKeepRoots.add(node);
-            }
-        } else {
-            initialDecisions.set(node, 'take');
-            forceTakeRoots.add(node);
-        }
-    }
-
-    /** @type {Set<NodeIdentifier>} */
+    /** @type {Set<NodeKeyString>} */
+    const targetOnlyNodes = new Set();
+    /** @type {Set<NodeKeyString>} */
     const hOnlyNodes = new Set();
-    for await (const hostKey of H.inputs.keys()) {
-        if (!initialDecisions.has(hostKey)) {
-            hOnlyNodes.add(hostKey);
+    for (const nodeKey of allNodeKeys) {
+        const targetId = targetLookup.keyToId.get(String(nodeKey));
+        const hostId = hostLookup.keyToId.get(String(nodeKey));
+        if (targetId === undefined) {
+            initialDecisions.set(nodeKey, 'take');
+            hOnlyNodes.add(nodeKey);
+            continue;
+        }
+        if (hostId === undefined) {
+            initialDecisions.set(nodeKey, 'keep');
+            targetOnlyNodes.add(nodeKey);
+            continue;
+        }
+
+        const targetTimestamps = await T.timestamps.get(targetId);
+        const hostTimestamps = await H.timestamps.get(hostId);
+        const cmp = compareIsoTimestamps(
+            targetTimestamps?.modifiedAt,
+            hostTimestamps?.modifiedAt
+        );
+        if (cmp >= 0) {
+            initialDecisions.set(nodeKey, 'keep');
+            if (cmp > 0) forceKeepRoots.add(nodeKey);
+        } else {
+            initialDecisions.set(nodeKey, 'take');
+            forceTakeRoots.add(nodeKey);
         }
     }
+
+    /** @type {Map<NodeKeyString, NodeKeyString[]>} */
+    const initiallyChosenInputsMap = new Map();
+    for (const [nodeKey, initial] of initialDecisions) {
+        const lookup = initial === 'take' ? hostLookup : targetLookup;
+        const storage = initial === 'take' ? H : T;
+        const identifier = lookup.keyToId.get(String(nodeKey));
+        if (identifier === undefined) {
+            throw new IdentifierLookupConflictError(`Missing ${initial} identifier for semantic node ${String(nodeKey)}`);
+        }
+        initiallyChosenInputsMap.set(nodeKey, await semanticInputs(storage, lookup, identifier));
+    }
+
+    const topoList = topologicalSortFromMap(initiallyChosenInputsMap);
+    /** @type {Set<NodeKeyString>} */
+    const keepTainted = new Set(forceKeepRoots);
+    /** @type {Set<NodeKeyString>} */
+    const takeTainted = new Set(forceTakeRoots);
+    for (const nodeKey of topoList) {
+        for (const inputKey of initiallyChosenInputsMap.get(nodeKey) ?? []) {
+            if (keepTainted.has(inputKey)) keepTainted.add(nodeKey);
+            if (takeTainted.has(inputKey)) takeTainted.add(nodeKey);
+        }
+    }
+
+    /** @type {Map<NodeKeyString, 'keep' | 'take' | 'invalidate'>} */
+    const decisions = new Map();
+    /** @type {Set<NodeKeyString>} */
+    const hOnlyNeedsInvalidate = new Set();
+    for (const [nodeKey, initial] of initialDecisions) {
+        const inKeep = keepTainted.has(nodeKey);
+        const inTake = takeTainted.has(nodeKey);
+        if (targetOnlyNodes.has(nodeKey)) {
+            decisions.set(nodeKey, inTake ? 'invalidate' : 'keep');
+        } else if (hOnlyNodes.has(nodeKey)) {
+            decisions.set(nodeKey, 'take');
+            if (inKeep) hOnlyNeedsInvalidate.add(nodeKey);
+        } else if (inKeep && inTake) {
+            decisions.set(nodeKey, 'invalidate');
+        } else if (inKeep) {
+            decisions.set(nodeKey, 'keep');
+        } else if (inTake) {
+            decisions.set(nodeKey, 'take');
+        } else {
+            decisions.set(nodeKey, initial);
+        }
+    }
+
+    /** @type {Map<NodeKeyString, NodeIdentifier>} */
+    const finalIdentifierForKey = new Map();
+    /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
+    const finalEntries = [];
+    let hasIdentifierReconciliation = false;
+    for (const [nodeKey, initial] of initialDecisions) {
+        const targetId = targetLookup.keyToId.get(String(nodeKey));
+        const hostId = hostLookup.keyToId.get(String(nodeKey));
+        const decision = decisions.get(nodeKey);
+        const finalSide = decision === 'invalidate' ? initial : decision;
+        const finalId = finalSide === 'take' ? hostId : targetId;
+        if (finalSide === undefined || finalId === undefined) {
+            throw new IdentifierLookupConflictError(`Missing final identifier for ${String(nodeKey)}`);
+        }
+        finalIdentifierForKey.set(nodeKey, finalId);
+        finalEntries.push([finalId, nodeKey]);
+        if (targetId !== hostId && targetId !== undefined && hostId !== undefined) {
+            hasIdentifierReconciliation = true;
+        }
+    }
+    const finalIdentifierLookup = makeIdentifierLookup(finalEntries);
 
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const mergedInputsMap = new Map();
-
-    for (const [node, decision] of initialDecisions) {
-        if (decision === 'take') {
-            const record = await H.inputs.get(node);
-            const inputKeys = record
-                ? record.inputs.map(input => stringToNodeIdentifier(input))
-                : [];
-            mergedInputsMap.set(node, inputKeys);
-        } else {
-            const record = await T.inputs.get(node);
-            const inputKeys = record
-                ? record.inputs.map(input => stringToNodeIdentifier(input))
-                : [];
-            mergedInputsMap.set(node, inputKeys);
+    /** @type {Set<NodeKeyString>} */
+    const directlyReloweredNodes = new Set();
+    for (const [nodeKey, decision] of decisions) {
+        const initial = initialDecisions.get(nodeKey);
+        const structuralSide = decision === 'invalidate' ? initial : decision;
+        const lookup = structuralSide === 'take' ? hostLookup : targetLookup;
+        const storage = structuralSide === 'take' ? H : T;
+        const sourceId = lookup.keyToId.get(String(nodeKey));
+        const finalId = finalIdentifierForKey.get(nodeKey);
+        if (sourceId === undefined || finalId === undefined) {
+            throw new IdentifierLookupConflictError(`Missing lowered identifier for ${String(nodeKey)}`);
+        }
+        const sourceInputs = await storage.inputs.get(sourceId);
+        const inputKeys = await semanticInputs(storage, lookup, sourceId);
+        const finalInputIds = inputKeys.map(inputKey => {
+            const inputId = finalIdentifierForKey.get(inputKey);
+            if (inputId === undefined) throw new IdentifierLookupConflictError(`Missing lowered input identifier for ${String(inputKey)}`);
+            return inputId;
+        });
+        mergedInputsMap.set(finalId, finalInputIds);
+        const sourceInputIds = sourceInputs?.inputs ?? [];
+        if (
+            sourceInputIds.length !== finalInputIds.length ||
+            sourceInputIds.some((inputId, index) => String(inputId) !== String(finalInputIds[index]))
+        ) {
+            directlyReloweredNodes.add(nodeKey);
         }
     }
 
-    for (const key of hOnlyNodes) {
-        const record = await H.inputs.get(key);
-        const inputKeys = record
-            ? record.inputs.map(input => stringToNodeIdentifier(input))
-            : [];
-        mergedInputsMap.set(key, inputKeys);
-    }
-
-    const topoList = topologicalSortFromMap(mergedInputsMap);
-
-    /** @type {Set<NodeIdentifier>} */
-    const keepTainted = new Set(forceKeepRoots);
-    /** @type {Set<NodeIdentifier>} */
-    const takeTainted = new Set(forceTakeRoots);
-
-    for (const node of topoList) {
-        const inputKeys = mergedInputsMap.get(node) ?? [];
-        for (const inputKey of inputKeys) {
-            if (keepTainted.has(inputKey)) keepTainted.add(node);
-            if (takeTainted.has(inputKey)) takeTainted.add(node);
-        }
-    }
-
-    /** @type {Map<NodeIdentifier, 'keep' | 'take' | 'invalidate'>} */
-    const decisions = new Map();
-
-    for (const [node, initial] of initialDecisions) {
-        const inKeep = keepTainted.has(node);
-        const inTake = takeTainted.has(node);
-
-        if (inKeep && inTake) {
-            decisions.set(node, 'invalidate');
-        } else if (inKeep) {
-            decisions.set(node, 'keep');
-        } else if (inTake) {
-            decisions.set(node, 'take');
-        } else {
-            decisions.set(node, initial);
-        }
-    }
-
-    /** @type {Set<NodeIdentifier>} */
-    const hOnlyNeedsInvalidate = new Set();
-    for (const key of hOnlyNodes) {
-        decisions.set(key, 'take');
-        if (keepTainted.has(key)) {
-            hOnlyNeedsInvalidate.add(key);
+    /** @type {Set<NodeKeyString>} */
+    const reloweringInvalidatedNodes = new Set(directlyReloweredNodes);
+    const invalidatedIdentifiers = new Set(
+        [...directlyReloweredNodes].map(nodeKey => String(finalIdentifierForKey.get(nodeKey)))
+    );
+    for (const identifier of topologicalSortFromMap(mergedInputsMap)) {
+        const inputs = mergedInputsMap.get(identifier) ?? [];
+        if (inputs.some(input => invalidatedIdentifiers.has(String(input)))) {
+            invalidatedIdentifiers.add(String(identifier));
+            const nodeKey = finalIdentifierLookup.idToKey.get(String(identifier));
+            if (nodeKey === undefined) {
+                throw new IdentifierLookupConflictError(
+                    `Missing semantic key for invalidated identifier ${String(identifier)}`
+                );
+            }
+            reloweringInvalidatedNodes.add(nodeKey);
         }
     }
 
@@ -124,9 +216,12 @@ async function buildMergePlan(T, H) {
         mergedInputsMap,
         decisions,
         hOnlyNeedsInvalidate,
+        directlyReloweredNodes,
+        reloweringInvalidatedNodes,
+        finalIdentifierForKey,
+        finalIdentifierLookup,
+        hasIdentifierReconciliation,
     };
 }
 
-module.exports = {
-    buildMergePlan,
-};
+module.exports = { buildMergePlan };
