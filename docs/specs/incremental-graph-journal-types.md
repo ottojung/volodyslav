@@ -433,10 +433,10 @@ The journal implementation internally uses `PrivatePossibleNodeChange` (which in
 │  baselinePossibleNodeChange():               │
 │      BaselinePossibleNodeChange              │
 │                                              │
-│  Public fields (PossibleNodeChange):         │
-│      nodeName, bindings, action, time        │
-│  Private fields: NOT visible                 │
-│      (id, key, creator, index)               │
+ │  Public fields (PossibleNodeChange):         │
+ │      nodeName, bindings, action, time        │
+ │  Not part of public API contract:            │
+ │      id, key, creator, index                 │
 └──────────────────────────────────────────────┘
 ```
 
