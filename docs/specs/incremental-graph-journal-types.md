@@ -27,6 +27,8 @@ All journal types follow the existing nominal/opaque typing discipline used by `
  */
 ```
 
+The `*Class` declarations throughout this document (e.g. `UnixTimestampClass`, `JournalIndexClass`, `HostnameClass`, `PossibleNodeChangeClass`, `BaselinePossibleNodeChangeClass`) are nominal JSDoc brands. They do not imply that values are constructed with these classes at runtime. As with `NodeIdentifier`, the runtime representation may be a plain value/object that is treated as the branded type only through controlled casts.
+
 A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChanges` do not receive `JournalEntry` values. The public API surface uses `PossibleNodeChange`.
 
 ### JournalAction
@@ -50,7 +52,11 @@ A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChan
 
 REQ-JT-01: The unit of `UnixTimestamp` MUST be integer milliseconds. Fractional timestamps MUST NOT be used.
 
-REQ-JT-02: Implementations SHOULD record journal timestamps using the local system clock at the time of emission. Host clocks are not assumed to be synchronized across hosts.
+REQ-JT-02: The persisted representation of `UnixTimestamp` is a numeric integer (JavaScript `number`).
+
+REQ-JT-03: Implementations SHOULD record journal timestamps using the local system clock at the time of emission. Host clocks are not assumed to be synchronized across hosts.
+
+These timestamps are used by the v1 sync conflict policy. Since they come from host wall clocks, they are not a causality guarantee and may produce lossy last-writer-wins outcomes under clock skew. See `incremental-graph-journal-sync.md` §Conflict resolution.
 
 ### Nominal typing
 
@@ -64,8 +70,6 @@ class UnixTimestampClass {
 
 /** @typedef {UnixTimestampClass} UnixTimestamp */
 ```
-
-REQ-JT-01a: The persisted representation of `UnixTimestamp` is a numeric integer (JavaScript `number`).
 
 Conversion functions:
 
@@ -96,9 +100,11 @@ function unixTimestampToNumber(timestamp)
 
 A `Hostname` is a string that uniquely identifies a host within the synchronization mesh. The specific source of the value (e.g., machine hostname, configured name, stable UUID) is implementation-defined, but the value MUST be stable across restarts of the same host.
 
-REQ-JT-03: A `Hostname` MUST be stable for a given host across process restarts and reboots.
+REQ-JT-04: A `Hostname` MUST be stable for a given host across process restarts and reboots.
 
-REQ-JT-04: Two distinct hosts in the synchronization mesh MUST have different `Hostname` values. If two hosts accidentally share a hostname, tie-breaking falls through to the next deterministic rule (see `incremental-graph-journal-sync.md`).
+REQ-JT-05: Two distinct hosts in the synchronization mesh MUST have different `Hostname` values. If two hosts accidentally share a hostname, tie-breaking falls through to the next deterministic rule (see `incremental-graph-journal-sync.md`).
+
+REQ-JT-06: `Hostname` MUST be a non-empty string. Implementations MAY impose additional restrictions (e.g., no whitespace, character set limits) based on the host identification source. Empty strings MUST NOT be accepted as `Hostname` values.
 
 ### Nominal typing
 
@@ -117,12 +123,19 @@ Conversion functions:
 
 ```js
 /**
+ * Unsafe cast: wraps a string as a Hostname.
+ * Caller MUST ensure value is a non-empty string that uniquely
+ * identifies this host in the synchronization mesh and is stable
+ * across restarts.
+ *
  * @param {string} value
  * @returns {Hostname}
  */
-function stringToHostname(value)
+function unsafeStringToHostname(value)
 
 /**
+ * Render a Hostname to its string persisted representation.
+ *
  * @param {Hostname} hostname
  * @returns {string}
  */
@@ -135,11 +148,11 @@ function hostnameToString(hostname)
 
 A `JournalIndex` is a replicated physical journal position within the journal storage system. It is NOT exposed in the public `graph.possibleMaybeChanges` API signature.
 
-REQ-JT-05: `JournalIndex` values MUST NOT be reused.
+REQ-JT-07: `JournalIndex` values MUST NOT be reused.
 
-REQ-JT-06: Gaps in the `JournalIndex` sequence are acceptable.
+REQ-JT-08: Gaps in the `JournalIndex` sequence are acceptable.
 
-REQ-JT-07: `JournalIndex` MUST NOT be exposed in the public `graph.possibleMaybeChanges` API signature.
+REQ-JT-09: `JournalIndex` MUST NOT be exposed in the public `graph.possibleMaybeChanges` API signature.
 
 ### Nominal typing
 
@@ -152,7 +165,7 @@ class JournalIndexClass {
 /** @typedef {JournalIndexClass} JournalIndex */
 ```
 
-REQ-JT-05a: `JournalIndex` represents a real journal index. Only non-negative integers are valid real indices. Sentinel values (e.g., -1, 0) that represent "before any entry" are NOT `JournalIndex` values. See `PrivateSincePosition` for the internal since-position encoding.
+REQ-JT-10: `JournalIndex` represents a real journal index. Only non-negative integers are valid real indices. Sentinel values (e.g., -1, 0) that represent "before any entry" are NOT `JournalIndex` values. See `PrivateSincePosition` for the internal since-position encoding.
 
 Conversion functions:
 
@@ -184,9 +197,9 @@ The next journal index to allocate is maintained in volatile state (analogous to
 rendered/r/global/last_journal_index
 ```
 
-REQ-JT-08: `last_journal_index` MUST NOT decrease.
+REQ-JT-11: `last_journal_index` MUST NOT decrease.
 
-REQ-JT-09: After synchronization, `last_journal_index` MUST be at least the greatest index that is present or known-absent due to synchronized journal state.
+REQ-JT-12: After synchronization, `last_journal_index` MUST be at least the greatest index that is present or known-absent due to synchronized journal state. A known-absent index still contributes to the watermark so that future local allocations do not reuse or overwrite an index that another synchronized host has already allocated, compacted, or poisoned.
 
 ---
 
@@ -201,6 +214,17 @@ The journal implementation internally needs a wider representation that pairs a 
  * Private journal-module-only representation.
  * This is not exported as public API.
  *
+ * Contains both:
+ *   - public projection fields (nodeName, bindings, action, time)
+ *     that are exposed through PossibleNodeChange,
+ *   - private journal fields (id, key, creator, index) that
+ *     are hidden from public callers.
+ *
+ * nodeName and bindings are derived from `key` when the entry
+ * is constructed.  They remain on the runtime object so that
+ * `privatePossibleNodeChangeToPossibleNodeChange` can perform a
+ * nominal narrowing without constructing a new object.
+ *
  * @typedef {object} PrivatePossibleNodeChange
  * @property {JournalAction} action
  * @property {NodeIdentifier} id
@@ -208,10 +232,12 @@ The journal implementation internally needs a wider representation that pairs a 
  * @property {UnixTimestamp} time
  * @property {Hostname} creator
  * @property {JournalIndex} index
+ * @property {NodeName} nodeName
+ * @property {Array<ConstValue>} bindings
  */
 ```
 
-`PrivatePossibleNodeChange` extends `JournalEntry` with the `index` field.
+`PrivatePossibleNodeChange` extends `JournalEntry` with the `index`, `nodeName`, and `bindings` fields. The `nodeName` and `bindings` are the public projection fields derived from `JournalEntry.key`; they are stored on the same runtime value so that `privatePossibleNodeChangeToPossibleNodeChange` is a non-lossy nominal narrowing — NOT a fresh projection or a field-subsetting operation.
 
 ### Conversion functions (journal modules only)
 
@@ -302,9 +328,9 @@ class PossibleNodeChangeClass {
  */
 ```
 
-REQ-JT-10: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. It MUST NOT expose `NodeIdentifier`, `JournalIndex`, `Hostname`, or any other journal-internal metadata.
+REQ-JT-13: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. It MUST NOT expose `NodeIdentifier`, `JournalIndex`, `Hostname`, or any other journal-internal metadata.
 
-REQ-JT-11: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
+REQ-JT-14: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
 
 ---
 
@@ -424,11 +450,7 @@ Journal modules maintain internal widening/casting functions that follow the sam
 
 This PR does not specify:
 
-- How callers should persist `PossibleNodeChange` or `BaselinePossibleNodeChange` values across restarts.
-- How long a stored `since` token remains valid.
-- How stored tokens behave after migration, sync, or storage scenarios.
-- Type guards (`isPossibleNodeChange`, `isBaselinePossibleNodeChange`) for storage/deserialization boundaries.
-- Storage/deserialization recovery of journal tokens.
-- Checkpoint/lease-based compaction safety for long-lived stored cursors.
-
-These concerns are deferred to future specifications.
+- Persistence/serialization of public journal tokens.
+- Long-lived cursor validity policies.
+- Checkpoint/lease-based compaction safety.
+- Type guards for storage/deserialization boundaries.

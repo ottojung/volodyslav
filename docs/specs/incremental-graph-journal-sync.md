@@ -126,7 +126,7 @@ REQ-JS-16: Gaps produced by poisoned indices follow REQ-JC-04 (sparse storage is
 
 ### Sync order
 
-REQ-JS-17: Sync MUST apply remote journal entries in ascending `JournalIndex` order, interleaving them with local entries according to the conflict resolution rules above. This ensures that any causal relationships encoded in index ordering are preserved.
+REQ-JS-17: Sync SHOULD process remote journal entries in ascending `JournalIndex` order for deterministic traversal. This does not imply that `JournalIndex` order is a global causal order across hosts. Divergent same-index entries are handled by the poisoned-index rule (REQ-JS-15).
 
 ### Remote compaction
 

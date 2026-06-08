@@ -4,7 +4,7 @@
 
 This document specifies how journal storage may be compacted — which entries may be removed, what invariants must be preserved, and how compaction interacts with the `graph.possibleMaybeChanges` API.
 
-Compaction is a maintenance operation. It reduces journal storage size by removing entries that are no longer needed while preserving the behavior required by journal queries.
+Compaction is a maintenance operation. It reduces journal storage size by removing entries that are no longer needed. Compaction may remove journal entries while preserving index/watermark invariants. Journal queries tolerate sparse storage by skipping absent entries and never reconstructing deleted entries.
 
 ---
 
@@ -62,19 +62,23 @@ REQ-JC-11: `graph.possibleMaybeChanges` skips absent entries. If an entry's payl
 
 REQ-JC-12: `graph.possibleMaybeChanges` NEVER reconstructs deleted entries.
 
-REQ-JC-13: The `baselinePossibleNodeChange()` sentinel is inherently safe from compaction because it does not reference any specific journal index. It conceptually represents "before any entry." Compaction cannot invalidate it.
+### Queries and absent entries
+
+REQ-JC-13: When a query's `since` position has been compacted away, `graph.possibleMaybeChanges` skips the absent index and resumes from the next available entry. The query still starts before the first surviving scan position, and compaction affects the result only by determining which journal entries still exist. Queries never reconstruct deleted entries.
+
+REQ-JC-14: The `baselinePossibleNodeChange()` sentinel represents a position before any journal entry. Compaction cannot invalidate it because it does not reference a specific journal index. A baseline scan iterates surviving journal entries in order; it does not enumerate current graph state unless compaction preserves at least one entry per materialized matching node.
 
 ---
 
 ## What compaction MUST NOT do
 
-REQ-JC-14: Compaction MUST NOT remove the `last_journal_index` metadata from `rendered/r/global/last_journal_index`.
+REQ-JC-15: Compaction MUST NOT remove the `last_journal_index` metadata from `rendered/r/global/last_journal_index`.
 
-REQ-JC-15: Compaction MUST NOT rewrite or reinterpret the `time` field of surviving journal entries.
+REQ-JC-16: Compaction MUST NOT rewrite or reinterpret the `time` field of surviving journal entries.
 
-REQ-JC-16: Compaction MUST NOT change the `action` field of surviving journal entries.
+REQ-JC-17: Compaction MUST NOT change the `action` field of surviving journal entries.
 
-REQ-JC-17: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
+REQ-JC-18: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
 
 ---
 
