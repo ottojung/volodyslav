@@ -77,14 +77,11 @@ REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When s
 
 ---
 
-## Duplicate and conservative results
+## Multiple entries for the same node
 
-REQ-JA-05: The method MAY yield a `PossibleNodeChange` that describes a change which, after inspection by the consumer, turns out to be a no-op (e.g., a node computed to the same value, or an `edit` that did not alter the relevant consumer state). Consumers MUST be prepared to handle conservative results. The journal API is conservative in the sense that:
+`graph.possibleMaybeChanges` yields one `PossibleNodeChange` per surviving journal entry that matches the filter. A single node key may appear in multiple journal entries — for example, the node's initial `add`, a later `edit` from recomputation, and an additional `edit` from sync reconciliation. Each journal entry produces its own `PossibleNodeChange`.
 
-- Synchronization or compaction may cause a change to be reported more than once for the same node.
-- A change may be reported even when the consumer's specific view of the node's value did not change.
-
-This is intentional behavior. It is a design property that keeps the journal API tractable for incremental maintenance.
+REQ-JA-05: A yielded `edit` entry describes a graph change or sync reconciliation that produced a journal entry. The entry's presence does not guarantee that the node's value materially changed from the consumer's perspective. Consumers SHOULD re-check the current node value rather than assuming the entry describes a visible state transition.
 
 ---
 

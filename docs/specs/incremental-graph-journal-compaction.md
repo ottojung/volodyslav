@@ -56,7 +56,7 @@ REQ-JC-08: Compaction MAY remove all journal entries for a node that has been de
 
 REQ-JC-09: Compaction MUST NOT remove journal entries that are still needed for pending or in-progress synchronization. If sync needs a journal entry to resolve a conflict (e.g., to compare timestamps for a node key), that entry MUST NOT be removed before sync completes.
 
-REQ-JC-10: If a node's journal entry has been compacted away before sync, sync uses the node's `timestamps` sublevel record for conflict comparison (see REQ-JS-21). This fallback means compaction of journal entries is safe for sync correctness as long as the `timestamps` sublevel records are preserved.
+REQ-JC-10: If a node's journal entry has been compacted away before sync, sync uses the node's `timestamps` sublevel record for conflict comparison (see REQ-JS-19). This fallback means compaction of journal entries is safe for sync correctness as long as the `timestamps` sublevel records are preserved.
 
 ---
 
