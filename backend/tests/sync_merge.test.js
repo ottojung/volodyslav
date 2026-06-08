@@ -23,6 +23,7 @@ const {
     serializeIdentifierLookup,
     stringToNodeKeyString,
 } = require('../src/generators/incremental_graph/database');
+const { makeIncrementalGraph } = require('../src/generators/incremental_graph');
 const {
     IdentifierLookupConflictError,
     isIdentifierLookupConflictError,
@@ -860,7 +861,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('invalidates a host-only node when equal-timestamp input is relowered to target identifier', async () => {
+    test('pull recomputes a directly relowered node even when dependency counters collide', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -870,38 +871,131 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(db.version);
             await db.setHostnameGlobal(hostname, 'version', db.version);
 
-            const targetCId = nodeIdentifierFromString('44-abcdefghi');
-            const hostCId = nodeIdentifierFromString('45-abcdefghi');
-            const hostAId = nodeIdentifierFromString('46-abcdefghi');
-            const keyC = stringToNodeKeyString('{"head":"C-equal-relowered","args":[]}');
-            const keyA = stringToNodeKeyString('{"head":"A-host-only-relowered","args":[]}');
-            const hostAValue = {
-                value: { id: 'a-host', type: 'test', description: 'computed from host C' },
-                isDirty: false,
-            };
+            const targetCId = nodeIdentifierFromString('47-abcdefghi');
+            const hostCId = nodeIdentifierFromString('48-abcdefghi');
+            const hostAId = nodeIdentifierFromString('49-abcdefghi');
+            const keyC = stringToNodeKeyString('{"head":"c_counter_collision","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"a_counter_collision","args":[]}');
+            const targetCValue = { source: 'target C' };
+            const staleAValue = { source: 'A computed from host C' };
 
             const L = db.schemaStorageForReplica('x');
-            await writeNode(L, targetCId, TS1, [], undefined);
-            await L.counters.put(targetCId, 4);
+            await writeNode(L, targetCId, TS1, [], targetCValue);
+            await L.counters.put(targetCId, 1);
             await writeIdentifierLookup(L, [[targetCId, keyC]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await writeNode(H, hostCId, TS1, [], undefined);
-            await H.counters.put(hostCId, 9);
-            await writeNode(H, hostAId, TS1, [hostCId], hostAValue);
-            await H.inputs.put(hostAId, { inputs: [hostCId], inputCounters: [9] });
+            await writeNode(H, hostCId, TS1, [], { source: 'host C' });
+            await H.counters.put(hostCId, 1);
+            await writeNode(H, hostAId, TS1, [hostCId], staleAValue);
+            await H.inputs.put(hostAId, { inputs: [hostCId], inputCounters: [1] });
+            await H.counters.put(hostAId, 1);
             await writeIdentifierLookup(H, [[hostCId, keyC], [hostAId, keyA]]);
 
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
-            const T = db.getSchemaStorage();
-            expect(await T.inputs.get(hostAId)).toEqual({
-                inputs: [targetCId],
-                inputCounters: [9],
+            expect(await db.getSchemaStorage().values.get(hostAId)).toBeUndefined();
+            const computeA = jest.fn(async ([input]) => ({ source: `recomputed from ${input.source}` }));
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: 'c_counter_collision',
+                    inputs: [],
+                    computor: async () => targetCValue,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: 'a_counter_collision',
+                    inputs: ['c_counter_collision'],
+                    computor: computeA,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await expect(graph.pull('a_counter_collision')).resolves.toEqual({
+                source: 'recomputed from target C',
             });
-            expect(await T.values.get(hostAId)).toEqual(hostAValue);
+            expect(computeA).toHaveBeenCalledTimes(1);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('relowered invalidation propagates transitively and pull recomputes dependents', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const targetCId = nodeIdentifierFromString('53-abcdefghi');
+            const hostCId = nodeIdentifierFromString('54-abcdefghi');
+            const hostAId = nodeIdentifierFromString('55-abcdefghi');
+            const hostDId = nodeIdentifierFromString('56-abcdefghi');
+            const keyC = stringToNodeKeyString('{"head":"c_transitive_relower","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"a_transitive_relower","args":[]}');
+            const keyD = stringToNodeKeyString('{"head":"d_transitive_relower","args":[]}');
+            const targetCValue = { source: 'target C' };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetCId, TS1, [], targetCValue);
+            await L.counters.put(targetCId, 1);
+            await writeIdentifierLookup(L, [[targetCId, keyC]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, hostCId, TS1, [], { source: 'host C' });
+            await H.counters.put(hostCId, 1);
+            await writeNode(H, hostAId, TS1, [hostCId], { source: 'stale A' });
+            await H.inputs.put(hostAId, { inputs: [hostCId], inputCounters: [1] });
+            await H.counters.put(hostAId, 1);
+            await writeNode(H, hostDId, TS1, [hostAId], { source: 'stale D' });
+            await H.inputs.put(hostDId, { inputs: [hostAId], inputCounters: [1] });
+            await H.counters.put(hostDId, 1);
+            await writeIdentifierLookup(H, [
+                [hostCId, keyC],
+                [hostAId, keyA],
+                [hostDId, keyD],
+            ]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            const T = db.getSchemaStorage();
             expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
-            expect(await T.revdeps.get(targetCId)).toEqual([hostAId]);
-            expect(await T.inputs.get(hostCId)).toBeUndefined();
+            expect(await T.freshness.get(hostDId)).toBe('potentially-outdated');
+
+            const computeA = jest.fn(async ([input]) => ({ source: `A from ${input.source}` }));
+            const computeD = jest.fn(async ([input]) => ({ source: `D from ${input.source}` }));
+            const graph = makeIncrementalGraph(capabilities, db, [
+                {
+                    output: 'c_transitive_relower',
+                    inputs: [],
+                    computor: async () => targetCValue,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: 'a_transitive_relower',
+                    inputs: ['c_transitive_relower'],
+                    computor: computeA,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: 'd_transitive_relower',
+                    inputs: ['a_transitive_relower'],
+                    computor: computeD,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await expect(graph.pull('d_transitive_relower')).resolves.toEqual({
+                source: 'D from A from target C',
+            });
+            expect(computeA).toHaveBeenCalledTimes(1);
+            expect(computeD).toHaveBeenCalledTimes(1);
         } finally {
             if (db) await db.close();
         }
@@ -950,7 +1044,7 @@ describe('mergeHostIntoReplica', () => {
                 inputs: [hostCId],
                 inputCounters: [],
             });
-            expect(await T.values.get(targetDId)).toEqual(targetDValue);
+            expect(await T.values.get(targetDId)).toBeUndefined();
             expect(await T.counters.get(targetDId)).toBe(2);
             expect(await T.freshness.get(targetDId)).toBe('potentially-outdated');
             expect(await T.revdeps.get(hostCId)).toEqual([targetDId]);
