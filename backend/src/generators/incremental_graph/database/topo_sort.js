@@ -228,7 +228,13 @@ function topologicalSortFromMap(inputsMap) {
     }
 
     // Initialize priority queue with all nodes having in-degree 0.
-    const heap = new MinHeap((a, b) => String(a).localeCompare(String(b)));
+    const heap = new MinHeap((a, b) => {
+        const aString = String(a);
+        const bString = String(b);
+        if (aString < bString) return -1;
+        if (aString > bString) return 1;
+        return 0;
+    });
     for (const [node, degree] of inDegree) {
         if (degree === 0) {
             heap.push(node);

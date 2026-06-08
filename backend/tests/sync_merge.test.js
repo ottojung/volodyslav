@@ -860,6 +860,59 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
+    test('invalidates a target-only node whose semantic input is taken from host', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const targetCId = nodeIdentifierFromString('50-abcdefghi');
+            const hostCId = nodeIdentifierFromString('51-abcdefghi');
+            const targetDId = nodeIdentifierFromString('52-abcdefghi');
+            const keyC = stringToNodeKeyString('{"head":"C-target-input","args":[]}');
+            const keyD = stringToNodeKeyString('{"head":"D-target-only","args":[]}');
+            const targetDValue = {
+                value: { id: 'd-local', type: 'test', description: 'local D' },
+                isDirty: false,
+            };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetCId, TS1, [], undefined);
+            await writeNode(L, targetDId, TS2, [targetCId], targetDValue);
+            await L.counters.put(targetDId, 2);
+            await writeIdentifierLookup(L, [
+                [targetCId, keyC],
+                [targetDId, keyD],
+            ]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, hostCId, TS3, [], undefined);
+            await writeIdentifierLookup(H, [[hostCId, keyC]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            const T = db.getSchemaStorage();
+            expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([
+                [hostCId, keyC],
+                [targetDId, keyD],
+            ]);
+            expect(await T.inputs.get(targetDId)).toEqual({
+                inputs: [hostCId],
+                inputCounters: [],
+            });
+            expect(await T.values.get(targetDId)).toEqual(targetDValue);
+            expect(await T.counters.get(targetDId)).toBe(2);
+            expect(await T.freshness.get(targetDId)).toBe('potentially-outdated');
+            expect(await T.revdeps.get(hostCId)).toEqual([targetDId]);
+            expect(await T.inputs.get(targetCId)).toBeUndefined();
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     test('throws IdentifierLookupConflictError when same identifier maps to different semantic keys', async () => {
         const capabilities = getTestCapabilities();
         let db;

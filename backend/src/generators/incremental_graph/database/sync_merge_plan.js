@@ -58,6 +58,8 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     for (const nodeKey of hostLookup.idToKey.values()) allNodeKeys.add(nodeKey);
 
     /** @type {Set<NodeKeyString>} */
+    const targetOnlyNodes = new Set();
+    /** @type {Set<NodeKeyString>} */
     const hOnlyNodes = new Set();
     for (const nodeKey of allNodeKeys) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
@@ -69,6 +71,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
         if (hostId === undefined) {
             initialDecisions.set(nodeKey, 'keep');
+            targetOnlyNodes.add(nodeKey);
             continue;
         }
 
@@ -118,7 +121,9 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     for (const [nodeKey, initial] of initialDecisions) {
         const inKeep = keepTainted.has(nodeKey);
         const inTake = takeTainted.has(nodeKey);
-        if (hOnlyNodes.has(nodeKey)) {
+        if (targetOnlyNodes.has(nodeKey)) {
+            decisions.set(nodeKey, inTake ? 'invalidate' : 'keep');
+        } else if (hOnlyNodes.has(nodeKey)) {
             decisions.set(nodeKey, 'take');
             if (inKeep) hOnlyNeedsInvalidate.add(nodeKey);
         } else if (inKeep && inTake) {
