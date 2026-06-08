@@ -14,9 +14,9 @@ This document uses normative language for requirements on journal-using computor
 
 A journal-using computor follows this lifecycle:
 
-1. **Journal-backed initialization**: On first run (or when no prior token is available), initialize derived state from surviving journal entries. Start from the baseline sentinel (`BaselinePossibleNodeChange`). Each value yielded by the iterator is a `PossibleNodeChange`. Store the last `PossibleNodeChange` seen during the scan.
-2. **Incremental update**: On subsequent runs, call `graph.possibleMaybeChanges` with the stored `PossibleNodeChange` and an appropriate `NodeFilter`. Update only the affected portion of derived state.
-3. **Store token**: After processing, store the last `PossibleNodeChange` from the scan for use as the next `since` value.
+ 1. **Journal-backed initialization**: On first run (or when no prior token is available), initialize derived state from surviving journal entries. Start from the baseline sentinel (`BaselinePossibleNodeChange`). Each value yielded by the iterator is a `PossibleNodeChange`. Store the last token seen during the scan.
+ 2. **Incremental update**: On subsequent runs, call `graph.possibleMaybeChanges` with the stored token (`PossibleNodeChange | BaselinePossibleNodeChange`) and an appropriate `NodeFilter`. Update only the affected portion of derived state.
+ 3. **Store token**: After processing, store the last token from the scan for use as the next `since` value. If the iterator yielded no entries, the stored token remains `BaselinePossibleNodeChange`.
 
 ---
 
@@ -61,9 +61,9 @@ for await (const change of graph.possibleMaybeChanges({
 }
 ```
 
-REQ-JC-COMP-01: A journal-consuming computor MUST store its token (`PossibleNodeChange`) persistently across restarts. The stored token is the computor's memory of where it left off in the journal.
+REQ-JC-COMP-01: A journal-consuming computor MUST store its token (`PossibleNodeChange | BaselinePossibleNodeChange`) persistently across restarts. If the iterator yielded no entries during initialization, the stored token is `BaselinePossibleNodeChange`. The stored token is the computor's memory of where it left off in the journal.
 
-REQ-JC-COMP-02: A journal-consuming computor MUST use its stored token as the `since` argument to `graph.possibleMaybeChanges`. It MUST NOT construct a token value directly.
+REQ-JC-COMP-02: A journal-consuming computor MUST use its stored token as the `since` argument to `graph.possibleMaybeChanges`. It MUST NOT construct a token value directly. The `graph.possibleMaybeChanges` API accepts `PossibleNodeChange | BaselinePossibleNodeChange` for `since`.
 
 ### Choosing the NodeFilter
 
@@ -150,21 +150,27 @@ In these cases, the computor:
 
 ## Stored state conventions
 
-REQ-JC-COMP-06: A journal-using computor's stored state — the data it persists alongside the `PossibleNodeChange` token — MUST be consistent with the token's position. The token represents "derived state is up to date with respect to the journal through this position."
+REQ-JC-COMP-06: A journal-using computor's stored state — the data it persists alongside the stored token (`PossibleNodeChange | BaselinePossibleNodeChange`) — MUST be consistent with the token's position. The token represents "derived state is up to date with respect to the journal through this position."
 
 REQ-JC-COMP-07: If a computor fails or is interrupted during an incremental update (e.g., process crash), it MUST treat the stored token as still valid. On restart, it re-queries `graph.possibleMaybeChanges` from the stored token and re-processes any changes after it. Because update logic is idempotent (REQ-JC-COMP-04), re-processing is safe.
+
+REQ-JC-COMP-07a: Stored journal tokens survive process restarts within the same schema and journal context. They do NOT survive migrations that invalidate journal tokens across schema boundaries (see `incremental-graph-journal-migrations.md` REQ-JM-10). After such a migration, journal-consuming computors MUST reinitialize from `baselinePossibleNodeChange()` rather than reusing a pre-migration token.
 
 ---
 
 ## Token portability across hosts
 
-A computor's stored state — including its `PossibleNodeChange` token — may be synchronized across hosts as part of the graph's value storage. When a token created on host A is loaded on host B after synchronization, its behavior must be well-defined.
+A computor's stored state — including its stored token (`PossibleNodeChange | BaselinePossibleNodeChange`) — may be synchronized across hosts as part of the graph's value storage. When a token created on host A is loaded on host B after synchronization, its behavior must be well-defined.
+
+### PossibleNodeChange tokens
+
+A `PossibleNodeChange` token is journal-backed: it corresponds to a specific committed journal entry at a specific `JournalIndex`.
 
 REQ-JC-COMP-08: A `PossibleNodeChange` token is valid across synchronized hosts. The physical journal convergence guarantee (see `incremental-graph-journal-sync.md` REQ-JS-15) ensures that for any `JournalIndex` `i`, all synchronized hosts agree that `rendered/r/journal/i` is either the same `JournalEntry` or absent.
 
 REQ-JC-COMP-09: Public journal consumers MUST NOT need to understand host identity or raw journal indices to use a token on any host. The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalIndex` from its public fields. Token portability is achieved through the physical journal convergence guarantee, not through consumer-level host-awareness.
 
-### When a token's underlying entry is absent
+#### When a token's underlying entry is absent
 
 A `PossibleNodeChange` token's underlying journal entry may be absent on the receiving host. The correct behavior depends on the reason for absence.
 
@@ -183,7 +189,15 @@ In this state, there are two acceptable behaviors:
 
 "Skipping the missing index and continuing" MUST NOT be presented as a generally safe incremental interpretation for unsynchronized hosts.
 
-REQ-JC-COMP-12: A journal-consuming computor whose derived value may be synchronized across hosts MUST NOT assume an unsynchronized token supports a correctness-preserving incremental update. The computor SHOULD either defer incremental maintenance or fall back to a full recomputation.
+REQ-JC-COMP-12: A journal-consuming computor whose derived value may be synchronized across hosts MUST NOT assume an unsynchronized `PossibleNodeChange` token supports a correctness-preserving incremental update. The computor SHOULD either defer incremental maintenance or fall back to a full recomputation.
+
+### BaselinePossibleNodeChange tokens
+
+REQ-JC-COMP-13: A `BaselinePossibleNodeChange` token is a universal sentinel with no underlying journal entry. It is portable across hosts without regard to journal storage state: any host that has completed initialization can accept `baselinePossibleNodeChange()` as a `since` value.
+
+REQ-JC-COMP-14: `BaselinePossibleNodeChange` tokens MAY be stored in synchronized graph values and loaded on any host. The sentinel's meaning — "before any journal entry" — is host-independent.
+
+REQ-JC-COMP-15: `BaselinePossibleNodeChange` tokens do NOT survive migrations that invalidate journal tokens across schema boundaries (see `incremental-graph-journal-migrations.md` REQ-JM-10). After such a migration, journal-consuming computors MUST reinitialize from a fresh `baselinePossibleNodeChange()` call on the new schema version, not from a stored `BaselinePossibleNodeChange` that originated before the migration.
 
 ---
 

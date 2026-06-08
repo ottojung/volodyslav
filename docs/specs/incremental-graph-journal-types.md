@@ -318,7 +318,7 @@ The journal implementation internally uses a wider structural representation tha
  */
 ```
 
-### Type guard
+### Type guards
 
 `isPossibleNodeChange(value)` is a type guard for use at storage, deserialization, and serialization boundaries where untyped `unknown` data is converted into the nominal `PossibleNodeChange` type. Ordinary callers of `graph.possibleMaybeChanges` receive already-typed `PossibleNodeChange` values and do not need to re-verify them at the call site.
 
@@ -329,6 +329,32 @@ The journal implementation internally uses a wider structural representation tha
  */
 function isPossibleNodeChange(value)
 ```
+
+`isBaselinePossibleNodeChange(value)` is a type guard for `BaselinePossibleNodeChange`. It is needed at the same storage/deserialization boundaries because a computor may store a `BaselinePossibleNodeChange` if the journal iterator yielded no entries (see `incremental-graph-journal-computors.md` §Stored state conventions).
+
+```js
+/**
+ * @param {unknown} value
+ * @returns {value is BaselinePossibleNodeChange}
+ */
+function isBaselinePossibleNodeChange(value)
+```
+
+### Validation pattern for `since` values
+
+At boundaries where an `unknown` serialized token is recovered and passed to `graph.possibleMaybeChanges`, the validation pattern is:
+
+```js
+/** @param {unknown} storedToken */
+function recoverSinceToken(storedToken) {
+    if (isPossibleNodeChange(storedToken)) return storedToken;
+    if (isBaselinePossibleNodeChange(storedToken)) return storedToken;
+    // Token is unrecognizable; fall back to a fresh baseline.
+    return baselinePossibleNodeChange();
+}
+```
+
+This pattern ensures that storage/deserialization can safely recover both allowed token shapes (`PossibleNodeChange | BaselinePossibleNodeChange`) without introducing a named union type in the public API.
 
 ### Internal widening
 

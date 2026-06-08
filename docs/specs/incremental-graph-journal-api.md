@@ -106,7 +106,7 @@ The returned value is a `BaselinePossibleNodeChange` (see `incremental-graph-jou
 
 REQ-JA-08: `baselinePossibleNodeChange()` MUST be callable at any time. It MUST NOT require a prior call to `graph.possibleMaybeChanges`.
 
-REQ-JA-09: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` MUST return all currently available surviving journal-backed `PossibleNodeChange` values matching `to`. This produces every surviving journal entry whose node key matches the filter. It does not, by itself, enumerate current graph state unless compaction guarantees that at least one surviving journal entry exists for every materialized matching node (see REQ-JC-08).
+REQ-JA-09: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` MUST return all currently available surviving journal-backed `PossibleNodeChange` values matching `to`. This yields a `PossibleNodeChange` for every surviving journal entry whose node key matches the filter. It does not, by itself, enumerate current graph state unless compaction guarantees that at least one surviving journal entry exists for every materialized matching node (see REQ-JC-08).
 
 ### Convention: remember last yielded value
 
