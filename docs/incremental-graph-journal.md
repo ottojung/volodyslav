@@ -13,7 +13,7 @@ graph.possibleMaybeChanges({
 }): AsyncIterator<PossibleNodeChange>
 ```
 
-A caller provides a previous `PossibleNodeChange` as a cursor-like reference point and a `NodeFilter` describing the portion of the graph it cares about. The result is a stream of later possible changes relevant to that filter.
+A caller provides a `PossibleNodeChange | BaselinePossibleNodeChange` as a cursor-like reference point and a `NodeFilter` describing the portion of the graph it cares about. The result is a stream of later possible changes relevant to that filter.
 
 The method takes its arguments as a single object parameter with `since` and `to` fields.
 
@@ -25,9 +25,9 @@ The journal is a graph-level change record. It lets code ask questions of the fo
 
 > Since this previously observed change, which matching nodes may have changed?
 
-The answer is expressed as `PossibleNodeChange` values. A `PossibleNodeChange` is the public unit of journal observation. It can be inspected for its public change information, stored by consumers, and passed back to future calls to `graph.possibleMaybeChanges`.
+The answer is expressed as `PossibleNodeChange` values. A `PossibleNodeChange` is the public unit of journal observation. It can be inspected for its public change information and passed back to future calls to `graph.possibleMaybeChanges`.
 
-The journal is designed for incremental graph maintenance. A computation can remember the most recent relevant `PossibleNodeChange`, then later ask for possible changes after that point instead of rediscovering everything from scratch.
+The journal is designed for incremental graph maintenance. A caller can pass a previously observed `PossibleNodeChange` as the `since` argument, or use `baselinePossibleNodeChange()` to start from before any journal entry. The journal returns later possible changes so callers can focus on affected nodes without rediscovering everything from scratch.
 
 The detailed public meaning of `PossibleNodeChange` and `possibleMaybeChanges` is specified in:
 
@@ -43,9 +43,7 @@ The main query interface is:
 graph.possibleMaybeChanges({ since, to }): AsyncIterator<PossibleNodeChange>
 ```
 
-The operation starts from the supplied `since` change and returns later possible changes matching the `to` filter.
-
-A typical consumer stores a `PossibleNodeChange` together with its computed result. On a later recomputation, it passes `{ since: storedToken, to: itsFilter }` to `graph.possibleMaybeChanges` and updates only the affected derived state.
+The operation starts from the supplied `since` value and returns later possible changes matching the `to` filter. The `since` argument accepts `PossibleNodeChange | BaselinePossibleNodeChange`; calling `baselinePossibleNodeChange()` yields a sentinel that scans from before the first journal entry.
 
 The detailed scan order, initial value behavior, cursor advancement, filtering behavior, and result semantics are specified in:
 
@@ -91,7 +89,7 @@ docs/specs/incremental-graph-journal-emission.md
 
 The journal participates in synchronization between hosts.
 
-Synchronization must reconcile graph state and journal state together, so that hosts can continue making safe incremental queries after sync. Sync may introduce journal changes that represent remote graph changes, conflict resolution, or reconciliation effects.
+Synchronization must reconcile graph state and journal state together, so that graph-state reconciliation is visible through later journal queries. Sync may introduce journal changes that represent remote graph changes, conflict resolution, or reconciliation effects.
 
 The journal synchronization model defines how journal histories are compared, merged, appended, deleted, or compacted during sync. It also defines how timestamps and host identities participate in conflict resolution.
 

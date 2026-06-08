@@ -86,6 +86,8 @@ A future spec may define checkpoint/lease-based compaction safety for long-lived
 
 ## Implementation strategy (non-normative)
 
+This is only a storage-thinning strategy under the current limited compaction semantics. It does not establish safety for long-lived stored cursors.
+
 A suggested compaction approach:
 
 1. Maintain a per-node-key "latest journal index" mapping (volatile or checkpointed).

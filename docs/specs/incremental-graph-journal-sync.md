@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document specifies how the journal participates in synchronization between hosts. Synchronization must reconcile graph state and journal state together so that hosts can continue making safe incremental queries after sync.
+This document specifies how the journal participates in synchronization between hosts. Synchronization must reconcile graph state and journal state together, so that graph-state reconciliation is visible through later journal queries.
 
 ---
 
@@ -10,7 +10,7 @@ This document specifies how the journal participates in synchronization between 
 
 1. **Graph and journal are reconciled together.** Sync does not treat graph state and journal state as independent concerns. A reconciliation that changes graph state must also make those changes visible through the journal.
 
-2. **Conservative visibility.** Sync may append journal entries to ensure downstream journal consumers reconsider affected nodes. When in doubt, add a possible change rather than risk silent staleness.
+2. **Conservative visibility.** Sync may append journal entries to ensure graph-state reconciliation is visible through later `graph.possibleMaybeChanges` results. When in doubt, add a possible change rather than risk silent staleness.
 
 3. **Timestamp-based conflict resolution (v1/default).** For concurrent edits to the same semantic node key, the recorded entry with the later `time` field wins. Since `time` comes from host wall clocks, this is a last-writer-wins-by-recorded-wall-clock policy with deterministic tie-breakers. It is deliberately lossy: incorrect host clocks or clock skew may cause updates to be silently discarded. This is acceptable for v1.
 
@@ -53,7 +53,7 @@ REQ-JS-05: The resolution algorithm MUST be deterministic and commutative: two h
 
 ## Conservative journal append
 
-REQ-JS-06: If synchronization changes graph state in a way that could affect journal consumers, sync MUST make that change visible through later `graph.possibleMaybeChanges` results. This is achieved by appending additional journal entries during sync.
+REQ-JS-06: If synchronization changes graph state in a way that could affect later journal queries, sync MUST make that change visible through later `graph.possibleMaybeChanges` results. This is achieved by appending additional journal entries during sync.
 
 Specifically:
 
@@ -61,9 +61,9 @@ Specifically:
 - If a remote node is newly materialized locally (first time seen), an `add` journal entry is appended.
 - If a local node is removed because the remote host deleted it and the remote deletion timestamp wins, a `delete` journal entry is appended.
 
-REQ-JS-07: Sync MAY append a journal entry even when the graph state is already consistent. For example, if two hosts independently computed the same value for a node (same `time`, same `creator`), sync MAY still append a redundant `edit` entry to ensure journal consumers on the local host re-evaluate the node. This is conservative behavior and is allowed.
+REQ-JS-07: Sync MAY append a journal entry even when the graph state is already consistent. For example, if two hosts independently computed the same value for a node (same `time`, same `creator`), sync MAY still append a redundant `edit` entry to ensure later queries re-evaluate the node. This is conservative behavior and is allowed.
 
-REQ-JS-08: Sync MUST NOT omit a journal entry that would be necessary for a journal consumer to observe a material graph change.
+REQ-JS-08: Sync MUST NOT omit a journal entry that would be necessary for later `graph.possibleMaybeChanges` queries to observe a material graph change.
 
 ---
 
@@ -118,7 +118,7 @@ The "absent" case allows for compaction and deletion. What is NOT allowed is hos
 
 ### Resolving divergent indices
 
-REQ-JS-15: If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, that index is poisoned. Both conflicting entries MUST be deleted from index `i`. Any still-relevant possible changes described by the conflicting entries MUST be appended at fresh `JournalIndex` values greater than the previous synchronized journal head. This may produce duplicate or redundant possible changes but avoids silent missed changes.
+REQ-JS-15: If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, that index is poisoned. Both conflicting entries MUST be deleted from index `i`. Any still-relevant possible changes described by the conflicting entries MUST be appended at fresh `JournalIndex` values greater than `max(local.last_journal_index, remote.last_journal_index)` computed before allocating the re-appended entries. This may produce duplicate or redundant possible changes but avoids silent missed changes.
 
 This is the safer rule: choosing one authoritative entry to remain at the original index could make a stored token that had already consumed the losing entry accidentally skip the winning entry. Poisoning the index and re-appending avoids that risk.
 
@@ -146,7 +146,7 @@ REQ-JS-19: After all hosts have completed synchronization and no further graph m
 
 ## Host identity and journal consumers
 
-REQ-JS-20: Public journal consumers (users of `graph.possibleMaybeChanges`) MUST NOT be required to understand or inspect host identities (`Hostname` values) or raw journal indices (`JournalIndex` values). Host identity is a journal-internal concern used only during synchronization.
+REQ-JS-20: Callers of `graph.possibleMaybeChanges` MUST NOT be required to understand or inspect host identities (`Hostname` values) or raw journal indices (`JournalIndex` values). Host identity is a journal-internal concern used only during synchronization.
 
 The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalIndex` from its public fields. Consumers see only `nodeName`, `bindings`, `action`, and `time`.
 

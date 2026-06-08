@@ -65,16 +65,25 @@ class UnixTimestampClass {
 /** @typedef {UnixTimestampClass} UnixTimestamp */
 ```
 
+REQ-JT-01a: The persisted representation of `UnixTimestamp` is a numeric integer (JavaScript `number`).
+
 Conversion functions:
 
 ```js
 /**
+ * Unsafe cast: wraps a number as a UnixTimestamp.
+ * Caller MUST ensure value is a finite, non-negative integer
+ * representing milliseconds since the Unix epoch.
+ * Implementations SHOULD validate this in debug builds.
+ *
  * @param {number} value
  * @returns {UnixTimestamp}
  */
-function numberToUnixTimestamp(value)
+function unsafeNumberToUnixTimestamp(value)
 
 /**
+ * Render a UnixTimestamp to its numeric persisted representation.
+ *
  * @param {UnixTimestamp} timestamp
  * @returns {number}
  */
@@ -143,16 +152,24 @@ class JournalIndexClass {
 /** @typedef {JournalIndexClass} JournalIndex */
 ```
 
+REQ-JT-05a: `JournalIndex` represents a real journal index. Only non-negative integers are valid real indices. Sentinel values (e.g., -1, 0) that represent "before any entry" are NOT `JournalIndex` values. See `PrivateSincePosition` for the internal since-position encoding.
+
 Conversion functions:
 
 ```js
 /**
+ * Unsafe cast: wraps a non-negative integer as a JournalIndex.
+ * Caller MUST ensure value is a non-negative integer representing
+ * a real journal position.
+ *
  * @param {number} value
  * @returns {JournalIndex}
  */
-function numberToJournalIndex(value)
+function unsafeNumberToJournalIndex(value)
 
 /**
+ * Render a JournalIndex to its numeric persisted representation.
+ *
  * @param {JournalIndex} index
  * @returns {number}
  */
@@ -201,7 +218,14 @@ The journal implementation internally needs a wider representation that pairs a 
 ```js
 /**
  * Journal module only.
- * Converts a private journal entry occurrence into the public nominal token.
+ * Narrowing cast from the private representation to the public nominal token.
+ *
+ * This is a nominal narrowing of the SAME runtime value. It MUST NOT
+ * construct a new object, pick a subset of fields, or discard the
+ * private fields (`id`, `key`, `creator`, `index`). The returned
+ * `PossibleNodeChange` retains all private journal-module fields at
+ * runtime even though the public type only exposes `nodeName`,
+ * `bindings`, `action`, and `time`.
  *
  * @param {PrivatePossibleNodeChange} change
  * @returns {PossibleNodeChange}
@@ -210,7 +234,11 @@ function privatePossibleNodeChangeToPossibleNodeChange(change)
 
 /**
  * Journal module only.
- * Unsafe widening from public nominal token back to the private representation.
+ * Unsafe widening from public nominal token back to the private
+ * representation. This is valid only because the value was originally
+ * created from a `PrivatePossibleNodeChange` by the narrowing operation
+ * above.
+ *
  * This is allowed only inside the journal implementation.
  *
  * @param {PossibleNodeChange} change
@@ -219,12 +247,12 @@ function privatePossibleNodeChangeToPossibleNodeChange(change)
 function possibleNodeChangeToPrivatePossibleNodeChangeUnsafe(change)
 ```
 
-The important property:
+The important properties:
 
-- `PossibleNodeChange` is not itself the structural cursor type.
-- The journal implementation creates it from `PrivatePossibleNodeChange`.
-- The journal implementation may widen it back to `PrivatePossibleNodeChange`.
-- Ordinary public callers MUST NOT inspect or depend on `JournalIndex`, `NodeIdentifier`, or `Hostname`.
+- `PossibleNodeChange` is a nominal type, not a fresh structural object.
+- `privatePossibleNodeChangeToPossibleNodeChange` performs a nominal narrowing of the same runtime value. It MUST NOT discard the private fields required for later widening.
+- `possibleNodeChangeToPrivatePossibleNodeChangeUnsafe` reverses that narrowing. It is valid only because values yielded by `graph.possibleMaybeChanges` were originally created from `PrivatePossibleNodeChange`.
+- Ordinary public callers MUST NOT inspect or depend on `JournalIndex`, `NodeIdentifier`, or `Hostname`. These fields exist at runtime but are inaccessible through the public type.
 
 The internal widening follows the same pattern as `unsafeStringToNodeIdentifier` in the database types: an unsafe cast that journal modules control at their module boundary. Public callers never see the widened representation.
 
@@ -237,6 +265,23 @@ The internal widening follows the same pattern as `unsafeStringToNodeIdentifier`
 `PossibleNodeChange` is the public unit of journal observation. It is yielded by `graph.possibleMaybeChanges` and may be passed as the `since` argument in future calls. Every `PossibleNodeChange` is derived from a committed journal entry.
 
 ```js
+class PossibleNodeChangeClass {
+    /** @private @type {undefined} */ __brand;
+    constructor() { if (this.__brand !== undefined) throw new Error("PossibleNodeChange cannot be instantiated externally"); }
+
+    /** @type {NodeName} */
+    nodeName;
+
+    /** @type {Array<ConstValue>} */
+    bindings;
+
+    /** @type {JournalAction} */
+    action;
+
+    /** @type {UnixTimestamp} */
+    time;
+}
+
 /**
  * A real journal-backed possible node change.
  * Yielded by `graph.possibleMaybeChanges(...)`.
@@ -253,12 +298,7 @@ The internal widening follows the same pattern as `unsafeStringToNodeIdentifier`
  *     only yields PossibleNodeChange values derived from committed journal
  *     entries, and each yielded value carries the public fields of that entry.
  *
- * @typedef {object} PossibleNodeChange
- * @property {NodeName} nodeName - The head/functor of the affected node.
- * @property {Array<ConstValue>} bindings - The positional bindings of the
- *   affected node.
- * @property {JournalAction} action - The kind of possible change.
- * @property {UnixTimestamp} time - When the change was recorded.
+ * @typedef {PossibleNodeChangeClass} PossibleNodeChange
  */
 ```
 
@@ -275,6 +315,11 @@ REQ-JT-11: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST 
 `BaselinePossibleNodeChange` is a sentinel token returned by `baselinePossibleNodeChange()`. It represents a position before any journal entry and is NOT derived from a committed journal entry. It is a separate type from `PossibleNodeChange`.
 
 ```js
+class BaselinePossibleNodeChangeClass {
+    /** @private @type {undefined} */ __brand;
+    constructor() { if (this.__brand !== undefined) throw new Error("BaselinePossibleNodeChange cannot be instantiated externally"); }
+}
+
 /**
  * Sentinel returned by `baselinePossibleNodeChange()`.
  * Not a possible node change. Not derived from a journal entry.
@@ -290,34 +335,44 @@ REQ-JT-11: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST 
  *     returns a sentinel representing a position before any committed journal
  *     entry.
  *
- * @typedef {object} BaselinePossibleNodeChange
+ * @typedef {BaselinePossibleNodeChangeClass} BaselinePossibleNodeChange
  */
 ```
 
 Despite sharing a similar nominal shape, `BaselinePossibleNodeChange` does not represent a possible node change and carries no change information. Its only valid use is as a `since` argument. When passed as `since`, the graph treats it as a position before any committed journal entry.
 
-### Widening behavior for baseline
+## Journal-internal since-position encoding
 
-If `since` is `BaselinePossibleNodeChange`, scanning starts before the first journal entry. The journal module may internally widen `BaselinePossibleNodeChange` to a private representation analogous to `PrivatePossibleNodeChange` with a sentinel `index` value (e.g., -1 or 0) that precedes all real indices. Ordinary public callers MUST NOT depend on the internal sentinel index value.
+The journal module internally represents the `since` position using a private union type. `JournalIndex` represents a real journal index; a "before-first-entry" position is a different kind of value and MUST NOT be represented as a fake `JournalIndex`.
+
+```js
+/**
+ * Journal module only. Never exposed publicly.
+ * Internal representation of a since-position for query cursor positioning.
+ *
+ * @typedef {{ kind: 'baseline' } | { kind: 'journal', change: PrivatePossibleNodeChange }} PrivateSincePosition
+ */
+```
+
+Conversion function (journal modules only):
 
 ```js
 /**
  * Journal module only.
- * Converts the baseline sentinel into a private representation suitable
- * for internal cursor positioning.
+ * Converts the public `since` value into a private since-position for
+ * internal cursor positioning.
  *
- * @param {BaselinePossibleNodeChange} baseline
- * @returns {PrivateBaselinePossibleNodeChange}
+ * @param {PossibleNodeChange | BaselinePossibleNodeChange} since
+ * @returns {PrivateSincePosition}
  */
-function baselinePossibleNodeChangeToPrivateUnsafe(baseline)
-
-/**
- * Journal module only.
- * The private sentinel representation, never exposed publicly.
- * @typedef {object} PrivateBaselinePossibleNodeChange
- * @property {JournalIndex} index - A sentinel index before all real indices.
- */
+function sinceToPrivateSincePosition(since)
 ```
+
+If `since` is `BaselinePossibleNodeChange`, this produces `{ kind: "baseline" }`, and scanning starts before the first journal entry.
+
+If `since` is `PossibleNodeChange`, this widens it to `PrivatePossibleNodeChange` via `possibleNodeChangeToPrivatePossibleNodeChangeUnsafe` and produces `{ kind: "journal", change: privateChange }`, scanning strictly after its `index`.
+
+Ordinary public callers MUST NOT depend on the internal `PrivateSincePosition` representation.
 
 ---
 
@@ -329,12 +384,13 @@ Both `PossibleNodeChange` and `BaselinePossibleNodeChange` are nominal public jo
 
 - `BaselinePossibleNodeChange`: sentinel token used only as an initial `since` value. It carries no change information and is not derived from a journal entry.
 
-The journal implementation internally uses `PrivatePossibleNodeChange` which includes the `JournalIndex`. The conversion direction is:
+The journal implementation internally uses `PrivatePossibleNodeChange` (which includes the `JournalIndex`) and `PrivateSincePosition` (a union distinguishing baseline from journal positions). The conversion directions are:
 
 | Direction | Function | Permitted in |
 |-----------|----------|--------------|
 | Private → Public | `privatePossibleNodeChangeToPossibleNodeChange` | Journal modules only |
 | Public → Private | `possibleNodeChangeToPrivatePossibleNodeChangeUnsafe` | Journal modules only |
+| since → PrivateSincePosition | `sinceToPrivateSincePosition` | Journal modules only |
 | Public | `graph.possibleMaybeChanges` yields | Public API |
 
 ```
@@ -356,27 +412,11 @@ The journal implementation internally uses `PrivatePossibleNodeChange` which inc
 └──────────────────────────────────────────────┘
 ```
 
+`privatePossibleNodeChangeToPossibleNodeChange` is a nominal narrowing of the same runtime value. It MUST NOT discard the private fields (`id`, `key`, `creator`, `index`) required for later journal-module widening. The runtime value retains both the public projection fields (`nodeName`, `bindings`, `action`, `time`) and the private journal-module fields.
+
+`possibleNodeChangeToPrivatePossibleNodeChangeUnsafe` reverses this narrowing. It is valid only because values yielded by `graph.possibleMaybeChanges` were originally created from `PrivatePossibleNodeChange` via the narrowing operation above.
+
 Journal modules maintain internal widening/casting functions that follow the same pattern as `unsafeStringToNodeIdentifier`. Public callers MUST NOT access or depend on the widened representation.
-
----
-
-## Type guards
-
-```js
-/**
- * @param {unknown} value
- * @returns {value is PossibleNodeChange}
- */
-function isPossibleNodeChange(value)
-
-/**
- * @param {unknown} value
- * @returns {value is BaselinePossibleNodeChange}
- */
-function isBaselinePossibleNodeChange(value)
-```
-
-These type guards are available for use at storage/deserialization boundaries where untyped `unknown` data is converted into nominal journal token types. Ordinary callers of `graph.possibleMaybeChanges` receive already-typed values and do not need to re-verify them at the call site.
 
 ---
 
@@ -384,9 +424,11 @@ These type guards are available for use at storage/deserialization boundaries wh
 
 This PR does not specify:
 
-- How callers should persist `PossibleNodeChange` values across restarts.
+- How callers should persist `PossibleNodeChange` or `BaselinePossibleNodeChange` values across restarts.
 - How long a stored `since` token remains valid.
 - How stored tokens behave after migration, sync, or storage scenarios.
+- Type guards (`isPossibleNodeChange`, `isBaselinePossibleNodeChange`) for storage/deserialization boundaries.
+- Storage/deserialization recovery of journal tokens.
 - Checkpoint/lease-based compaction safety for long-lived stored cursors.
 
 These concerns are deferred to future specifications.
