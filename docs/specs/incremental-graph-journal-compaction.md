@@ -4,7 +4,7 @@
 
 This document specifies how journal storage may be compacted — which entries may be removed, what invariants must be preserved, and how compaction interacts with the `graph.possibleMaybeChanges` API.
 
-Compaction is a maintenance operation. It reduces journal storage size by removing entries that are no longer needed. Compaction may remove journal entries while preserving index/watermark invariants. Journal queries tolerate sparse storage by skipping absent entries and never reconstructing deleted entries.
+Compaction is a maintenance operation. It reduces journal storage size by removing journal entries. Under the weak semantics of `possibleMaybeChanges`, removed entries are simply absent from future scans; their removal does not invalidate `PossibleNodeChange` tokens that reference compacted-away positions. Compaction may remove journal entries while preserving index/watermark invariants. Journal queries tolerate sparse storage by skipping absent entries and never reconstructing deleted entries.
 
 **Compaction scope and stored-cursor safety.** This PR specifies only same-process, in-memory journal tokens (see `incremental-graph-journal-types.md`). Since tokens are not persisted across process restarts, compaction does not need to guarantee long-lived cursor validity. A future spec may define checkpoint/lease-based compaction safety for persistent stored cursors; this PR does not specify such a mechanism.
 
@@ -44,9 +44,9 @@ This specification does not mandate a specific quota policy. Any policy is valid
 
 ### Redundant entries for the same node
 
-REQ-JC-06: Compaction MAY remove older journal entries when a newer entry exists for the same node key. For example, if a node has entries at indices 10 (`add`), 15 (`edit`), and 20 (`edit`), compaction MAY remove entries 10 and 15, keeping only entry 20.
+REQ-JC-06: Compaction MAY remove older journal entries when a newer entry exists for the same node key. This is one allowed case; compaction MAY also remove entries in other cases (see REQ-JC-07).
 
-REQ-JC-07: Compaction MUST NOT remove an `add` entry if no later `add` or `edit` entry exists for the same node key, UNLESS the node is no longer materialized (in which case REQ-JC-08 applies).
+REQ-JC-07: Compaction MAY remove any journal entry, including the only surviving `add` or `edit` entry for a materialized node. Under the weak semantics of `possibleMaybeChanges`, compacted entries are gone and are NOT reconstructed. Removing entries does not invalidate `PossibleNodeChange` tokens that reference compacted-away positions; the token remains valid as a `since` argument, and `possibleMaybeChanges` yields only the surviving journal entries after the widened private index.
 
 ### Entries for deleted nodes
 
@@ -54,9 +54,9 @@ REQ-JC-08: Compaction MAY remove all journal entries for a node that has been de
 
 ### Interaction with synchronization
 
-REQ-JC-09: Compaction MUST NOT remove journal entries that are still needed for pending or in-progress synchronization. If sync needs a journal entry to resolve a conflict (e.g., to compare timestamps for a node key), that entry MUST NOT be removed before sync completes.
+REQ-JC-09: Compaction MAY remove journal entries even when synchronization is pending. Sync uses the `timestamps` sublevel as a fallback when journal entries are absent (see REQ-JS-19). Compaction of journal entries is therefore safe for synchronization correctness — removed entries do not block or break sync.
 
-REQ-JC-10: If a node's journal entry has been compacted away before sync, sync uses the node's `timestamps` sublevel record for conflict comparison (see REQ-JS-19). This fallback means compaction of journal entries is safe for sync correctness as long as the `timestamps` sublevel records are preserved.
+REQ-JC-10: If a node's journal entry has been compacted away before sync, sync uses the node's `timestamps` sublevel record for conflict comparison (see REQ-JS-19). This fallback means compaction of journal entries is safe for sync correctness.
 
 ---
 

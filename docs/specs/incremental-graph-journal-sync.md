@@ -10,7 +10,7 @@ This document specifies how the journal participates in synchronization between 
 
 1. **Graph and journal are reconciled together.** Sync does not treat graph state and journal state as independent concerns. A reconciliation that changes graph state must also make those changes visible through the journal.
 
-2. **Timestamp-based conflict resolution.** For concurrent edits to the same semantic node key, the recorded entry with the later `time` field wins. If `time` produces a tie, the node with the lexicographically greater `JournalEntry.id` (`NodeIdentifier` converted to string) wins. Since `time` comes from host wall clocks, this is a last-writer-wins-by-recorded-wall-clock policy with deterministic tie-breakers.
+2. **Timestamp-based conflict resolution.** For concurrent edits to the same semantic node key, the recorded entry with the later `time` field wins. If `time` produces a tie, the node with the lexicographically greater `JournalEntry.id` (`NodeIdentifier` converted to string) wins. `NodeIdentifier` values are globally unique across hosts (each identifier incorporates a host fingerprint and a monotonic allocation index) and historically unique, so this tie-breaker is total without needing an additional `creator` tie-breaker. Since `time` comes from host wall clocks, this is a last-writer-wins-by-recorded-wall-clock policy with deterministic tie-breakers.
 
 3. **Wall-clock-based resolution.** A particular host's wall clock may be incorrect, but this is the best available signal for conflict ordering — the system trusts hosts and does not rely on external time authorities. The timestamp field is the entry's recorded local time, used as-is for conflict comparison.
 
@@ -24,7 +24,7 @@ When synchronizing two hosts, for each node key that appears in both hosts' grap
 
 REQ-JS-01: The host whose journal entry has the later `JournalEntry.time` wins the conflict. The winning host's value is retained; the losing host's identifier and associated records are removed or replaced.
 
-REQ-JS-02: If both hosts have the same `time` for the conflicting node, tie-breaking is decided via lexicographic comparison of `JournalEntry.id` (`NodeIdentifier` converted to string).
+REQ-JS-02: If both hosts have the same `time` for the conflicting node, tie-breaking is decided via lexicographic comparison of `JournalEntry.id` (`NodeIdentifier` converted to string). `NodeIdentifier` values are globally unique across hosts (host fingerprint + monotonic allocation index) and historically unique, making this a total deterministic tie-breaker.
 
 This ensures deterministic resolution on all hosts.
 
@@ -124,8 +124,8 @@ REQ-JS-16: During sync, a host MAY transmit the set of `JournalIndex` values it 
 REQ-JS-17: After all hosts have completed synchronization and no further graph mutations occur, the following must hold:
 
 1. **Graph state converges**: For every node key, all hosts agree on the node's value (or absence).
-2. **Physical journal converges**: Per REQ-JS-12, all hosts agree on each index's state.
-3. **Journal-observable behavior converges**: Any host calling `graph.possibleMaybeChanges` after convergence sees the same set of possible changes.
+2. **Physical journal converges**: Per REQ-JS-12, all hosts agree on each index's state (same entry or absent).
+3. **Journal queries are consistent with physical convergence**: After physical convergence, every host that has not independently compacted entries yields the same set of possible changes for a given query. Hosts that have independently compacted entries may yield a subset (because `possibleMaybeChanges` yields only surviving entries), but no host yields a `PossibleNodeChange` at a given index that contradicts the converged journal entry for that index.
 
 ---
 
@@ -141,7 +141,7 @@ The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalInde
 
 Sync operates on the journal storage that exists at sync time. Compaction may have removed entries before sync. This is safe because:
 
-1. Compaction removes only entries that are no longer needed for correctness (see `incremental-graph-journal-compaction.md`).
+1. Compaction may remove journal entries at any time. Absent entries are simply skipped by `possibleMaybeChanges` and sync falls back to node metadata for conflict resolution. Compaction does not need to preserve entries for future sync correctness (see `incremental-graph-journal-compaction.md`).
 2. Conflict resolution uses timestamps from surviving journal entries or from node metadata (the `timestamps` sublevel records creation and modification times per node identifier).
 3. If a node's journal entry has been compacted away, the node's modification timestamp from the `timestamps` sublevel is used as the authoritative comparison value.
 

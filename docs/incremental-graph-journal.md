@@ -117,7 +117,7 @@ docs/specs/incremental-graph-journal-migrations.md
 
 The journal may require maintenance as it grows.
 
-Compaction can remove journal data that is no longer needed for future operation, while preserving the behavior required by journal queries. Maintenance procedures may also normalize journal storage after synchronization or migration.
+Compaction can remove journal entries to manage storage. Journal queries tolerate sparse storage by skipping absent entries and never reconstructing deleted entries. Maintenance procedures may also normalize journal storage after synchronization or migration.
 
 The rules for compaction, retained information, deleted entries, and maintenance safety are specified in:
 
