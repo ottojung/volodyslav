@@ -38,7 +38,7 @@
  */
 
 const { isTopologicalSortCycleError } = require('./topo_sort');
-const { versionToString } = require('./types');
+const { versionToString, nodeKeyStringToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     IDENTIFIERS_KEY,
@@ -317,8 +317,8 @@ async function applyNodeDecisions(
     const writer = new ReplicaBatchWriter(targetStorage);
 
     for (const [nodeKey, decision] of decisions) {
-        const targetId = targetLookup.keyToId.get(nodeKey);
-        const hostId = hostLookup.keyToId.get(nodeKey);
+        const targetId = targetLookup.keyToId.get(nodeKeyStringToString(nodeKey));
+        const hostId = hostLookup.keyToId.get(nodeKeyStringToString(nodeKey));
         const finalId = finalIdentifierForKey.get(nodeKey);
         if (finalId === undefined) continue;
 

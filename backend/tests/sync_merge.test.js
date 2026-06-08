@@ -825,9 +825,7 @@ describe('mergeHostIntoReplica', () => {
             expect(finalLookup ? finalLookup.keyToId.size : 0).toBe(1);
 
             // Host identifier NOT in final lookup
-            if (finalLookup) {
-                expect(finalLookup.idToKey.has(nodeIdentifierToString(H_ID))).toBe(false);
-            }
+            expect(finalLookup ? finalLookup.idToKey.has(nodeIdentifierToString(H_ID)) : false).toBe(false);
 
             // Target identifier data survives
             const val = await T.values.get(T_ID);
@@ -964,26 +962,20 @@ describe('mergeHostIntoReplica', () => {
             // B keep → B_T_ID survives, C keep → C_T_ID survives
             const aInputs = await T.inputs.get(A_H_ID);
             expect(aInputs).not.toBeUndefined();
-            if (aInputs) {
-                const loweredInputStrings = aInputs.inputs.map(id => String(id));
-                expect(loweredInputStrings).toContain(String(B_T_ID));
-                expect(loweredInputStrings).toContain(String(C_T_ID));
-                // Must NOT contain host identifiers
-                expect(loweredInputStrings).not.toContain(String(B_H_ID));
-                expect(loweredInputStrings).not.toContain(String(C_H_ID));
-            }
+            const loweredInputStrings = aInputs ? aInputs.inputs.map(id => String(id)) : [];
+            expect(loweredInputStrings).toContain(String(B_T_ID));
+            expect(loweredInputStrings).toContain(String(C_T_ID));
+            // Must NOT contain host identifiers
+            expect(loweredInputStrings).not.toContain(String(B_H_ID));
+            expect(loweredInputStrings).not.toContain(String(C_H_ID));
 
             // Revdeps should point from B_T_ID and C_T_ID to A_H_ID
             const bRevdeps = await T.revdeps.get(B_T_ID);
             expect(bRevdeps).not.toBeUndefined();
-            if (bRevdeps) {
-                expect(bRevdeps.map(d => String(d))).toContain(String(A_H_ID));
-            }
+            expect(bRevdeps ? bRevdeps.map(d => String(d)) : []).toContain(String(A_H_ID));
             const cRevdeps = await T.revdeps.get(C_T_ID);
             expect(cRevdeps).not.toBeUndefined();
-            if (cRevdeps) {
-                expect(cRevdeps.map(d => String(d))).toContain(String(A_H_ID));
-            }
+            expect(cRevdeps ? cRevdeps.map(d => String(d)) : []).toContain(String(A_H_ID));
 
             // Final lookup must be a strict bijection
             const raw = await T.global.get(IDENTIFIERS_KEY);
@@ -1058,9 +1050,7 @@ describe('mergeHostIntoReplica', () => {
             // B's stored inputs should point to final identifiers (A_T_ID, not A_H_ID)
             const bInputs = await T.inputs.get(B_H_ID);
             expect(bInputs).not.toBeUndefined();
-            if (bInputs) {
-                expect(bInputs.inputs.map(id => String(id))).toEqual([String(A_T_ID)]);
-            }
+            expect(bInputs ? bInputs.inputs.map(id => String(id)) : []).toEqual([String(A_T_ID)]);
 
             // B's counter and value from H should be preserved
             const bCounter = await T.counters.get(B_H_ID);

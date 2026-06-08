@@ -1,5 +1,5 @@
 const { compareIsoTimestamps } = require('./sync_merge_timestamps');
-const { stringToNodeIdentifier } = require('./types');
+const { stringToNodeIdentifier, stringToNodeKeyString, nodeKeyStringToString } = require('./types');
 const { nodeIdentifierToString } = require('./node_identifier');
 const { TopologicalSortCycleError } = require('./topo_sort');
 
@@ -7,7 +7,6 @@ const { TopologicalSortCycleError } = require('./topo_sort');
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
-/** @typedef {import('../node_key').NodeKey} NodeKey */
 /** @typedef {'keep' | 'take' | 'invalidate'} MergeDecision */
 
 /**
@@ -43,16 +42,18 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
 
     // Build unified semantic-key view from both lookups.
     for (const [nodeKeyString, targetId] of targetLookup.keyToId.entries()) {
-        semanticInfo.set(nodeKeyString, {
-            nodeKey: nodeKeyString,
+        const key = stringToNodeKeyString(nodeKeyString);
+        semanticInfo.set(key, {
+            nodeKey: key,
             targetId,
             hostId: hostLookup.keyToId.get(nodeKeyString),
         });
     }
     for (const [nodeKeyString, hostId] of hostLookup.keyToId.entries()) {
-        if (!semanticInfo.has(nodeKeyString)) {
-            semanticInfo.set(nodeKeyString, {
-                nodeKey: nodeKeyString,
+        const key = stringToNodeKeyString(nodeKeyString);
+        if (!semanticInfo.has(key)) {
+            semanticInfo.set(key, {
+                nodeKey: key,
                 targetId: undefined,
                 hostId,
             });
@@ -114,7 +115,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
                     : [];
                 semanticMergedInputs.set(info.nodeKey, inputIds.map(id =>
                     idToNodeKey(hostLookup, id)
-                ).filter(Boolean));
+                ).filter(key => key !== undefined));
             } else if (initialDecision === 'keep') {
                 const record = await T.inputs.get(info.targetId);
                 const inputIds = record
@@ -122,7 +123,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
                     : [];
                 semanticMergedInputs.set(info.nodeKey, inputIds.map(id =>
                     idToNodeKey(targetLookup, id)
-                ).filter(Boolean));
+                ).filter(key => key !== undefined));
             }
         } else if (info.targetId !== undefined) {
             // Target-only node.
@@ -132,7 +133,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
                 : [];
             semanticMergedInputs.set(info.nodeKey, inputIds.map(id =>
                 idToNodeKey(targetLookup, id)
-            ).filter(Boolean));
+            ).filter(key => key !== undefined));
         } else if (info.hostId !== undefined) {
             // Host-only node.
             const record = await H.inputs.get(info.hostId);
@@ -141,7 +142,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
                 : [];
             semanticMergedInputs.set(info.nodeKey, inputIds.map(id =>
                 idToNodeKey(hostLookup, id)
-            ).filter(Boolean));
+            ).filter(key => key !== undefined));
         }
     }
 
@@ -346,7 +347,7 @@ function topologicalSortFromMapStrings(inputsMap) {
             heap.push(node);
         }
     }
-    heap.sort((a, b) => -compareNodeKeyStrings(a, b)); // max-heap for pop
+    heap.sort((a, b) => -compareNodeKeyStrings(nodeKeyStringToString(a), nodeKeyStringToString(b))); // max-heap for pop
 
     /** @type {NodeKeyString[]} */
     const sorted = [];
@@ -365,7 +366,7 @@ function topologicalSortFromMapStrings(inputsMap) {
             remaining.set(dep, newDeg);
             if (newDeg === 0) {
                 heap.push(dep);
-                heap.sort((a, b) => -compareNodeKeyStrings(a, b));
+                heap.sort((a, b) => -compareNodeKeyStrings(nodeKeyStringToString(a), nodeKeyStringToString(b)));
             }
         }
     }
@@ -373,7 +374,7 @@ function topologicalSortFromMapStrings(inputsMap) {
     if (sorted.length !== allNodes.length) {
         const sortedSet = new Set(sorted);
         const cycleNodes = allNodes.filter(n => !sortedSet.has(n));
-        throw new TopologicalSortCycleError(cycleNodes);
+        throw new TopologicalSortCycleError(cycleNodes.map(k => stringToNodeIdentifier(nodeKeyStringToString(k))));
     }
 
     return sorted;
