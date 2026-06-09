@@ -397,12 +397,13 @@ async function initializeEmptyRepository(capabilities, workingPath) {
 
             // Create an empty initial commit so the repository has an initial branch
             // This is required for the transaction system to work (clone operations need a branch)
-            await git.call(
+            await capabilities.git.call(
                 "-C", workDir,
                 "-c", "safe.directory=*",
                 "-c", "user.name=volodyslav",
                 "-c", "user.email=volodyslav",
                 "commit",
+                "--quiet",
                 "--allow-empty",
                 "--message",
                 "Initial empty commit",

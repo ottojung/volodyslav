@@ -5,6 +5,7 @@ const { transaction, checkpoint } = require("../src/gitstore");
 const gitstoreModule = require("../src/gitstore");
 const defaultBranch = require("../src/gitstore/default_branch");
 const workingRepository = require("../src/gitstore/working_repository");
+const { commit, fetchAndReconcile } = require("../src/gitstore/wrappers");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubEventLogRepository, stubDatetime, stubLogger } = require("./stubs");
 jest.setTimeout(30000);
@@ -193,5 +194,97 @@ describe("gitstore", () => {
         expect(branches).toContain("origin/alice-main");
         expect(branches).toContain("origin/bob-main");
         expect(branches).not.toContain("origin/other-branch");
+    });
+
+    test("commit with non-diff subprocess failure propagates error", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+
+        // Calling commit with a non-existent git directory should throw,
+        // proving that a non-diff exit code is not swallowed as "has changes".
+        await expect(commit(
+            capabilities,
+            "/nonexistent/.git",
+            "/nonexistent",
+            "should fail"
+        )).rejects.toThrow();
+    });
+
+    test("fetchAndReconcile creates merge-like commit when remote diverges", async () => {
+        const capabilities = getTestCapabilities();
+        const branch = defaultBranch(capabilities);
+        const workDir = path.join(capabilities.environment.workingDirectory(), "test-fetch-reconcile");
+        await fs.mkdir(workDir, { recursive: true });
+
+        // Create a bare remote
+        const remoteDir = path.join(capabilities.environment.workingDirectory(), "test-fetch-remote.git");
+        await capabilities.git.call("init", "--bare", "--quiet", remoteDir);
+
+        // Init local repo, make initial commit, push to remote
+        await capabilities.git.call("init", "--quiet", "--initial-branch", branch, workDir);
+        await fs.writeFile(path.join(workDir, "initial.txt"), "initial");
+        await capabilities.git.call("-C", workDir, "add", "--all");
+        await capabilities.git.call("-C", workDir, "-c", "user.name=test", "-c", "user.email=test", "commit", "--quiet", "--message", "initial");
+        await capabilities.git.call("-C", workDir, "remote", "add", "origin", remoteDir);
+        await capabilities.git.call("-C", workDir, "push", "--quiet", "-u", "origin", branch);
+
+        // Push a new commit to the remote that the local doesn't have yet
+        await fs.writeFile(path.join(workDir, "remote-change.txt"), "remote");
+        await capabilities.git.call("-C", workDir, "add", "--all");
+        await capabilities.git.call("-C", workDir, "-c", "user.name=test", "-c", "user.email=test", "commit", "--quiet", "--message", "remote-change");
+        await capabilities.git.call("-C", workDir, "push", "--quiet", "origin", branch);
+
+        // Reset local back to the first commit so local is behind remote
+        await capabilities.git.call("-C", workDir, "reset", "--quiet", "--hard", "HEAD~1");
+
+        const before = await capabilities.git
+            .call("-C", workDir, "rev-list", "--count", branch)
+            .then(r => Number(r.stdout.trim()));
+        await fetchAndReconcile(capabilities, workDir, undefined);
+        const after = await capabilities.git
+            .call("-C", workDir, "rev-list", "--count", branch)
+            .then(r => Number(r.stdout.trim()));
+
+        // The fetchAndReconcile should have created a merge-like commit
+        expect(after).toBeGreaterThan(before);
+    });
+
+    test("fetchAndReconcile does not create commit when tree is unchanged", async () => {
+        const capabilities = getTestCapabilities();
+        const branch = defaultBranch(capabilities);
+        const workDir = path.join(capabilities.environment.workingDirectory(), "test-fetch-reconcile-noop");
+        await fs.mkdir(workDir, { recursive: true });
+
+        const remoteDir = path.join(capabilities.environment.workingDirectory(), "test-fetch-remote-noop.git");
+        await capabilities.git.call("init", "--bare", "--quiet", remoteDir);
+
+        await capabilities.git.call("init", "--quiet", "--initial-branch", branch, workDir);
+        await fs.writeFile(path.join(workDir, "initial.txt"), "initial");
+        await capabilities.git.call("-C", workDir, "add", "--all");
+        await capabilities.git.call("-C", workDir, "-c", "user.name=test", "-c", "user.email=test", "commit", "--quiet", "--message", "initial");
+        await capabilities.git.call("-C", workDir, "remote", "add", "origin", remoteDir);
+        await capabilities.git.call("-C", workDir, "push", "--quiet", "-u", "origin", branch);
+
+        // Commit more to remote
+        await fs.writeFile(path.join(workDir, "extra.txt"), "extra");
+        await capabilities.git.call("-C", workDir, "add", "--all");
+        await capabilities.git.call("-C", workDir, "-c", "user.name=test", "-c", "user.email=test", "commit", "--quiet", "--message", "extra");
+        await capabilities.git.call("-C", workDir, "push", "--quiet", "origin", branch);
+
+        // Reset local back
+        await capabilities.git.call("-C", workDir, "reset", "--quiet", "--hard", "HEAD~1");
+        // First call creates the merge-like reset commit
+        await fetchAndReconcile(capabilities, workDir, undefined);
+
+        const before = await capabilities.git
+            .call("-C", workDir, "rev-list", "--count", branch)
+            .then(r => Number(r.stdout.trim()));
+        // Second call with no divergence should be a no-op
+        await fetchAndReconcile(capabilities, workDir, undefined);
+        const after = await capabilities.git
+            .call("-C", workDir, "rev-list", "--count", branch)
+            .then(r => Number(r.stdout.trim()));
+
+        expect(after).toBe(before);
     });
 });

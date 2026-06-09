@@ -57,6 +57,33 @@ function isDiffHasChangesError(error) {
     );
 }
 
+/**
+ * Run git diff --cached --quiet --exit-code to determine whether there are
+ * staged changes.  Repository args such as -C, --git-dir, --work-tree, etc.
+ * are passed through as trailing arguments.
+ * @param {Capabilities} capabilities
+ * @param {string[]} repositoryArgs
+ * @returns {Promise<boolean>}
+ */
+async function hasStagedChanges(capabilities, repositoryArgs) {
+    try {
+        await capabilities.git.call(
+            ...repositoryArgs,
+            "diff",
+            "--cached",
+            "--quiet",
+            "--exit-code",
+            "--"
+        );
+        return false;
+    } catch (error) {
+        if (isDiffHasChangesError(error)) {
+            return true;
+        }
+        throw error;
+    }
+}
+
 /** @returns {Promise<void>} */
 async function ensureGitAvailable() {
     try {
@@ -95,24 +122,12 @@ async function commit(capabilities, git_directory, work_directory, message) {
         "--all"
     );
 
-    try {
-        await capabilities.git.call(
-            "-c", "safe.directory=*",
-            "--git-dir", git_directory,
-            "--work-tree", work_directory,
-            "diff",
-            "--cached",
-            "--quiet",
-            "--exit-code",
-            "--"
-        );
-        // Exit code 0: no staged changes
+    if (!(await hasStagedChanges(capabilities, [
+        "-c", "safe.directory=*",
+        "--git-dir", git_directory,
+        "--work-tree", work_directory,
+    ]))) {
         return;
-    } catch (error) {
-        if (!isDiffHasChangesError(error)) {
-            throw error;
-        }
-        // Exit code 1: staged changes exist, proceed to commit
     }
 
     await capabilities.git.call(
@@ -300,25 +315,11 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "-u",
         `origin/${branch}`
     );
-    try {
-        await capabilities.git.call(
-            "-C",
-            workDirectory,
-            "-c",
-            "safe.directory=*",
-            "diff",
-            "--cached",
-            "--quiet",
-            "--exit-code",
-            "--"
-        );
-        // Exit code 0: nothing changed
+    if (!(await hasStagedChanges(capabilities, [
+        "-C", workDirectory,
+        "-c", "safe.directory=*",
+    ]))) {
         return;
-    } catch (error) {
-        if (!isDiffHasChangesError(error)) {
-            throw error;
-        }
-        // Exit code 1: tree changed, commit the merge-like reset
     }
     await capabilities.git.call(
         "-C",
