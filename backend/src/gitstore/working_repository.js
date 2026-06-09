@@ -93,7 +93,7 @@ function pathToLocalRepositoryGitDir(capabilities, workingPath) {
  */
 async function hasOriginRemote(capabilities, workDir) {
     return capabilities.git.call(
-        "-C", workDir, "-c", "safe.directory=*", "--quiet",
+        "-C", workDir, "-c", "safe.directory=*",
         "remote", "get-url", "origin"
     ).then(() => true).catch(() => false);
 }
