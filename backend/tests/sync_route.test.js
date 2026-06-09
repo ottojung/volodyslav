@@ -181,7 +181,8 @@ describe("sync route", () => {
             "ls-remote",
             "--heads",
             "--",
-            expect.any(String)
+            expect.any(String),
+            "*-main"
         );
     });
 });

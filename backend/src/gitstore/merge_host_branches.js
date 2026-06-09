@@ -53,7 +53,7 @@ async function listRemoteBranches(capabilities, workDirectory) {
         "safe.directory=*",
         "for-each-ref",
         "--format=%(refname:short)",
-        "refs/remotes/origin"
+        "refs/remotes/origin/*-main"
     );
     return result.stdout
         .split("\n")

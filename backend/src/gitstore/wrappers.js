@@ -1,4 +1,5 @@
 const { isCommandUnavailable } = require("../subprocess");
+const { isProcessFailedError } = require("../subprocess/call");
 const { git } = require("../executables");
 const defaultBranch = require("./default_branch");
 const { configureRemoteForAllBranches, ensureCurrentBranch } = require("./branch_setup");
@@ -40,6 +41,23 @@ function isPushError(object) {
     return object instanceof PushError;
 }
 
+/**
+ * Determine whether a ProcessFailedError came from a git diff --exit-code
+ * call that returned exit code 1, meaning differences were found.
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+function isDiffHasChangesError(error) {
+    return (
+        isProcessFailedError(error) &&
+        error.originalError !== undefined &&
+        typeof error.originalError === 'object' &&
+        error.originalError !== null &&
+        'code' in error.originalError &&
+        error.originalError.code === 1
+    );
+}
+
 /** @returns {Promise<void>} */
 async function ensureGitAvailable() {
     try {
@@ -78,15 +96,24 @@ async function commit(capabilities, git_directory, work_directory, message) {
         "--all"
     );
 
-    const statusResult = await capabilities.git.call(
-        "-c", "safe.directory=*",
-        "--git-dir", git_directory,
-        "--work-tree", work_directory,
-        "status",
-        "--porcelain"
-    );
-    if (statusResult.stdout.trim() === "") {
+    try {
+        await capabilities.git.call(
+            "-c", "safe.directory=*",
+            "--git-dir", git_directory,
+            "--work-tree", work_directory,
+            "diff",
+            "--cached",
+            "--quiet",
+            "--exit-code",
+            "--"
+        );
+        // Exit code 0: no staged changes
         return;
+    } catch (error) {
+        if (!isDiffHasChangesError(error)) {
+            throw error;
+        }
+        // Exit code 1: staged changes exist, proceed to commit
     }
 
     await capabilities.git.call(
@@ -274,16 +301,25 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "-u",
         `origin/${branch}`
     );
-    const statusResult = await capabilities.git.call(
-        "-C",
-        workDirectory,
-        "-c",
-        "safe.directory=*",
-        "status",
-        "--porcelain"
-    );
-    if (statusResult.stdout.trim() === "") {
+    try {
+        await capabilities.git.call(
+            "-C",
+            workDirectory,
+            "-c",
+            "safe.directory=*",
+            "diff",
+            "--cached",
+            "--quiet",
+            "--exit-code",
+            "--"
+        );
+        // Exit code 0: nothing changed
         return;
+    } catch (error) {
+        if (!isDiffHasChangesError(error)) {
+            throw error;
+        }
+        // Exit code 1: tree changed, commit the merge-like reset
     }
     await capabilities.git.call(
         "-C",

@@ -1,7 +1,8 @@
 const fs = require("fs").promises;
 const path = require("path");
 const { execFileSync } = require("child_process");
-const { transaction } = require("../src/gitstore");
+const { transaction, checkpoint } = require("../src/gitstore");
+const gitstoreModule = require("../src/gitstore");
 const defaultBranch = require("../src/gitstore/default_branch");
 const workingRepository = require("../src/gitstore/working_repository");
 const { getMockedRootCapabilities } = require("./spies");
@@ -125,5 +126,72 @@ describe("gitstore", () => {
         await expect(fs.access(temporaryWorkTree)).rejects.toThrow(
             "ENOENT: no such file or directory"
         );
+    });
+
+    /**
+     * Count the number of commits in a git directory.
+     * @param {string} gitDir
+     * @returns {number}
+     */
+    function commitCount(gitDir) {
+        const output = execFileSync("git", [
+            "--git-dir", gitDir,
+            "rev-list", "--count", "HEAD",
+        ]).toString().trim();
+        return Number(output);
+    }
+
+    test("checkpoint does not create extra commit when files unchanged, even with many files", async () => {
+        const capabilities = getTestCapabilities();
+        await stubEventLogRepository(capabilities);
+        await stubDatetime(capabilities);
+        const gitDir = await workingRepository.getRepository(
+            capabilities, "working-git-repository",
+            { url: capabilities.environment.eventLogRepository() }
+        );
+        const workDir = path.dirname(gitDir);
+
+        // Create many files
+        for (let i = 0; i < 100; i++) {
+            await fs.writeFile(path.join(workDir, `file-${i}.txt`), `content-${i}`);
+        }
+        await checkpoint(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, "Add 100 files");
+        const afterAdd = commitCount(gitDir);
+        expect(afterAdd).toBeGreaterThanOrEqual(2);
+
+        // Second checkpoint with no changes: must not create extra commit
+        await checkpoint(capabilities, "working-git-repository", { url: capabilities.environment.eventLogRepository() }, "No-op");
+        expect(commitCount(gitDir)).toBe(afterAdd);
+    });
+
+    test("listRemoteBranches uses narrowed pattern", async () => {
+        const capabilities = getTestCapabilities();
+        const branch = defaultBranch(capabilities);
+        const workDir = path.join(capabilities.environment.workingDirectory(), "test-narrow");
+        await fs.mkdir(workDir, { recursive: true });
+        await capabilities.git.call("init", "--quiet", "--initial-branch", branch, workDir);
+        // Create a bare remote and push a hostname-style branch and a non-hostname branch
+        const remoteDir = path.join(capabilities.environment.workingDirectory(), "test-remote.git");
+        await capabilities.git.call("init", "--bare", "--quiet", remoteDir);
+        await capabilities.git.call("-C", workDir, "remote", "add", "origin", remoteDir);
+        await fs.writeFile(path.join(workDir, "test.txt"), "content");
+        await capabilities.git.call("-C", workDir, "add", "--all");
+        await capabilities.git.call("-C", workDir, "-c", "user.name=test", "-c", "user.email=test", "commit", "--quiet", "--message", "init");
+        await capabilities.git.call("-C", workDir, "push", "--quiet", "-u", "origin", branch);
+        await capabilities.git.call("-C", workDir, "checkout", "--quiet", "-b", "alice-main");
+        await fs.writeFile(path.join(workDir, "alice.txt"), "alice");
+        await capabilities.git.call("-C", workDir, "add", "--all");
+        await capabilities.git.call("-C", workDir, "-c", "user.name=test", "-c", "user.email=test", "commit", "--quiet", "--message", "alice");
+        await capabilities.git.call("-C", workDir, "push", "--quiet", "-u", "origin", "alice-main");
+        await capabilities.git.call("-C", workDir, "checkout", "--quiet", "-b", "bob-main", "alice-main");
+        await capabilities.git.call("-C", workDir, "push", "--quiet", "-u", "origin", "bob-main");
+        // A non-hostname branch that should be excluded
+        await capabilities.git.call("-C", workDir, "checkout", "--quiet", "-b", "other-branch", "alice-main");
+        await capabilities.git.call("-C", workDir, "push", "--quiet", "-u", "origin", "other-branch");
+
+        const branches = await gitstoreModule.mergeHostBranches.listRemoteBranches(capabilities, workDir);
+        expect(branches).toContain("origin/alice-main");
+        expect(branches).toContain("origin/bob-main");
+        expect(branches).not.toContain("origin/other-branch");
     });
 });

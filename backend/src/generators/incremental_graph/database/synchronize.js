@@ -161,7 +161,7 @@ async function mergeRemoteHostBranches(capabilities, state) {
                 try {
                     await capabilities.git.call(
                         '-C', workDir, '-c', 'safe.directory=*',
-                        'worktree', 'remove', '--quiet', '--force', tmpDir
+                        'worktree', 'remove', '--force', tmpDir
                     );
                 } catch (cleanupErr) {
                     capabilities.logger.logInfo(
