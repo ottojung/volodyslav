@@ -79,14 +79,15 @@ async function commit(capabilities, git_directory, work_directory, message) {
         "--quiet"
     );
 
-    const statusResult = await capabilities.git.call(
+    const isClean = await capabilities.git.call(
         "-c", "safe.directory=*",
         "--git-dir", git_directory,
         "--work-tree", work_directory,
         "status",
-        "--porcelain"
-    );
-    if (statusResult.stdout.trim() === "") {
+        "--porcelain",
+        "--exit-code"
+    ).then(() => true).catch(() => false);
+    if (isClean) {
         return;
     }
 
@@ -119,7 +120,6 @@ async function makePushable(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "config",
-        "--quiet",
         "receive.denyCurrentBranch",
         "ignore"
     );
@@ -276,15 +276,16 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "-u",
         `origin/${branch}`
     );
-    const statusResult = await capabilities.git.call(
+    const isClean = await capabilities.git.call(
         "-C",
         workDirectory,
         "-c",
         "safe.directory=*",
         "status",
-        "--porcelain"
-    );
-    if (statusResult.stdout.trim() === "") {
+        "--porcelain",
+        "--exit-code"
+    ).then(() => true).catch(() => false);
+    if (isClean) {
         return;
     }
     await capabilities.git.call(

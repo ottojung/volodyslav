@@ -44,7 +44,6 @@ async function configureRemoteForAllBranches(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "config",
-        "--quiet",
         "--replace-all",
         "remote.origin.fetch",
         "+refs/heads/*:refs/remotes/origin/*"
