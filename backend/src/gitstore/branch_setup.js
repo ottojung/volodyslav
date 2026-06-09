@@ -44,6 +44,7 @@ async function configureRemoteForAllBranches(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "config",
+        "--quiet",
         "--replace-all",
         "remote.origin.fetch",
         "+refs/heads/*:refs/remotes/origin/*"
@@ -79,6 +80,7 @@ async function ensureCurrentBranch(capabilities, workDirectory) {
             "-c",
             "user.email=volodyslav",
             "checkout",
+            "--quiet",
             branch
         );
     } else if (hasRemoteBranch) {
@@ -92,6 +94,7 @@ async function ensureCurrentBranch(capabilities, workDirectory) {
             "-c",
             "user.email=volodyslav",
             "checkout",
+            "--quiet",
             "-B",
             branch,
             `origin/${branch}`
@@ -107,6 +110,7 @@ async function ensureCurrentBranch(capabilities, workDirectory) {
             "-c",
             "user.email=volodyslav",
             "checkout",
+            "--quiet",
             "-B",
             branch
         );
@@ -123,6 +127,7 @@ async function ensureCurrentBranch(capabilities, workDirectory) {
             "-c",
             "user.email=volodyslav",
             "branch",
+            "--quiet",
             "--set-upstream-to",
             `origin/${branch}`,
             branch

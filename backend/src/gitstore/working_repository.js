@@ -93,7 +93,7 @@ function pathToLocalRepositoryGitDir(capabilities, workingPath) {
  */
 async function hasOriginRemote(capabilities, workDir) {
     return capabilities.git.call(
-        "-C", workDir, "-c", "safe.directory=*",
+        "-C", workDir, "-c", "safe.directory=*", "--quiet",
         "remote", "get-url", "origin"
     ).then(() => true).catch(() => false);
 }
@@ -203,7 +203,7 @@ async function resetAndCleanRepository(capabilities, workingPath) {
     // branch (HEAD points to a ref that does not yet exist) is left by an
     // interrupted `initializeEmptyRepository` call.
     const hasCommits = await capabilities.git
-        .call("-C", workDir, "-c", "safe.directory=*", "rev-parse", "--verify", "HEAD")
+        .call("-C", workDir, "-c", "safe.directory=*", "rev-parse", "--verify", "--quiet", "HEAD")
         .then(() => true)
         .catch(() => false);
 
@@ -217,6 +217,7 @@ async function resetAndCleanRepository(capabilities, workingPath) {
             "-C", workDir,
             "-c", "safe.directory=*",
             "read-tree",
+            "--quiet",
             "--empty"
         );
         // No commits yet – finish the interrupted initialisation by creating
@@ -227,6 +228,7 @@ async function resetAndCleanRepository(capabilities, workingPath) {
             "-c", "user.name=volodyslav",
             "-c", "user.email=volodyslav",
             "commit",
+            "--quiet",
             "--allow-empty",
             "--message",
             "Initial empty commit",
@@ -236,12 +238,12 @@ async function resetAndCleanRepository(capabilities, workingPath) {
     // Discard any staged or modified tracked files.
     await capabilities.git.call(
         "-C", workDir, "-c", "safe.directory=*",
-        "reset", "--hard", "HEAD"
+        "reset", "--quiet", "--hard", "HEAD"
     );
     // Remove untracked files and directories left by previous operations.
     await capabilities.git.call(
         "-C", workDir, "-c", "safe.directory=*",
-        "clean", "-fd"
+        "clean", "-fdq"
     );
 }
 
@@ -294,7 +296,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
             if (!alreadyAdded) {
                 await capabilities.git.call(
                     "-C", workDir, "-c", "safe.directory=*",
-                    "remote", "add", "origin", remotePath
+                    "remote", "add", "--quiet", "origin", remotePath
                 );
             }
         }

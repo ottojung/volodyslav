@@ -181,7 +181,7 @@ async function internalInitCheckpointRepoForFallback(capabilities) {
     // Add the origin remote so workingRepository.synchronize uses the
     // pull+push path instead of the fetchAndReconcile path (needsRemoteSetup).
     const hasOrigin = await capabilities.git.call(
-        "-C", checkpointDir, "-c", "safe.directory=*",
+        "-C", checkpointDir, "-c", "safe.directory=*", "--quiet",
         "remote", "get-url", "origin"
     ).then(() => true).catch((err) => {
         capabilities.logger.logDebug(
@@ -194,7 +194,7 @@ async function internalInitCheckpointRepoForFallback(capabilities) {
     if (!hasOrigin) {
         await capabilities.git.call(
             "-C", checkpointDir, "-c", "safe.directory=*",
-            "remote", "add", "origin", remotePath
+            "remote", "add", "--quiet", "origin", remotePath
         );
     }
 }

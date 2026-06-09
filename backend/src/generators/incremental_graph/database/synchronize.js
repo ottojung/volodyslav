@@ -81,7 +81,7 @@ async function mergeRemoteHostBranches(capabilities, state) {
     await configureRemoteForAllBranches(capabilities, workDir);
     await capabilities.git.call(
         '-C', workDir, '-c', 'safe.directory=*',
-        'fetch', 'origin'
+        'fetch', '--quiet', 'origin'
     );
 
     const remoteBranches = await listRemoteBranches(capabilities, workDir);
@@ -120,7 +120,7 @@ async function mergeRemoteHostBranches(capabilities, state) {
             tmpDir = await capabilities.creator.createTemporaryDirectory();
             await capabilities.git.call(
                 '-C', workDir, '-c', 'safe.directory=*',
-                'worktree', 'add', '--detach', tmpDir, remoteBranch
+                'worktree', 'add', '--quiet', '--detach', tmpDir, remoteBranch
             );
             worktreeAdded = true;
 
@@ -161,7 +161,7 @@ async function mergeRemoteHostBranches(capabilities, state) {
                 try {
                     await capabilities.git.call(
                         '-C', workDir, '-c', 'safe.directory=*',
-                        'worktree', 'remove', '--force', tmpDir
+                        'worktree', 'remove', '--quiet', '--force', tmpDir
                     );
                 } catch (cleanupErr) {
                     capabilities.logger.logInfo(

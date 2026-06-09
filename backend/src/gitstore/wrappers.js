@@ -75,7 +75,8 @@ async function commit(capabilities, git_directory, work_directory, message) {
         "--work-tree",
         work_directory,
         "add",
-        "--all"
+        "--all",
+        "--quiet"
     );
 
     const statusResult = await capabilities.git.call(
@@ -96,6 +97,7 @@ async function commit(capabilities, git_directory, work_directory, message) {
         "--git-dir", git_directory,
         "--work-tree", work_directory,
         "commit",
+        "--quiet",
         "--message", message,
     );
 }
@@ -117,6 +119,7 @@ async function makePushable(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "config",
+        "--quiet",
         "receive.denyCurrentBranch",
         "ignore"
     );
@@ -140,6 +143,7 @@ async function clone(capabilities, remote_uri, work_directory, options) {
         "-c",
         "user.email=volodyslav",
         "clone",
+        "--quiet",
         "--depth=1",
         "--no-single-branch",
         `--branch=${branch}`,
@@ -168,6 +172,7 @@ async function pull(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "fetch",
+        "--quiet",
         "origin"
     );
     if (!(await ensureCurrentBranch(capabilities, workDirectory))) {
@@ -185,6 +190,7 @@ async function pull(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "merge",
+        "--quiet",
         "--no-edit",
         "--ff-only",
         `origin/${branch}`
@@ -210,6 +216,7 @@ async function push(capabilities, workDirectory) {
             "-c",
             "user.email=volodyslav",
             "push",
+            "--quiet",
             "-u",
             "origin",
             branch
@@ -250,6 +257,7 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "-c",
         "user.email=volodyslav",
         "fetch",
+        "--quiet",
         "origin"
     );
     await ensureCurrentBranch(capabilities, workDirectory);
@@ -263,6 +271,7 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "-c",
         "user.email=volodyslav",
         "read-tree",
+        "--quiet",
         "--reset",
         "-u",
         `origin/${branch}`
@@ -288,6 +297,7 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "-c",
         "user.email=volodyslav",
         "commit",
+        "--quiet",
         "--message",
         `Merge-like reset to origin/${branch}`
     );
@@ -311,6 +321,7 @@ async function init(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "init",
+        "--quiet",
         "--template",
         "/proc/some/non/existant/path",
         "--initial-branch",
