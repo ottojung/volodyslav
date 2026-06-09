@@ -1,5 +1,4 @@
-const { isCommandUnavailable } = require("../subprocess");
-const { isProcessFailedError } = require("../subprocess/call");
+const { isProcessFailedError, isCommandUnavailable } = require("../subprocess");
 const { git } = require("../executables");
 const defaultBranch = require("./default_branch");
 const { configureRemoteForAllBranches, ensureCurrentBranch } = require("./branch_setup");
