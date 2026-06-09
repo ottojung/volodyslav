@@ -224,8 +224,8 @@ describe("gitstore", () => {
             "should fail"
         )).rejects.toThrow();
 
-        // Restore so subsequent tests are unaffected
-        capabilities.git.call = originalCall;
+        // Restore prototype method so subsequent tests see the original
+        delete capabilities.git.call;
     });
 
     test("fetchAndReconcile creates merge-like commit when remote diverges", async () => {
