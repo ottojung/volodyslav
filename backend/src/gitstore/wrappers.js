@@ -75,19 +75,17 @@ async function commit(capabilities, git_directory, work_directory, message) {
         "--work-tree",
         work_directory,
         "add",
-        "--all",
-        "--quiet"
+        "--all"
     );
 
-    const isClean = await capabilities.git.call(
+    const statusResult = await capabilities.git.call(
         "-c", "safe.directory=*",
         "--git-dir", git_directory,
         "--work-tree", work_directory,
         "status",
-        "--porcelain",
-        "--exit-code"
-    ).then(() => true).catch(() => false);
-    if (isClean) {
+        "--porcelain"
+    );
+    if (statusResult.stdout.trim() === "") {
         return;
     }
 
