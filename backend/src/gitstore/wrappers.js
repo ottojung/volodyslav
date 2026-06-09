@@ -59,8 +59,8 @@ function isDiffHasChangesError(error) {
 
 /**
  * Run git diff --cached --quiet --exit-code to determine whether there are
- * staged changes.  Repository args such as -C, --git-dir, --work-tree, etc.
- * are passed through as trailing arguments.
+ * staged changes.  Repository-selection arguments such as -C, --git-dir,
+ * --work-tree, etc. are passed before the git subcommand.
  * @param {Capabilities} capabilities
  * @param {string[]} repositoryArgs
  * @returns {Promise<boolean>}

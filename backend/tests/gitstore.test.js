@@ -196,16 +196,31 @@ describe("gitstore", () => {
         expect(branches).not.toContain("origin/other-branch");
     });
 
-    test("commit with non-diff subprocess failure propagates error", async () => {
+    test("commit propagates git diff failure when exit code is not 1", async () => {
         const capabilities = getTestCapabilities();
         await stubEventLogRepository(capabilities);
 
-        // Calling commit with a non-existent git directory should throw,
-        // proving that a non-diff exit code is not swallowed as "has changes".
+        // Set up a real repo so git add --all succeeds
+        const repoGitDir = await workingRepository.getRepository(
+            capabilities, "working-git-repository",
+            { url: capabilities.environment.eventLogRepository() }
+        );
+
+        // Spy on git.call: let all calls through except diff --exit-code
+        const realCall = capabilities.git.call;
+        capabilities.git.call = jest.fn((...args) => {
+            if (args.some(a => typeof a === 'string' && a === 'diff')) {
+                const error = new Error('git diff failed');
+                error.code = 128;
+                throw error;
+            }
+            return realCall(...args);
+        });
+
         await expect(commit(
             capabilities,
-            "/nonexistent/.git",
-            "/nonexistent",
+            repoGitDir,
+            path.dirname(repoGitDir),
             "should fail"
         )).rejects.toThrow();
     });

@@ -7,7 +7,6 @@
 const path = require("path");
 const gitmethod = require("./wrappers");
 const { cloneAndConfigureRepository } = require("./clone_setup");
-const { git } = require("../executables");
 const { withRetry } = require("../retryer");
 
 /** @typedef {import('../subprocess/command').Command} Command */
