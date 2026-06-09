@@ -274,16 +274,15 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "-u",
         `origin/${branch}`
     );
-    const isClean = await capabilities.git.call(
+    const statusResult = await capabilities.git.call(
         "-C",
         workDirectory,
         "-c",
         "safe.directory=*",
         "status",
-        "--porcelain",
-        "--exit-code"
-    ).then(() => true).catch(() => false);
-    if (isClean) {
+        "--porcelain"
+    );
+    if (statusResult.stdout.trim() === "") {
         return;
     }
     await capabilities.git.call(
