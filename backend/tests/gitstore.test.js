@@ -207,9 +207,12 @@ describe("gitstore", () => {
         );
 
         // Spy on git.call: let all calls through except diff --exit-code
-        const originalCall = capabilities.git.call;
+        const originalCall = capabilities.git.call.bind(capabilities.git);
+        let diffWasCalled = false;
+
         capabilities.git.call = jest.fn((...args) => {
             if (args.some(a => typeof a === 'string' && a === 'diff')) {
+                diffWasCalled = true;
                 const error = new Error('git diff failed');
                 error.code = 128;
                 throw error;
@@ -217,15 +220,17 @@ describe("gitstore", () => {
             return originalCall(...args);
         });
 
-        await expect(commit(
-            capabilities,
-            repoGitDir,
-            path.dirname(repoGitDir),
-            "should fail"
-        )).rejects.toThrow();
-
-        // Restore prototype method so subsequent tests see the original
-        delete capabilities.git.call;
+        try {
+            await expect(commit(
+                capabilities,
+                repoGitDir,
+                path.dirname(repoGitDir),
+                "should fail"
+            )).rejects.toThrow('git diff failed');
+            expect(diffWasCalled).toBe(true);
+        } finally {
+            delete capabilities.git.call;
+        }
     });
 
     test("fetchAndReconcile creates merge-like commit when remote diverges", async () => {
