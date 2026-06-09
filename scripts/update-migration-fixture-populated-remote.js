@@ -55,7 +55,7 @@ async function main() {
 
     const cloneDirectory = await capabilities.creator.createTemporaryDirectory();
     try {
-        await capabilities.git.call("clone", `--branch=${capabilities.environment.hostname()}-main`, capabilities.environment.generatorsRepository(), cloneDirectory);
+        await capabilities.git.call("clone", "--quiet", `--branch=${capabilities.environment.hostname()}-main`, capabilities.environment.generatorsRepository(), cloneDirectory);
         await copyDirectoryRecursively(path.join(cloneDirectory, DATABASE_SUBPATH), path.join(populatedFixture, DATABASE_SUBPATH));
     } finally {
         await capabilities.deleter.deleteDirectory(cloneDirectory);

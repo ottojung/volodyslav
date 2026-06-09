@@ -33,7 +33,8 @@ async function listResetHostnames(capabilities) {
         "ls-remote",
         "--heads",
         "--",
-        remotePath
+        remotePath,
+        "*-main"
     );
 
     /** @type {string[]} */

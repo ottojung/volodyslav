@@ -7,7 +7,6 @@
 const path = require("path");
 const gitmethod = require("./wrappers");
 const { cloneAndConfigureRepository } = require("./clone_setup");
-const { git } = require("../executables");
 const { withRetry } = require("../retryer");
 
 /** @typedef {import('../subprocess/command').Command} Command */
@@ -203,7 +202,7 @@ async function resetAndCleanRepository(capabilities, workingPath) {
     // branch (HEAD points to a ref that does not yet exist) is left by an
     // interrupted `initializeEmptyRepository` call.
     const hasCommits = await capabilities.git
-        .call("-C", workDir, "-c", "safe.directory=*", "rev-parse", "--verify", "HEAD")
+        .call("-C", workDir, "-c", "safe.directory=*", "rev-parse", "--verify", "--quiet", "HEAD")
         .then(() => true)
         .catch(() => false);
 
@@ -217,6 +216,7 @@ async function resetAndCleanRepository(capabilities, workingPath) {
             "-C", workDir,
             "-c", "safe.directory=*",
             "read-tree",
+            "--quiet",
             "--empty"
         );
         // No commits yet – finish the interrupted initialisation by creating
@@ -227,6 +227,7 @@ async function resetAndCleanRepository(capabilities, workingPath) {
             "-c", "user.name=volodyslav",
             "-c", "user.email=volodyslav",
             "commit",
+            "--quiet",
             "--allow-empty",
             "--message",
             "Initial empty commit",
@@ -236,12 +237,12 @@ async function resetAndCleanRepository(capabilities, workingPath) {
     // Discard any staged or modified tracked files.
     await capabilities.git.call(
         "-C", workDir, "-c", "safe.directory=*",
-        "reset", "--hard", "HEAD"
+        "reset", "--quiet", "--hard", "HEAD"
     );
     // Remove untracked files and directories left by previous operations.
     await capabilities.git.call(
         "-C", workDir, "-c", "safe.directory=*",
-        "clean", "-fd"
+        "clean", "-fdq"
     );
 }
 
@@ -395,12 +396,13 @@ async function initializeEmptyRepository(capabilities, workingPath) {
 
             // Create an empty initial commit so the repository has an initial branch
             // This is required for the transaction system to work (clone operations need a branch)
-            await git.call(
+            await capabilities.git.call(
                 "-C", workDir,
                 "-c", "safe.directory=*",
                 "-c", "user.name=volodyslav",
                 "-c", "user.email=volodyslav",
                 "commit",
+                "--quiet",
                 "--allow-empty",
                 "--message",
                 "Initial empty commit",

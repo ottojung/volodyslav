@@ -1,4 +1,4 @@
-const { isCommandUnavailable } = require("../subprocess");
+const { isProcessFailedError, isCommandUnavailable } = require("../subprocess");
 const { git } = require("../executables");
 const defaultBranch = require("./default_branch");
 const { configureRemoteForAllBranches, ensureCurrentBranch } = require("./branch_setup");
@@ -40,6 +40,50 @@ function isPushError(object) {
     return object instanceof PushError;
 }
 
+/**
+ * Determine whether a ProcessFailedError came from a git diff --exit-code
+ * call that returned exit code 1, meaning differences were found.
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+function isDiffHasChangesError(error) {
+    return (
+        isProcessFailedError(error) &&
+        error.originalError !== undefined &&
+        typeof error.originalError === 'object' &&
+        error.originalError !== null &&
+        'code' in error.originalError &&
+        error.originalError.code === 1
+    );
+}
+
+/**
+ * Run git diff --cached --quiet --exit-code to determine whether there are
+ * staged changes.  Repository-selection arguments such as -C, --git-dir,
+ * --work-tree, etc. are passed before the git subcommand.
+ * @param {Capabilities} capabilities
+ * @param {string[]} repositoryArgs
+ * @returns {Promise<boolean>}
+ */
+async function hasStagedChanges(capabilities, repositoryArgs) {
+    try {
+        await capabilities.git.call(
+            ...repositoryArgs,
+            "diff",
+            "--cached",
+            "--quiet",
+            "--exit-code",
+            "--"
+        );
+        return false;
+    } catch (error) {
+        if (isDiffHasChangesError(error)) {
+            return true;
+        }
+        throw error;
+    }
+}
+
 /** @returns {Promise<void>} */
 async function ensureGitAvailable() {
     try {
@@ -78,14 +122,11 @@ async function commit(capabilities, git_directory, work_directory, message) {
         "--all"
     );
 
-    const statusResult = await capabilities.git.call(
+    if (!(await hasStagedChanges(capabilities, [
         "-c", "safe.directory=*",
         "--git-dir", git_directory,
         "--work-tree", work_directory,
-        "status",
-        "--porcelain"
-    );
-    if (statusResult.stdout.trim() === "") {
+    ]))) {
         return;
     }
 
@@ -96,6 +137,7 @@ async function commit(capabilities, git_directory, work_directory, message) {
         "--git-dir", git_directory,
         "--work-tree", work_directory,
         "commit",
+        "--quiet",
         "--message", message,
     );
 }
@@ -140,6 +182,7 @@ async function clone(capabilities, remote_uri, work_directory, options) {
         "-c",
         "user.email=volodyslav",
         "clone",
+        "--quiet",
         "--depth=1",
         "--no-single-branch",
         `--branch=${branch}`,
@@ -168,6 +211,7 @@ async function pull(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "fetch",
+        "--quiet",
         "origin"
     );
     if (!(await ensureCurrentBranch(capabilities, workDirectory))) {
@@ -185,6 +229,7 @@ async function pull(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "merge",
+        "--quiet",
         "--no-edit",
         "--ff-only",
         `origin/${branch}`
@@ -210,6 +255,7 @@ async function push(capabilities, workDirectory) {
             "-c",
             "user.email=volodyslav",
             "push",
+            "--quiet",
             "-u",
             "origin",
             branch
@@ -250,6 +296,7 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "-c",
         "user.email=volodyslav",
         "fetch",
+        "--quiet",
         "origin"
     );
     await ensureCurrentBranch(capabilities, workDirectory);
@@ -263,19 +310,15 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "-c",
         "user.email=volodyslav",
         "read-tree",
+        "--quiet",
         "--reset",
         "-u",
         `origin/${branch}`
     );
-    const statusResult = await capabilities.git.call(
-        "-C",
-        workDirectory,
-        "-c",
-        "safe.directory=*",
-        "status",
-        "--porcelain"
-    );
-    if (statusResult.stdout.trim() === "") {
+    if (!(await hasStagedChanges(capabilities, [
+        "-C", workDirectory,
+        "-c", "safe.directory=*",
+    ]))) {
         return;
     }
     await capabilities.git.call(
@@ -288,6 +331,7 @@ async function fetchAndReconcile(capabilities, workDirectory, resetToHostname) {
         "-c",
         "user.email=volodyslav",
         "commit",
+        "--quiet",
         "--message",
         `Merge-like reset to origin/${branch}`
     );
@@ -311,6 +355,7 @@ async function init(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "init",
+        "--quiet",
         "--template",
         "/proc/some/non/existant/path",
         "--initial-branch",
