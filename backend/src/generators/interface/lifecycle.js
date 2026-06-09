@@ -194,7 +194,7 @@ async function internalInitCheckpointRepoForFallback(capabilities) {
     if (!hasOrigin) {
         await capabilities.git.call(
             "-C", checkpointDir, "-c", "safe.directory=*",
-            "remote", "add", "--quiet", "origin", remotePath
+            "remote", "add", "origin", remotePath
         );
     }
 }

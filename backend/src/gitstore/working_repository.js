@@ -296,7 +296,7 @@ async function synchronize(capabilities, workingPath, origin, options) {
             if (!alreadyAdded) {
                 await capabilities.git.call(
                     "-C", workDir, "-c", "safe.directory=*",
-                    "remote", "add", "--quiet", "origin", remotePath
+                    "remote", "add", "origin", remotePath
                 );
             }
         }
