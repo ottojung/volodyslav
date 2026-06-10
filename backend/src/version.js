@@ -63,7 +63,7 @@ async function getVersion(capabilities) {
         } catch {
             // If git and package metadata are not available, we can assume that the version is unknown.
             const message =
-                error instanceof Object && error !== null && "message" in error
+                typeof error === 'object' && error !== null && "message" in error
                     ? String(error.message)
                     : String(error);
             capabilities.logger.logError({ error }, `Could not determine version: ${message}`);

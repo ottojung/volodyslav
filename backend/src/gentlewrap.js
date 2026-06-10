@@ -35,7 +35,7 @@ async function gentleCall(capabilities, fn, errorsList) {
         if (errorsList.some((predicate) => predicate(e))) {
             // If the error is a user error, log it to the console.
             const message =
-                e instanceof Object && e !== null && "message" in e
+                typeof e === 'object' && e !== null && "message" in e
                     ? String(e.message)
                     : String(e);
             capabilities.logger.logError({}, message);
