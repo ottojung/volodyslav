@@ -69,17 +69,17 @@ const { renderSublevelToSnapshot } = require('./render');
 
 /**
  * Path (relative to `workingDirectory()`) of the git repository that stores the
- * paired database snapshot. This directory is the snapshot root and directly
- * contains sibling managed trees `kindtree/` and `rendered/`.
+ * paired database snapshot. This directory is the snapshot root.
+ * A non-empty paired snapshot stores managed content in sibling trees
+ * `kindtree/` and `rendered/` under this root.
  * @type {string}
  */
 const CHECKPOINT_WORKING_PATH = "generators-database";
 
 /**
  * Subdirectory name inside `CHECKPOINT_WORKING_PATH` for the rendered
- * primitive leaf files. This is a managed content tree, not the snapshot root.
- * The snapshot root is `CHECKPOINT_WORKING_PATH`, which contains both
- * `kindtree/` and `rendered/` as siblings.
+ * primitive leaf files. This is a managed content tree under the snapshot root,
+ * not the snapshot root itself. The snapshot root is `CHECKPOINT_WORKING_PATH`.
  * @type {string}
  */
 const DATABASE_SUBPATH = "rendered";
@@ -106,8 +106,8 @@ function pathToRenderedDatabase(capabilities) {
 
 /**
  * Returns the path to the checkpoint snapshot root directory (the git working
- * tree). This directory directly contains sibling managed trees `kindtree/` and
- * `rendered/`.
+ * tree). A non-empty paired snapshot stores managed content in sibling trees
+ * `kindtree/` and `rendered/` under this root.
  * @param {{ environment: Environment }} capabilities
  * @returns {string}
  */
