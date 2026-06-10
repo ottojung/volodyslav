@@ -159,7 +159,7 @@ describe('exploded migration script compatibility', () => {
         expect(readFile(tmpDir, 'rendered/r/freshness/gafdmopql')).toBe('up-to-date');
     });
 
-    test('migration is idempotent: second run is a no-op', async () => {
+    test.failing('second migration run rejects already-paired snapshot', async () => {
         buildOldFormatFixture(tmpDir);
         await migrateSnapshot(tmpDir);
 
@@ -167,10 +167,10 @@ describe('exploded migration script compatibility', () => {
         const kindtreeFiles1 = fs.readdirSync(path.join(tmpDir, 'kindtree'), { recursive: true }).sort();
         const renderedFiles1 = fs.readdirSync(path.join(tmpDir, 'rendered'), { recursive: true }).sort();
 
-        // Run again
-        await migrateSnapshot(tmpDir);
+        // Second run must reject, not silently no-op
+        await expect(migrateSnapshot(tmpDir)).rejects.toThrow();
 
-        // State should be unchanged
+        // State must remain unchanged after the rejection
         const kindtreeFiles2 = fs.readdirSync(path.join(tmpDir, 'kindtree'), { recursive: true }).sort();
         const renderedFiles2 = fs.readdirSync(path.join(tmpDir, 'rendered'), { recursive: true }).sort();
 
@@ -291,6 +291,19 @@ describe('exploded migration script compatibility', () => {
         expect(readFile(tmpDir, 'kindtree/r/values/node')).toBe('{\n  "text": "string"\n}');
     });
 
+    test.failing('mixed kindtree/rendered state rejects', async () => {
+        // Setup: kindtree has a regular schema file AND rendered has an old-format
+        // value file. This is a partial mixed state, not clearly already migrated.
+        writeJson(tmpDir, 'kindtree/r/values/already_schema', { text: 'string' });
+        writeJson(tmpDir, 'rendered/r/values/unmigrated_object', { text: 'old object' });
+
+        await expect(migrateSnapshot(tmpDir)).rejects.toThrow();
+
+        // Files must remain unchanged after rejection
+        expect(readFile(tmpDir, 'kindtree/r/values/already_schema')).toBe('{\n  "text": "string"\n}');
+        expect(readFile(tmpDir, 'rendered/r/values/unmigrated_object')).toBe('{\n  "text": "old object"\n}');
+    });
+
     test('empty compounds survive migration', async () => {
         writeJson(tmpDir, 'rendered/r/values/emptyObj', {});
         writeJson(tmpDir, 'rendered/r/values/emptyArr', []);
@@ -317,7 +330,18 @@ describe('exploded migration script compatibility', () => {
 
     test('non-regular-file entry under rendered is rejected', async () => {
         fs.mkdirSync(path.join(tmpDir, 'rendered', 'r', 'values'), { recursive: true });
-        try { fs.symlinkSync('/nonexistent', path.join(tmpDir, 'rendered', 'r', 'values', 'link')); } catch { return; }
+        const symlinkPath = path.join(tmpDir, 'rendered', 'r', 'values', 'link');
+        let symlinkCreated = false;
+        try {
+            fs.symlinkSync('/nonexistent', symlinkPath);
+            symlinkCreated = true;
+        } catch (err) {
+            // Platform does not support symlinks; verify preconditions instead
+            expect(fs.statSync(path.join(tmpDir, 'rendered', 'r', 'values')).isDirectory()).toBe(true);
+            expect(fileExists(tmpDir, 'kindtree')).toBe(false);
+            return;
+        }
+        expect(symlinkCreated).toBe(true);
         await expect(migrateSnapshot(tmpDir)).rejects.toThrow();
         expect(fileExists(tmpDir, 'kindtree')).toBe(false);
     });
