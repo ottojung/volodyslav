@@ -331,17 +331,16 @@ describe('exploded migration script compatibility', () => {
     test('non-regular-file entry under rendered is rejected', async () => {
         fs.mkdirSync(path.join(tmpDir, 'rendered', 'r', 'values'), { recursive: true });
         const symlinkPath = path.join(tmpDir, 'rendered', 'r', 'values', 'link');
-        let symlinkCreated = false;
+        let symlinkCreated = true;
         try {
             fs.symlinkSync('/nonexistent', symlinkPath);
-            symlinkCreated = true;
-        } catch (err) {
-            // Platform does not support symlinks; verify preconditions instead
-            expect(fs.statSync(path.join(tmpDir, 'rendered', 'r', 'values')).isDirectory()).toBe(true);
-            expect(fileExists(tmpDir, 'kindtree')).toBe(false);
+        } catch {
+            symlinkCreated = false;
+        }
+        if (!symlinkCreated) {
+            // Platform does not support symlinks — test is inconclusive here.
             return;
         }
-        expect(symlinkCreated).toBe(true);
         await expect(migrateSnapshot(tmpDir)).rejects.toThrow();
         expect(fileExists(tmpDir, 'kindtree')).toBe(false);
     });
