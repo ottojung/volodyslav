@@ -51,19 +51,45 @@ At the raw LevelDB level these are concatenated with the sublevel prefixes, e.g.
 
 ---
 
-## Filesystem rendering
+## Filesystem rendering (paired snapshot)
 
-The database exposes two complementary operations for dumping and restoring its complete state
-to/from a plain directory tree:
+The database exposes two complementary operations for rendering its state into a paired
+snapshot directory and restoring it from a snapshot:
 
 ```js
 const { renderToFilesystem, scanFromFilesystem } = require('./database');
 
-// Dump every key/value pair to disk
-await renderToFilesystem(capabilities, rootDatabase, '/path/to/snapshot');
+// Render sublevel "x" into a paired snapshot rooted at /path/to/snapshot
+await renderToFilesystem(capabilities, rootDatabase, '/path/to/snapshot', 'x');
 
-// Restore the database from a snapshot (clears all existing entries first)
-await scanFromFilesystem(capabilities, rootDatabase, '/path/to/snapshot');
+// Scan snapshot sublevel "x" back into database sublevel "x"
+await scanFromFilesystem(capabilities, rootDatabase, '/path/to/snapshot', 'x');
+```
+
+The snapshot root is the directory that directly contains the sibling managed trees:
+
+```
+snapshotRoot/
+  kindtree/        ← schema files (one per value root)
+  rendered/        ← primitive leaf files (zero or more per value root)
+```
+
+The compatibility entrypoints (`renderToFilesystem` / `scanFromFilesystem`) use the same
+sublevel name for both the database sublevel and the snapshot sublevel. When the source and
+snapshot sublevel names differ, use the explicit API:
+
+```js
+renderSublevelToSnapshot(capabilities, rootDatabase, {
+    snapshotRoot,
+    sourceSublevel,   // database sublevel to render
+    snapshotSublevel, // sublevel under kindtree/ and rendered/
+});
+
+scanSublevelFromSnapshot(capabilities, rootDatabase, {
+    snapshotRoot,
+    targetSublevel,   // database sublevel to write into
+    snapshotSublevel, // sublevel under kindtree/ and rendered/
+});
 ```
 
 ### Key → file-path mapping
@@ -126,17 +152,21 @@ relativePathToKey(keyToRelativePath(key)) === key   // for all valid keys
 The `!` character in argument values is encoded as `%21` before splitting, so it can never be
 mistaken for the LevelDB sublevel separator.
 
-### Stale-key deletion (P2)
+### Reconciliation and value reconstruction
 
-`scanFromFilesystem` **clears all existing entries** from the database before importing.
-This ensures that keys present in the database but absent from the snapshot directory
-(i.e., deleted entries) do not survive the restore, preserving the bijection/restore semantics.
+The paired snapshot scanner (`scanFromFilesystem` / `scanSublevelFromSnapshot`) is schema-led:
+it enumerates `kindtree/`, validates and parses schemas, claims rendered leaves, and reconstructs
+complete values before any database mutation. Unclaimed rendered files (present in `rendered/` but
+not referenced by any schema in `kindtree/`) cause a hard failure with `ExtraRenderedFileError`.
 
-### Value serialisation
+The renderer (`renderToFilesystem` / `renderSublevelToSnapshot`) writes both the type schema
+under `kindtree/` and zero-or-more primitive leaf files under `rendered/` for each value root.
+Empty snapshots produce neither directory if the sublevel has no entries.
 
-Values are stored as JSON.  `renderToFilesystem` writes `JSON.stringify(value)` to each file;
-`scanFromFilesystem` reads each file and calls `JSON.parse(content)` before writing back to the
-database.
+### No locking
+
+Neither `renderToFilesystem` nor `scanFromFilesystem` acquires any lock.  Callers that require
+atomicity must arrange their own locking around these calls.
 
 ### No locking
 
@@ -148,8 +178,9 @@ atomicity must arrange their own locking around these calls.
 ## Checkpointing and synchronisation
 
 The live LevelDB now lives outside the git repository
-(`<workingDirectory>/generators-leveldb/`). The git repository stores a rendered
-filesystem snapshot under `<workingDirectory>/generators-database/rendered/`.
+(`<workingDirectory>/generators-leveldb/`). The git repository stores a paired
+filesystem snapshot under `<workingDirectory>/generators-database/` with sibling
+`kindtree/` and `rendered/` directories.
 Two higher-level operations are available:
 
 - **`checkpointDatabase(capabilities, message, rootDatabase)`** – renders the live

@@ -31,10 +31,12 @@ async function pruneEmptyDirectories(capabilities, directory) {
     return false;
 }
 
-/** Compatibility entry point whose directory denotes the selected rendered sublevel. @param {RenderCapabilities} capabilities @param {RootDatabase} rootDatabase @param {string} outputDir @param {string} sublevel @returns {Promise<void>} */
-async function renderToFilesystem(capabilities, rootDatabase, outputDir, sublevel) {
-    const snapshotRoot = path.dirname(path.dirname(outputDir));
-    const snapshotSublevel = path.basename(outputDir);
-    await renderSublevelToSnapshot(capabilities, rootDatabase, { snapshotRoot, sourceSublevel: sublevel, snapshotSublevel });
+/** Compatibility entry point that renders a database sublevel into a paired snapshot with the same sublevel name. @param {RenderCapabilities} capabilities @param {RootDatabase} rootDatabase @param {string} snapshotRoot @param {string} sublevel @returns {Promise<void>} */
+async function renderToFilesystem(capabilities, rootDatabase, snapshotRoot, sublevel) {
+    await renderSublevelToSnapshot(capabilities, rootDatabase, {
+        snapshotRoot,
+        sourceSublevel: sublevel,
+        snapshotSublevel: sublevel,
+    });
 }
 module.exports = { renderSublevelToSnapshot, renderToFilesystem };

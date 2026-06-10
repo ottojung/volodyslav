@@ -5,8 +5,11 @@ const {
     getRootDatabase,
     renderSublevelToSnapshot,
     scanSublevelFromSnapshot,
+    renderToFilesystem,
+    scanFromFilesystem,
     isMissingKindtreeRootError,
     isExtraRenderedFileError,
+    isScanInputDirMissingError,
 } = require('../src/generators/incremental_graph/database');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
@@ -83,5 +86,77 @@ describe('paired exploded JSON snapshots', () => {
             const error = await captureRejection(() => scanSublevelFromSnapshot(capabilities, db, { snapshotRoot: tmpDir, targetSublevel: 'y', snapshotSublevel: 'r' }));
             expect(isMissingKindtreeRootError(error)).toBe(true);
         } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+    });
+
+    describe('compatibility API (renderToFilesystem / scanFromFilesystem)', () => {
+        test('renderToFilesystem writes under the exact snapshot root', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const snapshotRoot = path.join(tmpDir, 'snapshot');
+                await db._rawPut('!x!!values!node', { text: 'hello' });
+                await renderToFilesystem(capabilities, db, snapshotRoot, 'x');
+
+                expect(fs.existsSync(path.join(snapshotRoot, 'kindtree/x/values/node'))).toBe(true);
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered/x/values/node/text'))).toBe(true);
+
+                expect(fs.existsSync(path.join(tmpDir, 'kindtree'))).toBe(false);
+                expect(fs.existsSync(path.join(tmpDir, 'rendered'))).toBe(false);
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+
+        test('scanFromFilesystem reads from the exact snapshot root', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const snapshotRoot = path.join(tmpDir, 'snapshot');
+                fs.mkdirSync(path.join(snapshotRoot, 'kindtree/x/values'), { recursive: true });
+                fs.mkdirSync(path.join(snapshotRoot, 'rendered/x/values/node'), { recursive: true });
+                fs.writeFileSync(path.join(snapshotRoot, 'kindtree/x/values/node'), '{"text": "string"}');
+                fs.writeFileSync(path.join(snapshotRoot, 'rendered/x/values/node/text'), 'world');
+
+                await scanFromFilesystem(capabilities, db, snapshotRoot, 'x');
+                expect(await readRaw(db, '!x!!values!node')).toEqual({ text: 'world' });
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+
+        test('round-trip through compatibility API', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const snapshotRoot = path.join(tmpDir, 'snapshot');
+                await db._rawPut('!x!!values!node', { value: 42 });
+                await renderToFilesystem(capabilities, db, snapshotRoot, 'x');
+
+                await db._rawDel('!x!!values!node');
+                expect(await readRaw(db, '!x!!values!node')).toBeUndefined();
+
+                await scanFromFilesystem(capabilities, db, snapshotRoot, 'x');
+                expect(await readRaw(db, '!x!!values!node')).toEqual({ value: 42 });
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+
+        test('empty snapshot rendering does not break later scan', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const snapshotRoot = path.join(tmpDir, 'snapshot');
+                fs.mkdirSync(snapshotRoot, { recursive: true });
+                await renderToFilesystem(capabilities, db, snapshotRoot, 'y');
+                expect(fs.existsSync(path.join(snapshotRoot, 'kindtree/y'))).toBe(false);
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered/y'))).toBe(false);
+                await scanFromFilesystem(capabilities, db, snapshotRoot, 'y');
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+
+        test('scanFromFilesystem throws when snapshotRoot is missing', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const missingRoot = path.join(tmpDir, 'nonexistent');
+                const error = await captureRejection(() => scanFromFilesystem(capabilities, db, missingRoot, 'x'));
+                expect(isScanInputDirMissingError(error)).toBe(true);
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
     });
 });
