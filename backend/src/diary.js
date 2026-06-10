@@ -152,7 +152,7 @@ async function processDiaryAudios(capabilities) {
             successes.push({ ass, originalFile: file });
         } catch (err) {
             const message =
-                err instanceof Object && err !== null && "message" in err
+                typeof err === 'object' && err !== null && "message" in err
                     ? String(err.message)
                     : String(err);
             failures.push({ originalFile: file, message });
@@ -217,7 +217,7 @@ async function deleteOriginalAudios(capabilities, successes, diaryAudiosDir) {
             );
         } catch (error) {
             const msg =
-                error instanceof Object && error !== null && "message" in error
+                typeof error === 'object' && error !== null && "message" in error
                     ? error.message
                     : String(error);
             capabilities.logger.logWarning(
