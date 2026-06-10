@@ -24,8 +24,8 @@ async function renderSublevelToSnapshot(capabilities, rootDatabase, options) {
     const kindtreeSublevel = path.join(options.snapshotRoot, 'kindtree', snapshotSublevel);
     await pruneEmptyDirectories(capabilities, renderedSublevel);
     await pruneEmptyDirectories(capabilities, kindtreeSublevel);
-    await pruneEmptyDirectories(capabilities, path.join(options.snapshotRoot, 'rendered'));
-    await pruneEmptyDirectories(capabilities, path.join(options.snapshotRoot, 'kindtree'));
+    await deleteDirectoryIfEmpty(capabilities, path.join(options.snapshotRoot, 'rendered'));
+    await deleteDirectoryIfEmpty(capabilities, path.join(options.snapshotRoot, 'kindtree'));
     capabilities.logger.logInfo({ snapshotRoot: options.snapshotRoot, sourceSublevel, snapshotSublevel, ...stats }, 'Rendered database sublevel to paired snapshot');
 }
 /** @param {RenderCapabilities} capabilities @param {string} directory @returns {Promise<boolean>} */
@@ -34,6 +34,13 @@ async function pruneEmptyDirectories(capabilities, directory) {
     for (const child of await capabilities.scanner.scanDirectory(directory)) {
         if (await capabilities.checker.directoryExists(child.path)) await pruneEmptyDirectories(capabilities, child.path);
     }
+    if ((await capabilities.scanner.scanDirectory(directory)).length === 0) { await capabilities.deleter.deleteDirectory(directory); return true; }
+    return false;
+}
+
+/** Non-recursive: delete the directory only if it has zero entries. @param {RenderCapabilities} capabilities @param {string} directory @returns {Promise<boolean>} */
+async function deleteDirectoryIfEmpty(capabilities, directory) {
+    if (!await capabilities.checker.directoryExists(directory)) return true;
     if ((await capabilities.scanner.scanDirectory(directory)).length === 0) { await capabilities.deleter.deleteDirectory(directory); return true; }
     return false;
 }

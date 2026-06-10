@@ -220,7 +220,7 @@ describe('paired exploded JSON snapshots', () => {
             } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
         });
 
-        test.failing('[22.6-e] rendering one sublevel does not delete another sublevel empty incidental directory', async () => {
+        test('[22.6-e] rendering one sublevel does not delete another sublevel empty incidental directory', async () => {
             const { capabilities, tmpDir } = makeCapabilities();
             const db = await getRootDatabase(capabilities);
             try {
