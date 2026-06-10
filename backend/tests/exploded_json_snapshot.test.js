@@ -11,6 +11,9 @@ const {
     isExtraRenderedFileError,
     isScanInputDirMissingError,
 } = require('../src/generators/incremental_graph/database');
+const {
+    isDuplicateDecodedValueRootError,
+} = require('../src/generators/incremental_graph/database/render');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
 
@@ -34,7 +37,7 @@ async function readRaw(db, key) {
 }
 
 describe('paired exploded JSON snapshots', () => {
-    test('renders and scans one complete value through sibling trees', async () => {
+    test('[19.5-1/19.6-1] renders and scans one complete value through sibling trees', async () => {
         const { capabilities, tmpDir } = makeCapabilities();
         const db = await getRootDatabase(capabilities);
         try {
@@ -48,7 +51,7 @@ describe('paired exploded JSON snapshots', () => {
         } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
     });
 
-    test('authoritative rerender resolves scalar and compound shape conflicts', async () => {
+    test('[19.5-15/16/17/18/19/20] authoritative rerender resolves scalar and compound shape conflicts', async () => {
         const { capabilities, tmpDir } = makeCapabilities();
         const db = await getRootDatabase(capabilities);
         try {
@@ -64,7 +67,7 @@ describe('paired exploded JSON snapshots', () => {
         } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
     });
 
-    test('scan rejects unclaimed rendered files before DB mutation', async () => {
+    test('[19.3-25] scan rejects unclaimed rendered files before DB mutation', async () => {
         const { capabilities, tmpDir } = makeCapabilities();
         const db = await getRootDatabase(capabilities);
         try {
@@ -77,7 +80,7 @@ describe('paired exploded JSON snapshots', () => {
         } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
     });
 
-    test('scan rejects rendered-only legacy snapshots', async () => {
+    test('scan rejects rendered-only legacy snapshots (missing kindtree root)', async () => {
         const { capabilities, tmpDir } = makeCapabilities();
         const db = await getRootDatabase(capabilities);
         try {
@@ -85,6 +88,18 @@ describe('paired exploded JSON snapshots', () => {
             fs.writeFileSync(path.join(tmpDir, 'rendered/r/values/node'), '{"legacy":true}');
             const error = await captureRejection(() => scanSublevelFromSnapshot(capabilities, db, { snapshotRoot: tmpDir, targetSublevel: 'y', snapshotSublevel: 'r' }));
             expect(isMissingKindtreeRootError(error)).toBe(true);
+        } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+    });
+
+    test('[19.7-12] duplicate schema paths that decode to the same raw key are rejected', async () => {
+        const { capabilities, tmpDir } = makeCapabilities();
+        const db = await getRootDatabase(capabilities);
+        try {
+            fs.mkdirSync(path.join(tmpDir, 'kindtree/r/values'), { recursive: true });
+            fs.writeFileSync(path.join(tmpDir, 'kindtree/r/values/a%2Fb'), '{}');
+            fs.writeFileSync(path.join(tmpDir, 'kindtree/r/values/a%2fb'), '{}');
+            const error = await captureRejection(() => scanSublevelFromSnapshot(capabilities, db, { snapshotRoot: tmpDir, targetSublevel: 'y', snapshotSublevel: 'r' }));
+            expect(isDuplicateDecodedValueRootError(error)).toBe(true);
         } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
     });
 
