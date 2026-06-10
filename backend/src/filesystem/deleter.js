@@ -19,6 +19,9 @@
 
 const fs = require("fs").promises;
 
+const DELETE_RETRY_DELAY_MS = 200;
+const DELETE_RETRY_ATTEMPTS = 25;
+
 class FileDeleterError extends Error {
     /**
      * @param {string} message
@@ -72,8 +75,9 @@ async function deleteFile(filePath) {
         if (err instanceof Object && "code" in err && err.code === "ENOENT") {
             throw new FileNotFoundError(filePath);
         } else {
+            const msg = err instanceof Error ? err.message : String(err);
             throw new FileDeleterError(
-                `Failed to delete file: ${filePath}`,
+                `Failed to delete file: ${filePath}: ${msg}`,
                 filePath
             );
         }
@@ -86,18 +90,38 @@ async function deleteFile(filePath) {
  * @returns {Promise<void>} - A promise that resolves when the directory is deleted.
  */
 async function deleteDirectory(directoryPath) {
-    try {
-        await fs.rm(directoryPath, { recursive: true });
-    } catch (err) {
-        if (err instanceof Object && "code" in err && err.code === "ENOENT") {
-            throw new FileNotFoundError(directoryPath);
-        } else {
+    let lastError = null;
+    for (let attempt = 0; attempt < DELETE_RETRY_ATTEMPTS; attempt++) {
+        try {
+            await fs.rm(directoryPath, { recursive: true });
+            return;
+        } catch (err) {
+            const isObject = typeof err === 'object' && "code" in err;
+            const code = isObject && err.code;
+            if (isObject && code === "ENOENT") {
+                return;
+            }
+            if (isObject && code === "ENOTEMPTY") {
+                lastError = err;
+                await new Promise((resolve) =>
+                    setTimeout(resolve, DELETE_RETRY_DELAY_MS)
+                );
+                continue;
+            }
+            const msg = err instanceof Error ? err.message : String(err);
             throw new FileDeleterError(
-                `Failed to delete directory: ${directoryPath}`,
+                `Failed to delete directory: ${directoryPath}: (${code}) ${msg}`,
                 directoryPath
             );
         }
     }
+    const msg = lastError instanceof Error ? lastError.message : String(lastError);
+    const isObject = typeof lastError === 'object' && "code" in err;
+    const code = isObject && lastError.code;
+    throw new FileDeleterError(
+        `Failed to delete directory after ${DELETE_RETRY_ATTEMPTS} attempts: ${directoryPath}: (${code}) ${msg}`,
+        directoryPath
+    );
 }
 
 /**
