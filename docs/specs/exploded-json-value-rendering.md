@@ -586,8 +586,8 @@ is irrelevant. Sparse arrays are invalid. Every source index from zero through
 Empty objects and arrays are schema-only:
 
 ```text
-{} -> typesscm {} + no rendered path
-[] -> typesscm [] + no rendered path
+{} -> typesscm {} + no required rendered files
+[] -> typesscm [] + no required rendered files
 ```
 
 This rule applies recursively. A compound subtree with no primitive leaves has
@@ -646,8 +646,11 @@ DB value { "x": 1 }:
 
 ```text
 DB value {}:
-  rendered/r/values/nodeA       absent
+  rendered/r/values/nodeA       no required rendered files
   typesscm/r/values/nodeA       regular file: {}
+
+Canonical render emits no rendered files for this value. During scan, an empty
+incidental `rendered/r/values/nodeA` directory is valid but noncanonical.
 ```
 
 ## 9. Path-segment encoding
@@ -823,8 +826,8 @@ fallback.
 5. reject every rendered file not claimed by exactly one schema leaf; and
 6. reconstruct one complete DB value per schema file.
 
-A schema file always defines a DB value. Its rendered root may be absent when
-the schema contains no primitive leaves. A rendered file without a schema value
+A schema file always defines a DB value. It may have no required rendered files
+when the schema contains no primitive leaves. A rendered file without a schema value
 root and primitive schema leaf claiming it is invalid. A directory where a
 schema file should be is invalid.
 
@@ -846,7 +849,7 @@ Given a validated schema node and its corresponding logical rendered path:
 - `"boolean"`: require a regular file containing exactly `true` or exactly
   `false`, and return the corresponding boolean;
 - `"null"`: require a regular file containing exactly `null` and return null;
-- empty schema object or array: require no rendered path and return the empty
+- empty schema object or array: require no rendered files and return the empty
   compound;
 - non-empty schema object: recursively scan every child schema and return an
   object; and
@@ -973,8 +976,8 @@ rendered has files below a value root with no typesscm file
 typesscm says empty object, but a rendered file exists below that path
 ```
 
-A type-schema root with no rendered root is valid when its schema has no
-primitive leaves. It is invalid when any primitive schema leaf lacks its
+A type-schema root with no required rendered files is valid when its schema has
+no primitive leaves. It is invalid when any primitive schema leaf lacks its
 required rendered file.
 
 Errors SHOULD identify:
@@ -1259,16 +1262,22 @@ The schema disambiguates identical rendered text.
 Root empty object:
 
 ```text
-rendered/r/values/nodeA   absent
+rendered/r/values/nodeA   no required rendered files
 typesscm/r/values/nodeA   file: {}
 ```
+
+Canonical render emits no rendered files for this value. During scan, an empty
+incidental `rendered/r/values/nodeA` directory is valid but noncanonical.
 
 Root empty array:
 
 ```text
-rendered/r/values/nodeA   absent
+rendered/r/values/nodeA   no required rendered files
 typesscm/r/values/nodeA   file: []
 ```
+
+Canonical render emits no rendered files for this value. During scan, an empty
+incidental `rendered/r/values/nodeA` directory is valid but noncanonical.
 
 ### 18.3 Primitive-free nested compounds
 
@@ -1302,7 +1311,7 @@ The schema contains the complete structure:
 }
 ```
 
-There are no rendered files and no rendered value-root path required.
+There are no required rendered files.
 
 ### 18.4 Object with dangerous keys
 
@@ -1345,7 +1354,7 @@ index specified by the schema.
 ### 18.6 Empty compound type change
 
 Changing `{}` to `[]` changes the schema file from `{}` to `[]`. Both states
-have no rendered value-root path, so the schema file is the only changed file.
+have no required rendered files, so the schema file is the only changed file.
 
 ## 19. Conformance test scenarios
 
@@ -1372,16 +1381,16 @@ and successful scan back to the source value.
 10. Boolean array elements render at their numeric index paths.
 11. Null renders exact `null` with schema `"null"`.
 12. Flat, nested, deeply nested, and mixed object/array structures round-trip.
-13. Root `{}` has one schema file and no rendered root.
-14. Root `[]` has one schema file and no rendered root.
-15. Empty object property has no rendered child path.
-16. Empty array property has no rendered child path.
-17. Empty object array element has no rendered index path.
-18. Empty array array element has no rendered index path.
-19. Object containing only empty objects/arrays has schema but no rendered
-    subtree.
-20. Array containing only empty objects/arrays has schema but no rendered
-    subtree.
+13. Root `{}` has one schema file and no required rendered files.
+14. Root `[]` has one schema file and no required rendered files.
+15. Empty object property has no required rendered files.
+16. Empty array property has no required rendered files.
+17. Empty object array element has no required rendered files.
+18. Empty array array element has no required rendered files.
+19. Object containing only empty objects/arrays has schema and no required
+    rendered files.
+20. Array containing only empty objects/arrays has schema and no required
+    rendered files.
 21. Deeply nested empty compounds with no primitive leaves have schema but no
     rendered files.
 22. A compound with both primitive and primitive-free children renders only the
@@ -1449,15 +1458,18 @@ Failure cases identify the value root and offending path where applicable.
 
 Acceptance controls for incidental directories:
 
-27. Root `{}` with no rendered path is valid.
+27. Root `{}` with no required rendered files is valid.
 28. Root `{}` with an empty incidental rendered directory is valid but
-    noncanonical.
-29. Root `[]` with no rendered path is valid.
-30. Root `[]` with an empty incidental rendered directory is valid but
-    noncanonical.
-31. Primitive-free nested compound with no rendered files is valid.
-32. Primitive-free nested compound with empty incidental directories is valid
-    but noncanonical.
+   noncanonical.
+29. Root `{}` with any rendered file below it is invalid.
+30. Root `[]` with no required rendered files is valid.
+31. Root `[]` with an empty incidental rendered directory is valid but
+   noncanonical.
+32. Root `[]` with any rendered file below it is invalid.
+33. Primitive-free nested compound with no required rendered files is valid.
+34. Primitive-free nested compound with empty incidental directories is valid
+   but noncanonical.
+35. Primitive-free nested compound with any rendered file below it is invalid.
 
 ### 19.4 Round-trip and canonicalization cases
 
@@ -1471,10 +1483,11 @@ Acceptance controls for incidental directories:
 6. Canonicalize accepted lowercase path escapes to uppercase.
 7. Ignore filesystem discovery order for object leaves and array indices.
 8. Keep schema-only empty roots free of required rendered files after scan and
-   render.
+   render. Do not assert physical empty directory preservation as canonical
+   behavior.
 9. Scan snapshots containing only incidental empty directories for empty or
    primitive-free compounds, then render to the same canonical virtual file set
-   with no files for those compounds.
+   with no required rendered files for those compounds.
 10. Remove unclaimed rendered files during authoritative DB render.
 11. Assert `render -> render` idempotence and `scan -> render -> scan` stability.
 
@@ -1498,13 +1511,13 @@ Acceptance controls for incidental directories:
 14. Scalar → object/array with leaves replaces file with descendant files.
 15. Object/array with leaves → scalar removes stale descendants and writes file.
 16. Object with child → `{}` deletes child leaves, writes `{}`, and requires no
-    rendered path.
+    rendered files.
 17. Array with elements → `[]` deletes index leaves, writes `[]`, and requires
-    no rendered path.
+    no rendered files.
 18. `{}` → object with child creates the child file and updates schema.
 19. `[]` → array with child creates the index file and updates schema.
-20. `{}` → `[]` and `[]` → `{}` update schema only while rendered side remains
-    absent.
+20. `{}` → `[]` and `[]` → `{}` update schema only while both states have no
+    required rendered files.
 21. Primitive-free compound → primitive-containing compound creates all
     required rendered primitive leaf files.
 22. Primitive-containing compound → primitive-free compound deletes all
@@ -1533,9 +1546,9 @@ Acceptance controls for incidental directories:
 6. Source omission deletes nodeB without affecting nodeA or another sublevel.
 7. Scalar/object/array transitions replace the complete DB value.
 8. Array shrink and growth replace the complete array value.
-9. Root `{}` scans to empty object with no rendered path.
+9. Root `{}` scans to empty object with no required rendered files.
 10. Root `{}` also scans with an empty incidental rendered directory.
-11. Root `[]` scans to empty array with no rendered path.
+11. Root `[]` scans to empty array with no required rendered files.
 12. Root `[]` also scans with an empty incidental rendered directory.
 13. Nested primitive-free compounds reconstruct with no rendered files or with
     empty incidental directories.
