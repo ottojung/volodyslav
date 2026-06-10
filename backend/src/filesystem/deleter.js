@@ -96,11 +96,12 @@ async function deleteDirectory(directoryPath) {
             await fs.rm(directoryPath, { recursive: true });
             return;
         } catch (err) {
-            const isObject = err instanceof Object && "code" in err;
-            if (isObject && err.code === "ENOENT") {
-                throw new FileNotFoundError(directoryPath);
+            const isObject = typeof err === 'object' && "code" in err;
+            const code = isObject && err.code;
+            if (isObject && code === "ENOENT") {
+                return;
             }
-            if (isObject && err.code === "ENOTEMPTY") {
+            if (isObject && code === "ENOTEMPTY") {
                 lastError = err;
                 await new Promise((resolve) =>
                     setTimeout(resolve, DELETE_RETRY_DELAY_MS)
@@ -109,14 +110,16 @@ async function deleteDirectory(directoryPath) {
             }
             const msg = err instanceof Error ? err.message : String(err);
             throw new FileDeleterError(
-                `Failed to delete directory: ${directoryPath}: ${msg}`,
+                `Failed to delete directory: ${directoryPath}: (${code}) ${msg}`,
                 directoryPath
             );
         }
     }
     const msg = lastError instanceof Error ? lastError.message : String(lastError);
+    const isObject = typeof lastError === 'object' && "code" in err;
+    const code = isObject && lastError.code;
     throw new FileDeleterError(
-        `Failed to delete directory after ${DELETE_RETRY_ATTEMPTS} attempts: ${directoryPath}: ${msg}`,
+        `Failed to delete directory after ${DELETE_RETRY_ATTEMPTS} attempts: ${directoryPath}: (${code}) ${msg}`,
         directoryPath
     );
 }
