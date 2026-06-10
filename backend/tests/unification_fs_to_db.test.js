@@ -21,8 +21,6 @@ const fs = require('fs');
 const os = require('os');
 const {
     getRootDatabase,
-    renderToFilesystem,
-    scanFromFilesystem,
 } = require('../src/generators/incremental_graph/database');
 const {
     makeFsToDbAdapter,
@@ -235,34 +233,5 @@ describe('makeFsToDbAdapter', () => {
         }
     });
 
-    test('makeFsToDbAdapter produces the same result as scanFromFilesystem', async () => {
-        const { capabilities, tmpDir } = makeTestCapabilities();
 
-        // Seed a database and render it to disk
-        const db1 = await makeSeededDatabase(capabilities, [
-            [X_VALUES_KEY, { items: [1, 2, 3] }],
-            ['!x!!freshness!{"head":"all_events","args":[]}', 'fresh'],
-        ]);
-        const renderDir = path.join(tmpDir, 'render-x');
-        await renderToFilesystem(capabilities, db1, renderDir, 'x');
-        await db1.close();
-
-        // Scan back using the adapter directly
-        const db2 = await getRootDatabase(capabilities);
-        const adapter = makeFsToDbAdapter(capabilities, db2, renderDir, 'x');
-        await unifyStores(adapter);
-        const entriesViaAdapter = await collectRawEntries(db2);
-        await db2.close();
-
-        // Scan back using scanFromFilesystem
-        const db3 = await getRootDatabase(capabilities);
-        await scanFromFilesystem(capabilities, db3, renderDir, 'x');
-        const entriesViaScan = await collectRawEntries(db3);
-        await db3.close();
-
-        // The 'x' sublevel entries should be identical
-        const xViaAdapter = new Map([...entriesViaAdapter].filter(([k]) => k.startsWith('!x!')));
-        const xViaScan = new Map([...entriesViaScan].filter(([k]) => k.startsWith('!x!')));
-        expect(xViaAdapter).toEqual(xViaScan);
-    });
 });

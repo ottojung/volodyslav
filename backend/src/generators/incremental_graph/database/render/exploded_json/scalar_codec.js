@@ -1,0 +1,29 @@
+const { InvalidNumberLeafError, InvalidBooleanLeafError, InvalidNullLeafError } = require('./errors');
+const JSON_NUMBER_PATTERN = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+
+/** @param {string | number | boolean | null} value @returns {string} */
+function renderScalar(value) {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return Object.is(value, -0) ? '0' : JSON.stringify(value);
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    return 'null';
+}
+
+/** @param {string} token @param {string} content @param {string} descendantPath @returns {string | number | boolean | null} */
+function scanScalar(token, content, descendantPath) {
+    if (token === 'string') return content;
+    if (token === 'number') {
+        if (!JSON_NUMBER_PATTERN.test(content)) throw new InvalidNumberLeafError(descendantPath, content);
+        const value = Number(content);
+        if (!Number.isFinite(value)) throw new InvalidNumberLeafError(descendantPath, content);
+        return Object.is(value, -0) ? 0 : value;
+    }
+    if (token === 'boolean') {
+        if (content === 'true') return true;
+        if (content === 'false') return false;
+        throw new InvalidBooleanLeafError(descendantPath, content);
+    }
+    if (content !== 'null') throw new InvalidNullLeafError(descendantPath, content);
+    return null;
+}
+module.exports = { renderScalar, scanScalar };

@@ -29,7 +29,7 @@ const {
     synchronizeNoLock,
     isSyncMergeAggregateError,
 } = require('./synchronize');
-const { renderToFilesystem, scanFromFilesystem, keyToRelativePath, relativePathToKey } = require('./render');
+const { renderToFilesystem, renderSublevelToSnapshot, scanFromFilesystem, scanSublevelFromSnapshot, keyToRelativePath, relativePathToKey, isMissingKindtreeRootError, isExtraRenderedFileError, projectExplodedJsonValue } = require('./render');
 const {
     serializeNodeKey,
     deserializeNodeKey,
@@ -118,10 +118,15 @@ module.exports = {
     stringToVersion,
     synchronizeNoLock,
     isSyncMergeAggregateError,
+    renderSublevelToSnapshot,
     renderToFilesystem,
+    scanSublevelFromSnapshot,
     scanFromFilesystem,
     keyToRelativePath,
     relativePathToKey,
+    isMissingKindtreeRootError,
+    isExtraRenderedFileError,
+    projectExplodedJsonValue,
     serializeNodeKey,
     deserializeNodeKey,
     createNodeKeyFromPattern,
