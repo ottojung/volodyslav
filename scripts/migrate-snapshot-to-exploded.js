@@ -82,8 +82,8 @@ async function walkFiles(dir, baseDir) {
 }
 
 /**
- * Check whether kindtree/ contains at least one regular file (indicating
- * an already-migrated snapshot). Empty directories are not sufficient.
+ * Check whether kindtree/ contains at least one regular file.
+ * Empty directories are not sufficient.
  * @param {string} kindtreeDir
  * @returns {Promise<boolean>}
  */
@@ -247,15 +247,21 @@ async function applyMigrationPlan(snapshotDir, plan) {
 /**
  * Migrate an old-format snapshot to the new paired format.
  * Modifies the directory IN PLACE.
+ * Rejects if the snapshot already contains kindtree schema files (already
+ * paired or mixed state) — does not validate or repair already-paired snapshots.
  *
  * @param {string} snapshotDir - Root of the snapshot (containing rendered/).
  */
 async function migrateSnapshot(snapshotDir) {
-    // Check if already migrated: kindtree/ contains at least one regular file
+    // Reject if kindtree/ already contains regular files: snapshot appears
+    // already paired or in a mixed state. The migration script does not
+    // validate or repair already-paired snapshots.
     const kindtreeDir = path.join(snapshotDir, "kindtree");
     if (await kindtreeHasRegularFiles(kindtreeDir)) {
-        console.log("Snapshot already migrated (kindtree/ contains schema files), nothing to do.");
-        return;
+        throw new Error(
+            `Snapshot already contains kindtree schema files; refusing to migrate an already-paired or mixed snapshot. ` +
+            `Use the paired scanner to validate or reset the snapshot before migration: ${snapshotDir}`
+        );
     }
 
     // Phase 1: Preflight — validate all input, build migration plan
