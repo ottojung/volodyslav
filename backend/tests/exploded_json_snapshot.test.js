@@ -169,9 +169,32 @@ describe('paired exploded JSON snapshots', () => {
                 const snapshotRoot = path.join(tmpDir, 'snapshot');
                 await renderToFilesystem(capabilities, db, snapshotRoot, 'y');
                 expect(fs.existsSync(snapshotRoot)).toBe(true);
-                expect(fs.existsSync(path.join(snapshotRoot, 'kindtree', 'y'))).toBe(false);
-                expect(fs.existsSync(path.join(snapshotRoot, 'rendered', 'y'))).toBe(false);
+                expect(fs.existsSync(path.join(snapshotRoot, 'kindtree'))).toBe(false);
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered'))).toBe(false);
                 await scanFromFilesystem(capabilities, db, snapshotRoot, 'y');
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+
+        test.failing('[22.6-b] rendering a previously populated sublevel to empty prunes top-level kindtree/ and rendered/', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const snapshotRoot = path.join(tmpDir, 'snapshot');
+                await db._rawPut('!z!!values!node', { text: 'hello' });
+                await renderSublevelToSnapshot(capabilities, db, { snapshotRoot, sourceSublevel: 'z', snapshotSublevel: 'r' });
+
+                expect(fs.existsSync(path.join(snapshotRoot, 'kindtree', 'r'))).toBe(true);
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered', 'r'))).toBe(true);
+                expect(fs.existsSync(path.join(snapshotRoot, 'kindtree'))).toBe(true);
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered'))).toBe(true);
+
+                await db._rawDel('!z!!values!node');
+                await renderSublevelToSnapshot(capabilities, db, { snapshotRoot, sourceSublevel: 'z', snapshotSublevel: 'r' });
+
+                expect(fs.existsSync(snapshotRoot)).toBe(true);
+                expect(fs.existsSync(path.join(snapshotRoot, 'kindtree'))).toBe(false);
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered'))).toBe(false);
+                await scanSublevelFromSnapshot(capabilities, db, { snapshotRoot, targetSublevel: 'z', snapshotSublevel: 'r' });
             } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
         });
 
