@@ -306,7 +306,28 @@ describe('exploded migration script compatibility', () => {
         expect(fileExists(tmpDir, 'rendered/r/values/emptyArr')).toBe(false);
     });
 
-    // ─── Full integration with scanner ─────────────────────────────────────
+    // ─── Input validation: preflight rejection tests ────────────────────────
+
+    test.failing('rendered exists but is not a directory (regular file) fails before mutation', async () => {
+        fs.writeFileSync(path.join(tmpDir, 'rendered'), 'not a directory');
+        await expect(migrateSnapshot(tmpDir)).rejects.toThrow();
+        expect(fs.statSync(path.join(tmpDir, 'rendered')).isFile()).toBe(true);
+        expect(fileExists(tmpDir, 'kindtree')).toBe(false);
+    });
+
+    test.failing('non-regular-file entry under rendered is rejected', async () => {
+        fs.mkdirSync(path.join(tmpDir, 'rendered', 'r', 'values'), { recursive: true });
+        try { fs.symlinkSync('/nonexistent', path.join(tmpDir, 'rendered', 'r', 'values', 'link')); } catch { return; }
+        await expect(migrateSnapshot(tmpDir)).rejects.toThrow();
+        expect(fileExists(tmpDir, 'kindtree')).toBe(false);
+    });
+
+    test('shallow depth rendered/r (depth 1) is rejected', async () => {
+        fs.mkdirSync(path.join(tmpDir, 'rendered'), { recursive: true });
+        fs.writeFileSync(path.join(tmpDir, 'rendered', 'r'), 'shallow');
+        await expect(migrateSnapshot(tmpDir)).rejects.toThrow();
+        expect(fileExists(tmpDir, 'kindtree')).toBe(false);
+    });
 
     // ─── Full integration with scanner ─────────────────────────────────────
 
