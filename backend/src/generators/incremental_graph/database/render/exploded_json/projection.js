@@ -4,7 +4,6 @@
  * Converts between ValueProjection and flat virtual file entries.
  */
 
-const { formatSchema } = require('./schema_codec');
 const { kindtreeVirtualKey, renderedVirtualKey } = require('./virtual_file_key');
 
 /**

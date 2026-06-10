@@ -49,43 +49,6 @@ async function seedRemoteRepository(capabilities, entries) {
 }
 
 /**
- * @param {object} capabilities
- * @param {Array<{ path: string, content: string }>} renderedFiles
- * @returns {Promise<void>}
- */
-async function seedHostnameBranchWithRenderedFiles(capabilities, renderedFiles) {
-    const branch = `${capabilities.environment.hostname()}-main`;
-    const remotePath = capabilities.environment.generatorsRepository();
-    const workTree = await capabilities.creator.createTemporaryDirectory();
-    try {
-        await capabilities.git.call("init", "--bare", "--", remotePath);
-        await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
-        for (const file of renderedFiles) {
-            const created = await capabilities.creator.createFile(
-                path.join(workTree, DATABASE_SUBPATH, file.path)
-            );
-            await capabilities.writer.writeFile(created, file.content);
-        }
-        await capabilities.git.call("-C", workTree, "add", "--all");
-        await capabilities.git.call(
-            "-C",
-            workTree,
-            "-c",
-            "user.name=volodyslav",
-            "-c",
-            "user.email=volodyslav",
-            "commit",
-            "-m",
-            "seed rendered snapshot"
-        );
-        await capabilities.git.call("-C", workTree, "remote", "add", "origin", "--", remotePath);
-        await capabilities.git.call("-C", workTree, "push", "origin", branch);
-    } finally {
-        await capabilities.deleter.deleteDirectory(workTree);
-    }
-}
-
-/**
  * @param {import('../src/generators/incremental_graph/database/root_database').RootDatabase} db
  * @returns {Promise<Map<string, *>>}
  */

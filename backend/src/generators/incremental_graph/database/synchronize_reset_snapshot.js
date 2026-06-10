@@ -2,7 +2,6 @@ const path = require('path');
 const { transaction } = require('../../../gitstore');
 const {
     CHECKPOINT_WORKING_PATH,
-    DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
 } = require('./gitstore');
 const { makeRootDatabase } = require('./root_database');

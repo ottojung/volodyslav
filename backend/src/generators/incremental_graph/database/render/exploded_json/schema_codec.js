@@ -68,14 +68,15 @@ function validateSchema(schema, path) {
             }
             return;
         }
-        const keys = Object.keys(schema);
+        const obj = /** @type {Record<string, TypeSchema>} */ (schema);
+        const keys = Object.keys(obj);
         const seen = new Set();
         for (const key of keys) {
             if (seen.has(key)) {
                 throw new DuplicateSchemaKeyError(key);
             }
             seen.add(key);
-            validateSchema(schema[key], `${path || '<root>'}.${key}`);
+            validateSchema(obj[key], `${path || '<root>'}.${key}`);
         }
         return;
     }
@@ -129,8 +130,11 @@ function detectDuplicateKeysInJson(jsonText) {
             stack.push({ type: 'object', keys: new Set() });
             i++;
         } else if (ch === '}') {
-            if (stack.length > 0 && stack[stack.length - 1].type === 'object') {
-                stack.pop();
+            if (stack.length > 0) {
+                const top = stack[stack.length - 1];
+                if (top !== undefined && top.type === 'object') {
+                    stack.pop();
+                }
             }
             i++;
         } else if (ch === '[') {
@@ -139,7 +143,7 @@ function detectDuplicateKeysInJson(jsonText) {
         } else if (ch === ']') {
             if (stack.length > 0) {
                 const top = stack[stack.length - 1];
-                if (top.type === 'array') stack.pop();
+                if (top !== undefined && top.type === 'array') stack.pop();
             }
             i++;
         } else if (ch === '"') {
@@ -155,17 +159,20 @@ function detectDuplicateKeysInJson(jsonText) {
                     i++;
                 }
             }
-            const afterStr = skipJsonWhitespace(jsonText, i);
-            if (afterStr < jsonText.length && jsonText[afterStr] === ':') {
-                const keyStr = jsonText.slice(start, i);
-                const keyContent = JSON.parse(keyStr);
-                if (stack.length > 0 && stack[stack.length - 1].type === 'object') {
-                    if (stack[stack.length - 1].keys.has(keyContent)) {
-                        throw new DuplicateSchemaKeyError(keyContent);
+                const afterStr = skipJsonWhitespace(jsonText, i);
+                if (afterStr < jsonText.length && jsonText[afterStr] === ':') {
+                    const keyStr = jsonText.slice(start, i);
+                    const keyContent = JSON.parse(keyStr);
+                    if (stack.length > 0) {
+                        const top = stack[stack.length - 1];
+                        if (top !== undefined && top.type === 'object' && top.keys !== undefined) {
+                            if (top.keys.has(keyContent)) {
+                                throw new DuplicateSchemaKeyError(keyContent);
+                            }
+                            top.keys.add(keyContent);
+                        }
                     }
-                    stack[stack.length - 1].keys.add(keyContent);
-                }
-                i = afterStr + 1;
+                    i = afterStr + 1;
             } else {
                 i = afterStr;
             }
@@ -217,11 +224,17 @@ function formatSchema(schema) {
  * @param {unknown} value
  * @returns {unknown}
  */
-function sortSchemaReplacer(key, value) {
+/**
+ * @param {string} _key
+ * @param {unknown} value
+ * @returns {unknown}
+ */
+function sortSchemaReplacer(_key, value) {
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-        const sorted = {};
-        for (const k of Object.keys(value).sort()) {
-            sorted[k] = value[k];
+        const sorted = /** @type {Record<string, unknown>} */ ({});
+        const obj = /** @type {Record<string, unknown>} */ (value);
+        for (const k of Object.keys(obj).sort()) {
+            sorted[k] = obj[k];
         }
         return sorted;
     }

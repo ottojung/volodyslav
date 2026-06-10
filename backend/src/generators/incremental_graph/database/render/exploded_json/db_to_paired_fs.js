@@ -35,25 +35,6 @@ const { preparePathForRegularFile } = require('./filesystem_tree');
  */
 
 /**
- * Resolve a relative path under baseDir and reject paths that escape it.
- *
- * @param {string} baseDir
- * @param {string} relPath
- * @returns {string}
- */
-function resolveContainedPath(baseDir, relPath) {
-    const resolvedBaseDir = path.resolve(baseDir);
-    const resolvedPath = path.resolve(baseDir, relPath);
-    const relativePath = path.relative(resolvedBaseDir, resolvedPath);
-    if (relativePath === '' || relativePath.startsWith('..' + path.sep) || relativePath === '..') {
-        throw new Error(
-            `Invalid relative path '${relPath}': escapes the base directory`
-        );
-    }
-    return resolvedPath;
-}
-
-/**
  * Recursively collect all file paths under a directory.
  *
  * @param {DbToPairedFsCapabilities} capabilities
@@ -85,7 +66,7 @@ async function walkFilesRecursively(capabilities, dir) {
  *   rendered/ and kindtree/.
  * @param {string} snapshotSublevel - The snapshot sublevel (e.g. "r").
  * @param {string} sourceSublevel - The DB sublevel to render from (e.g. "x").
- * @returns {import('./core').UnificationAdapter}
+ * @returns {import('../../unification/core').UnificationAdapter}
  */
 function makeDbToPairedFsAdapter(capabilities, rootDatabase, snapshotRoot, snapshotSublevel, sourceSublevel) {
     const renderedRoot = path.join(snapshotRoot, 'rendered', snapshotSublevel);
@@ -149,7 +130,6 @@ function makeDbToPairedFsAdapter(capabilities, rootDatabase, snapshotRoot, snaps
                 if (await capabilities.checker.directoryExists(rootDir)) {
                     const absFiles = await walkFilesRecursively(capabilities, rootDir);
                     for (const absPath of absFiles) {
-                        const relPath = path.relative(rootDir, absPath).split(path.sep).join('/');
                         // Determine the tree from rootDir
                         const tree = rootDir === kindtreeRoot ? 'k' : 'r';
                         const parentRoot = rootDir === kindtreeRoot ? kindtreeRoot : renderedRoot;
@@ -165,8 +145,9 @@ function makeDbToPairedFsAdapter(capabilities, rootDatabase, snapshotRoot, snaps
                         } else {
                             // rendered/<sublevel>/<valueRoot>[/<desc>...]
                             const valueRoot = segments[0];
+                            if (valueRoot === undefined) continue;
                             const descPath = segments.slice(1).join('/');
-                            files.push(renderedVirtualKey(valueRoot, descPath || ''));
+                            files.push(renderedVirtualKey(valueRoot, descPath));
                         }
                     }
                 }
@@ -177,6 +158,10 @@ function makeDbToPairedFsAdapter(capabilities, rootDatabase, snapshotRoot, snaps
             }
         },
 
+        /**
+         * @param {string} virtualKey
+         * @returns {Promise<string | undefined>}
+         */
         async readSource(virtualKey) {
             const parsed = parseVirtualKey(virtualKey);
             if (!parsed) {
@@ -190,6 +175,10 @@ function makeDbToPairedFsAdapter(capabilities, rootDatabase, snapshotRoot, snaps
             return projection.contentMap.get(descendantPath) || undefined;
         },
 
+        /**
+         * @param {string} virtualKey
+         * @returns {Promise<string | undefined>}
+         */
         async readTarget(virtualKey) {
             const fullRel = virtualKeyToPhysicalPath(virtualKey, snapshotSublevel);
             const fullAbs = path.join(snapshotRoot, fullRel);
@@ -199,10 +188,20 @@ function makeDbToPairedFsAdapter(capabilities, rootDatabase, snapshotRoot, snaps
             return await capabilities.reader.readFileAsText(fullAbs);
         },
 
+        /**
+         * @param {unknown} sv
+         * @param {unknown} tv
+         * @returns {boolean}
+         */
         equals(sv, tv) {
             return sv === tv;
         },
 
+        /**
+         * @param {string} virtualKey
+         * @param {unknown} content
+         * @returns {Promise<void>}
+         */
         async putTarget(virtualKey, content) {
             if (typeof content !== 'string') {
                 throw new Error(
@@ -216,6 +215,10 @@ function makeDbToPairedFsAdapter(capabilities, rootDatabase, snapshotRoot, snaps
             await capabilities.writer.writeFile(file, content);
         },
 
+        /**
+         * @param {string} virtualKey
+         * @returns {Promise<void>}
+         */
         async deleteTarget(virtualKey) {
             const fullRel = virtualKeyToPhysicalPath(virtualKey, snapshotSublevel);
             const absPath = path.join(snapshotRoot, fullRel);

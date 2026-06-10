@@ -14,27 +14,22 @@
  */
 
 const path = require('path');
-const { relativePathToKey, buildRawKey } = require('../../encoding');
-const { parseSchema, schemaHasPrimitiveLeaves } = require('./schema_codec');
+const { relativePathToKey } = require('../../encoding');
+const { parseSchema } = require('./schema_codec');
 const { scanExplodedJsonProjection } = require('./value_codec');
-const { parseNull, parseBoolean, parseNumber } = require('./scalar_codec');
-const { decodeObjectKey, validateArrayIndex, rejectDuplicateDecodedKeys } = require('./path_codec');
 const { jsonStructuralEquals } = require('./value_equality');
 const {
     MissingKindtreeRootError,
     ExtraRenderedFileError,
-    DuplicateDecodedPathError,
     DuplicateDecodedValueRootError,
     MissingRenderedLeafError,
     RenderedDirectoryWhereFileRequiredError,
-    RenderedFileWhereDirectoryRequiredError,
-    UnsupportedFilesystemEntryError,
 } = require('./errors');
 
 /** @typedef {import('../../root_database').RootDatabase} RootDatabase */
-/** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */
-/** @typedef {import('../../../../filesystem/checker').FileChecker} FileChecker */
-/** @typedef {import('../../../../filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('../../../../../filesystem/reader').FileReader} FileReader */
+/** @typedef {import('../../../../../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../../../../../filesystem/dirscanner').DirScanner} DirScanner */
 
 /**
  * @typedef {object} PairedFsToDbCapabilities
@@ -105,7 +100,7 @@ async function buildRenderedTree(capabilities, renderedDir) {
  * @param {string} snapshotRoot - Absolute path to the snapshot root.
  * @param {string} snapshotSublevel - The snapshot sublevel (e.g. "r").
  * @param {string} targetSublevel - The target DB sublevel (e.g. "y").
- * @returns {import('./core').UnificationAdapter}
+ * @returns {import('../../unification/core').UnificationAdapter}
  */
 function makePairedFsToDbAdapter(capabilities, rootDatabase, snapshotRoot, snapshotSublevel, targetSublevel) {
     const kindtreeDir = path.join(snapshotRoot, 'kindtree', snapshotSublevel);
@@ -132,7 +127,7 @@ function makePairedFsToDbAdapter(capabilities, rootDatabase, snapshotRoot, snaps
 
     /**
      * The rendered tree (all files and directories under rendered/<sublevel>).
-     * @type {Promise<Map<string, "file"|"directory">>}
+     * @type {Promise<Map<string, "file"|"directory">> | null}
      */
     let renderedTreePromise = null;
 
@@ -149,7 +144,8 @@ function makePairedFsToDbAdapter(capabilities, rootDatabase, snapshotRoot, snaps
         const schemaText = await capabilities.reader.readFileAsText(kindtreePath);
         const schema = parseSchema(schemaText);
         const tree = await renderedTreePromise;
-        return scanExplodedJsonProjection(schema, (descendantPath) => {
+        if (tree === null) throw new Error('No rendered tree available');
+        return scanExplodedJsonProjection(schema, async (descendantPath) => {
             const leafRelPath = descendantPath ? `${valueRoot}/${descendantPath}` : valueRoot;
             const entry = tree.get(leafRelPath);
             if (entry === "directory") {
@@ -202,8 +198,9 @@ function makePairedFsToDbAdapter(capabilities, rootDatabase, snapshotRoot, snaps
                 const rawKey = valueRootToRawKey(valueRoot);
                 // Check for duplicate decoded raw keys
                 if (rawKeyToValueRoot.has(rawKey)) {
+                    const existingRoot = rawKeyToValueRoot.get(rawKey);
                     throw new DuplicateDecodedValueRootError(
-                        rawKeyToValueRoot.get(rawKey), valueRoot, rawKey
+                        existingRoot ?? '', valueRoot, rawKey
                     );
                 }
                 rawKeyToValueRoot.set(rawKey, valueRoot);
@@ -227,7 +224,7 @@ function makePairedFsToDbAdapter(capabilities, rootDatabase, snapshotRoot, snaps
             for (const [relPath, kind] of tree) {
                 if (kind === "file" && !claimedLeaves.has(relPath)) {
                     const segments = relPath.split('/');
-                    const vr = segments[0];
+                    const vr = segments[0] ?? '';
                     const leafPath = segments.slice(1).join('/');
                     throw new ExtraRenderedFileError(vr, leafPath);
                 }
@@ -240,25 +237,47 @@ function makePairedFsToDbAdapter(capabilities, rootDatabase, snapshotRoot, snaps
             }
         },
 
+        /**
+         * @param {string} rawKey
+         * @returns {Promise<unknown>}
+         */
         async readSource(rawKey) {
             const valueRoot = rawKeyToValueRoot.get(rawKey);
             if (!valueRoot) return undefined;
             return valueCache.get(valueRoot);
         },
 
+        /**
+         * @param {string} rawKey
+         * @returns {Promise<unknown>}
+         */
         async readTarget(rawKey) {
             const innerKey = rawKey.slice(('!' + targetSublevel + '!').length);
             return await rootDatabase._rawGetInSublevel(targetSublevel, innerKey);
         },
 
+        /**
+         * @param {unknown} sv
+         * @param {unknown} tv
+         * @returns {boolean}
+         */
         equals(sv, tv) {
             return jsonStructuralEquals(sv, tv);
         },
 
+        /**
+         * @param {string} rawKey
+         * @param {unknown} value
+         * @returns {Promise<void>}
+         */
         async putTarget(rawKey, value) {
             await rootDatabase._rawPut(rawKey, value);
         },
 
+        /**
+         * @param {string} rawKey
+         * @returns {Promise<void>}
+         */
         async deleteTarget(rawKey) {
             await rootDatabase._rawDel(rawKey);
         },

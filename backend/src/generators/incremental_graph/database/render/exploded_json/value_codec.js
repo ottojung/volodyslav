@@ -11,17 +11,13 @@
  */
 
 const { formatPrimitive, parseNumber, parseBoolean, parseNull } = require('./scalar_codec');
-const { formatSchema, parseSchema, sortedKeys } = require('./schema_codec');
+const { formatSchema } = require('./schema_codec');
 const { encodeObjectKey } = require('./path_codec');
 const {
     UnsupportedRenderedValueError,
     CycleInRenderedValueError,
     SparseArrayRenderedValueError,
     NonPlainObjectRenderedValueError,
-    MissingRenderedLeafError,
-    InvalidNumberLeafError,
-    InvalidBooleanLeafError,
-    InvalidNullLeafError,
 } = require('./errors');
 
 /**
@@ -89,9 +85,11 @@ function buildSchema(value, cycleDetector) {
         if (cycleDetector) cycleDetector.add(value);
         try {
             assertPlainObject(value);
-            const schema = {};
-            for (const key of Object.keys(value).sort()) {
-                schema[key] = buildSchema(value[key], cycleDetector);
+            /** @type {Record<string, unknown>} */
+            const obj = value;
+            const schema = /** @type {Record<string, import('./schema_codec').TypeSchema>} */ ({});
+            for (const key of Object.keys(obj).sort()) {
+                schema[key] = buildSchema(obj[key], cycleDetector);
             }
             return schema;
         } finally {
@@ -140,12 +138,13 @@ function buildLeaves(value, prefix, cycleDetector) {
         if (cycleDetector) cycleDetector.add(value);
         try {
             const leaves = [];
-            const sorted = Object.keys(value).sort();
+            const obj = /** @type {Record<string, unknown>} */ (value);
+            const sorted = Object.keys(obj).sort();
             for (const key of sorted) {
                 const childPrefix = prefix
                     ? `${prefix}/${encodeObjectKey(key)}`
                     : encodeObjectKey(key);
-                leaves.push(...buildLeaves(value[key], childPrefix, cycleDetector));
+                leaves.push(...buildLeaves(obj[key], childPrefix, cycleDetector));
             }
             return leaves;
         } finally {
@@ -186,7 +185,7 @@ function assertPlainObject(value) {
             );
         }
     }
-    if (typeof value.then === "function") {
+    if (typeof (/** @type {Record<string, unknown>} */ (value)['then']) === "function") {
         throw new NonPlainObjectRenderedValueError("Promise-like object", value);
     }
 }
@@ -195,10 +194,10 @@ function assertPlainObject(value) {
  * Reconstruct a DB value from a validated schema and a leaf-reading function.
  *
  * @param {import('./schema_codec').TypeSchema} schema - Already validated.
- * @param {(descendantPath: string) => string} readLeaf - Reads a primitive leaf
+ * @param {(descendantPath: string) => string | Promise<string>} readLeaf - Reads a primitive leaf
  *   file. Throws MissingRenderedLeafError if the path doesn't exist as a file.
  * @param {string} [prefix] - Current descendant path prefix.
- * @returns {unknown}
+ * @returns {Promise<unknown>}
  * @throws {MissingRenderedLeafError|InvalidNumberLeafError|InvalidBooleanLeafError|InvalidNullLeafError}
  */
 async function scanExplodedJsonProjection(schema, readLeaf, prefix) {
@@ -222,16 +221,20 @@ async function scanExplodedJsonProjection(schema, readLeaf, prefix) {
         const result = [];
         for (let i = 0; i < schema.length; i++) {
             const childPrefix = p ? `${p}/${i}` : `${i}`;
-            result.push(await scanExplodedJsonProjection(schema[i], readLeaf, childPrefix));
+            result.push(await scanExplodedJsonProjection(/** @type {import('./schema_codec').TypeSchema} */ (schema[i]), readLeaf, childPrefix));
         }
         return result;
     }
     if (typeof schema === "object" && schema !== null) {
-        const result = {};
-        for (const key of Object.keys(schema)) {
+        const result = /** @type {Record<string, unknown>} */ ({});
+        const schemaObj = /** @type {Record<string, import('./schema_codec').TypeSchema>} */ (schema);
+        for (const key of Object.keys(schemaObj)) {
             const encodedKey = encodeObjectKey(key);
             const childPrefix = p ? `${p}/${encodedKey}` : encodedKey;
-            result[key] = await scanExplodedJsonProjection(schema[key], readLeaf, childPrefix);
+            const childSchema = schemaObj[key];
+            if (childSchema !== undefined) {
+                result[key] = await scanExplodedJsonProjection(childSchema, readLeaf, childPrefix);
+            }
         }
         return result;
     }

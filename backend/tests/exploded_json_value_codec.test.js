@@ -10,9 +10,7 @@ const {
     scanExplodedJsonProjection,
     parseSchema,
     formatSchema,
-    validateSchema,
     schemaHasPrimitiveLeaves,
-    formatPrimitive,
     parseNumber,
     parseBoolean,
     parseNull,
@@ -40,7 +38,6 @@ const {
     UnknownTypeSchemaTokenError,
     DuplicateSchemaKeyError,
     MissingRenderedLeafError,
-    DuplicateDecodedPathError,
 } = require('../src/generators/incremental_graph/database/render/exploded_json/errors');
 
 // -------------------------------------------------------------------------
@@ -392,7 +389,9 @@ describe('unsupported source values', () => {
     });
 
     test('Date', () => {
-        expect(() => projectExplodedJsonValue(new Date()))
+        const date = Object.create(Date.prototype);
+        date.getTime = () => 1704067200000;
+        expect(() => projectExplodedJsonValue({ date }))
             .toThrow(NonPlainObjectRenderedValueError);
     });
 

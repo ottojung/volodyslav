@@ -64,8 +64,8 @@ function formatNumber(value) {
  * Parse a rendered leaf text for a number primitive.
  *
  * @param {string} content - The file content.
- * @param {string} [valueRoot] - For error reporting.
- * @param {string} [leafPath] - For error reporting.
+ * @param {string | undefined} [valueRoot] - For error reporting.
+ * @param {string | undefined} [leafPath] - For error reporting.
  * @returns {number}
  * @throws {InvalidNumberLeafError}
  */

@@ -30,6 +30,10 @@ const { makePairedFsToDbAdapter } = require('./exploded_json/paired_fs_to_db');
  */
 
 class ScanInputDirMissingError extends Error {
+    /**
+     * @param {string} inputDir
+     * @param {string} sublevel
+     */
     constructor(inputDir, sublevel) {
         super(
             `scanFromFilesystem: input directory does not exist: ${inputDir} (sublevel: ${sublevel})`
@@ -40,6 +44,10 @@ class ScanInputDirMissingError extends Error {
     }
 }
 
+/**
+ * @param {unknown} object
+ * @returns {object is ScanInputDirMissingError}
+ */
 function isScanInputDirMissingError(object) {
     return object instanceof ScanInputDirMissingError;
 }

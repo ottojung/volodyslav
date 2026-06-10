@@ -19,7 +19,6 @@ const { parseRemoteHostnameBranch } = require('../../../hostname');
 const {
     checkpointDatabase,
     CHECKPOINT_WORKING_PATH,
-    DATABASE_SUBPATH,
 } = require('./gitstore');
 const {
     synchronizeResetToHostname,

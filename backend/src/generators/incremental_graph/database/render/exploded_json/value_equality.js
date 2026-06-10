@@ -47,12 +47,14 @@ function jsonStructuralEquals(a, b) {
     if (typeof a === "object" && a !== null) {
         if (Array.isArray(b)) return false;
         if (typeof b !== "object" || b === null) return false;
-        const keysA = Object.keys(a);
-        const keysB = Object.keys(b);
+        const objA = /** @type {Record<string, unknown>} */ (a);
+        const objB = /** @type {Record<string, unknown>} */ (b);
+        const keysA = Object.keys(objA);
+        const keysB = Object.keys(objB);
         if (keysA.length !== keysB.length) return false;
         for (const key of keysA) {
-            if (!(key in b)) return false;
-            if (!jsonStructuralEquals(a[key], b[key])) return false;
+            if (!(key in objB)) return false;
+            if (!jsonStructuralEquals(objA[key], objB[key])) return false;
         }
         return true;
     }
