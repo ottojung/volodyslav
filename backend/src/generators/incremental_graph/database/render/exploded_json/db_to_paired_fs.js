@@ -12,17 +12,17 @@
 const path = require('path');
 const { keyToRelativePath, relativePathToKey } = require('../../encoding');
 const { projectExplodedJsonValue } = require('./value_codec');
-const { flattenProjection, sortVirtualEntries } = require('./projection');
 const { kindtreeVirtualKey, renderedVirtualKey, parseVirtualKey, virtualKeyToPhysicalPath } = require('./virtual_file_key');
-const { preparePathForRegularFile, entryKind } = require('./filesystem_tree');
+const { preparePathForRegularFile } = require('./filesystem_tree');
 
 /** @typedef {import('../../root_database').RootDatabase} RootDatabase */
-/** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */
-/** @typedef {import('../../../../filesystem/writer').FileWriter} FileWriter */
-/** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */
-/** @typedef {import('../../../../filesystem/checker').FileChecker} FileChecker */
-/** @typedef {import('../../../../filesystem/deleter').FileDeleter} FileDeleter */
-/** @typedef {import('../../../../filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('../../../../../filesystem/creator').FileCreator} FileCreator */
+/** @typedef {import('../../../../../filesystem/writer').FileWriter} FileWriter */
+/** @typedef {import('../../../../../filesystem/reader').FileReader} FileReader */
+/** @typedef {import('../../../../../filesystem/checker').FileChecker} FileChecker */
+/** @typedef {import('../../../../../filesystem/deleter').FileDeleter} FileDeleter */
+/** @typedef {import('../../../../../filesystem/dirscanner').DirScanner} DirScanner */
+/** @typedef {import('../../unification/core').UnificationAdapter} UnificationAdapter */
 
 /**
  * @typedef {object} DbToPairedFsCapabilities
@@ -191,19 +191,6 @@ function makeDbToPairedFsAdapter(capabilities, rootDatabase, snapshotRoot, snaps
         },
 
         async readTarget(virtualKey) {
-            const parsed = parseVirtualKey(virtualKey);
-            if (!parsed) {
-                return undefined;
-            }
-            const relPath = virtualKeyToPhysicalPath(virtualKey, snapshotSublevel);
-            const baseRoot = parsed.tree === 'k' ? kindtreeRoot : renderedRoot;
-            const absPath = resolveContainedPath(
-                parsed.tree === 'k' ? kindtreeRoot : renderedRoot,
-                parsed.tree === 'k'
-                    ? virtualKeyToPhysicalPath(virtualKey, snapshotSublevel).slice(`kindtree/${snapshotSublevel}/`.length)
-                    : virtualKeyToPhysicalPath(virtualKey, snapshotSublevel).slice(`rendered/${snapshotSublevel}/`.length)
-            );
-            // Resolve properly
             const fullRel = virtualKeyToPhysicalPath(virtualKey, snapshotSublevel);
             const fullAbs = path.join(snapshotRoot, fullRel);
             if (!await capabilities.checker.fileExists(fullAbs)) {
