@@ -24,7 +24,7 @@ const {
 const {
     synchronizeResetToHostname,
 } = require('./synchronize_reset_snapshot');
-const { scanFromFilesystem } = require('./render');
+const { scanSublevelFromSnapshot } = require('./render');
 const { getRootDatabase } = require('./get_root_database');
 const {
     mergeHostIntoReplica,
@@ -125,12 +125,14 @@ async function mergeRemoteHostBranches(capabilities, state) {
             worktreeAdded = true;
 
 
-            const remoteRDir = path.join(tmpDir, DATABASE_SUBPATH, 'r');
-            await scanFromFilesystem(
+            await scanSublevelFromSnapshot(
                 capabilities,
                 state.rootDatabase,
-                remoteRDir,
-                '_h_' + hostname
+                {
+                    snapshotRoot: tmpDir,
+                    targetSublevel: '_h_' + hostname,
+                    snapshotSublevel: 'r',
+                }
             );
             const switchedReplica = await mergeHostIntoReplica(
                 capabilities.logger,

@@ -28,7 +28,7 @@
 const path = require('path');
 const gitstore = require('../../../gitstore');
 const { checkpointSession } = gitstore;
-const { renderToFilesystem } = require('./render');
+const { renderSublevelToSnapshot } = require('./render');
 
 /** @typedef {import('../../../gitstore/transaction_retry').RemoteLocation} RemoteLocation */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
@@ -157,11 +157,14 @@ async function checkpointDatabase(
             async ({ workDir, commit }) => {
                 capabilities.logger.logDebug({ message }, "Rendering database snapshot for checkpoint");
                 const activeReplica = database.currentReplicaName();
-                await renderToFilesystem(
+                await renderSublevelToSnapshot(
                     capabilities,
                     database,
-                    path.join(workDir, DATABASE_SUBPATH, 'r'),
-                    activeReplica
+                    {
+                        snapshotRoot: path.join(workDir, CHECKPOINT_WORKING_PATH),
+                        sourceSublevel: activeReplica,
+                        snapshotSublevel: 'r',
+                    }
                 );
                 capabilities.logger.logDebug({ message }, "Rendered database snapshot for checkpoint, committing");
                 await commit(message);
@@ -215,22 +218,28 @@ async function checkpointMigration(
         "empty",
         async ({ workDir, commit }) => {
             capabilities.logger.logDebug({ preMessage, postMessage }, "Rendering pre-migration database snapshot");
-            await renderToFilesystem(
+            await renderSublevelToSnapshot(
                 capabilities,
                 rootDatabase,
-                path.join(workDir, DATABASE_SUBPATH, 'r'),
-                rootDatabase.currentReplicaName()
+                {
+                    snapshotRoot: path.join(workDir, CHECKPOINT_WORKING_PATH),
+                    sourceSublevel: rootDatabase.currentReplicaName(),
+                    snapshotSublevel: 'r',
+                }
             );
             capabilities.logger.logDebug({ preMessage, postMessage }, "Committing pre-migration snapshot");
             await commit(preMessage);
             capabilities.logger.logDebug({ preMessage, postMessage }, "Pre-migration snapshot committed, running migration callback");
             const result = await callback();
             capabilities.logger.logDebug({ preMessage, postMessage }, "Migration callback complete, rendering post-migration database snapshot");
-            await renderToFilesystem(
+            await renderSublevelToSnapshot(
                 capabilities,
                 rootDatabase,
-                path.join(workDir, DATABASE_SUBPATH, 'r'),
-                rootDatabase.currentReplicaName()
+                {
+                    snapshotRoot: path.join(workDir, CHECKPOINT_WORKING_PATH),
+                    sourceSublevel: rootDatabase.currentReplicaName(),
+                    snapshotSublevel: 'r',
+                }
             );
             capabilities.logger.logDebug({ preMessage, postMessage }, "Committing post-migration snapshot");
             await commit(postMessage);

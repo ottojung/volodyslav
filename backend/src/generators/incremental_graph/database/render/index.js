@@ -1,14 +1,14 @@
 /**
  * Incremental-graph database snapshot render/scan module.
  *
- * Provides filesystem rendering (renderToFilesystem) and scanning
- * (scanFromFilesystem) for the incremental-graph database, plus the key
- * encoding helpers used by both operations.
+ * Provides the new exploded JSON snapshot format (renderSublevelToSnapshot /
+ * scanSublevelFromSnapshot) and the legacy one-file-JSON format
+ * (renderToFilesystem / scanFromFilesystem).
  */
 
 const { keyToRelativePath, relativePathToKey, serializeValue, parseValue } = require('../encoding');
-const { renderToFilesystem } = require('./render');
-const { scanFromFilesystem, isScanInputDirMissingError } = require('./scan');
+const { renderToFilesystem, renderSublevelToSnapshot } = require('./render');
+const { scanFromFilesystem, scanSublevelFromSnapshot, isScanInputDirMissingError } = require('./scan');
 
 module.exports = {
     keyToRelativePath,
@@ -16,6 +16,8 @@ module.exports = {
     serializeValue,
     parseValue,
     renderToFilesystem,
+    renderSublevelToSnapshot,
     scanFromFilesystem,
+    scanSublevelFromSnapshot,
     isScanInputDirMissingError,
 };

@@ -1,17 +1,17 @@
 /**
  * Filesystem rendering module for the incremental-graph database.
  *
- * Provides renderToFilesystem(), which reconciles every raw LevelDB key/value
- * pair in one database sublevel with a directory tree.  Only files whose
- * content has changed are rewritten; files that no longer correspond to a
- * database key are deleted.
+ * Provides the new renderSublevelToSnapshot() for the exploded JSON format,
+ * and the legacy renderToFilesystem() for backward compatibility.
  *
- * The inverse operation — reading the directory tree back into the database
- * — is provided by scanFromFilesystem() in scan.js.
+ * The new format renders to paired kindtree/ and rendered/ trees under a
+ * snapshot root. The legacy format renders to a single directory of JSON files.
  */
 
+const path = require('path');
 const { validateTopLevelSublevel } = require('./sublevel');
 const { makeDbToFsAdapter, unifyStores } = require('../unification');
+const { makeDbToPairedFsAdapter } = require('./exploded_json/db_to_paired_fs');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */
@@ -23,38 +23,68 @@ const { makeDbToFsAdapter, unifyStores } = require('../unification');
 /** @typedef {import('../../../../logger').Logger} Logger */
 
 /**
- * Capabilities required by renderToFilesystem.
+ * Capabilities required by renderToFilesystem / renderSublevelToSnapshot.
  * @typedef {object} RenderCapabilities
- * @property {FileCreator} creator - Creates files (and parent directories) on disk.
- * @property {FileWriter} writer - Writes serialised content to a file.
- * @property {FileReader} reader - Reads file content as a UTF-8 string.
- * @property {FileChecker} checker - Checks whether a path is a file or directory.
- * @property {FileDeleter} deleter - Deletes files and directories during reconciliation.
- * @property {DirScanner} scanner - Scans a directory (non-recursive).
- * @property {Logger} logger - Logger for progress messages.
+ * @property {FileCreator} creator
+ * @property {FileWriter} writer
+ * @property {FileReader} reader
+ * @property {FileChecker} checker
+ * @property {FileDeleter} deleter
+ * @property {DirScanner} scanner
+ * @property {Logger} logger
  */
 
 /**
- * Dumps every raw key/value pair from one top-level database sublevel to a
- * directory tree rooted at `outputDir`, using gentle unification.
+ * Render one database sublevel into the paired snapshot format.
  *
- * Only files whose content has changed since the last render are rewritten.
- * Files in the output directory that no longer have a corresponding database
- * key are deleted.
- *
- * This function is the inverse of scanFromFilesystem() in scan.js.
+ * The snapshot contains sibling kindtree/ and rendered/ trees under
+ * snapshotRoot/snapshotSublevel/.
  *
  * @param {RenderCapabilities} capabilities
- * @param {RootDatabase} rootDatabase - The database to dump.
+ * @param {RootDatabase} rootDatabase
+ * @param {{ snapshotRoot: string, sourceSublevel: string, snapshotSublevel: string }} options
+ * @returns {Promise<void>}
+ */
+async function renderSublevelToSnapshot(capabilities, rootDatabase, options) {
+    const { snapshotRoot, sourceSublevel, snapshotSublevel } = options;
+    const validatedSource = validateTopLevelSublevel(sourceSublevel);
+    const validatedSnapshot = validateTopLevelSublevel(snapshotSublevel);
+
+    const renderedDir = path.join(snapshotRoot, 'rendered', validatedSnapshot);
+    const kindtreeDir = path.join(snapshotRoot, 'kindtree', validatedSnapshot);
+
+    // Ensure both output directory trees exist
+    for (const dir of [renderedDir, kindtreeDir]) {
+        if (!await capabilities.checker.directoryExists(dir)) {
+            await capabilities.creator.createDirectory(dir);
+        }
+    }
+
+    const adapter = makeDbToPairedFsAdapter(
+        capabilities, rootDatabase,
+        snapshotRoot, validatedSnapshot, validatedSource
+    );
+    const stats = await unifyStores(adapter);
+
+    capabilities.logger.logInfo(
+        { snapshotRoot, sourceSublevel: validatedSource, snapshotSublevel: validatedSnapshot, ...stats },
+        'Rendered database sublevel to paired snapshot'
+    );
+}
+
+/**
+ * Legacy render: dumps every raw key/value pair from one top-level database
+ * sublevel to a directory tree rooted at `outputDir`.
+ *
+ * @param {RenderCapabilities} capabilities
+ * @param {RootDatabase} rootDatabase
  * @param {string} outputDir - Absolute path of the directory to write into.
- * @param {string} sublevel - Top-level database sublevel to render (e.g. "x", "_meta").
+ * @param {string} sublevel - Top-level database sublevel to render.
  * @returns {Promise<void>}
  */
 async function renderToFilesystem(capabilities, rootDatabase, outputDir, sublevel) {
     const validatedSublevel = validateTopLevelSublevel(sublevel);
 
-    // Ensure the output directory exists so that a subsequent scanFromFilesystem
-    // call can find it even when the sublevel is empty and no files are written.
     if (!await capabilities.checker.directoryExists(outputDir)) {
         await capabilities.creator.createDirectory(outputDir);
     }
@@ -69,6 +99,6 @@ async function renderToFilesystem(capabilities, rootDatabase, outputDir, subleve
 }
 
 module.exports = {
+    renderSublevelToSnapshot,
     renderToFilesystem,
 };
-
