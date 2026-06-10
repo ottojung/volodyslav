@@ -501,10 +501,12 @@ function isPathLike(object) {
 
 ## How to run tests
 
+- **Static checks**: `npm run static-analysis`
 - **Specific tests**: `npx jest --testNamePattern="test name"`
 - **Full test suite**: `npm test`
 - **Build verification**: `npm run build`
 
+Run static checks often, make sure they're passing continuously.
 Tests are slow. Prefer focused tests when working on a particular feature.
 Don't need to run `npm test` if not changing any javascript code.
 
@@ -612,7 +614,7 @@ Git remembers the dead. Source comments serve the living.
 
 If you have access to `git`, then:
 - commit frequently,
-- and write helpful commit messages.
+- and write helpful multiline commit messages.
 
 It is always safe to commit, do it even if you weren't explicitly told to.
 
