@@ -198,6 +198,47 @@ describe('paired exploded JSON snapshots', () => {
             } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
         });
 
+        test('[22.6-d] rendering one sublevel preserves another sublevel files', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const snapshotRoot = path.join(tmpDir, 'snapshot');
+                await db._rawPut('!x!!values!node', { text: 'x-data' });
+                await db._rawPut('!y!!values!node', { text: 'y-data' });
+                await renderSublevelToSnapshot(capabilities, db, { snapshotRoot, sourceSublevel: 'x', snapshotSublevel: 'x' });
+                await renderSublevelToSnapshot(capabilities, db, { snapshotRoot, sourceSublevel: 'y', snapshotSublevel: 'y' });
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered', 'x', 'values', 'node', 'text'))).toBe(true);
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered', 'y', 'values', 'node', 'text'))).toBe(true);
+                for await (const rawKey of db._rawKeysForSublevel('x')) { await db._rawDel(rawKey); }
+                await renderSublevelToSnapshot(capabilities, db, { snapshotRoot, sourceSublevel: 'x', snapshotSublevel: 'x' });
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered', 'x'))).toBe(false);
+                expect(fs.existsSync(path.join(snapshotRoot, 'kindtree', 'x'))).toBe(false);
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered', 'y', 'values', 'node', 'text'))).toBe(true);
+                expect(fs.existsSync(path.join(snapshotRoot, 'kindtree', 'y', 'values', 'node'))).toBe(true);
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered'))).toBe(true);
+                expect(fs.existsSync(path.join(snapshotRoot, 'kindtree'))).toBe(true);
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+
+        test.failing('[22.6-e] rendering one sublevel does not delete another sublevel empty incidental directory', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const snapshotRoot = path.join(tmpDir, 'snapshot');
+                await db._rawPut('!y!!values!node', { text: 'y-data' });
+                await renderSublevelToSnapshot(capabilities, db, { snapshotRoot, sourceSublevel: 'y', snapshotSublevel: 'y' });
+                fs.mkdirSync(path.join(snapshotRoot, 'rendered', 'y', 'incidental'), { recursive: true });
+                await db._rawPut('!x!!values!node', { text: 'x-data' });
+                await renderSublevelToSnapshot(capabilities, db, { snapshotRoot, sourceSublevel: 'x', snapshotSublevel: 'x' });
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered', 'y', 'incidental'))).toBe(true);
+                for await (const rawKey of db._rawKeysForSublevel('x')) { await db._rawDel(rawKey); }
+                await renderSublevelToSnapshot(capabilities, db, { snapshotRoot, sourceSublevel: 'x', snapshotSublevel: 'x' });
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered', 'x'))).toBe(false);
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered', 'y', 'values', 'node', 'text'))).toBe(true);
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered', 'y', 'incidental'))).toBe(true);
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+
         test('[22.5-a] scanSublevelFromSnapshot still rejects legacy rendered-only snapshots when snapshotRoot exists', async () => {
             const { capabilities, tmpDir } = makeCapabilities();
             const db = await getRootDatabase(capabilities);
