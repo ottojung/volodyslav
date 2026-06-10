@@ -176,6 +176,8 @@ The snapshot root directory is the unit of snapshot existence:
 - Rendering an empty sublevel produces an existing empty snapshot root:
   the root directory exists but `kindtree/` and `rendered/` subtrees are absent
   (pruned by the renderer).
+  Top-level `kindtree/` and `rendered/` are pruned only when they contain no
+  other managed sublevel content.
 
 Legacy rendered-only partial snapshots (rendered files without matching schemas)
 remain invalid and are rejected with `MissingKindtreeRootError`.

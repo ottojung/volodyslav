@@ -1758,6 +1758,14 @@ an existing empty snapshot root: `snapshotRoot` exists, but `kindtree/` and
 `rendered/` are absent or have been pruned. This is the canonical representation
 of an empty sublevel snapshot. No marker files or manifests are created.
 
+After rendering the selected sublevel:
+- `rendered/<snapshotSublevel>` and `kindtree/<snapshotSublevel>` are pruned
+  if empty;
+- top-level `rendered/` and `kindtree/` are also pruned when they contain
+  no other managed sublevel content;
+- `snapshotRoot` itself is kept;
+- unselected snapshot sublevels are never deleted.
+
 ## 21. Summary of invariants
 
 A conforming rendered database satisfies all of these invariants:
