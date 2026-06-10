@@ -99,7 +99,7 @@ A snapshot root contains two managed sibling trees:
 ```text
 snapshot/
   rendered/
-  typesscm/
+  kindtree/
 ```
 
 The trees are not independent snapshots and MUST NOT be synchronized as two
@@ -108,7 +108,7 @@ projection:
 
 ```text
 {
-  one typesscm/<value-root> file,
+  one kindtree/<value-root> file,
   zero or more rendered primitive leaf files below rendered/<value-root>
 }
 ```
@@ -117,7 +117,7 @@ The mental model is:
 
 ```text
 rendered is authoritative for primitive leaf contents
-typesscm is authoritative for value shape and primitive types
+kindtree is authoritative for value shape and primitive types
 ```
 
 Neither side is sufficient on its own.
@@ -250,7 +250,7 @@ require physical entries.
 ### 5.3 Type-schema path
 
 The **type-schema path** for a value is exactly the relative value-root path in
-`typesscm/`. It is always one regular file, including when the value has no
+`kindtree/`. It is always one regular file, including when the value has no
 rendered primitive leaves.
 
 ### 5.4 Value projection
@@ -260,7 +260,7 @@ A **value projection** is the pair:
 ```text
 {
   zero or more primitive leaf files below rendered/<value-root>,
-  one type-schema file typesscm/<value-root>
+  one type-schema file kindtree/<value-root>
 }
 ```
 
@@ -270,7 +270,7 @@ files, not a weakening of their paired semantics.
 
 ### 5.5 Managed domain
 
-The **managed domain** is the set of paths below the `rendered/` and `typesscm/`
+The **managed domain** is the set of paths below the `rendered/` and `kindtree/`
 roots for the top-level sublevel being rendered or scanned. Reconciliation may
 create, replace, or delete any entry in that domain. Paths outside both managed
 roots, and paths belonging to unselected top-level sublevels, are not managed by
@@ -278,7 +278,7 @@ that operation.
 
 ## 6. Type-schema grammar
 
-For every DB value, `typesscm/<value-root>` contains one JSON document matching:
+For every DB value, `kindtree/<value-root>` contains one JSON document matching:
 
 ```text
 TypeSchema =
@@ -394,7 +394,7 @@ snapshot/
           key1
           key2/
             key3
-  typesscm/
+  kindtree/
     r/
       values/
         nodeid123
@@ -437,14 +437,14 @@ For metadata:
 
 ```text
 rendered/_meta/current_replica = r
-typesscm/_meta/current_replica = "string"
+kindtree/_meta/current_replica = "string"
 ```
 
 The existing database version entry is rendered in the same way:
 
 ```text
 rendered/r/global/version = <plain string value>
-typesscm/r/global/version = "string"
+kindtree/r/global/version = "string"
 ```
 
 ## 8. Rendering rules
@@ -586,8 +586,8 @@ is irrelevant. Sparse arrays are invalid. Every source index from zero through
 Empty objects and arrays are schema-only:
 
 ```text
-{} -> typesscm {} + no required rendered files
-[] -> typesscm [] + no required rendered files
+{} -> kindtree {} + no required rendered files
+[] -> kindtree [] + no required rendered files
 ```
 
 This rule applies recursively. A compound subtree with no primitive leaves has
@@ -625,7 +625,7 @@ noncanonical.
 
 ### 8.9 Scalar roots and compound roots
 
-Every selected DB value has exactly one regular `typesscm/<value-root>` file.
+Every selected DB value has exactly one regular `kindtree/<value-root>` file.
 A scalar DB value has one primitive file at `rendered/<value-root>`. A compound
 DB value has zero or more rendered primitive files below that path. A value with
 no primitive leaves has no required rendered files.
@@ -635,19 +635,19 @@ Examples:
 ```text
 DB value true:
   rendered/r/values/nodeA       regular file: true
-  typesscm/r/values/nodeA       regular file: "boolean"
+  kindtree/r/values/nodeA       regular file: "boolean"
 ```
 
 ```text
 DB value { "x": 1 }:
   rendered/r/values/nodeA/x     regular file: 1
-  typesscm/r/values/nodeA       regular file containing schema object
+  kindtree/r/values/nodeA       regular file containing schema object
 ```
 
 ```text
 DB value {}:
   rendered/r/values/nodeA       no required rendered files
-  typesscm/r/values/nodeA       regular file: {}
+  kindtree/r/values/nodeA       regular file: {}
 
 Canonical render emits no rendered files for this value. During scan, an empty
 incidental `rendered/r/values/nodeA` directory is valid but noncanonical.
@@ -691,9 +691,9 @@ Examples:
 | `"0"` | `0` |
 | `"items"` | `items` |
 | `"rendered"` | `rendered` |
-| `"typesscm"` | `typesscm` |
+| `"kindtree"` | `kindtree` |
 
-The names `rendered`, `typesscm`, `_meta`, and `items` have no reserved meaning
+The names `rendered`, `kindtree`, `_meta`, and `items` have no reserved meaning
 inside a rendered object path.
 
 Newline and other non-separator Unicode characters remain literal path-segment
@@ -817,7 +817,7 @@ fallback.
 
 ### 12.1 Schema-led value-root discovery
 
-`typesscm` is the source of DB value roots. Scanning the selected domain MUST:
+`kindtree` is the source of DB value roots. Scanning the selected domain MUST:
 
 1. enumerate type-schema files for that domain;
 2. map each schema path to one raw DB key using the existing key codec;
@@ -949,31 +949,31 @@ Scanning fails loudly and does not guess when the two trees disagree.
 Invalid examples include:
 
 ```text
-typesscm says key1 is a number, but rendered/key1 is missing
+kindtree says key1 is a number, but rendered/key1 is missing
 ```
 
 ```text
-rendered has key4, but no typesscm leaf claims key4
+rendered has key4, but no kindtree leaf claims key4
 ```
 
 ```text
-typesscm says items is an array of length 2, but rendered/items/2 exists
+kindtree says items is an array of length 2, but rendered/items/2 exists
 ```
 
 ```text
-typesscm says a number, but the rendered file contains 5x
+kindtree says a number, but the rendered file contains 5x
 ```
 
 ```text
-typesscm says a boolean, but the rendered file contains TRUE
+kindtree says a boolean, but the rendered file contains TRUE
 ```
 
 ```text
-rendered has files below a value root with no typesscm file
+rendered has files below a value root with no kindtree file
 ```
 
 ```text
-typesscm says empty object, but a rendered file exists below that path
+kindtree says empty object, but a rendered file exists below that path
 ```
 
 A type-schema root with no required rendered files is valid when its schema has
@@ -1101,14 +1101,14 @@ parsing, and DB writes SHOULD NOT be combined in one module or traversal.
 One DB value may map to many files. Gentle unification may continue operating
 over a sorted flat key space containing:
 
-- one `typesscm/<value-root>` file for every DB value; and
+- one `kindtree/<value-root>` file for every DB value; and
 - zero or more `rendered/...` primitive leaf files for that value.
 
 Rendered files are semantic; rendered directories are incidental filesystem
 structure. Directories are created as needed to write primitive files and may
 be removed after their last managed descendant is deleted. The canonical
-virtual file set is exactly the `typesscm` files plus the rendered primitive
-leaf files, because all compound shape is stored in `typesscm`.
+virtual file set is exactly the `kindtree` files plus the rendered primitive
+leaf files, because all compound shape is stored in `kindtree`.
 
 ### 16.2 DB-to-filesystem authority
 
@@ -1172,11 +1172,11 @@ A render of replica sublevel `r` may reconcile:
 
 ```text
 rendered/r/...
-typesscm/r/...
+kindtree/r/...
 ```
 
 but MUST NOT modify another top-level sublevel or arbitrary paths outside the
-`rendered/` and `typesscm/` roots.
+`rendered/` and `kindtree/` roots.
 
 A higher-level whole-snapshot render invokes the required sublevel operations as
 one rendered-database workflow and treats both physical trees as parts of that
@@ -1240,19 +1240,19 @@ higher-level cutover never treats a failed partial target as active.
 ```text
 DB value true:
   rendered/r/values/nodeA = true
-  typesscm/r/values/nodeA = "boolean"
+  kindtree/r/values/nodeA = "boolean"
 ```
 
 ```text
 DB value false:
   rendered/r/values/nodeA = false
-  typesscm/r/values/nodeA = "boolean"
+  kindtree/r/values/nodeA = "boolean"
 ```
 
 ```text
 DB value "true":
   rendered/r/values/nodeA = true
-  typesscm/r/values/nodeA = "string"
+  kindtree/r/values/nodeA = "string"
 ```
 
 The schema disambiguates identical rendered text.
@@ -1263,7 +1263,7 @@ Root empty object:
 
 ```text
 rendered/r/values/nodeA   no required rendered files
-typesscm/r/values/nodeA   file: {}
+kindtree/r/values/nodeA   file: {}
 ```
 
 Canonical render emits no rendered files for this value. During scan, an empty
@@ -1273,7 +1273,7 @@ Root empty array:
 
 ```text
 rendered/r/values/nodeA   no required rendered files
-typesscm/r/values/nodeA   file: []
+kindtree/r/values/nodeA   file: []
 ```
 
 Canonical render emits no rendered files for this value. During scan, an empty
@@ -1399,7 +1399,7 @@ and successful scan back to the source value.
 24. Keys containing `/`, `%`, `!`, `.`, `..`, empty string, and newline where
     supported round-trip through one segment.
 25. Escape-looking keys remain distinct from decoded keys.
-26. Keys named `items`, `rendered`, and `typesscm` have no reserved behavior.
+26. Keys named `items`, `rendered`, and `kindtree` have no reserved behavior.
 27. Opposite object insertion orders produce byte-identical canonical output.
 28. Arrays with index `10` scan correctly regardless of lexical listing order.
 29. `_meta/current_replica` and `r/global/version` use the same value projection
@@ -1620,7 +1620,7 @@ Acceptance controls for incidental directories:
 2. Removed object property deletes its leaf or descendant leaves.
 3. Shortened array deletes removed primitive indices and descendants.
 4. Shape transition deletes every leaf made stale by the previous shape.
-5. Empty compounds are represented only in `typesscm`.
+5. Empty compounds are represented only in `kindtree`.
 6. Files below an empty or primitive-free schema subtree are deleted.
 7. Orphan rendered files and orphan schema files are deleted during
    authoritative DB render.
