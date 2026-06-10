@@ -7,24 +7,33 @@
  *         JSON files for each DB value
  * Output: paired snapshot root with sibling kindtree/ and rendered/ trees
  *
- * The snapshot directory is modified IN PLACE.
+ * The snapshot directory is modified IN PLACE. Callers should run this on a
+ * git working tree or backed-up snapshot; the apply phase is not transactional
+ * across the filesystem.
  *
  * Migration rules:
- * - rendered/ must exist or the script fails.
+ * - rendered/ must exist and must be a directory. If rendered exists but is
+ *   not a directory, the script fails.
  * - Every regular file under rendered/ must be at a valid old-format depth:
  *   _meta/<key>                  (depth 2)
  *   <replica>/<sublevel>/<key>   (depth 3)
+ * - Regular files at other depths are invalid input.
  * - Every old value file must contain valid JSON that can be projected into
  *   the exploded format.
  * - Invalid JSON or unsupported values cause hard failure before mutation.
+ * - Symlinks, special files, and other non-regular-file entries under rendered/
+ *   are invalid input.
+ * - Unreadable directories under rendered/ cause hard failure.
  * - If kindtree/ already contains regular files, the snapshot is treated as
  *   already migrated and the script is a no-op.
  * - kindtree/ containing only empty directories does not block migration.
- * - Empty rendered/ input produces a valid empty snapshot root: rendered/
- *   is removed if empty, kindtree/ is absent, snapshotRoot remains.
+ * - Empty rendered/ input (no regular files) produces a valid empty snapshot
+ *   root: rendered/ is removed if empty, kindtree/ is absent, snapshotRoot
+ *   remains. No marker files or manifests are created.
  * - The script uses a two-phase approach: preflight (validate all input and
  *   build a migration plan) then apply (delete old files, write new ones).
  * - Partial mixed states are not a supported repair target.
+ * - Failed input does not partially mutate the snapshot.
  */
 
 const path = require("path");
