@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const { migrateSnapshot } = require('../../scripts/migrate-snapshot-to-exploded');
-const { parseSchema } = require('../src/generators/incremental_graph/database/render/exploded_json');
+const { parseTypeSchema } = require('../src/generators/incremental_graph/database/render/exploded_json');
 
 /**
  * Recursively remove a directory.
@@ -196,7 +196,7 @@ describe('exploded migration script compatibility', () => {
         // Verify kindtree schema is valid parseable JSON
         for (const name of ['version', 'fingerprint', 'last_node_index']) {
             const schemaText = readFile(tmpDir, `kindtree/r/global/${name}`);
-            expect(() => parseSchema(schemaText)).not.toThrow();
+            expect(() => parseTypeSchema(schemaText)).not.toThrow();
         }
 
         // For object values, the old file path becomes a directory with leaf files
