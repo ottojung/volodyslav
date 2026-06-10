@@ -311,4 +311,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { migrateSnapshot };
+module.exports = { migrateSnapshot, cleanEmptyDirs };

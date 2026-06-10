@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const { migrateSnapshot } = require('../../scripts/migrate-snapshot-to-exploded');
+const { migrateSnapshot, cleanEmptyDirs } = require('../../scripts/migrate-snapshot-to-exploded');
 const { parseTypeSchema } = require('../src/generators/incremental_graph/database/render/exploded_json');
 
 /**
@@ -330,6 +330,107 @@ describe('exploded migration script compatibility', () => {
     });
 
     // ─── Full integration with scanner ─────────────────────────────────────
+
+    // ─── Hardening: cleanEmptyDirs and codec validation ──────────────────
+
+    test('cleanEmptyDirs ignores ENOENT on non-existent directory', async () => {
+        await expect(cleanEmptyDirs(path.join(tmpDir, 'nonexistent'))).resolves.toBeUndefined();
+    });
+
+    test.failing('cleanEmptyDirs throws on non-ENOENT filesystem error (ENOTDIR on regular file)', async () => {
+        const filePath = path.join(tmpDir, 'not-a-dir');
+        fs.writeFileSync(filePath, 'content');
+        await expect(cleanEmptyDirs(filePath)).rejects.toThrow();
+    });
+
+    test('value-root path codec validation in preflight accepts all correct-depth paths', async () => {
+        // All filesystem-representable paths at correct old-format depth
+        // (_meta/<key>, <replica>/<sublevel>/<key>) pass the codec.
+        // This test verifies migration succeeds for representative paths.
+        writeJson(tmpDir, 'rendered/_meta/some_key', 'value');
+        writeJson(tmpDir, 'rendered/r/values/node', { x: 1 });
+        await expect(migrateSnapshot(tmpDir)).resolves.toBeUndefined();
+        expect(readFile(tmpDir, 'kindtree/_meta/some_key')).toBe('"string"');
+        expect(readFile(tmpDir, 'kindtree/r/values/node')).toBe('{\n  "x": "number"\n}');
+    });
+
+    // ─── Empty compounds scanner integration ─────────────────────────────
+
+    test('empty compounds survive migration and scan correctly with the real scanner', async () => {
+        const { getRootDatabase, scanSublevelFromSnapshot } = require('../src/generators/incremental_graph/database');
+        const { getMockedRootCapabilities } = require('./spies');
+        const { stubLogger, stubEnvironment } = require('./stubs');
+
+        const capabilities = getMockedRootCapabilities();
+        stubLogger(capabilities);
+        stubEnvironment(capabilities);
+
+        writeJson(tmpDir, 'rendered/r/values/emptyObj', {});
+        writeJson(tmpDir, 'rendered/r/values/emptyArr', []);
+        writeJson(tmpDir, 'rendered/r/values/mixed', { a: {}, b: [] });
+
+        await migrateSnapshot(tmpDir);
+
+        const db = await getRootDatabase(capabilities);
+        try {
+            await scanSublevelFromSnapshot(capabilities, db, {
+                snapshotRoot: tmpDir,
+                targetSublevel: 'z',
+                snapshotSublevel: 'r',
+            });
+
+            const readRaw = async (key) => {
+                const marker = key.indexOf('!', 1);
+                const sublevel = key.slice(1, marker);
+                return await db._rawGetInSublevel(sublevel, key.slice(marker + 1));
+            };
+            expect(await readRaw('!z!!values!emptyObj')).toEqual({});
+            expect(await readRaw('!z!!values!emptyArr')).toEqual([]);
+            expect(await readRaw('!z!!values!mixed')).toEqual({ a: {}, b: [] });
+        } finally {
+            await db.close();
+        }
+    });
+
+    // ─── Empty rendered directory scanner integration ────────────────────
+
+    test('empty rendered directory migration produces empty root that scans correctly', async () => {
+        const { getRootDatabase, scanSublevelFromSnapshot } = require('../src/generators/incremental_graph/database');
+        const { getMockedRootCapabilities } = require('./spies');
+        const { stubLogger, stubEnvironment } = require('./stubs');
+
+        const capabilities = getMockedRootCapabilities();
+        stubLogger(capabilities);
+        stubEnvironment(capabilities);
+
+        fs.mkdirSync(path.join(tmpDir, 'rendered'), { recursive: true });
+
+        await migrateSnapshot(tmpDir);
+
+        expect(fs.existsSync(tmpDir)).toBe(true);
+        expect(fileExists(tmpDir, 'kindtree')).toBe(false);
+        expect(fileExists(tmpDir, 'rendered')).toBe(false);
+
+        // Put existing data in the target sublevel
+        const db = await getRootDatabase(capabilities);
+        try {
+            await db._rawPut('!z!!values!stale', 'should-be-deleted');
+            await scanSublevelFromSnapshot(capabilities, db, {
+                snapshotRoot: tmpDir,
+                targetSublevel: 'z',
+                snapshotSublevel: 'r',
+            });
+
+            const readRaw = async (key) => {
+                const marker = key.indexOf('!', 1);
+                const sublevel = key.slice(1, marker);
+                return await db._rawGetInSublevel(sublevel, key.slice(marker + 1));
+            };
+            expect(await readRaw('!z!!values!stale')).toBeUndefined();
+        } finally {
+            await db.close();
+        }
+    });
 
     test('migrated snapshot scans with the real scanner', async () => {
         const { getRootDatabase, scanSublevelFromSnapshot } = require('../src/generators/incremental_graph/database');
