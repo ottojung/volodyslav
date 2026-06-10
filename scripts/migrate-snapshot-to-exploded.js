@@ -54,8 +54,8 @@ async function walkFiles(dir, baseDir) {
     let entries;
     try {
         entries = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
-        return files;
+    } catch (err) {
+        throw new Error(`Failed to read directory '${dir}': ${err instanceof Error ? err.message : String(err)}`);
     }
     for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
@@ -64,6 +64,11 @@ async function walkFiles(dir, baseDir) {
             files.push(...nested);
         } else if (entry.isFile()) {
             files.push(path.relative(baseDir, fullPath));
+        } else {
+            const relPath = path.relative(baseDir, fullPath);
+            throw new Error(
+                `Unsupported entry '${relPath}' under rendered/: expected regular file or directory, got ${entry.isSymbolicLink() ? 'symlink' : 'special entry'}`
+            );
         }
     }
     return files;
@@ -76,17 +81,19 @@ async function walkFiles(dir, baseDir) {
  * @returns {Promise<boolean>}
  */
 async function kindtreeHasRegularFiles(kindtreeDir) {
+    let entries;
     try {
-        const entries = await fs.readdir(kindtreeDir, { withFileTypes: true });
-        for (const entry of entries) {
-            const fullPath = path.join(kindtreeDir, entry.name);
-            if (entry.isFile()) return true;
-            if (entry.isDirectory()) {
-                if (await kindtreeHasRegularFiles(fullPath)) return true;
-            }
+        entries = await fs.readdir(kindtreeDir, { withFileTypes: true });
+    } catch (err) {
+        if (/** @type {any} */ (err).code === 'ENOENT') return false;
+        throw new Error(`Failed to read kindtree directory '${kindtreeDir}': ${err instanceof Error ? err.message : String(err)}`);
+    }
+    for (const entry of entries) {
+        const fullPath = path.join(kindtreeDir, entry.name);
+        if (entry.isFile()) return true;
+        if (entry.isDirectory()) {
+            if (await kindtreeHasRegularFiles(fullPath)) return true;
         }
-    } catch {
-        // kindtree doesn't exist or can't be read
     }
     return false;
 }
@@ -115,11 +122,15 @@ async function kindtreeHasRegularFiles(kindtreeDir) {
 async function buildMigrationPlan(snapshotDir) {
     const renderedDir = path.join(snapshotDir, "rendered");
 
-    // Check rendered/ exists
+    // Check rendered/ exists and is a directory
+    let renderedStat;
     try {
-        await fs.stat(renderedDir);
+        renderedStat = await fs.stat(renderedDir);
     } catch {
         throw new Error(`Snapshot directory does not contain rendered/: ${snapshotDir}`);
+    }
+    if (!renderedStat.isDirectory()) {
+        throw new Error(`rendered/ is not a directory in snapshot: ${snapshotDir}`);
     }
 
     // Walk all files under rendered/

@@ -308,14 +308,14 @@ describe('exploded migration script compatibility', () => {
 
     // ─── Input validation: preflight rejection tests ────────────────────────
 
-    test.failing('rendered exists but is not a directory (regular file) fails before mutation', async () => {
+    test('rendered exists but is not a directory (regular file) fails before mutation', async () => {
         fs.writeFileSync(path.join(tmpDir, 'rendered'), 'not a directory');
         await expect(migrateSnapshot(tmpDir)).rejects.toThrow();
         expect(fs.statSync(path.join(tmpDir, 'rendered')).isFile()).toBe(true);
         expect(fileExists(tmpDir, 'kindtree')).toBe(false);
     });
 
-    test.failing('non-regular-file entry under rendered is rejected', async () => {
+    test('non-regular-file entry under rendered is rejected', async () => {
         fs.mkdirSync(path.join(tmpDir, 'rendered', 'r', 'values'), { recursive: true });
         try { fs.symlinkSync('/nonexistent', path.join(tmpDir, 'rendered', 'r', 'values', 'link')); } catch { return; }
         await expect(migrateSnapshot(tmpDir)).rejects.toThrow();
