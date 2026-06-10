@@ -85,11 +85,11 @@ function buildSchema(value, cycleDetector) {
         if (cycleDetector) cycleDetector.add(value);
         try {
             assertPlainObject(value);
-            /** @type {Record<string, unknown>} */
-            const obj = value;
-            const schema = /** @type {Record<string, import('./schema_codec').TypeSchema>} */ ({});
-            for (const key of Object.keys(obj).sort()) {
-                schema[key] = buildSchema(obj[key], cycleDetector);
+            /** @type {Record<string, import('./schema_codec').TypeSchema>} */
+            const schema = {};
+            const entries = Object.entries(value).sort((a, b) => a[0].localeCompare(b[0]));
+            for (const [key, val] of entries) {
+                schema[key] = buildSchema(val, cycleDetector);
             }
             return schema;
         } finally {
@@ -138,13 +138,12 @@ function buildLeaves(value, prefix, cycleDetector) {
         if (cycleDetector) cycleDetector.add(value);
         try {
             const leaves = [];
-            const obj = /** @type {Record<string, unknown>} */ (value);
-            const sorted = Object.keys(obj).sort();
-            for (const key of sorted) {
+            const sorted = Object.entries(value).sort((a, b) => a[0].localeCompare(b[0]));
+            for (const [key, val] of sorted) {
                 const childPrefix = prefix
                     ? `${prefix}/${encodeObjectKey(key)}`
                     : encodeObjectKey(key);
-                leaves.push(...buildLeaves(obj[key], childPrefix, cycleDetector));
+                leaves.push(...buildLeaves(val, childPrefix, cycleDetector));
             }
             return leaves;
         } finally {
@@ -185,7 +184,7 @@ function assertPlainObject(value) {
             );
         }
     }
-    if (typeof (/** @type {Record<string, unknown>} */ (value)['then']) === "function") {
+    if ('then' in value && typeof value['then'] === "function") {
         throw new NonPlainObjectRenderedValueError("Promise-like object", value);
     }
 }
@@ -221,17 +220,16 @@ async function scanExplodedJsonProjection(schema, readLeaf, prefix) {
         const result = [];
         for (let i = 0; i < schema.length; i++) {
             const childPrefix = p ? `${p}/${i}` : `${i}`;
-            result.push(await scanExplodedJsonProjection(/** @type {import('./schema_codec').TypeSchema} */ (schema[i]), readLeaf, childPrefix));
+            result.push(await scanExplodedJsonProjection(schema[i], readLeaf, childPrefix));
         }
         return result;
     }
     if (typeof schema === "object" && schema !== null) {
-        const result = /** @type {Record<string, unknown>} */ ({});
-        const schemaObj = /** @type {Record<string, import('./schema_codec').TypeSchema>} */ (schema);
-        for (const key of Object.keys(schemaObj)) {
+        /** @type {Record<string, unknown>} */
+        const result = {};
+        for (const [key, childSchema] of Object.entries(schema)) {
             const encodedKey = encodeObjectKey(key);
             const childPrefix = p ? `${p}/${encodedKey}` : encodedKey;
-            const childSchema = schemaObj[key];
             if (childSchema !== undefined) {
                 result[key] = await scanExplodedJsonProjection(childSchema, readLeaf, childPrefix);
             }

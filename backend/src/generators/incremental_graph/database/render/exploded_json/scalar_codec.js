@@ -37,7 +37,7 @@ function formatPrimitive(value, type) {
         case "string":
             return String(value);
         case "number":
-            return formatNumber(/** @type {number} */ (value));
+            return formatNumber(Number(value));
         case "boolean":
             return value ? "true" : "false";
         case "null":

@@ -16,7 +16,7 @@
 const path = require("path");
 const fs = require("fs/promises");
 
-const { keyToRelativePath, parseValue } = require("../backend/src/generators/incremental_graph/database/encoding");
+const { parseValue } = require("../backend/src/generators/incremental_graph/database/encoding");
 const { projectExplodedJsonValue } = require("../backend/src/generators/incremental_graph/database/render/exploded_json");
 
 /**
@@ -44,22 +44,6 @@ async function walkFiles(dir, baseDir) {
         }
     }
     return files;
-}
-
-/**
- * Check if a file at relPath under baseDir is an old-format snapshot JSON file.
- * Old-format files are directly under the replica sublevel (e.g. "r/...").
- * The kindtree/ directory and _meta/ are not old-format snapshot data.
- *
- * @param {string} relPath
- * @returns {boolean}
- */
-function isOldFormatValueFile(relPath) {
-    // Must start with a replica sublevel like "r/..." or "_meta/..."
-    const parts = relPath.split("/");
-    if (parts.length < 3) return false;
-    // Sublevels: r/values/..., r/global/..., _meta/..., etc.
-    return true;
 }
 
 /**

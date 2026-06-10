@@ -5,6 +5,8 @@
  * Used for scan validation of the rendered/ tree.
  */
 
+const path = require('path');
+
 /**
  * @typedef {"missing"|"file"|"directory"|"unsupported"} EntryKind
  */
@@ -41,7 +43,6 @@ async function entryKind(checker, absPath) {
  * @param {string} absPath - Absolute path of the target regular file.
  */
 async function preparePathForRegularFile(creator, checker, deleter, absPath) {
-    const path = require('path');
     const dir = path.dirname(absPath);
     // Walk from the managed root creating parent directories as needed
     const segments = dir.split(path.sep);

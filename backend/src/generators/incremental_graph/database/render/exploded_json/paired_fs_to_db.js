@@ -210,14 +210,10 @@ function makePairedFsToDbAdapter(capabilities, rootDatabase, snapshotRoot, snaps
             // Reconstruct values and yield raw keys.
             for (const valueRoot of kindtreeFiles) {
                 const rawKey = valueRootToRawKey(valueRoot);
-                try {
-                    const value = await reconstructValue(valueRoot);
-                    valueCache.set(valueRoot, value);
-                    processedRoots.add(valueRoot);
-                    yield rawKey;
-                } catch (e) {
-                    throw e;
-                }
+                const value = await reconstructValue(valueRoot);
+                valueCache.set(valueRoot, value);
+                processedRoots.add(valueRoot);
+                yield rawKey;
             }
 
             // After all schemas, check for unclaimed rendered files

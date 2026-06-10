@@ -11,7 +11,7 @@
 const path = require('path');
 const { validateTopLevelSublevel } = require('./sublevel');
 const { makeDbToFsAdapter, unifyStores } = require('../unification');
-const { makeDbToPairedFsAdapter } = require('./exploded_json/db_to_paired_fs');
+const { makeDbToPairedFsAdapter } = require('./exploded_json');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */

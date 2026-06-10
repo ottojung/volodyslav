@@ -11,8 +11,12 @@ const { encodeObjectKey, decodeObjectKey, validateArrayIndex } = require('./path
 const { kindtreeVirtualKey, renderedVirtualKey, parseVirtualKey, virtualKeyToPhysicalPath } = require('./virtual_file_key');
 const { flattenProjection, sortVirtualEntries } = require('./projection');
 const { jsonStructuralEquals } = require('./value_equality');
+const { makeDbToPairedFsAdapter } = require('./db_to_paired_fs');
+const { makePairedFsToDbAdapter } = require('./paired_fs_to_db');
 
 module.exports = {
+    makeDbToPairedFsAdapter,
+    makePairedFsToDbAdapter,
     projectExplodedJsonValue,
     scanExplodedJsonProjection,
     parseSchema,

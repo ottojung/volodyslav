@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const { migrateSnapshot } = require('../../scripts/migrate-snapshot-to-exploded');
-const { projectExplodedJsonValue, parseSchema } = require('../src/generators/incremental_graph/database/render/exploded_json');
+const { parseSchema } = require('../src/generators/incremental_graph/database/render/exploded_json');
 
 /**
  * Recursively remove a directory.

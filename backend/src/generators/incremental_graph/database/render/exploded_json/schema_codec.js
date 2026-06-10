@@ -30,7 +30,7 @@ const {
 } = require('./errors');
 
 /**
- * @typedef {string|object|any[]} TypeSchema
+ * @typedef {string | object | unknown[]} TypeSchema
  */
 
 /**
@@ -68,15 +68,13 @@ function validateSchema(schema, path) {
             }
             return;
         }
-        const obj = /** @type {Record<string, TypeSchema>} */ (schema);
-        const keys = Object.keys(obj);
         const seen = new Set();
-        for (const key of keys) {
+        for (const [key, val] of Object.entries(schema)) {
             if (seen.has(key)) {
                 throw new DuplicateSchemaKeyError(key);
             }
             seen.add(key);
-            validateSchema(obj[key], `${path || '<root>'}.${key}`);
+            validateSchema(val, `${path || '<root>'}.${key}`);
         }
         return;
     }
@@ -231,10 +229,10 @@ function formatSchema(schema) {
  */
 function sortSchemaReplacer(_key, value) {
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-        const sorted = /** @type {Record<string, unknown>} */ ({});
-        const obj = /** @type {Record<string, unknown>} */ (value);
-        for (const k of Object.keys(obj).sort()) {
-            sorted[k] = obj[k];
+        /** @type {Record<string, unknown>} */
+        const sorted = {};
+        for (const [k, v] of Object.entries(value).sort((a, b) => a[0].localeCompare(b[0]))) {
+            sorted[k] = v;
         }
         return sorted;
     }
