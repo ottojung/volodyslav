@@ -13,6 +13,7 @@ uname -a
 id -a
 
 export LD_PRELOAD="${PREFIX}/lib/libtermux-exec-ld-preload.so"
+export JEST_TEST_TIMEOUT=15000
 
 npm ci
 npm run build
