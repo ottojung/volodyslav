@@ -26,15 +26,18 @@
  * - Symlinks, special files, and other non-regular-file entries under rendered/
  *   are invalid input.
  * - Unreadable directories or files cause hard failure.
- * - If kindtree/ already contains regular files, the snapshot is treated as
- *   already migrated and the script is a no-op.
+ * - If kindtree/ already contains regular files, the script refuses to migrate
+ *   because the snapshot appears already paired or in a mixed state. The
+ *   migration script does not validate or repair already-paired snapshots.
+ *   Second runs are expected to fail clearly, not silently no-op.
  * - kindtree/ containing only empty directories does not block migration.
  * - Empty rendered/ input (no regular files) produces a valid empty snapshot
  *   root: rendered/ is removed if empty, kindtree/ is absent, snapshotRoot
  *   remains. No marker files or manifests are created.
  * - The script uses a two-phase approach: preflight (validate all input and
  *   build a migration plan) then apply (delete old files, write new ones).
- * - Partial mixed states are not a supported repair target.
+ * - Partial mixed states are not a supported repair target; they are rejected
+ *   as invalid input.
  * - Failed input does not partially mutate the snapshot.
  * - The cleanup helper (cleanEmptyDirs) ignores ENOENT on missing directories
  *   but propagates other filesystem errors such as permission failures.

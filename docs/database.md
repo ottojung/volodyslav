@@ -66,7 +66,7 @@ await renderToFilesystem(capabilities, rootDatabase, '/path/to/snapshot', 'x');
 await scanFromFilesystem(capabilities, rootDatabase, '/path/to/snapshot', 'x');
 ```
 
-The snapshot root is the directory that directly contains the sibling managed trees:
+A non-empty paired snapshot stores managed content in sibling trees under the snapshot root:
 
 ```
 snapshotRoot/
