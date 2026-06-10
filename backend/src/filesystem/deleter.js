@@ -19,6 +19,9 @@
 
 const fs = require("fs").promises;
 
+const DELETE_RETRY_DELAY_MS = 200;
+const DELETE_RETRY_ATTEMPTS = 25;
+
 class FileDeleterError extends Error {
     /**
      * @param {string} message
@@ -87,12 +90,23 @@ async function deleteFile(filePath) {
  * @returns {Promise<void>} - A promise that resolves when the directory is deleted.
  */
 async function deleteDirectory(directoryPath) {
-    try {
-        await fs.rm(directoryPath, { recursive: true });
-    } catch (err) {
-        if (err instanceof Object && "code" in err && err.code === "ENOENT") {
-            throw new FileNotFoundError(directoryPath);
-        } else {
+    let lastError = null;
+    for (let attempt = 0; attempt < DELETE_RETRY_ATTEMPTS; attempt++) {
+        try {
+            await fs.rm(directoryPath, { recursive: true });
+            return;
+        } catch (err) {
+            const isObject = err instanceof Object && "code" in err;
+            if (isObject && err.code === "ENOENT") {
+                throw new FileNotFoundError(directoryPath);
+            }
+            if (isObject && err.code === "ENOTEMPTY") {
+                lastError = err;
+                await new Promise((resolve) =>
+                    setTimeout(resolve, DELETE_RETRY_DELAY_MS)
+                );
+                continue;
+            }
             const msg = err instanceof Error ? err.message : String(err);
             throw new FileDeleterError(
                 `Failed to delete directory: ${directoryPath}: ${msg}`,
@@ -100,6 +114,11 @@ async function deleteDirectory(directoryPath) {
             );
         }
     }
+    const msg = lastError instanceof Error ? lastError.message : String(lastError);
+    throw new FileDeleterError(
+        `Failed to delete directory after ${DELETE_RETRY_ATTEMPTS} attempts: ${directoryPath}: ${msg}`,
+        directoryPath
+    );
 }
 
 /**
