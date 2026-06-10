@@ -505,6 +505,9 @@ function isPathLike(object) {
 - **Full test suite**: `npm test`
 - **Build verification**: `npm run build`
 
+Tests are slow. Prefer focused tests when working on a particular feature.
+Don't need to run `npm test` if not changing any javascript code.
+
 ## Test Conventions
 
 - Test files are located in `backend/tests/` and `frontend/tests/`
