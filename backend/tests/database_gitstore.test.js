@@ -251,10 +251,13 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             expect(commitCount(capabilities, gitDir)).toBe(2);
-            expect(topLevelEntries(capabilities, gitDir)).toEqual([DATABASE_SUBPATH]);
+            expect(topLevelEntries(capabilities, gitDir)).toEqual(["kindtree", DATABASE_SUBPATH]);
             expect(allTrackedFiles(capabilities, gitDir)).toEqual([
+                "kindtree/r/global/fingerprint",
+                "kindtree/r/global/identifiers_keys_map",
+                "kindtree/r/global/last_node_index",
                 `${DATABASE_SUBPATH}/r/global/fingerprint`,
-                `${DATABASE_SUBPATH}/r/global/identifiers_keys_map`,
+                // identifiers_keys_map is [] — no rendered leaf, only kindtree
                 `${DATABASE_SUBPATH}/r/global/last_node_index`,
             ]);
         } finally {
@@ -264,7 +267,7 @@ describe("checkpointDatabase", () => {
 
     // ── Repository layout ─────────────────────────────────────────────────────
 
-    test("database subdirectory is the only top-level entry in the repository", async () => {
+    test("database subdirectory has kindtree and rendered entries", async () => {
         const capabilities = getTestCapabilities();
         const db = await seedDatabase(capabilities, [
                         ['!x!!values!{"head":"event","args":["layout"]}', { ok: true }],
@@ -273,13 +276,13 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "layout check", db);
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(topLevelEntries(capabilities, gitDir)).toEqual([DATABASE_SUBPATH]);
+            expect(topLevelEntries(capabilities, gitDir)).toEqual(["kindtree", DATABASE_SUBPATH]);
         } finally {
             await db.close();
         }
     });
 
-    test("rendered database files are tracked inside DATABASE_SUBPATH in the commit tree", async () => {
+    test("rendered and kindtree files are tracked in the commit tree", async () => {
         const capabilities = getTestCapabilities();
         const db = await seedDatabase(capabilities, [
                         ['!x!!values!nodecache', { name: "first" }],
@@ -290,10 +293,16 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             const tracked = allTrackedFiles(capabilities, gitDir);
+            // Rendered leaf files (nodecache has property "name")
             expect(tracked).toContain(
-                `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!nodecache')}`
+                `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!nodecache')}/name`
             );
             expect(tracked).toContain(`${DATABASE_SUBPATH}/r/global/version`);
+            // Kindtree schema files
+            expect(tracked).toContain(
+                `kindtree/${renderedKeyPath('!x!!values!nodecache')}`
+            );
+            expect(tracked).toContain("kindtree/r/global/version");
         } finally {
             await db.close();
         }
@@ -308,13 +317,16 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "content check", db);
 
             const gitDir = checkpointGitDir(capabilities);
+            const valueRoot = renderedKeyPath('!x!!values!{"head":"event","args":["hello"]}');
+            // Kindtree schema file contains the type schema
             expect(
-                fileContentAtHead(
-                    capabilities,
-                    gitDir,
-                    `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!{"head":"event","args":["hello"]}')}`
-                )
-            ).toBe(JSON.stringify({ message: "hello-content" }, null, 2));
+                fileContentAtHead(capabilities, gitDir, `kindtree/${valueRoot}`)
+            ).toBe('{\n  "message": "string"\n}');
+            // Rendered leaf file contains the string value
+            const renderedLeafPath = `${DATABASE_SUBPATH}/${valueRoot}/message`;
+            expect(
+                fileContentAtHead(capabilities, gitDir, renderedLeafPath)
+            ).toBe("hello-content");
         } finally {
             await db.close();
         }
@@ -352,8 +364,10 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             const tracked = allTrackedFiles(capabilities, gitDir);
-            expect(tracked).toContain(`${DATABASE_SUBPATH}/${renderedKeyPath(oldKey)}`);
-            expect(tracked).toContain(`${DATABASE_SUBPATH}/${renderedKeyPath(newKey)}`);
+            expect(tracked).toContain(`kindtree/${renderedKeyPath(oldKey)}`);
+            expect(tracked).toContain(`${DATABASE_SUBPATH}/${renderedKeyPath(oldKey)}/value`);
+            expect(tracked).toContain(`kindtree/${renderedKeyPath(newKey)}`);
+            expect(tracked).toContain(`${DATABASE_SUBPATH}/${renderedKeyPath(newKey)}/value`);
         } finally {
             await db.close();
         }
@@ -369,9 +383,15 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "v2", db);
 
             const gitDir = checkpointGitDir(capabilities);
+            const valueRoot = renderedKeyPath(key);
+            // Kindtree schema
             expect(
-                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
-            ).toBe(JSON.stringify({ version: "version-2" }, null, 2));
+                fileContentAtHead(capabilities, gitDir, `kindtree/${valueRoot}`)
+            ).toBe('{\n  "version": "string"\n}');
+            // Rendered leaf
+            expect(
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${valueRoot}/version`)
+            ).toBe("version-2");
         } finally {
             await db.close();
         }
@@ -391,9 +411,13 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             expect(commitCount(capabilities, gitDir)).toBeGreaterThanOrEqual(2);
+            const valueRoot = renderedKeyPath(key);
             expect(
-                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
-            ).toBe(JSON.stringify({ value: "base" }, null, 2));
+                fileContentAtHead(capabilities, gitDir, `kindtree/${valueRoot}`)
+            ).toBe('{\n  "value": "string"\n}');
+            expect(
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${valueRoot}/value`)
+            ).toBe("base");
         } finally {
             await db.close();
         }
@@ -424,9 +448,13 @@ describe("checkpointMigration", () => {
                 "post-migration: 2",
                 "pre-migration: 1 → 2",
             ]);
+            const valueRoot = renderedKeyPath(key);
             expect(
-                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
-            ).toBe(JSON.stringify({ version: "after" }, null, 2));
+                fileContentAtHead(capabilities, gitDir, `kindtree/${valueRoot}`)
+            ).toBe('{\n  "version": "string"\n}');
+            expect(
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${valueRoot}/version`)
+            ).toBe("after");
         } finally {
             await db.close();
         }
@@ -451,15 +479,15 @@ describe("checkpointMigration", () => {
             ).rejects.toThrow("migration failure");
 
             const gitDir = checkpointGitDir(capabilities);
-            // The pre-migration commit IS persisted even though the callback failed.
-            // This is intentional: it provides a useful diagnostic snapshot of the
-            // database state immediately before the failed migration attempt.
-            // +1 for the "Initial empty commit" created by getRepository on first use
             expect(commitCount(capabilities, gitDir)).toBe(2);
             expect(latestCommitMessage(gitDir)).toBe("pre-migration: fail");
+            const valueRoot = renderedKeyPath(key);
             expect(
-                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
-            ).toBe(JSON.stringify({ version: "before" }, null, 2));
+                fileContentAtHead(capabilities, gitDir, `kindtree/${valueRoot}`)
+            ).toBe('{\n  "version": "string"\n}');
+            expect(
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${valueRoot}/version`)
+            ).toBe("before");
         } finally {
             await db.close();
         }
@@ -560,13 +588,13 @@ describe("dirty-state recovery", () => {
                 }
             );
             expect(result).toBe("ok");
+            const vr = renderedKeyPath(key);
             expect(
-                fileContentAtHead(
-                    capabilities,
-                    gitDir,
-                    `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`
-                )
-            ).toBe(JSON.stringify({ v: 2 }, null, 2));
+                fileContentAtHead(capabilities, gitDir, `kindtree/${vr}`)
+            ).toBe('{\n  "v": "number"\n}');
+            expect(
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${vr}/v`)
+            ).toBe("2");
         } finally {
             await db.close();
         }
@@ -722,13 +750,13 @@ describe("dirty-state recovery", () => {
             await checkpointDatabase(capabilities, "snapshot after recovery", db);
 
             // Verify the snapshot content is correct and not corrupted.
+            const vr = renderedKeyPath(key);
             expect(
-                fileContentAtHead(
-                    capabilities,
-                    gitDir,
-                    `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`
-                )
-            ).toBe(JSON.stringify({ value: "recorded-after-recovery" }, null, 2));
+                fileContentAtHead(capabilities, gitDir, `kindtree/${vr}`)
+            ).toBe('{\n  "value": "string"\n}');
+            expect(
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${vr}/value`)
+            ).toBe("recorded-after-recovery");
         } finally {
             await db.close();
         }

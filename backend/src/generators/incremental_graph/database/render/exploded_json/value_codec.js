@@ -201,28 +201,28 @@ function assertPlainObject(value) {
  * @returns {unknown}
  * @throws {MissingRenderedLeafError|InvalidNumberLeafError|InvalidBooleanLeafError|InvalidNullLeafError}
  */
-function scanExplodedJsonProjection(schema, readLeaf, prefix) {
+async function scanExplodedJsonProjection(schema, readLeaf, prefix) {
     const p = prefix || "";
     if (schema === "string") {
-        return readLeaf(p);
+        return await readLeaf(p);
     }
     if (schema === "number") {
-        const content = readLeaf(p);
+        const content = await readLeaf(p);
         return parseNumber(content, "", p);
     }
     if (schema === "boolean") {
-        const content = readLeaf(p);
+        const content = await readLeaf(p);
         return parseBoolean(content, "", p);
     }
     if (schema === "null") {
-        const content = readLeaf(p);
+        const content = await readLeaf(p);
         return parseNull(content, "", p);
     }
     if (Array.isArray(schema)) {
         const result = [];
         for (let i = 0; i < schema.length; i++) {
             const childPrefix = p ? `${p}/${i}` : `${i}`;
-            result.push(scanExplodedJsonProjection(schema[i], readLeaf, childPrefix));
+            result.push(await scanExplodedJsonProjection(schema[i], readLeaf, childPrefix));
         }
         return result;
     }
@@ -231,7 +231,7 @@ function scanExplodedJsonProjection(schema, readLeaf, prefix) {
         for (const key of Object.keys(schema)) {
             const encodedKey = encodeObjectKey(key);
             const childPrefix = p ? `${p}/${encodedKey}` : encodedKey;
-            result[key] = scanExplodedJsonProjection(schema[key], readLeaf, childPrefix);
+            result[key] = await scanExplodedJsonProjection(schema[key], readLeaf, childPrefix);
         }
         return result;
     }

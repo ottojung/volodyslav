@@ -706,51 +706,51 @@ describe('scan projection', () => {
         };
     }
 
-    test('scans string value', () => {
+    test('scans string value', async () => {
         const p = projectExplodedJsonValue("hello");
-        const result = scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
+        const result = await scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
         expect(result).toBe("hello");
     });
 
-    test('scans number value', () => {
+    test('scans number value', async () => {
         const p = projectExplodedJsonValue(42);
-        const result = scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
+        const result = await scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
         expect(result).toBe(42);
     });
 
-    test('scans boolean true', () => {
+    test('scans boolean true', async () => {
         const p = projectExplodedJsonValue(true);
-        const result = scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
+        const result = await scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
         expect(result).toBe(true);
     });
 
-    test('scans boolean false', () => {
+    test('scans boolean false', async () => {
         const p = projectExplodedJsonValue(false);
-        const result = scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
+        const result = await scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
         expect(result).toBe(false);
     });
 
-    test('scans null', () => {
+    test('scans null', async () => {
         const p = projectExplodedJsonValue(null);
-        const result = scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
+        const result = await scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
         expect(result).toBeNull();
     });
 
-    test('scans nested object', () => {
+    test('scans nested object', async () => {
         const value = { a: { b: "deep" } };
         const p = projectExplodedJsonValue(value);
-        const result = scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
+        const result = await scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
         expect(result).toEqual({ a: { b: "deep" } });
     });
 
-    test('scans array', () => {
+    test('scans array', async () => {
         const value = ["a", 42, false, null];
         const p = projectExplodedJsonValue(value);
-        const result = scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
+        const result = await scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
         expect(result).toEqual(["a", 42, false, null]);
     });
 
-    test('scan(render(v)) = v round trip for mixed structure', () => {
+    test('scan(render(v)) = v round trip for mixed structure', async () => {
         const value = {
             name: "test",
             count: 42,
@@ -761,14 +761,14 @@ describe('scan projection', () => {
             empty: {},
         };
         const p = projectExplodedJsonValue(value);
-        const result = scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
+        const result = await scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
         expect(result).toEqual(value);
     });
 
-    test('scans primitive-free array', () => {
+    test('scans primitive-free array', async () => {
         const value = [{}, []];
         const p = projectExplodedJsonValue(value);
-        const result = scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
+        const result = await scanExplodedJsonProjection(p.schema, makeReader(p.leaves));
         expect(result).toEqual([{}, []]);
     });
 });

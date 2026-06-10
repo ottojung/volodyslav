@@ -3,6 +3,9 @@ const {
     DATABASE_SUBPATH,
     keyToRelativePath,
 } = require("../src/generators/incremental_graph/database");
+const {
+    projectExplodedJsonValue,
+} = require("../src/generators/incremental_graph/database/render/exploded_json");
 
 /** @typedef {import("../src/capabilities/root").Capabilities} Capabilities */
 
@@ -109,13 +112,38 @@ async function writeRenderedEntries(capabilities, workTree, entries) {
     }
 
     for (const [key, value] of entriesToWrite) {
-        const filePath = path.join(
-            workTree,
-            DATABASE_SUBPATH,
-            ...renderedKeyPath(key).split("/")
-        );
-        const file = await capabilities.creator.createFile(filePath);
-        await capabilities.writer.writeFile(file, JSON.stringify(value, null, 2));
+        // renderedKeyPath returns something like "r/values/foo" or "_meta/current_replica".
+        // The snapshot sublevel "r" is a directory component. Strip it from the
+        // value root so the adapter's snapshotSublevel dir provides it.
+        const rawSegments = renderedKeyPath(key).split("/");
+        const valueRootSegments = rawSegments[0] === "r" ? rawSegments.slice(1) : rawSegments;
+        let projection;
+        try {
+            projection = projectExplodedJsonValue(value);
+        } catch (e) {
+            // Fall back to old format for unsupported values
+            const filePath = path.join(
+                workTree,
+                DATABASE_SUBPATH,
+                ...rawSegments
+            );
+            const file = await capabilities.creator.createFile(filePath);
+            await capabilities.writer.writeFile(file, JSON.stringify(value, null, 2));
+            continue;
+        }
+        // Kindtree schema file: workTree/kindtree/<snapshotSublevel>/<valueRoot>
+        const kindtreePath = path.join(workTree, "kindtree", "r", ...valueRootSegments);
+        const kindtreeFile = await capabilities.creator.createFile(kindtreePath);
+        await capabilities.writer.writeFile(kindtreeFile, projection.schemaText);
+        // Rendered leaf files: workTree/rendered/<snapshotSublevel>/<valueRoot>/<desc>
+        for (const leaf of projection.leaves) {
+            const leafSegments = leaf.descendantPath
+                ? leaf.descendantPath.split("/")
+                : [];
+            const leafPath = path.join(workTree, DATABASE_SUBPATH, "r", ...valueRootSegments, ...leafSegments);
+            const leafFile = await capabilities.creator.createFile(leafPath);
+            await capabilities.writer.writeFile(leafFile, leaf.content);
+        }
     }
 }
 

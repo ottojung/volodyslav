@@ -161,7 +161,7 @@ async function checkpointDatabase(
                     capabilities,
                     database,
                     {
-                        snapshotRoot: path.join(workDir, CHECKPOINT_WORKING_PATH),
+                        snapshotRoot: workDir,
                         sourceSublevel: activeReplica,
                         snapshotSublevel: 'r',
                     }
@@ -222,7 +222,7 @@ async function checkpointMigration(
                 capabilities,
                 rootDatabase,
                 {
-                    snapshotRoot: path.join(workDir, CHECKPOINT_WORKING_PATH),
+                    snapshotRoot: workDir,
                     sourceSublevel: rootDatabase.currentReplicaName(),
                     snapshotSublevel: 'r',
                 }
@@ -236,7 +236,7 @@ async function checkpointMigration(
                 capabilities,
                 rootDatabase,
                 {
-                    snapshotRoot: path.join(workDir, CHECKPOINT_WORKING_PATH),
+                    snapshotRoot: workDir,
                     sourceSublevel: rootDatabase.currentReplicaName(),
                     snapshotSublevel: 'r',
                 }

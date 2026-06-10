@@ -20,7 +20,6 @@ const { requireValidFingerprint } = require('./fingerprint');
  * @returns {Promise<boolean>}
  */
 async function importResetSnapshotIntoDatabase(capabilities, database, workTree, isExistingDb) {
-    const snapshotRoot = path.join(workTree, CHECKPOINT_WORKING_PATH);
     const nextReplica = database.otherReplicaName();
 
     const preImportFingerprint = database.getFingerprint();
@@ -29,13 +28,16 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         capabilities,
         database,
         {
-            snapshotRoot,
+            snapshotRoot: workTree,
             targetSublevel: nextReplica,
             snapshotSublevel: 'r',
         }
     );
 
     const targetGlobal = database.replicaGlobalSublevel(nextReplica);
+    const kindtreeDir = path.join(workTree, 'kindtree', 'r');
+    const hasSnapshotReplicaDirectory = await capabilities.checker.directoryExists(kindtreeDir);
+
     if (hasSnapshotReplicaDirectory) {
         requireValidFingerprint(
             await targetGlobal.get('fingerprint'),

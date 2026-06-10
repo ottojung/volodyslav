@@ -129,14 +129,22 @@ describe("synchronizeNoLock", () => {
                 capabilities.environment.generatorsRepository(),
                 clonedRemote
             );
-            const renderedFile = path.join(
+            const valueRootSegments = renderedKeyPath(eventKey).split("/");
+            // Kindtree schema file
+            const kindtreeFile = path.join(
+                clonedRemote, "kindtree", ...valueRootSegments
+            );
+            expect(await capabilities.reader.readFileAsText(kindtreeFile)).toBe(
+                '{\n  "source": "string"\n}'
+            );
+            // Rendered leaf file
+            const renderedLeafFile = path.join(
                 clonedRemote,
                 DATABASE_SUBPATH,
-                ...renderedKeyPath(eventKey).split("/")
+                ...valueRootSegments,
+                "source"
             );
-            expect(await capabilities.reader.readFileAsText(renderedFile)).toBe(
-                JSON.stringify({ source: "local" }, null, 2)
-            );
+            expect(await capabilities.reader.readFileAsText(renderedLeafFile)).toBe("local");
             expect(
                 await capabilities.checker.directoryExists(
                     path.join(
@@ -347,18 +355,18 @@ describe("synchronizeNoLock", () => {
 
         expect(isSyncMergeAggregateError(error)).toBe(true);
         expect(error.message).toContain("prismo");
-        expect(error.message).toContain("input directory does not exist");
+        expect(error.message).toContain("Missing identifiers_keys_map");
     });
 
     test("resetToHostname succeeds even when snapshot omits _meta/current_replica", async () => {
         const capabilities = getTestCapabilities();
         const snapshotKey = '!x!!values!{"head":"event","args":["reset"]}';
-        await seedHostnameBranchWithRenderedFiles(capabilities, [
-            { path: renderedKeyPath(snapshotKey), content: JSON.stringify("after-reset") },
-            { path: 'r/global/version', content: JSON.stringify('snapshot-version') },
-            { path: 'r/global/identifiers_keys_map', content: JSON.stringify([]) },
-            { path: 'r/global/last_node_index', content: JSON.stringify(0) },
-            { path: 'r/global/fingerprint', content: JSON.stringify('snapshotfingerprint') },
+        await seedRemoteRepository(capabilities, [
+            [snapshotKey, "after-reset"],
+            ["!x!!global!version", "snapshot-version"],
+            ["!x!!global!identifiers_keys_map", []],
+            ["!x!!global!last_node_index", 0],
+            ["!x!!global!fingerprint", "snapshotfingerprint"],
         ]);
         await expect(
             synchronizeNoLock(capabilities, { resetToHostname: "test-host" })
