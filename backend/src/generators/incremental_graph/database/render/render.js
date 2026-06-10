@@ -20,8 +20,12 @@ async function renderSublevelToSnapshot(capabilities, rootDatabase, options) {
     }
     const adapter = makeDbToPairedFsAdapter(capabilities, rootDatabase, { snapshotRoot: options.snapshotRoot, sourceSublevel, snapshotSublevel });
     const stats = await unifyStores(adapter);
-    await pruneEmptyDirectories(capabilities, path.join(options.snapshotRoot, 'rendered', snapshotSublevel));
-    await pruneEmptyDirectories(capabilities, path.join(options.snapshotRoot, 'kindtree', snapshotSublevel));
+    const renderedSublevel = path.join(options.snapshotRoot, 'rendered', snapshotSublevel);
+    const kindtreeSublevel = path.join(options.snapshotRoot, 'kindtree', snapshotSublevel);
+    await pruneEmptyDirectories(capabilities, renderedSublevel);
+    await pruneEmptyDirectories(capabilities, kindtreeSublevel);
+    await pruneEmptyDirectories(capabilities, path.join(options.snapshotRoot, 'rendered'));
+    await pruneEmptyDirectories(capabilities, path.join(options.snapshotRoot, 'kindtree'));
     capabilities.logger.logInfo({ snapshotRoot: options.snapshotRoot, sourceSublevel, snapshotSublevel, ...stats }, 'Rendered database sublevel to paired snapshot');
 }
 /** @param {RenderCapabilities} capabilities @param {string} directory @returns {Promise<boolean>} */

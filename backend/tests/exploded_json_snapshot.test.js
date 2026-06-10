@@ -175,7 +175,7 @@ describe('paired exploded JSON snapshots', () => {
             } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
         });
 
-        test.failing('[22.6-b] rendering a previously populated sublevel to empty prunes top-level kindtree/ and rendered/', async () => {
+        test('[22.6-b] rendering a previously populated sublevel to empty prunes top-level kindtree/ and rendered/', async () => {
             const { capabilities, tmpDir } = makeCapabilities();
             const db = await getRootDatabase(capabilities);
             try {
