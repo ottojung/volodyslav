@@ -1690,6 +1690,74 @@ The following are deliberately not specified here:
 Any future extension of the value domain requires an unambiguous schema token or
 structural rule. It MUST NOT be introduced by guessing from leaf text.
 
+## 22. Snapshot existence semantics
+
+### 22.1 Snapshot root directory
+
+The snapshot root directory (`snapshotRoot`) is the unit of snapshot existence.
+It contains sibling managed trees `kindtree/` and `rendered/`:
+
+```text
+snapshotRoot/
+  kindtree/
+    <snapshotSublevel>/
+      ...
+  rendered/
+    <snapshotSublevel>/
+      ...
+```
+
+### 22.2 Missing root is an error
+
+If `snapshotRoot` does not exist at the time of scanning, scanning MUST fail before
+any database mutation, regardless of the snapshot sublevel. A missing root can
+result from a wrong path, incomplete checkout, failed setup, or caller bug. It
+MUST NOT be treated as an empty snapshot.
+
+### 22.3 Existing empty root is a valid empty snapshot
+
+If `snapshotRoot` exists and contains neither `kindtree/<snapshotSublevel>` nor
+`rendered/<snapshotSublevel>`, that is a valid empty database snapshot for that
+sublevel. Scanning such a root deletes all target DB entries in the selected
+sublevel during reconciliation.
+
+Empty snapshots:
+- MUST NOT require `kindtree/<snapshotSublevel>` to exist;
+- MUST NOT require `rendered/<snapshotSublevel>` to exist;
+- MUST NOT require marker files, sentinel files, `.gitkeep` files, or any other
+  special directory entries.
+
+A missing root and an existing empty root are semantically distinct:
+- missing root = fatal error, no DB mutation;
+- existing empty root = valid empty snapshot, target sublevel is emptied.
+
+### 22.4 File-to-directory conflicts
+
+If a path that should be a directory under `rendered/` or `kindtree/` is a
+regular file, the scanner MUST reject it as a malformed snapshot.
+
+### 22.5 Legacy or partial snapshots remain invalid
+
+The paired snapshot format is two-sided: a snapshot requires both trees to be
+consistent for the managed sublevel. In particular:
+
+- `rendered/` files without a corresponding `kindtree/` schema are invalid
+  (see Section 12).
+- `kindtree/` schemas requiring rendered leaves that are missing are invalid
+  (see Section 12).
+- Extra rendered files not claimed by any schema are invalid (see Section 12).
+
+An empty root is valid. A root with one valid tree but no files in the other is
+also valid when that other tree's absence is consistent with an empty snapshot
+(no required files). But rendered-only files without schemas always fail.
+
+### 22.6 Rendering an empty sublevel
+
+Rendering an empty database sublevel (no keys in the selected sublevel) produces
+an existing empty snapshot root: `snapshotRoot` exists, but `kindtree/` and
+`rendered/` are absent or have been pruned. This is the canonical representation
+of an empty sublevel snapshot. No marker files or manifests are created.
+
 ## 21. Summary of invariants
 
 A conforming rendered database satisfies all of these invariants:

@@ -17,6 +17,9 @@ function isScanInputDirMissingError(object) { return object instanceof ScanInput
 async function scanSublevelFromSnapshot(capabilities, rootDatabase, options) {
     const targetSublevel = validateTopLevelSublevel(options.targetSublevel);
     const snapshotSublevel = validateTopLevelSublevel(options.snapshotSublevel);
+    if (!await capabilities.checker.directoryExists(options.snapshotRoot)) {
+        throw new ScanInputDirMissingError(options.snapshotRoot, snapshotSublevel);
+    }
     const adapter = await makePairedFsToDbAdapter(capabilities, rootDatabase, { snapshotRoot: options.snapshotRoot, targetSublevel, snapshotSublevel });
     const stats = await unifyStores(adapter);
     capabilities.logger.logInfo({ snapshotRoot: options.snapshotRoot, targetSublevel, snapshotSublevel, ...stats }, 'Scanned database sublevel from paired snapshot');

@@ -15,6 +15,9 @@ const { makeDbToPairedFsAdapter } = require('./exploded_json');
 async function renderSublevelToSnapshot(capabilities, rootDatabase, options) {
     const sourceSublevel = validateTopLevelSublevel(options.sourceSublevel);
     const snapshotSublevel = validateTopLevelSublevel(options.snapshotSublevel);
+    if (!await capabilities.checker.directoryExists(options.snapshotRoot)) {
+        await capabilities.creator.createDirectory(options.snapshotRoot);
+    }
     const adapter = makeDbToPairedFsAdapter(capabilities, rootDatabase, { snapshotRoot: options.snapshotRoot, sourceSublevel, snapshotSublevel });
     const stats = await unifyStores(adapter);
     await pruneEmptyDirectories(capabilities, path.join(options.snapshotRoot, 'rendered', snapshotSublevel));

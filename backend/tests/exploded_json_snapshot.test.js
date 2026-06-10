@@ -103,6 +103,97 @@ describe('paired exploded JSON snapshots', () => {
         } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
     });
 
+    describe('missing snapshot root (empty snapshot semantics)', () => {
+        test('[22.2-a] scanSublevelFromSnapshot rejects missing snapshot root', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const missingRoot = path.join(tmpDir, 'nonexistent');
+                await db._rawPut('!x!!values!node', { text: 'hello' });
+                const error = await captureRejection(() => scanSublevelFromSnapshot(capabilities, db, {
+                    snapshotRoot: missingRoot,
+                    targetSublevel: 'x',
+                    snapshotSublevel: 'r',
+                }));
+                expect(isScanInputDirMissingError(error)).toBe(true);
+                expect(await readRaw(db, '!x!!values!node')).toEqual({ text: 'hello' });
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+
+        test('[22.2-b] scanSublevelFromSnapshot rejects missing snapshot root even when snapshotSublevel has valid content', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const missingRoot = path.join(tmpDir, 'nonexistent');
+                const error = await captureRejection(() => scanSublevelFromSnapshot(capabilities, db, {
+                    snapshotRoot: missingRoot,
+                    targetSublevel: 'x',
+                    snapshotSublevel: 'r',
+                }));
+                expect(isScanInputDirMissingError(error)).toBe(true);
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+
+        test('[22.3-a] scanSublevelFromSnapshot accepts existing empty snapshot root', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const snapshotRoot = path.join(tmpDir, 'snapshot');
+                fs.mkdirSync(snapshotRoot, { recursive: true });
+                await db._rawPut('!x!!values!node', { text: 'hello' });
+                await scanSublevelFromSnapshot(capabilities, db, {
+                    snapshotRoot,
+                    targetSublevel: 'x',
+                    snapshotSublevel: 'r',
+                });
+                expect(await readRaw(db, '!x!!values!node')).toBeUndefined();
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+
+        test('[22.3-b] scanFromFilesystem accepts existing empty snapshot root', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const snapshotRoot = path.join(tmpDir, 'snapshot');
+                fs.mkdirSync(snapshotRoot, { recursive: true });
+                await db._rawPut('!x!!values!node', { text: 'hello' });
+                await scanFromFilesystem(capabilities, db, snapshotRoot, 'x');
+                expect(await readRaw(db, '!x!!values!node')).toBeUndefined();
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+
+        test('[22.6-a] rendering an empty sublevel produces an existing empty snapshot root that tolerates scan', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const snapshotRoot = path.join(tmpDir, 'snapshot');
+                await renderToFilesystem(capabilities, db, snapshotRoot, 'y');
+                expect(fs.existsSync(snapshotRoot)).toBe(true);
+                expect(fs.existsSync(path.join(snapshotRoot, 'kindtree', 'y'))).toBe(false);
+                expect(fs.existsSync(path.join(snapshotRoot, 'rendered', 'y'))).toBe(false);
+                await scanFromFilesystem(capabilities, db, snapshotRoot, 'y');
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+
+        test('[22.5-a] scanSublevelFromSnapshot still rejects legacy rendered-only snapshots when snapshotRoot exists', async () => {
+            const { capabilities, tmpDir } = makeCapabilities();
+            const db = await getRootDatabase(capabilities);
+            try {
+                const snapshotRoot = path.join(tmpDir, 'snapshot');
+                fs.mkdirSync(path.join(snapshotRoot, 'rendered', 'r', 'values'), { recursive: true });
+                fs.writeFileSync(path.join(snapshotRoot, 'rendered', 'r', 'values', 'node'), '{"legacy":true}');
+                await db._rawPut('!x!!values!node', { text: 'existing' });
+                const error = await captureRejection(() => scanSublevelFromSnapshot(capabilities, db, {
+                    snapshotRoot,
+                    targetSublevel: 'x',
+                    snapshotSublevel: 'r',
+                }));
+                expect(isMissingKindtreeRootError(error)).toBe(true);
+                expect(await readRaw(db, '!x!!values!node')).toEqual({ text: 'existing' });
+            } finally { await db.close(); fs.rmSync(tmpDir, { recursive: true, force: true }); }
+        });
+    });
+
     describe('compatibility API (renderToFilesystem / scanFromFilesystem)', () => {
         test('renderToFilesystem writes under the exact snapshot root', async () => {
             const { capabilities, tmpDir } = makeCapabilities();

@@ -161,7 +161,24 @@ not referenced by any schema in `kindtree/`) cause a hard failure with `ExtraRen
 
 The renderer (`renderToFilesystem` / `renderSublevelToSnapshot`) writes both the type schema
 under `kindtree/` and zero-or-more primitive leaf files under `rendered/` for each value root.
-Empty snapshots produce neither directory if the sublevel has no entries.
+
+### Empty snapshot semantics
+
+The snapshot root directory is the unit of snapshot existence:
+
+- If `snapshotRoot` does not exist at scan time, scanning fails before any database
+  mutation with `ScanInputDirMissingError`. A missing root is not an empty snapshot.
+- If `snapshotRoot` exists but is empty, scanning treats it as a valid empty
+  database snapshot and empties the target sublevel during reconciliation.
+- If `snapshotRoot` exists but contains neither `kindtree/<snapshotSublevel>` nor
+  `rendered/<snapshotSublevel>`, that is a valid empty snapshot for that sublevel.
+- Empty snapshots require no child files or directories below the root.
+- Rendering an empty sublevel produces an existing empty snapshot root:
+  the root directory exists but `kindtree/` and `rendered/` subtrees are absent
+  (pruned by the renderer).
+
+Legacy rendered-only partial snapshots (rendered files without matching schemas)
+remain invalid and are rejected with `MissingKindtreeRootError`.
 
 ### No locking
 
