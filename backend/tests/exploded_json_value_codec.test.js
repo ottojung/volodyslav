@@ -277,7 +277,7 @@ describe('exploded JSON value codec', () => {
                 expect(isTypeSchemaError(error)).toBe(true);
             });
 
-            test.failing('[19.3-16] type-schema JSON object contains duplicate member names at root level: invalid', () => {
+            test('[19.3-16] type-schema JSON object contains duplicate member names at root level: invalid', () => {
                 const error = captureError(() => parseTypeSchema('{"a": "string", "a": "number"}'));
                 expect(isTypeSchemaError(error)).toBe(true);
             });
@@ -333,19 +333,19 @@ describe('exploded JSON value codec', () => {
             expect(projection.schema).toEqual([]);
         });
 
-        test.failing('[19.4-10] accepted single-final-LF "true\\n" canonicalized to "true" on render', () => {
+        test('[19.4-10] accepted single-final-LF "true\\n" canonicalized to "true" on render', () => {
             expect(scanExplodedJsonProjection('boolean', () => 'true\n')).toBe(true);
         });
 
-        test.failing('[19.4-10] accepted single-final-LF "false\\n" canonicalized to "false" on render', () => {
+        test('[19.4-10] accepted single-final-LF "false\\n" canonicalized to "false" on render', () => {
             expect(scanExplodedJsonProjection('boolean', () => 'false\n')).toBe(false);
         });
 
-        test.failing('[19.4-10] accepted single-final-LF "null\\n" canonicalized to "null" on render', () => {
+        test('[19.4-10] accepted single-final-LF "null\\n" canonicalized to "null" on render', () => {
             expect(scanExplodedJsonProjection('null', () => 'null\n')).toBe(null);
         });
 
-        test.failing('[19.4-10] accepted single-final-LF "5\\n" canonicalized to "5" on render', () => {
+        test('[19.4-10] accepted single-final-LF "5\\n" canonicalized to "5" on render', () => {
             expect(scanExplodedJsonProjection('number', () => '5\n')).toBe(5);
         });
     });

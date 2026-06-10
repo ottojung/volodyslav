@@ -69,6 +69,14 @@ class UnknownTypeSchemaTokenError extends TypeSchemaError {
         this.token = token;
     }
 }
+class DuplicateMemberNameError extends TypeSchemaError {
+    /** @param {string} memberName */
+    constructor(memberName) {
+        super(`Duplicate member name in type schema: '${memberName}'`);
+        this.name = 'DuplicateMemberNameError';
+        this.memberName = memberName;
+    }
+}
 
 class RenderedLeafError extends Error {}
 class MissingRenderedLeafError extends RenderedLeafError {
@@ -147,10 +155,14 @@ function isSparseArrayRenderedValueError(object) { return object instanceof Spar
 function isNonPlainObjectRenderedValueError(object) { return object instanceof NonPlainObjectRenderedValueError; }
 /** @param {unknown} object @returns {object is TypeSchemaError} */
 function isTypeSchemaError(object) { return object instanceof TypeSchemaError; }
+/** @param {unknown} object @returns {object is DuplicateMemberNameError} */
+function isDuplicateMemberNameError(object) { return object instanceof DuplicateMemberNameError; }
 /** @param {unknown} object @returns {object is RenderedLeafError} */
 function isRenderedLeafError(object) { return object instanceof RenderedLeafError; }
 
 module.exports = {
+    DuplicateMemberNameError,
+    isDuplicateMemberNameError,
     UnsupportedRenderedValueError,
     CycleInRenderedValueError,
     SparseArrayRenderedValueError,
