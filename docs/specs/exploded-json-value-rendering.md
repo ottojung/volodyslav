@@ -140,8 +140,8 @@ The reasoning is:
 - the database's own versioned state is the format/version discriminator;
 - there is no second out-of-band rendered-snapshot discriminator;
 - implementations must not guess formats from partial evidence;
-- missing `snapshotRoot` is a snapshot validity failure (see Section 21.2);
-- existing empty `snapshotRoot` is a valid empty database snapshot (see Section 21.3);
+- missing `snapshotRoot` is a snapshot validity failure (see Section 20.2);
+- existing empty `snapshotRoot` is a valid empty database snapshot (see Section 20.3);
 - absence of a value projection means the DB value is absent in the selected
   snapshot domain;
 - malformed partial evidence (rendered files without schema ownership,
@@ -1675,28 +1675,9 @@ Acceptance controls for incidental directories:
 10. Canonical render never creates a directory merely for `{}`, `[]`, or a
     primitive-free compound.
 
-## 20. Out of scope
+## 20. Snapshot existence semantics
 
-The following are deliberately not specified here:
-
-- implementation function or class names;
-- format evolution;
-- support for `undefined`, binary values, dates, bigint, custom classes, or
-  other values outside the supported rendered value domain;
-- filesystem portability rules beyond the existing path-segment and UTF-8 text
-  abstractions;
-- authorization, rate limiting, resource caps, or adversarial-client defenses;
-- merge semantics for two concurrently edited rendered databases;
-- making adapter-level filesystem writes or multi-key DB reconciliation atomic;
-- optimizing partial DB updates below one complete DB value; and
-- changing identifier-native raw DB key design.
-
-Any future extension of the value domain requires an unambiguous schema token or
-structural rule. It MUST NOT be introduced by guessing from leaf text.
-
-## 21. Snapshot existence semantics
-
-### 21.1 Snapshot root directory
+### 20.1 Snapshot root directory
 
 The snapshot root directory (`snapshotRoot`) is the unit of snapshot existence.
 A non-empty paired snapshot stores managed content in sibling managed trees:
@@ -1711,14 +1692,14 @@ snapshotRoot/
       ...
 ```
 
-### 21.2 Missing root is an error
+### 20.2 Missing root is an error
 
 If `snapshotRoot` does not exist at the time of scanning, scanning MUST fail before
 any database mutation, regardless of the snapshot sublevel. A missing root can
 result from a wrong path, incomplete checkout, failed setup, or caller bug. It
 MUST NOT be treated as an empty snapshot.
 
-### 21.3 Existing empty root is a valid empty snapshot
+### 20.3 Existing empty root is a valid empty snapshot
 
 If `snapshotRoot` exists and contains neither `kindtree/<snapshotSublevel>` nor
 `rendered/<snapshotSublevel>`, that is a valid empty database snapshot for that
@@ -1735,12 +1716,12 @@ A missing root and an existing empty root are semantically distinct:
 - missing root = fatal error, no DB mutation;
 - existing empty root = valid empty snapshot, target sublevel is emptied.
 
-### 21.4 File-to-directory conflicts
+### 20.4 File-to-directory conflicts
 
 If a path that should be a directory under `rendered/` or `kindtree/` is a
 regular file, the scanner MUST reject it as a malformed snapshot.
 
-### 21.5 Legacy or partial snapshots remain invalid
+### 20.5 Legacy or partial snapshots remain invalid
 
 The paired snapshot format is two-sided: a snapshot requires both trees to be
 consistent for the managed sublevel. In particular:
@@ -1751,11 +1732,12 @@ consistent for the managed sublevel. In particular:
   (see Section 12).
 - Extra rendered files not claimed by any schema are invalid (see Section 12).
 
-An empty root is valid. A root with one valid tree but no files in the other is
-also valid when that other tree's absence is consistent with an empty snapshot
-(no required files). But rendered-only files without schemas always fail.
+An empty root is valid. Schema files with no rendered files are valid when those
+schemas require no primitive leaves (schema-only values such as `{}` or `[]`).
+A root with no selected schema files and no selected rendered files is an empty
+selected snapshot. Rendered-only files without schemas always fail.
 
-### 21.6 Rendering an empty sublevel
+### 20.6 Rendering an empty sublevel
 
 Rendering an empty database sublevel (no keys in the selected sublevel) produces
 an existing empty snapshot root: `snapshotRoot` exists, but `kindtree/` and
@@ -1770,7 +1752,7 @@ After rendering the selected sublevel:
 - `snapshotRoot` itself is kept;
 - unselected snapshot sublevels are never deleted.
 
-## 22. Summary of invariants
+## 21. Summary of invariants
 
 A conforming rendered database satisfies all of these invariants:
 
@@ -1801,4 +1783,23 @@ A conforming rendered database satisfies all of these invariants:
 14. This specification introduces no format discriminator. There is no
     snapshot-format marker, manifest, sidecar version file, or global schema
     file. The existing `rendered/r/global/version` database value remains the
-    only version-like marker in this area.
+     only version-like marker in this area.
+
+## 22. Out of scope
+
+The following are deliberately not specified here:
+
+- implementation function or class names;
+- format evolution;
+- support for `undefined`, binary values, dates, bigint, custom classes, or
+  other values outside the supported rendered value domain;
+- filesystem portability rules beyond the existing path-segment and UTF-8 text
+  abstractions;
+- authorization, rate limiting, resource caps, or adversarial-client defenses;
+- merge semantics for two concurrently edited rendered databases;
+- making adapter-level filesystem writes or multi-key DB reconciliation atomic;
+- optimizing partial DB updates below one complete DB value; and
+- changing identifier-native raw DB key design.
+
+Any future extension of the value domain requires an unambiguous schema token or
+structural rule. It MUST NOT be introduced by guessing from leaf text.
