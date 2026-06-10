@@ -122,16 +122,28 @@ kindtree is authoritative for value shape and primitive types
 
 Neither side is sufficient on its own.
 
-### 3.4 Format definition and database version value
+### 3.4 No format discriminator
 
-This specification does not introduce a snapshot-format discriminator. The
-rendered database format is defined by the code and this specification. Format
-evolution is outside the scope of this document; the existing
-`rendered/r/global/version` database value remains the only version-like
-database marker.
+This format intentionally does not introduce a separate snapshot-format marker,
+manifest, sidecar version file, `.render-format`, `.snapshot-version`, or global
+schema file. The only snapshot-level version-like value is the existing database
+`version` entry, projected through the same paired value codec as every other
+selected DB value:
 
-The `version` entry is projected by the same value codec as every other selected
-DB value.
+```text
+rendered/r/global/version   (plain string value)
+kindtree/r/global/version   "string"
+```
+
+The reasoning is:
+
+- the database's own versioned state is the format/version discriminator;
+- there is no second out-of-band rendered-snapshot discriminator;
+- implementations must not guess formats from partial evidence;
+- if the paired projection is missing, malformed, or damaged, that is a
+  snapshot validity failure, not a format-detection problem; and
+- migration or recovery from older rendered formats is a higher-level workflow
+  and remains out of scope for this specification.
 
 ## 4. Scope
 
@@ -359,6 +371,11 @@ Literal JSON `null`, booleans, and numbers are invalid anywhere a `TypeSchema`
 is expected. In particular, the schema for a boolean is the JSON string
 `"boolean"`, not the literal JSON value `true` or `false`.
 
+A type-schema JSON object MUST NOT contain duplicate member names at any level.
+The scanner MUST reject duplicate schema object keys before constructing the
+schema value. An implementation MUST NOT rely on a parser mode that silently
+keeps the last duplicate member.
+
 ## 7. Filesystem layout
 
 For this DB entry:
@@ -514,7 +531,9 @@ Examples:
 1e+21  -> 1e+21
 ```
 
-No whitespace or newline is added.
+No whitespace or newline is added. During scan, a complete finite JSON number
+token followed by a single final LF MAY be accepted and canonicalized to its
+canonical JSON number text on render.
 
 ### 8.4 Boolean
 
@@ -530,7 +549,9 @@ true  -> rendered file: true  + schema: "boolean"
 false -> rendered file: false + schema: "boolean"
 ```
 
-No whitespace or newline is added.
+No whitespace or newline is added. During scan, `true` or `false` followed by
+a single final LF MAY be accepted and canonicalized to `true` or `false` on
+render.
 
 ### 8.5 Null
 
@@ -539,8 +560,8 @@ Null renders as:
 - a regular file containing exactly the four characters `null`; and
 - the schema token `"null"`.
 
-An empty file is not null. Absence is not null. A trailing-newline variant of
-`null` is invalid during scan.
+An empty file is not null. Absence is not null. During scan, `null` followed
+by a single final LF MAY be accepted and canonicalized to `null` on render.
 
 ### 8.6 Object
 
@@ -907,14 +928,22 @@ logical subtree is invalid.
 A number file MUST contain exactly one finite JSON number token. Leading or
 trailing whitespace and trailing data are invalid. A valid but noncanonical
 number token, such as `1.0` or `1e0`, MAY be accepted and is canonicalized on
-render.
+render. A single final LF after an otherwise valid number token MAY be accepted
+and is canonicalized away.
 
 A boolean file MUST contain exactly `true` or exactly `false`. `TRUE`, `False`,
-`1`, `0`, a trailing-newline variant of `true`, ` false`, and `true ` are
-invalid.
+`1`, `0`, ` false`, and `true ` are invalid. A single final LF after `true` or
+`false` MAY be accepted and is canonicalized to `true` or `false`.
 
-A null file MUST contain exactly `null`. A string file is not parsed and may
-contain any text accepted by the repository's UTF-8 text abstraction.
+A null file MUST contain exactly `null`. A single final LF after `null` MAY be
+accepted and is canonicalized to `null`.
+
+These remain invalid: `" true"`, `"true "`, `"true\n\n"`, `"null "`, `" 5"`,
+`"5 "`, `"5\n\n"`.
+
+A string file is not parsed and may contain any text accepted by the
+repository's UTF-8 text abstraction. A final newline in a string is part of
+the value and must be preserved exactly, not canonicalized away.
 
 ### 12.5 Parse before DB reconciliation
 
@@ -1024,6 +1053,8 @@ Canonicalization includes:
 - canonical JSON number text;
 - exact boolean text;
 - exact `null` text;
+- accepted single-final-LF trailing newline on number, boolean, and null files
+  is normalized away on render;
 - primitive leaf files present exactly where required by schemas;
 - no rendered files or semantically required directories for empty or
   primitive-free compounds;
@@ -1432,44 +1463,50 @@ Failure cases identify the value root and offending path where applicable.
 6. Schema `"number"` points to a directory: invalid.
 7. Schema `"boolean"` points to a directory: invalid.
 8. Schema `"null"` points to a directory: invalid.
-9. Boolean file contains `TRUE`, `False`, `1`, `0`, a trailing-newline variant
-   of `true`, ` false`, or `true `.
+9. Boolean file contains `TRUE`, `False`, `1`, `0`, ` false`, or `true `.
+   A single final LF after `true` or `false` is accepted and canonicalized;
+   a double trailing newline or leading space is invalid.
 10. Number file contains non-number text, trailing garbage, multiple tokens,
-    whitespace padding, `NaN`, infinity, or JSON string syntax.
-11. Null file is empty or contains `NULL`, whitespace, or a trailing newline.
+    whitespace padding, `NaN`, infinity, or JSON string syntax. A single final
+    LF after an otherwise valid number token is accepted and canonicalized.
+11. Null file is empty or contains `NULL` or whitespace. A single final LF
+    after `null` is accepted and canonicalized; a double trailing newline or
+    leading/trailing space is invalid.
 12. Type schema contains unknown token or unsupported token `"undefined"`.
 13. Type schema uses `"object"` or `"array"` instead of structural shape.
 14. Type schema contains literal JSON `null`, number, `true`, or `false` where a
     schema is expected.
 15. Type-schema JSON is malformed or has trailing data.
-16. Type-schema path is a directory or unsupported entry kind.
-17. A required traversal parent for a primitive leaf is a file.
-18. Array path uses `01`, `-1`, `+1`, `1.5`, `1e1`, or non-number text.
-19. Array path is missing or lies outside the schema length.
-20. Object path has duplicate decoded keys or colliding escape variants.
-21. Rendered file exists below an empty object schema: invalid.
-22. Rendered file exists below an empty array schema: invalid.
-23. Rendered file exists below any primitive-free schema subtree: invalid.
-24. Rendered file exists without any type-schema root claiming it: invalid.
-25. Rendered file is extra relative to a non-empty schema: invalid.
-26. Symlink or other unsupported rendered entry kind appears in the managed
+16. Type-schema JSON object contains duplicate member names at any nesting
+    level: invalid.
+17. Type-schema path is a directory or unsupported entry kind.
+18. A required traversal parent for a primitive leaf is a file.
+19. Array path uses `01`, `-1`, `+1`, `1.5`, `1e1`, or non-number text.
+20. Array path is missing or lies outside the schema length.
+21. Object path has duplicate decoded keys or colliding escape variants.
+22. Rendered file exists below an empty object schema: invalid.
+23. Rendered file exists below an empty array schema: invalid.
+24. Rendered file exists below any primitive-free schema subtree: invalid.
+25. Rendered file exists without any type-schema root claiming it: invalid.
+26. Rendered file is extra relative to a non-empty schema: invalid.
+27. Symlink or other unsupported rendered entry kind appears in the managed
     domain: invalid unless the filesystem abstraction proves the required local
     file/directory semantics.
 
 Acceptance controls for incidental directories:
 
-27. Root `{}` with no required rendered files is valid.
-28. Root `{}` with an empty incidental rendered directory is valid but
+28. Root `{}` with no required rendered files is valid.
+29. Root `{}` with an empty incidental rendered directory is valid but
    noncanonical.
-29. Root `{}` with any rendered file below it is invalid.
-30. Root `[]` with no required rendered files is valid.
-31. Root `[]` with an empty incidental rendered directory is valid but
+30. Root `{}` with any rendered file below it is invalid.
+31. Root `[]` with no required rendered files is valid.
+32. Root `[]` with an empty incidental rendered directory is valid but
    noncanonical.
-32. Root `[]` with any rendered file below it is invalid.
-33. Primitive-free nested compound with no required rendered files is valid.
-34. Primitive-free nested compound with empty incidental directories is valid
+33. Root `[]` with any rendered file below it is invalid.
+34. Primitive-free nested compound with no required rendered files is valid.
+35. Primitive-free nested compound with empty incidental directories is valid
    but noncanonical.
-35. Primitive-free nested compound with any rendered file below it is invalid.
+36. Primitive-free nested compound with any rendered file below it is invalid.
 
 ### 19.4 Round-trip and canonicalization cases
 
@@ -1488,7 +1525,9 @@ Acceptance controls for incidental directories:
 9. Scan snapshots containing only incidental empty directories for empty or
    primitive-free compounds, then render to the same canonical virtual file set
    with no required rendered files for those compounds.
-10. Remove unclaimed rendered files during authoritative DB render.
+10. Accepted single-final-LF `true\n`, `false\n`, `null\n`, and `5\n` files are
+    canonicalized to `true`, `false`, `null`, and `5` on render.
+11. Remove unclaimed rendered files during authoritative DB render.
 11. Assert `render -> render` idempotence and `scan -> render -> scan` stability.
 
 ### 19.5 DB-to-filesystem reconciliation
@@ -1678,6 +1717,7 @@ A conforming rendered database satisfies all of these invariants:
     deterministically.
 13. Adapter-level failures are non-atomic; inactive-replica and publish/cutover
     machinery prevents failed partial targets from becoming authoritative.
-14. This specification introduces no format discriminator; the existing
-    `rendered/r/global/version` database value remains the only version-like
-    marker in this area.
+14. This specification introduces no format discriminator. There is no
+    snapshot-format marker, manifest, sidecar version file, or global schema
+    file. The existing `rendered/r/global/version` database value remains the
+    only version-like marker in this area.
