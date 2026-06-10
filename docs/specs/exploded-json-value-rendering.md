@@ -37,9 +37,10 @@ only.
 This makes nested values useful with `tree`, `cat`, `grep`, `find`, and Git diffs.
 String leaves contain the string itself rather than JSON string syntax.
 
-Because plain leaf text does not identify its JSON type, every rendered value
-has a parallel, local type-schema file. The rendered subtree and type-schema
-file together are one logical value projection and one logical snapshot format.
+Because plain leaf text does not identify its value type, every selected DB
+value has one local type-schema file and zero or more rendered primitive leaf
+files. Together they form one schema-led value projection and one logical
+snapshot format.
 
 ## 3. Relationship to the database snapshot model
 
@@ -76,8 +77,8 @@ raw DB key
   -> encoded value root
 
 DB value
-  -> rendered descendants at that value root
   -> one type-schema file at that value root
+  -> zero or more rendered primitive leaf files below that value root
 ```
 
 The two codecs therefore use path-segment encoding at different semantic
@@ -102,11 +103,14 @@ snapshot/
 ```
 
 The trees are not independent snapshots and MUST NOT be synchronized as two
-unrelated jobs. For each DB entry, they contain one paired value projection:
+unrelated jobs. For each selected DB value, they contain one schema-led paired
+projection:
 
 ```text
-rendered/<value-root>/...
-typesscm/<value-root>
+{
+  one typesscm/<value-root> file,
+  zero or more rendered primitive leaf files below rendered/<value-root>
+}
 ```
 
 The mental model is:
@@ -535,8 +539,8 @@ Null renders as:
 - a regular file containing exactly the four characters `null`; and
 - the schema token `"null"`.
 
-An empty file is not null. Absence is not null. `null
-` is invalid during scan.
+An empty file is not null. Absence is not null. A trailing-newline variant of
+`null` is invalid during scan.
 
 ### 8.6 Object
 
@@ -550,9 +554,10 @@ An object contributes:
 Compound structure belongs to the schema. A property whose entire subtree has
 no primitive leaves contributes no rendered path.
 
-The renderer MUST reject non-plain-data object semantics rather than traversing
-a prototype, symbol properties, accessors with side effects, or class-specific
-state.
+The renderer traverses only own, string-keyed data properties of plain records.
+It MUST reject class instances, `Date` objects, binary buffers, `Map`, `Set`,
+accessor-driven objects, objects whose symbol-keyed properties carry semantic
+data, cyclic objects, and other non-plain-record semantics.
 
 Object property insertion order does not affect canonical output. Canonical
 schema objects sort keys by ascending JavaScript string code-unit order. The
@@ -585,8 +590,9 @@ Empty objects and arrays are schema-only:
 [] -> typesscm [] + no rendered path
 ```
 
-This rule applies recursively. Any compound subtree with no primitive leaves
-may have no physical rendered subtree at all.
+This rule applies recursively. A compound subtree with no primitive leaves has
+no required rendered files. Canonical render creates no directory for it, while
+scan tolerates empty incidental directories.
 
 Examples:
 
@@ -606,18 +612,23 @@ renders only:
 rendered/<value-root>/nonempty/x = 1
 ```
 
-The paths `rendered/<value-root>/emptyObject` and
-`rendered/<value-root>/emptyArray` MUST be absent.
+Canonical render does not create `rendered/<value-root>/emptyObject` or
+`rendered/<value-root>/emptyArray`. If scan encounters either path as an empty
+directory, it accepts the directory as incidental and noncanonical.
 
-A root `{}` or root `[]` has a type-schema file and no corresponding rendered
-value-root path. Physical directories under `rendered/` are only parents for
-primitive leaf files; they are not semantic entries.
+A root `{}` or root `[]` has a type-schema file and no required rendered
+files. Physical directories under `rendered/` are incidental parents for
+primitive leaf files; they are not semantic entries. Canonical render MUST NOT
+create a directory merely to represent an empty or primitive-free compound.
+Scan MAY encounter such an empty incidental directory and treats it as valid but
+noncanonical.
 
 ### 8.9 Scalar roots and compound roots
 
-A scalar DB value makes `rendered/<value-root>` a regular file. A compound DB
-value contributes rendered files only when it contains primitive descendants.
-In every case, `typesscm/<value-root>` is one regular file.
+Every selected DB value has exactly one regular `typesscm/<value-root>` file.
+A scalar DB value has one primitive file at `rendered/<value-root>`. A compound
+DB value has zero or more rendered primitive files below that path. A value with
+no primitive leaves has no required rendered files.
 
 Examples:
 
@@ -641,18 +652,21 @@ DB value {}:
 
 ## 9. Path-segment encoding
 
-### 9.1 Object keys use the existing segment codec
+### 9.1 JSON object-key segment codec
 
-Every JSON object key is encoded as exactly one filesystem path segment using
-the same bijective segment model used for opaque database keys:
+JSON object keys use the existing snapshot segment escaping rules where they
+apply. The exploded-value codec also reserves `%00` as the canonical segment for
+the empty object key.
+
+The rules are:
 
 ```text
-empty string -> %00
-.            -> %2E
-..           -> %2E%2E
-%            -> %25
-/            -> %2F
-!            -> %21
+empty object key -> %00
+%                -> %25
+/                -> %2F
+!                -> %21
+.                -> %2E when the whole key is exactly "."
+..               -> %2E%2E when the whole key is exactly ".."
 ```
 
 `%` is escaped before the other replacements, so strings that already resemble
@@ -663,7 +677,9 @@ Examples:
 | Object key | Canonical segment |
 | --- | --- |
 | `""` | `%00` |
+| `"%00"` | `%2500` |
 | `"."` | `%2E` |
+| `"%2E"` | `%252E` |
 | `".."` | `%2E%2E` |
 | `"a/b"` | `a%2Fb` |
 | `"50%off"` | `50%25off` |
@@ -675,7 +691,7 @@ Examples:
 | `"typesscm"` | `typesscm` |
 
 The names `rendered`, `typesscm`, `_meta`, and `items` have no reserved meaning
-inside a rendered object directory.
+inside a rendered object path.
 
 Newline and other non-separator Unicode characters remain literal path-segment
 characters when supported by the host filesystem and existing segment codec.
@@ -860,10 +876,28 @@ sets:
 - object path segments must decode bijectively; and
 - a path needed as a traversal directory must not be a regular file.
 
-Any rendered entry at or below an empty or otherwise primitive-free schema
-subtree is extra and invalid, including an empty directory at that logical path.
-Physical directories are not evidence of values. Canonical output never
-requires an empty-compound directory.
+A rendered file below an empty or otherwise primitive-free schema subtree is
+extra and invalid. An empty physical directory at that logical path is valid but
+noncanonical because directories are incidental filesystem structure. Scan MUST
+ignore empty incidental directories unless they block a required primitive file,
+contain an extra rendered file, or have an unsupported entry kind. Canonical
+render never creates an empty-compound directory.
+
+The empty-compound cases are:
+
+```text
+schema {} + no rendered files below its logical path = valid
+schema {} + empty directory at its logical path      = valid, noncanonical
+schema {} + rendered file below its logical path     = invalid
+schema [] + no rendered files below its logical path = valid
+schema [] + empty directory at its logical path      = valid, noncanonical
+schema [] + rendered file below its logical path     = invalid
+```
+
+The same rules apply to nested primitive-free compounds such as
+`{ "a": [{}, []] }`: no rendered files is valid, empty incidental directories
+are valid but noncanonical, and any rendered file below the primitive-free
+logical subtree is invalid.
 
 ### 12.4 Scalar parsing
 
@@ -873,8 +907,8 @@ number token, such as `1.0` or `1e0`, MAY be accepted and is canonicalized on
 render.
 
 A boolean file MUST contain exactly `true` or exactly `false`. `TRUE`, `False`,
-`1`, `0`, `true
-`, and whitespace-padded variants are invalid.
+`1`, `0`, a trailing-newline variant of `true`, ` false`, and `true ` are
+invalid.
 
 A null file MUST contain exactly `null`. A string file is not parsed and may
 contain any text accepted by the repository's UTF-8 text abstraction.
@@ -988,7 +1022,10 @@ Canonicalization includes:
 - exact boolean text;
 - exact `null` text;
 - primitive leaf files present exactly where required by schemas;
-- no rendered path required for empty or primitive-free compounds;
+- no rendered files or semantically required directories for empty or
+  primitive-free compounds;
+- incidental empty directories excluded from the canonical virtual file set and
+  removed from the physical tree when convenient and supported;
 - undeclared or stale managed files absent; and
 - canonical file/directory shape along paths to primitive leaves.
 
@@ -1064,10 +1101,11 @@ over a sorted flat key space containing:
 - one `typesscm/<value-root>` file for every DB value; and
 - zero or more `rendered/...` primitive leaf files for that value.
 
-Directories are not semantic virtual entries. They are created as needed to
-write files and may be removed after their last managed descendant is deleted.
-A files-only virtual listing is sufficient because all compound shape is stored
-in `typesscm`.
+Rendered files are semantic; rendered directories are incidental filesystem
+structure. Directories are created as needed to write primitive files and may
+be removed after their last managed descendant is deleted. The canonical
+virtual file set is exactly the `typesscm` files plus the rendered primitive
+leaf files, because all compound shape is stored in `typesscm`.
 
 ### 16.2 DB-to-filesystem authority
 
@@ -1110,16 +1148,16 @@ including:
 - unrelated files placed under the selected managed sublevel.
 
 When `{ "x": 1 }` becomes `{}`, render deletes `rendered/<root>/x`, writes the
-schema `{}`, and requires no rendered root. When `[1, 2]` becomes `[]`, render
+schema `{}`, and requires no rendered files. When `[1, 2]` becomes `[]`, render
 deletes indices `0` and `1`, writes the schema `[]`, and requires no rendered
-root.
+files.
 
 Directories left empty after file deletion have no semantic meaning. The
-renderer SHOULD remove now-unused managed directories when the filesystem
-abstraction supports or requires that cleanup. Canonical output MUST NOT require
-empty directories for empty compounds. A canonical comparison MAY ignore
-incidental empty parent directories left by the abstraction, but MUST reject
-any stale rendered file within them.
+renderer SHOULD remove now-unused managed directories when convenient and
+supported. Canonical render MUST NOT create directories for empty compounds or
+primitive-free subtrees. Scan and canonical virtual-file comparison ignore
+incidental empty directories, but never ignore a stale rendered file within
+them.
 
 Deleting a DB value deletes its schema file and all rendered primitive leaves
 under its value root, including stale leaves not justified by the previous
@@ -1367,40 +1405,59 @@ Each case fails before publishing a valid value projection:
 3. bigint, function, or symbol.
 4. sparse array.
 5. cyclic object or array.
-6. custom class instance or other non-plain-data object.
-7. binary value.
-8. date.
+6. class instance.
+7. `Date`, binary buffer, `Map`, or `Set`.
+8. accessor-driven object.
+9. object with symbol-keyed semantic data.
+10. other non-plain-record object.
 
-### 19.3 Codec and scanning: negative cases
+### 19.3 Codec and scanning: validation cases
 
-Cases 1 through 20 fail with the value root and offending path where
-applicable. Case 21 is the acceptance control for schema-only empty compounds.
+Failure cases identify the value root and offending path where applicable.
 
-1. Primitive schema leaf is missing its rendered file.
-2. Schema `"boolean"` is missing its rendered file.
-3. Boolean file contains `TRUE`, `False`, `1`, `0`, a trailing-newline variant
-   of `true`, or a whitespace-padded variant of `true`.
-4. Number file contains non-number text, trailing garbage, multiple tokens,
-   whitespace padding, `NaN`, infinity, or JSON string syntax.
-5. Null file is empty or contains `NULL`, whitespace, or a trailing newline.
-6. Type schema contains unknown token or unsupported token `"undefined"`.
-7. Type schema uses `"object"` or `"array"` instead of structural shape.
-8. Type schema contains literal JSON `null`, number, `true`, or `false` where a
-   schema is expected.
-9. Type-schema JSON is malformed or has trailing data.
-10. Type-schema path is a directory or unsupported entry kind.
-11. Rendered primitive path is a directory or unsupported entry kind.
-12. A required traversal parent is a file.
-13. Array path uses `01`, `-1`, `+1`, `1.5`, `1e1`, or non-number text.
-14. Array path is missing or lies outside the schema length.
-15. Object path has duplicate decoded keys or colliding escape variants.
-16. Rendered path exists for an empty object schema.
-17. Rendered path exists for an empty array schema.
-18. Rendered file exists below any schema subtree with no primitive leaves.
-19. Rendered file exists without any type-schema root claiming it.
-20. Rendered file is extra relative to a non-empty schema.
-21. Schema-only empty-compound root without a rendered root is accepted, not
-    rejected.
+1. Schema `"string"` requires a file, but its rendered path is missing.
+2. Schema `"number"` requires a file, but its rendered path is missing.
+3. Schema `"boolean"` requires a file, but its rendered path is missing.
+4. Schema `"null"` requires a file, but its rendered path is missing.
+5. Schema `"string"` points to an empty directory: invalid.
+6. Schema `"number"` points to a directory: invalid.
+7. Schema `"boolean"` points to a directory: invalid.
+8. Schema `"null"` points to a directory: invalid.
+9. Boolean file contains `TRUE`, `False`, `1`, `0`, a trailing-newline variant
+   of `true`, ` false`, or `true `.
+10. Number file contains non-number text, trailing garbage, multiple tokens,
+    whitespace padding, `NaN`, infinity, or JSON string syntax.
+11. Null file is empty or contains `NULL`, whitespace, or a trailing newline.
+12. Type schema contains unknown token or unsupported token `"undefined"`.
+13. Type schema uses `"object"` or `"array"` instead of structural shape.
+14. Type schema contains literal JSON `null`, number, `true`, or `false` where a
+    schema is expected.
+15. Type-schema JSON is malformed or has trailing data.
+16. Type-schema path is a directory or unsupported entry kind.
+17. A required traversal parent for a primitive leaf is a file.
+18. Array path uses `01`, `-1`, `+1`, `1.5`, `1e1`, or non-number text.
+19. Array path is missing or lies outside the schema length.
+20. Object path has duplicate decoded keys or colliding escape variants.
+21. Rendered file exists below an empty object schema: invalid.
+22. Rendered file exists below an empty array schema: invalid.
+23. Rendered file exists below any primitive-free schema subtree: invalid.
+24. Rendered file exists without any type-schema root claiming it: invalid.
+25. Rendered file is extra relative to a non-empty schema: invalid.
+26. Symlink or other unsupported rendered entry kind appears in the managed
+    domain: invalid unless the filesystem abstraction proves the required local
+    file/directory semantics.
+
+Acceptance controls for incidental directories:
+
+27. Root `{}` with no rendered path is valid.
+28. Root `{}` with an empty incidental rendered directory is valid but
+    noncanonical.
+29. Root `[]` with no rendered path is valid.
+30. Root `[]` with an empty incidental rendered directory is valid but
+    noncanonical.
+31. Primitive-free nested compound with no rendered files is valid.
+32. Primitive-free nested compound with empty incidental directories is valid
+    but noncanonical.
 
 ### 19.4 Round-trip and canonicalization cases
 
@@ -1413,9 +1470,13 @@ applicable. Case 21 is the acceptance control for schema-only empty compounds.
 5. Normalize valid noncanonical number text such as `1.0` and `1e0`.
 6. Canonicalize accepted lowercase path escapes to uppercase.
 7. Ignore filesystem discovery order for object leaves and array indices.
-8. Keep schema-only empty roots schema-only after scan and render.
-9. Remove unclaimed rendered files during authoritative DB render.
-10. Assert `render -> render` idempotence and `scan -> render -> scan` stability.
+8. Keep schema-only empty roots free of required rendered files after scan and
+   render.
+9. Scan snapshots containing only incidental empty directories for empty or
+   primitive-free compounds, then render to the same canonical virtual file set
+   with no files for those compounds.
+10. Remove unclaimed rendered files during authoritative DB render.
+11. Assert `render -> render` idempotence and `scan -> render -> scan` stability.
 
 ### 19.5 DB-to-filesystem reconciliation
 
@@ -1444,21 +1505,22 @@ applicable. Case 21 is the acceptance control for schema-only empty compounds.
 19. `[]` → array with child creates the index file and updates schema.
 20. `{}` → `[]` and `[]` → `{}` update schema only while rendered side remains
     absent.
-21. Object containing only empty compounds → object with primitive leaf creates
-    the rendered leaf path.
-22. Object with primitive leaf → object containing only empty compounds deletes
-    the leaf and requires no rendered subtree.
+21. Primitive-free compound → primitive-containing compound creates all
+    required rendered primitive leaf files.
+22. Primitive-containing compound → primitive-free compound deletes all
+    rendered primitive leaf files and requires none afterward.
 23. Array length shrink deletes removed indices; growth creates new indices.
 24. Object ↔ array removes stale old-shape leaves and creates desired leaves.
 25. Nested removed property deletes stale leaf and now-unused incidental parents.
 26. Manual rendered or schema edits are overwritten by authoritative DB state.
 27. Extra managed rendered or schema files are deleted.
-28. Stale empty directories from partial runs are not required and SHOULD be
-    removed when supported; stale files within them are always deleted.
-29. File/directory conflicts are resolved deterministically.
-30. Paths outside the selected managed domain remain untouched.
-31. Mid-render failure is propagated and the worktree is not published.
-32. Re-running after partial failure converges to the exact desired virtual file
+28. Stale empty directories from partial runs are incidental and MAY be removed;
+    they are not part of the canonical virtual file set.
+29. Stale files nested inside incidental empty-directory structure are deleted.
+30. File/directory conflicts are resolved deterministically.
+31. Paths outside the selected managed domain remain untouched.
+32. Mid-render failure is propagated and the worktree is not published.
+33. Re-running after partial failure converges to the exact desired virtual file
     set.
 
 ### 19.6 Filesystem-to-DB reconciliation
@@ -1471,22 +1533,24 @@ applicable. Case 21 is the acceptance control for schema-only empty compounds.
 6. Source omission deletes nodeB without affecting nodeA or another sublevel.
 7. Scalar/object/array transitions replace the complete DB value.
 8. Array shrink and growth replace the complete array value.
-9. Schema-only root `{}` scans to empty object without a rendered root.
-10. Schema-only root `[]` scans to empty array without a rendered root.
-11. Nested primitive-free compounds reconstruct correctly without rendered
-    files.
-12. Rendered extra below empty object or empty array schema fails.
-13. Boolean leaves scan to booleans.
-14. Identical rendered text `true` or `false` scans as boolean or string solely
+9. Root `{}` scans to empty object with no rendered path.
+10. Root `{}` also scans with an empty incidental rendered directory.
+11. Root `[]` scans to empty array with no rendered path.
+12. Root `[]` also scans with an empty incidental rendered directory.
+13. Nested primitive-free compounds reconstruct with no rendered files or with
+    empty incidental directories.
+14. Any rendered file below an empty or primitive-free schema fails.
+15. Boolean leaves scan to booleans.
+16. Identical rendered text `true` or `false` scans as boolean or string solely
     according to schema.
-15. Missing primitive leaf, extra rendered file, malformed schema, or invalid
+17. Missing primitive leaf, extra rendered file, malformed schema, or invalid
     scalar content fails loudly.
-16. One valid and one invalid value never writes the invalid value; any earlier
+18. One valid and one invalid value never writes the invalid value; any earlier
     streamed mutation remains confined to the inactive target replica.
-17. Mid-scan failure propagates and does not switch the replica pointer.
-18. Scanning one top-level sublevel does not delete another sublevel.
-19. `_meta` entries use the same projection rules when `_meta` is selected.
-20. Object member order differences alone do not cause a semantic DB rewrite.
+19. Mid-scan failure propagates and does not switch the replica pointer.
+20. Scanning one top-level sublevel does not delete another sublevel.
+21. `_meta` entries use the same projection rules when `_meta` is selected.
+22. Object member order differences alone do not cause a semantic DB rewrite.
 
 ### 19.7 Paired-tree consistency
 
@@ -1501,8 +1565,8 @@ applicable. Case 21 is the acceptance control for schema-only empty compounds.
    primitive files.
 8. Primitive content changes may leave schema identical.
 9. Primitive type changes with identical text update schema.
-10. Empty object/array type changes may update schema only while rendered side
-    remains absent.
+10. Empty object/array type changes may update schema only; canonical render
+    requires no rendered files for either value.
 11. Leaves and schema are derived from the same source value projection.
 12. Duplicate physical names that decode to one schema path are rejected.
 
@@ -1515,10 +1579,13 @@ applicable. Case 21 is the acceptance control for schema-only empty compounds.
 5. Schema directory exists where schema file is required.
 6. Schema file blocks a required parent directory.
 7. Stale descendants remain after a parent becomes scalar or primitive-free.
-8. Escape variants collide after tolerant decoding.
-9. Empty-string and dot sentinels remain distinct from literal escape-looking
-   keys.
-10. Numeric object key and array index use the same physical spelling but are
+8. During scan, a traversal parent required for a primitive leaf is a file and
+   therefore invalid; during DB-to-filesystem render, the conflict is replaced
+   with the required directory and leaf.
+9. Escape variants collide after tolerant decoding.
+10. Empty-string and dot sentinels remain distinct from literal escape-looking
+    keys.
+11. Numeric object key and array index use the same physical spelling but are
     interpreted by parent schema only.
 
 ### 19.9 Ordering, determinism, and idempotence
@@ -1544,11 +1611,12 @@ applicable. Case 21 is the acceptance control for schema-only empty compounds.
 6. Files below an empty or primitive-free schema subtree are deleted.
 7. Orphan rendered files and orphan schema files are deleted during
    authoritative DB render.
-8. Stale rendered empty directories from partial runs are not canonical output
-   and SHOULD be removed when supported.
-9. Canonical comparison MAY ignore incidental empty parent directories left by
-   the filesystem abstraction but never ignores stale files.
-10. Empty `{}` and `[]` never require a rendered directory.
+8. Stale rendered empty directories from partial runs are incidental, accepted
+   by scan, and MAY be removed by render.
+9. Canonical virtual-file comparison ignores incidental empty directories but
+   never ignores stale files.
+10. Canonical render never creates a directory merely for `{}`, `[]`, or a
+    primitive-free compound.
 
 ## 20. Out of scope
 
@@ -1578,7 +1646,7 @@ A conforming rendered database satisfies all of these invariants:
 2. Every selected DB value has exactly one local type-schema file.
 3. Rendered files exist exactly for primitive schema leaves: string, number,
    boolean, and null.
-4. A type-schema value root may have no rendered root when its schema has no
+4. A selected DB value may have zero rendered files when its schema has no
    primitive leaves.
 5. Every rendered file is claimed by exactly one type-schema root and primitive
    schema leaf.
