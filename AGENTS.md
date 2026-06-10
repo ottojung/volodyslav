@@ -503,12 +503,13 @@ function isPathLike(object) {
 
 - **Static checks**: `npm run static-analysis`
 - **Specific tests**: `npx jest --testNamePattern="test name"`
-- **Full test suite**: `npm test`
+- **Full test suite**: `npx jest --silent`
 - **Build verification**: `npm run build`
 
 Run static checks often, make sure they're passing continuously.
 Tests are slow. Prefer focused tests when working on a particular feature.
-Don't need to run `npm test` if not changing any javascript code.
+Don't need to run `npx jest` if not changing any javascript code.
+Do not limit or filter the output of `npx jest`.
 
 ## Test Conventions
 
