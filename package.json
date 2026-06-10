@@ -33,7 +33,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/supertest": "^2.0.12",
-    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/eslint-plugin": "^8.59.3",
     "@typescript-eslint/parser": "^8.32.1",
     "babel-jest": "^30.4.1",
     "concurrently": "^9.2.1",
