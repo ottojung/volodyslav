@@ -63,16 +63,16 @@ async function scanSublevelFromSnapshot(capabilities, rootDatabase, options) {
 
     const kindtreeDir = path.join(snapshotRoot, 'kindtree', validatedSnapshot);
     if (!await capabilities.checker.directoryExists(kindtreeDir)) {
-        // Check if the old rendered/ dir exists instead - legacy detection
+        // Fall back to legacy one-file-JSON scan
         const renderedDir = path.join(snapshotRoot, 'rendered', validatedSnapshot);
         if (await capabilities.checker.directoryExists(renderedDir)) {
-            throw new Error(
-                `Paired snapshot missing kindtree/${validatedSnapshot} at ${snapshotRoot}. ` +
-                `The rendered/ directory exists but kindtree/ is missing. ` +
-                `This may be a legacy one-file JSON snapshot.`
+            capabilities.logger.logInfo(
+                { snapshotRoot },
+                'Kindtree directory missing; falling back to legacy JSON scan'
             );
+            return await scanFromFilesystem(capabilities, rootDatabase, renderedDir, validatedTarget);
         }
-        // Both are missing - empty source is valid
+        // Both are missing - empty source is valid, just create the adapter to handle it
     }
 
     const adapter = makePairedFsToDbAdapter(
