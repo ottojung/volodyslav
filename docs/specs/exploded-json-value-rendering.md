@@ -830,9 +830,10 @@ snapshot merely to reconstruct one value.
 ### 11.3 Schema validation precedes leaf interpretation
 
 The scanner MUST parse and fully validate a value's type schema before using it
-to interpret rendered leaf contents. Invalid schema tokens or shapes fail at
-the schema boundary; they are not treated as object keys or strings by
-fallback.
+to interpret rendered leaf contents. Validation includes rejecting duplicate
+schema object member names, unknown tokens, structural mismatches, and literal
+values where a schema is expected. Invalid schema tokens or shapes fail at the
+schema boundary; they are not treated as object keys or strings by fallback.
 
 ## 12. Scanning rules
 
@@ -1528,7 +1529,7 @@ Acceptance controls for incidental directories:
 10. Accepted single-final-LF `true\n`, `false\n`, `null\n`, and `5\n` files are
     canonicalized to `true`, `false`, `null`, and `5` on render.
 11. Remove unclaimed rendered files during authoritative DB render.
-11. Assert `render -> render` idempotence and `scan -> render -> scan` stability.
+12. Assert `render -> render` idempotence and `scan -> render -> scan` stability.
 
 ### 19.5 DB-to-filesystem reconciliation
 
