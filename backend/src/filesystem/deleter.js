@@ -72,8 +72,9 @@ async function deleteFile(filePath) {
         if (err instanceof Object && "code" in err && err.code === "ENOENT") {
             throw new FileNotFoundError(filePath);
         } else {
+            const msg = err instanceof Error ? err.message : String(err);
             throw new FileDeleterError(
-                `Failed to delete file: ${filePath}`,
+                `Failed to delete file: ${filePath}: ${msg}`,
                 filePath
             );
         }
@@ -92,8 +93,9 @@ async function deleteDirectory(directoryPath) {
         if (err instanceof Object && "code" in err && err.code === "ENOENT") {
             throw new FileNotFoundError(directoryPath);
         } else {
+            const msg = err instanceof Error ? err.message : String(err);
             throw new FileDeleterError(
-                `Failed to delete directory: ${directoryPath}`,
+                `Failed to delete directory: ${directoryPath}: ${msg}`,
                 directoryPath
             );
         }

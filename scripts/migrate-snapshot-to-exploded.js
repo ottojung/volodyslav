@@ -96,7 +96,7 @@ async function migrateSnapshot(snapshotDir) {
         // - _meta/<key>          → 2 segments
         // - r/<sublevel>/<key>   → 3 segments
         const depth = parts[0] === '_meta' ? 2 : 3;
-        if (parts.length < depth) continue;
+        if (parts.length !== depth) continue;
 
         const valueRoot = parts.slice(0, depth).join("/");
         if (!valueRootFiles.has(valueRoot)) {

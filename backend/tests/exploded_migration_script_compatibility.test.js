@@ -166,42 +166,42 @@ describe('exploded migration script compatibility', () => {
         expect(renderedFiles2).toEqual(renderedFiles1);
     });
 
-    test('migration of populated fixture reproduces expected kindtree files', async () => {
-        // Use the pre-existing fixture as input
-        const fixtureDir = path.join(__dirname, 'mock-incremental-database-remote-populated');
-        const tmpFixture = path.join(tmpDir, 'fixture');
+    test('migration of comprehensive old-format snapshot reproduces expected kindtree files', async () => {
+        // Build a comprehensive old-format fixture covering all value types and sublevels
+        writeJson(tmpDir, 'rendered/r/global/version', '0.0.0-dev');
+        writeJson(tmpDir, 'rendered/r/global/fingerprint', 'testfingerprint');
+        writeJson(tmpDir, 'rendered/r/global/identifiers_keys_map', [['a', '1'], ['b', '2']]);
+        writeJson(tmpDir, 'rendered/r/global/last_node_index', 0);
+        writeJson(tmpDir, 'rendered/r/values/gafdmopql', { type: 'all_events', events: [] });
+        writeJson(tmpDir, 'rendered/r/inputs/gafdmopql', { inputCounters: [], inputs: [] });
+        writeJson(tmpDir, 'rendered/r/counters/gafdmopql', 42);
+        writeJson(tmpDir, 'rendered/r/timestamps/gafdmopql', { createdAt: '2024-01-01T00:00:00.000Z', modifiedAt: '2024-06-01T00:00:00.000Z' });
+        writeJson(tmpDir, 'rendered/r/freshness/gafdmopql', 'up-to-date');
+        writeJson(tmpDir, 'rendered/r/revdeps/gafdmopql', ['some-revdep-id']);
 
-        // Copy fixture to temp
-        fs.cpSync(fixtureDir, tmpFixture, { recursive: true });
-
-        // Remove any existing kindtree (fresh start from old format)
-        if (fs.existsSync(path.join(tmpFixture, 'kindtree'))) {
-            fs.rmSync(path.join(tmpFixture, 'kindtree'), { recursive: true, force: true });
-        }
-
-        await migrateSnapshot(tmpFixture);
+        await migrateSnapshot(tmpDir);
 
         // Verify kindtree files exist for known value roots
-        expect(fileExists(tmpFixture, 'kindtree/r/global/version')).toBe(true);
-        expect(fileExists(tmpFixture, 'kindtree/r/global/fingerprint')).toBe(true);
-        expect(fileExists(tmpFixture, 'kindtree/r/global/identifiers_keys_map')).toBe(true);
-        expect(fileExists(tmpFixture, 'kindtree/r/global/last_node_index')).toBe(true);
-        expect(fileExists(tmpFixture, 'kindtree/r/values/gafdmopql')).toBe(true);
-        expect(fileExists(tmpFixture, 'kindtree/r/inputs/gafdmopql')).toBe(true);
-        expect(fileExists(tmpFixture, 'kindtree/r/counters/gafdmopql')).toBe(true);
-        expect(fileExists(tmpFixture, 'kindtree/r/timestamps/gafdmopql')).toBe(true);
-        expect(fileExists(tmpFixture, 'kindtree/r/freshness/gafdmopql')).toBe(true);
-        expect(fileExists(tmpFixture, 'kindtree/r/revdeps/gafdmopql')).toBe(true);
+        expect(fileExists(tmpDir, 'kindtree/r/global/version')).toBe(true);
+        expect(fileExists(tmpDir, 'kindtree/r/global/fingerprint')).toBe(true);
+        expect(fileExists(tmpDir, 'kindtree/r/global/identifiers_keys_map')).toBe(true);
+        expect(fileExists(tmpDir, 'kindtree/r/global/last_node_index')).toBe(true);
+        expect(fileExists(tmpDir, 'kindtree/r/values/gafdmopql')).toBe(true);
+        expect(fileExists(tmpDir, 'kindtree/r/inputs/gafdmopql')).toBe(true);
+        expect(fileExists(tmpDir, 'kindtree/r/counters/gafdmopql')).toBe(true);
+        expect(fileExists(tmpDir, 'kindtree/r/timestamps/gafdmopql')).toBe(true);
+        expect(fileExists(tmpDir, 'kindtree/r/freshness/gafdmopql')).toBe(true);
+        expect(fileExists(tmpDir, 'kindtree/r/revdeps/gafdmopql')).toBe(true);
 
         // Verify kindtree schema is valid parseable JSON
         for (const name of ['version', 'fingerprint', 'last_node_index']) {
-            const schemaText = readFile(tmpFixture, `kindtree/r/global/${name}`);
+            const schemaText = readFile(tmpDir, `kindtree/r/global/${name}`);
             expect(() => parseSchema(schemaText)).not.toThrow();
         }
 
         // For object values, the old file path becomes a directory with leaf files
-        expect(fileExists(tmpFixture, 'rendered/r/values/gafdmopql')).toBe(true); // now a directory
-        expect(fileExists(tmpFixture, 'rendered/r/values/gafdmopql/type')).toBe(true); // leaf file
+        expect(fileExists(tmpDir, 'rendered/r/values/gafdmopql')).toBe(true); // now a directory
+        expect(fileExists(tmpDir, 'rendered/r/values/gafdmopql/type')).toBe(true); // leaf file
     });
 
     test('empty old-format snapshot passes through without error', async () => {
