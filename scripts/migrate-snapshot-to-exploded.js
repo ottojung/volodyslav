@@ -43,7 +43,7 @@
 const path = require("path");
 const fs = require("fs/promises");
 
-const { parseValue } = require("../backend/src/generators/incremental_graph/database/encoding");
+const { parseValue, relativePathToKey } = require("../backend/src/generators/incremental_graph/database/encoding");
 const { projectExplodedJsonValue } = require("../backend/src/generators/incremental_graph/database/render/exploded_json");
 
 /**
@@ -162,6 +162,16 @@ async function buildMigrationPlan(snapshotDir) {
         }
 
         const valueRoot = parts.slice(0, depth).join("/");
+        // Validate the value-root path against the shared key/path codec.
+        // All filesystem-representable paths at correct depth pass validation;
+        // the call serves as future-proofing against codec changes.
+        try {
+            relativePathToKey(valueRoot);
+        } catch (err) {
+            throw new Error(
+                `Invalid value-root path in old-format file '${relPath}': ${err instanceof Error ? err.message : String(err)}`
+            );
+        }
         const absPath = path.join(renderedDir, relPath);
         const content = await fs.readFile(absPath, "utf-8");
 
@@ -260,14 +270,17 @@ async function migrateSnapshot(snapshotDir) {
 
 /**
  * Recursively remove empty directories.
+ * Ignores ENOENT (missing directory is already absent). Propagates
+ * other errors such as permission failures or non-directory paths.
  * @param {string} dir
  */
 async function cleanEmptyDirs(dir) {
     let entries;
     try {
         entries = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
-        return;
+    } catch (err) {
+        if (err && /** @type {any} */ (err).code === 'ENOENT') return;
+        throw err;
     }
     for (const entry of entries) {
         if (entry.isDirectory()) {

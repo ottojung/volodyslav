@@ -337,7 +337,7 @@ describe('exploded migration script compatibility', () => {
         await expect(cleanEmptyDirs(path.join(tmpDir, 'nonexistent'))).resolves.toBeUndefined();
     });
 
-    test.failing('cleanEmptyDirs throws on non-ENOENT filesystem error (ENOTDIR on regular file)', async () => {
+    test('cleanEmptyDirs throws on non-ENOENT filesystem error (ENOTDIR on regular file)', async () => {
         const filePath = path.join(tmpDir, 'not-a-dir');
         fs.writeFileSync(filePath, 'content');
         await expect(cleanEmptyDirs(filePath)).rejects.toThrow();
