@@ -216,4 +216,13 @@ Two higher-level operations are available:
   only if the merge introduced graph changes (`take`/`invalidate` decisions).
   Pure no-op merges keep the active replica pointer unchanged.
 
+The checkpoint snapshot root path is available via:
+
+```js
+const { pathToDatabaseSnapshotRoot } = require('./database');
+const snapshotRoot = pathToDatabaseSnapshotRoot(capabilities);
+```
+
+This returns the directory that directly contains `kindtree/` and `rendered/` sibling trees.
+
 See [`docs/gitstore.md`](./gitstore.md) for the gitstore primitives that back these operations.

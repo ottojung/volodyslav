@@ -94,7 +94,7 @@ keys.
 
 ### 3.3 One logical snapshot, two physical trees
 
-A snapshot root contains two managed sibling trees:
+A non-empty paired snapshot stores managed content in two sibling trees:
 
 ```text
 snapshot/

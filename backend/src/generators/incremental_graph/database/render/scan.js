@@ -9,7 +9,7 @@ const { makePairedFsToDbAdapter } = require('./exploded_json');
 /** @typedef {{reader:FileReader,checker:FileChecker,scanner:DirScanner,logger:Logger}} ScanCapabilities */
 class ScanInputDirMissingError extends Error {
     /** @param {string} snapshotRoot @param {string} sublevel */
-    constructor(snapshotRoot, sublevel) { super(`scanFromFilesystem: snapshot root directory does not exist: ${snapshotRoot} (sublevel: ${sublevel})`); this.name = 'ScanInputDirMissingError'; this.snapshotRoot = snapshotRoot; this.sublevel = sublevel; }
+    constructor(snapshotRoot, sublevel) { super(`snapshot root directory does not exist: ${snapshotRoot} (sublevel: ${sublevel})`); this.name = 'ScanInputDirMissingError'; this.snapshotRoot = snapshotRoot; this.sublevel = sublevel; }
 }
 /** @param {unknown} object @returns {object is ScanInputDirMissingError} */
 function isScanInputDirMissingError(object) { return object instanceof ScanInputDirMissingError; }
