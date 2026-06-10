@@ -159,7 +159,7 @@ describe('exploded migration script compatibility', () => {
         expect(readFile(tmpDir, 'rendered/r/freshness/gafdmopql')).toBe('up-to-date');
     });
 
-    test.failing('second migration run rejects already-paired snapshot', async () => {
+    test('second migration run rejects already-paired snapshot', async () => {
         buildOldFormatFixture(tmpDir);
         await migrateSnapshot(tmpDir);
 
@@ -291,7 +291,7 @@ describe('exploded migration script compatibility', () => {
         expect(readFile(tmpDir, 'kindtree/r/values/node')).toBe('{\n  "text": "string"\n}');
     });
 
-    test.failing('mixed kindtree/rendered state rejects', async () => {
+    test('mixed kindtree/rendered state rejects', async () => {
         // Setup: kindtree has a regular schema file AND rendered has an old-format
         // value file. This is a partial mixed state, not clearly already migrated.
         writeJson(tmpDir, 'kindtree/r/values/already_schema', { text: 'string' });
