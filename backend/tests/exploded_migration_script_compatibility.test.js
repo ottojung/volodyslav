@@ -230,7 +230,7 @@ describe('exploded migration script compatibility', () => {
 
     // ─── Preflight and validation tests ────────────────────────────────────
 
-    test.failing('invalid JSON fails before mutation', async () => {
+    test('invalid JSON fails before mutation', async () => {
         // Setup: one good value and one file with invalid JSON
         writeJson(tmpDir, 'rendered/r/values/good', { x: 1 });
         writeText(tmpDir, 'rendered/r/values/bad', '{not json}');
@@ -250,7 +250,7 @@ describe('exploded migration script compatibility', () => {
         expect(readFile(tmpDir, 'rendered/r/values/bad')).toBe('{not json}');
     });
 
-    test.failing('unexpected rendered file depth fails', async () => {
+    test('unexpected rendered file depth fails', async () => {
         // A regular file at depth 4 (r/values/node/leaf) is not a valid
         // old-format value root: old values are _meta/<key> (depth 2)
         // or <replica>/<sublevel>/<key> (depth 3).
@@ -269,7 +269,7 @@ describe('exploded migration script compatibility', () => {
         await migrateSnapshot(tmpDir);
 
         // snapshotRoot still exists
-        expect(fileExists(tmpDir)).toBe(true);
+        expect(fs.existsSync(tmpDir)).toBe(true);
 
         // kindtree should be absent
         expect(fileExists(tmpDir, 'kindtree')).toBe(false);
@@ -278,7 +278,7 @@ describe('exploded migration script compatibility', () => {
         expect(fileExists(tmpDir, 'rendered')).toBe(false);
     });
 
-    test.failing('empty kindtree directory does not cause false already-migrated no-op', async () => {
+    test('empty kindtree directory does not cause false already-migrated no-op', async () => {
         // Setup: an old-format value file plus a kindtree/ containing
         // only empty directories (no real schema files).
         writeJson(tmpDir, 'rendered/r/values/node', { text: 'x' });
@@ -337,11 +337,11 @@ describe('exploded migration script compatibility', () => {
             });
 
             // Verify values were reconstructed correctly
-            async function readRaw(key) {
+            const readRaw = async (key) => {
                 const marker = key.indexOf('!', 1);
                 const sublevel = key.slice(1, marker);
                 return await db._rawGetInSublevel(sublevel, key.slice(marker + 1));
-            }
+            };
             expect(await readRaw('!z!!global!version')).toBe('1.0.0');
             expect(await readRaw('!z!!global!fingerprint')).toBe('test-fp');
             expect(await readRaw('!z!!values!node')).toEqual({ text: 'hello', count: 42 });

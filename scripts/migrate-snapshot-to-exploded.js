@@ -1,16 +1,30 @@
 #!/usr/bin/env node
 /**
- * Convert an old-format rendered snapshot (single JSON file per DB value)
- * to the new exploded JSON format with paired kindtree/ and rendered/ trees.
+ * Convert an old-format rendered-only JSON snapshot (single JSON file per DB
+ * value) to the new paired exploded JSON format.
  *
- * The old format stores each DB value as one JSON file under rendered/.
- * The new format stores:
- *   kindtree/<value-root>           — type schema file
- *   rendered/<value-root>/<leaves>  — exploded primitive leaf files
- *
- * Usage: node scripts/migrate-snapshot-to-exploded.js <snapshot-dir>
+ * Input:  old rendered-only snapshot root containing rendered/ with single
+ *         JSON files for each DB value
+ * Output: paired snapshot root with sibling kindtree/ and rendered/ trees
  *
  * The snapshot directory is modified IN PLACE.
+ *
+ * Migration rules:
+ * - rendered/ must exist or the script fails.
+ * - Every regular file under rendered/ must be at a valid old-format depth:
+ *   _meta/<key>                  (depth 2)
+ *   <replica>/<sublevel>/<key>   (depth 3)
+ * - Every old value file must contain valid JSON that can be projected into
+ *   the exploded format.
+ * - Invalid JSON or unsupported values cause hard failure before mutation.
+ * - If kindtree/ already contains regular files, the snapshot is treated as
+ *   already migrated and the script is a no-op.
+ * - kindtree/ containing only empty directories does not block migration.
+ * - Empty rendered/ input produces a valid empty snapshot root: rendered/
+ *   is removed if empty, kindtree/ is absent, snapshotRoot remains.
+ * - The script uses a two-phase approach: preflight (validate all input and
+ *   build a migration plan) then apply (delete old files, write new ones).
+ * - Partial mixed states are not a supported repair target.
  */
 
 const path = require("path");
@@ -20,10 +34,10 @@ const { parseValue } = require("../backend/src/generators/incremental_graph/data
 const { projectExplodedJsonValue } = require("../backend/src/generators/incremental_graph/database/render/exploded_json");
 
 /**
- * Walk a directory recursively, returning all regular file paths relative to baseDir.
- *
- * @param {string} dir - Directory to walk.
- * @param {string} baseDir - Base directory for relative paths.
+ * Walk a directory recursively, returning all regular file paths relative
+ * to baseDir.
+ * @param {string} dir
+ * @param {string} baseDir
  * @returns {Promise<string[]>}
  */
 async function walkFiles(dir, baseDir) {
@@ -47,138 +61,198 @@ async function walkFiles(dir, baseDir) {
 }
 
 /**
- * Migrate an old-format snapshot to the new paired format.
- * Modifies the directory IN PLACE.
- *
- * @param {string} snapshotDir - Root of the snapshot (containing rendered/).
+ * Check whether kindtree/ contains at least one regular file (indicating
+ * an already-migrated snapshot). Empty directories are not sufficient.
+ * @param {string} kindtreeDir
+ * @returns {Promise<boolean>}
  */
-async function migrateSnapshot(snapshotDir) {
+async function kindtreeHasRegularFiles(kindtreeDir) {
+    try {
+        const entries = await fs.readdir(kindtreeDir, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath = path.join(kindtreeDir, entry.name);
+            if (entry.isFile()) return true;
+            if (entry.isDirectory()) {
+                if (await kindtreeHasRegularFiles(fullPath)) return true;
+            }
+        }
+    } catch {
+        // kindtree doesn't exist or can't be read
+    }
+    return false;
+}
+
+/**
+ * @typedef {object} MigrationEntry
+ * @property {string} valueRoot - The old-format value root path
+ *   (_meta/<key> or <replica>/<sublevel>/<key>)
+ * @property {string} oldAbsPath - Absolute path of the old single-JSON file
+ * @property {import('../backend/src/generators/incremental_graph/database/render/exploded_json').ValueProjection} projection
+ */
+
+/**
+ * @typedef {object} MigrationPlan
+ * @property {MigrationEntry[]} entries - Entries to migrate
+ * @property {boolean} emptyInput - Whether rendered/ had no regular files
+ */
+
+/**
+ * Preflight: validate all input files and build a complete migration plan
+ * without deleting or writing anything.
+ *
+ * @param {string} snapshotDir - Paired snapshot root
+ * @returns {Promise<MigrationPlan>}
+ */
+async function buildMigrationPlan(snapshotDir) {
     const renderedDir = path.join(snapshotDir, "rendered");
+
+    // Check rendered/ exists
     try {
         await fs.stat(renderedDir);
     } catch {
         throw new Error(`Snapshot directory does not contain rendered/: ${snapshotDir}`);
     }
 
-    // Check if already migrated: kindtree exists and has files
-    const kindtreeDir = path.join(snapshotDir, "kindtree");
-    let alreadyMigrated = false;
-    try {
-        const kindtreeEntries = await fs.readdir(kindtreeDir);
-        if (kindtreeEntries.length > 0) {
-            alreadyMigrated = true;
-        }
-    } catch {
-        // kindtree doesn't exist yet
+    // Walk all files under rendered/
+    const allFiles = await walkFiles(renderedDir, renderedDir);
+
+    if (allFiles.length === 0) {
+        return { entries: [], emptyInput: true };
     }
-    if (alreadyMigrated) {
-        console.log("Snapshot already migrated (kindtree/ exists), nothing to do.");
+
+    /** @type {MigrationEntry[]} */
+    const entries = [];
+
+    for (const relPath of allFiles) {
+        const parts = relPath.split("/");
+
+        // Determine expected depth for old-format value files:
+        // _meta/<key>          → 2 segments
+        // <replica>/<sublevel>/<key> → 3 segments
+        const depth = parts[0] === "_meta" ? 2 : 3;
+
+        if (parts.length !== depth) {
+            throw new Error(
+                `Unexpected file depth in old-format snapshot: '${relPath}' has ${parts.length} segment(s), expected ${depth}. Old-format value files must be at depth ${depth === 2 ? '_meta/<key>' : '<replica>/<sublevel>/<key>'}`
+            );
+        }
+
+        const valueRoot = parts.slice(0, depth).join("/");
+        const absPath = path.join(renderedDir, relPath);
+        const content = await fs.readFile(absPath, "utf-8");
+
+        let value;
+        try {
+            value = parseValue(content);
+        } catch (err) {
+            throw new Error(
+                `Invalid JSON in old-format file '${relPath}': ${err instanceof Error ? err.message : String(err)}`
+            );
+        }
+
+        let projection;
+        try {
+            projection = projectExplodedJsonValue(value);
+        } catch (err) {
+            throw new Error(
+                `Unsupported JSON value in old-format file '${relPath}': ${err instanceof Error ? err.message : String(err)}`
+            );
+        }
+
+        entries.push({ valueRoot, oldAbsPath: absPath, projection });
+    }
+
+    return { entries, emptyInput: false };
+}
+
+/**
+ * Apply the migration plan: delete old files and write kindtree schema files
+ * and rendered primitive leaf files.
+ *
+ * @param {string} snapshotDir
+ * @param {MigrationPlan} plan
+ */
+async function applyMigrationPlan(snapshotDir, plan) {
+    const renderedDir = path.join(snapshotDir, "rendered");
+    const kindtreeDir = path.join(snapshotDir, "kindtree");
+
+    if (plan.emptyInput) {
+        // No old-format files to migrate; clean up empty rendered/
+        await cleanEmptyDirs(renderedDir);
         return;
     }
 
-    // Walk all files under rendered/
-    const allFiles = await walkFiles(renderedDir, renderedDir);
-    // Group files by value root.
-    // Old format layouts:
-    //   rendered/_meta/current_replica            → value root: _meta/current_replica
-    //   rendered/r/global/version                 → value root: r/global/version
-    //   rendered/r/values/nodeid123               → value root: r/values/nodeid123
-    //   rendered/r/values/nodeid123/subkey        → value root: r/values/nodeid123 (subkey is part of value)
+    for (const entry of plan.entries) {
+        // Delete old single-file JSON value FIRST so its path can become
+        // a directory
+        await fs.unlink(entry.oldAbsPath);
 
-    /** @type {Map<string, { relPath: string, content: string }[]>} */
-    const valueRootFiles = new Map();
-    for (const relPath of allFiles) {
-        // Skip files that don't look like old-format value files
-        const parts = relPath.split("/");
-        if (parts.length < 2) continue;
+        // Write kindtree schema file
+        const kindtreeAbsPath = path.join(kindtreeDir, entry.valueRoot);
+        await fs.mkdir(path.dirname(kindtreeAbsPath), { recursive: true });
+        await fs.writeFile(kindtreeAbsPath, entry.projection.schemaText, "utf-8");
 
-        // Determine value root depth:
-        // - _meta/<key>          → 2 segments
-        // - r/<sublevel>/<key>   → 3 segments
-        const depth = parts[0] === '_meta' ? 2 : 3;
-        if (parts.length !== depth) continue;
-
-        const valueRoot = parts.slice(0, depth).join("/");
-        if (!valueRootFiles.has(valueRoot)) {
-            valueRootFiles.set(valueRoot, []);
-        }
-        valueRootFiles.get(valueRoot).push({ relPath, content: '' });
-    }
-
-    let migratedCount = 0;
-
-    for (const [valueRoot, fileEntries] of valueRootFiles) {
-        for (const entry of fileEntries) {
-            const absPath = path.join(renderedDir, entry.relPath);
-            try {
-                entry.content = await fs.readFile(absPath, "utf-8");
-            } catch {
-                continue;
-            }
-
-            let value;
-            try {
-                value = parseValue(entry.content);
-            } catch {
-                continue;
-            }
-
-            let projection;
-            try {
-                projection = projectExplodedJsonValue(value);
-            } catch {
-                continue;
-            }
-
-            // Delete old single-file JSON value FIRST so its path can become a directory
-            try {
-                await fs.unlink(absPath);
-            } catch {
-                // may already be gone
-            }
-
-            // Write kindtree schema file
-            const kindtreeAbsPath = path.join(kindtreeDir, valueRoot);
-            await fs.mkdir(path.dirname(kindtreeAbsPath), { recursive: true });
-            await fs.writeFile(kindtreeAbsPath, projection.schemaText, "utf-8");
-
-            // Write rendered leaf files
-            for (const leaf of projection.leaves) {
-                const leafParts = leaf.descendantPath ? leaf.descendantPath.split("/") : [];
-                const leafAbsPath = path.join(renderedDir, valueRoot, ...leafParts);
-                await fs.mkdir(path.dirname(leafAbsPath), { recursive: true });
-                await fs.writeFile(leafAbsPath, leaf.content, "utf-8");
-            }
-
-            migratedCount++;
+        // Write rendered leaf files
+        for (const leaf of entry.projection.leaves) {
+            const leafParts = leaf.descendantPath
+                ? leaf.descendantPath.split("/")
+                : [];
+            const leafAbsPath = path.join(renderedDir, entry.valueRoot, ...leafParts);
+            await fs.mkdir(path.dirname(leafAbsPath), { recursive: true });
+            await fs.writeFile(leafAbsPath, leaf.content, "utf-8");
         }
     }
 
     // Clean up empty directories under rendered/
     await cleanEmptyDirs(renderedDir);
+}
 
-    console.log(`Migrated ${migratedCount} value(s) to exploded format.`);
+/**
+ * Migrate an old-format snapshot to the new paired format.
+ * Modifies the directory IN PLACE.
+ *
+ * @param {string} snapshotDir - Root of the snapshot (containing rendered/).
+ */
+async function migrateSnapshot(snapshotDir) {
+    // Check if already migrated: kindtree/ contains at least one regular file
+    const kindtreeDir = path.join(snapshotDir, "kindtree");
+    if (await kindtreeHasRegularFiles(kindtreeDir)) {
+        console.log("Snapshot already migrated (kindtree/ contains schema files), nothing to do.");
+        return;
+    }
+
+    // Phase 1: Preflight — validate all input, build migration plan
+    const plan = await buildMigrationPlan(snapshotDir);
+
+    // Phase 2: Apply — delete old files, write new ones
+    await applyMigrationPlan(snapshotDir, plan);
+
+    if (plan.emptyInput) {
+        console.log("Migrated 0 value(s) (empty rendered/ input).");
+    } else {
+        console.log(`Migrated ${plan.entries.length} value(s) to exploded format.`);
+    }
 }
 
 /**
  * Recursively remove empty directories.
- *
  * @param {string} dir
  */
 async function cleanEmptyDirs(dir) {
+    let entries;
     try {
-        const entries = await fs.readdir(dir, { withFileTypes: true });
-        for (const entry of entries) {
-            if (entry.isDirectory()) {
-                await cleanEmptyDirs(path.join(dir, entry.name));
-            }
-        }
-        const remaining = await fs.readdir(dir);
-        if (remaining.length === 0) {
-            await fs.rmdir(dir);
-        }
+        entries = await fs.readdir(dir, { withFileTypes: true });
     } catch {
-        // ignore
+        return;
+    }
+    for (const entry of entries) {
+        if (entry.isDirectory()) {
+            await cleanEmptyDirs(path.join(dir, entry.name));
+        }
+    }
+    const remaining = await fs.readdir(dir);
+    if (remaining.length === 0) {
+        await fs.rmdir(dir);
     }
 }
 
