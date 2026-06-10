@@ -117,7 +117,7 @@ async function deleteDirectory(directoryPath) {
     }
     const msg = lastError instanceof Error ? lastError.message : String(lastError);
     const isObject = typeof lastError === 'object' && lastError !== null && "code" in lastError;
-    const code = isObject && lastError.code;
+    const code = isObject && lastError !== null && lastError.code;
     throw new FileDeleterError(
         `Failed to delete directory after ${DELETE_RETRY_ATTEMPTS} attempts: ${directoryPath}: (${code}) ${msg}`,
         directoryPath
