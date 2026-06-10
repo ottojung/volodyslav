@@ -96,7 +96,7 @@ async function deleteDirectory(directoryPath) {
             await fs.rm(directoryPath, { recursive: true });
             return;
         } catch (err) {
-            const isObject = typeof err === 'object' && "code" in err;
+            const isObject = typeof err === 'object' && err !== null && "code" in err;
             const code = isObject && err.code;
             if (isObject && code === "ENOENT") {
                 return;
@@ -116,7 +116,7 @@ async function deleteDirectory(directoryPath) {
         }
     }
     const msg = lastError instanceof Error ? lastError.message : String(lastError);
-    const isObject = typeof lastError === 'object' && "code" in err;
+    const isObject = typeof err === 'object' && err !== null && "code" in err;
     const code = isObject && lastError.code;
     throw new FileDeleterError(
         `Failed to delete directory after ${DELETE_RETRY_ATTEMPTS} attempts: ${directoryPath}: (${code}) ${msg}`,
