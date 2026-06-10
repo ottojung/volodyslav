@@ -13,17 +13,19 @@
  *
  * Migration rules:
  * - rendered/ must exist and must be a directory. If rendered exists but is
- *   not a directory, the script fails.
+ *   not a directory, the script fails. Unreadable paths under rendered/ fail.
  * - Every regular file under rendered/ must be at a valid old-format depth:
  *   _meta/<key>                  (depth 2)
  *   <replica>/<sublevel>/<key>   (depth 3)
- * - Regular files at other depths are invalid input.
+ *   Regular files at other depths are invalid input.
  * - Every old value file must contain valid JSON that can be projected into
- *   the exploded format.
- * - Invalid JSON or unsupported values cause hard failure before mutation.
+ *   the exploded format. Invalid JSON or unsupported values cause hard failure
+ *   before mutation.
+ * - Value-root paths are validated against the shared snapshot key/path codec
+ *   (relativePathToKey) during preflight.
  * - Symlinks, special files, and other non-regular-file entries under rendered/
  *   are invalid input.
- * - Unreadable directories under rendered/ cause hard failure.
+ * - Unreadable directories or files cause hard failure.
  * - If kindtree/ already contains regular files, the snapshot is treated as
  *   already migrated and the script is a no-op.
  * - kindtree/ containing only empty directories does not block migration.
@@ -34,6 +36,8 @@
  *   build a migration plan) then apply (delete old files, write new ones).
  * - Partial mixed states are not a supported repair target.
  * - Failed input does not partially mutate the snapshot.
+ * - The cleanup helper (cleanEmptyDirs) ignores ENOENT on missing directories
+ *   but propagates other filesystem errors such as permission failures.
  */
 
 const path = require("path");
