@@ -63,7 +63,7 @@ Some unsafe states are useful to keep in the repository temporarily while a larg
 A release-blocker marker is a unique string placed next to a known unresolved release-safety issue:
 
 ```text
-THIS-MARKER-BLOCKS-VOLODYSLAV-RELEASE-63461325
+THIS-MARKER-BLOCKS-VOLODYSLAV-RELEASE-XXXXX
 ```
 
 The `link-targeted` step in the install path scans tracked files for this marker.
