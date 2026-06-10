@@ -37,6 +37,18 @@ function writeJson(snapshotDir, relPath, value) {
 }
 
 /**
+ * Write raw text to a file inside the snapshot directory.
+ * @param {string} snapshotDir
+ * @param {string} relPath
+ * @param {string} content
+ */
+function writeText(snapshotDir, relPath, content) {
+    const fullPath = path.join(snapshotDir, relPath);
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, content, 'utf-8');
+}
+
+/**
  * Check if a file exists in the snapshot.
  * @param {string} snapshotDir
  * @param {string} relPath
@@ -204,8 +216,9 @@ describe('exploded migration script compatibility', () => {
         expect(fileExists(tmpDir, 'rendered/r/values/gafdmopql/type')).toBe(true); // leaf file
     });
 
-    test('empty old-format snapshot passes through without error', async () => {
-        // Just _meta/current_replica
+    test('migrates minimal metadata-only old-format snapshot', async () => {
+        // This is not an empty snapshot: _meta/current_replica is a valid
+        // old-format value file.
         writeJson(tmpDir, 'rendered/_meta/current_replica', 'x');
 
         await migrateSnapshot(tmpDir);
@@ -213,5 +226,127 @@ describe('exploded migration script compatibility', () => {
         // kindtree should have _meta schema
         expect(readFile(tmpDir, 'kindtree/_meta/current_replica')).toBe('"string"');
         expect(readFile(tmpDir, 'rendered/_meta/current_replica')).toBe('x');
+    });
+
+    // ─── Preflight and validation tests ────────────────────────────────────
+
+    test.failing('invalid JSON fails before mutation', async () => {
+        // Setup: one good value and one file with invalid JSON
+        writeJson(tmpDir, 'rendered/r/values/good', { x: 1 });
+        writeText(tmpDir, 'rendered/r/values/bad', '{not json}');
+
+        // Capture the old content of the good file before migration
+        const goodContentBefore = readFile(tmpDir, 'rendered/r/values/good');
+
+        await expect(migrateSnapshot(tmpDir)).rejects.toThrow();
+
+        // No kindtree files should have been created
+        expect(fileExists(tmpDir, 'kindtree')).toBe(false);
+
+        // The good file should still be in old format
+        expect(readFile(tmpDir, 'rendered/r/values/good')).toBe(goodContentBefore);
+
+        // The bad file should still be present
+        expect(readFile(tmpDir, 'rendered/r/values/bad')).toBe('{not json}');
+    });
+
+    test.failing('unexpected rendered file depth fails', async () => {
+        // A regular file at depth 4 (r/values/node/leaf) is not a valid
+        // old-format value root: old values are _meta/<key> (depth 2)
+        // or <replica>/<sublevel>/<key> (depth 3).
+        writeJson(tmpDir, 'rendered/r/values/node/leaf', { value: 'too deep' });
+
+        await expect(migrateSnapshot(tmpDir)).rejects.toThrow();
+
+        // No kindtree should have been created
+        expect(fileExists(tmpDir, 'kindtree')).toBe(false);
+    });
+
+    test('empty rendered directory migrates to empty snapshot root', async () => {
+        // Create rendered/ with no regular files
+        fs.mkdirSync(path.join(tmpDir, 'rendered'), { recursive: true });
+
+        await migrateSnapshot(tmpDir);
+
+        // snapshotRoot still exists
+        expect(fileExists(tmpDir)).toBe(true);
+
+        // kindtree should be absent
+        expect(fileExists(tmpDir, 'kindtree')).toBe(false);
+
+        // rendered/ may be removed since it is empty
+        expect(fileExists(tmpDir, 'rendered')).toBe(false);
+    });
+
+    test.failing('empty kindtree directory does not cause false already-migrated no-op', async () => {
+        // Setup: an old-format value file plus a kindtree/ containing
+        // only empty directories (no real schema files).
+        writeJson(tmpDir, 'rendered/r/values/node', { text: 'x' });
+        fs.mkdirSync(path.join(tmpDir, 'kindtree', 'some-empty-dir'), { recursive: true });
+
+        await migrateSnapshot(tmpDir);
+
+        // The snapshot should have been migrated: schema file under
+        // kindtree/r/values/node must exist
+        expect(readFile(tmpDir, 'kindtree/r/values/node')).toBe('{\n  "text": "string"\n}');
+    });
+
+    test('empty compounds survive migration', async () => {
+        writeJson(tmpDir, 'rendered/r/values/emptyObj', {});
+        writeJson(tmpDir, 'rendered/r/values/emptyArr', []);
+
+        await migrateSnapshot(tmpDir);
+
+        // Schema files exist
+        expect(readFile(tmpDir, 'kindtree/r/values/emptyObj')).toBe('{}');
+        expect(readFile(tmpDir, 'kindtree/r/values/emptyArr')).toBe('[]');
+
+        // No required rendered files
+        expect(fileExists(tmpDir, 'rendered/r/values/emptyObj')).toBe(false);
+        expect(fileExists(tmpDir, 'rendered/r/values/emptyArr')).toBe(false);
+    });
+
+    // ─── Full integration with scanner ─────────────────────────────────────
+
+    // ─── Full integration with scanner ─────────────────────────────────────
+
+    test('migrated snapshot scans with the real scanner', async () => {
+        const { getRootDatabase, scanSublevelFromSnapshot } = require('../src/generators/incremental_graph/database');
+        const { getMockedRootCapabilities } = require('./spies');
+        const { stubLogger, stubEnvironment } = require('./stubs');
+
+        const capabilities = getMockedRootCapabilities();
+        stubLogger(capabilities);
+        stubEnvironment(capabilities);
+
+        // Build an old-format fixture with representative values (only r/ sublevel entries)
+        writeJson(tmpDir, 'rendered/r/global/version', '1.0.0');
+        writeJson(tmpDir, 'rendered/r/global/fingerprint', 'test-fp');
+        writeJson(tmpDir, 'rendered/r/values/node', { text: 'hello', count: 42 });
+
+        // Migrate to paired format
+        await migrateSnapshot(tmpDir);
+
+        // Scan the migrated snapshot into a fresh database
+        const db = await getRootDatabase(capabilities);
+        try {
+            await scanSublevelFromSnapshot(capabilities, db, {
+                snapshotRoot: tmpDir,
+                targetSublevel: 'z',
+                snapshotSublevel: 'r',
+            });
+
+            // Verify values were reconstructed correctly
+            async function readRaw(key) {
+                const marker = key.indexOf('!', 1);
+                const sublevel = key.slice(1, marker);
+                return await db._rawGetInSublevel(sublevel, key.slice(marker + 1));
+            }
+            expect(await readRaw('!z!!global!version')).toBe('1.0.0');
+            expect(await readRaw('!z!!global!fingerprint')).toBe('test-fp');
+            expect(await readRaw('!z!!values!node')).toEqual({ text: 'hello', count: 42 });
+        } finally {
+            await db.close();
+        }
     });
 });
