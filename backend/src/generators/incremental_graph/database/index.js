@@ -24,12 +24,13 @@ const {
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
+    pathToDatabaseSnapshotRoot,
 } = require('./gitstore');
 const {
     synchronizeNoLock,
     isSyncMergeAggregateError,
 } = require('./synchronize');
-const { renderToFilesystem, scanFromFilesystem, keyToRelativePath, relativePathToKey } = require('./render');
+const { renderToFilesystem, renderSublevelToSnapshot, scanFromFilesystem, scanSublevelFromSnapshot, keyToRelativePath, relativePathToKey, isMissingKindtreeRootError, isExtraRenderedFileError, isScanInputDirMissingError, projectExplodedJsonValue } = require('./render');
 const {
     serializeNodeKey,
     deserializeNodeKey,
@@ -105,6 +106,7 @@ module.exports = {
     checkpointMigration,
     CHECKPOINT_WORKING_PATH,
     DATABASE_SUBPATH,
+    pathToDatabaseSnapshotRoot,
     LIVE_DATABASE_WORKING_PATH,
     stringToNodeKeyString,
     stringToNodeIdentifier,
@@ -118,10 +120,16 @@ module.exports = {
     stringToVersion,
     synchronizeNoLock,
     isSyncMergeAggregateError,
+    renderSublevelToSnapshot,
     renderToFilesystem,
+    scanSublevelFromSnapshot,
     scanFromFilesystem,
     keyToRelativePath,
     relativePathToKey,
+    isMissingKindtreeRootError,
+    isExtraRenderedFileError,
+    isScanInputDirMissingError,
+    projectExplodedJsonValue,
     serializeNodeKey,
     deserializeNodeKey,
     createNodeKeyFromPattern,

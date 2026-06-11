@@ -51,57 +51,77 @@ At the raw LevelDB level these are concatenated with the sublevel prefixes, e.g.
 
 ---
 
-## Filesystem rendering
+## Filesystem rendering (paired snapshot)
 
-The database exposes two complementary operations for dumping and restoring its complete state
-to/from a plain directory tree:
+The database exposes two complementary operations for rendering its state into a paired
+snapshot directory and restoring it from a snapshot:
 
 ```js
 const { renderToFilesystem, scanFromFilesystem } = require('./database');
 
-// Dump every key/value pair to disk
-await renderToFilesystem(capabilities, rootDatabase, '/path/to/snapshot');
+// Render sublevel "x" into a paired snapshot rooted at /path/to/snapshot
+await renderToFilesystem(capabilities, rootDatabase, '/path/to/snapshot', 'x');
 
-// Restore the database from a snapshot (clears all existing entries first)
-await scanFromFilesystem(capabilities, rootDatabase, '/path/to/snapshot');
+// Scan snapshot sublevel "x" back into database sublevel "x"
+await scanFromFilesystem(capabilities, rootDatabase, '/path/to/snapshot', 'x');
+```
+
+A non-empty paired snapshot stores managed content in sibling trees under the snapshot root:
+
+```
+snapshotRoot/
+  kindtree/        ← schema files (one per value root)
+  rendered/        ← primitive leaf files (zero or more per value root)
+```
+
+The compatibility entrypoints (`renderToFilesystem` / `scanFromFilesystem`) use the same
+sublevel name for both the database sublevel and the snapshot sublevel. When the source and
+snapshot sublevel names differ, use the explicit API:
+
+```js
+renderSublevelToSnapshot(capabilities, rootDatabase, {
+    snapshotRoot,
+    sourceSublevel,   // database sublevel to render
+    snapshotSublevel, // sublevel under kindtree/ and rendered/
+});
+
+scanSublevelFromSnapshot(capabilities, rootDatabase, {
+    snapshotRoot,
+    targetSublevel,   // database sublevel to write into
+    snapshotSublevel, // sublevel under kindtree/ and rendered/
+});
 ```
 
 ### Key → file-path mapping
 
-Each raw LevelDB key is translated to a *relative file path* inside the snapshot directory.
-The algorithm depends on the key type:
+Each raw LevelDB key is translated to a *relative file path* inside the snapshot
+directory using the key-to-path codec in `encoding.js`:
 
-#### Data sublevels (`values`, `freshness`, `inputs`, `revdeps`, `counters`, `timestamps`)
+```
+raw DB key
+  → sublevel names + opaque key content
+  → [...sublevels, encodeSegment(keyContent)].join('/')
+```
 
-The stored key is a JSON-serialised NodeKey object `{"head":"...","args":[...]}`.
-It is decomposed into human-readable path segments:
+The codec does not interpret the key content. The last path segment is the
+opaque encoded raw key content:
+
+```
+!x!!values!<keyContent>           → x/values/<encoded-keyContent>
+!_meta!current_replica           → _meta/<encoded-current_replica>
+```
+
+Key content that is a JSON-serialised NodeKey object remains a single opaque
+encoded segment. The snapshot path codec does not decompose it into head/args:
 
 ```
 !x!!values!{"head":"all_events","args":[]}
-  → x/values/all_events
-
-!x!!values!{"head":"event","args":["abc123"]}
-  → x/values/event/abc123
-
-!x!!values!{"head":"transcription","args":["/audio/x.mp3"]}
-  → x/values/transcription/%2Faudio%2Fx.mp3
+  → x/values/%7B%22head%22%3A%22all_events%22%2C%22args%22%3A%5B%5D%7D
 ```
 
-String arguments are percent-encoded: `/` → `%2F`, `%` → `%25`, `!` → `%21`.
-Literal dot-segment path components `.` and `..` are encoded as `%2E` and `%2E%2E`
-to prevent path traversal while keeping the key↔path mapping bijective. Non-string arguments
-(numbers, booleans, arrays, objects) are JSON-encoded and prefixed with `~` so they remain
-unambiguous even when string arguments begin with `~`.
-
-#### Meta sublevels (`_meta`, `meta`)
-
-The stored key is a plain string (e.g. `format`, `version`).
-It is used as a single percent-encoded path segment:
-
-```
-!_meta!current_replica    → _meta/current_replica
-!x!!meta!version → x/meta/version
-```
+The segment encoding uses percent-like escaping for round-tripping:
+`/` → `%2F`, `%` → `%25`, `!` → `%21`. Empty-string, `.`, and `..` key values
+use sentinel encoding (`%00`, `%2E`, `%2E%2E`) to prevent path traversal.
 
 ### File-path → key mapping (inverse)
 
@@ -109,11 +129,8 @@ It is used as a single percent-encoded path segment:
 
 1. **Determine sublevel depth**: if the first segment is `_meta` → depth 1; otherwise depth 2.
 2. **Extract sublevels**: first `depth` segments.
-3. **Determine key type**: if the last sublevel is `_meta` or `meta` → plain string; otherwise NodeKey.
-4. **Reconstruct key**:
-   - Plain string: decode the single remaining segment and reassemble the LevelDB key.
-   - NodeKey: first remaining segment is the node head; subsequent segments are decoded arguments;
-     reassemble using `serializeNodeKey({head, args})` and build the LevelDB key.
+3. **Decode key segment**: decode the remaining single segment and append it as key content.
+4. **Reassemble**: build the raw LevelDB key from sublevels and decoded key content.
 
 ### Bijection guarantee
 
@@ -123,20 +140,38 @@ For all keys generated by this database the mapping `key → path → key` is an
 relativePathToKey(keyToRelativePath(key)) === key   // for all valid keys
 ```
 
-The `!` character in argument values is encoded as `%21` before splitting, so it can never be
-mistaken for the LevelDB sublevel separator.
+The `!` character in key content is encoded as `%21` before becoming a path
+segment, so it can never be mistaken for the LevelDB sublevel separator.
 
-### Stale-key deletion (P2)
+### Reconciliation and value reconstruction
 
-`scanFromFilesystem` **clears all existing entries** from the database before importing.
-This ensures that keys present in the database but absent from the snapshot directory
-(i.e., deleted entries) do not survive the restore, preserving the bijection/restore semantics.
+The paired snapshot scanner (`scanFromFilesystem` / `scanSublevelFromSnapshot`) is schema-led:
+it enumerates `kindtree/`, validates and parses schemas, claims rendered leaves, and reconstructs
+complete values before any database mutation. Unclaimed rendered files (present in `rendered/` but
+not referenced by any schema in `kindtree/`) cause a hard failure with `ExtraRenderedFileError`.
 
-### Value serialisation
+The renderer (`renderToFilesystem` / `renderSublevelToSnapshot`) writes both the type schema
+under `kindtree/` and zero-or-more primitive leaf files under `rendered/` for each value root.
 
-Values are stored as JSON.  `renderToFilesystem` writes `JSON.stringify(value)` to each file;
-`scanFromFilesystem` reads each file and calls `JSON.parse(content)` before writing back to the
-database.
+### Empty snapshot semantics
+
+The snapshot root directory is the unit of snapshot existence:
+
+- If `snapshotRoot` does not exist at scan time, scanning fails before any database
+  mutation with `ScanInputDirMissingError`. A missing root is not an empty snapshot.
+- If `snapshotRoot` exists but is empty, scanning treats it as a valid empty
+  database snapshot and empties the target sublevel during reconciliation.
+- If `snapshotRoot` exists but contains neither `kindtree/<snapshotSublevel>` nor
+  `rendered/<snapshotSublevel>`, that is a valid empty snapshot for that sublevel.
+- Empty snapshots require no child files or directories below the root.
+- Rendering an empty sublevel produces an existing empty snapshot root:
+  the root directory exists but `kindtree/` and `rendered/` subtrees are absent
+  (pruned by the renderer).
+  Top-level `kindtree/` and `rendered/` are pruned only when they contain no
+  other managed sublevel content.
+
+Legacy rendered-only partial snapshots (rendered files without matching schemas)
+remain invalid and are rejected with `MissingKindtreeRootError`.
 
 ### No locking
 
@@ -148,8 +183,9 @@ atomicity must arrange their own locking around these calls.
 ## Checkpointing and synchronisation
 
 The live LevelDB now lives outside the git repository
-(`<workingDirectory>/generators-leveldb/`). The git repository stores a rendered
-filesystem snapshot under `<workingDirectory>/generators-database/rendered/`.
+(`<workingDirectory>/generators-leveldb/`). The git repository stores a paired
+filesystem snapshot under `<workingDirectory>/generators-database/` with sibling
+`kindtree/` and `rendered/` directories.
 Two higher-level operations are available:
 
 - **`checkpointDatabase(capabilities, message, rootDatabase)`** – renders the live
@@ -165,5 +201,14 @@ Two higher-level operations are available:
   During per-host graph merge, this sync path switches `_meta/current_replica`
   only if the merge introduced graph changes (`take`/`invalidate` decisions).
   Pure no-op merges keep the active replica pointer unchanged.
+
+The checkpoint snapshot root path is available via:
+
+```js
+const { pathToDatabaseSnapshotRoot } = require('./database');
+const snapshotRoot = pathToDatabaseSnapshotRoot(capabilities);
+```
+
+This returns the directory that directly contains `kindtree/` and `rendered/` sibling trees.
 
 See [`docs/gitstore.md`](./gitstore.md) for the gitstore primitives that back these operations.

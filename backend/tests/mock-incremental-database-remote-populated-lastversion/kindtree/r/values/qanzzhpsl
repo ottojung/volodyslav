@@ -1,0 +1,58 @@
+{
+  "config": {
+    "help": "string",
+    "shortcuts": [
+      [
+        "string",
+        "string",
+        "string"
+      ],
+      [
+        "string",
+        "string",
+        "string"
+      ],
+      [
+        "string",
+        "string",
+        "string"
+      ],
+      [
+        "string",
+        "string",
+        "string"
+      ],
+      [
+        "string",
+        "string",
+        "string"
+      ],
+      [
+        "string",
+        "string",
+        "string"
+      ],
+      [
+        "string",
+        "string",
+        "string"
+      ],
+      [
+        "string",
+        "string",
+        "string"
+      ],
+      [
+        "string",
+        "string",
+        "string"
+      ],
+      [
+        "string",
+        "string",
+        "string"
+      ]
+    ]
+  },
+  "type": "string"
+}
