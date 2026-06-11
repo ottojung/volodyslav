@@ -233,10 +233,10 @@ returns a number token. Consequences include:
 - there is no trailing newline.
 
 A scanned number file MUST contain exactly one JSON number token. Leading or
-trailing whitespace and trailing data are invalid. Parsing MUST consume the
-whole file and produce a finite number. A valid but noncanonical number token,
-such as `1.0` or `1e0`, MAY be accepted; rendering the scanned value writes the
-canonical JSON number text (`1`).
+trailing whitespace, trailing newlines, and trailing data are invalid. Parsing
+MUST consume the whole file and produce a finite number. A valid but noncanonical
+number token, such as `1.0` or `1e0`, MAY be accepted; rendering the scanned
+value writes the canonical JSON number text (`1`).
 
 ## 5. Terminology
 
@@ -535,9 +535,7 @@ Examples:
 1e+21  -> 1e+21
 ```
 
-No whitespace or newline is added. During scan, a complete finite JSON number
-token followed by a single final LF MAY be accepted and canonicalized to its
-canonical JSON number text on render.
+No whitespace or newline is added.
 
 ### 8.4 Boolean
 
@@ -553,9 +551,7 @@ true  -> rendered file: true  + schema: "boolean"
 false -> rendered file: false + schema: "boolean"
 ```
 
-No whitespace or newline is added. During scan, `true` or `false` followed by
-a single final LF MAY be accepted and canonicalized to `true` or `false` on
-render.
+No whitespace or newline is added.
 
 ### 8.5 Null
 
@@ -564,8 +560,7 @@ Null renders as:
 - a regular file containing exactly the four characters `null`; and
 - the schema token `"null"`.
 
-An empty file is not null. Absence is not null. During scan, `null` followed
-by a single final LF MAY be accepted and canonicalized to `null` on render.
+An empty file is not null. Absence is not null.
 
 ### 8.6 Object
 
@@ -931,20 +926,17 @@ logical subtree is invalid.
 ### 12.4 Scalar parsing
 
 A number file MUST contain exactly one finite JSON number token. Leading or
-trailing whitespace and trailing data are invalid. A valid but noncanonical
-number token, such as `1.0` or `1e0`, MAY be accepted and is canonicalized on
-render. A single final LF after an otherwise valid number token MAY be accepted
-and is canonicalized away.
+trailing whitespace, trailing newlines, and trailing data are invalid. A valid
+but noncanonical number token, such as `1.0` or `1e0`, MAY be accepted and is
+canonicalized on render.
 
 A boolean file MUST contain exactly `true` or exactly `false`. `TRUE`, `False`,
-`1`, `0`, ` false`, and `true ` are invalid. A single final LF after `true` or
-`false` MAY be accepted and is canonicalized to `true` or `false`.
+`1`, `0`, ` false`, and `true ` are invalid. A trailing newline is invalid.
 
-A null file MUST contain exactly `null`. A single final LF after `null` MAY be
-accepted and is canonicalized to `null`.
+A null file MUST contain exactly `null`. A trailing newline is invalid.
 
-These remain invalid: `" true"`, `"true "`, `"true\n\n"`, `"null "`, `" 5"`,
-`"5 "`, `"5\n\n"`.
+These remain invalid: `" true"`, `"true "`, `"true\n"`, `"false\n"`, `"null\n"`,
+`"5\n"`, `"true\n\n"`, `"null "`, `" 5"`, `"5 "`, `"5\n\n"`.
 
 A string file is not parsed and may contain any text accepted by the
 repository's UTF-8 text abstraction. A final newline in a string is part of
@@ -1058,8 +1050,6 @@ Canonicalization includes:
 - canonical JSON number text;
 - exact boolean text;
 - exact `null` text;
-- accepted single-final-LF trailing newline on number, boolean, and null files
-  is normalized away on render;
 - primitive leaf files present exactly where required by schemas;
 - no rendered files or semantically required directories for empty or
   primitive-free compounds;
@@ -1468,15 +1458,13 @@ Failure cases identify the value root and offending path where applicable.
 6. Schema `"number"` points to a directory: invalid.
 7. Schema `"boolean"` points to a directory: invalid.
 8. Schema `"null"` points to a directory: invalid.
-9. Boolean file contains `TRUE`, `False`, `1`, `0`, ` false`, or `true `.
-   A single final LF after `true` or `false` is accepted and canonicalized;
-   a double trailing newline or leading space is invalid.
+9. Boolean file contains `TRUE`, `False`, `1`, `0`, ` false`, `true `, or
+   `true\n` / `false\n`. A trailing newline is invalid.
 10. Number file contains non-number text, trailing garbage, multiple tokens,
-    whitespace padding, `NaN`, infinity, or JSON string syntax. A single final
-    LF after an otherwise valid number token is accepted and canonicalized.
-11. Null file is empty or contains `NULL` or whitespace. A single final LF
-    after `null` is accepted and canonicalized; a double trailing newline or
-    leading/trailing space is invalid.
+    whitespace padding, trailing newlines, `NaN`, infinity, or JSON string
+    syntax.
+11. Null file is empty or contains `NULL`, whitespace, or `null\n`. A trailing
+    newline is invalid.
 12. Type schema contains unknown token or unsupported token `"undefined"`.
 13. Type schema uses `"object"` or `"array"` instead of structural shape.
 14. Type schema contains literal JSON `null`, number, `true`, or `false` where a
@@ -1530,8 +1518,8 @@ Acceptance controls for incidental directories:
 9. Scan snapshots containing only incidental empty directories for empty or
    primitive-free compounds, then render to the same canonical virtual file set
    with no required rendered files for those compounds.
-10. Accepted single-final-LF `true\n`, `false\n`, `null\n`, and `5\n` files are
-    canonicalized to `true`, `false`, `null`, and `5` on render.
+10. Single-final-LF `true\n`, `false\n`, `null\n`, and `5\n` files are
+    rejected as invalid leaf content.
 11. Remove unclaimed rendered files during authoritative DB render.
 12. Assert `render -> render` idempotence and `scan -> render -> scan` stability.
 
