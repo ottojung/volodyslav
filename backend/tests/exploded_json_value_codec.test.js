@@ -8,6 +8,7 @@ const {
     isSparseArrayRenderedValueError,
     isNonPlainObjectRenderedValueError,
     isTypeSchemaError,
+    isDuplicateMemberNameError,
     isRenderedLeafError,
 } = require('../src/generators/incremental_graph/database/render');
 
@@ -205,6 +206,15 @@ describe('exploded JSON value codec', () => {
                 expect(isRenderedLeafError(error)).toBe(true);
             });
 
+            // eslint-disable-next-line jest/no-disabled-tests
+            test.failing.each([
+                ['trailing newline true', 'true\n'],
+                ['trailing newline false', 'false\n'],
+            ])('[19.3-9] boolean file contains %s: rejected', (_name, content) => {
+                const error = captureError(() => scanExplodedJsonProjection('boolean', () => content));
+                expect(isRenderedLeafError(error)).toBe(true);
+            });
+
             test.each([
                 ['non-number text', 'abc'],
                 ['trailing garbage after number', '5abc'],
@@ -220,6 +230,12 @@ describe('exploded JSON value codec', () => {
                 expect(isRenderedLeafError(error)).toBe(true);
             });
 
+            // eslint-disable-next-line jest/no-disabled-tests
+            test.failing('[19.3-10] number file contains trailing newline', () => {
+                const error = captureError(() => scanExplodedJsonProjection('number', () => '5\n'));
+                expect(isRenderedLeafError(error)).toBe(true);
+            });
+
             test.each([
                 ['empty file', ''],
                 ['NULL', 'NULL'],
@@ -227,6 +243,12 @@ describe('exploded JSON value codec', () => {
                 ['trailing space', 'null '],
             ])('[19.3-11] null file contains %s', (_name, content) => {
                 const error = captureError(() => scanExplodedJsonProjection('null', () => content));
+                expect(isRenderedLeafError(error)).toBe(true);
+            });
+
+            // eslint-disable-next-line jest/no-disabled-tests
+            test.failing('[19.3-11] null file contains trailing newline', () => {
+                const error = captureError(() => scanExplodedJsonProjection('null', () => 'null\n'));
                 expect(isRenderedLeafError(error)).toBe(true);
             });
         });
@@ -279,6 +301,22 @@ describe('exploded JSON value codec', () => {
 
             test('[19.3-16] type-schema JSON object contains duplicate member names at root level: invalid', () => {
                 const error = captureError(() => parseTypeSchema('{"a": "string", "a": "number"}'));
+                expect(isTypeSchemaError(error)).toBe(true);
+            });
+
+            // eslint-disable-next-line jest/no-disabled-tests
+            test.failing('[19.3-16] type-schema JSON root array with duplicate member names inside: invalid', () => {
+                const error = captureError(() => parseTypeSchema('[{"a": "string", "a": "number"}]'));
+                expect(isTypeSchemaError(error)).toBe(true);
+            });
+
+            test('[19.3-16] type-schema JSON nested array in object with duplicate member names: invalid', () => {
+                const error = captureError(() => parseTypeSchema('{"outer": [{"a": "string", "a": "number"}]}'));
+                expect(isTypeSchemaError(error)).toBe(true);
+            });
+
+            test('[19.3-16] type-schema JSON member names that decode to same key through JSON escapes: invalid', () => {
+                const error = captureError(() => parseTypeSchema('{"\\u0061": "string", "a": "number"}'));
                 expect(isTypeSchemaError(error)).toBe(true);
             });
         });

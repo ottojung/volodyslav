@@ -319,6 +319,23 @@ describe('exploded migration script compatibility', () => {
         expect(fileExists(tmpDir, 'rendered/r/values/emptyArr')).toBe(false);
     });
 
+    // eslint-disable-next-line jest/no-disabled-tests
+    test.failing('duplicate decoded value roots from percent-escape case differences are rejected before mutation', async () => {
+        // Two old-format value paths that decode to the same raw key:
+        // rendered/r/values/a%2Fb  → raw key: !r!!values!a/b
+        // rendered/r/values/a%2fb  → raw key: !r!!values!a/b (lowercase %2f decodes to same)
+        writeText(tmpDir, 'rendered/r/values/a%2Fb', JSON.stringify({ data: 1 }));
+        writeText(tmpDir, 'rendered/r/values/a%2fb', JSON.stringify({ data: 2 }));
+
+        await expect(migrateSnapshot(tmpDir)).rejects.toThrow();
+
+        // No kindtree should have been created
+        expect(fileExists(tmpDir, 'kindtree')).toBe(false);
+        // Both files should remain unchanged
+        expect(fileExists(tmpDir, 'rendered/r/values/a%2Fb')).toBe(true);
+        expect(fileExists(tmpDir, 'rendered/r/values/a%2fb')).toBe(true);
+    });
+
     // ─── Input validation: preflight rejection tests ────────────────────────
 
     test('rendered exists but is not a directory (regular file) fails before mutation', async () => {
