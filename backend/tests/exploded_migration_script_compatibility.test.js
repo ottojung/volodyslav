@@ -319,8 +319,7 @@ describe('exploded migration script compatibility', () => {
         expect(fileExists(tmpDir, 'rendered/r/values/emptyArr')).toBe(false);
     });
 
-    // eslint-disable-next-line jest/no-disabled-tests
-    test.failing('duplicate decoded value roots from percent-escape case differences are rejected before mutation', async () => {
+    test('duplicate decoded value roots from percent-escape case differences are rejected before mutation', async () => {
         // Two old-format value paths that decode to the same raw key:
         // rendered/r/values/a%2Fb  → raw key: !r!!values!a/b
         // rendered/r/values/a%2fb  → raw key: !r!!values!a/b (lowercase %2f decodes to same)

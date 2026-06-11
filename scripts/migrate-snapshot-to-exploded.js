@@ -147,6 +147,8 @@ async function buildMigrationPlan(snapshotDir) {
         return { entries: [], emptyInput: true };
     }
 
+    /** @type {Map<string, string>} */
+    const seenRawKeys = new Map();
     /** @type {MigrationEntry[]} */
     const entries = [];
 
@@ -165,16 +167,22 @@ async function buildMigrationPlan(snapshotDir) {
         }
 
         const valueRoot = parts.slice(0, depth).join("/");
-        // Validate the value-root path against the shared key/path codec.
-        // All filesystem-representable paths at correct depth pass validation;
-        // the call serves as future-proofing against codec changes.
+        // Validate the value-root path against the shared key/path codec
+        // and check for duplicate decoded raw keys.
+        let rawKey;
         try {
-            relativePathToKey(valueRoot);
+            rawKey = relativePathToKey(valueRoot);
         } catch (err) {
             throw new Error(
                 `Invalid value-root path in old-format file '${relPath}': ${err instanceof Error ? err.message : String(err)}`
             );
         }
+        if (seenRawKeys.has(rawKey)) {
+            throw new Error(
+                `Duplicate decoded value root '${rawKey}': '${seenRawKeys.get(rawKey)}' and '${valueRoot}' in old-format snapshot`
+            );
+        }
+        seenRawKeys.set(rawKey, valueRoot);
         const absPath = path.join(renderedDir, relPath);
         const content = await fs.readFile(absPath, "utf-8");
 

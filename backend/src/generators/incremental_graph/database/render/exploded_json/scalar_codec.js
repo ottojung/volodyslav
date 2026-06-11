@@ -13,18 +13,17 @@ function renderScalar(value) {
 function scanScalar(token, content, descendantPath) {
     if (token === 'string') return content;
     if (token === 'number') {
-        const trimmed = content.endsWith('\n') ? content.slice(0, -1) : content;
-        if (!JSON_NUMBER_PATTERN.test(trimmed)) throw new InvalidNumberLeafError(descendantPath, content);
-        const value = Number(trimmed);
+        if (!JSON_NUMBER_PATTERN.test(content)) throw new InvalidNumberLeafError(descendantPath, content);
+        const value = Number(content);
         if (!Number.isFinite(value)) throw new InvalidNumberLeafError(descendantPath, content);
         return Object.is(value, -0) ? 0 : value;
     }
     if (token === 'boolean') {
-        if (content === 'true' || content === 'true\n') return true;
-        if (content === 'false' || content === 'false\n') return false;
+        if (content === 'true') return true;
+        if (content === 'false') return false;
         throw new InvalidBooleanLeafError(descendantPath, content);
     }
-    if (content === 'null' || content === 'null\n') return null;
+    if (content === 'null') return null;
     throw new InvalidNullLeafError(descendantPath, content);
 }
 module.exports = { renderScalar, scanScalar };

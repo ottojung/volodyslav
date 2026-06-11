@@ -206,8 +206,7 @@ describe('exploded JSON value codec', () => {
                 expect(isRenderedLeafError(error)).toBe(true);
             });
 
-            // eslint-disable-next-line jest/no-disabled-tests
-            test.failing.each([
+            test.each([
                 ['trailing newline true', 'true\n'],
                 ['trailing newline false', 'false\n'],
             ])('[19.3-9] boolean file contains %s: rejected', (_name, content) => {
@@ -230,8 +229,7 @@ describe('exploded JSON value codec', () => {
                 expect(isRenderedLeafError(error)).toBe(true);
             });
 
-            // eslint-disable-next-line jest/no-disabled-tests
-            test.failing('[19.3-10] number file contains trailing newline', () => {
+            test('[19.3-10] number file contains trailing newline', () => {
                 const error = captureError(() => scanExplodedJsonProjection('number', () => '5\n'));
                 expect(isRenderedLeafError(error)).toBe(true);
             });
@@ -246,8 +244,7 @@ describe('exploded JSON value codec', () => {
                 expect(isRenderedLeafError(error)).toBe(true);
             });
 
-            // eslint-disable-next-line jest/no-disabled-tests
-            test.failing('[19.3-11] null file contains trailing newline', () => {
+            test('[19.3-11] null file contains trailing newline', () => {
                 const error = captureError(() => scanExplodedJsonProjection('null', () => 'null\n'));
                 expect(isRenderedLeafError(error)).toBe(true);
             });
@@ -304,8 +301,7 @@ describe('exploded JSON value codec', () => {
                 expect(isTypeSchemaError(error)).toBe(true);
             });
 
-            // eslint-disable-next-line jest/no-disabled-tests
-            test.failing('[19.3-16] type-schema JSON root array with duplicate member names inside: invalid', () => {
+            test('[19.3-16] type-schema JSON root array with duplicate member names inside: invalid', () => {
                 const error = captureError(() => parseTypeSchema('[{"a": "string", "a": "number"}]'));
                 expect(isTypeSchemaError(error)).toBe(true);
             });
@@ -371,20 +367,24 @@ describe('exploded JSON value codec', () => {
             expect(projection.schema).toEqual([]);
         });
 
-        test('[19.4-10] accepted single-final-LF "true\\n" canonicalized to "true" on render', () => {
-            expect(scanExplodedJsonProjection('boolean', () => 'true\n')).toBe(true);
+        test('[19.4-10] single-final-LF "true\\n" is rejected', () => {
+            const error = captureError(() => scanExplodedJsonProjection('boolean', () => 'true\n'));
+            expect(isRenderedLeafError(error)).toBe(true);
         });
 
-        test('[19.4-10] accepted single-final-LF "false\\n" canonicalized to "false" on render', () => {
-            expect(scanExplodedJsonProjection('boolean', () => 'false\n')).toBe(false);
+        test('[19.4-10] single-final-LF "false\\n" is rejected', () => {
+            const error = captureError(() => scanExplodedJsonProjection('boolean', () => 'false\n'));
+            expect(isRenderedLeafError(error)).toBe(true);
         });
 
-        test('[19.4-10] accepted single-final-LF "null\\n" canonicalized to "null" on render', () => {
-            expect(scanExplodedJsonProjection('null', () => 'null\n')).toBe(null);
+        test('[19.4-10] single-final-LF "null\\n" is rejected', () => {
+            const error = captureError(() => scanExplodedJsonProjection('null', () => 'null\n'));
+            expect(isRenderedLeafError(error)).toBe(true);
         });
 
-        test('[19.4-10] accepted single-final-LF "5\\n" canonicalized to "5" on render', () => {
-            expect(scanExplodedJsonProjection('number', () => '5\n')).toBe(5);
+        test('[19.4-10] single-final-LF "5\\n" is rejected', () => {
+            const error = captureError(() => scanExplodedJsonProjection('number', () => '5\n'));
+            expect(isRenderedLeafError(error)).toBe(true);
         });
     });
 });

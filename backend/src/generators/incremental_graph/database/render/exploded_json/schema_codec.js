@@ -77,7 +77,10 @@ function detectDuplicateKeys(text) {
     }
 
     skipWs();
-    if (pos < len && ch() === '{') parseObj();
+    if (pos < len) {
+        if (ch() === '{') parseObj();
+        else if (ch() === '[') parseArr();
+    }
 }
 
 /** @param {unknown} schema @param {string} schemaPath @returns {void} */
