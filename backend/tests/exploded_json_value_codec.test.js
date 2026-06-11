@@ -298,22 +298,22 @@ describe('exploded JSON value codec', () => {
 
             test('[19.3-16] type-schema JSON object contains duplicate member names at root level: invalid', () => {
                 const error = captureError(() => parseTypeSchema('{"a": "string", "a": "number"}'));
-                expect(isTypeSchemaError(error)).toBe(true);
+                expect(isDuplicateMemberNameError(error)).toBe(true);
             });
 
             test('[19.3-16] type-schema JSON root array with duplicate member names inside: invalid', () => {
                 const error = captureError(() => parseTypeSchema('[{"a": "string", "a": "number"}]'));
-                expect(isTypeSchemaError(error)).toBe(true);
+                expect(isDuplicateMemberNameError(error)).toBe(true);
             });
 
             test('[19.3-16] type-schema JSON nested array in object with duplicate member names: invalid', () => {
                 const error = captureError(() => parseTypeSchema('{"outer": [{"a": "string", "a": "number"}]}'));
-                expect(isTypeSchemaError(error)).toBe(true);
+                expect(isDuplicateMemberNameError(error)).toBe(true);
             });
 
             test('[19.3-16] type-schema JSON member names that decode to same key through JSON escapes: invalid', () => {
                 const error = captureError(() => parseTypeSchema('{"\\u0061": "string", "a": "number"}'));
-                expect(isTypeSchemaError(error)).toBe(true);
+                expect(isDuplicateMemberNameError(error)).toBe(true);
             });
         });
 
