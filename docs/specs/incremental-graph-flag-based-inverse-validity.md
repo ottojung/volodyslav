@@ -21,6 +21,20 @@ the current materialized value of D.
 
 A node can reuse its materialized value when this condition holds for every current dependency.
 
+## Fixed Schema
+
+For one `IncrementalGraph` instance, the schema is fixed and does not change.
+
+A node's concrete input list is determined by:
+
+1. the node definition schema,
+2. the node's bindings,
+3. the existing compilation/instantiation logic.
+
+The computor does **not** discover dependencies at runtime. It receives already-pulled input values. It does not receive a dependency-registration API, and it does not return a dependency list.
+
+The schema-derived concrete inputs are the source of truth for what a node depends on. All structural metadata in the graph is derived from this fixed list.
+
 ## State
 
 The graph maintains the following state.
@@ -37,7 +51,7 @@ counters : Map<NodeIdentifier, RecomputeCounter>
 
 Stores the current value-version counter of each node. The counter increments when the node's own materialized value changes.
 
-The validity algorithm does not use counters for cache validation. Counters may still be used for rendering, debugging, migration, external consistency, and other graph invariants.
+The validity algorithm does not use counters for cache validation. Counters may still be used for rendering, debugging, external consistency, and other graph invariants.
 
 ```text
 freshness : Map<NodeIdentifier, "up-to-date" | "potentially-outdated">
@@ -49,7 +63,7 @@ Stores whether a node can be returned immediately or must be validated before re
 inputs : Map<NodeIdentifier, Array<NodeIdentifier>>
 ```
 
-Stores the current structural dependencies of a node.
+Stores the materialized structural dependencies of a node. For a materialized node `N`, `inputs[N]` holds the schema-derived concrete input list computed at instantiation time.
 
 Example:
 
@@ -60,10 +74,12 @@ inputs[N] = [A, B, C]
 means:
 
 ```text
-N currently depends on A, B, and C.
+N depends on A, B, and C.
 ```
 
 The persisted order must be deterministic. If dependency order has semantic meaning, preserve that order. If it has no semantic meaning, store a stable canonical order.
+
+The source of truth for a node's dependency list is the schema-derived concrete input list, not the persisted `inputs` record. The persisted record exists to store materialized structure and maintain reverse dependencies. It is written once when the node is first materialized and is not re-derived during normal recomputation.
 
 ```text
 revdeps : Map<NodeIdentifier, Set<NodeIdentifier>>
@@ -80,7 +96,7 @@ revdeps[A].has(N)
 means:
 
 ```text
-N currently depends on A.
+N depends on A.
 ```
 
 ```text
@@ -106,13 +122,7 @@ Persisted `valid[X]` sets must serialize in deterministic sorted order.
 
 ## Structural Invariants
 
-For every dependency edge:
-
-```text
-D -> N
-```
-
-the structural indexes must agree:
+For every materialized node `N` and every `D` in its schema-derived concrete inputs:
 
 ```text
 D is in inputs[N]
@@ -230,20 +240,23 @@ Both cleanup operations are required.
 
 ## Direct Value Replacement
 
-Any operation that replaces or may replace the materialized value of `N` without running `N`'s normal computor must use value-change cleanup.
+Any operation that replaces the materialized value of `N` without running `N`'s normal computor must conservatively be treated as a value change unless the operation can prove the stored value is unchanged.
 
 ```text
 replaceValue(N, newValue):
 
-1. If the operation changes or may change values[N]:
-       onValueChanged(N)
+1. If values[N] is proven unchanged:
+       values[N] = newValue
+       return
 
-2. values[N] = newValue
+2. onValueChanged(N)
 
-3. Set freshness[N] according to the semantics of the replacement operation.
+3. values[N] = newValue
+
+4. Set freshness[N] according to the semantics of the replacement operation.
 ```
 
-A direct replacement must not add `N` to `valid[D]` for any dependency `D` unless the replacement operation actually validates `N` against `D`.
+A direct replacement must not add `N` to `valid[D]` for any dependency `D` unless the replacement operation actually validates `N` against `D`. A direct replacement that runs the computor may use the normal pull algorithm instead.
 
 ## Pull Algorithm
 
@@ -255,27 +268,25 @@ pull(N):
 1. If freshness[N] is "up-to-date":
        return values[N]
 
-2. Let oldValue = values[N].
-   Let oldInputs = inputs[N], or [] if no dependency record exists.
+2. Let inputs[N] be the schema-derived concrete inputs of N.
 
-3. For every D in oldInputs:
+3. For every D in inputs[N]:
        pull(D)
 
-4. If oldValue exists,
-   and oldInputs is non-empty,
-   and every D in oldInputs satisfies valid[D].has(N):
+4. If N has a materialized value,
+   and inputs[N] is non-empty,
+   and every D in inputs[N] satisfies valid[D].has(N):
 
        freshness[N] = "up-to-date"
-       return oldValue
+       return values[N]
 
-5. Run N's computor.
-   During computation, collect actualInputs.
+5. Run N's computor using the values returned for inputs[N].
 
 6. If the computor returns Unchanged:
-       handleUnchangedResult(N, oldInputs, actualInputs)
+       handleUnchangedResult(N)
 
 7. If the computor returns newValue:
-       handleChangedResult(N, oldInputs, actualInputs, newValue)
+       handleChangedResult(N, newValue)
 
 8. Return values[N].
 ```
@@ -284,7 +295,7 @@ Dependency pulls in step 3 ensure that dependencies are current before `N` is ch
 
 The cache predicate in step 4 is checked only after dependency pulls complete.
 
-A computor must not return `Unchanged` when no materialized value exists for `N`.
+A computor must not return `Unchanged` when `N` has no materialized value.
 
 ## Handling `Unchanged`
 
@@ -301,36 +312,28 @@ valid[N] is not cleared
 Validity facts from `N` to its dependents remain valid because `N`'s value remains unchanged.
 
 ```text
-handleUnchangedResult(N, oldInputs, actualInputs):
+handleUnchangedResult(N):
 
-1. Reconcile dependency structure:
+1. Ensure structural records exist for inputs[N] and revdeps[N].
 
-   a. For every D in oldInputs that is not in actualInputs:
-          valid[D].delete(N)
-          revdeps[D].delete(N)
-
-   b. For every D in actualInputs that is not in oldInputs:
-          revdeps[D].add(N)
-
-   c. If oldInputs and actualInputs differ:
-          inputs[N] = actualInputs
-
-2. For every D in actualInputs:
+2. For every D in inputs[N]:
        valid[D].add(N)
 
 3. freshness[N] = "up-to-date"
 ```
 
-The graph must not rewrite `inputs[N]` when `oldInputs` and `actualInputs` are equal.
+Do not clear `valid[N]`.
+
+Do not increment `counters[N]`.
 
 ## Handling a Changed Value
 
 If the computor returns a new value, the materialized value of `N` changes. All validity flags involving the old value of `N` must be removed before new validity facts are recorded.
 
 ```text
-handleChangedResult(N, oldInputs, actualInputs, newValue):
+handleChangedResult(N, newValue):
 
-1. For every D in oldInputs:
+1. For every D in inputs[N]:
        valid[D].delete(N)
 
 2. Clear valid[N].
@@ -339,18 +342,9 @@ handleChangedResult(N, oldInputs, actualInputs, newValue):
 
 4. Increment counters[N].
 
-5. Reconcile dependency structure:
+5. Ensure structural records exist for inputs[N] and revdeps[N].
 
-   a. For every D in oldInputs that is not in actualInputs:
-          revdeps[D].delete(N)
-
-   b. For every D in actualInputs that is not in oldInputs:
-          revdeps[D].add(N)
-
-   c. If oldInputs and actualInputs differ:
-          inputs[N] = actualInputs
-
-6. For every D in actualInputs:
+6. For every D in inputs[N]:
        valid[D].add(N)
 
 7. freshness[N] = "up-to-date"
@@ -358,11 +352,11 @@ handleChangedResult(N, oldInputs, actualInputs, newValue):
 8. Propagate potentially-outdated freshness to dependents through revdeps[N].
 ```
 
-Step 1 removes claims that the old value of `N` was valid with respect to old inputs.
+Step 1 removes claims that the old value of `N` was valid with respect to its inputs.
 
 Step 2 removes claims that other nodes were valid with respect to the old value of `N`.
 
-Step 6 records that the new value of `N` has been computed with respect to the current values of its actual inputs.
+Step 6 records that the new value of `N` has been computed with respect to the current values of its inputs.
 
 Step 8 is required because dependents of `N` may no longer be valid.
 
@@ -409,36 +403,31 @@ markPotentiallyOutdated(N):
 
 A node may be potentially outdated while its value remains unchanged.
 
-## Dependency Structure Reconciliation
+## Transactional Behavior
 
-When `inputs[N]` changes from `oldInputs` to `actualInputs`:
+All mutations to `valid`, `values`, `counters`, `freshness`, `inputs`, and `revdeps` caused by recomputing `N` must be committed only after the computor successfully returns a valid result.
 
-```text
-removedInputs = oldInputs - actualInputs
-addedInputs = actualInputs - oldInputs
-```
+If the computor throws or returns an invalid value:
 
-For every removed input `D`:
+- do not write `values[N]`,
+- do not increment `counters[N]`,
+- do not add validity flags,
+- do not mark `freshness[N]` as up-to-date,
+- do not partially mutate structural metadata for `N`.
 
-```text
-revdeps[D].delete(N)
-valid[D].delete(N)
-```
+Dependency pulls may already have committed independently according to the existing transaction model. That is acceptable, but `N`'s own recomputation effects must not be partially committed.
 
-For every added input `D`:
+## Duplicate and Order Semantics
 
-```text
-revdeps[D].add(N)
-```
+The concrete input list is ordered by the node definition. For validity purposes, it is treated as a set of dependency edges. Duplicate dependency references collapse to one edge, preserving the first occurrence for deterministic materialized storage.
 
-After `N` is successfully computed or validated against `actualInputs`:
+Validity flags are set-like:
 
 ```text
-for every D in actualInputs:
-    valid[D].add(N)
+valid[D] is a set of dependents.
 ```
 
-The graph must not preserve validity flags for removed dependency edges.
+Reverse dependencies are also set-like, persisted deterministically.
 
 ## Persistence Requirements
 
@@ -466,6 +455,10 @@ valid[A] = [B, C, E]
 
 Sorting is not part of algorithmic correctness. It is required for stable storage, stable rendered output, snapshots, merges, and diffs.
 
+Persisted `revdeps[D]` sets must also serialize in canonical sorted order.
+
+Materialized `inputs[N]` must serialize deterministically according to the schema-derived input order after duplicate normalization.
+
 ## Required Mutations Summary
 
 ### When `N` is marked potentially outdated
@@ -487,17 +480,9 @@ No `valid` mutation is required.
 ### When `N` recomputes and returns `Unchanged`
 
 ```text
-for every removed input D:
-    valid[D].delete(N)
-    revdeps[D].delete(N)
+ensure structural records for inputs[N] and revdeps[N]
 
-for every added input D:
-    revdeps[D].add(N)
-
-if inputs changed:
-    inputs[N] = actualInputs
-
-for every actual input D:
+for every D in inputs[N]:
     valid[D].add(N)
 
 freshness[N] = "up-to-date"
@@ -510,7 +495,7 @@ Do not increment `counters[N]`.
 ### When `N` recomputes and returns a new value
 
 ```text
-for every old input D:
+for every D in inputs[N]:
     valid[D].delete(N)
 
 clear valid[N]
@@ -518,9 +503,9 @@ clear valid[N]
 values[N] = newValue
 counters[N] += 1
 
-reconcile inputs[N] and revdeps
+ensure structural records for inputs[N] and revdeps[N]
 
-for every actual input D:
+for every D in inputs[N]:
     valid[D].add(N)
 
 freshness[N] = "up-to-date"
@@ -528,9 +513,13 @@ freshness[N] = "up-to-date"
 propagate potentially-outdated freshness through revdeps[N]
 ```
 
-### When `N` is directly replaced without normal recomputation
+### When `N` is directly replaced without running the computor
 
 ```text
+if values[N] is proven unchanged:
+    values[N] = newValue
+    return
+
 for every D in inputs[N]:
     valid[D].delete(N)
 
@@ -568,3 +557,35 @@ N can be reused only when every current input D satisfies valid[D].has(N).
 ```
 
 Therefore, the current materialized value of `N` has been validated with respect to every current materialized input value.
+
+## Non-Goals
+
+This specification assumes a fixed schema for the lifetime of the `IncrementalGraph` instance. Migration from older dependency records or schema changes is outside this algorithm.
+
+The computor does not discover, add, remove, or return dependencies at runtime. The schema-derived concrete input list is the sole source of truth for a node's dependencies.
+
+## Test Obligations
+
+The implementation must satisfy these test obligations:
+
+1. **Cache hit**: When all input validity flags exist, a potentially outdated node returns its cached value without running the computor.
+
+2. **No vacuous cache hit**: A potentially outdated zero-input node must run its computor. An empty input list does not make the cache predicate pass by vacuity.
+
+3. **`Unchanged` adds validity flags**: When the computor returns `Unchanged`, `valid[D].add(N)` is recorded for every input `D`, and the counter does not increment.
+
+4. **Changed value clears validity**: When the computor returns a new value, `valid[D]` is cleared of `N` for every input `D`, `valid[N]` is cleared, and the counter increments.
+
+5. **Changed dependency invalidates cache**: When a dependency `D` changes value, `valid[D]` is cleared. A dependent node that previously had a cache hit must validate or recompute on the next pull.
+
+6. **External invalidation preserves validity**: Marking a node potentially outdated does not mutate `valid`. A node remains valid with respect to its inputs even after external invalidation.
+
+7. **Direct replacement clears validity conservatively**: A direct replacement that cannot prove the value is unchanged clears validity flags. A direct replacement that proves the value is unchanged does not clear validity.
+
+8. **Deterministic serialization**: `valid`, `revdeps`, and materialized `inputs` sets serialize in canonical sorted order.
+
+9. **Failed computor rolls back**: If the computor throws or returns an invalid value, `values[N]`, `counters[N]`, `valid`, `freshness[N]`, and structural metadata for `N` are not mutated.
+
+10. **`Unchanged` requires materialized value**: A computor that returns `Unchanged` when `N` has no materialized value is an error.
+
+11. **Duplicate input collapse**: When the schema-derived input list contains duplicate dependency references, they collapse to one edge for validity and structural indexing purposes.
