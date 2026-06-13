@@ -202,21 +202,38 @@ for every M in revdeps[N]:
 Validity flags are not used during eager freshness propagation. They are used only when a
 potentially-outdated node is pulled (cache predicate check).
 
-### External invalidation without value change
+### `invalidate(N)` — public invalidation
 
-Marking a node potentially-outdated does not by itself change its materialized value. External
-invalidation must not mutate `valid`:
+Public `invalidate(N)` forces `N` to recompute on the next pull. It removes incoming validity
+flags so the cache predicate cannot pass for `N`, but preserves `valid[N]` so dependents may
+still benefit from a future `Unchanged` result.
 
 ```
-markPotentiallyOutdated(N):
+invalidate(N):
 
 freshness[N] = "potentially-outdated"
+for every D in inputs[N]:
+    valid[D].delete(N)
 propagate potentially-outdated freshness through revdeps[N]
-do not modify valid
+do not clear valid[N]
 ```
 
-Existing validity flags are edge facts about current materialized values. Marking freshness as
-potentially-outdated does not by itself falsify those edge facts.
+- Removing `N` from each dependency's validity set forces `N` to recompute on the next
+  `pull(N)`, because the cache predicate will fail.
+- Preserving `valid[N]` is intentional: dependents may still cache-hit if `N` later
+  recomputes and returns `Unchanged`.
+- If `N` recomputes and changes value, the changed-value rule clears `valid[N]` and
+  propagates freshness, forcing dependents to validate or recompute.
+- If `N` recomputes and returns `Unchanged`, `valid[N]` remains valid, so dependents may
+  avoid recomputation.
+
+Key rule:
+
+```
+invalidate(N) forces recomputation of N.
+A changed value invalidates dependents.
+An unchanged recomputation preserves dependent validity.
+```
 
 ## Transactional Semantics
 
@@ -270,18 +287,28 @@ discovery, direct value replacement, or counter-snapshot cache validation.
    cleared. A dependent node that previously had a cache hit must validate or recompute on the next
    pull.
 
-6. **External invalidation does not mutate `valid`**: Marking a node potentially-outdated does not
-   clear validity flags.
+6. **`invalidate(N)` removes incoming validity flags**: Calling `invalidate(N)` removes `N` from
+   `valid[D]` for every dependency `D`, so `pull(N)` reruns the computor even if all dependencies
+   are otherwise unchanged.
 
-7. **Failed computor rolls back**: If the computor throws or returns an invalid value, `values[N]`,
-   `counters[N]`, `valid`, `freshness[N]`, and structural metadata for `N` are not mutated.
+7. **`invalidate(N)` preserves `valid[N]`**: Calling `invalidate(N)` does not clear `valid[N]`.
+   Dependents that were valid with respect to `N` remain valid.
 
-8. **`Unchanged` requires materialized value**: A computor that returns `Unchanged` when `N` has no
-   materialized value is an error.
+8. **Invalidate then `Unchanged` preserves dependent validity**: If `N` is invalidated then
+   recomputes and returns `Unchanged`, `valid[N]` is preserved and dependents may still cache-hit.
 
-9. **Duplicate input positions preserved for computor arguments, collapsed for edges**: Duplicate
-   positions are preserved in the argument array but collapse to one dependency edge for `inputs`,
-   `revdeps`, and `valid`.
+9. **Invalidate then changed clears dependent validity**: If `N` is invalidated then recomputes
+   and changes value, `valid[N]` is cleared and dependents must validate or recompute.
 
-10. **Deterministic serialization**: `valid` and `revdeps` serialize in canonical sorted order.
+10. **Failed computor rolls back**: If the computor throws or returns an invalid value, `values[N]`,
+    `counters[N]`, `valid`, `freshness[N]`, and structural metadata for `N` are not mutated.
+
+11. **`Unchanged` requires materialized value**: A computor that returns `Unchanged` when `N` has no
+    materialized value is an error.
+
+12. **Duplicate input positions preserved for computor arguments, collapsed for edges**: Duplicate
+    positions are preserved in the argument array but collapse to one dependency edge for `inputs`,
+    `revdeps`, and `valid`.
+
+13. **Deterministic serialization**: `valid` and `revdeps` serialize in canonical sorted order.
     Materialized `inputs` serialize in schema-derived order after duplicate collapse.
