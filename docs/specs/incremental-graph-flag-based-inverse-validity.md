@@ -231,26 +231,7 @@ Both cleanup operations are required.
 
 ## Direct Value Replacement
 
-Any operation that replaces the materialized value of `N` without running `N`'s normal computor must conservatively be treated as a value change unless the operation can prove the stored value is unchanged. Direct replacement applies only to already-materialized nodes. A direct replacement that creates a new materialized value cannot use the proven-unchanged path.
-
-```text
-replaceValue(N, newValue):
-
-1. If the operation proves the materialized value is unchanged:
-       values[N] = newValue
-       set freshness[N] according to the replacement operation's semantics
-       do not clear valid
-       do not increment counters[N]
-       return
-
-2. onValueChanged(N)
-
-3. values[N] = newValue
-
-4. Set freshness[N] according to the semantics of the replacement operation.
-```
-
-A direct replacement must not add `N` to `valid[D]` for any dependency `D` unless the replacement operation actually validates `N` against `D`. A direct replacement that runs the computor may use the normal pull algorithm instead.
+There must not be direct value replacement. Only `pull`s can mutate `values` sublevel.
 
 ## Pull Algorithm
 
