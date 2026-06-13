@@ -500,29 +500,6 @@ freshness[N] = "up-to-date"
 propagate potentially-outdated freshness through revdeps[N]
 ```
 
-### When `N` is directly replaced without running the computor
-
-```text
-if the operation proves the materialized value is unchanged:
-    values[N] = newValue
-    set freshness[N] according to the replacement operation's semantics
-    do not clear valid
-    do not increment counters[N]
-    return
-
-for every D in inputs[N]:
-    valid[D].delete(N)
-
-clear valid[N]
-
-values[N] = newValue
-counters[N] += 1
-
-propagate potentially-outdated freshness through revdeps[N]
-```
-
-Do not add `N` to any `valid[D]` unless the replacement operation validates `N` against `D`.
-
 ## Correctness Summary
 
 The algorithm is sound when these rules are maintained:
