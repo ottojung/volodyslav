@@ -61,6 +61,17 @@ Example: `inputPositions(N) = [A, A, B]` → `inputEdges(N) = [A, B]`.
 `inputs[N]` stores `inputEdges(N)` for a materialized node. `inputPositions(N)` is not persisted as
 `inputs[N]` unless an implementation chooses to store it separately under a different name.
 
+### Edge immutability
+
+For a stable schema and a stable `NodeIdentifier`, `inputEdges(N)` is immutable. A node's
+schema-derived dependency edges cannot change without changing the node's schema or bindings, both
+of which are fixed for the lifetime of the `IncrementalGraph` instance.
+
+If an implementation ever observes persisted `inputs[N]` differing from the schema-derived
+`inputEdges(N)`, that is schema migration or repair territory and is outside this algorithm.
+The handlers in this spec do not reconcile removed or added edges; they assume the input edge set
+is identical at every materialization of the same node.
+
 ## Invariants
 
 For every materialized node `N` and every `D` in `inputs[N]`:
@@ -74,6 +85,17 @@ A validity flag only has meaning for an existing dependency edge.
 
 The algorithm may safely omit valid flags. A missing flag may cause extra computation but must not
 cause an incorrect cache hit. A present flag must never be stale.
+
+### Why `revdeps` still exists
+
+`revdeps` is the conservative structural traversal index. `valid` is an optional cache-proof
+relation. Because valid flags may be omitted (a missing flag is not a cache hit, not a structural
+error), `valid[D]` is NOT a complete reverse dependency index.
+
+`valid` MUST NOT be used as the invalidation freshness-propagation index unless the implementation
+strengthens the invariant so that every up-to-date structural dependent is guaranteed present in
+`valid[D]`. This specification does not require that stronger invariant; therefore invalidation
+walks `revdeps`.
 
 ## Pull Algorithm
 
@@ -218,10 +240,20 @@ do not modify valid
 Existing validity flags are edge facts about current materialized values. Marking freshness as
 potentially-outdated does not by itself falsify those edge facts.
 
+This rule is sound because external invalidation does not directly replace `values[N]`. There is no
+direct value replacement operation in this algorithm (see Fixed Model). If a value were replaced
+without running the computor, validity flags involving the old value would become stale. Since the
+only way to change a value is through a successful recomputation, and recomputation always
+performs the validity cleanup in `handleChanged`, validity flags never survive across value
+changes.
+
 ## Transactional Semantics
 
-All mutations to `valid`, `values`, `counters`, `freshness`, `inputs`, and `revdeps` caused by
-recomputing `N` must be committed only after the computor successfully returns a valid result.
+During recomputation of `N`, the implementation may compute candidate `inputEdges`, but it must not
+commit changes to `inputs[N]`, `revdeps`, or `valid` for `N` until the computor result has been
+accepted. All mutations to `valid`, `values`, `counters`, `freshness`, `inputs`, and `revdeps`
+caused by recomputing `N` must be committed only after the computor successfully returns a valid
+result.
 
 If the computor throws or returns an invalid value:
 
@@ -285,3 +317,14 @@ discovery, direct value replacement, or counter-snapshot cache validation.
 
 10. **Deterministic serialization**: `valid` and `revdeps` serialize in canonical sorted order.
     Materialized `inputs` serialize in schema-derived order after duplicate collapse.
+
+11. **Downstream validity survives upstream `Unchanged`**: Given a chain `A -> B -> C` where all
+    three are materialized and valid: invalidate or change `A` so that `B` and `C` become
+    potentially-outdated. Pull `B`; its computor returns `Unchanged`. After the pull,
+    `valid[B].has(C)` must still hold (handling `Unchanged` does not clear `valid[B]`), and
+    pulling `C` may cache-hit without running `C`'s computor.
+
+12. **`valid` is not an invalidation index**: Missing `valid[D].has(N)` must not prevent
+    `invalidate(D)` from reaching `N`. Invalidation walks `revdeps[D]`, not `valid[D]`. If
+    `revdeps[D]` contains `N` but `valid[D]` does not, marking `D` potentially-outdated still
+    propagates freshness to `N`.
