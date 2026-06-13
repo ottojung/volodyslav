@@ -5,9 +5,9 @@
 The IncrementalGraph system stores its state in two layers:
 
 1. **Persisted layer** — a LevelDB database on disk. Survives process restarts. Stores node
-   values, freshness markers, input dependency records, reverse-dependency indices, monotonic
-   counters, creation/modification timestamps, and the *identifier lookup* (the bijection between
-   semantic node keys and deterministic fingerprint-index node identifiers).
+   values, freshness markers, input dependency records, reverse-dependency indices, validity flags,
+   monotonic counters, creation/modification timestamps, and the *identifier lookup* (the bijection
+   between semantic node keys and deterministic fingerprint-index node identifiers).
 
 2. **Volatile layer** (`_computed`) — an in-memory mirror of the persisted layer. Lives inside
    `RootDatabase`. Provides fast in-process access to the current committed state.
@@ -41,8 +41,9 @@ Node data is stored in typed sublevels keyed by `NodeIdentifier`:
 |----------|-----|-------|
 | `values` | `NodeIdentifier` | computed node value |
 | `freshness` | `NodeIdentifier` | `'up-to-date'` or `'potentially-outdated'` |
-| `inputs` | `NodeIdentifier` | input identifier list and their counters |
-| `revdeps` | `NodeIdentifier` | reverse-dependency list |
+| `inputs` | `NodeIdentifier` | normalized structural dependency-edge list |
+| `revdeps` | `NodeIdentifier` | reverse-dependency set |
+| `valid` | `NodeIdentifier` | inverse validity-flag set |
 | `counters` | `NodeIdentifier` | monotonic integer counter |
 | `timestamps` | `NodeIdentifier` | creation and modification timestamps |
 
@@ -312,7 +313,8 @@ invalidate.js     Invalidation algorithm: mark nodes potentially-outdated and
 
 class.js          Public API surface. Creates transactions, acquires the mutex,
                   delegates to pull.js and invalidate.js, exposes the computor
-                  interface with an explicit pull callback.
+                  interface with a pull function for ad-hoc queries (not for
+                  structural dependency registration).
                   Depends on all of the above.
 ```
 
