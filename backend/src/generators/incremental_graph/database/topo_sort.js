@@ -12,7 +12,7 @@
  * if the graph contains a cycle (which is treated as data corruption).
  */
 
-const { normalizeInputRecord } = require('../graph_state');
+const { normalizeInputRecord } = require('./normalize_input');
 
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */

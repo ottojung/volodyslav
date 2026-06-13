@@ -24,7 +24,6 @@ const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
     nodeIdentifierToString,
-    unsafeStringToNodeIdentifier,
     makeTransactionIdentifierLookup,
     txAllocateNodeIdentifier,
     txNodeIdToKey,
@@ -36,6 +35,7 @@ const {
 const {
     darkroomActivity,
 } = require('./lock');
+const { normalizeInputRecord } = require('./database');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -457,31 +457,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
 }
 
 /**
- * Normalise a raw inputs storage value (new or old format) to NodeIdentifier[].
- * @param {unknown} record
- * @returns {NodeIdentifier[]}
- */
-function normalizeInputRecord(record) {
-    if (Array.isArray(record)) return record;
-    if (typeof record === 'object' && record !== null) {
-        for (const key of Object.keys(record)) {
-            if (key === 'inputs') {
-                const value = Reflect.get(record, key);
-                if (Array.isArray(value)) {
-                    /** @type {NodeIdentifier[]} */
-                    const result = [];
-                    for (const v of value) {
-                        result.push(unsafeStringToNodeIdentifier(String(v)));
-                    }
-                    return result;
-                }
-            }
-        }
-    }
-    return [];
-}
-
-/**
  * Read inputs from the batch, normalizing both new format (NodeIdentifier[])
  * and old format ({inputs, inputCounters}) to a plain array.
  *
@@ -554,6 +529,5 @@ module.exports = {
     lookupNodeIdentifier,
     getOrAllocateNodeIdentifier,
     requireNodeKey,
-    normalizeInputRecord,
     readNormalizedInputs,
 };

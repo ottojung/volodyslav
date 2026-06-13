@@ -36,7 +36,7 @@ const {
     compareNodeIdentifier,
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
-const { normalizeInputRecord } = require("./graph_state");
+const { normalizeInputRecord } = require("./database");
 
 /**
  * Normalize input positions to input edges.

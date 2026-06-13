@@ -20,7 +20,7 @@ const {
 } = require("./database");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
-const { normalizeInputRecord } = require("./graph_state");
+const { normalizeInputRecord } = require("./database");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
 

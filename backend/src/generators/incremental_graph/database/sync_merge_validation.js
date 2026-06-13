@@ -1,5 +1,5 @@
 const { IdentifierLookupConflictError } = require('./replica_errors');
-const { normalizeInputRecord } = require('../graph_state');
+const { normalizeInputRecord } = require('./normalize_input');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */

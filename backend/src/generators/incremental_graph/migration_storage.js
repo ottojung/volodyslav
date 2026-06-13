@@ -4,7 +4,7 @@
  */
 
 const { deserializeNodeKey, stringToNodeKeyString, IDENTIFIERS_KEY, makeNodeIdentifier } = require("./database");
-const { normalizeInputRecord } = require("./graph_state");
+const { normalizeInputRecord } = require("./database");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,
