@@ -138,11 +138,13 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
                 (diff) => revdepDiffs.push(diff)
             );
 
-            const counter = await tx.batch.counters.get(nodeDefinition.outputIdentifier);
-            if (counter === undefined) {
-                throw new Error(
-                    `Impossible: recomputed node has no stored counter: ${String(nodeKeyStr)}`
-                );
+            if (computeResult.status === "changed") {
+                const counter = await tx.batch.counters.get(nodeDefinition.outputIdentifier);
+                if (counter === undefined) {
+                    throw new Error(
+                        `Impossible: changed node has no stored counter: ${String(nodeKeyStr)}`
+                    );
+                }
             }
 
             return {

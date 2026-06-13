@@ -2,7 +2,7 @@ const { topologicalSortFromMap } = require('./topo_sort');
 const { compareIsoTimestamps } = require('./sync_merge_timestamps');
 const { makeIdentifierLookup } = require('./identifier_lookup');
 const { IdentifierLookupConflictError } = require('./replica_errors');
-const { normalizeInputRecord } = require('./normalize_input');
+const { readInputRecord } = require('./normalize_input');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -19,7 +19,7 @@ const { normalizeInputRecord } = require('./normalize_input');
 async function semanticInputs(storage, lookup, identifier) {
     const record = await storage.inputs.get(identifier);
     if (record === undefined) return [];
-    const inputIds = normalizeInputRecord(record);
+    const inputIds = readInputRecord(record);
     return inputIds.map(input => {
         const nodeKey = lookup.idToKey.get(String(input));
         if (nodeKey === undefined) {
@@ -185,7 +185,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             return inputId;
         });
         mergedInputsMap.set(finalId, finalInputIds);
-        const sourceInputIds = normalizeInputRecord(sourceInputs);
+        const sourceInputIds = readInputRecord(sourceInputs);
         if (
             sourceInputIds.length !== finalInputIds.length
         ) {

@@ -36,7 +36,7 @@ const {
     compareNodeIdentifier,
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
-const { normalizeInputRecord } = require("./database");
+const { readInputRecord } = require("./database");
 
 /**
  * Normalize input positions to input edges.
@@ -170,11 +170,10 @@ async function handleUnchanged(incrementalGraph, nodeIdentifier, inputEdges, bat
  * @returns {Promise<void>}
  */
 async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, batch) {
-    // Defensive: remove N from union of persisted old edges and current edges.
-    // Schema-derived edges are immutable in normal operation, but this protects
-    // against stale validity flags that could survive format transitions.
+    // Remove N from union of persisted old edges and current edges.
+    // Schema-derived edges are immutable in normal operation.
     const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
-    const oldEdges = normalizeInputRecord(oldInputsRecord);
+    const oldEdges = readInputRecord(oldInputsRecord);
     /** @type {Set<string>} */
     const seen = new Set();
     /** @type {NodeIdentifier[]} */
@@ -297,7 +296,7 @@ async function internalMaybeRecalculate(
 
     // Collect revdep diff for darkroom finalization
     const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
-    const oldDependencies = normalizeInputRecord(oldInputsRecord);
+    const oldDependencies = readInputRecord(oldInputsRecord);
     reportRevdepDiff({
         dependant: nodeIdentifier,
         oldDependencies,
@@ -310,11 +309,6 @@ async function internalMaybeRecalculate(
     }
 
     if (isUnchanged(computedValue)) {
-        const oldCounter = await batch.counters.get(nodeIdentifier);
-        if (oldCounter === undefined) {
-            batch.counters.put(nodeIdentifier, 1);
-        }
-
         await handleUnchanged(incrementalGraph, nodeIdentifier, inputEdges, batch);
 
         const result = await batch.values.get(nodeIdentifier);

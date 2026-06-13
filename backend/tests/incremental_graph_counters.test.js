@@ -323,7 +323,7 @@ describe("generators/incremental_graph counters", () => {
             await db.close();
         });
 
-        test("recomputes when InputsRecord input list changes", async () => {
+        test("recomputes when stored input list differs from schema", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -371,20 +371,17 @@ describe("generators/incremental_graph counters", () => {
             expect(resultV1.meta_events[0].value).toBe(3);
             expect(resultV1.meta_events[0].source).toBe("A");
 
-            // Now manually corrupt the InputsRecord to point to sourceB instead
-            // This simulates a database corruption scenario
+            // Manually corrupt stored inputs to point to sourceB instead
             const storage = makeSemanticStorage(graph);
             const derivedKey = toJsonKey("derived", []);
             const sourceBKey = toJsonKey("sourceB", []);
             
-            // Corrupt the InputsRecord
             await storage.inputs.put(derivedKey, [sourceBKey]);
             
             // Mark derived as potentially-outdated
             await storage.freshness.put(derivedKey, "potentially-outdated");
 
-            // When we pull derived, it should detect the mismatch, skip counter optimization,
-            // and recompute using the correct inputs from the schema (sourceA)
+            // When pulling derived, mismatch is detected and recompute uses schema inputs
             const resultV2 = await graph.pull("derived");
             
             // Result should be correct according to schema (sourceA with 3 events)
@@ -434,19 +431,16 @@ describe("generators/incremental_graph counters", () => {
             await graph.invalidate("sourceB");
             await graph.pull("derived");
 
-            // Manually corrupt the InputsRecord to have wrong inputs
-            // This simulates a database corruption or bug scenario
+            // Manually corrupt stored inputs to have wrong entries
             const storage = makeSemanticStorage(graph);
             const derivedKey = toJsonKey("derived", []);
             
-            // Corrupt the InputsRecord to point to sourceB instead of sourceA
             await storage.inputs.put(derivedKey, [toJsonKey("sourceB", [])]);
             
             // Mark derived as potentially-outdated to trigger validation
             await storage.freshness.put(derivedKey, "potentially-outdated");
 
-            // When pulling, system should detect mismatch, skip counter optimization,
-            // and recompute with correct inputs from schema (sourceA)
+            // When pulling, mismatch is detected and recompute uses schema inputs
             const result = await graph.pull("derived");
             
             // Result should be correct: sourceA (10) * 2 = 20

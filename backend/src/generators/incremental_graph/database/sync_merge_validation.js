@@ -1,5 +1,5 @@
 const { IdentifierLookupConflictError } = require('./replica_errors');
-const { normalizeInputRecord } = require('./normalize_input');
+const { readInputRecord } = require('./normalize_input');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -42,7 +42,7 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
             throw new FinalMergeStateError(`stored node ${identifierString} has no lookup entry`);
         }
         const inputs = await targetStorage.inputs.get(identifier);
-        const inputIds = normalizeInputRecord(inputs);
+        const inputIds = readInputRecord(inputs);
         for (const input of inputIds) {
             if (!knownIdentifiers.has(String(input))) {
                 throw new FinalMergeStateError(

@@ -4,7 +4,7 @@
  */
 
 const { deserializeNodeKey, stringToNodeKeyString, IDENTIFIERS_KEY, makeNodeIdentifier } = require("./database");
-const { normalizeInputRecord } = require("./database");
+const { readInputRecord } = require("./database");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,
@@ -106,7 +106,7 @@ async function readInputsRecord(nodeKey, prevStorage) {
     if (!record) {
         throw makeMissingDependencyMetadataError(nodeKey);
     }
-    return normalizeInputRecord(record);
+    return readInputRecord(record);
 }
 
 /**
