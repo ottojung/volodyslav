@@ -269,13 +269,14 @@ describe("generators/incremental_graph counters", () => {
             // Invalidate derived by marking it potentially-outdated
             await storage.freshness.put(toJsonKey("derived", []), "potentially-outdated");
 
-            // Now trying to pull derived should throw because src's counter is missing
-            await expect(graph.pull("derived")).rejects.toThrow();
+            // Now trying to pull derived should succeed (counters are not used for cache validation)
+            const result = await graph.pull("derived");
+            expect(result).toBeTruthy();
 
             await db.close();
         });
 
-        test("stores inputs without separate inputCounters", async () => {
+        test("stores inputs as plain identifier array", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -307,22 +308,17 @@ describe("generators/incremental_graph counters", () => {
             await graph.invalidate("src");
             await graph.pull("derived");
 
-            // Manually corrupt the database by removing inputCounters from derived's InputsRecord
             const storage = makeSemanticStorage(graph);
             const derivedKey = toJsonKey("derived", []);
-            const inputsRecord = await storage.inputs.get(derivedKey);
-            if (inputsRecord) {
-                // Remove inputCounters field
-                delete inputsRecord.inputCounters;
-                await storage.inputs.put(derivedKey, inputsRecord);
-            }
+            const inputs = await storage.inputs.get(derivedKey);
+            expect(inputs).toBeTruthy();
+            // Inputs should be a plain array of semantic key strings
+            expect(Array.isArray(inputs)).toBe(true);
+            expect(inputs.inputCounters).toBeUndefined();
 
-            // Invalidate derived
-            srcCell.value = { type: "all_events", events: [2] };
-            await graph.invalidate("src");
-
-            // Now trying to pull derived should throw because inputCounters is missing
-            await expect(graph.pull("derived")).rejects.toThrow();
+            // Pull again: should cache-hit
+            const result = await graph.pull("derived");
+            expect(result).toBeTruthy();
 
             await db.close();
         });
@@ -385,10 +381,7 @@ describe("generators/incremental_graph counters", () => {
             const sourceBCounter = await storage.counters.get(sourceBKey);
             
             // Corrupt the InputsRecord
-            await storage.inputs.put(derivedKey, {
-                inputs: [sourceBKey], // Changed to sourceB!
-                inputCounters: [sourceBCounter]
-            });
+            await storage.inputs.put(derivedKey, [sourceBKey]);
             
             // Mark derived as potentially-outdated
             await storage.freshness.put(derivedKey, "potentially-outdated");
@@ -450,10 +443,7 @@ describe("generators/incremental_graph counters", () => {
             const derivedKey = toJsonKey("derived", []);
             
             // Corrupt the InputsRecord to point to sourceB instead of sourceA
-            await storage.inputs.put(derivedKey, {
-                inputs: [toJsonKey("sourceB", [])], // Wrong input!
-                inputCounters: [1]
-            });
+            await storage.inputs.put(derivedKey, [toJsonKey("sourceB", [])]);
             
             // Mark derived as potentially-outdated to trigger validation
             await storage.freshness.put(derivedKey, "potentially-outdated");

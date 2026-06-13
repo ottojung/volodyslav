@@ -257,7 +257,9 @@ async function internalMaybeRecalculate(
 
     // Collect revdep diff for darkroom finalization
     const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
-    const oldDependencies = oldInputsRecord ?? [];
+    const oldDependencies = Array.isArray(oldInputsRecord)
+        ? oldInputsRecord
+        : (oldInputsRecord?.inputs ?? []);
     reportRevdepDiff({
         dependant: nodeIdentifier,
         oldDependencies,

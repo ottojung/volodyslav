@@ -105,7 +105,8 @@ async function readInputsRecord(nodeKey, prevStorage) {
     if (!record) {
         throw makeMissingDependencyMetadataError(nodeKey);
     }
-    return record.inputs.map(unsafeStringToNodeIdentifier);
+    const inputIds = Array.isArray(record) ? record : (record.inputs || []);
+    return inputIds.map(unsafeStringToNodeIdentifier);
 }
 
 /**

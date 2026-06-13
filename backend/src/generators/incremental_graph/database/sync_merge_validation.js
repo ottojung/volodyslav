@@ -41,7 +41,8 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
             throw new FinalMergeStateError(`stored node ${identifierString} has no lookup entry`);
         }
         const inputs = await targetStorage.inputs.get(identifier);
-        for (const input of inputs?.inputs ?? []) {
+        const inputIds = Array.isArray(inputs) ? inputs : (inputs?.inputs ?? []);
+        for (const input of inputIds) {
             if (!knownIdentifiers.has(String(input))) {
                 throw new FinalMergeStateError(
                     `node ${identifierString} references unknown input ${String(input)}`

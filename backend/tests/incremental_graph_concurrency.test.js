@@ -177,6 +177,7 @@ class InMemoryDatabase {
         const freshness = createSublevel("freshness");
         const inputs = createSublevel("inputs");
         const revdeps = createSublevel("revdeps");
+        const valid = createSublevel("valid");
         const counters = createSublevel("counters");
         const timestamps = createSublevel("timestamps");
         const global = createSublevel("global");
@@ -186,6 +187,7 @@ class InMemoryDatabase {
             freshness,
             inputs,
             revdeps,
+            valid,
             counters,
             timestamps,
             global,

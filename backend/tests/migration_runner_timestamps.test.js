@@ -80,6 +80,7 @@ function makeSchemaStorage() {
     const global = makeInMemoryDb("global");
     const inputs = makeInMemoryDb("inputs");
     const revdeps = makeInMemoryDb("revdeps");
+    const valid = makeInMemoryDb("valid");
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
 
@@ -103,7 +104,7 @@ function makeSchemaStorage() {
     };
 
     return {
-        values, freshness, global, inputs, revdeps, counters, timestamps,
+        values, freshness, global, inputs, revdeps, valid, counters, timestamps,
         async batch(operations) {
             for (const op of operations) {
                 values.apply(op);
@@ -111,6 +112,7 @@ function makeSchemaStorage() {
                 global.apply(op);
                 inputs.apply(op);
                 revdeps.apply(op);
+                valid.apply(op);
                 counters.apply(op);
                 timestamps.apply(op);
             }

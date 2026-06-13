@@ -939,7 +939,7 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
                         ['!x!!global!version', '1.2.3'],
             ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
             ['!x!!freshness!{"head":"all_events","args":[]}', 'up-to-date'],
-            ['!x!!inputs!{"head":"event","args":["abc"]}', { inputs: ['all_events'], inputCounters: [1] }],
+            ['!x!!inputs!{"head":"event","args":["abc"]}', ['all_events']],
             ['!x!!revdeps!{"head":"all_events","args":[]}', ['{"head":"event","args":["abc"]}']],
             ['!x!!counters!{"head":"all_events","args":[]}', 5],
             ['!x!!timestamps!{"head":"all_events","args":[]}', { createdAt: '2024-01-01T00:00:00.000Z', modifiedAt: '2024-01-02T00:00:00.000Z' }],

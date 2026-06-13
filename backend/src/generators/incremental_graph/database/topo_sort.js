@@ -294,9 +294,14 @@ async function topologicalSort(storage) {
     const inputsMap = new Map();
     for (const node of allNodes) {
         const record = await storage.inputs.get(node);
-        const inputs = record
-            ? record.inputs.map(s => stringToNodeIdentifier(s))
-            : [];
+        let inputs;
+        if (record === undefined) {
+            inputs = [];
+        } else if (Array.isArray(record)) {
+            inputs = record;
+        } else {
+            inputs = record.inputs.map(s => stringToNodeIdentifier(s));
+        }
         inputsMap.set(node, inputs);
     }
 

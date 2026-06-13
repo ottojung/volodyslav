@@ -104,7 +104,9 @@ function makeSemanticStorage(graph) {
                     return undefined;
                 }
                 if (databaseName === "inputs") {
-                    return value.map((inputIdentifier) => {
+                    // Handle both new format (NodeIdentifier[]) and old format ({inputs, inputCounters})
+                    const inputIds = Array.isArray(value) ? value : (value && value.inputs) || [];
+                    return inputIds.map((inputIdentifier) => {
                         const nodeKey = graph.rootDatabase.nodeIdToKey(
                             inputIdentifier
                         );
@@ -138,7 +140,9 @@ function makeSemanticStorage(graph) {
                         jsonKey
                     );
                     if (databaseName === "inputs") {
-                        tx.batch.inputs.put(nodeIdentifier, value.map((inputKey) =>
+                        // Handle both new format (array) and old format ({inputs, inputCounters})
+                        const inputKeys = Array.isArray(value) ? value : (value && value.inputs) || [];
+                        tx.batch.inputs.put(nodeIdentifier, inputKeys.map((inputKey) =>
                             getOrAllocateNodeIdentifierForTest(
                                 tx,
                                 graph.rootDatabase,
@@ -221,7 +225,8 @@ function makeSemanticStorage(graph) {
                             const nodeIdentifier =
                                 getOrAllocateNodeIdentifierForTest(tx, graph.rootDatabase, jsonKey);
                             if (databaseName === "inputs") {
-                                tx.batch.inputs.put(nodeIdentifier, value.map((inputKey) =>
+                                const inputKeys = Array.isArray(value) ? value : (value && value.inputs) || [];
+                                tx.batch.inputs.put(nodeIdentifier, inputKeys.map((inputKey) =>
                                     getOrAllocateNodeIdentifierForTest(
                                         tx,
                                         graph.rootDatabase,
@@ -266,7 +271,8 @@ function makeSemanticStorage(graph) {
                                 return undefined;
                             }
                             if (databaseName === "inputs") {
-                                return value.map((inputIdentifier) =>
+                                const inputIds = Array.isArray(value) ? value : (value && value.inputs) || [];
+                                return inputIds.map((inputIdentifier) =>
                                     String(
                                         requireNodeKey(tx, inputIdentifier)
                                     )

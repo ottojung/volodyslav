@@ -260,7 +260,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
             async get(key) {
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
-                if (decision.kind === "create") return { inputs: [], inputCounters: [] };
+                if (decision.kind === "create") return [];
                 return await prevStorage.inputs.get(key);
             },
         },
@@ -272,6 +272,15 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
             },
             async get(/** @type {NodeIdentifier} */ key) {
                 return desiredRevdeps.get(key);
+            },
+        },
+        valid: {
+            async *keys() {
+                // No validity flags are transferred during migration.
+                // Nodes are invalidated/recomputed after migration to rebuild valid sets.
+            },
+            async get() {
+                return undefined;
             },
         },
         counters: {

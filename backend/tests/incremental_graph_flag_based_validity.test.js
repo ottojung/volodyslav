@@ -399,29 +399,27 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             // Materialize all nodes
             await graph.pull("source");
             await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
             const midId = db.nodeKeyToId(midKey);
             const depId = db.nodeKeyToId(depKey);
             expect(midId).toBeTruthy();
             expect(depId).toBeTruthy();
 
-            // Get the counter value for dependent before pull
+            // Get the counter value for middle before invalidation
             const midCounterBefore = db._readSublevel('counters', midId);
             const depCounterBefore = db._readSublevel('counters', depId);
 
-            // Now pull dependent first time
-            await graph.pull("dependent", binding);
-            const depCallCountBefore = midCalls; // after first pull of dependent
-
-            // Invalidate source and pull everything again
+            // Invalidate source and pull again: middle returns Unchanged
             await graph.invalidate("source");
             await graph.pull("source");
-            expect(midCalls).toBe(2); // middle recomputed
+            await graph.pull("middle", binding); // triggers middle recompute -> Unchanged
+            expect(midCalls).toBe(2); // middle called, returned Unchanged
 
             // When middle returns Unchanged, its counter should NOT increment
             const midCounterAfter = db._readSublevel('counters', midId);
             expect(midCounterAfter).toBe(midCounterBefore);
 
-            // Dependent should still be pullable
+            // Dependent should still be pullable (cache-hits because no value changed)
             await graph.pull("dependent", binding);
         });
     });
@@ -722,14 +720,15 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             await graph.pull("middle", binding);
 
             const depKey = makeNodeStorageKey("dependent", binding);
-            const depId = db.nodeKeyToId(depKey);
+            let depId = db.nodeKeyToId(depKey);
             // dependent shouldn't exist yet (hasn't been pulled)
-            let depFreshness = db._readSublevel('freshness', depId);
-            expect(depFreshness).toBeUndefined();
+            expect(depId).toBeFalsy();
 
             // Pull dependent to materialize it
             await graph.pull("dependent", binding);
-            depFreshness = db._readSublevel('freshness', depId);
+            depId = db.nodeKeyToId(depKey);
+            expect(depId).toBeTruthy();
+            let depFreshness = db._readSublevel('freshness', depId);
             expect(depFreshness).toBe("up-to-date");
 
             // Now invalidate source - should propagate through middle to dependent

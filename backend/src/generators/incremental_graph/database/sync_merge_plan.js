@@ -18,7 +18,8 @@ const { IdentifierLookupConflictError } = require('./replica_errors');
 async function semanticInputs(storage, lookup, identifier) {
     const record = await storage.inputs.get(identifier);
     if (record === undefined) return [];
-    return record.inputs.map(input => {
+    const inputIds = Array.isArray(record) ? record : (record.inputs || []);
+    return inputIds.map(input => {
         const nodeKey = lookup.idToKey.get(String(input));
         if (nodeKey === undefined) {
             throw new IdentifierLookupConflictError(`Input identifier ${String(input)} is absent from identifiers_keys_map`);
@@ -183,7 +184,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             return inputId;
         });
         mergedInputsMap.set(finalId, finalInputIds);
-        const sourceInputIds = sourceInputs?.inputs ?? [];
+        const sourceInputIds = Array.isArray(sourceInputs) ? sourceInputs : (sourceInputs?.inputs ?? []);
         if (
             sourceInputIds.length !== finalInputIds.length ||
             sourceInputIds.some((inputId, index) => String(inputId) !== String(finalInputIds[index]))
