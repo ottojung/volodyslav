@@ -443,10 +443,8 @@ Implementations MAY use any strategy to achieve property PROP-03 (e.g., memoizat
 4. The implementation MUST add validity flags (`valid[D].add(N)`) for every schema-derived
    dependency edge `D`, without clearing `valid[N]` or incrementing the value counter.
 
-**REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing if the
-validity flags indicate D's value would be unchanged — specifically, if for every dependency edge
-`E` of D, `valid[E].has(D)` holds. See the flag-based inverse validity spec for the cache
-predicate.
+**REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing **if and only if** it can prove D's value woul
+d be unchanged given current input values.
 
 **REQ-UNCH-03:** A computor MUST NOT return `Unchanged` when `oldValue` is `undefined`. If it does, `pull` MAY throw `InvalidUnchangedError`.
 
