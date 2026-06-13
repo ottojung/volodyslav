@@ -1010,7 +1010,12 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
 
     // === Test: Malformed inputs fail loudly ===
     describe("malformed inputs records", () => {
-        it("throws when pulling a node with a malformed inputs record", async () => {
+        /**
+         * Helper: materialize dependent, then corrupt its inputs record.
+         * After invalidation, pulling dependent should throw because
+         * readInputRecord rejects the malformed value.
+         */
+        async function setupAndCorruptInputs(db, corruptedInputs) {
             const nodeDefs = [
                 {
                     output: "source",
@@ -1031,54 +1036,34 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
 
+            // First materialize dependent so it has a committed identifier
             await graph.pull("source");
+            await graph.pull("dependent", binding);
 
-            // Manually write a malformed inputs record — old {inputs, inputCounters} format
             const schemaStorage = db.getSchemaStorage();
             const depKey = makeNodeStorageKey("dependent", binding);
             const depId = db.nodeKeyToId(depKey);
-            // This is the old format that must be rejected
-            await schemaStorage.inputs.put(depId, { inputs: [], inputCounters: {} });
+            expect(depId).toBeTruthy();
+
+            // Corrupt the inputs record for the committed identifier
+            await schemaStorage.inputs.put(depId, corruptedInputs);
 
             await graph.invalidate("source");
+            return { binding };
+        }
 
-            // Pulling dependent should fail because the malformed record is detected
+        it("throws when inputs record is old {inputs, inputCounters} format", async () => {
+            const { binding } = await setupAndCorruptInputs(db, {
+                inputs: [],
+                inputCounters: {},
+            });
             await expect(graph.pull("dependent", binding)).rejects.toThrow(
                 /malformed inputs record/i
             );
         });
 
         it("throws when inputs record is a number (invalid shape)", async () => {
-            const nodeDefs = [
-                {
-                    output: "source",
-                    inputs: [],
-                    computor: async () => ({ v: "src" }),
-                    isDeterministic: false,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "dependent(x)",
-                    inputs: ["source"],
-                    computor: async () => ({ v: "dep" }),
-                    isDeterministic: false,
-                    hasSideEffects: false,
-                },
-            ];
-
-            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
-            const binding = [{ id: "x" }];
-
-            await graph.pull("source");
-
-            const schemaStorage = db.getSchemaStorage();
-            const depKey = makeNodeStorageKey("dependent", binding);
-            const depId = db.nodeKeyToId(depKey);
-            // A number is not a valid inputs record
-            await schemaStorage.inputs.put(depId, 42);
-
-            await graph.invalidate("source");
-
+            const { binding } = await setupAndCorruptInputs(db, 42);
             await expect(graph.pull("dependent", binding)).rejects.toThrow(
                 /malformed inputs record/i
             );
