@@ -3,6 +3,7 @@ const { compareIsoTimestamps } = require('./sync_merge_timestamps');
 const { makeIdentifierLookup } = require('./identifier_lookup');
 const { IdentifierLookupConflictError } = require('./replica_errors');
 const { readInputRecord } = require('./normalize_input');
+const { nodeIdentifierToString } = require('./types');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -21,9 +22,9 @@ async function semanticInputs(storage, lookup, identifier) {
     if (record === undefined) return [];
     const inputIds = readInputRecord(record);
     return inputIds.map(input => {
-        const nodeKey = lookup.idToKey.get(String(input));
+        const nodeKey = lookup.idToKey.get(nodeIdentifierToString(input));
         if (nodeKey === undefined) {
-            throw new IdentifierLookupConflictError(`Input identifier ${String(input)} is absent from identifiers_keys_map`);
+            throw new IdentifierLookupConflictError(`Input identifier ${nodeIdentifierToString(input)} is absent from identifiers_keys_map`);
         }
         return nodeKey;
     });
@@ -193,7 +194,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         } else {
             let mismatched = false;
             for (let idx = 0; idx < sourceInputIds.length; idx++) {
-                if (String(sourceInputIds[idx]) !== String(finalInputIds[idx])) {
+                if (nodeIdentifierToString(sourceInputIds[idx]) !== nodeIdentifierToString(finalInputIds[idx])) {
                     mismatched = true;
                     break;
                 }

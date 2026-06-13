@@ -381,18 +381,15 @@ describe("generators/incremental_graph counters", () => {
             // Mark derived as potentially-outdated
             await storage.freshness.put(derivedKey, "potentially-outdated");
 
-            // When pulling derived, mismatch is detected and recompute uses schema inputs
-            const resultV2 = await graph.pull("derived");
-            
-            // Result should be correct according to schema (sourceA with 3 events)
-            // Not corrupted data (sourceB with 2 events)
-            expect(resultV2.meta_events[0].value).toBe(3);
-            expect(resultV2.meta_events[0].source).toBe("A");
+            // Corrupted inputs are detected and cause a loud failure
+            await expect(graph.pull("derived")).rejects.toThrow(
+                /corrupted inputs record/i
+            );
 
             await db.close();
         });
 
-        test("recomputes when stored input list doesn't match current schema", async () => {
+        test("malformed persisted inputs cause loud failure", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -440,12 +437,10 @@ describe("generators/incremental_graph counters", () => {
             // Mark derived as potentially-outdated to trigger validation
             await storage.freshness.put(derivedKey, "potentially-outdated");
 
-            // When pulling, mismatch is detected and recompute uses schema inputs
-            const result = await graph.pull("derived");
-            
-            // Result should be correct: sourceA (10) * 2 = 20
-            // Not sourceB (20) * 2 = 40
-            expect(result.value).toBe(20);
+            // Corrupted inputs are detected and cause a loud failure
+            await expect(graph.pull("derived")).rejects.toThrow(
+                /corrupted inputs record/i
+            );
 
             await db.close();
         });
