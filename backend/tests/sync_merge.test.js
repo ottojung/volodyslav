@@ -19,16 +19,13 @@ const {
     isMalformedIdentifierLookupError,
     isMissingIdentifierLookupError,
     makeIdentifierLookup,
-    makeInMemorySchemaStorage,
     nodeIdentifierFromString,
-    nodeIdentifierToString,
     serializeIdentifierLookup,
     stringToNodeKeyString,
 } = require('../src/generators/incremental_graph/database');
 const {
     assertValidFinalMergeState,
     FinalMergeStateError,
-    isFinalMergeStateError,
 } = require('../src/generators/incremental_graph/database/sync_merge_validation');
 const { makeIncrementalGraph } = require('../src/generators/incremental_graph');
 const {
