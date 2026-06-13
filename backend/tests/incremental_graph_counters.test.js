@@ -275,7 +275,7 @@ describe("generators/incremental_graph counters", () => {
             await db.close();
         });
 
-        test("enforces invariants - missing inputCounters throws error", async () => {
+        test("stores inputs without separate inputCounters", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 

@@ -96,10 +96,12 @@ function buildBareSchemaStorage(namespaceSublevel) {
     const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<InputsRecord, NodeIdentifier>} */
+    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
+    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Counter, NodeIdentifier>} */
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
@@ -120,6 +122,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
         freshness: makeTypedDatabase(freshnessSublevel),
         inputs: makeTypedDatabase(inputsSublevel),
         revdeps: makeTypedDatabase(revdepsSublevel),
+        valid: makeTypedDatabase(validSublevel),
         counters: makeTypedDatabase(countersSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
         global: makeTypedDatabase(globalSublevel),

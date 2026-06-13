@@ -104,20 +104,17 @@ function makeSemanticStorage(graph) {
                     return undefined;
                 }
                 if (databaseName === "inputs") {
-                    return {
-                        inputs: value.inputs.map((inputIdentifier) => {
-                            const nodeKey = graph.rootDatabase.nodeIdToKey(
-                                nodeIdentifierFromString(inputIdentifier)
+                    return value.map((inputIdentifier) => {
+                        const nodeKey = graph.rootDatabase.nodeIdToKey(
+                            inputIdentifier
+                        );
+                        if (nodeKey === undefined) {
+                            throw new Error(
+                                `Missing semantic node key for input identifier ${String(inputIdentifier)} in get() for parent key ${String(key)} (json key ${String(jsonKey)})`
                             );
-                            if (nodeKey === undefined) {
-                                throw new Error(
-                                    `Missing semantic node key for input identifier ${String(inputIdentifier)} in get() for parent key ${String(key)} (json key ${String(jsonKey)})`
-                                );
-                            }
-                            return String(nodeKey);
-                        }),
-                        inputCounters: value.inputCounters,
-                    };
+                        }
+                        return String(nodeKey);
+                    });
                 }
                 if (databaseName === "revdeps") {
                     return value.map((nodeIdentifierValue) => {
@@ -141,18 +138,13 @@ function makeSemanticStorage(graph) {
                         jsonKey
                     );
                     if (databaseName === "inputs") {
-                        tx.batch.inputs.put(nodeIdentifier, {
-                            inputs: value.inputs.map((inputKey) =>
-                                nodeIdentifierToString(
-                                    getOrAllocateNodeIdentifierForTest(
-                                        tx,
-                                        graph.rootDatabase,
-                                        toJsonKey(inputKey)
-                                    )
-                                )
-                            ),
-                            inputCounters: value.inputCounters,
-                        });
+                        tx.batch.inputs.put(nodeIdentifier, value.map((inputKey) =>
+                            getOrAllocateNodeIdentifierForTest(
+                                tx,
+                                graph.rootDatabase,
+                                toJsonKey(inputKey)
+                            )
+                        ));
                         return { value: undefined, revdepDiffs: [] };
                     }
                     if (databaseName === "revdeps") {
@@ -193,8 +185,8 @@ function makeSemanticStorage(graph) {
         revdeps: makeDatabase("revdeps"),
         counters: makeDatabase("counters"),
         timestamps: makeDatabase("timestamps"),
-        async ensureMaterialized(node, inputs, inputCounters, batch) {
-            batch.inputs.put(node, { inputs, inputCounters });
+        async ensureMaterialized(node, inputs, batch) {
+            batch.inputs.put(node, inputs);
         },
         async ensureReverseDepsIndexed(node, inputs, batch) {
             for (const input of inputs) {
@@ -215,7 +207,7 @@ function makeSemanticStorage(graph) {
         },
         async getInputs(node, batch) {
             const record = await batch.inputs.get(node);
-            return record ? record.inputs : null;
+            return record ?? null;
         },
         async withBatch(run) {
             return await graph.storage.withTransaction(async (tx) => {
@@ -229,18 +221,13 @@ function makeSemanticStorage(graph) {
                             const nodeIdentifier =
                                 getOrAllocateNodeIdentifierForTest(tx, graph.rootDatabase, jsonKey);
                             if (databaseName === "inputs") {
-                                tx.batch.inputs.put(nodeIdentifier, {
-                                    inputs: value.inputs.map((inputKey) =>
-                                        nodeIdentifierToString(
-                                            getOrAllocateNodeIdentifierForTest(
-                                                tx,
-                                                graph.rootDatabase,
-                                                toJsonKey(inputKey)
-                                            )
-                                        )
-                                    ),
-                                    inputCounters: value.inputCounters,
-                                });
+                                tx.batch.inputs.put(nodeIdentifier, value.map((inputKey) =>
+                                    getOrAllocateNodeIdentifierForTest(
+                                        tx,
+                                        graph.rootDatabase,
+                                        toJsonKey(inputKey)
+                                    )
+                                ));
                                 return;
                             }
                             if (databaseName === "revdeps") {
@@ -279,17 +266,11 @@ function makeSemanticStorage(graph) {
                                 return undefined;
                             }
                             if (databaseName === "inputs") {
-                                return {
-                                    inputs: value.inputs.map((inputIdentifier) =>
-                                        String(
-                                            requireNodeKey(
-                                                tx,
-                                                nodeIdentifierFromString(inputIdentifier)
-                                            )
-                                        )
-                                    ),
-                                    inputCounters: value.inputCounters,
-                                };
+                                return value.map((inputIdentifier) =>
+                                    String(
+                                        requireNodeKey(tx, inputIdentifier)
+                                    )
+                                );
                             }
                             if (databaseName === "revdeps") {
                                 return value.map((dependentIdentifier) =>

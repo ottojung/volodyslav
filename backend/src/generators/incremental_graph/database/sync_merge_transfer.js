@@ -80,10 +80,7 @@ async function copyNodeOps({
     const sourceInputs = await sourceStorage.inputs.get(sourceId);
     ops.push(sourceInputs === undefined
         ? targetStorage.inputs.delOp(destinationId)
-        : targetStorage.inputs.putOp(destinationId, {
-            inputs: finalInputsForDestination.map(input => String(input)),
-            inputCounters: sourceInputs.inputCounters,
-        }));
+        : targetStorage.inputs.putOp(destinationId, finalInputsForDestination));
 
     const sourceCounter = await sourceStorage.counters.get(sourceId);
     ops.push(sourceCounter === undefined

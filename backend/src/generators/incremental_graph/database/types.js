@@ -461,10 +461,9 @@ function versionToString(Version) {
  */
 
 /**
- * A record storing the input dependencies of a node and their counters.
- * @typedef {object} InputsRecord
- * @property {string[]} inputs - Array of materialized input identifiers
- * @property {number[]} inputCounters - Array of counter values for each input (required when inputs.length > 0)
+ * A record storing the input dependencies of a node.
+ * @typedef {string[]} InputsRecord
+ * @deprecated Use NodeIdentifier[] instead. Kept for migration compatibility.
  */
 
 class SchemaPatternClass {
