@@ -1008,6 +1008,50 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
         });
     });
 
+    // === Test: Cache hit with corrupted inputs fails loudly ===
+    describe("cache hit with corrupted inputs", () => {
+        it("throws when persisted inputs differ from schema-derived inputEdges", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const midKey = makeNodeStorageKey("middle", binding);
+            const srcKey = makeNodeStorageKey("source");
+
+            // Materialize — valid flags and inputs are written correctly
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            const midId = db.nodeKeyToId(midKey);
+            const srcId = db.nodeKeyToId(srcKey);
+
+            // Verify valid flags allow a cache hit
+            const validSrc = db._readSublevel('valid', srcId);
+            expect(validSrc.some(id => id === nodeIdentifierToString(midId))).toBe(true);
+
+            // Corrupt the persisted inputs for middle to a different set
+            const schemaStorage = db.getSchemaStorage();
+            await schemaStorage.inputs.put(midId, ["corrupted-identifier"]);
+
+            // Invalidate middle directly (not source) — marks potentially-outdated
+            // but preserves valid[source].has(middle) because external invalidation
+            // does not mutate valid.
+            await graph.invalidate("middle", binding);
+
+            // Pull middle — freshness is potentially-outdated, valid[source].has(middle)
+            // still exists, so the cache predicate fires. It detects that persisted
+            // inputs differ from schema-derived inputEdges and throws.
+            await expect(graph.pull("middle", binding)).rejects.toThrow(
+                /corrupted inputs record/i
+            );
+        });
+    });
+
     // === Test: Malformed inputs fail loudly ===
     describe("malformed inputs records", () => {
         /**

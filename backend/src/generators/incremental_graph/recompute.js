@@ -60,6 +60,20 @@ function normalizeInputEdges(inputIdentifiers) {
 }
 
 /**
+ * Compare two NodeIdentifier arrays for element-wise equality.
+ * @param {NodeIdentifier[]} a
+ * @param {NodeIdentifier[]} b
+ * @returns {boolean}
+ */
+function arraysOfNodeIdentifiersEqual(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (nodeIdentifierToString(a[i]) !== nodeIdentifierToString(b[i])) return false;
+    }
+    return true;
+}
+
+/**
  * Read the current valid set for a dependency, returning empty array if none exists.
  * @param {BatchBuilder} batch
  * @param {NodeIdentifier} depId
@@ -276,6 +290,13 @@ async function internalMaybeRecalculate(
     // 3. valid[D].has(N) for every D in inputEdges.
     if (oldValue !== undefined && inputEdges.length > 0) {
         if (await allValidityFlagsPresent(batch, nodeIdentifier, inputEdges)) {
+            const persistedInputs = await batch.inputs.get(nodeIdentifier);
+            if (persistedInputs !== undefined && !arraysOfNodeIdentifiersEqual(persistedInputs, inputEdges)) {
+                throw new Error(
+                    `Corrupted inputs record for node ${String(nodeDefinition.outputKey)}: ` +
+                    `persisted inputs differ from schema-derived inputEdges`
+                );
+            }
             batch.freshness.put(nodeIdentifier, "up-to-date");
             return { value: oldValue, status: "cached" };
         }
