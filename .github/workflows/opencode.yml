@@ -10,13 +10,12 @@ jobs:
   opencode:
     if: |
       (
-        github.event.comment.author_association == 'OWNER' ||
-        github.event.comment.author_association == 'MEMBER' ||
-        github.event.comment.author_association == 'COLLABORATOR'
+        github.event.comment.author_association == 'OWNER'
       ) && (
         startsWith(github.event.comment.body, 'plsoc') ||
-        startsWith(github.event.comment.body, '/opencode') ||
-        startsWith(github.event.comment.body, '/opencode-pro')
+        startsWith(github.event.comment.body, 'plsocz') ||
+        startsWith(github.event.comment.body, '/opencode-pro-zen') ||
+        startsWith(github.event.comment.body, '/opencode')
       )
     runs-on: ubuntu-latest
     permissions:
@@ -24,6 +23,7 @@ jobs:
       contents: read
       pull-requests: read
       issues: read
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -32,14 +32,41 @@ jobs:
 
       - name: Select model
         id: select-model
+        shell: bash
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
-          if printf '%s' "$COMMENT_BODY" | grep -Eiq '(^|[[:space:]])/opencode-pro([[:space:]]|$)'; then
-            echo 'model=opencode-go/deepseek-v4-pro' >> "$GITHUB_OUTPUT"
-          else
-            echo 'model=opencode-go/deepseek-v4-flash' >> "$GITHUB_OUTPUT"
-          fi
+          first_line="$(
+            printf '%s\n' "$COMMENT_BODY" \
+              | tr -d '\r' \
+              | grep -m 1 -E '[^[:space:]]' \
+              || true
+          )"
+
+          read -r command _ <<< "$first_line"
+
+          case "$command" in
+            /opencode-pro-zen)
+              echo 'model=opencode/deepseek-v4-pro' >> "$GITHUB_OUTPUT"
+              ;;
+
+            plsocz)
+              echo 'model=opencode/deepseek-v4-flash' >> "$GITHUB_OUTPUT"
+              ;;
+
+            /opencode-pro)
+              echo 'model=opencode-go/deepseek-v4-pro' >> "$GITHUB_OUTPUT"
+              ;;
+
+            /opencode|plsoc)
+              echo 'model=opencode-go/deepseek-v4-flash' >> "$GITHUB_OUTPUT"
+              ;;
+
+            *)
+              echo "Unsupported opencode command: $command" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Run opencode
         uses: anomalyco/opencode/github@latest
@@ -47,4 +74,4 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         with:
           model: ${{ steps.select-model.outputs.model }}
-          mentions: /opencode-pro,/opencode,plsoc
+          mentions: /opencode-pro-zen,/opencode-pro,/opencode,plsocz,plsoc

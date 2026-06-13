@@ -39,8 +39,7 @@ const { lookupNodeIdentifier } = require("./graph_state");
 const { readInputRecord } = require("./database");
 
 /**
- * Normalize input positions to input edges.
- * Collapses duplicate dependencies, preserving first occurrence for deterministic storage.
+ * Create a dependency accumulator for the materialized dependency record.
  * @param {NodeIdentifier[]} inputIdentifiers
  * @returns {NodeIdentifier[]}
  */
