@@ -169,9 +169,9 @@ batch accumulator.
 
 ### Nested pulls and independent commits
 
-When computing a node's value, the computor may pull additional dependencies. Each nested pull
-**creates its own Transaction** — it does not share a batch with the parent pull. Every nested
-pull submits its batch independently as soon as it finishes, before the parent continues.
+Each nested pull **creates its own Transaction** — it does not share a
+batch with the parent pull. Every nested pull submits its batch
+independently as soon as it finishes, before the parent continues.
 
 This ensures that a dependency's writes are committed to disk even if a later parent computor
 fails. It also means that each pull is self-contained: the identifier allocations, value writes,
