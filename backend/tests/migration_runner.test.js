@@ -100,6 +100,7 @@ function makeSchemaStorage() {
                 global.apply(operation);
                 inputs.apply(operation);
                 revdeps.apply(operation);
+                valid.apply(operation);
                 counters.apply(operation);
                 timestamps.apply(operation);
             }
@@ -369,6 +370,48 @@ describe("runMigration", () => {
             const migratedKey = await getMigratedKey(yStorage, nodeKey);
             const migratedInputs = await yStorage.inputs.get(migratedKey);
             expect(migratedInputs).toBeDefined();
+        });
+
+        test("migration does not transfer valid flags from old graph state", async () => {
+            const capabilities = await getTestCapabilities();
+            const xStorage = makeSchemaStorage();
+            const nodeKey = toJsonKey("A");
+            const depKey = toJsonKey("B");
+
+            // Set up xStorage with a node that has valid flags
+            await xStorage.inputs.put(nodeKey, []);
+            await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
+            await xStorage.freshness.put(nodeKey, "up-to-date");
+            // Store a validity flag in xStorage's valid sublevel
+            await xStorage.valid.put(nodeKey, [depKey]);
+
+            const yStorage = makeSchemaStorage();
+            const mock = makeRootDatabaseMock({
+                prevVersion: "1.0.0",
+                currentVersion: "2.0.0",
+                xStorage,
+                yStorage,
+            });
+
+            const nodeDefs = [{
+                output: "A",
+                inputs: [],
+                computor: async () => ({ type: "all_events", events: [] }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            }];
+
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(nodeKey);
+            });
+
+            // After migration, yStorage must have no valid records.
+            // Valid flags are optional proof metadata and are rebuilt on demand.
+            const validKeys = [];
+            for await (const key of yStorage.valid.keys()) {
+                validKeys.push(key);
+            }
+            expect(validKeys).toEqual([]);
         });
 
         test("writes version to y/global/version before calling setCurrentReplicaPointer", async () => {

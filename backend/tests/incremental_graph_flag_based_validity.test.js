@@ -485,6 +485,50 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
 
     // === Test: Changed value propagates potentially-outdated freshness through revdeps ===
     describe("changed value propagates outdated through revdeps", () => {
+        it("marks direct and transitive dependents potentially-outdated when value changes via direct storage manipulation bypassing invalidation", async () => {
+            let srcValue = 0;
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: ++srcValue }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const srcKey = makeNodeStorageKey("source");
+            const midKey = makeNodeStorageKey("middle", binding);
+            const depKey = makeNodeStorageKey("dependent", binding);
+
+            // Materialize all three nodes
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            const srcId = db.nodeKeyToId(srcKey);
+            const midId = db.nodeKeyToId(midKey);
+            const depId = db.nodeKeyToId(depKey);
+
+            // Verify all are up-to-date
+            expect(db._readSublevel('freshness', srcId)).toBe("up-to-date");
+            expect(db._readSublevel('freshness', midId)).toBe("up-to-date");
+            expect(db._readSublevel('freshness', depId)).toBe("up-to-date");
+
+            // Directly mark only source as potentially-outdated in storage.
+            // Do NOT call graph.invalidate() — that already propagates through revdeps.
+            const schemaStorage = db.getSchemaStorage();
+            await schemaStorage.freshness.put(srcId, "potentially-outdated");
+
+            // Pull source — computor returns changed value (srcValue was 0, now 1).
+            // handleChanged calls propagateOutdatedFrom, which walks revdeps.
+            await graph.pull("source");
+
+            // Middle is a direct dependent of source via revdeps
+            expect(db._readSublevel('freshness', midId)).toBe("potentially-outdated");
+
+            // Dependent is a transitive dependent via middle's revdeps
+            expect(db._readSublevel('freshness', depId)).toBe("potentially-outdated");
+        });
+
         it("marks direct and transitive dependents potentially-outdated when value changes", async () => {
             let srcValue = 0;
             const { nodeDefs } = createChainGraph(

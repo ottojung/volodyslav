@@ -198,6 +198,8 @@ describe('mergeHostIntoReplica', () => {
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, nodeA, TS1, [], localValue);
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+            // Write stale validity flags to L before merge
+            await L.valid.put(nodeA, [NODE_B]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeNode(H, nodeA, TS2, [], remoteValue);
@@ -211,6 +213,62 @@ describe('mergeHostIntoReplica', () => {
             const T = db.schemaStorageForReplica(newActive);
             const merged = await T.values.get(nodeA);
             expect(merged).toEqual(remoteValue);
+
+            // Changed merge must not preserve stale validity flags.
+            // valid is optional proof metadata and is cleared on changed merge.
+            const validKeys = [];
+            for await (const key of T.valid.keys()) {
+                validKeys.push(key);
+            }
+            expect(validKeys).toEqual([]);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('kept merge preserves local validity flags', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const localValue = { value: { id: 'local', type: 'test', description: 'local value' }, isDirty: false };
+            const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, [], localValue);
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+            // Write valid flags to L before merge
+            await L.valid.put(nodeA, [NODE_B]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeA, TS1, [], remoteValue);
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
+
+            // Equal timestamps: keep decision, no changes, replica pointer stays
+            const newActive = db.currentReplicaName();
+            expect(newActive).toBe('x');
+
+            // No merge changes were applied, so valid flags from L are preserved
+            // (the kept replica was not switched)
+            const T = db.schemaStorageForReplica(newActive);
+            const kept = await T.values.get(nodeA);
+            expect(kept).toEqual(localValue);
+            const validKeys = [];
+            for await (const key of T.valid.keys()) {
+                validKeys.push(key);
+            }
+            // The kept replica is the original L; valid was preserved because
+            // no changed-merge path ran.
+            expect(validKeys).not.toEqual([]);
         } finally {
             if (db) await db.close();
         }
