@@ -682,3 +682,15 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 **REQ-CONCUR-03 (Read-only Safety):** All read-only methods MUST NOT modify any stored graph state (values, freshness, timestamps, materialization records).
 
 **REQ-CONCUR-04 (Daytime-mode Atomicity):** A `daytime`-mode method MUST NOT observe a partial write from a concurrent `pull()`. Either the full effect of a `pull()` is visible, or none of it is.
+
+---
+
+### Dynamic dependencies
+
+Computors MAY invoke the `pull` method, or any other methods of the `IncrementalGraph` interface.
+Nodes `pull`ed in this way (dynamically) are not considered dependencies of the calling Computor's node.
+Therefore, the implementation MUST NOT treat them as inputs. This includes:
+- not propagating freshness updates during `invalidate`ion.
+
+---
+

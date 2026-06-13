@@ -180,16 +180,6 @@ and metadata changes from one pull are never entangled with another.
 Each pull must be internally idempotent. Since a dependency's pull commits independently before
 the parent, a failure in the parent does not roll back the already-committed dependency.
 
-The computor receives a `pull` callback that may be used for dynamic dependencies:
-
-```
-computor(inputValues, oldValue, bindings, pull)
-    pull — (nodeName, bindings?) => Promise<ComputedValue>
-           Calls into the graph.
-           The computor must use this function for any dynamic dependencies.
-           It must not call the graph's public pull method (which would deadlock).
-```
-
 A top-level pull creates a transaction and calls `pullNode(nodeKey)`. A nested pull does the
 same: it calls `pullNode(nodeKey)` which creates its own fresh transaction. There is no structural
 difference between the two paths — both create independent transactions.
