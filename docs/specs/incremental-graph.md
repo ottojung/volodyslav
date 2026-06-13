@@ -419,10 +419,8 @@ Implementations MAY use any strategy to achieve property PROP-03 (e.g., memoizat
 **Effects:**
 1. Create `NodeKey` from `nodeName@bindings`
 2. Mark that node instance as `potentially-outdated`
-3. Remove `N` from every dependency's validity set (`valid[D].delete(N)`), forcing the next
-   `pull(N)` to recompute regardless of dependency freshness
-4. Mark all materialized transitive dependents as `potentially-outdated`
-5. Preserve `valid[N]` — dependents may still be valid if `N` later returns `Unchanged`
+3. Mark all materialized transitive dependents as `potentially-outdated`
+4. Force recomputation on the next `pull`
 
 **Important:** `invalidate()` does NOT write a value. Values are provided by computors when nodes are pulled.
 
