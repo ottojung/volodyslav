@@ -1,5 +1,5 @@
 const { IdentifierLookupConflictError } = require('./replica_errors');
-const { readInputRecord } = require('./normalize_input');
+const { readInputRecord } = require('./input_record');
 const { nodeIdentifierToString } = require('./types');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */

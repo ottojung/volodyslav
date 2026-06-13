@@ -155,7 +155,7 @@ module.exports = {
     txNodeKeyToId,
     serializeTransactionLookup,
     commitTransactionLookup,
-    ...require('./normalize_input'),
+    ...require('./input_record'),
     unifyStores,
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,

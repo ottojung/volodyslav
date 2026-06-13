@@ -282,11 +282,10 @@ Sorting is required for stable storage, stable rendered output, snapshots, merge
 ## Non-Goals
 
 This spec does not cover schema migration, repair of stale dependency records, dynamic dependency
-discovery, direct value replacement, or counter-snapshot cache validation.
+discovery, or direct value replacement.
 
 ## Implementation Note
 
-The `valid` relation is optional proof metadata. Implementations may safely omit valid
+The `valid` relation is optional proof metadata. Implementations may safely omit validity
 flags — a missing flag causes extra recomputation but must not cause an incorrect cache
-hit. The flag-based inverse validity model replaces counter-snapshot cache validation.
-Counters are value-change metadata only and are not used for cache validation.
+hit. Counters are value-change metadata only and are not used for cache validation.

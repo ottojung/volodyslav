@@ -2,7 +2,7 @@ const { topologicalSortFromMap } = require('./topo_sort');
 const { compareIsoTimestamps } = require('./sync_merge_timestamps');
 const { makeIdentifierLookup } = require('./identifier_lookup');
 const { IdentifierLookupConflictError } = require('./replica_errors');
-const { readInputRecord } = require('./normalize_input');
+const { readInputRecord } = require('./input_record');
 const { nodeIdentifierToString } = require('./types');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */

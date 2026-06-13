@@ -926,7 +926,7 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
 
     // === Inputs without counters ===
     describe("inputs record shape", () => {
-        it("stores inputs as a plain array of identifiers without inputCounters", async () => {
+        it("stores inputs as a plain array of identifiers", async () => {
             const { nodeDefs } = createChainGraph(
                 () => ({ v: "src" }),
                 () => ({ v: "mid" }),
@@ -945,7 +945,6 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             const inputsRecord = db._readSublevel('inputs', midId);
             expect(inputsRecord).toBeTruthy();
             expect(Array.isArray(inputsRecord)).toBe(true);
-            expect(inputsRecord.inputCounters).toBeUndefined();
         });
     });
 
@@ -1185,11 +1184,8 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             return { binding };
         }
 
-        it("throws when inputs record is old {inputs, inputCounters} format", async () => {
-            const { binding } = await setupAndCorruptInputs(db, {
-                inputs: [],
-                inputCounters: {},
-            });
+        it("throws when inputs record is an object (non-array shape)", async () => {
+            const { binding } = await setupAndCorruptInputs(db, {});
             await expect(graph.pull("dependent", binding)).rejects.toThrow(
                 /malformed inputs record/i
             );
@@ -1224,9 +1220,9 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             const srcId = db.nodeKeyToId(srcKey);
             expect(db._readSublevel('valid', srcId).some(id => id === nodeIdentifierToString(midId))).toBe(true);
 
-            // Replace inputs record with old-format object on middle
+            // Replace inputs record with a non-array object on middle
             const schemaStorage = db.getSchemaStorage();
-            await schemaStorage.inputs.put(midId, { inputs: [], inputCounters: {} });
+            await schemaStorage.inputs.put(midId, {});
 
             // Directly invalidate middle without touching source's valid flags
             await graph.invalidate("middle", binding);
