@@ -370,12 +370,8 @@ function summarizeDecisions(decisions) {
  * @returns {Promise<void>}
  */
 async function commitChangedMerge(
-    rootDatabase,
-    targetStorage,
-    targetReplica,
-    finalIdentifierLookup,
-    mergedInputsMap,
-    targetLastNodeIndex
+    rootDatabase, targetStorage, targetReplica,
+    finalIdentifierLookup, mergedInputsMap, targetLastNodeIndex
 ) {
     const writer = new ReplicaBatchWriter(targetStorage);
     await writer.push(targetStorage.global.putOp(
@@ -384,6 +380,7 @@ async function commitChangedMerge(
     ));
     await writer.push(targetStorage.global.putOp(LAST_NODE_INDEX_KEY, targetLastNodeIndex));
     await writer.flush();
+    await targetStorage.valid.clear();
     await unifyRevdeps(targetStorage, mergedInputsMap);
     await rootDatabase.setCurrentReplicaPointer(targetReplica);
 }

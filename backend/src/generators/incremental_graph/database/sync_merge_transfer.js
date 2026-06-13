@@ -29,6 +29,8 @@ function buildDeleteNodeOps(targetStorage, identifier) {
         targetStorage.values.delOp(identifier),
         targetStorage.freshness.delOp(identifier),
         targetStorage.inputs.delOp(identifier),
+        targetStorage.revdeps.delOp(identifier),
+        targetStorage.valid.delOp(identifier),
         targetStorage.counters.delOp(identifier),
         targetStorage.timestamps.delOp(identifier),
     ];
@@ -37,12 +39,6 @@ function buildDeleteNodeOps(targetStorage, identifier) {
 /**
  * Build operations that copy a node between potentially different identifiers.
  * Inputs are supplied by the semantic planner after lowering to final identifiers.
- *
- * `inputCounters` describe the source computation and are copied only as
- * historical dependency metadata. If lowering changes any input identifier,
- * the caller must delete the copied value and mark the node outdated so these
- * counters can never authorize reuse of a value computed against another
- * storage identity.
  *
  * @param {object} options
  * @param {SchemaStorage} options.targetStorage
@@ -80,10 +76,7 @@ async function copyNodeOps({
     const sourceInputs = await sourceStorage.inputs.get(sourceId);
     ops.push(sourceInputs === undefined
         ? targetStorage.inputs.delOp(destinationId)
-        : targetStorage.inputs.putOp(destinationId, {
-            inputs: finalInputsForDestination.map(input => String(input)),
-            inputCounters: sourceInputs.inputCounters,
-        }));
+        : targetStorage.inputs.putOp(destinationId, finalInputsForDestination));
 
     const sourceCounter = await sourceStorage.counters.get(sourceId);
     ops.push(sourceCounter === undefined

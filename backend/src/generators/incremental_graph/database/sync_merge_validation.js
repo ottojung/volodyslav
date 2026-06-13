@@ -1,4 +1,6 @@
 const { IdentifierLookupConflictError } = require('./replica_errors');
+const { readInputRecord } = require('./input_record');
+const { nodeIdentifierToString } = require('./types');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -35,16 +37,17 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
     const knownIdentifiers = new Set(finalLookup.idToKey.keys());
     const materializedIdentifiers = new Set();
     for await (const identifier of targetStorage.inputs.keys()) {
-        const identifierString = String(identifier);
+        const identifierString = nodeIdentifierToString(identifier);
         materializedIdentifiers.add(identifierString);
         if (!knownIdentifiers.has(identifierString)) {
             throw new FinalMergeStateError(`stored node ${identifierString} has no lookup entry`);
         }
         const inputs = await targetStorage.inputs.get(identifier);
-        for (const input of inputs?.inputs ?? []) {
-            if (!knownIdentifiers.has(String(input))) {
+        const inputIds = readInputRecord(inputs);
+        for (const input of inputIds) {
+            if (!knownIdentifiers.has(nodeIdentifierToString(input))) {
                 throw new FinalMergeStateError(
-                    `node ${identifierString} references unknown input ${String(input)}`
+                    `node ${identifierString} references unknown input ${nodeIdentifierToString(input)}`
                 );
             }
         }
@@ -63,11 +66,37 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
         targetStorage.timestamps,
     ]) {
         for await (const identifier of sublevel.keys()) {
-            if (!knownIdentifiers.has(String(identifier))) {
+            if (!knownIdentifiers.has(nodeIdentifierToString(identifier))) {
                 throw new FinalMergeStateError(
-                    `discarded identifier ${String(identifier)} remains in storage`
+                    `discarded identifier ${nodeIdentifierToString(identifier)} remains in storage`
                 );
             }
+        }
+    }
+    for await (const identifier of targetStorage.revdeps.keys()) {
+        const identifierString = nodeIdentifierToString(identifier);
+        if (!knownIdentifiers.has(identifierString)) {
+            throw new FinalMergeStateError(
+                `revdeps references discarded identifier ${identifierString}`
+            );
+        }
+        const revdepIds = await targetStorage.revdeps.get(identifier);
+        if (revdepIds !== undefined && Array.isArray(revdepIds)) {
+            for (const revdep of revdepIds) {
+                if (!knownIdentifiers.has(nodeIdentifierToString(revdep))) {
+                    throw new FinalMergeStateError(
+                        `revdeps[${identifierString}] references unknown identifier ${nodeIdentifierToString(revdep)}`
+                    );
+                }
+            }
+        }
+    }
+    for await (const identifier of targetStorage.valid.keys()) {
+        const identifierString = nodeIdentifierToString(identifier);
+        if (!knownIdentifiers.has(identifierString)) {
+            throw new FinalMergeStateError(
+                `valid references discarded identifier ${identifierString}`
+            );
         }
     }
 }
@@ -84,9 +113,9 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
  */
 async function assertLookupCoversMaterializedNodes(storage, lookup, context) {
     for await (const id of storage.inputs.keys()) {
-        if (!lookup.idToKey.has(String(id))) {
+        if (!lookup.idToKey.has(nodeIdentifierToString(id))) {
             throw new IdentifierLookupConflictError(
-                `${context}: materialized node ${String(id)} has no identifiers_keys_map entry`
+                `${context}: materialized node ${nodeIdentifierToString(id)} has no identifiers_keys_map entry`
             );
         }
     }

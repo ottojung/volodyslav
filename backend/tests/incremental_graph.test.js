@@ -435,7 +435,7 @@ describe("generators/incremental_graph", () => {
             
             // Pull level3 again
             // level1, level2, level3 all return Unchanged, so counters don't change
-            // With counter optimization: level1 must recompute (input changed)
+            // level1 must recompute (source changed)
             // but level2 and level3 should skip (level1's counter didn't change)
             const result = await graph.pull("level3");
 
@@ -713,7 +713,7 @@ describe("generators/incremental_graph", () => {
             const result = await graph.pull("nodeE");
 
             // input1=1 -> nodeA=10 -> nodeC(10+20=30) -> nodeE=90
-            // nodeB should use counter optimization and skip recomputation (input2 counter unchanged)
+            // nodeB should skip recomputation (unchanged input)
             // nodeA recomputes, nodeC recomputes (nodeA's counter changed), nodeE recomputes (nodeC's counter changed)
             expect(result.value).toBe(90);
             expect(computeCalls).toEqual(["nodeA", "nodeC", "nodeE"]);
@@ -780,11 +780,12 @@ describe("generators/incremental_graph", () => {
             await graph.invalidate("input");
 
             // Chain with mixed states: dirty -> potentially-dirty -> potentially-dirty
-            // Middle node returns Unchanged, so output should not recompute (counter optimization)
+            // Middle node returns Unchanged, so output should skip recomputation
+            // (downstream validity from Unchanged preserved)
 
             const result = await graph.pull("output");
 
-            // Middle returns Unchanged (counter stays same), so output should skip via counter optimization
+            // Middle returns Unchanged (preserving downstream validity), output skips recompute
             expect(result.value).toBe(20);
             expect(computeCalls).toEqual(["middle"]);
 
@@ -1277,14 +1278,14 @@ describe("generators/incremental_graph", () => {
             
             // This represents an inconsistent state where inputs are clean but output is dirty
             // This shouldn't happen in normal operation but could occur after a crash or bug
-            // The graph should recover by checking counter snapshots
+            // The graph should recover by recomputing
 
             const result = await graph.pull("output");
 
-            // With counter optimization: inputs haven't changed (counters match snapshot),
+            // With validity flags: inputs haven't changed, valid flags exist,
             // so output should skip recomputation and just be marked up-to-date
             expect(result.value).toBe(30);
-            expect(computeCalls).toEqual([]); // No recomputation due to counter optimization
+            expect(computeCalls).toEqual([]); // cache hit from valid flags
 
             // Output should now be clean
             const outputFreshness = await graph.getFreshness("output");
@@ -1692,14 +1693,14 @@ describe("generators/incremental_graph", () => {
 
             // Wide diamond where ALL paths return Unchanged
             // input -> pathA, pathB, pathC -> output (all unchanged)
-            // Output should NOT recompute because all input counters are unchanged
+            // Output should NOT recompute because all validity flags are intact
 
 
 
 
             const result = await graph.pull("output");
 
-            // All paths returned Unchanged (counters stay same), so output should skip via counter optimization
+            // All paths returned Unchanged (downstream validity preserved), output skips via cache hit
             expect(result.value).toBe(100); // Original cached value
             expect(computeCalls).toEqual(["pathA", "pathB", "pathC"]);
             expect(computeCalls).not.toContain("output");

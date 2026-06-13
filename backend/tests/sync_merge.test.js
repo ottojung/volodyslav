@@ -23,6 +23,10 @@ const {
     serializeIdentifierLookup,
     stringToNodeKeyString,
 } = require('../src/generators/incremental_graph/database');
+const {
+    assertValidFinalMergeState,
+    FinalMergeStateError,
+} = require('../src/generators/incremental_graph/database/sync_merge_validation');
 const { makeIncrementalGraph } = require('../src/generators/incremental_graph');
 const {
     IdentifierLookupConflictError,
@@ -75,7 +79,7 @@ const TS3 = '2024-01-01T00:00:09.000Z';
  * Write a node into storage with a modifiedAt timestamp.
  */
 async function writeNode(storage, nodeKey, modifiedAt, inputKeys, valuePayload) {
-    await storage.inputs.put(nodeKey, { inputs: inputKeys, inputCounters: [] });
+    await storage.inputs.put(nodeKey, inputKeys);
     await storage.timestamps.put(nodeKey, { createdAt: modifiedAt, modifiedAt });
     await storage.freshness.put(nodeKey, 'up-to-date');
     if (valuePayload !== undefined) {
@@ -198,6 +202,8 @@ describe('mergeHostIntoReplica', () => {
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, nodeA, TS1, [], localValue);
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+            // Write stale validity flags to L before merge
+            await L.valid.put(nodeA, [NODE_B]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeNode(H, nodeA, TS2, [], remoteValue);
@@ -211,6 +217,62 @@ describe('mergeHostIntoReplica', () => {
             const T = db.schemaStorageForReplica(newActive);
             const merged = await T.values.get(nodeA);
             expect(merged).toEqual(remoteValue);
+
+            // Changed merge must not preserve stale validity flags.
+            // valid is optional proof metadata and is cleared on changed merge.
+            const validKeys = [];
+            for await (const key of T.valid.keys()) {
+                validKeys.push(key);
+            }
+            expect(validKeys).toEqual([]);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('kept merge preserves local validity flags', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const localValue = { value: { id: 'local', type: 'test', description: 'local value' }, isDirty: false };
+            const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, [], localValue);
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+            // Write valid flags to L before merge
+            await L.valid.put(nodeA, [NODE_B]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeA, TS1, [], remoteValue);
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
+
+            // Equal timestamps: keep decision, no changes, replica pointer stays
+            const newActive = db.currentReplicaName();
+            expect(newActive).toBe('x');
+
+            // No merge changes were applied, so valid flags from L are preserved
+            // (the kept replica was not switched)
+            const T = db.schemaStorageForReplica(newActive);
+            const kept = await T.values.get(nodeA);
+            expect(kept).toEqual(localValue);
+            const validKeys = [];
+            for await (const key of T.valid.keys()) {
+                validKeys.push(key);
+            }
+            // The kept replica is the original L; valid was preserved because
+            // no changed-merge path ran.
+            expect(validKeys).not.toEqual([]);
         } finally {
             if (db) await db.close();
         }
@@ -248,7 +310,7 @@ describe('mergeHostIntoReplica', () => {
                 [targetParent, parentKey],
                 [hostChild, childKey],
             ]);
-            expect(await T.inputs.get(hostChild)).toEqual({ inputs: [targetParent], inputCounters: [] });
+            expect(await T.inputs.get(hostChild)).toEqual([targetParent]);
             expect(await T.inputs.get(targetChild)).toBeUndefined();
             expect(await T.inputs.get(hostParent)).toBeUndefined();
         } finally {
@@ -352,7 +414,7 @@ describe('mergeHostIntoReplica', () => {
             // Write an H-only node without a timestamps record.
             const hOnlyNode = NODE_H;
             const H = db.hostnameSchemaStorage(hostname);
-            await H.inputs.put(hOnlyNode, { inputs: [], inputCounters: [] });
+            await H.inputs.put(hOnlyNode, []);
             await H.freshness.put(hOnlyNode, 'up-to-date');
             const L = db.schemaStorageForReplica('x');
             await writeIdentifierLookup(L, []);
@@ -447,10 +509,7 @@ describe('mergeHostIntoReplica', () => {
             // Because initial decision for B was 'take', invalidate must still
             // apply H's structural state so inputs/revdeps remain consistent.
             const bInputs = await T.inputs.get(nodeB);
-            expect(bInputs).toEqual({
-                inputs: [nodeA],
-                inputCounters: [],
-            });
+            expect(bInputs).toEqual([nodeA]);
             const bCounter = await T.counters.get(nodeB);
             expect(bCounter).toBe(2);
             const bValue = await T.values.get(nodeB);
@@ -754,7 +813,7 @@ describe('mergeHostIntoReplica', () => {
             for (const sublevel of [T.values, T.freshness, T.inputs, T.counters, T.timestamps]) {
                 expect(await sublevel.get(hostId)).toBeUndefined();
             }
-            expect(await T.inputs.get(dependentId)).toEqual({ inputs: [targetId], inputCounters: [] });
+            expect(await T.inputs.get(dependentId)).toEqual([targetId]);
             const serialized = await T.global.get(IDENTIFIERS_KEY);
             expect(serialized).toEqual([[targetId, sharedKey], [dependentId, dependentKey]]);
         } finally {
@@ -815,7 +874,7 @@ describe('mergeHostIntoReplica', () => {
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
             const T = db.getSchemaStorage();
             expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([[hostId, nodeKey]]);
-            expect(await T.inputs.get(hostId)).toEqual({ inputs: [], inputCounters: [] });
+            expect(await T.inputs.get(hostId)).toEqual([]);
             for (const sublevel of [T.values, T.freshness, T.inputs, T.counters, T.timestamps]) {
                 expect(await sublevel.get(targetId)).toBeUndefined();
             }
@@ -852,7 +911,7 @@ describe('mergeHostIntoReplica', () => {
 
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
             const T = db.getSchemaStorage();
-            expect(await T.inputs.get(hostAId)).toEqual({ inputs: [bId, targetCId], inputCounters: [] });
+            expect(await T.inputs.get(hostAId)).toEqual([bId, targetCId]);
             expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
             expect(await T.revdeps.get(targetCId)).toEqual([hostAId]);
             expect(await T.inputs.get(hostCId)).toBeUndefined();
@@ -888,7 +947,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, hostCId, TS1, [], { source: 'host C' });
             await H.counters.put(hostCId, 1);
             await writeNode(H, hostAId, TS1, [hostCId], staleAValue);
-            await H.inputs.put(hostAId, { inputs: [hostCId], inputCounters: [1] });
+            await H.inputs.put(hostAId, [hostCId]);
             await H.counters.put(hostAId, 1);
             await writeIdentifierLookup(H, [[hostCId, keyC], [hostAId, keyA]]);
 
@@ -949,10 +1008,10 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, hostCId, TS1, [], { source: 'host C' });
             await H.counters.put(hostCId, 1);
             await writeNode(H, hostAId, TS1, [hostCId], { source: 'stale A' });
-            await H.inputs.put(hostAId, { inputs: [hostCId], inputCounters: [1] });
+            await H.inputs.put(hostAId, [hostCId]);
             await H.counters.put(hostAId, 1);
             await writeNode(H, hostDId, TS1, [hostAId], { source: 'stale D' });
-            await H.inputs.put(hostDId, { inputs: [hostAId], inputCounters: [1] });
+            await H.inputs.put(hostDId, [hostAId]);
             await H.counters.put(hostDId, 1);
             await writeIdentifierLookup(H, [
                 [hostCId, keyC],
@@ -1040,10 +1099,7 @@ describe('mergeHostIntoReplica', () => {
                 [hostCId, keyC],
                 [targetDId, keyD],
             ]);
-            expect(await T.inputs.get(targetDId)).toEqual({
-                inputs: [hostCId],
-                inputCounters: [],
-            });
+            expect(await T.inputs.get(targetDId)).toEqual([hostCId]);
             expect(await T.values.get(targetDId)).toBeUndefined();
             expect(await T.counters.get(targetDId)).toBe(2);
             expect(await T.freshness.get(targetDId)).toBe('potentially-outdated');
@@ -1052,6 +1108,95 @@ describe('mergeHostIntoReplica', () => {
         } finally {
             if (db) await db.close();
         }
+    });
+
+    describe('assertValidFinalMergeState', () => {
+        test('rejects revdeps entry referencing unknown identifier', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+
+                const nodeA = NODE_A;
+                const knownNodeIds = [nodeIdentifierFromString('99-abcdefghi')]; // unknown identifier
+                const T = db.schemaStorageForReplica('x');
+                // Materialize A
+                await T.inputs.put(nodeA, []);
+                await T.values.put(nodeA, { v: 1 });
+                await T.freshness.put(nodeA, 'up-to-date');
+                // Write revdeps for A referencing an unknown identifier
+                await T.revdeps.put(nodeA, knownNodeIds);
+
+                const lookup = makeIdentifierLookup([[nodeA, stringToNodeKeyString('{"head":"test","args":[]}')]]);
+
+                await expect(
+                    assertValidFinalMergeState(T, lookup)
+                ).rejects.toThrow(FinalMergeStateError);
+            } finally {
+                if (db) await db.close();
+            }
+        });
+
+        test('rejects valid entry for discarded identifier', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+
+                const nodeA = NODE_A;
+                const discardedId = nodeIdentifierFromString('99-abcdefghi');
+                const T = db.schemaStorageForReplica('x');
+                // Materialize A (known identifier)
+                await T.inputs.put(nodeA, []);
+                await T.values.put(nodeA, { v: 1 });
+                await T.freshness.put(nodeA, 'up-to-date');
+                // Write valid entry for a discarded identifier that is NOT in the lookup
+                await T.valid.put(discardedId, [nodeA]);
+
+                const lookup = makeIdentifierLookup([[nodeA, stringToNodeKeyString('{"head":"test","args":[]}')]]);
+
+                await expect(
+                    assertValidFinalMergeState(T, lookup)
+                ).rejects.toThrow(FinalMergeStateError);
+            } finally {
+                if (db) await db.close();
+            }
+        });
+
+        test('rejects revdeps value entry referencing unknown identifier', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+
+                const nodeA = NODE_A;
+                const nodeB = NODE_B;
+                const unknownId = nodeIdentifierFromString('99-abcdefghi');
+                const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+                const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+                const T = db.schemaStorageForReplica('x');
+                // Materialize A and B
+                await T.inputs.put(nodeA, []);
+                await T.inputs.put(nodeB, []);
+                await T.values.put(nodeA, { v: 1 });
+                await T.values.put(nodeB, { v: 2 });
+                await T.freshness.put(nodeA, 'up-to-date');
+                await T.freshness.put(nodeB, 'up-to-date');
+                // Write revdeps[A] containing an unknown identifier
+                await T.revdeps.put(nodeA, [unknownId]);
+
+                const lookup = makeIdentifierLookup([
+                    [nodeA, keyA],
+                    [nodeB, keyB],
+                ]);
+
+                await expect(
+                    assertValidFinalMergeState(T, lookup)
+                ).rejects.toThrow(FinalMergeStateError);
+            } finally {
+                if (db) await db.close();
+            }
+        });
     });
 
     test('throws IdentifierLookupConflictError when same identifier maps to different semantic keys', async () => {

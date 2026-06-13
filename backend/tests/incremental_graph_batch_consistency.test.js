@@ -233,7 +233,7 @@ describe("incremental_graph batch consistency", () => {
                 const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"derived","args":[]}';
-                const testValue = { inputs: ['{"head":"source","args":[]}'] };
+                const testValue = ['{"head":"source","args":[]}'];
 
                 let readValue;
                 await storage.withBatch(async (batch) => {
@@ -370,11 +370,11 @@ describe("incremental_graph batch consistency", () => {
 
             await storage.withBatch(async (batch) => {
                 // First stage inputs with inputA
-                batch.inputs.put(nodeKey, { inputs: [inputA], inputCounters: [1] });
+                batch.inputs.put(nodeKey, [inputA]);
 
                 // Then call ensureMaterialized with inputB
                 // With the new implementation, this WILL overwrite (always writes)
-                await storage.ensureMaterialized(nodeKey, [inputB], [2], batch);
+                await storage.ensureMaterialized(nodeKey, [inputB], batch);
             });
 
             // After commit, should have inputB (the last write), not inputA

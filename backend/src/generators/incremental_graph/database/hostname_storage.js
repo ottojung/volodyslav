@@ -66,7 +66,6 @@ function validateHostname(hostname) {
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
-/** @typedef {import('./types').InputsRecord} InputsRecord */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
@@ -96,10 +95,12 @@ function buildBareSchemaStorage(namespaceSublevel) {
     const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<InputsRecord, NodeIdentifier>} */
+    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
+    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Counter, NodeIdentifier>} */
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
@@ -120,6 +121,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
         freshness: makeTypedDatabase(freshnessSublevel),
         inputs: makeTypedDatabase(inputsSublevel),
         revdeps: makeTypedDatabase(revdepsSublevel),
+        valid: makeTypedDatabase(validSublevel),
         counters: makeTypedDatabase(countersSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
         global: makeTypedDatabase(globalSublevel),

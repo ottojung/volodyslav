@@ -20,6 +20,7 @@ const {
 } = require("./database");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
+const { readInputRecord } = require("./database");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
 
@@ -30,7 +31,6 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').Freshness} Freshness */
-/** @typedef {import('./database/types').InputsRecord} InputsRecord */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database').ReadableSchemaStorage} ReadableSchemaStorage */
 /** @typedef {import('./types').NodeDef} NodeDef */
@@ -99,8 +99,8 @@ async function loadMaterializedNodes(storage) {
  * Build the desired revdeps map from decisions, reading inputs from prevStorage.
  *
  * Memory: O(|keys|) — only stores key strings in the result map; no large
- * values are retained.  Reads from prevStorage are streaming (one InputsRecord
- * at a time).
+ * values are retained.  Reads from prevStorage are streaming (one inputs
+ * record at a time).
  *
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions
@@ -116,9 +116,10 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
         const inputsRecord = await prevStorage.inputs.get(nodeKey);
         if (!inputsRecord) continue;
 
-        for (const inputStr of inputsRecord.inputs) {
-            const inputKey = stringToNodeIdentifier(inputStr);
-            const inputDecision = decisions.get(inputKey);
+        const inputIds = readInputRecord(inputsRecord);
+        for (const inputItem of inputIds) {
+            const inputStr = nodeIdentifierToString(inputItem);
+            const inputDecision = decisions.get(inputItem);
             if (inputDecision && inputDecision.kind === "delete") continue;
             const existing = revdepSets.get(inputStr);
             if (existing) {
@@ -260,7 +261,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
             async get(key) {
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
-                if (decision.kind === "create") return { inputs: [], inputCounters: [] };
+                if (decision.kind === "create") return [];
                 return await prevStorage.inputs.get(key);
             },
         },
@@ -272,6 +273,15 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
             },
             async get(/** @type {NodeIdentifier} */ key) {
                 return desiredRevdeps.get(key);
+            },
+        },
+        valid: {
+            async *keys() {
+                // No validity flags are transferred during migration.
+                // Nodes are invalidated/recomputed after migration to rebuild valid sets.
+            },
+            async get() {
+                return undefined;
             },
         },
         counters: {

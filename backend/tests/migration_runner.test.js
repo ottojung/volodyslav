@@ -61,6 +61,7 @@ function makeSchemaStorage() {
     const global = makeInMemoryDb("global");
     const inputs = makeInMemoryDb("inputs");
     const revdeps = makeInMemoryDb("revdeps");
+    const valid = makeInMemoryDb("valid");
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
 
@@ -89,6 +90,7 @@ function makeSchemaStorage() {
         global,
         inputs,
         revdeps,
+        valid,
         counters,
         timestamps,
         async batch(operations) {
@@ -98,6 +100,7 @@ function makeSchemaStorage() {
                 global.apply(operation);
                 inputs.apply(operation);
                 revdeps.apply(operation);
+                valid.apply(operation);
                 counters.apply(operation);
                 timestamps.apply(operation);
             }
@@ -217,7 +220,7 @@ describe("runMigration", () => {
         const currentStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
 
-        await previousStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await previousStorage.inputs.put(nodeKey, []);
         await previousStorage.values.put(nodeKey, { type: "all_events", events: [] });
         await previousStorage.freshness.put(nodeKey, "up-to-date");
         await previousStorage.counters.put(nodeKey, 5);
@@ -341,7 +344,7 @@ describe("runMigration", () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
-            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await xStorage.inputs.put(nodeKey, []);
 
             const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
@@ -369,11 +372,53 @@ describe("runMigration", () => {
             expect(migratedInputs).toBeDefined();
         });
 
+        test("migration does not transfer valid flags from old graph state", async () => {
+            const capabilities = await getTestCapabilities();
+            const xStorage = makeSchemaStorage();
+            const nodeKey = toJsonKey("A");
+            const depKey = toJsonKey("B");
+
+            // Set up xStorage with a node that has valid flags
+            await xStorage.inputs.put(nodeKey, []);
+            await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
+            await xStorage.freshness.put(nodeKey, "up-to-date");
+            // Store a validity flag in xStorage's valid sublevel
+            await xStorage.valid.put(nodeKey, [depKey]);
+
+            const yStorage = makeSchemaStorage();
+            const mock = makeRootDatabaseMock({
+                prevVersion: "1.0.0",
+                currentVersion: "2.0.0",
+                xStorage,
+                yStorage,
+            });
+
+            const nodeDefs = [{
+                output: "A",
+                inputs: [],
+                computor: async () => ({ type: "all_events", events: [] }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            }];
+
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(nodeKey);
+            });
+
+            // After migration, yStorage must have no valid records.
+            // Valid flags are optional proof metadata and are rebuilt on demand.
+            const validKeys = [];
+            for await (const key of yStorage.valid.keys()) {
+                validKeys.push(key);
+            }
+            expect(validKeys).toEqual([]);
+        });
+
         test("writes version to y/global/version before calling setCurrentReplicaPointer", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
-            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await xStorage.inputs.put(nodeKey, []);
 
             const callOrder = [];
             let setCurrentReplicaPointerCalled = false;
@@ -435,7 +480,7 @@ describe("runMigration", () => {
             const capabilities = await getTestCapabilities();
             const previousStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
-            await previousStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await previousStorage.inputs.put(nodeKey, []);
             await previousStorage.values.put(nodeKey, { type: "all_events", events: [] });
             await previousStorage.freshness.put(nodeKey, "up-to-date");
             await previousStorage.counters.put(nodeKey, 2);
@@ -466,7 +511,7 @@ describe("runMigration", () => {
         test("calls checkpointMigration once for the whole migration", async () => {
             const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
-            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await xStorage.inputs.put(nodeKey, []);
 
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
@@ -481,7 +526,7 @@ describe("runMigration", () => {
                 prevVersion: "1.0.0",
                 currentVersion: "2.0.0",
             });
-            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await xStorage.inputs.put(nodeKey, []);
 
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
@@ -499,7 +544,7 @@ describe("runMigration", () => {
                 prevVersion: "1.0.0",
                 currentVersion: "2.0.0",
             });
-            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await xStorage.inputs.put(nodeKey, []);
 
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
@@ -521,7 +566,7 @@ describe("runMigration", () => {
 
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
-            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await xStorage.inputs.put(nodeKey, []);
 
             const yStorage = makeSchemaStorage();
             const rootDatabase = {
@@ -570,7 +615,7 @@ describe("runMigration", () => {
 
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
-            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await xStorage.inputs.put(nodeKey, []);
 
             const yStorage = makeSchemaStorage();
             const rootDatabase = {
@@ -613,7 +658,7 @@ describe("runMigration", () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
-            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await xStorage.inputs.put(nodeKey, []);
 
             const yMock = makeYDb(makeSchemaStorage());
             const mock = makeRootDatabaseMock({
@@ -645,7 +690,7 @@ describe("runMigration", () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
-            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await xStorage.inputs.put(nodeKey, []);
 
             const yMock = makeYDb(makeSchemaStorage());
             const mock = makeRootDatabaseMock({
@@ -681,7 +726,7 @@ describe("runMigration", () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const nodeKey = toJsonKey("A");
-            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await xStorage.inputs.put(nodeKey, []);
 
             const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
@@ -712,7 +757,7 @@ describe("runMigration", () => {
         test("callback throws: checkpointMigration attempts the pre-migration commit step before failing", async () => {
             const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
-            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await xStorage.inputs.put(nodeKey, []);
             const callOrder = [];
             capabilities.checkpointMigration.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
                 callOrder.push(`checkpoint:${preMessage}`);
@@ -734,7 +779,7 @@ describe("runMigration", () => {
         test("finalize throws: checkpointMigration attempts the pre-migration commit step before failing", async () => {
             const capabilities = await getTestCapabilities();
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
-            await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+            await xStorage.inputs.put(nodeKey, []);
             const callOrder = [];
             capabilities.checkpointMigration.mockImplementation(async (_caps, _db, preMessage, postMessage, callback) => {
                 callOrder.push(`checkpoint:${preMessage}`);
@@ -793,13 +838,12 @@ async function populateNode(storage, nodeKey, {
     value = { type: "all_events", events: [] },
     freshness = "up-to-date",
     inputs = [],
-    inputCounters = [],
     counter = 1,
     timestamps = undefined,
 } = {}) {
     await storage.values.put(nodeKey, value);
     await storage.freshness.put(nodeKey, freshness);
-    await storage.inputs.put(nodeKey, { inputs, inputCounters });
+    await storage.inputs.put(nodeKey, inputs);
     await storage.counters.put(nodeKey, counter);
     if (timestamps !== undefined) {
         await storage.timestamps.put(nodeKey, timestamps);
@@ -814,7 +858,6 @@ async function buildTwoNodeGraph(storage, nodeKeyA, nodeKeyB, {
     await populateNode(storage, nodeKeyA, { counter: 3, timestamps: timestampA });
     await populateNode(storage, nodeKeyB, {
         inputs: [nodeKeyA],
-        inputCounters: [3],
         counter: 7,
         freshness: "potentially-outdated",
         timestamps: timestampB,
@@ -839,7 +882,6 @@ async function buildFanInGraph(storage, nkA, nkB, nkC) {
     await populateNode(storage, nkB, { counter: 2 });
     await populateNode(storage, nkC, {
         inputs: [nkA, nkB],
-        inputCounters: [1, 2],
         counter: 1,
     });
     await storage.revdeps.put(nkA, [nkC]);
@@ -1106,7 +1148,7 @@ describe("x-namespace state preserved on migration failure", () => {
         await expect(xStorage.counters.get(nkB)).resolves.toBe(7);
         await expect(xStorage.freshness.get(nkA)).resolves.toBe("up-to-date");
         await expect(xStorage.freshness.get(nkB)).resolves.toBe("potentially-outdated");
-        await expect(xStorage.inputs.get(nkB)).resolves.toEqual({ inputs: [nkA], inputCounters: [3] });
+        await expect(xStorage.inputs.get(nkB)).resolves.toEqual([nkA]);
     });
 
     test("three-node fan-in partially deleted: all three x-values preserved after PartialDeleteFanInError", async () => {
@@ -1140,7 +1182,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await xStorage.inputs.put(nodeKey, []);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -1157,7 +1199,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await xStorage.inputs.put(nodeKey, []);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -1200,7 +1242,7 @@ describe("error identity: exact thrown object propagates", () => {
     test("exact Error instance from callback propagates (same reference)", async () => {
         const capabilities = await getTestCapabilities();
         const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
-        await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await xStorage.inputs.put(nodeKey, []);
 
         const specificError = new Error("unique error " + Math.random());
         let caught;
@@ -1221,7 +1263,7 @@ describe("error identity: exact thrown object propagates", () => {
         capabilities.checkpointMigration.mockRejectedValueOnce(checkpointError);
 
         const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
-        await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await xStorage.inputs.put(nodeKey, []);
 
         let caught;
         try {
@@ -1354,7 +1396,7 @@ describe("infrastructure failures", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await xStorage.inputs.put(nodeKey, []);
 
         const unificationError = new Error("unification write failure");
         const yStorage = makeSchemaStorage();
@@ -1395,11 +1437,11 @@ describe("infrastructure failures", () => {
         capabilities.checkpointMigration.mockRejectedValueOnce(checkpointError);
 
         const { nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
-        await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await xStorage.inputs.put(nodeKey, []);
 
         // We need a fresh mock so we can check setCurrentReplicaPointerCalled
         const freshXStorage = makeSchemaStorage();
-        await freshXStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await freshXStorage.inputs.put(nodeKey, []);
         const { yStorage } = makeYDb(makeSchemaStorage());
         const freshMock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage: freshXStorage, yStorage });
 
@@ -1447,11 +1489,11 @@ describe("infrastructure failures", () => {
             });
 
         const { nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
-        await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await xStorage.inputs.put(nodeKey, []);
 
         // Rebuild with a mock that tracks the replica switch cutover via setCurrentReplicaPointerCalled
         const freshXStorage = makeSchemaStorage();
-        await freshXStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await freshXStorage.inputs.put(nodeKey, []);
         const { yStorage } = makeYDb(makeSchemaStorage());
         const freshMock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage: freshXStorage, yStorage });
 
@@ -1479,7 +1521,7 @@ describe("retry after failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await xStorage.inputs.put(nodeKey, []);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -1503,7 +1545,7 @@ describe("retry after failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await xStorage.inputs.put(nodeKey, { inputs: [], inputCounters: [] });
+        await xStorage.inputs.put(nodeKey, []);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });

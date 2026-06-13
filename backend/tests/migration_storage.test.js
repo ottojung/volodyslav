@@ -119,10 +119,10 @@ async function setupStandardGraph(storage, newHeadIndex, opts = {}) {
     }
 
     // inputs records (inputs stored as plain strings = NodeKeyStrings at runtime)
-    await storage.inputs.put(A, { inputs: [], inputCounters: [] });
-    await storage.inputs.put(B, { inputs: [A], inputCounters: [1] });
-    await storage.inputs.put(C, { inputs: [], inputCounters: [] });
-    await storage.inputs.put(D, { inputs: [B, C], inputCounters: [1, 1] });
+    await storage.inputs.put(A, []);
+    await storage.inputs.put(B, [A]);
+    await storage.inputs.put(C, []);
+    await storage.inputs.put(D, [B, C]);
 
     // revdeps
     await storage.revdeps.put(A, [B]);
@@ -145,7 +145,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
@@ -156,7 +156,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.invalidate(A);
@@ -167,7 +167,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.delete(A);
@@ -178,7 +178,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.override(A, () => Promise.resolve(DUMMY_VALUE));
@@ -190,7 +190,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.override(A, () => Promise.resolve(DUMMY_VALUE));
@@ -202,7 +202,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
@@ -214,7 +214,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.invalidate(A);
@@ -242,7 +242,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A"), B = nk("B");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             const err = await ms.get(B).catch((e) => e);
@@ -254,7 +254,7 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
             // Write inputs record but no value
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             const err = await ms.get(A).catch((e) => e);
@@ -265,7 +265,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             await storage.values.put(A, DUMMY_VALUE);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
@@ -277,7 +277,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             await storage.values.put(A, DUMMY_VALUE);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
@@ -467,7 +467,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             expect(await ms.has(A)).toBe(true);
@@ -514,7 +514,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             const err = await ms.getInputs(nk("Z")).catch((e) => e);
@@ -603,7 +603,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             const err = await ms.create(nk("NONEXISTENT"), () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
@@ -615,7 +615,7 @@ describe("MigrationStorage", () => {
             // "event(e)" has arity 1
             const headIndex = makeHeadIndex(["A", "event(e)"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             // nk("event") produces arity 0 — mismatch with schema arity 1
@@ -627,7 +627,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             const { stringToNodeKeyString } = require("../src/generators/incremental_graph/database");
@@ -645,7 +645,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
@@ -656,7 +656,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             const err = await ms.create(A, () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
@@ -667,7 +667,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             await storage.global.put(IDENTIFIERS_KEY, [
                 [A, A],
                 [nk("NEW"), nk("NEW")],
@@ -683,7 +683,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
@@ -696,7 +696,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             await storage.values.put(A, DUMMY_VALUE);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
@@ -717,7 +717,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             // Only create a new node, don't decide A
@@ -730,7 +730,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
@@ -743,7 +743,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             await storage.values.put(A, DUMMY_VALUE);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
@@ -764,7 +764,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             await ms.keep(A);
@@ -785,7 +785,7 @@ describe("MigrationStorage", () => {
             const storage1 = makeInMemorySchemaStorage();
             const headIndex1 = makeHeadIndex(["A", "NEW1", "NEW2"]);
             const A1 = nk("A");
-            await storage1.inputs.put(A1, { inputs: [], inputCounters: [] });
+            await storage1.inputs.put(A1, []);
             const ms1 = makeMigrationStorage(storage1, headIndex1, [A1]);
             await ms1.keep(A1);
             await ms1.create(nk("NEW1"), () => Promise.resolve(DUMMY_VALUE));
@@ -796,7 +796,7 @@ describe("MigrationStorage", () => {
             const storage2 = makeInMemorySchemaStorage();
             const headIndex2 = makeHeadIndex(["A", "NEW1", "NEW2"]);
             const A2 = nk("A");
-            await storage2.inputs.put(A2, { inputs: [], inputCounters: [] });
+            await storage2.inputs.put(A2, []);
             const ms2 = makeMigrationStorage(storage2, headIndex2, [A2]);
             await ms2.keep(A2);
             await ms2.create(nk("NEW1"), () => Promise.resolve(DUMMY_VALUE));
@@ -825,7 +825,7 @@ describe("MigrationStorage", () => {
             const storageA = makeInMemorySchemaStorage();
             const headIndexA = makeHeadIndex(["A", "NEW1", "NEW2"]);
             const A_A = nk("A");
-            await storageA.inputs.put(A_A, { inputs: [], inputCounters: [] });
+            await storageA.inputs.put(A_A, []);
             const msA = makeMigrationStorage(storageA, headIndexA, [A_A]);
             await msA.keep(A_A);
             await msA.create(nk("NEW1"), () => Promise.resolve(DUMMY_VALUE));
@@ -837,8 +837,8 @@ describe("MigrationStorage", () => {
             const headIndexB = makeHeadIndex(["A", "B", "NEW1", "NEW2"]);
             const A_B = nk("A");
             const B_B = nk("B");
-            await storageB.inputs.put(A_B, { inputs: [], inputCounters: [] });
-            await storageB.inputs.put(B_B, { inputs: [], inputCounters: [] });
+            await storageB.inputs.put(A_B, []);
+            await storageB.inputs.put(B_B, []);
             const msB = makeMigrationStorage(storageB, headIndexB, [A_B, B_B]);
             await msB.keep(A_B);
             await msB.keep(B_B);
@@ -860,7 +860,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "N1", "N2", "N3", "N4", "N5"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
             await ms.keep(A);
 
@@ -890,7 +890,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             // Pass a function that returns a promise that never resolves; override() should return immediately
@@ -902,7 +902,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.inputs.put(A, { inputs: [], inputCounters: [] });
+            await storage.inputs.put(A, []);
             await storage.values.put(A, DUMMY_VALUE);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 

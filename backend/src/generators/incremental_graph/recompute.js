@@ -1,5 +1,5 @@
 /**
- * Recalculation helpers for IncrementalGraph.
+ * Recalculation helpers for IncrementalGraph — flag-based inverse validity.
  *
  * Transaction context is passed explicitly - no async_hooks or push/pop context.
  *
@@ -33,81 +33,213 @@ const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = requi
 const { isUnchanged } = require("./unchanged");
 const {
     nodeIdentifierToString,
-    nodeIdentifierFromString,
+    compareNodeIdentifier,
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
+const { readInputRecord } = require("./database");
 
 /**
- * Create a dependency accumulator for the materialized dependency record.
+ * Normalize input positions to input edges.
+ * Collapses duplicate dependencies, preserving first occurrence for deterministic storage.
  * @param {NodeIdentifier[]} inputIdentifiers
- * @param {number[]} inputCounters
- * @returns {{ identifiers: NodeIdentifier[], counters: number[], add: (identifier: NodeIdentifier, counter: number) => void }}
+ * @returns {NodeIdentifier[]}
  */
-function makeMaterializedDependencyAccumulator(inputIdentifiers, inputCounters) {
-    /** @type {NodeIdentifier[]} */
-    const identifiers = [];
-    /** @type {number[]} */
-    const counters = [];
+function normalizeInputEdges(inputIdentifiers) {
     /** @type {Set<string>} */
     const seen = new Set();
-
-    /**
-     * @param {NodeIdentifier} identifier
-     * @param {number} counter
-     * @returns {void}
-     */
-    function add(identifier, counter) {
-        const identifierString = nodeIdentifierToString(identifier);
-        if (seen.has(identifierString)) {
-            return;
+    /** @type {NodeIdentifier[]} */
+    const edges = [];
+    for (const id of inputIdentifiers) {
+        const idStr = nodeIdentifierToString(id);
+        if (!seen.has(idStr)) {
+            seen.add(idStr);
+            edges.push(id);
         }
-        seen.add(identifierString);
-        identifiers.push(identifier);
-        counters.push(counter);
     }
-
-    for (let index = 0; index < inputIdentifiers.length; index++) {
-        const inputIdentifier = inputIdentifiers[index];
-        const inputCounter = inputCounters[index];
-        if (inputIdentifier === undefined || inputCounter === undefined) {
-            throw new Error(`Missing static dependency metadata at index ${String(index)}`);
-        }
-        add(inputIdentifier, inputCounter);
-    }
-
-    return { identifiers, counters, add };
+    return edges;
 }
 
 /**
- * Return true when an existing materialized inputs record exactly matches the
- * dependencies and counters observed for this recomputation.
- * @param {import('./database/types').InputsRecord} inputsRecord
- * @param {NodeIdentifier[]} currentInputIdentifiers
- * @param {number[]} currentInputCounters
+ * Compare two NodeIdentifier arrays for element-wise equality.
+ * @param {NodeIdentifier[]} a
+ * @param {NodeIdentifier[]} b
  * @returns {boolean}
  */
-function materializedInputsMatch(inputsRecord, currentInputIdentifiers, currentInputCounters) {
-    if (!inputsRecord.inputCounters) {
-        throw new Error("Missing inputCounters in InputsRecord");
+function arraysOfNodeIdentifiersEqual(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        const aId = a[i];
+        const bId = b[i];
+        if (aId === undefined || bId === undefined) return false;
+        if (nodeIdentifierToString(aId) !== nodeIdentifierToString(bId)) return false;
     }
-    if (inputsRecord.inputCounters.length !== currentInputCounters.length) {
-        return false;
-    }
+    return true;
+}
 
-    const storedInputs = inputsRecord.inputs;
-    const currentInputs = currentInputIdentifiers.map(nodeIdentifierToString);
-    if (storedInputs.length !== currentInputs.length) {
+/**
+ * Read the current valid set for a dependency, returning empty array if none exists.
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} depId
+ * @returns {Promise<NodeIdentifier[]>}
+ */
+async function getValidSet(batch, depId) {
+    return (await batch.valid.get(depId)) ?? [];
+}
+
+/**
+ * Returns true when every dependency in inputEdges has a validity flag for N.
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} nId
+ * @param {NodeIdentifier[]} inputEdges
+ * @returns {Promise<boolean>}
+ */
+async function allValidityFlagsPresent(batch, nId, inputEdges) {
+    if (inputEdges.length === 0) {
         return false;
     }
-    for (let index = 0; index < storedInputs.length; index++) {
-        if (storedInputs[index] !== currentInputs[index]) {
-            return false;
-        }
-        if (inputsRecord.inputCounters[index] !== currentInputCounters[index]) {
+    const nIdStr = nodeIdentifierToString(nId);
+    for (const depId of inputEdges) {
+        const validSet = await getValidSet(batch, depId);
+        if (!validSet.some(id => nodeIdentifierToString(id) === nIdStr)) {
             return false;
         }
     }
     return true;
+}
+
+/**
+ * Add N to valid[D] for each dependency D in inputEdges.
+ * Maintains sorted order for deterministic storage.
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} nId
+ * @param {NodeIdentifier[]} inputEdges
+ * @returns {Promise<void>}
+ */
+async function addValidityFlags(batch, nId, inputEdges) {
+    const nIdStr = nodeIdentifierToString(nId);
+    for (const depId of inputEdges) {
+        const current = await getValidSet(batch, depId);
+        if (current.some(id => nodeIdentifierToString(id) === nIdStr)) {
+            continue;
+        }
+        current.push(nId);
+        current.sort(compareNodeIdentifier);
+        batch.valid.put(depId, current);
+    }
+}
+
+/**
+ * Propagate potentially-outdated freshness through revdeps[N].
+ * Uses an iterative worklist to avoid stack overflow on deep chains.
+ * @param {import('./graph_state').GraphStorage} storage
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} changedIdentifier
+ * @returns {Promise<void>}
+ */
+async function propagateOutdatedFrom(storage, batch, changedIdentifier) {
+    /** @type {Set<string>} */
+    const visited = new Set();
+    /** @type {NodeIdentifier[]} */
+    const worklist = [changedIdentifier];
+
+    while (worklist.length > 0) {
+        const current = worklist.pop();
+        if (current === undefined) continue;
+        const currentStr = nodeIdentifierToString(current);
+        if (visited.has(currentStr)) continue;
+        visited.add(currentStr);
+
+        const dependents = await storage.listDependents(current, batch);
+        for (const dep of dependents) {
+            const depStr = nodeIdentifierToString(dep);
+            if (visited.has(depStr)) continue;
+            const freshness = await batch.freshness.get(dep);
+            if (freshness === "up-to-date") {
+                batch.freshness.put(dep, "potentially-outdated");
+                worklist.push(dep);
+            }
+        }
+    }
+}
+
+/**
+ * Handle Unchanged computor result: add validity flags, preserve counter and valid[N].
+ * @param {IncrementalGraphRecomputeAccess} incrementalGraph
+ * @param {NodeIdentifier} nodeIdentifier
+ * @param {NodeIdentifier[]} inputEdges
+ * @param {BatchBuilder} batch
+ * @returns {Promise<void>}
+ */
+async function handleUnchanged(incrementalGraph, nodeIdentifier, inputEdges, batch) {
+    await incrementalGraph.storage.ensureMaterialized(nodeIdentifier, inputEdges, batch);
+    await incrementalGraph.storage.ensureReverseDepsIndexed(nodeIdentifier, inputEdges, batch);
+    await addValidityFlags(batch, nodeIdentifier, inputEdges);
+    batch.freshness.put(nodeIdentifier, "up-to-date");
+}
+
+/**
+ * Handle changed value computor result: clear old validity, write new value, record new flags.
+ * @param {IncrementalGraphRecomputeAccess} incrementalGraph
+ * @param {NodeIdentifier} nodeIdentifier
+ * @param {NodeIdentifier[]} inputEdges
+ * @param {ComputedValue} newValue
+ * @param {BatchBuilder} batch
+ * @returns {Promise<void>}
+ */
+async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, batch) {
+    // Remove N from union of persisted old edges and current edges.
+    // Schema-derived edges are immutable in normal operation.
+    const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
+    const oldEdges = readInputRecord(oldInputsRecord);
+    /** @type {Set<string>} */
+    const seen = new Set();
+    /** @type {NodeIdentifier[]} */
+    const allEdgesToClear = [];
+    for (const edge of [...inputEdges, ...oldEdges]) {
+        const str = nodeIdentifierToString(edge);
+        if (!seen.has(str)) {
+            seen.add(str);
+            allEdgesToClear.push(edge);
+        }
+    }
+    for (const depId of allEdgesToClear) {
+        const current = (await batch.valid.get(depId)) ?? [];
+        const filtered = current.filter(id => nodeIdentifierToString(id) !== nodeIdentifierToString(nodeIdentifier));
+        if (filtered.length === 0) {
+            batch.valid.del(depId);
+        } else if (filtered.length < current.length) {
+            batch.valid.put(depId, filtered);
+        }
+    }
+    batch.valid.del(nodeIdentifier);
+
+    batch.values.put(nodeIdentifier, newValue);
+
+    const oldCounter = await batch.counters.get(nodeIdentifier);
+    const newCounter = oldCounter !== undefined ? oldCounter + 1 : 1;
+    batch.counters.put(nodeIdentifier, newCounter);
+
+    const datetime = incrementalGraph.datetime;
+    const nowIso = datetime.now().toISOString();
+    if (oldCounter === undefined) {
+        batch.timestamps.put(nodeIdentifier, {
+            createdAt: nowIso,
+            modifiedAt: nowIso,
+        });
+    } else {
+        const existingTimestamp = await batch.timestamps.get(nodeIdentifier);
+        const createdAt =
+            existingTimestamp !== undefined
+                ? existingTimestamp.createdAt
+                : nowIso;
+        batch.timestamps.put(nodeIdentifier, { createdAt, modifiedAt: nowIso });
+    }
+
+    await incrementalGraph.storage.ensureMaterialized(nodeIdentifier, inputEdges, batch);
+    await incrementalGraph.storage.ensureReverseDepsIndexed(nodeIdentifier, inputEdges, batch);
+    await addValidityFlags(batch, nodeIdentifier, inputEdges);
+    batch.freshness.put(nodeIdentifier, "up-to-date");
+    await propagateOutdatedFrom(incrementalGraph.storage, batch, nodeIdentifier);
 }
 
 /**
@@ -131,8 +263,6 @@ async function internalMaybeRecalculate(
 
     /** @type {Array<ComputedValue>} */
     const inputValues = [];
-    /** @type {number[]} */
-    const currentInputCounters = [];
     /** @type {NodeIdentifier[]} */
     const inputIdentifiers = [];
 
@@ -141,8 +271,7 @@ async function internalMaybeRecalculate(
         if (inputKey === undefined) {
             throw new Error(`Missing input key for node ${nodeDefinition.outputKey}`);
         }
-        const inputValue =
-            await pullDependency(inputKey);
+        const inputValue = await pullDependency(inputKey);
         inputValues.push(inputValue);
 
         const inputIdentifier = lookupNodeIdentifier(tx, inputKey);
@@ -152,34 +281,37 @@ async function internalMaybeRecalculate(
             );
         }
         inputIdentifiers.push(inputIdentifier);
-
-        const inputCounter = await batch.counters.get(inputIdentifier);
-        if (inputCounter === undefined) {
-            throw new Error(
-                `Missing counter for input ${nodeIdentifierToString(inputIdentifier)} after pull`
-            );
-        }
-        currentInputCounters.push(inputCounter);
     }
 
-    const materializedDependencies = makeMaterializedDependencyAccumulator(
-        inputIdentifiers,
-        currentInputCounters
-    );
+    // inputIdentifiers are inputPositions (preserving duplicates for computor args).
+    // inputEdges are the normalized structural dependency-edge list.
+    const inputEdges = normalizeInputEdges(inputIdentifiers);
 
-    if (materializedDependencies.identifiers.length > 0 && oldValue !== undefined) {
-        const inputsRecord = await batch.inputs.get(nodeIdentifier);
-        if (inputsRecord && materializedInputsMatch(
-            inputsRecord,
-            materializedDependencies.identifiers,
-            materializedDependencies.counters
-        )) {
-            await incrementalGraph.storage.ensureMaterialized(
-                nodeIdentifier,
-                materializedDependencies.identifiers,
-                materializedDependencies.counters,
-                batch
-            );
+    // Cache predicate: reuse materialized value iff:
+    // 1. materialized value exists,
+    // 2. inputEdges is non-empty,
+    // 3. valid[D].has(N) for every D in inputEdges.
+    if (oldValue !== undefined && inputEdges.length > 0) {
+        if (await allValidityFlagsPresent(batch, nodeIdentifier, inputEdges)) {
+            const persistedInputs = await batch.inputs.get(nodeIdentifier);
+            if (persistedInputs === undefined) {
+                throw new Error(
+                    `Missing inputs record for node ${String(nodeDefinition.outputKey)}: ` +
+                    `a materialized node must have an inputs record`
+                );
+            }
+            if (!Array.isArray(persistedInputs)) {
+                throw new Error(
+                    `Malformed inputs record for node ${String(nodeDefinition.outputKey)}: ` +
+                    `expected NodeIdentifier[], got ${typeof persistedInputs}`
+                );
+            }
+            if (!arraysOfNodeIdentifiersEqual(persistedInputs, inputEdges)) {
+                throw new Error(
+                    `Corrupted inputs record for node ${String(nodeDefinition.outputKey)}: ` +
+                    `persisted inputs differ from schema-derived inputEdges`
+                );
+            }
             batch.freshness.put(nodeIdentifier, "up-to-date");
             return { value: oldValue, status: "cached" };
         }
@@ -198,32 +330,22 @@ async function internalMaybeRecalculate(
         );
     }
 
-    // Collect revdep diff — applied during darkroom finalization (per-replica)
+    // Collect revdep diff for darkroom finalization
     const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
-    const oldDependencies = (oldInputsRecord?.inputs ?? []).map(nodeIdentifierFromString);
+    const oldDependencies = readInputRecord(oldInputsRecord);
     reportRevdepDiff({
         dependant: nodeIdentifier,
         oldDependencies,
-        newDependencies: materializedDependencies.identifiers,
+        newDependencies: inputEdges,
     });
 
-    for (const inputIdentifier of materializedDependencies.identifiers) {
+    // Mark all dependencies as up-to-date
+    for (const inputIdentifier of inputEdges) {
         batch.freshness.put(inputIdentifier, "up-to-date");
     }
 
     if (isUnchanged(computedValue)) {
-        const oldCounter = await batch.counters.get(nodeIdentifier);
-        if (oldCounter === undefined) {
-            batch.counters.put(nodeIdentifier, 1);
-        }
-
-        await incrementalGraph.storage.ensureMaterialized(
-            nodeIdentifier,
-            materializedDependencies.identifiers,
-            materializedDependencies.counters,
-            batch
-        );
-        batch.freshness.put(nodeIdentifier, "up-to-date");
+        await handleUnchanged(incrementalGraph, nodeIdentifier, inputEdges, batch);
 
         const result = await batch.values.get(nodeIdentifier);
         if (result === undefined) {
@@ -232,33 +354,7 @@ async function internalMaybeRecalculate(
         return { value: result, status: "unchanged" };
     }
 
-    const oldCounter = await batch.counters.get(nodeIdentifier);
-    const newCounter = oldCounter !== undefined ? oldCounter + 1 : 1;
-    batch.counters.put(nodeIdentifier, newCounter);
-
-    const nowIso = incrementalGraph.datetime.now().toISOString();
-    if (oldCounter === undefined) {
-        batch.timestamps.put(nodeIdentifier, {
-            createdAt: nowIso,
-            modifiedAt: nowIso,
-        });
-    } else {
-        const existingTimestamp = await batch.timestamps.get(nodeIdentifier);
-        const createdAt =
-            existingTimestamp !== undefined
-                ? existingTimestamp.createdAt
-                : nowIso;
-        batch.timestamps.put(nodeIdentifier, { createdAt, modifiedAt: nowIso });
-    }
-
-    batch.values.put(nodeIdentifier, computedValue);
-    await incrementalGraph.storage.ensureMaterialized(
-        nodeIdentifier,
-        materializedDependencies.identifiers,
-        materializedDependencies.counters,
-        batch
-    );
-    batch.freshness.put(nodeIdentifier, "up-to-date");
+    await handleChanged(incrementalGraph, nodeIdentifier, inputEdges, computedValue, batch);
     return { value: computedValue, status: "changed" };
 }
 

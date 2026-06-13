@@ -1,4 +1,4 @@
-const { stringToNodeIdentifier } = require('./types');
+const { stringToNodeIdentifier, nodeIdentifierToString } = require('./types');
 const { compareNodeIdentifier } = require('./node_identifier');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 
@@ -19,7 +19,7 @@ async function unifyRevdeps(T, mergedInputsMap) {
 
     for (const [node, inputKeys] of mergedInputsMap) {
         for (const inputKey of inputKeys) {
-            const inputStr = String(inputKey);
+            const inputStr = nodeIdentifierToString(inputKey);
             const existing = desiredSets.get(inputStr);
             if (existing) {
                 existing.add(node);
@@ -38,7 +38,7 @@ async function unifyRevdeps(T, mergedInputsMap) {
     /** @type {Set<string>} */
     const targetKeys = new Set();
     for await (const key of T.revdeps.keys()) {
-        targetKeys.add(String(key));
+        targetKeys.add(nodeIdentifierToString(key));
     }
 
     /** @type {Array<*>} */

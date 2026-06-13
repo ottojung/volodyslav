@@ -24,7 +24,6 @@ const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
     nodeIdentifierToString,
-    stringToNodeIdentifier,
     makeTransactionIdentifierLookup,
     txAllocateNodeIdentifier,
     txNodeIdToKey,
@@ -43,13 +42,13 @@ const {
 /** @typedef {import('./database/root_database').FreshnessDatabase} FreshnessDatabase */
 /** @typedef {import('./database/root_database').InputsDatabase} InputsDatabase */
 /** @typedef {import('./database/root_database').RevdepsDatabase} RevdepsDatabase */
+/** @typedef {import('./database/root_database').ValidDatabase} ValidDatabase */
 /** @typedef {import('./database/root_database').CountersDatabase} CountersDatabase */
 /** @typedef {import('./database/root_database').TimestampsDatabase} TimestampsDatabase */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
-/** @typedef {import('./database/types').InputsRecord} InputsRecord */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database/identifier_lookup').TransactionIdentifierLookup} TransactionIdentifierLookup */
@@ -76,8 +75,9 @@ const {
  * @typedef {object} BatchBuilder
  * @property {BatchDatabaseOps<ComputedValue>} values - Node value storage.
  * @property {BatchDatabaseOps<Freshness>} freshness - Freshness storage.
- * @property {BatchDatabaseOps<InputsRecord>} inputs - Dependency metadata storage.
+ * @property {BatchDatabaseOps<NodeIdentifier[]>} inputs - Dependency metadata storage.
  * @property {BatchDatabaseOps<NodeIdentifier[]>} revdeps - Reverse dependency index.
+ * @property {BatchDatabaseOps<NodeIdentifier[]>} valid - Inverse validity flags.
  * @property {BatchDatabaseOps<Counter>} counters - Change counters.
  * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Creation/modification timestamps.
  */
@@ -105,14 +105,16 @@ const {
  * @property {FreshnessDatabase} freshness - Identifier-keyed freshness storage.
  * @property {InputsDatabase} inputs - Identifier-keyed input metadata storage.
  * @property {RevdepsDatabase} revdeps - Identifier-keyed reverse dependency index.
+ * @property {ValidDatabase} valid - Identifier-keyed inverse validity flags.
  * @property {CountersDatabase} counters - Identifier-keyed counters.
  * @property {TimestampsDatabase} timestamps - Identifier-keyed timestamps.
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
  * @property {<T>(fn: (tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<RevdepDiff>}>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
- * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
+ * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
  * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
  * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
  * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[] | null>} getInputs - Read a node's inputs inside the current batch.
+ * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} getValid - Read a node's valid set inside the current batch.
  * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List all materialized node identifiers.
  * @property {<T>(procedure: () => Promise<T>) => Promise<T>} withCommitSnapshot - Run a read while darkroom publication is paused.
  */
@@ -204,6 +206,7 @@ function createBatch(schemaStorage) {
         freshness: makeSublevelBatch(schemaStorage.freshness, operations),
         inputs: makeSublevelBatch(schemaStorage.inputs, operations),
         revdeps: makeSublevelBatch(schemaStorage.revdeps, operations),
+        valid: makeSublevelBatch(schemaStorage.valid, operations),
         counters: makeSublevelBatch(schemaStorage.counters, operations),
         timestamps: makeSublevelBatch(schemaStorage.timestamps, operations),
     };
@@ -220,20 +223,11 @@ function makeGraphStorage(rootDatabase, sleeper) {
     /**
      * @param {NodeIdentifier} node
      * @param {NodeIdentifier[]} inputs
-     * @param {number[]} inputCounters
      * @param {BatchBuilder} batch
      * @returns {Promise<void>}
      */
-    async function ensureMaterialized(node, inputs, inputCounters, batch) {
-        if (inputs.length !== inputCounters.length) {
-            throw new Error(
-                `ensureMaterialized: inputs length (${inputs.length}) must match inputCounters length (${inputCounters.length}) for node ${nodeIdentifierToString(node)}`
-            );
-        }
-        batch.inputs.put(node, {
-            inputs: inputs.map(nodeIdentifierToString),
-            inputCounters,
-        });
+    async function ensureMaterialized(node, inputs, batch) {
+        batch.inputs.put(node, inputs);
     }
 
     /**
@@ -280,7 +274,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
         if (record === undefined) {
             return null;
         }
-        return record.inputs.map((input) => stringToNodeIdentifier(input));
+        return record;
     }
 
     /**
@@ -299,6 +293,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
         get freshness() { return rootDatabase.getSchemaStorage().freshness; },
         get inputs() { return rootDatabase.getSchemaStorage().inputs; },
         get revdeps() { return rootDatabase.getSchemaStorage().revdeps; },
+        get valid() { return rootDatabase.getSchemaStorage().valid; },
         get counters() { return rootDatabase.getSchemaStorage().counters; },
         get timestamps() { return rootDatabase.getSchemaStorage().timestamps; },
         async withBatch(fn) {
@@ -445,6 +440,14 @@ function makeGraphStorage(rootDatabase, sleeper) {
         ensureReverseDepsIndexed,
         listDependents,
         getInputs,
+        /**
+         * @param {NodeIdentifier} node
+         * @param {BatchBuilder} batch
+         * @returns {Promise<NodeIdentifier[]>}
+         */
+        async getValid(node, batch) {
+            return (await batch.valid.get(node)) ?? [];
+        },
         listMaterializedNodes,
         withCommitSnapshot(procedure) {
             return darkroomActivity(sleeper, rootDatabase.currentReplicaName(), procedure);
@@ -453,7 +456,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
 }
 
 /**
- * Look up an existing identifier for a node key in the transaction's lookup.
  * Checks the overlay first, then falls through to the committed base.
  * Returns undefined if the node key is not found in either.
  * @param {Transaction} tx

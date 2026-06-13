@@ -244,7 +244,7 @@ describe("synchronizeNoLock", () => {
                 hostname: "alice",
                 entries: [
                     [`!x!!values!${aliceNodeIdentifier}`, { source: "alice" }],
-                    [aliceInputsKey, { inputs: [], inputCounters: [] }],
+                    [aliceInputsKey, []],
                     [aliceTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
                     ["!x!!global!identifiers_keys_map", [[aliceNodeIdentifier, aliceNodeArgs]]],
                 ],
@@ -285,7 +285,7 @@ describe("synchronizeNoLock", () => {
                 hostname: "bob",
                 entries: [
                     [`!x!!values!${bobNodeIdentifier}`, { source: "bob" }],
-                    [bobInputsKey, { inputs: [], inputCounters: [] }],
+                    [bobInputsKey, []],
                     [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
                     ["!x!!global!identifiers_keys_map", [[bobNodeIdentifier, bobNodeArgs]]],
                 ],
@@ -295,7 +295,7 @@ describe("synchronizeNoLock", () => {
                 entries: [
                                         ['!x!!global!version', "incompatible-version"],
                     ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
-                    ['!x!!inputs!{"head":"event","args":["zed"]}', { inputs: [], inputCounters: [] }],
+                    ['!x!!inputs!{"head":"event","args":["zed"]}', []],
                                         ['!x!!global!identifiers_keys_map', [['z-abcdefghi', '{"head":"event","args":["zed"]}']]],
                 ],
             },

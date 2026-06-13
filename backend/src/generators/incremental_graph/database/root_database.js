@@ -143,17 +143,10 @@ function assertNeverReplicaName(name) {
  */
 
 /**
- * A record storing the input dependencies of a node and their counters.
- * @typedef {object} InputsRecord
- * @property {string[]} inputs - Array of persisted input identifiers, kept in the original input order.
- * @property {number[]} inputCounters - Array of counter values for each input (required when inputs.length > 0)
- */
-
-/**
  * Database for storing node input dependencies.
  * Key: persisted node identifier
- * Value: inputs record with identifier-addressed dependencies
- * @typedef {GenericDatabase<InputsRecord, NodeIdentifier>} InputsDatabase
+ * Value: normalized structural dependency-edge list (NodeIdentifier[])
+ * @typedef {GenericDatabase<NodeIdentifier[], NodeIdentifier>} InputsDatabase
  */
 
 /**
@@ -178,6 +171,14 @@ function assertNeverReplicaName(name) {
  */
 
 /**
+ * Database for storing inverse validity flags.
+ * Key: persisted dependency identifier
+ * Value: sorted array of dependent identifiers whose current values have been
+ *        validated with respect to this dependency's current value
+ * @typedef {GenericDatabase<NodeIdentifier[], NodeIdentifier>} ValidDatabase
+ */
+
+/**
  * Database for storing replica-level global state.
  * Key: plain string (e.g., 'version', 'identifiers_keys_map', 'last_node_index', 'fingerprint')
  * Value: version string, identifier lookup metadata, last_node_index number, fingerprint string
@@ -192,6 +193,7 @@ function assertNeverReplicaName(name) {
  * @property {FreshnessDatabase} freshness - Node freshness state
  * @property {InputsDatabase} inputs - Node inputs index
  * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
+ * @property {ValidDatabase} valid - Inverse validity flags (dependency -> dependents validated against it)
  * @property {CountersDatabase} counters - Node counters (monotonic integers)
  * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
  * @property {GlobalVersionDatabase} global - Replica-level global state (version + identifiers lookup metadata)
@@ -243,10 +245,12 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<InputsRecord, NodeIdentifier>} */
+    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
+    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Counter, NodeIdentifier>} */
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
@@ -285,6 +289,7 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
         freshness: makeTypedDatabase(freshnessSublevel),
         inputs: makeTypedDatabase(inputsSublevel),
         revdeps: makeTypedDatabase(revdepsSublevel),
+        valid: makeTypedDatabase(validSublevel),
         counters: makeTypedDatabase(countersSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
         global: makeTypedDatabase(globalSublevel),

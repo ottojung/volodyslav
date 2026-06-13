@@ -100,14 +100,12 @@ function buildOldFormatFixture(snapshotDir) {
     writeJson(snapshotDir, 'rendered/r/freshness/node_b/arg2', 'up-to-date');
 
     // r/inputs/ — node_b/arg1 depends on node_a (old-format JSON reference)
-    writeJson(snapshotDir, 'rendered/r/inputs/node_a', { inputs: [], inputCounters: [] });
+    writeJson(snapshotDir, 'rendered/r/inputs/node_a', []);
     writeJson(snapshotDir, 'rendered/r/inputs/node_b/arg1', {
         inputs: ['{"head":"node_a","args":[]}'],
-        inputCounters: [1],
     });
     writeJson(snapshotDir, 'rendered/r/inputs/node_b/arg2', {
         inputs: ['{"head":"node_a","args":[]}'],
-        inputCounters: [1],
     });
 
     // r/counters/
@@ -259,7 +257,6 @@ describe('standalone migration script compatibility', () => {
         writeJson(tmpDir, 'rendered/r/freshness/test_node/arg%2Fwith%252Fslash', 'up-to-date');
         writeJson(tmpDir, 'rendered/r/inputs/test_node/arg%2Fwith%252Fslash', {
             inputs: [],
-            inputCounters: [],
         });
         writeJson(tmpDir, 'rendered/r/counters/test_node/arg%2Fwith%252Fslash', 1);
         writeJson(tmpDir, 'rendered/r/timestamps/test_node/arg%2Fwith%252Fslash', {
@@ -371,7 +368,7 @@ describe('standalone migration script compatibility', () => {
             writeJson(snapshotDir, 'rendered/r/global/version', OLD_VERSION_STRING);
             writeJson(snapshotDir, `rendered/r/values/${head}/${pathSuffix}`, { result: 'value' });
             writeJson(snapshotDir, `rendered/r/freshness/${head}/${pathSuffix}`, 'up-to-date');
-            writeJson(snapshotDir, `rendered/r/inputs/${head}/${pathSuffix}`, { inputs: [], inputCounters: [] });
+            writeJson(snapshotDir, `rendered/r/inputs/${head}/${pathSuffix}`, []);
             writeJson(snapshotDir, `rendered/r/counters/${head}/${pathSuffix}`, 1);
             writeJson(snapshotDir, `rendered/r/timestamps/${head}/${pathSuffix}`, {
                 createdAt: '2024-06-01T00:00:00.000Z',

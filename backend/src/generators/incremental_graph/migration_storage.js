@@ -3,7 +3,8 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { deserializeNodeKey, stringToNodeKeyString, unsafeStringToNodeIdentifier, IDENTIFIERS_KEY, makeNodeIdentifier } = require("./database");
+const { deserializeNodeKey, stringToNodeKeyString, IDENTIFIERS_KEY, makeNodeIdentifier } = require("./database");
+const { readInputRecord } = require("./database");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,
@@ -27,7 +28,7 @@ const {
  * @typedef {object} ReadableMigrationStorage
  * @property {{ get(nodeKey: NodeIdentifier): Promise<ComputedValue | undefined> }} values
  * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').Freshness | undefined> }} freshness
- * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/root_database').InputsRecord | undefined> }} inputs
+ * @property {{ get(nodeKey: NodeIdentifier): Promise<NodeIdentifier[] | undefined> }} inputs
  * @property {{ get(nodeKey: NodeIdentifier): Promise<NodeIdentifier[] | undefined> }} revdeps
  * @property {{ get(nodeKey: NodeIdentifier): Promise<number | undefined> }} counters
  * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').TimestampRecord | undefined> }} timestamps
@@ -105,7 +106,7 @@ async function readInputsRecord(nodeKey, prevStorage) {
     if (!record) {
         throw makeMissingDependencyMetadataError(nodeKey);
     }
-    return record.inputs.map(unsafeStringToNodeIdentifier);
+    return readInputRecord(record);
 }
 
 /**

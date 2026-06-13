@@ -17,10 +17,6 @@ const {
     createNodeKeyFromPattern,
     serializeNodeKey,
 } = require("../src/generators/incremental_graph/database/node_key");
-const {
-    nodeIdentifierFromString,
-    nodeIdentifierToString,
-} = require("../src/generators/incremental_graph/database");
 const { functor } = require("../src/generators/incremental_graph/expr");
 const { isJsonKey } = require("./test_json_key_helper");
 const {
@@ -104,20 +100,18 @@ function makeSemanticStorage(graph) {
                     return undefined;
                 }
                 if (databaseName === "inputs") {
-                    return {
-                        inputs: value.inputs.map((inputIdentifier) => {
-                            const nodeKey = graph.rootDatabase.nodeIdToKey(
-                                nodeIdentifierFromString(inputIdentifier)
+                    const inputIds = value;
+                    return inputIds.map((inputIdentifier) => {
+                        const nodeKey = graph.rootDatabase.nodeIdToKey(
+                            inputIdentifier
+                        );
+                        if (nodeKey === undefined) {
+                            throw new Error(
+                                `Missing semantic node key for input identifier ${String(inputIdentifier)} in get() for parent key ${String(key)} (json key ${String(jsonKey)})`
                             );
-                            if (nodeKey === undefined) {
-                                throw new Error(
-                                    `Missing semantic node key for input identifier ${String(inputIdentifier)} in get() for parent key ${String(key)} (json key ${String(jsonKey)})`
-                                );
-                            }
-                            return String(nodeKey);
-                        }),
-                        inputCounters: value.inputCounters,
-                    };
+                        }
+                        return String(nodeKey);
+                    });
                 }
                 if (databaseName === "revdeps") {
                     return value.map((nodeIdentifierValue) => {
@@ -141,18 +135,14 @@ function makeSemanticStorage(graph) {
                         jsonKey
                     );
                     if (databaseName === "inputs") {
-                        tx.batch.inputs.put(nodeIdentifier, {
-                            inputs: value.inputs.map((inputKey) =>
-                                nodeIdentifierToString(
-                                    getOrAllocateNodeIdentifierForTest(
-                                        tx,
-                                        graph.rootDatabase,
-                                        toJsonKey(inputKey)
-                                    )
-                                )
-                            ),
-                            inputCounters: value.inputCounters,
-                        });
+                        const inputKeys = value;
+                        tx.batch.inputs.put(nodeIdentifier, inputKeys.map((inputKey) =>
+                            getOrAllocateNodeIdentifierForTest(
+                                tx,
+                                graph.rootDatabase,
+                                toJsonKey(inputKey)
+                            )
+                        ));
                         return { value: undefined, revdepDiffs: [] };
                     }
                     if (databaseName === "revdeps") {
@@ -193,8 +183,8 @@ function makeSemanticStorage(graph) {
         revdeps: makeDatabase("revdeps"),
         counters: makeDatabase("counters"),
         timestamps: makeDatabase("timestamps"),
-        async ensureMaterialized(node, inputs, inputCounters, batch) {
-            batch.inputs.put(node, { inputs, inputCounters });
+        async ensureMaterialized(node, inputs, batch) {
+            batch.inputs.put(node, inputs);
         },
         async ensureReverseDepsIndexed(node, inputs, batch) {
             for (const input of inputs) {
@@ -215,7 +205,7 @@ function makeSemanticStorage(graph) {
         },
         async getInputs(node, batch) {
             const record = await batch.inputs.get(node);
-            return record ? record.inputs : null;
+            return record ?? null;
         },
         async withBatch(run) {
             return await graph.storage.withTransaction(async (tx) => {
@@ -229,18 +219,14 @@ function makeSemanticStorage(graph) {
                             const nodeIdentifier =
                                 getOrAllocateNodeIdentifierForTest(tx, graph.rootDatabase, jsonKey);
                             if (databaseName === "inputs") {
-                                tx.batch.inputs.put(nodeIdentifier, {
-                                    inputs: value.inputs.map((inputKey) =>
-                                        nodeIdentifierToString(
-                                            getOrAllocateNodeIdentifierForTest(
-                                                tx,
-                                                graph.rootDatabase,
-                                                toJsonKey(inputKey)
-                                            )
-                                        )
-                                    ),
-                                    inputCounters: value.inputCounters,
-                                });
+                                const inputKeys = value;
+                                tx.batch.inputs.put(nodeIdentifier, inputKeys.map((inputKey) =>
+                                    getOrAllocateNodeIdentifierForTest(
+                                        tx,
+                                        graph.rootDatabase,
+                                        toJsonKey(inputKey)
+                                    )
+                                ));
                                 return;
                             }
                             if (databaseName === "revdeps") {
@@ -279,17 +265,12 @@ function makeSemanticStorage(graph) {
                                 return undefined;
                             }
                             if (databaseName === "inputs") {
-                                return {
-                                    inputs: value.inputs.map((inputIdentifier) =>
-                                        String(
-                                            requireNodeKey(
-                                                tx,
-                                                nodeIdentifierFromString(inputIdentifier)
-                                            )
-                                        )
-                                    ),
-                                    inputCounters: value.inputCounters,
-                                };
+                                const inputIds = value;
+                                return inputIds.map((inputIdentifier) =>
+                                    String(
+                                        requireNodeKey(tx, inputIdentifier)
+                                    )
+                                );
                             }
                             if (databaseName === "revdeps") {
                                 return value.map((dependentIdentifier) =>

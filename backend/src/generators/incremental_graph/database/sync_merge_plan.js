@@ -2,6 +2,8 @@ const { topologicalSortFromMap } = require('./topo_sort');
 const { compareIsoTimestamps } = require('./sync_merge_timestamps');
 const { makeIdentifierLookup } = require('./identifier_lookup');
 const { IdentifierLookupConflictError } = require('./replica_errors');
+const { readInputRecord } = require('./input_record');
+const { nodeIdentifierToString } = require('./types');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -18,10 +20,11 @@ const { IdentifierLookupConflictError } = require('./replica_errors');
 async function semanticInputs(storage, lookup, identifier) {
     const record = await storage.inputs.get(identifier);
     if (record === undefined) return [];
-    return record.inputs.map(input => {
-        const nodeKey = lookup.idToKey.get(String(input));
+    const inputIds = readInputRecord(record);
+    return inputIds.map(input => {
+        const nodeKey = lookup.idToKey.get(nodeIdentifierToString(input));
         if (nodeKey === undefined) {
-            throw new IdentifierLookupConflictError(`Input identifier ${String(input)} is absent from identifiers_keys_map`);
+            throw new IdentifierLookupConflictError(`Input identifier ${nodeIdentifierToString(input)} is absent from identifiers_keys_map`);
         }
         return nodeKey;
     });
@@ -183,12 +186,28 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             return inputId;
         });
         mergedInputsMap.set(finalId, finalInputIds);
-        const sourceInputIds = sourceInputs?.inputs ?? [];
+        const sourceInputIds = readInputRecord(sourceInputs);
         if (
-            sourceInputIds.length !== finalInputIds.length ||
-            sourceInputIds.some((inputId, index) => String(inputId) !== String(finalInputIds[index]))
+            sourceInputIds.length !== finalInputIds.length
         ) {
             directlyReloweredNodes.add(nodeKey);
+        } else {
+            let mismatched = false;
+            for (let idx = 0; idx < sourceInputIds.length; idx++) {
+                const sId = sourceInputIds[idx];
+                const fId = finalInputIds[idx];
+                if (sId === undefined || fId === undefined) {
+                    mismatched = true;
+                    break;
+                }
+                if (nodeIdentifierToString(sId) !== nodeIdentifierToString(fId)) {
+                    mismatched = true;
+                    break;
+                }
+            }
+            if (mismatched) {
+                directlyReloweredNodes.add(nodeKey);
+            }
         }
     }
 
@@ -199,12 +218,12 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     );
     for (const identifier of topologicalSortFromMap(mergedInputsMap)) {
         const inputs = mergedInputsMap.get(identifier) ?? [];
-        if (inputs.some(input => invalidatedIdentifiers.has(String(input)))) {
-            invalidatedIdentifiers.add(String(identifier));
-            const nodeKey = finalIdentifierLookup.idToKey.get(String(identifier));
+        if (inputs.some(input => invalidatedIdentifiers.has(nodeIdentifierToString(input)))) {
+            invalidatedIdentifiers.add(nodeIdentifierToString(identifier));
+            const nodeKey = finalIdentifierLookup.idToKey.get(nodeIdentifierToString(identifier));
             if (nodeKey === undefined) {
                 throw new IdentifierLookupConflictError(
-                    `Missing semantic key for invalidated identifier ${String(identifier)}`
+                    `Missing semantic key for invalidated identifier ${nodeIdentifierToString(identifier)}`
                 );
             }
             reloweringInvalidatedNodes.add(nodeKey);

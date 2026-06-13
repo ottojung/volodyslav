@@ -1,6 +1,6 @@
 /**
- * Tests for incremental graph counter-based optimization.
- * These tests verify that nodes can skip recomputation when input counters haven't changed.
+ * Tests for incremental graph recomputation and caching behavior.
+ * These tests verify that nodes recompute when stale and cache-hit when valid.
  */
 
 const path = require("path");
@@ -36,7 +36,7 @@ function getTestCapabilities() {
 }
 
 describe("generators/incremental_graph counters", () => {
-    describe("Counter-based optimization", () => {
+    describe("Recomputation behavior", () => {
         test("skips recomputation when input returns Unchanged (counter doesn't change)", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
@@ -171,7 +171,7 @@ describe("generators/incremental_graph counters", () => {
             await db.close();
         });
 
-        test("multi-input counter snapshot comparison", async () => {
+        test("multi-input recomputation and cache hit", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -224,7 +224,7 @@ describe("generators/incremental_graph counters", () => {
 
             // Don't change anything, just pull again
             await graph.pull("a");
-            expect(aComputes).toBe(2); // Should NOT recompute (counters match snapshot)
+            expect(aComputes).toBe(2); // recomputed (source value changed)
 
             await db.close();
         });
@@ -269,13 +269,14 @@ describe("generators/incremental_graph counters", () => {
             // Invalidate derived by marking it potentially-outdated
             await storage.freshness.put(toJsonKey("derived", []), "potentially-outdated");
 
-            // Now trying to pull derived should throw because src's counter is missing
-            await expect(graph.pull("derived")).rejects.toThrow();
+            // Now trying to pull derived should succeed (counters are not used for cache validation)
+            const result = await graph.pull("derived");
+            expect(result).toBeTruthy();
 
             await db.close();
         });
 
-        test("enforces invariants - missing inputCounters throws error", async () => {
+        test("stores inputs as plain identifier array", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -307,27 +308,22 @@ describe("generators/incremental_graph counters", () => {
             await graph.invalidate("src");
             await graph.pull("derived");
 
-            // Manually corrupt the database by removing inputCounters from derived's InputsRecord
             const storage = makeSemanticStorage(graph);
             const derivedKey = toJsonKey("derived", []);
-            const inputsRecord = await storage.inputs.get(derivedKey);
-            if (inputsRecord) {
-                // Remove inputCounters field
-                delete inputsRecord.inputCounters;
-                await storage.inputs.put(derivedKey, inputsRecord);
-            }
+            const inputs = await storage.inputs.get(derivedKey);
+            expect(inputs).toBeTruthy();
+            // Inputs should be a plain array of semantic key strings
+            expect(Array.isArray(inputs)).toBe(true);
+            expect(Array.isArray(inputs)).toBe(true);
 
-            // Invalidate derived
-            srcCell.value = { type: "all_events", events: [2] };
-            await graph.invalidate("src");
-
-            // Now trying to pull derived should throw because inputCounters is missing
-            await expect(graph.pull("derived")).rejects.toThrow();
+            // Pull again: should cache-hit
+            const result = await graph.pull("derived");
+            expect(result).toBeTruthy();
 
             await db.close();
         });
 
-        test("recomputes when InputsRecord input list changes", async () => {
+        test("recomputes when stored input list differs from schema", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -375,37 +371,25 @@ describe("generators/incremental_graph counters", () => {
             expect(resultV1.meta_events[0].value).toBe(3);
             expect(resultV1.meta_events[0].source).toBe("A");
 
-            // Now manually corrupt the InputsRecord to point to sourceB instead
-            // This simulates a database corruption scenario
+            // Manually corrupt stored inputs to point to sourceB instead
             const storage = makeSemanticStorage(graph);
             const derivedKey = toJsonKey("derived", []);
             const sourceBKey = toJsonKey("sourceB", []);
             
-            // Get sourceB's counter
-            const sourceBCounter = await storage.counters.get(sourceBKey);
-            
-            // Corrupt the InputsRecord
-            await storage.inputs.put(derivedKey, {
-                inputs: [sourceBKey], // Changed to sourceB!
-                inputCounters: [sourceBCounter]
-            });
+            await storage.inputs.put(derivedKey, [sourceBKey]);
             
             // Mark derived as potentially-outdated
             await storage.freshness.put(derivedKey, "potentially-outdated");
 
-            // When we pull derived, it should detect the mismatch, skip counter optimization,
-            // and recompute using the correct inputs from the schema (sourceA)
-            const resultV2 = await graph.pull("derived");
-            
-            // Result should be correct according to schema (sourceA with 3 events)
-            // Not corrupted data (sourceB with 2 events)
-            expect(resultV2.meta_events[0].value).toBe(3);
-            expect(resultV2.meta_events[0].source).toBe("A");
+            // Corrupted inputs are detected and cause a loud failure
+            await expect(graph.pull("derived")).rejects.toThrow(
+                /corrupted inputs record/i
+            );
 
             await db.close();
         });
 
-        test("recomputes when stored input list doesn't match current schema", async () => {
+        test("malformed persisted inputs cause loud failure", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -444,27 +428,19 @@ describe("generators/incremental_graph counters", () => {
             await graph.invalidate("sourceB");
             await graph.pull("derived");
 
-            // Manually corrupt the InputsRecord to have wrong inputs
-            // This simulates a database corruption or bug scenario
+            // Manually corrupt stored inputs to have wrong entries
             const storage = makeSemanticStorage(graph);
             const derivedKey = toJsonKey("derived", []);
             
-            // Corrupt the InputsRecord to point to sourceB instead of sourceA
-            await storage.inputs.put(derivedKey, {
-                inputs: [toJsonKey("sourceB", [])], // Wrong input!
-                inputCounters: [1]
-            });
+            await storage.inputs.put(derivedKey, [toJsonKey("sourceB", [])]);
             
             // Mark derived as potentially-outdated to trigger validation
             await storage.freshness.put(derivedKey, "potentially-outdated");
 
-            // When pulling, system should detect mismatch, skip counter optimization,
-            // and recompute with correct inputs from schema (sourceA)
-            const result = await graph.pull("derived");
-            
-            // Result should be correct: sourceA (10) * 2 = 20
-            // Not sourceB (20) * 2 = 40
-            expect(result.value).toBe(20);
+            // Corrupted inputs are detected and cause a loud failure
+            await expect(graph.pull("derived")).rejects.toThrow(
+                /corrupted inputs record/i
+            );
 
             await db.close();
         });
