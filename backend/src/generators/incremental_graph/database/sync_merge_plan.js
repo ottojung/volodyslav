@@ -218,12 +218,12 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     );
     for (const identifier of topologicalSortFromMap(mergedInputsMap)) {
         const inputs = mergedInputsMap.get(identifier) ?? [];
-        if (inputs.some(input => invalidatedIdentifiers.has(String(input)))) {
-            invalidatedIdentifiers.add(String(identifier));
-            const nodeKey = finalIdentifierLookup.idToKey.get(String(identifier));
+        if (inputs.some(input => invalidatedIdentifiers.has(nodeIdentifierToString(input)))) {
+            invalidatedIdentifiers.add(nodeIdentifierToString(identifier));
+            const nodeKey = finalIdentifierLookup.idToKey.get(nodeIdentifierToString(identifier));
             if (nodeKey === undefined) {
                 throw new IdentifierLookupConflictError(
-                    `Missing semantic key for invalidated identifier ${String(identifier)}`
+                    `Missing semantic key for invalidated identifier ${nodeIdentifierToString(identifier)}`
                 );
             }
             reloweringInvalidatedNodes.add(nodeKey);
