@@ -294,7 +294,19 @@ async function internalMaybeRecalculate(
     if (oldValue !== undefined && inputEdges.length > 0) {
         if (await allValidityFlagsPresent(batch, nodeIdentifier, inputEdges)) {
             const persistedInputs = await batch.inputs.get(nodeIdentifier);
-            if (persistedInputs !== undefined && !arraysOfNodeIdentifiersEqual(persistedInputs, inputEdges)) {
+            if (persistedInputs === undefined) {
+                throw new Error(
+                    `Missing inputs record for node ${String(nodeDefinition.outputKey)}: ` +
+                    `a materialized node must have an inputs record`
+                );
+            }
+            if (!Array.isArray(persistedInputs)) {
+                throw new Error(
+                    `Malformed inputs record for node ${String(nodeDefinition.outputKey)}: ` +
+                    `expected NodeIdentifier[], got ${typeof persistedInputs}`
+                );
+            }
+            if (!arraysOfNodeIdentifiersEqual(persistedInputs, inputEdges)) {
                 throw new Error(
                     `Corrupted inputs record for node ${String(nodeDefinition.outputKey)}: ` +
                     `persisted inputs differ from schema-derived inputEdges`

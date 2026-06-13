@@ -1052,6 +1052,51 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
         });
     });
 
+    // === Test: Cache hit with missing inputs fails loudly ===
+    describe("cache hit with missing inputs record", () => {
+        it("throws when valid flags exist but persisted inputs record is missing", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const midKey = makeNodeStorageKey("middle", binding);
+
+            // Materialize — valid flags and inputs are written correctly
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+
+            const midId = db.nodeKeyToId(midKey);
+
+            // Verify valid[source].has(middle) exists
+            const srcKey = makeNodeStorageKey("source");
+            const srcId = db.nodeKeyToId(srcKey);
+            const validSrc = db._readSublevel('valid', srcId);
+            expect(validSrc.some(id => id === nodeIdentifierToString(midId))).toBe(true);
+
+            // Delete the inputs record for middle
+            const schemaStorage = db.getSchemaStorage();
+            await schemaStorage.inputs.del(midId);
+
+            // Verify inputs record is gone
+            expect(db._readSublevel('inputs', midId)).toBeUndefined();
+
+            // Set freshness to potentially-outdated directly.
+            // Cannot use graph.invalidate() because it checks inputs existence
+            // and silently skips when inputs are missing.
+            await schemaStorage.freshness.put(midId, "potentially-outdated");
+
+            // Pull middle — cache predicate fires (valid[source].has(middle) exists),
+            // but inputs record is missing → must throw
+            await expect(graph.pull("middle", binding)).rejects.toThrow(
+                /missing inputs record/i
+            );
+        });
+    });
+
     // === Test: Malformed inputs fail loudly ===
     describe("malformed inputs records", () => {
         /**
@@ -1112,5 +1157,41 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
                 /malformed inputs record/i
             );
         });
+
+        it("throws when malformed inputs are in the cache-hit path", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const midKey = makeNodeStorageKey("middle", binding);
+
+            // Materialize — valid flags and inputs are written correctly
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+
+            const midId = db.nodeKeyToId(midKey);
+
+            // Verify valid flags exist that would allow a cache hit
+            const srcKey = makeNodeStorageKey("source");
+            const srcId = db.nodeKeyToId(srcKey);
+            expect(db._readSublevel('valid', srcId).some(id => id === nodeIdentifierToString(midId))).toBe(true);
+
+            // Replace inputs record with old-format object on middle
+            const schemaStorage = db.getSchemaStorage();
+            await schemaStorage.inputs.put(midId, { inputs: [], inputCounters: {} });
+
+            // Directly invalidate middle without touching source's valid flags
+            await graph.invalidate("middle", binding);
+
+            // Cache predicate fires (valid flags exist), Array.isArray check rejects the object
+            await expect(graph.pull("middle", binding)).rejects.toThrow(
+                /malformed inputs record/i
+            );
+        });
     });
+
 });
