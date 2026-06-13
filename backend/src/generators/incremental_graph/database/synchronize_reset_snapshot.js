@@ -2,10 +2,11 @@ const path = require('path');
 const { transaction } = require('../../../gitstore');
 const {
     CHECKPOINT_WORKING_PATH,
+    DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
 } = require('./gitstore');
 const { makeRootDatabase } = require('./root_database');
-const { scanSublevelFromSnapshot } = require('./render');
+const { scanFromFilesystem } = require('./render');
 const { requireValidFingerprint } = require('./fingerprint');
 
 /** @typedef {import('./synchronize').Capabilities} Capabilities */
@@ -19,19 +20,27 @@ const { requireValidFingerprint } = require('./fingerprint');
  * @returns {Promise<boolean>}
  */
 async function importResetSnapshotIntoDatabase(capabilities, database, workTree, isExistingDb) {
-    const snapshotRoot = workTree;
-    const rDir = path.join(snapshotRoot, 'kindtree', 'r');
+    const snapshotRoot = path.join(workTree, DATABASE_SUBPATH);
+    const rDir = path.join(snapshotRoot, 'r');
     const nextReplica = database.otherReplicaName();
 
     const hasSnapshotReplicaDirectory = await capabilities.checker.directoryExists(rDir);
+    const importDirectory = hasSnapshotReplicaDirectory
+        ? rDir
+        : path.join(workTree, DATABASE_SUBPATH, '_empty_reset_snapshot');
+
+    if (!hasSnapshotReplicaDirectory) {
+        await capabilities.creator.createDirectory(importDirectory);
+    }
 
     const preImportFingerprint = database.getFingerprint();
 
-    await scanSublevelFromSnapshot(capabilities, database, {
-        snapshotRoot,
-        targetSublevel: nextReplica,
-        snapshotSublevel: 'r',
-    });
+    await scanFromFilesystem(
+        capabilities,
+        database,
+        importDirectory,
+        nextReplica
+    );
 
     const targetGlobal = database.replicaGlobalSublevel(nextReplica);
     if (hasSnapshotReplicaDirectory) {

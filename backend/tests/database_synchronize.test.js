@@ -7,7 +7,6 @@ const {
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
     keyToRelativePath,
-    projectExplodedJsonValue,
 } = require("../src/generators/incremental_graph/database");
 const defaultBranch = require("../src/gitstore/default_branch");
 const { getMockedRootCapabilities } = require("./spies");
@@ -62,15 +61,10 @@ async function seedHostnameBranchWithRenderedFiles(capabilities, renderedFiles) 
         await capabilities.git.call("init", "--bare", "--", remotePath);
         await capabilities.git.call("init", "--initial-branch", branch, "--", workTree);
         for (const file of renderedFiles) {
-            const value = JSON.parse(file.content);
-            const projection = projectExplodedJsonValue(value);
-            const schemaFile = await capabilities.creator.createFile(path.join(workTree, 'kindtree', file.path));
-            await capabilities.writer.writeFile(schemaFile, projection.schemaText);
-            for (const leaf of projection.leaves) {
-                const renderedPath = leaf.descendantPath === '' ? file.path : `${file.path}/${leaf.descendantPath}`;
-                const created = await capabilities.creator.createFile(path.join(workTree, 'rendered', renderedPath));
-                await capabilities.writer.writeFile(created, leaf.content);
-            }
+            const created = await capabilities.creator.createFile(
+                path.join(workTree, DATABASE_SUBPATH, file.path)
+            );
+            await capabilities.writer.writeFile(created, file.content);
         }
         await capabilities.git.call("-C", workTree, "add", "--all");
         await capabilities.git.call(
@@ -138,11 +132,10 @@ describe("synchronizeNoLock", () => {
             const renderedFile = path.join(
                 clonedRemote,
                 DATABASE_SUBPATH,
-                ...renderedKeyPath(eventKey).split("/"),
-                "source"
+                ...renderedKeyPath(eventKey).split("/")
             );
             expect(await capabilities.reader.readFileAsText(renderedFile)).toBe(
-                "local"
+                JSON.stringify({ source: "local" }, null, 2)
             );
             expect(
                 await capabilities.checker.directoryExists(
@@ -354,7 +347,7 @@ describe("synchronizeNoLock", () => {
 
         expect(isSyncMergeAggregateError(error)).toBe(true);
         expect(error.message).toContain("prismo");
-        expect(error.message).toContain("Missing identifiers_keys_map");
+        expect(error.message).toContain("input directory does not exist");
     });
 
     test("resetToHostname succeeds even when snapshot omits _meta/current_replica", async () => {

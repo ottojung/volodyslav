@@ -1,7 +1,7 @@
 const path = require("path");
 const {
+    DATABASE_SUBPATH,
     keyToRelativePath,
-    projectExplodedJsonValue,
 } = require("../src/generators/incremental_graph/database");
 
 /** @typedef {import("../src/capabilities/root").Capabilities} Capabilities */
@@ -109,16 +109,13 @@ async function writeRenderedEntries(capabilities, workTree, entries) {
     }
 
     for (const [key, value] of entriesToWrite) {
-        if (key === CURRENT_REPLICA_META_KEY) continue;
-        const valueRoot = renderedKeyPath(key);
-        const projection = projectExplodedJsonValue(value);
-        const schemaFile = await capabilities.creator.createFile(path.join(workTree, 'kindtree', ...valueRoot.split('/')));
-        await capabilities.writer.writeFile(schemaFile, projection.schemaText);
-        for (const leaf of projection.leaves) {
-            const leafPath = leaf.descendantPath === '' ? valueRoot : `${valueRoot}/${leaf.descendantPath}`;
-            const renderedFile = await capabilities.creator.createFile(path.join(workTree, 'rendered', ...leafPath.split('/')));
-            await capabilities.writer.writeFile(renderedFile, leaf.content);
-        }
+        const filePath = path.join(
+            workTree,
+            DATABASE_SUBPATH,
+            ...renderedKeyPath(key).split("/")
+        );
+        const file = await capabilities.creator.createFile(filePath);
+        await capabilities.writer.writeFile(file, JSON.stringify(value, null, 2));
     }
 }
 
@@ -166,7 +163,6 @@ async function pushRemoteBranch(capabilities, remotePath, branch) {
             "-c",
             "user.email=test@example.com",
             "commit",
-            "--allow-empty",
             "-m",
             `Seed ${branchName}`
         );

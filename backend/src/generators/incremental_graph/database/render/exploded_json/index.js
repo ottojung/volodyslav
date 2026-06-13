@@ -1,9 +1,0 @@
-const { projectExplodedJsonValue, scanExplodedJsonProjection } = require('./value_codec');
-const { parseTypeSchema, formatTypeSchema, validateTypeSchema } = require('./schema_codec');
-const { encodeObjectKeySegment, decodeObjectKeySegment } = require('./path_codec');
-const errors = require('./errors');
-const { projectValueRootToVirtualFiles } = require('./projection');
-const virtualFileKey = require('./virtual_file_key');
-const { makeDbToPairedFsAdapter } = require('./db_to_paired_fs');
-const { makePairedFsToDbAdapter } = require('./paired_fs_to_db');
-module.exports = { makeDbToPairedFsAdapter, makePairedFsToDbAdapter, projectValueRootToVirtualFiles, ...virtualFileKey, projectExplodedJsonValue, scanExplodedJsonProjection, parseTypeSchema, formatTypeSchema, validateTypeSchema, encodeObjectKeySegment, decodeObjectKeySegment, ...errors };

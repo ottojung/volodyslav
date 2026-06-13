@@ -2,14 +2,13 @@
  * Gitstore integration for the incremental-graph database.
  *
  * The live LevelDB now lives outside the Git repository.  The repository tracks
- * a paired filesystem snapshot of the database instead:
+ * a rendered filesystem snapshot of the database instead:
  *
  *   <workingDirectory>/
  *     generators-leveldb/           ← live LevelDB working directory
- *     generators-database/          ← git working tree (paired snapshot root)
+ *     generators-database/          ← git working tree
  *       .git/
- *       kindtree/                   ← schema files (one per value root)
- *       rendered/                   ← primitive leaf files (managed sibling tree)
+ *       rendered/                   ← rendered filesystem snapshot tracked by git
  *
  * Callers create snapshots by rendering the live database into the tracked
  * snapshot directory inside a checkpointSession. If nothing has changed
@@ -29,7 +28,7 @@
 const path = require('path');
 const gitstore = require('../../../gitstore');
 const { checkpointSession } = gitstore;
-const { renderSublevelToSnapshot } = require('./render');
+const { renderToFilesystem } = require('./render');
 
 /** @typedef {import('../../../gitstore/transaction_retry').RemoteLocation} RemoteLocation */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
@@ -69,17 +68,14 @@ const { renderSublevelToSnapshot } = require('./render');
 
 /**
  * Path (relative to `workingDirectory()`) of the git repository that stores the
- * paired database snapshot. This directory is the snapshot root.
- * A non-empty paired snapshot stores managed content in sibling trees
- * `kindtree/` and `rendered/` under this root.
+ * rendered database snapshot.
  * @type {string}
  */
 const CHECKPOINT_WORKING_PATH = "generators-database";
 
 /**
- * Subdirectory name inside `CHECKPOINT_WORKING_PATH` for the rendered
- * primitive leaf files. This is a managed content tree under the snapshot root,
- * not the snapshot root itself. The snapshot root is `CHECKPOINT_WORKING_PATH`.
+ * Subdirectory name inside `CHECKPOINT_WORKING_PATH` where the rendered
+ * filesystem snapshot is written and tracked by git.
  * @type {string}
  */
 const DATABASE_SUBPATH = "rendered";
@@ -91,8 +87,6 @@ const DATABASE_SUBPATH = "rendered";
 const LIVE_DATABASE_WORKING_PATH = "generators-leveldb";
 
 /**
- * Returns the path to the rendered-tree root inside the checkpoint snapshot.
- * This is not the snapshot root; the snapshot root is `pathToDatabaseSnapshotRoot()`.
  * @param {{ environment: Environment }} capabilities
  * @returns {string}
  */
@@ -100,21 +94,7 @@ function pathToRenderedDatabase(capabilities) {
     return path.join(
         capabilities.environment.workingDirectory(),
         CHECKPOINT_WORKING_PATH,
-        'rendered'
-    );
-}
-
-/**
- * Returns the path to the checkpoint snapshot root directory (the git working
- * tree). A non-empty paired snapshot stores managed content in sibling trees
- * `kindtree/` and `rendered/` under this root.
- * @param {{ environment: Environment }} capabilities
- * @returns {string}
- */
-function pathToDatabaseSnapshotRoot(capabilities) {
-    return path.join(
-        capabilities.environment.workingDirectory(),
-        CHECKPOINT_WORKING_PATH
+        DATABASE_SUBPATH
     );
 }
 
@@ -132,14 +112,12 @@ function pathToLiveDatabase(capabilities) {
 /**
  * Record the current rendered state of the database as a git commit.
  *
- * The rendered snapshot is written into `generators-database/` inside
- * a gitstore transaction. The active replica is rendered under snapshot
- * sublevel `r/` so that the snapshot always reflects the current live data
- * regardless of which replica is active. The paired snapshot stores sibling
- * managed trees `kindtree/` and `rendered/` under the checkpoint root.
- * If no files have changed since the last commit, the call is a no-op
- * (no empty commit is created). The git repository is created automatically
- * on the first call.
+ * The rendered snapshot is written into `generators-database/rendered/` inside
+ * a gitstore transaction. The active replica is rendered under `r/` so that
+ * the snapshot always reflects the current live data regardless of which
+ * replica is active. If no files have changed since the last commit, the
+ * call is a no-op (no empty commit is created). The git repository is created
+ * automatically on the first call.
  *
  * @param {CheckpointCapabilities} capabilities
  * @param {string} message - The git commit message.
@@ -179,10 +157,11 @@ async function checkpointDatabase(
             async ({ workDir, commit }) => {
                 capabilities.logger.logDebug({ message }, "Rendering database snapshot for checkpoint");
                 const activeReplica = database.currentReplicaName();
-                await renderSublevelToSnapshot(
+                await renderToFilesystem(
                     capabilities,
                     database,
-                    { snapshotRoot: workDir, sourceSublevel: activeReplica, snapshotSublevel: 'r' }
+                    path.join(workDir, DATABASE_SUBPATH, 'r'),
+                    activeReplica
                 );
                 capabilities.logger.logDebug({ message }, "Rendered database snapshot for checkpoint, committing");
                 await commit(message);
@@ -236,21 +215,23 @@ async function checkpointMigration(
         "empty",
         async ({ workDir, commit }) => {
             capabilities.logger.logDebug({ preMessage, postMessage }, "Rendering pre-migration database snapshot");
-            await renderSublevelToSnapshot(
-                    capabilities,
-                    rootDatabase,
-                    { snapshotRoot: workDir, sourceSublevel: rootDatabase.currentReplicaName(), snapshotSublevel: 'r' }
-                );
+            await renderToFilesystem(
+                capabilities,
+                rootDatabase,
+                path.join(workDir, DATABASE_SUBPATH, 'r'),
+                rootDatabase.currentReplicaName()
+            );
             capabilities.logger.logDebug({ preMessage, postMessage }, "Committing pre-migration snapshot");
             await commit(preMessage);
             capabilities.logger.logDebug({ preMessage, postMessage }, "Pre-migration snapshot committed, running migration callback");
             const result = await callback();
             capabilities.logger.logDebug({ preMessage, postMessage }, "Migration callback complete, rendering post-migration database snapshot");
-            await renderSublevelToSnapshot(
-                    capabilities,
-                    rootDatabase,
-                    { snapshotRoot: workDir, sourceSublevel: rootDatabase.currentReplicaName(), snapshotSublevel: 'r' }
-                );
+            await renderToFilesystem(
+                capabilities,
+                rootDatabase,
+                path.join(workDir, DATABASE_SUBPATH, 'r'),
+                rootDatabase.currentReplicaName()
+            );
             capabilities.logger.logDebug({ preMessage, postMessage }, "Committing post-migration snapshot");
             await commit(postMessage);
             capabilities.logger.logDebug({ preMessage, postMessage }, "Post-migration snapshot committed");
@@ -268,6 +249,5 @@ module.exports = {
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
     pathToRenderedDatabase,
-    pathToDatabaseSnapshotRoot,
     pathToLiveDatabase,
 };

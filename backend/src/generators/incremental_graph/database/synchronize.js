@@ -19,11 +19,12 @@ const { parseRemoteHostnameBranch } = require('../../../hostname');
 const {
     checkpointDatabase,
     CHECKPOINT_WORKING_PATH,
+    DATABASE_SUBPATH,
 } = require('./gitstore');
 const {
     synchronizeResetToHostname,
 } = require('./synchronize_reset_snapshot');
-const { scanSublevelFromSnapshot } = require('./render');
+const { scanFromFilesystem } = require('./render');
 const { getRootDatabase } = require('./get_root_database');
 const {
     mergeHostIntoReplica,
@@ -124,11 +125,13 @@ async function mergeRemoteHostBranches(capabilities, state) {
             worktreeAdded = true;
 
 
-            await scanSublevelFromSnapshot(capabilities, state.rootDatabase, {
-                snapshotRoot: tmpDir,
-                targetSublevel: '_h_' + hostname,
-                snapshotSublevel: 'r',
-            });
+            const remoteRDir = path.join(tmpDir, DATABASE_SUBPATH, 'r');
+            await scanFromFilesystem(
+                capabilities,
+                state.rootDatabase,
+                remoteRDir,
+                '_h_' + hostname
+            );
             const switchedReplica = await mergeHostIntoReplica(
                 capabilities.logger,
                 state.rootDatabase,

@@ -94,7 +94,7 @@ keys.
 
 ### 3.3 One logical snapshot, two physical trees
 
-A non-empty paired snapshot stores managed content in two sibling trees:
+A snapshot root contains two managed sibling trees:
 
 ```text
 snapshot/
@@ -140,12 +140,8 @@ The reasoning is:
 - the database's own versioned state is the format/version discriminator;
 - there is no second out-of-band rendered-snapshot discriminator;
 - implementations must not guess formats from partial evidence;
-- missing `snapshotRoot` is a snapshot validity failure (see Section 20.2);
-- existing empty `snapshotRoot` is a valid empty database snapshot (see Section 20.3);
-- absence of a value projection means the DB value is absent in the selected
-  snapshot domain;
-- malformed partial evidence (rendered files without schema ownership,
-  schemas with missing required rendered leaves) is invalid;
+- if the paired projection is missing, malformed, or damaged, that is a
+  snapshot validity failure, not a format-detection problem; and
 - migration or recovery from older rendered formats is a higher-level workflow
   and remains out of scope for this specification.
 
@@ -233,10 +229,10 @@ returns a number token. Consequences include:
 - there is no trailing newline.
 
 A scanned number file MUST contain exactly one JSON number token. Leading or
-trailing whitespace, trailing newlines, and trailing data are invalid. Parsing
-MUST consume the whole file and produce a finite number. A valid but noncanonical
-number token, such as `1.0` or `1e0`, MAY be accepted; rendering the scanned
-value writes the canonical JSON number text (`1`).
+trailing whitespace and trailing data are invalid. Parsing MUST consume the
+whole file and produce a finite number. A valid but noncanonical number token,
+such as `1.0` or `1e0`, MAY be accepted; rendering the scanned value writes the
+canonical JSON number text (`1`).
 
 ## 5. Terminology
 
@@ -535,7 +531,9 @@ Examples:
 1e+21  -> 1e+21
 ```
 
-No whitespace or newline is added.
+No whitespace or newline is added. During scan, a complete finite JSON number
+token followed by a single final LF MAY be accepted and canonicalized to its
+canonical JSON number text on render.
 
 ### 8.4 Boolean
 
@@ -551,7 +549,9 @@ true  -> rendered file: true  + schema: "boolean"
 false -> rendered file: false + schema: "boolean"
 ```
 
-No whitespace or newline is added.
+No whitespace or newline is added. During scan, `true` or `false` followed by
+a single final LF MAY be accepted and canonicalized to `true` or `false` on
+render.
 
 ### 8.5 Null
 
@@ -560,7 +560,8 @@ Null renders as:
 - a regular file containing exactly the four characters `null`; and
 - the schema token `"null"`.
 
-An empty file is not null. Absence is not null.
+An empty file is not null. Absence is not null. During scan, `null` followed
+by a single final LF MAY be accepted and canonicalized to `null` on render.
 
 ### 8.6 Object
 
@@ -926,17 +927,20 @@ logical subtree is invalid.
 ### 12.4 Scalar parsing
 
 A number file MUST contain exactly one finite JSON number token. Leading or
-trailing whitespace, trailing newlines, and trailing data are invalid. A valid
-but noncanonical number token, such as `1.0` or `1e0`, MAY be accepted and is
-canonicalized on render.
+trailing whitespace and trailing data are invalid. A valid but noncanonical
+number token, such as `1.0` or `1e0`, MAY be accepted and is canonicalized on
+render. A single final LF after an otherwise valid number token MAY be accepted
+and is canonicalized away.
 
 A boolean file MUST contain exactly `true` or exactly `false`. `TRUE`, `False`,
-`1`, `0`, ` false`, and `true ` are invalid. A trailing newline is invalid.
+`1`, `0`, ` false`, and `true ` are invalid. A single final LF after `true` or
+`false` MAY be accepted and is canonicalized to `true` or `false`.
 
-A null file MUST contain exactly `null`. A trailing newline is invalid.
+A null file MUST contain exactly `null`. A single final LF after `null` MAY be
+accepted and is canonicalized to `null`.
 
-These remain invalid: `" true"`, `"true "`, `"true\n"`, `"false\n"`, `"null\n"`,
-`"5\n"`, `"true\n\n"`, `"null "`, `" 5"`, `"5 "`, `"5\n\n"`.
+These remain invalid: `" true"`, `"true "`, `"true\n\n"`, `"null "`, `" 5"`,
+`"5 "`, `"5\n\n"`.
 
 A string file is not parsed and may contain any text accepted by the
 repository's UTF-8 text abstraction. A final newline in a string is part of
@@ -1050,6 +1054,8 @@ Canonicalization includes:
 - canonical JSON number text;
 - exact boolean text;
 - exact `null` text;
+- accepted single-final-LF trailing newline on number, boolean, and null files
+  is normalized away on render;
 - primitive leaf files present exactly where required by schemas;
 - no rendered files or semantically required directories for empty or
   primitive-free compounds;
@@ -1458,13 +1464,15 @@ Failure cases identify the value root and offending path where applicable.
 6. Schema `"number"` points to a directory: invalid.
 7. Schema `"boolean"` points to a directory: invalid.
 8. Schema `"null"` points to a directory: invalid.
-9. Boolean file contains `TRUE`, `False`, `1`, `0`, ` false`, `true `, or
-   `true\n` / `false\n`. A trailing newline is invalid.
+9. Boolean file contains `TRUE`, `False`, `1`, `0`, ` false`, or `true `.
+   A single final LF after `true` or `false` is accepted and canonicalized;
+   a double trailing newline or leading space is invalid.
 10. Number file contains non-number text, trailing garbage, multiple tokens,
-    whitespace padding, trailing newlines, `NaN`, infinity, or JSON string
-    syntax.
-11. Null file is empty or contains `NULL`, whitespace, or `null\n`. A trailing
-    newline is invalid.
+    whitespace padding, `NaN`, infinity, or JSON string syntax. A single final
+    LF after an otherwise valid number token is accepted and canonicalized.
+11. Null file is empty or contains `NULL` or whitespace. A single final LF
+    after `null` is accepted and canonicalized; a double trailing newline or
+    leading/trailing space is invalid.
 12. Type schema contains unknown token or unsupported token `"undefined"`.
 13. Type schema uses `"object"` or `"array"` instead of structural shape.
 14. Type schema contains literal JSON `null`, number, `true`, or `false` where a
@@ -1518,8 +1526,8 @@ Acceptance controls for incidental directories:
 9. Scan snapshots containing only incidental empty directories for empty or
    primitive-free compounds, then render to the same canonical virtual file set
    with no required rendered files for those compounds.
-10. Single-final-LF `true\n`, `false\n`, `null\n`, and `5\n` files are
-    rejected as invalid leaf content.
+10. Accepted single-final-LF `true\n`, `false\n`, `null\n`, and `5\n` files are
+    canonicalized to `true`, `false`, `null`, and `5` on render.
 11. Remove unclaimed rendered files during authoritative DB render.
 12. Assert `render -> render` idempotence and `scan -> render -> scan` stability.
 
@@ -1663,82 +1671,24 @@ Acceptance controls for incidental directories:
 10. Canonical render never creates a directory merely for `{}`, `[]`, or a
     primitive-free compound.
 
-## 20. Snapshot existence semantics
+## 20. Out of scope
 
-### 20.1 Snapshot root directory
+The following are deliberately not specified here:
 
-The snapshot root directory (`snapshotRoot`) is the unit of snapshot existence.
-A non-empty paired snapshot stores managed content in sibling managed trees:
+- implementation function or class names;
+- format evolution;
+- support for `undefined`, binary values, dates, bigint, custom classes, or
+  other values outside the supported rendered value domain;
+- filesystem portability rules beyond the existing path-segment and UTF-8 text
+  abstractions;
+- authorization, rate limiting, resource caps, or adversarial-client defenses;
+- merge semantics for two concurrently edited rendered databases;
+- making adapter-level filesystem writes or multi-key DB reconciliation atomic;
+- optimizing partial DB updates below one complete DB value; and
+- changing identifier-native raw DB key design.
 
-```text
-snapshotRoot/
-  kindtree/
-    <snapshotSublevel>/
-      ...
-  rendered/
-    <snapshotSublevel>/
-      ...
-```
-
-### 20.2 Missing root is an error
-
-If `snapshotRoot` does not exist at the time of scanning, scanning MUST fail before
-any database mutation, regardless of the snapshot sublevel. A missing root can
-result from a wrong path, incomplete checkout, failed setup, or caller bug. It
-MUST NOT be treated as an empty snapshot.
-
-### 20.3 Existing empty root is a valid empty snapshot
-
-If `snapshotRoot` exists and contains neither `kindtree/<snapshotSublevel>` nor
-`rendered/<snapshotSublevel>`, that is a valid empty database snapshot for that
-sublevel. Scanning such a root deletes all target DB entries in the selected
-sublevel during reconciliation.
-
-Empty snapshots:
-- MUST NOT require `kindtree/<snapshotSublevel>` to exist;
-- MUST NOT require `rendered/<snapshotSublevel>` to exist;
-- MUST NOT require marker files, sentinel files, `.gitkeep` files, or any other
-  special directory entries.
-
-A missing root and an existing empty root are semantically distinct:
-- missing root = fatal error, no DB mutation;
-- existing empty root = valid empty snapshot, target sublevel is emptied.
-
-### 20.4 File-to-directory conflicts
-
-If a path that should be a directory under `rendered/` or `kindtree/` is a
-regular file, the scanner MUST reject it as a malformed snapshot.
-
-### 20.5 Legacy or partial snapshots remain invalid
-
-The paired snapshot format is two-sided: a snapshot requires both trees to be
-consistent for the managed sublevel. In particular:
-
-- `rendered/` files without a corresponding `kindtree/` schema are invalid
-  (see Section 12).
-- `kindtree/` schemas requiring rendered leaves that are missing are invalid
-  (see Section 12).
-- Extra rendered files not claimed by any schema are invalid (see Section 12).
-
-An empty root is valid. Schema files with no rendered files are valid when those
-schemas require no primitive leaves (schema-only values such as `{}` or `[]`).
-A root with no selected schema files and no selected rendered files is an empty
-selected snapshot. Rendered-only files without schemas always fail.
-
-### 20.6 Rendering an empty sublevel
-
-Rendering an empty database sublevel (no keys in the selected sublevel) produces
-an existing empty snapshot root: `snapshotRoot` exists, but `kindtree/` and
-`rendered/` are absent or have been pruned. This is the canonical representation
-of an empty sublevel snapshot. No marker files or manifests are created.
-
-After rendering the selected sublevel:
-- `rendered/<snapshotSublevel>` and `kindtree/<snapshotSublevel>` are pruned
-  if empty;
-- top-level `rendered/` and `kindtree/` are also pruned when they contain
-  no other managed sublevel content;
-- `snapshotRoot` itself is kept;
-- unselected snapshot sublevels are never deleted.
+Any future extension of the value domain requires an unambiguous schema token or
+structural rule. It MUST NOT be introduced by guessing from leaf text.
 
 ## 21. Summary of invariants
 
@@ -1771,23 +1721,4 @@ A conforming rendered database satisfies all of these invariants:
 14. This specification introduces no format discriminator. There is no
     snapshot-format marker, manifest, sidecar version file, or global schema
     file. The existing `rendered/r/global/version` database value remains the
-     only version-like marker in this area.
-
-## 22. Out of scope
-
-The following are deliberately not specified here:
-
-- implementation function or class names;
-- format evolution;
-- support for `undefined`, binary values, dates, bigint, custom classes, or
-  other values outside the supported rendered value domain;
-- filesystem portability rules beyond the existing path-segment and UTF-8 text
-  abstractions;
-- authorization, rate limiting, resource caps, or adversarial-client defenses;
-- merge semantics for two concurrently edited rendered databases;
-- making adapter-level filesystem writes or multi-key DB reconciliation atomic;
-- optimizing partial DB updates below one complete DB value; and
-- changing identifier-native raw DB key design.
-
-Any future extension of the value domain requires an unambiguous schema token or
-structural rule. It MUST NOT be introduced by guessing from leaf text.
+    only version-like marker in this area.

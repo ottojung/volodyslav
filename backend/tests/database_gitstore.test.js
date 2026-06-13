@@ -251,13 +251,11 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             expect(commitCount(capabilities, gitDir)).toBe(2);
-            expect(topLevelEntries(capabilities, gitDir)).toEqual(['kindtree', 'rendered']);
+            expect(topLevelEntries(capabilities, gitDir)).toEqual([DATABASE_SUBPATH]);
             expect(allTrackedFiles(capabilities, gitDir)).toEqual([
-                'kindtree/r/global/fingerprint',
-                'kindtree/r/global/identifiers_keys_map',
-                'kindtree/r/global/last_node_index',
-                'rendered/r/global/fingerprint',
-                'rendered/r/global/last_node_index',
+                `${DATABASE_SUBPATH}/r/global/fingerprint`,
+                `${DATABASE_SUBPATH}/r/global/identifiers_keys_map`,
+                `${DATABASE_SUBPATH}/r/global/last_node_index`,
             ]);
         } finally {
             await db.close();
@@ -275,7 +273,7 @@ describe("checkpointDatabase", () => {
             await checkpointDatabase(capabilities, "layout check", db);
 
             const gitDir = checkpointGitDir(capabilities);
-            expect(topLevelEntries(capabilities, gitDir)).toEqual(['kindtree', 'rendered']);
+            expect(topLevelEntries(capabilities, gitDir)).toEqual([DATABASE_SUBPATH]);
         } finally {
             await db.close();
         }
@@ -293,7 +291,7 @@ describe("checkpointDatabase", () => {
             const gitDir = checkpointGitDir(capabilities);
             const tracked = allTrackedFiles(capabilities, gitDir);
             expect(tracked).toContain(
-                `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!nodecache')}/name`
+                `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!nodecache')}`
             );
             expect(tracked).toContain(`${DATABASE_SUBPATH}/r/global/version`);
         } finally {
@@ -314,9 +312,9 @@ describe("checkpointDatabase", () => {
                 fileContentAtHead(
                     capabilities,
                     gitDir,
-                    `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!{"head":"event","args":["hello"]}')}/message`
+                    `${DATABASE_SUBPATH}/${renderedKeyPath('!x!!values!{"head":"event","args":["hello"]}')}`
                 )
-            ).toBe("hello-content");
+            ).toBe(JSON.stringify({ message: "hello-content" }, null, 2));
         } finally {
             await db.close();
         }
@@ -354,8 +352,8 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             const tracked = allTrackedFiles(capabilities, gitDir);
-            expect(tracked).toContain(`${DATABASE_SUBPATH}/${renderedKeyPath(oldKey)}/value`);
-            expect(tracked).toContain(`${DATABASE_SUBPATH}/${renderedKeyPath(newKey)}/value`);
+            expect(tracked).toContain(`${DATABASE_SUBPATH}/${renderedKeyPath(oldKey)}`);
+            expect(tracked).toContain(`${DATABASE_SUBPATH}/${renderedKeyPath(newKey)}`);
         } finally {
             await db.close();
         }
@@ -372,8 +370,8 @@ describe("checkpointDatabase", () => {
 
             const gitDir = checkpointGitDir(capabilities);
             expect(
-                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}/version`)
-            ).toBe("version-2");
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
+            ).toBe(JSON.stringify({ version: "version-2" }, null, 2));
         } finally {
             await db.close();
         }
@@ -394,8 +392,8 @@ describe("checkpointDatabase", () => {
             const gitDir = checkpointGitDir(capabilities);
             expect(commitCount(capabilities, gitDir)).toBeGreaterThanOrEqual(2);
             expect(
-                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}/value`)
-            ).toBe("base");
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
+            ).toBe(JSON.stringify({ value: "base" }, null, 2));
         } finally {
             await db.close();
         }
@@ -427,8 +425,8 @@ describe("checkpointMigration", () => {
                 "pre-migration: 1 → 2",
             ]);
             expect(
-                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}/version`)
-            ).toBe("after");
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
+            ).toBe(JSON.stringify({ version: "after" }, null, 2));
         } finally {
             await db.close();
         }
@@ -460,8 +458,8 @@ describe("checkpointMigration", () => {
             expect(commitCount(capabilities, gitDir)).toBe(2);
             expect(latestCommitMessage(gitDir)).toBe("pre-migration: fail");
             expect(
-                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}/version`)
-            ).toBe("before");
+                fileContentAtHead(capabilities, gitDir, `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`)
+            ).toBe(JSON.stringify({ version: "before" }, null, 2));
         } finally {
             await db.close();
         }
@@ -566,9 +564,9 @@ describe("dirty-state recovery", () => {
                 fileContentAtHead(
                     capabilities,
                     gitDir,
-                    `${DATABASE_SUBPATH}/${renderedKeyPath(key)}/v`
+                    `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`
                 )
-            ).toBe("2");
+            ).toBe(JSON.stringify({ v: 2 }, null, 2));
         } finally {
             await db.close();
         }
@@ -728,9 +726,9 @@ describe("dirty-state recovery", () => {
                 fileContentAtHead(
                     capabilities,
                     gitDir,
-                    `${DATABASE_SUBPATH}/${renderedKeyPath(key)}/value`
+                    `${DATABASE_SUBPATH}/${renderedKeyPath(key)}`
                 )
-            ).toBe("recorded-after-recovery");
+            ).toBe(JSON.stringify({ value: "recorded-after-recovery" }, null, 2));
         } finally {
             await db.close();
         }

@@ -242,8 +242,6 @@ function parseValue(content) {
 }
 
 module.exports = {
-    encodeSegment,
-    decodeSegment,
     keyToRelativePath,
     relativePathToKey,
     serializeValue,

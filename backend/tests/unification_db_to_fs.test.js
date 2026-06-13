@@ -21,6 +21,8 @@ const fs = require('fs');
 const os = require('os');
 const {
     getRootDatabase,
+    renderToFilesystem,
+    scanFromFilesystem,
 } = require('../src/generators/incremental_graph/database');
 const {
     makeDbToFsAdapter,
@@ -257,7 +259,47 @@ describe('makeDbToFsAdapter', () => {
         }
     });
 
+    test('makeDbToFsAdapter produces the same files as renderToFilesystem', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
 
+        const db = await makeSeededDatabase(capabilities, [
+            [X_VALUES_KEY, { items: [1, 2] }],
+            ['!x!!freshness!{"head":"all_events","args":[]}', 'fresh'],
+        ]);
+        try {
+            // Render via high-level function
+            const outputDirA = path.join(tmpDir, 'render-a');
+            await renderToFilesystem(capabilities, db, outputDirA, 'x');
 
+            // Render via adapter directly (output dir must pre-exist for listTargetKeys)
+            const outputDirB = path.join(tmpDir, 'render-b');
+            fs.mkdirSync(outputDirB, { recursive: true });
+            await unifyStores(makeDbToFsAdapter(capabilities, db, outputDirB, 'x'));
 
+            expect(collectFiles(outputDirA)).toEqual(collectFiles(outputDirB));
+        } finally {
+            await db.close();
+        }
+    });
+
+    test('round-trip with scan: render then scan restores original database', async () => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const outputDir = path.join(tmpDir, 'render-x');
+        fs.mkdirSync(outputDir, { recursive: true });
+
+        const db1 = await makeSeededDatabase(capabilities, [
+            [X_VALUES_KEY, { items: [10] }],
+        ]);
+        await unifyStores(makeDbToFsAdapter(capabilities, db1, outputDir, 'x'));
+        await db1.close();
+
+        const db2 = await getRootDatabase(capabilities);
+        try {
+            await scanFromFilesystem(capabilities, db2, outputDir, 'x');
+            const rawVal = await db2._rawGetInSublevel('x', '!values!nodecache');
+            expect(rawVal).toEqual({ items: [10] });
+        } finally {
+            await db2.close();
+        }
+    });
 });

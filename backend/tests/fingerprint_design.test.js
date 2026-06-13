@@ -18,8 +18,8 @@ const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
     getRootDatabase,
-    renderSublevelToSnapshot,
-    scanSublevelFromSnapshot,
+    renderToFilesystem,
+    scanFromFilesystem,
     nodeIdentifierFromString,
     makeIdentifierLookup,
     serializeIdentifierLookup,
@@ -205,13 +205,13 @@ describe('fingerprint design', () => {
 
             // Render the 'x' replica into a directory named 'r' (the standard
             // snapshot layout: rendered/r/ contains the active replica data).
-            const renderDir = tmpDir;
-            const rDir = path.join(renderDir, 'rendered', 'r');
-            await renderSublevelToSnapshot(capabilities, db, { snapshotRoot: renderDir, sourceSublevel: 'x', snapshotSublevel: 'r' });
+            const renderDir = path.join(tmpDir, 'rendered');
+            const rDir = path.join(renderDir, 'r');
+            await renderToFilesystem(capabilities, db, rDir, 'x');
 
             // Render the _meta sublevel separately.
-            const metaDir = path.join(renderDir, 'rendered', '_meta');
-            await renderSublevelToSnapshot(capabilities, db, { snapshotRoot: renderDir, sourceSublevel: '_meta', snapshotSublevel: '_meta' });
+            const metaDir = path.join(renderDir, '_meta');
+            await renderToFilesystem(capabilities, db, metaDir, '_meta');
 
             // Build a set of paths relative to the rendered root.
             const allFiles = [
@@ -229,10 +229,10 @@ describe('fingerprint design', () => {
             // Verify the rendered fingerprint value matches the live database.
             const fingerprintFile = allFiles.find(f => f.relPath === 'r/global/fingerprint');
             expect(fingerprintFile).toBeDefined();
-            expect(fingerprintFile.content).toBe(fingerprint);
+            expect(JSON.parse(fingerprintFile.content)).toBe(fingerprint);
 
             // Other global metadata should be present.
-            expect(fs.existsSync(path.join(renderDir, 'kindtree/r/global/identifiers_keys_map'))).toBe(true);
+            expect(filePaths.has('r/global/identifiers_keys_map')).toBe(true);
             expect(filePaths.has('r/global/last_node_index')).toBe(true);
 
             // Only _meta/current_replica should exist under _meta.
@@ -248,21 +248,28 @@ describe('fingerprint design', () => {
             db = await getRootDatabase(capabilities);
             const fingerprint = db.getFingerprint();
 
-            const renderDir = tmpDir;
-            const rDir = path.join(renderDir, 'rendered', 'r');
-            await renderSublevelToSnapshot(capabilities, db, { snapshotRoot: renderDir, sourceSublevel: 'x', snapshotSublevel: 'r' });
+            const renderDir = path.join(tmpDir, 'rendered');
+            const rDir = path.join(renderDir, 'r');
+            await renderToFilesystem(capabilities, db, rDir, 'x');
 
             // Files are relative to rDir; prepend 'r/' for snapshot layout.
             const files = collectFiles(rDir).map(f => ({ ...f, relPath: `r/${f.relPath}` }));
             const filePaths = new Set(files.map(f => f.relPath));
 
             expect(filePaths.has('r/global/fingerprint')).toBe(true);
-            expect(fs.existsSync(path.join(renderDir, 'kindtree/r/global/identifiers_keys_map'))).toBe(true);
+            expect(filePaths.has('r/global/identifiers_keys_map')).toBe(true);
             expect(filePaths.has('r/global/last_node_index')).toBe(true);
 
+            // All three global metadata values are valid JSON.
+            for (const key of ['r/global/fingerprint', 'r/global/identifiers_keys_map', 'r/global/last_node_index']) {
+                const file = files.find(f => f.relPath === key);
+                expect(file).toBeDefined();
+                expect(() => JSON.parse(file.content)).not.toThrow();
+            }
 
+            // Fingerprint is rendered as a JSON string (quoted).
             const fprintFile = files.find(f => f.relPath === 'r/global/fingerprint');
-            expect(fprintFile.content).toBe(fingerprint);
+            expect(fprintFile.content.trim()).toBe(JSON.stringify(fingerprint));
         } finally {
             cleanup(tmpDir);
         }
@@ -284,7 +291,8 @@ describe('fingerprint design', () => {
 
             // Render the active replica to a simulated snapshot directory.
             const snapshotDir = path.join(tmpA, 'snapshot');
-            await renderSublevelToSnapshot(capA, db, { snapshotRoot: snapshotDir, sourceSublevel: 'x', snapshotSublevel: 'r' });
+            const rDir = path.join(snapshotDir, 'r');
+            await renderToFilesystem(capA, db, rDir, 'x');
             await db.close();
             db = undefined;
 
@@ -295,7 +303,7 @@ describe('fingerprint design', () => {
             try {
                 const freshDb = await getRootDatabase(capB);
                 const targetReplica = freshDb.otherReplicaName();
-                await scanSublevelFromSnapshot(capB, freshDb, { snapshotRoot: snapshotDir, targetSublevel: targetReplica, snapshotSublevel: 'r' });
+                await scanFromFilesystem(capB, freshDb, rDir, targetReplica);
                 await freshDb.setCurrentReplicaPointer(targetReplica);
                 await freshDb.close();
 
@@ -315,13 +323,16 @@ describe('fingerprint design', () => {
         const { capabilities, tmpDir } = getTestCapabilities();
         try {
             db = await getRootDatabase(capabilities);
-            const snapshotDir = path.join(tmpDir, 'snapshot');
-            await db.getSchemaStorage().global.put('fingerprint', 'abc123def');
-            await db.setGlobalVersion(db.getVersion());
-            await renderSublevelToSnapshot(capabilities, db, { snapshotRoot: snapshotDir, sourceSublevel: 'x', snapshotSublevel: 'r' });
+            const rDir = path.join(tmpDir, 'snapshot', 'r');
+            const globalDir = path.join(rDir, 'global');
+            fs.mkdirSync(globalDir, { recursive: true });
+            fs.writeFileSync(path.join(globalDir, 'version'), JSON.stringify(String(db.getVersion())));
+            fs.writeFileSync(path.join(globalDir, IDENTIFIERS_KEY), JSON.stringify([]));
+            fs.writeFileSync(path.join(globalDir, LAST_NODE_INDEX_KEY), JSON.stringify(0));
+            fs.writeFileSync(path.join(globalDir, 'fingerprint'), JSON.stringify('abc123def'));
 
             const targetReplica = db.otherReplicaName();
-            await scanSublevelFromSnapshot(capabilities, db, { snapshotRoot: snapshotDir, targetSublevel: targetReplica, snapshotSublevel: 'r' });
+            await scanFromFilesystem(capabilities, db, rDir, targetReplica);
             await expect(db.setCurrentReplicaPointer(targetReplica)).rejects.toThrow(
                 /Invalid fingerprint in replica 'y' global metadata/
             );
@@ -355,7 +366,8 @@ describe('fingerprint design', () => {
             // back the local fingerprint (as the reset path does), then
             // switching the replica pointer.
             const snapshotDir = path.join(tmpA, 'snapshot');
-            await renderSublevelToSnapshot(capA, db, { snapshotRoot: snapshotDir, sourceSublevel: 'x', snapshotSublevel: 'r' });
+            const rDir = path.join(snapshotDir, 'r');
+            await renderToFilesystem(capA, db, rDir, 'x');
             await db.close();
             db = undefined;
 
@@ -365,7 +377,7 @@ describe('fingerprint design', () => {
             expect(db.getFingerprint()).toBe(localFingerprint);
 
             const targetReplica = db.otherReplicaName();
-            await scanSublevelFromSnapshot(capA, db, { snapshotRoot: snapshotDir, targetSublevel: targetReplica, snapshotSublevel: 'r' });
+            await scanFromFilesystem(capA, db, rDir, targetReplica);
 
             // Explicitly write the local fingerprint back (as reset import does).
             const targetGlobal = db.replicaGlobalSublevel(targetReplica);
