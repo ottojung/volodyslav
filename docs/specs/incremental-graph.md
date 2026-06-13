@@ -688,13 +688,9 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 ### Dynamic dependencies
 
 Computors MAY invoke the `pull` method, or any other methods of the `IncrementalGraph` interface.
-In such events the implementation MUST guarantee:
-- data integrity
-
-In such events the implementation MAY NOT guarantee:
-- deadlock freedom (**PROP-02**)
-- single invocation (**PROP-03**)
-- any other otherwise provided properties.
+Nodes `pull`ed in this way (dynamically) are not considered dependencies of the calling Computor's node.
+Therefore, the implementation MUST NOT treat them as inputs. This includes:
+- not propagating freshness updates during `invalidate`ion.
 
 ---
 
