@@ -27,7 +27,7 @@ const {
  * @typedef {object} ReadableMigrationStorage
  * @property {{ get(nodeKey: NodeIdentifier): Promise<ComputedValue | undefined> }} values
  * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').Freshness | undefined> }} freshness
- * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/root_database').InputsRecord | undefined> }} inputs
+ * @property {{ get(nodeKey: NodeIdentifier): Promise<NodeIdentifier[] | undefined> }} inputs
  * @property {{ get(nodeKey: NodeIdentifier): Promise<NodeIdentifier[] | undefined> }} revdeps
  * @property {{ get(nodeKey: NodeIdentifier): Promise<number | undefined> }} counters
  * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').TimestampRecord | undefined> }} timestamps
@@ -105,7 +105,9 @@ async function readInputsRecord(nodeKey, prevStorage) {
     if (!record) {
         throw makeMissingDependencyMetadataError(nodeKey);
     }
-    const inputIds = Array.isArray(record) ? record : (record.inputs || []);
+    /** @type {any} */
+    const compat = record;
+    const inputIds = Array.isArray(compat) ? compat : (compat.inputs || []);
     return inputIds.map(unsafeStringToNodeIdentifier);
 }
 

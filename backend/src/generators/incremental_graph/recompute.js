@@ -163,6 +163,9 @@ async function propagateOutdatedFrom(storage, batch, changedIdentifier) {
         }
     }
 }
+
+/**
+ * Handle Unchanged computor result: add validity flags, preserve counter and valid[N].
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {NodeIdentifier} nodeIdentifier
  * @param {NodeIdentifier[]} inputEdges
@@ -289,9 +292,11 @@ async function internalMaybeRecalculate(
 
     // Collect revdep diff for darkroom finalization
     const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
-    const oldDependencies = Array.isArray(oldInputsRecord)
-        ? oldInputsRecord
-        : (oldInputsRecord?.inputs ?? []);
+    /** @type {any} */
+    const compat = oldInputsRecord;
+    const oldDependencies = Array.isArray(compat)
+        ? compat
+        : (compat?.inputs ?? []);
     reportRevdepDiff({
         dependant: nodeIdentifier,
         oldDependencies,

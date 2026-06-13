@@ -24,7 +24,6 @@ const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
     nodeIdentifierToString,
-    stringToNodeIdentifier,
     makeTransactionIdentifierLookup,
     txAllocateNodeIdentifier,
     txNodeIdToKey,

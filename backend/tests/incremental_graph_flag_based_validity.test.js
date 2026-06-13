@@ -17,10 +17,7 @@ const {
     nodeKeyToIdFromLookup,
     nodeIdentifierFromString,
     nodeIdentifierToString,
-    nodeIdentifierCompare,
-    stringToNodeIdentifier,
 } = require("../src/generators/incremental_graph/database");
-const { makeSemanticStorage } = require("./test_database_helper");
 const { getMockedRootCapabilities } = require("./spies");
 
 const testCapabilities = getMockedRootCapabilities();
@@ -86,11 +83,7 @@ class InMemoryDatabase {
             id = String.fromCharCode(97 + (n % 26)) + id;
             n = Math.floor(n / 26);
         }
-        return nodeIdentifierFromString(id.replace(/a+$/, s => {
-            // Ensure minimum 9 chars
-            while (id.length < 9) id = 'a' + id;
-            return id;
-        }).slice(-9));
+        return nodeIdentifierFromString(id);
     }
 
     getCurrentAllocationWatermark() {
@@ -243,9 +236,9 @@ class InMemoryDatabase {
  *   If it returns the makeUnchanged() sentinel, the computor returns Unchanged instead.
  * @returns {{ computor: Function, getCallCount: () => number }}
  */
-function countedComputor(name, valueFactory) {
+function countedComputor(_name, valueFactory) {
     let callCount = 0;
-    const computor = async (inputs, oldValue, bindings) => {
+    const computor = async (_inputs, _oldValue, _bindings) => {
         callCount++;
         const result = valueFactory(callCount);
         if (isUnchanged(result)) {
@@ -308,21 +301,15 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
     // === Test Obligation 1: Cache hit ===
     describe("test obligation 1: cache hit through valid flags", () => {
         it("returns cached value without recomputing when valid[D].has(N) for all dependencies", async () => {
-            let lastN = 0;
             const { nodeDefs, middleCC } = createChainGraph(
                 () => ({ v: "src" }),
-                (n) => {
-                    lastN = n;
-                    return { v: "mid-" + n };
-                },
+                () => ({ v: "mid" }),
                 () => ({ v: "dep" })
             );
 
             graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
 
             const binding = [{ id: "x" }];
-            const srcKey = makeNodeStorageKey("source");
-            const midKey = makeNodeStorageKey("middle", binding);
             const depKey = makeNodeStorageKey("dependent", binding);
 
             // First pull: materialize all nodes
@@ -330,7 +317,6 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             expect(middleCC.getCallCount()).toBe(0);
             await graph.pull("middle", binding);
             expect(middleCC.getCallCount()).toBe(1);
-            lastN = 0;
             await graph.pull("dependent", binding);
 
             // Check validity flags exist after pulls
@@ -362,7 +348,6 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             ];
 
             graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
-            const srcKey = makeNodeStorageKey("source");
 
             // First pull
             await graph.pull("source");
@@ -407,7 +392,6 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
 
             // Get the counter value for middle before invalidation
             const midCounterBefore = db._readSublevel('counters', midId);
-            const depCounterBefore = db._readSublevel('counters', depId);
 
             // Invalidate source and pull again: middle returns Unchanged
             await graph.invalidate("source");
@@ -442,20 +426,14 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             await graph.pull("middle", binding);
             await graph.pull("dependent", binding);
 
-            const midKey = makeNodeStorageKey("middle", binding);
             const depKey = makeNodeStorageKey("dependent", binding);
-            const midId = db.nodeKeyToId(midKey);
             const depId = db.nodeKeyToId(depKey);
 
-            // Record initial counters
             const depCounterBefore = db._readSublevel('counters', depId);
 
             // Invalidate source and pull again with changed value
             await graph.invalidate("source");
             await graph.pull("source"); // srcValue = 2
-
-            const midCallsBefore = middleCC.getCallCount();
-            const depCallsBefore = dependentCC.getCallCount();
 
             // Pull dependent: all dependencies changed, so recompute
             await graph.pull("dependent", binding);
@@ -466,7 +444,50 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
         });
     });
 
-    // === Test Obligation 5: Changed dependency invalidates cache ===
+    // === Test: Changed value propagates potentially-outdated freshness through revdeps ===
+    describe("changed value propagates outdated through revdeps", () => {
+        it("marks direct and transitive dependents potentially-outdated when value changes", async () => {
+            let srcValue = 0;
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: ++srcValue }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            const midKey = makeNodeStorageKey("middle", binding);
+            const depKey = makeNodeStorageKey("dependent", binding);
+            const midId = db.nodeKeyToId(midKey);
+            const depId = db.nodeKeyToId(depKey);
+
+            // Both are up-to-date after pulls
+            expect(db._readSublevel('freshness', midId)).toBe("up-to-date");
+            expect(db._readSublevel('freshness', depId)).toBe("up-to-date");
+
+            // Invalidate and pull source with changed value
+            await graph.invalidate("source");
+            await graph.pull("source"); // triggers middle recompute, which changes
+
+            // After source's handleChanged propagates, middle should be
+            // potentially-outdated because its dependency (source) changed value
+            // and valid[source] was cleared.
+            // Actually, pulling source only affects source. To see propagation,
+            // we need to pull middle — which recomputes and its handleChanged
+            // should mark dependent as potentially-outdated.
+
+            // Pull middle with changed dependency -> it recomputes and propagates
+            await graph.pull("middle", binding);
+
+            // dependent should be potentially-outdated now (propagated from middle's handleChanged)
+            expect(db._readSublevel('freshness', depId)).toBe("potentially-outdated");
+        });
+    });
     describe("test obligation 5: changed dependency prevents stale cache hit", () => {
         it("clears valid[D] when D changes value, forcing dependent recompute", async () => {
             let srcValue = 0;
@@ -479,7 +500,6 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
 
-            // Materialize chain
             await graph.pull("source");
             await graph.pull("middle", binding);
             await graph.pull("dependent", binding);
@@ -487,18 +507,19 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             const depKey = makeNodeStorageKey("dependent", binding);
             const depId = db.nodeKeyToId(depKey);
 
-            // Invalidate and pull source with new value
+            const depCallsBefore = dependentCC.getCallCount();
+
+            // Invalidate source, pull (changed), then pull middle (recomputes)
             await graph.invalidate("source");
-            await graph.pull("source"); // srcValue = 2
+            await graph.pull("source");
+            await graph.pull("middle", binding);
 
-            // Invalidate source again but make it return Unchanged
-            // The freshness propagation should reach dependent
-            await graph.invalidate("source");
+            // Middle's handleChanged propagated outdated to dependent
+            expect(db._readSublevel('freshness', depId)).toBe("potentially-outdated");
 
-            const depCallsBeforePull = dependentCC.getCallCount();
-
-            // Pull dependent — should need to validate against current dependencies
+            // Pull dependent — must recompute because dependency changed
             await graph.pull("dependent", binding);
+            expect(dependentCC.getCallCount()).toBe(depCallsBefore + 1);
         });
     });
 
@@ -514,23 +535,27 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
 
-            // Materialize chain
             await graph.pull("source");
             await graph.pull("middle", binding);
             await graph.pull("dependent", binding);
 
             const srcKey = makeNodeStorageKey("source");
             const midKey = makeNodeStorageKey("middle", binding);
+            const srcId = db.nodeKeyToId(srcKey);
+            const midId = db.nodeKeyToId(midKey);
 
-            // Read the valid sets before invalidation
-            // (valid sets should exist from the pull phase)
+            // Snapshot valid sets before invalidation
+            const validSrcBefore = db._readSublevel('valid', srcId);
+            const validMidBefore = db._readSublevel('valid', midId);
 
             await graph.invalidate("source");
 
-            // Check that middle's freshness is now potentially-outdated
-            const midId = db.nodeKeyToId(midKey);
-            const midFreshness = db._readSublevel('freshness', midId);
-            expect(midFreshness).toBe("potentially-outdated");
+            // Check valid sets are identical after invalidation
+            expect(db._readSublevel('valid', srcId)).toEqual(validSrcBefore);
+            expect(db._readSublevel('valid', midId)).toEqual(validMidBefore);
+
+            // Freshness is marked potentially-outdated (not valid)
+            expect(db._readSublevel('freshness', midId)).toBe("potentially-outdated");
         });
     });
 

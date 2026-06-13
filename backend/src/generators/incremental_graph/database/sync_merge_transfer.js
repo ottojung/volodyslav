@@ -40,12 +40,6 @@ function buildDeleteNodeOps(targetStorage, identifier) {
  * Build operations that copy a node between potentially different identifiers.
  * Inputs are supplied by the semantic planner after lowering to final identifiers.
  *
- * `inputCounters` describe the source computation and are copied only as
- * historical dependency metadata. If lowering changes any input identifier,
- * the caller must delete the copied value and mark the node outdated so these
- * counters can never authorize reuse of a value computed against another
- * storage identity.
- *
  * @param {object} options
  * @param {SchemaStorage} options.targetStorage
  * @param {SchemaStorage} options.sourceStorage

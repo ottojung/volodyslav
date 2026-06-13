@@ -1,6 +1,6 @@
 /**
- * Tests for incremental graph counter-based optimization.
- * These tests verify that nodes can skip recomputation when input counters haven't changed.
+ * Tests for incremental graph recomputation and caching behavior.
+ * These tests verify that nodes recompute when stale and cache-hit when valid.
  */
 
 const path = require("path");
@@ -36,7 +36,7 @@ function getTestCapabilities() {
 }
 
 describe("generators/incremental_graph counters", () => {
-    describe("Counter-based optimization", () => {
+    describe("Recomputation behavior", () => {
         test("skips recomputation when input returns Unchanged (counter doesn't change)", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
@@ -171,7 +171,7 @@ describe("generators/incremental_graph counters", () => {
             await db.close();
         });
 
-        test("multi-input counter snapshot comparison", async () => {
+        test("multi-input recomputation and cache hit", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -224,7 +224,7 @@ describe("generators/incremental_graph counters", () => {
 
             // Don't change anything, just pull again
             await graph.pull("a");
-            expect(aComputes).toBe(2); // Should NOT recompute (counters match snapshot)
+            expect(aComputes).toBe(2); // recomputed (source value changed)
 
             await db.close();
         });

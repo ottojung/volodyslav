@@ -116,7 +116,11 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
         const inputsRecord = await prevStorage.inputs.get(nodeKey);
         if (!inputsRecord) continue;
 
-        for (const inputStr of inputsRecord.inputs) {
+        /** @type {any} */
+        const compat = inputsRecord;
+        const inputIds = Array.isArray(compat) ? compat : (compat.inputs || []);
+        for (const inputItem of inputIds) {
+            const inputStr = String(inputItem);
             const inputKey = stringToNodeIdentifier(inputStr);
             const inputDecision = decisions.get(inputKey);
             if (inputDecision && inputDecision.kind === "delete") continue;

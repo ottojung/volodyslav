@@ -67,6 +67,7 @@ function convertUnknownToStoredValue(value) {
  * @property {ReadableGlobalSublevel} global
  * @property {ReadableNodeSublevel} inputs
  * @property {ReadableNodeSublevel} revdeps
+ * @property {ReadableNodeSublevel} valid
  * @property {ReadableNodeSublevel} counters
  * @property {ReadableNodeSublevel} timestamps
  */
@@ -126,7 +127,7 @@ function parseCompositeKey(compositeKey) {
  *
  * @param {ReadableSchemaStorage} source
  * @param {string} sublevel
- * @returns {ReadableSchemaStorage['values'] | ReadableSchemaStorage['freshness'] | ReadableSchemaStorage['global'] | ReadableSchemaStorage['inputs'] | ReadableSchemaStorage['revdeps'] | ReadableSchemaStorage['counters'] | ReadableSchemaStorage['timestamps']}
+ * @returns {ReadableSchemaStorage['values'] | ReadableSchemaStorage['freshness'] | ReadableSchemaStorage['global'] | ReadableSchemaStorage['inputs'] | ReadableSchemaStorage['revdeps'] | ReadableSchemaStorage['valid'] | ReadableSchemaStorage['counters'] | ReadableSchemaStorage['timestamps']}
  */
 function getSourceSubDb(source, sublevel) {
     switch (sublevel) {
@@ -302,7 +303,7 @@ function makeDbToDbAdapter(source, target, options = {}) {
  * checking in batch() — it is intended purely as a temporary capture store for
  * tests or intermediate computation, not as a durable replica.
  *
- * @returns {{ values: object, freshness: object, global: object, inputs: object, revdeps: object, counters: object, timestamps: object, batch: function, _stores: object }}
+ * @returns {{ values: object, freshness: object, global: object, inputs: object, revdeps: object, valid: object, counters: object, timestamps: object, batch: function, _stores: object }}
  */
 function makeInMemorySchemaStorage() {
     /** @type {Map<string, unknown>} */
