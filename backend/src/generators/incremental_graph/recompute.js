@@ -68,7 +68,10 @@ function normalizeInputEdges(inputIdentifiers) {
 function arraysOfNodeIdentifiersEqual(a, b) {
     if (a.length !== b.length) return false;
     for (let i = 0; i < a.length; i++) {
-        if (nodeIdentifierToString(a[i]) !== nodeIdentifierToString(b[i])) return false;
+        const aId = a[i];
+        const bId = b[i];
+        if (aId === undefined || bId === undefined) return false;
+        if (nodeIdentifierToString(aId) !== nodeIdentifierToString(bId)) return false;
     }
     return true;
 }

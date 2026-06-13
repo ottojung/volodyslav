@@ -194,7 +194,13 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         } else {
             let mismatched = false;
             for (let idx = 0; idx < sourceInputIds.length; idx++) {
-                if (nodeIdentifierToString(sourceInputIds[idx]) !== nodeIdentifierToString(finalInputIds[idx])) {
+                const sId = sourceInputIds[idx];
+                const fId = finalInputIds[idx];
+                if (sId === undefined || fId === undefined) {
+                    mismatched = true;
+                    break;
+                }
+                if (nodeIdentifierToString(sId) !== nodeIdentifierToString(fId)) {
                     mismatched = true;
                     break;
                 }
