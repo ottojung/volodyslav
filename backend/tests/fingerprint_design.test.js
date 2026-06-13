@@ -444,7 +444,7 @@ describe('fingerprint design', () => {
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.inputs.put(HOST_NODE_A, { inputs: [], inputCounters: [] });
+            await H.inputs.put(HOST_NODE_A, []);
             await H.timestamps.put(HOST_NODE_A, { createdAt: TS1, modifiedAt: TS1 });
             await H.freshness.put(HOST_NODE_A, 'up-to-date');
             await H.values.put(HOST_NODE_A, { value: { id: 'a', type: 'test', description: 'a' }, isDirty: false });

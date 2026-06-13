@@ -100,8 +100,7 @@ function makeSemanticStorage(graph) {
                     return undefined;
                 }
                 if (databaseName === "inputs") {
-                    // Handle both new format (NodeIdentifier[]) and old format ({inputs, inputCounters})
-                    const inputIds = Array.isArray(value) ? value : (value && value.inputs) || [];
+                    const inputIds = value;
                     return inputIds.map((inputIdentifier) => {
                         const nodeKey = graph.rootDatabase.nodeIdToKey(
                             inputIdentifier
@@ -136,8 +135,7 @@ function makeSemanticStorage(graph) {
                         jsonKey
                     );
                     if (databaseName === "inputs") {
-                        // Handle both new format (array) and old format ({inputs, inputCounters})
-                        const inputKeys = Array.isArray(value) ? value : (value && value.inputs) || [];
+                        const inputKeys = value;
                         tx.batch.inputs.put(nodeIdentifier, inputKeys.map((inputKey) =>
                             getOrAllocateNodeIdentifierForTest(
                                 tx,
@@ -221,7 +219,7 @@ function makeSemanticStorage(graph) {
                             const nodeIdentifier =
                                 getOrAllocateNodeIdentifierForTest(tx, graph.rootDatabase, jsonKey);
                             if (databaseName === "inputs") {
-                                const inputKeys = Array.isArray(value) ? value : (value && value.inputs) || [];
+                                const inputKeys = value;
                                 tx.batch.inputs.put(nodeIdentifier, inputKeys.map((inputKey) =>
                                     getOrAllocateNodeIdentifierForTest(
                                         tx,
@@ -267,7 +265,7 @@ function makeSemanticStorage(graph) {
                                 return undefined;
                             }
                             if (databaseName === "inputs") {
-                                const inputIds = Array.isArray(value) ? value : (value && value.inputs) || [];
+                                const inputIds = value;
                                 return inputIds.map((inputIdentifier) =>
                                     String(
                                         requireNodeKey(tx, inputIdentifier)

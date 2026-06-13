@@ -31,7 +31,6 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').Freshness} Freshness */
-/** @typedef {import('./database/types').InputsRecord} InputsRecord */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database').ReadableSchemaStorage} ReadableSchemaStorage */
 /** @typedef {import('./types').NodeDef} NodeDef */
@@ -100,8 +99,8 @@ async function loadMaterializedNodes(storage) {
  * Build the desired revdeps map from decisions, reading inputs from prevStorage.
  *
  * Memory: O(|keys|) — only stores key strings in the result map; no large
- * values are retained.  Reads from prevStorage are streaming (one InputsRecord
- * at a time).
+ * values are retained.  Reads from prevStorage are streaming (one inputs
+ * record at a time).
  *
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions

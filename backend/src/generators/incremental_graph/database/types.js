@@ -430,7 +430,7 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {ComputedValue | Freshness | InputsRecord | NodeIdentifier[] | Counter | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
+ * @typedef {ComputedValue | Freshness | NodeIdentifier[] | Counter | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
  */
 
 /**
@@ -457,13 +457,7 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
- */
-
-/**
- * A record storing the input dependencies of a node.
- * @typedef {string[]} InputsRecord
- * @deprecated Use NodeIdentifier[] instead. Kept for migration compatibility.
+ * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
  */
 
 class SchemaPatternClass {

@@ -66,7 +66,7 @@ const NODE_Z = makeTestId(25); // 'z-abcdefghi'
  * @returns {Promise<void>}
  */
 async function putNode(storage, nodeKey, inputKeys) {
-    await storage.inputs.put(nodeKey, { inputs: inputKeys, inputCounters: [] });
+    await storage.inputs.put(nodeKey, inputKeys);
 }
 
 describe('topologicalSort', () => {

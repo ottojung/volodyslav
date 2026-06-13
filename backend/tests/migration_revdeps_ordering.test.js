@@ -183,9 +183,9 @@ describe("migration revdeps ordering", () => {
         // Previous storage: three dependents all depending on inputKey.
         // The Map in applyDecisions iterates in insertion order (depC, depA, depB).
         const xStorage = makeSchemaStorage();
-        await xStorage.inputs.put(depC, { inputs: [inputKey], inputCounters: [1] });
-        await xStorage.inputs.put(depA, { inputs: [inputKey], inputCounters: [1] });
-        await xStorage.inputs.put(depB, { inputs: [inputKey], inputCounters: [1] });
+        await xStorage.inputs.put(depC, [inputKey]);
+        await xStorage.inputs.put(depA, [inputKey]);
+        await xStorage.inputs.put(depB, [inputKey]);
         await xStorage.values.put(depC, { type: "all_events", events: [] });
         await xStorage.values.put(depA, { type: "all_events", events: [] });
         await xStorage.values.put(depB, { type: "all_events", events: [] });
@@ -193,7 +193,7 @@ describe("migration revdeps ordering", () => {
         await xStorage.freshness.put(depA, "up-to-date");
         await xStorage.freshness.put(depB, "up-to-date");
         // Also need inputKey itself as a node
-        await xStorage.inputs.put(inputKey, { inputs: [], inputCounters: [] });
+        await xStorage.inputs.put(inputKey, []);
         await xStorage.values.put(inputKey, { type: "all_events", events: [] });
         await xStorage.freshness.put(inputKey, "up-to-date");
 
@@ -265,11 +265,11 @@ describe("migration revdeps ordering", () => {
         async function makeStorageWithDeps() {
             const s = makeSchemaStorage();
             for (const dep of [depZ, depA, depM]) {
-                await s.inputs.put(dep, { inputs: [inputKey], inputCounters: [1] });
+                await s.inputs.put(dep, [inputKey]);
                 await s.values.put(dep, { type: "all_events", events: [] });
                 await s.freshness.put(dep, "up-to-date");
             }
-            await s.inputs.put(inputKey, { inputs: [], inputCounters: [] });
+            await s.inputs.put(inputKey, []);
             await s.values.put(inputKey, { type: "all_events", events: [] });
             await s.freshness.put(inputKey, "up-to-date");
             return s;
@@ -358,11 +358,11 @@ describe("migration revdeps ordering", () => {
         const xStorage = makeSchemaStorage();
 
         // Set up nodes
-        await xStorage.inputs.put(sharedInput, { inputs: [], inputCounters: [] });
-        await xStorage.inputs.put(anotherInput, { inputs: [], inputCounters: [] });
-        await xStorage.inputs.put(depA, { inputs: [sharedInput, anotherInput], inputCounters: [1, 1] });
-        await xStorage.inputs.put(depB, { inputs: [sharedInput, anotherInput], inputCounters: [1, 1] });
-        await xStorage.inputs.put(depC, { inputs: [sharedInput], inputCounters: [1] });
+        await xStorage.inputs.put(sharedInput, []);
+        await xStorage.inputs.put(anotherInput, []);
+        await xStorage.inputs.put(depA, [sharedInput, anotherInput]);
+        await xStorage.inputs.put(depB, [sharedInput, anotherInput]);
+        await xStorage.inputs.put(depC, [sharedInput]);
 
         for (const key of [sharedInput, anotherInput, depA, depB, depC]) {
             await xStorage.values.put(key, { type: "all_events", events: [] });

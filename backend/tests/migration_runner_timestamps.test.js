@@ -185,11 +185,10 @@ async function seedNode(storage, nodeKey, {
     counter = 1,
     freshness = "up-to-date",
     inputs = [],
-    inputCounters = [],
 } = {}) {
     await storage.values.put(nodeKey, { type: "all_events", events: [] });
     await storage.freshness.put(nodeKey, freshness);
-    await storage.inputs.put(nodeKey, { inputs, inputCounters });
+    await storage.inputs.put(nodeKey, inputs);
     await storage.counters.put(nodeKey, counter);
     if (timestamps !== undefined) {
         await storage.timestamps.put(nodeKey, timestamps);
@@ -286,7 +285,6 @@ describe("keep decision: timestamps copied to new storage", () => {
         await seedNode(xStorage, nkB, {
             timestamps: NEW_TIMESTAMP,
             inputs: [nkA],
-            inputCounters: [1],
         });
         await xStorage.revdeps.put(nkA, [nkB]);
         const { rootDatabase } = makeRootDatabaseMock({
@@ -519,7 +517,6 @@ describe("delete decision: timestamps not present in new storage", () => {
         await seedNode(xStorage, nkB, {
             timestamps: NEW_TIMESTAMP,
             inputs: [nkA],
-            inputCounters: [1],
         });
         await xStorage.revdeps.put(nkA, [nkB]);
         const { rootDatabase } = makeRootDatabaseMock({
@@ -548,14 +545,12 @@ describe("delete decision: sublevels do not retain deleted keys", () => {
         await seedNode(xStorage, nkA, {
             timestamps: OLD_TIMESTAMP,
             inputs: [],
-            inputCounters: [],
             counter: 11,
             freshness: "up-to-date",
         });
         await seedNode(xStorage, nkB, {
             timestamps: NEW_TIMESTAMP,
             inputs: [nkA],
-            inputCounters: [1],
             counter: 22,
             freshness: "up-to-date",
         });
@@ -598,7 +593,6 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         await seedNode(xStorage, nkB, {
             timestamps: NEW_TIMESTAMP,
             inputs: [nkA],
-            inputCounters: [3],
             counter: 7,
         });
         await xStorage.revdeps.put(nkA, [nkB]);

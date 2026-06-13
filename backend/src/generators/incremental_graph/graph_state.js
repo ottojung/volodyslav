@@ -35,7 +35,6 @@ const {
 const {
     darkroomActivity,
 } = require('./lock');
-const { normalizeInputRecord } = require('./database');
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -457,20 +456,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
 }
 
 /**
- * Read inputs from the batch, normalizing both new format (NodeIdentifier[])
- * and old format ({inputs, inputCounters}) to a plain array.
- *
- * @param {BatchBuilder} batch
- * @param {NodeIdentifier} node
- * @returns {Promise<NodeIdentifier[]>}
- */
-async function readNormalizedInputs(batch, node) {
-    const record = await batch.inputs.get(node);
-    if (record === undefined) return [];
-    return normalizeInputRecord(record);
-}
-
-/**
  * Checks the overlay first, then falls through to the committed base.
  * Returns undefined if the node key is not found in either.
  * @param {Transaction} tx
@@ -529,5 +514,4 @@ module.exports = {
     lookupNodeIdentifier,
     getOrAllocateNodeIdentifier,
     requireNodeKey,
-    readNormalizedInputs,
 };

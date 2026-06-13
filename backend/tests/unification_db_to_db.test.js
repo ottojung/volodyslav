@@ -150,7 +150,7 @@ describe('makeDbToDbAdapter', () => {
         const { storage: src } = makeFakeSchemaStorage();
         await src.values.put(NODE_K, { v: 1 });
         await src.freshness.put(NODE_K, 'fresh');
-        await src.inputs.put(NODE_K, { inputs: [], inputCounters: [] });
+        await src.inputs.put(NODE_K, []);
 
         const { storage: dst, data: dstData } = makeFakeSchemaStorage();
 
@@ -158,7 +158,7 @@ describe('makeDbToDbAdapter', () => {
 
         expect(dstData.values.get(String(NODE_K))).toEqual({ v: 1 });
         expect(dstData.freshness.get(String(NODE_K))).toBe('fresh');
-        expect(dstData.inputs.get(String(NODE_K))).toEqual({ inputs: [], inputCounters: [] });
+        expect(dstData.inputs.get(String(NODE_K))).toEqual([]);
     });
 
     test('does not rewrite unchanged entries', async () => {
