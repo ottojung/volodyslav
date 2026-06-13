@@ -131,7 +131,38 @@ async function removeValidityFlags(batch, nId, inputEdges) {
 }
 
 /**
- * Handle Unchanged computor result: add validity flags, preserve counter and valid[N].
+ * Propagate potentially-outdated freshness through revdeps[N].
+ * Uses an iterative worklist to avoid stack overflow on deep chains.
+ * @param {import('./graph_state').GraphStorage} storage
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} changedIdentifier
+ * @returns {Promise<void>}
+ */
+async function propagateOutdatedFrom(storage, batch, changedIdentifier) {
+    /** @type {Set<string>} */
+    const visited = new Set();
+    /** @type {NodeIdentifier[]} */
+    const worklist = [changedIdentifier];
+
+    while (worklist.length > 0) {
+        const current = worklist.pop();
+        if (current === undefined) continue;
+        const currentStr = nodeIdentifierToString(current);
+        if (visited.has(currentStr)) continue;
+        visited.add(currentStr);
+
+        const dependents = await storage.listDependents(current, batch);
+        for (const dep of dependents) {
+            const depStr = nodeIdentifierToString(dep);
+            if (visited.has(depStr)) continue;
+            const freshness = await batch.freshness.get(dep);
+            if (freshness === "up-to-date") {
+                batch.freshness.put(dep, "potentially-outdated");
+                worklist.push(dep);
+            }
+        }
+    }
+}
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {NodeIdentifier} nodeIdentifier
  * @param {NodeIdentifier[]} inputEdges
@@ -184,6 +215,7 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
     await incrementalGraph.storage.ensureReverseDepsIndexed(nodeIdentifier, inputEdges, batch);
     await addValidityFlags(batch, nodeIdentifier, inputEdges);
     batch.freshness.put(nodeIdentifier, "up-to-date");
+    await propagateOutdatedFrom(incrementalGraph.storage, batch, nodeIdentifier);
 }
 
 /**

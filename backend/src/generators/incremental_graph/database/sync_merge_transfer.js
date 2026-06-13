@@ -29,6 +29,8 @@ function buildDeleteNodeOps(targetStorage, identifier) {
         targetStorage.values.delOp(identifier),
         targetStorage.freshness.delOp(identifier),
         targetStorage.inputs.delOp(identifier),
+        targetStorage.revdeps.delOp(identifier),
+        targetStorage.valid.delOp(identifier),
         targetStorage.counters.delOp(identifier),
         targetStorage.timestamps.delOp(identifier),
     ];
