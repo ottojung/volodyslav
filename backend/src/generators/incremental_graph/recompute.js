@@ -111,26 +111,6 @@ async function addValidityFlags(batch, nId, inputEdges) {
 }
 
 /**
- * Remove N from valid[D] for each dependency D in inputEdges.
- * @param {BatchBuilder} batch
- * @param {NodeIdentifier} nId
- * @param {NodeIdentifier[]} inputEdges
- * @returns {Promise<void>}
- */
-async function removeValidityFlags(batch, nId, inputEdges) {
-    const nIdStr = nodeIdentifierToString(nId);
-    for (const depId of inputEdges) {
-        const current = await getValidSet(batch, depId);
-        const filtered = current.filter(id => nodeIdentifierToString(id) !== nIdStr);
-        if (filtered.length === 0) {
-            batch.valid.del(depId);
-        } else if (filtered.length < current.length) {
-            batch.valid.put(depId, filtered);
-        }
-    }
-}
-
-/**
  * Propagate potentially-outdated freshness through revdeps[N].
  * Uses an iterative worklist to avoid stack overflow on deep chains.
  * @param {import('./graph_state').GraphStorage} storage
@@ -196,14 +176,24 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
     /** @type {any} */
     const compat = oldInputsRecord;
     const oldEdges = Array.isArray(compat) ? compat : (compat?.inputs ?? []);
-    const allEdgesToClear = [...new Set([...inputEdges, ...oldEdges].map(id => nodeIdentifierToString(id)))];
-    for (const depStr of allEdgesToClear) {
-        const current = (await batch.valid.get(depStr)) ?? [];
+    /** @type {Set<string>} */
+    const seen = new Set();
+    /** @type {NodeIdentifier[]} */
+    const allEdgesToClear = [];
+    for (const edge of [...inputEdges, ...oldEdges]) {
+        const str = nodeIdentifierToString(edge);
+        if (!seen.has(str)) {
+            seen.add(str);
+            allEdgesToClear.push(edge);
+        }
+    }
+    for (const depId of allEdgesToClear) {
+        const current = (await batch.valid.get(depId)) ?? [];
         const filtered = current.filter(id => nodeIdentifierToString(id) !== nodeIdentifierToString(nodeIdentifier));
         if (filtered.length === 0) {
-            batch.valid.del(depStr);
+            batch.valid.del(depId);
         } else if (filtered.length < current.length) {
-            batch.valid.put(depStr, filtered);
+            batch.valid.put(depId, filtered);
         }
     }
     batch.valid.del(nodeIdentifier);
