@@ -189,7 +189,23 @@ async function handleUnchanged(incrementalGraph, nodeIdentifier, inputEdges, bat
  * @returns {Promise<void>}
  */
 async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, batch) {
-    await removeValidityFlags(batch, nodeIdentifier, inputEdges);
+    // Defensive: remove N from union of persisted old edges and current edges.
+    // Schema-derived edges are immutable in normal operation, but this protects
+    // against stale validity flags that could survive format transitions.
+    const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
+    /** @type {any} */
+    const compat = oldInputsRecord;
+    const oldEdges = Array.isArray(compat) ? compat : (compat?.inputs ?? []);
+    const allEdgesToClear = [...new Set([...inputEdges, ...oldEdges].map(id => nodeIdentifierToString(id)))];
+    for (const depStr of allEdgesToClear) {
+        const current = (await batch.valid.get(depStr)) ?? [];
+        const filtered = current.filter(id => nodeIdentifierToString(id) !== nodeIdentifierToString(nodeIdentifier));
+        if (filtered.length === 0) {
+            batch.valid.del(depStr);
+        } else if (filtered.length < current.length) {
+            batch.valid.put(depStr, filtered);
+        }
+    }
     batch.valid.del(nodeIdentifier);
 
     batch.values.put(nodeIdentifier, newValue);
