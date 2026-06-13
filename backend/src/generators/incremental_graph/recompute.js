@@ -39,9 +39,6 @@ const { lookupNodeIdentifier } = require("./graph_state");
 
 /**
  * Create a dependency accumulator for the materialized dependency record.
- * Static inputs are added before computation. Dynamic pulls append only newly
- * observed identifiers, so duplicate pulls of the same dependency keep one
- * counter entry and preserve the first-observed order.
  * @param {NodeIdentifier[]} inputIdentifiers
  * @param {number[]} inputCounters
  * @returns {{ identifiers: NodeIdentifier[], counters: number[], add: (identifier: NodeIdentifier, counter: number) => void }}
