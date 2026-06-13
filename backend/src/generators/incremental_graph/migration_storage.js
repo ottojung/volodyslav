@@ -3,7 +3,8 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { deserializeNodeKey, stringToNodeKeyString, unsafeStringToNodeIdentifier, IDENTIFIERS_KEY, makeNodeIdentifier } = require("./database");
+const { deserializeNodeKey, stringToNodeKeyString, IDENTIFIERS_KEY, makeNodeIdentifier } = require("./database");
+const { normalizeInputRecord } = require("./graph_state");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,
@@ -105,10 +106,7 @@ async function readInputsRecord(nodeKey, prevStorage) {
     if (!record) {
         throw makeMissingDependencyMetadataError(nodeKey);
     }
-    /** @type {any} */
-    const compat = record;
-    const inputIds = Array.isArray(compat) ? compat : (compat.inputs || []);
-    return inputIds.map(unsafeStringToNodeIdentifier);
+    return normalizeInputRecord(record);
 }
 
 /**

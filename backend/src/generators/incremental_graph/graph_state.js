@@ -24,6 +24,7 @@ const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
     nodeIdentifierToString,
+    unsafeStringToNodeIdentifier,
     makeTransactionIdentifierLookup,
     txAllocateNodeIdentifier,
     txNodeIdToKey,
@@ -456,7 +457,45 @@ function makeGraphStorage(rootDatabase, sleeper) {
 }
 
 /**
- * Look up an existing identifier for a node key in the transaction's lookup.
+ * Normalise a raw inputs storage value (new or old format) to NodeIdentifier[].
+ * @param {unknown} record
+ * @returns {NodeIdentifier[]}
+ */
+function normalizeInputRecord(record) {
+    if (Array.isArray(record)) return record;
+    if (typeof record === 'object' && record !== null) {
+        for (const key of Object.keys(record)) {
+            if (key === 'inputs') {
+                const value = Reflect.get(record, key);
+                if (Array.isArray(value)) {
+                    /** @type {NodeIdentifier[]} */
+                    const result = [];
+                    for (const v of value) {
+                        result.push(unsafeStringToNodeIdentifier(String(v)));
+                    }
+                    return result;
+                }
+            }
+        }
+    }
+    return [];
+}
+
+/**
+ * Read inputs from the batch, normalizing both new format (NodeIdentifier[])
+ * and old format ({inputs, inputCounters}) to a plain array.
+ *
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} node
+ * @returns {Promise<NodeIdentifier[]>}
+ */
+async function readNormalizedInputs(batch, node) {
+    const record = await batch.inputs.get(node);
+    if (record === undefined) return [];
+    return normalizeInputRecord(record);
+}
+
+/**
  * Checks the overlay first, then falls through to the committed base.
  * Returns undefined if the node key is not found in either.
  * @param {Transaction} tx
@@ -515,4 +554,6 @@ module.exports = {
     lookupNodeIdentifier,
     getOrAllocateNodeIdentifier,
     requireNodeKey,
+    normalizeInputRecord,
+    readNormalizedInputs,
 };

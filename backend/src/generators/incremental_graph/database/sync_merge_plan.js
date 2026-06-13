@@ -2,6 +2,7 @@ const { topologicalSortFromMap } = require('./topo_sort');
 const { compareIsoTimestamps } = require('./sync_merge_timestamps');
 const { makeIdentifierLookup } = require('./identifier_lookup');
 const { IdentifierLookupConflictError } = require('./replica_errors');
+const { normalizeInputRecord } = require('../graph_state');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -18,7 +19,7 @@ const { IdentifierLookupConflictError } = require('./replica_errors');
 async function semanticInputs(storage, lookup, identifier) {
     const record = await storage.inputs.get(identifier);
     if (record === undefined) return [];
-    const inputIds = Array.isArray(record) ? record : (record.inputs || []);
+    const inputIds = normalizeInputRecord(record);
     return inputIds.map(input => {
         const nodeKey = lookup.idToKey.get(String(input));
         if (nodeKey === undefined) {
@@ -184,12 +185,22 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             return inputId;
         });
         mergedInputsMap.set(finalId, finalInputIds);
-        const sourceInputIds = Array.isArray(sourceInputs) ? sourceInputs : (sourceInputs?.inputs ?? []);
+        const sourceInputIds = normalizeInputRecord(sourceInputs);
         if (
-            sourceInputIds.length !== finalInputIds.length ||
-            sourceInputIds.some((inputId, index) => String(inputId) !== String(finalInputIds[index]))
+            sourceInputIds.length !== finalInputIds.length
         ) {
             directlyReloweredNodes.add(nodeKey);
+        } else {
+            let mismatched = false;
+            for (let idx = 0; idx < sourceInputIds.length; idx++) {
+                if (String(sourceInputIds[idx]) !== String(finalInputIds[idx])) {
+                    mismatched = true;
+                    break;
+                }
+            }
+            if (mismatched) {
+                directlyReloweredNodes.add(nodeKey);
+            }
         }
     }
 

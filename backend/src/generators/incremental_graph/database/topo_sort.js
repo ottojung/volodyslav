@@ -12,7 +12,7 @@
  * if the graph contains a cycle (which is treated as data corruption).
  */
 
-const { stringToNodeIdentifier } = require('./types');
+const { normalizeInputRecord } = require('../graph_state');
 
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -298,12 +298,8 @@ async function topologicalSort(storage) {
         let inputs;
         if (record === undefined) {
             inputs = [];
-        } else if (Array.isArray(record)) {
-            inputs = record;
         } else {
-            /** @type {{ inputs: string[] }} */
-            const compat = /** @type {any} */ (record);
-            inputs = compat.inputs.map(s => stringToNodeIdentifier(s));
+            inputs = normalizeInputRecord(record);
         }
         inputsMap.set(node, inputs);
     }

@@ -377,9 +377,6 @@ describe("generators/incremental_graph counters", () => {
             const derivedKey = toJsonKey("derived", []);
             const sourceBKey = toJsonKey("sourceB", []);
             
-            // Get sourceB's counter
-            const sourceBCounter = await storage.counters.get(sourceBKey);
-            
             // Corrupt the InputsRecord
             await storage.inputs.put(derivedKey, [sourceBKey]);
             

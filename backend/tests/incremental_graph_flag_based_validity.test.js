@@ -443,7 +443,6 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
 
             graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
-            const srcKey = makeNodeStorageKey("source");
             const midKey = makeNodeStorageKey("middle", binding);
             const depKey = makeNodeStorageKey("dependent", binding);
 
@@ -451,7 +450,6 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             await graph.pull("middle", binding);
             await graph.pull("dependent", binding);
 
-            const srcId = db.nodeKeyToId(srcKey);
             const midId = db.nodeKeyToId(midKey);
             const depId = db.nodeKeyToId(depKey);
 
@@ -690,7 +688,7 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
                 {
                     output: "dup_user(x)",
                     inputs: ["source", "source"], // duplicate dependency
-                    computor: async (inputs, oldValue, bindings) => {
+                    computor: async (inputs, _oldValue, _bindings) => {
                         receivedInputs.push(inputs);
                         return { v: "dup_user", count: inputs.length };
                     },
@@ -758,7 +756,6 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
 
             graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
-            const aKey = makeNodeStorageKey("A");
             const bKey = makeNodeStorageKey("B", binding);
             const cKey = makeNodeStorageKey("C", binding);
 
@@ -769,7 +766,6 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             expect(bCalls).toBe(1);
             expect(cCalls).toBe(1);
 
-            const aId = db.nodeKeyToId(aKey);
             const bId = db.nodeKeyToId(bKey);
             const cId = db.nodeKeyToId(cKey);
 
@@ -864,9 +860,7 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             await graph.pull("dependent", binding);
 
             const srcKey = makeNodeStorageKey("source");
-            const midKey = makeNodeStorageKey("middle", binding);
             const srcId = db.nodeKeyToId(srcKey);
-            const midId = db.nodeKeyToId(midKey);
 
             // Check revdeps are sorted
             const revdepsSrc = db._readSublevel('revdeps', srcId);

@@ -370,12 +370,8 @@ function summarizeDecisions(decisions) {
  * @returns {Promise<void>}
  */
 async function commitChangedMerge(
-    rootDatabase,
-    targetStorage,
-    targetReplica,
-    finalIdentifierLookup,
-    mergedInputsMap,
-    targetLastNodeIndex
+    rootDatabase, targetStorage, targetReplica,
+    finalIdentifierLookup, mergedInputsMap, targetLastNodeIndex
 ) {
     const writer = new ReplicaBatchWriter(targetStorage);
     await writer.push(targetStorage.global.putOp(

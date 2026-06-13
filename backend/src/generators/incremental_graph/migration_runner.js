@@ -20,6 +20,7 @@ const {
 } = require("./database");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
+const { normalizeInputRecord } = require("./graph_state");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
 
@@ -116,9 +117,7 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
         const inputsRecord = await prevStorage.inputs.get(nodeKey);
         if (!inputsRecord) continue;
 
-        /** @type {any} */
-        const compat = inputsRecord;
-        const inputIds = Array.isArray(compat) ? compat : (compat.inputs || []);
+        const inputIds = normalizeInputRecord(inputsRecord);
         for (const inputItem of inputIds) {
             const inputStr = String(inputItem);
             const inputKey = stringToNodeIdentifier(inputStr);

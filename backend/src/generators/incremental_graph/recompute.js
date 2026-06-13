@@ -36,6 +36,7 @@ const {
     compareNodeIdentifier,
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
+const { normalizeInputRecord } = require("./graph_state");
 
 /**
  * Normalize input positions to input edges.
@@ -173,9 +174,7 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
     // Schema-derived edges are immutable in normal operation, but this protects
     // against stale validity flags that could survive format transitions.
     const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
-    /** @type {any} */
-    const compat = oldInputsRecord;
-    const oldEdges = Array.isArray(compat) ? compat : (compat?.inputs ?? []);
+    const oldEdges = normalizeInputRecord(oldInputsRecord);
     /** @type {Set<string>} */
     const seen = new Set();
     /** @type {NodeIdentifier[]} */
@@ -298,11 +297,7 @@ async function internalMaybeRecalculate(
 
     // Collect revdep diff for darkroom finalization
     const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
-    /** @type {any} */
-    const compat = oldInputsRecord;
-    const oldDependencies = Array.isArray(compat)
-        ? compat
-        : (compat?.inputs ?? []);
+    const oldDependencies = normalizeInputRecord(oldInputsRecord);
     reportRevdepDiff({
         dependant: nodeIdentifier,
         oldDependencies,
