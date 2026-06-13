@@ -900,9 +900,188 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
 
             const inputsRecord = db._readSublevel('inputs', midId);
             expect(inputsRecord).toBeTruthy();
-            // Should be a plain array (the new format), not an object with inputCounters
             expect(Array.isArray(inputsRecord)).toBe(true);
             expect(inputsRecord.inputCounters).toBeUndefined();
+        });
+    });
+
+    // === Test: Unchanged does not repair missing counter ===
+    describe("Unchanged with missing counter", () => {
+        it("does not recreate counter when node has value but counter is missing", async () => {
+            let midCalls = 0;
+            const nodeDefs = [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => ({ v: "src" }),
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "middle(x)",
+                    inputs: ["source"],
+                    computor: async () => {
+                        midCalls++;
+                        return midCalls === 1 ? { v: "mid-first" } : makeUnchanged();
+                    },
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+            ];
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+
+            // Materialize
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            expect(midCalls).toBe(1);
+
+            const midKey = makeNodeStorageKey("middle", binding);
+            const midId = db.nodeKeyToId(midKey);
+
+            // Delete the counter directly from storage
+            const schemaStorage = db.getSchemaStorage();
+            await schemaStorage.counters.del(midId);
+
+            // Verify counter is gone
+            expect(db._readSublevel('counters', midId)).toBeUndefined();
+
+            // Invalidate and pull — middle returns Unchanged on second call
+            await graph.invalidate("source");
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            expect(midCalls).toBe(2);
+
+            // Counter was NOT recreated
+            expect(db._readSublevel('counters', midId)).toBeUndefined();
+
+            // Value and freshness are correct
+            expect(db._readSublevel('values', midId)).toEqual({ v: "mid-first" });
+            expect(db._readSublevel('freshness', midId)).toBe("up-to-date");
+        });
+    });
+
+    // === Test: Cache hit without counter ===
+    describe("cache hit without counter", () => {
+        it("succeeds via valid flags even when counter is missing", async () => {
+            const { nodeDefs, dependentCC } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const depKey = makeNodeStorageKey("dependent", binding);
+
+            // Materialize chain
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            const depId = db.nodeKeyToId(depKey);
+
+            // Delete the counter for dependent directly from storage
+            const schemaStorage = db.getSchemaStorage();
+            await schemaStorage.counters.del(depId);
+            expect(db._readSublevel('counters', depId)).toBeUndefined();
+
+            // Set dependent freshness to potentially-outdated directly.
+            // This bypasses the freshness fast-path without triggering
+            // an invalidation cascade that would clear valid flags.
+            await schemaStorage.freshness.put(depId, "potentially-outdated");
+            expect(db._readSublevel('freshness', depId)).toBe("potentially-outdated");
+
+            // valid[mid].has(dep) still exists from initial materialization
+            const midKey = makeNodeStorageKey("middle", binding);
+            const midId = db.nodeKeyToId(midKey);
+            const validMid = db._readSublevel('valid', midId);
+            expect(validMid.some(id => id === nodeIdentifierToString(depId))).toBe(true);
+
+            // Pull dependent — should cache-hit via valid flags despite missing counter.
+            // Middle and source are up-to-date, so no cascading recomputation.
+            const depCallsBefore = dependentCC.getCallCount();
+            const result = await graph.pull("dependent", binding);
+            expect(dependentCC.getCallCount()).toBe(depCallsBefore);
+            expect(result).toEqual({ v: "dep" });
+        });
+    });
+
+    // === Test: Malformed inputs fail loudly ===
+    describe("malformed inputs records", () => {
+        it("throws when pulling a node with a malformed inputs record", async () => {
+            const nodeDefs = [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => ({ v: "src" }),
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "dependent(x)",
+                    inputs: ["source"],
+                    computor: async () => ({ v: "dep" }),
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+            ];
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+
+            await graph.pull("source");
+
+            // Manually write a malformed inputs record — old {inputs, inputCounters} format
+            const schemaStorage = db.getSchemaStorage();
+            const depKey = makeNodeStorageKey("dependent", binding);
+            const depId = db.nodeKeyToId(depKey);
+            // This is the old format that must be rejected
+            await schemaStorage.inputs.put(depId, { inputs: [], inputCounters: {} });
+
+            await graph.invalidate("source");
+
+            // Pulling dependent should fail because the malformed record is detected
+            await expect(graph.pull("dependent", binding)).rejects.toThrow(
+                /malformed inputs record/i
+            );
+        });
+
+        it("throws when inputs record is a number (invalid shape)", async () => {
+            const nodeDefs = [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => ({ v: "src" }),
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "dependent(x)",
+                    inputs: ["source"],
+                    computor: async () => ({ v: "dep" }),
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+            ];
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+
+            await graph.pull("source");
+
+            const schemaStorage = db.getSchemaStorage();
+            const depKey = makeNodeStorageKey("dependent", binding);
+            const depId = db.nodeKeyToId(depKey);
+            // A number is not a valid inputs record
+            await schemaStorage.inputs.put(depId, 42);
+
+            await graph.invalidate("source");
+
+            await expect(graph.pull("dependent", binding)).rejects.toThrow(
+                /malformed inputs record/i
+            );
         });
     });
 });
