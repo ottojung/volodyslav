@@ -19,10 +19,17 @@ const {
     isMalformedIdentifierLookupError,
     isMissingIdentifierLookupError,
     makeIdentifierLookup,
+    makeInMemorySchemaStorage,
     nodeIdentifierFromString,
+    nodeIdentifierToString,
     serializeIdentifierLookup,
     stringToNodeKeyString,
 } = require('../src/generators/incremental_graph/database');
+const {
+    assertValidFinalMergeState,
+    FinalMergeStateError,
+    isFinalMergeStateError,
+} = require('../src/generators/incremental_graph/database/sync_merge_validation');
 const { makeIncrementalGraph } = require('../src/generators/incremental_graph');
 const {
     IdentifierLookupConflictError,
@@ -1104,6 +1111,95 @@ describe('mergeHostIntoReplica', () => {
         } finally {
             if (db) await db.close();
         }
+    });
+
+    describe('assertValidFinalMergeState', () => {
+        test('rejects revdeps entry referencing unknown identifier', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+
+                const nodeA = NODE_A;
+                const knownNodeIds = [nodeIdentifierFromString('99-abcdefghi')]; // unknown identifier
+                const T = db.schemaStorageForReplica('x');
+                // Materialize A
+                await T.inputs.put(nodeA, []);
+                await T.values.put(nodeA, { v: 1 });
+                await T.freshness.put(nodeA, 'up-to-date');
+                // Write revdeps for A referencing an unknown identifier
+                await T.revdeps.put(nodeA, knownNodeIds);
+
+                const lookup = makeIdentifierLookup([[nodeA, stringToNodeKeyString('{"head":"test","args":[]}')]]);
+
+                await expect(
+                    assertValidFinalMergeState(T, lookup)
+                ).rejects.toThrow(FinalMergeStateError);
+            } finally {
+                if (db) await db.close();
+            }
+        });
+
+        test('rejects valid entry for discarded identifier', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+
+                const nodeA = NODE_A;
+                const discardedId = nodeIdentifierFromString('99-abcdefghi');
+                const T = db.schemaStorageForReplica('x');
+                // Materialize A (known identifier)
+                await T.inputs.put(nodeA, []);
+                await T.values.put(nodeA, { v: 1 });
+                await T.freshness.put(nodeA, 'up-to-date');
+                // Write valid entry for a discarded identifier that is NOT in the lookup
+                await T.valid.put(discardedId, [nodeA]);
+
+                const lookup = makeIdentifierLookup([[nodeA, stringToNodeKeyString('{"head":"test","args":[]}')]]);
+
+                await expect(
+                    assertValidFinalMergeState(T, lookup)
+                ).rejects.toThrow(FinalMergeStateError);
+            } finally {
+                if (db) await db.close();
+            }
+        });
+
+        test('rejects revdeps value entry referencing unknown identifier', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+
+                const nodeA = NODE_A;
+                const nodeB = NODE_B;
+                const unknownId = nodeIdentifierFromString('99-abcdefghi');
+                const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+                const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+                const T = db.schemaStorageForReplica('x');
+                // Materialize A and B
+                await T.inputs.put(nodeA, []);
+                await T.inputs.put(nodeB, []);
+                await T.values.put(nodeA, { v: 1 });
+                await T.values.put(nodeB, { v: 2 });
+                await T.freshness.put(nodeA, 'up-to-date');
+                await T.freshness.put(nodeB, 'up-to-date');
+                // Write revdeps[A] containing an unknown identifier
+                await T.revdeps.put(nodeA, [unknownId]);
+
+                const lookup = makeIdentifierLookup([
+                    [nodeA, keyA],
+                    [nodeB, keyB],
+                ]);
+
+                await expect(
+                    assertValidFinalMergeState(T, lookup)
+                ).rejects.toThrow(FinalMergeStateError);
+            } finally {
+                if (db) await db.close();
+            }
+        });
     });
 
     test('throws IdentifierLookupConflictError when same identifier maps to different semantic keys', async () => {

@@ -73,6 +73,32 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
             }
         }
     }
+    for await (const identifier of targetStorage.revdeps.keys()) {
+        const identifierString = nodeIdentifierToString(identifier);
+        if (!knownIdentifiers.has(identifierString)) {
+            throw new FinalMergeStateError(
+                `revdeps references discarded identifier ${identifierString}`
+            );
+        }
+        const revdepIds = await targetStorage.revdeps.get(identifier);
+        if (revdepIds !== undefined && Array.isArray(revdepIds)) {
+            for (const revdep of revdepIds) {
+                if (!knownIdentifiers.has(nodeIdentifierToString(revdep))) {
+                    throw new FinalMergeStateError(
+                        `revdeps[${identifierString}] references unknown identifier ${nodeIdentifierToString(revdep)}`
+                    );
+                }
+            }
+        }
+    }
+    for await (const identifier of targetStorage.valid.keys()) {
+        const identifierString = nodeIdentifierToString(identifier);
+        if (!knownIdentifiers.has(identifierString)) {
+            throw new FinalMergeStateError(
+                `valid references discarded identifier ${identifierString}`
+            );
+        }
+    }
 }
 
 /**
