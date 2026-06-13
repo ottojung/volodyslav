@@ -19,7 +19,7 @@ node addressing. It describes the model as it is meant to be.
 - **NodeKey**: the schema-derived identity of a concrete node instance, based on
   `(head, args)`
 - **NodeIdentifier**: the deterministic persisted identifier attached to a materialized node
-- **graph-state sublevels**: `values`, `freshness`, `inputs`, `revdeps`, `counters`,
+- **graph-state sublevels**: `values`, `freshness`, `inputs`, `revdeps`, `valid`, `counters`,
   `timestamps`
 
 ## Boundary
@@ -150,14 +150,16 @@ This applies to:
 - `freshness[id] -> Freshness`
 - `counters[id] -> Counter`
 - `timestamps[id] -> TimestampRecord`
-- `inputs[id] -> { inputs: NodeIdentifier[], inputCounters: number[] }`
+- `inputs[id] -> NodeIdentifier[]`
 - `revdeps[id] -> NodeIdentifier[]`
+- `valid[id] -> NodeIdentifier[]`
 
 ### Storage invariants
 
 - graph-state sublevel keys are `NodeIdentifier`
-- `inputs[id].inputs` contains `NodeIdentifier[]`
+- `inputs[id]` contains the normalized structural dependency-edge list as `NodeIdentifier[]`
 - `revdeps[id]` contains `NodeIdentifier[]`
+- `valid[id]` contains `NodeIdentifier[]`
 - reverse dependencies are sorted by `NodeIdentifier` (lexicographic), never by `NodeKey`
 - render/scan paths use direct identifier path segments
 - graph-state path encoding/decoding must not reconstruct `NodeKey` values
@@ -310,8 +312,9 @@ For every materialized node identifier `id`:
 1. `nodeIdToKey(id) = key`
 2. `nodeKeyToId(key) = id`
 3. all graph-state records for that node are keyed by `id`
-4. every entry inside `inputs[id].inputs` is a valid `NodeIdentifier`
+4. every entry inside `inputs[id]` is a valid `NodeIdentifier`
 5. every entry inside `revdeps[id]` is a valid `NodeIdentifier`
+6. every entry inside `valid[id]` is a valid `NodeIdentifier`
 
 No persisted graph edge may point directly to a `NodeKeyString`.
 

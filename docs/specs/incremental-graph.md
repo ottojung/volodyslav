@@ -396,7 +396,9 @@ pull(nodeName, bindings):
   return r
 ```
 
-**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits many essential details.
+**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits many essential details. The concrete implementation uses the flag-based inverse validity algorithm (see
+`incremental-graph-flag-based-inverse-validity.md`) for cache validation, `Unchanged` propagation,
+and incremental recomputation.
 
 **REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
@@ -437,6 +439,8 @@ Implementations MAY use any strategy to achieve property PROP-03 (e.g., memoizat
 1. Node's value MUST NOT be updated (keeps old value)
 2. Node MUST be marked `up-to-date`
 3. The stored value must remain a valid `ComputedValue` (never the sentinel itself)
+4. The implementation MUST add validity flags (`valid[D].add(N)`) for every schema-derived
+   dependency edge `D`, without clearing `valid[N]` or incrementing the value counter.
 
 **REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing **if and only if** it can prove D's value would be unchanged given current input values.
 
@@ -685,12 +689,19 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 
 ---
 
-### Dynamic dependencies
+### Computors and graph access
 
 Computors MAY invoke the `pull` method, or any other methods of the `IncrementalGraph` interface.
-Nodes `pull`ed in this way (dynamically) are not considered dependencies of the calling Computor's node.
-Therefore, the implementation MUST NOT treat them as inputs. This includes:
-- not propagating freshness updates during `invalidate`ion.
+Nodes `pull`ed in this way are **not** schema-derived dependencies of the calling computor's node.
+The implementation MUST NOT treat them as inputs for freshness propagation or reverse-dependency
+indexing. This means:
+
+- freshness updates during `invalidate()` are not propagated through dynamically-pulled nodes,
+- dynamically-pulled nodes do not appear in `inputs[N]` or `revdeps`,
+- the cache predicate does not consider dynamically-pulled nodes.
+
+Dynamically-pulled nodes are not part of the flag-based validity algorithm. They are ad-hoc queries
+performed during a computor's execution and do not affect the structural dependency graph.
 
 ---
 
