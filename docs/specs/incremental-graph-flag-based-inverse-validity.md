@@ -284,47 +284,9 @@ Sorting is required for stable storage, stable rendered output, snapshots, merge
 This spec does not cover schema migration, repair of stale dependency records, dynamic dependency
 discovery, direct value replacement, or counter-snapshot cache validation.
 
-## Test Obligations
+## Implementation Note
 
-1. **Cache hit**: When all `valid[D].has(N)` flags exist for `inputEdges(N)`, a potentially-outdated
-   node returns its cached value without running the computor.
-
-2. **No vacuous cache hit**: A potentially-outdated zero-input node must run its computor.
-
-3. **`Unchanged` adds validity flags**: `handleUnchanged` records `valid[D].add(N)` for every
-   dependency edge and does not increment the counter.
-
-4. **Changed value clears validity**: `handleChanged` deletes `N` from each `valid[D]`, clears
-   `valid[N]`, writes the new value, increments the counter, records new valid flags, and propagates
-   freshness.
-
-5. **Changed dependency invalidates cache**: When a dependency `D` changes value, `valid[D]` is
-   cleared. A dependent node that previously had a cache hit must validate or recompute on the next
-   pull.
-
-6. **External invalidation does not mutate `valid`**: Marking a node potentially-outdated does not
-   clear validity flags.
-
-7. **Failed computor rolls back**: If the computor throws or returns an invalid value, `values[N]`,
-   `counters[N]`, `valid`, `freshness[N]`, and structural metadata for `N` are not mutated.
-
-8. **`Unchanged` requires materialized value**: A computor that returns `Unchanged` when `N` has no
-   materialized value is an error.
-
-9. **Duplicate input positions preserved for computor arguments, collapsed for edges**: Duplicate
-   positions are preserved in the argument array but collapse to one dependency edge for `inputs`,
-   `revdeps`, and `valid`.
-
-10. **Deterministic serialization**: `valid` and `revdeps` serialize in canonical sorted order.
-    Materialized `inputs` serialize in schema-derived order after duplicate collapse.
-
-11. **Downstream validity survives upstream `Unchanged`**: Given a chain `A -> B -> C` where all
-    three are materialized and valid: invalidate or change `A` so that `B` and `C` become
-    potentially-outdated. Pull `B`; its computor returns `Unchanged`. After the pull,
-    `valid[B].has(C)` must still hold (handling `Unchanged` does not clear `valid[B]`), and
-    pulling `C` may cache-hit without running `C`'s computor.
-
-12. **`valid` is not an invalidation index**: Missing `valid[D].has(N)` must not prevent
-    `invalidate(D)` from reaching `N`. Invalidation walks `revdeps[D]`, not `valid[D]`. If
-    `revdeps[D]` contains `N` but `valid[D]` does not, marking `D` potentially-outdated still
-    propagates freshness to `N`.
+The `valid` relation is optional proof metadata. Implementations may safely omit valid
+flags — a missing flag causes extra recomputation but must not cause an incorrect cache
+hit. The flag-based inverse validity model replaces counter-snapshot cache validation.
+Counters are value-change metadata only and are not used for cache validation.
