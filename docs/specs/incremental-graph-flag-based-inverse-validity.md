@@ -547,7 +547,7 @@ The implementation must satisfy these test obligations:
 
 6. **External invalidation preserves validity**: Marking a node potentially outdated does not mutate `valid`. A node remains valid with respect to its inputs even after external invalidation.
 
-7. **Direct replacement clears validity conservatively**: A direct replacement that cannot prove the value is unchanged clears validity flags. A direct replacement that proves the value is unchanged does not clear validity.
+7. **Direct replacement is not handled**: Consequence of direct replacement is undefined by this specification.
 
 8. **Deterministic serialization**: `valid` and `revdeps` serialize in canonical sorted order. Materialized `inputs` serialize in schema-derived order after duplicate collapse.
 
