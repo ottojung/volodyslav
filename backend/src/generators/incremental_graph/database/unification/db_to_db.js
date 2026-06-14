@@ -2,7 +2,7 @@
  * DB-to-DB unification adapter.
  *
  * Unifies one SchemaStorage into another by iterating all data sublevels
- * (values, freshness, global, inputs, counters, timestamps) as a unified
+ * (counters, freshness, global, inputs, timestamps, valid, values) as a unified
  * key space.  Only puts keys whose serialised value differs; deletes keys
  * absent from the source.
  *

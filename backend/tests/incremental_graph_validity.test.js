@@ -654,7 +654,7 @@ describe("Incremental graph validity", () => {
 
     // === Test Obligation 7: Failed computor rolls back ===
     describe("test obligation 7: failed computor rolls back", () => {
-        it("does not partially write values, counters, freshness, inputs, valid, or valid", async () => {
+        it("does not partially write values, counters, freshness, inputs, or valid", async () => {
             let shouldFail = false;
             const { nodeDefs } = createChainGraph(
                 () => ({ v: "src" }),

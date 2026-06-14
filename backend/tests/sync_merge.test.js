@@ -218,8 +218,8 @@ describe('mergeHostIntoReplica', () => {
             const merged = await T.values.get(nodeA);
             expect(merged).toEqual(remoteValue);
 
-            // Changed merge must not preserve stale validity flags.
-            // valid is mandatory for every up-to-date input edge and is cleared on changed merge.
+            // This changed merge takes a zero-input node. There are no
+            // incoming validity edges to preserve or rebuild.
             const validKeys = [];
             for await (const key of T.valid.keys()) {
                 validKeys.push(key);
