@@ -38,7 +38,9 @@
 
 const { isTopologicalSortCycleError } = require('./topo_sort');
 const { IdentifierLookupConflictError } = require('./replica_errors');
-const { versionToString } = require('./types');
+const { versionToString, nodeIdentifierToString } = require('./types');
+const { compareNodeIdentifier } = require('./node_identifier');
+const { readInputRecord } = require('./input_record');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     IDENTIFIERS_KEY,
@@ -359,7 +361,7 @@ function summarizeDecisions(decisions) {
 }
 
 /**
- * Persist the final semantic-plan lookup and conservative freshness state.
+ * Persist the final semantic-plan lookup and commit the inactive replica as active.
  * @param {RootDatabase} rootDatabase
  * @param {SchemaStorage} targetStorage
  * @param {ReplicaName} targetReplica
@@ -383,17 +385,53 @@ async function commitChangedMerge(
 
 
 /**
- * Discard validity and mark every node with inputs for recomputation.
+ * Rebuild the valid frontier from the final merged graph state.
+ *
+ * For every materialized node N with freshness[N] == "up-to-date":
+ *   for every D in inputs[N]: valid[D] contains N.
+ *
+ * Nodes whose freshness is not "up-to-date" do not receive incoming validity
+ * flags. Duplicate dependents are avoided and each valid[D] is written as a
+ * sorted array.
+ *
  * @param {SchemaStorage} targetStorage
- * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
  * @returns {Promise<void>}
  */
-async function discardValidity(targetStorage, mergedInputsMap) {
+async function rebuildValidityFromFreshInputs(targetStorage) {
     await targetStorage.valid.clear();
+
+    /** @type {Map<string, NodeIdentifier[]>} */
+    const validMap = new Map();
+    /** @type {Map<string, NodeIdentifier>} */
+    const depIdCache = new Map();
+
+    for await (const nodeIdentifier of targetStorage.inputs.keys()) {
+        const freshness = await targetStorage.freshness.get(nodeIdentifier);
+        if (freshness !== "up-to-date") {
+            continue;
+        }
+        const inputs = readInputRecord(await targetStorage.inputs.get(nodeIdentifier));
+        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+        for (const depId of inputs) {
+            const depIdStr = nodeIdentifierToString(depId);
+            depIdCache.set(depIdStr, depId);
+            let dependents = validMap.get(depIdStr);
+            if (dependents === undefined) {
+                dependents = [];
+                validMap.set(depIdStr, dependents);
+            }
+            if (!dependents.some(d => nodeIdentifierToString(d) === nodeIdStr)) {
+                dependents.push(nodeIdentifier);
+            }
+        }
+    }
+
     const writer = new ReplicaBatchWriter(targetStorage);
-    for (const [identifier, inputs] of mergedInputsMap) {
-        if (inputs.length > 0) {
-            await writer.push(targetStorage.freshness.putOp(identifier, 'potentially-outdated'));
+    for (const [depIdStr, dependents] of validMap) {
+        const depId = depIdCache.get(depIdStr);
+        if (depId !== undefined && dependents.length > 0) {
+            dependents.sort(compareNodeIdentifier);
+            await writer.push(targetStorage.valid.putOp(depId, dependents));
         }
     }
     await writer.flush();
@@ -484,7 +522,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const summary = summarizeDecisions(decisions.values());
     const hasChanges = summary.hasChanges || hasIdentifierReconciliation;
     if (hasChanges) {
-        await discardValidity(targetStorage, mergedInputsMap);
+        await rebuildValidityFromFreshInputs(targetStorage);
     }
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
 
