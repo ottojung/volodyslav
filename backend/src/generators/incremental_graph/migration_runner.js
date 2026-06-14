@@ -17,6 +17,9 @@ const {
     LAST_NODE_INDEX_KEY,
     nodeIdentifierToString,
     stringToNodeIdentifier,
+    makeEmptyIdentifierLookup,
+    parseIdentifierLookup,
+    assertValidFinalMergeState,
 } = require("./database");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
@@ -543,6 +546,15 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // _rawSync() issues an empty batch with sync:true to flush the WAL
             // without rewriting any keys.
             await rootDatabase._rawSync();
+
+            // Validate the target replica before activating it.
+            // This checks the invariant: every up-to-date node has valid flags
+            // for every input, and no valid entries reference unknown identifiers.
+            const rawIdentifiers = await toStorage.global.get(IDENTIFIERS_KEY);
+            const targetLookup = rawIdentifiers === undefined
+                ? makeEmptyIdentifierLookup()
+                : parseIdentifierLookup(rawIdentifiers, 'migration target replica');
+            await assertValidFinalMergeState(toStorage, targetLookup);
 
             // Persist the new active replica pointer after all writes succeed.
             await rootDatabase.setCurrentReplicaPointer(toReplica);

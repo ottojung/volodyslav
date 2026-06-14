@@ -84,6 +84,21 @@ const {
     makeInMemorySchemaStorage,
 } = require('./unification');
 
+const {
+    normalizeInputEdges,
+    arraysOfNodeIdentifiersEqual,
+} = require('./input_edges');
+
+const {
+    assertValidFinalMergeState,
+    FinalMergeStateError,
+    isFinalMergeStateError,
+} = require('./sync_merge_validation');
+
+const {
+    parseIdentifierLookup,
+} = require('./sync_merge_identifier_lookup');
+
 module.exports = {
     getRootDatabase,
     makeRootDatabase,
@@ -159,4 +174,10 @@ module.exports = {
     unifyStores,
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
+    normalizeInputEdges,
+    arraysOfNodeIdentifiersEqual,
+    assertValidFinalMergeState,
+    FinalMergeStateError,
+    isFinalMergeStateError,
+    parseIdentifierLookup,
 };

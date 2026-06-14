@@ -17,6 +17,20 @@ jest.mock('../src/generators/incremental_graph/database', () => ({
 }));
 const { checkpointMigration: mockCheckpointMigration } = require('../src/generators/incremental_graph/database');
 
+const validationActual = jest.requireActual('../src/generators/incremental_graph/database/sync_merge_validation');
+jest.mock('../src/generators/incremental_graph/database/sync_merge_validation', () => ({
+    ...jest.requireActual('../src/generators/incremental_graph/database/sync_merge_validation'),
+    assertValidFinalMergeState: jest.fn(),
+}));
+const {
+    assertValidFinalMergeState,
+    FinalMergeStateError,
+    isFinalMergeStateError,
+} = require("../src/generators/incremental_graph/database/sync_merge_validation");
+const {
+    makeIdentifierLookup,
+} = require("../src/generators/incremental_graph/database");
+
 /**
  * Get the migrated identifier for a given node key from the storage's global IDENTIFIERS_KEY.
  * @param {import('../src/generators/incremental_graph/database').SchemaStorage} storage
@@ -209,6 +223,12 @@ function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0
     }];
     return { rootDatabase, nodeDefs, nodeKey, xStorage, yStorage };
 }
+
+beforeEach(() => {
+    assertValidFinalMergeState.mockImplementation(
+        (storage, lookup) => validationActual.assertValidFinalMergeState(storage, lookup)
+    );
+});
 
 describe("runMigration", () => {
     test("invalidate preserves counters from previous storage", async () => {
@@ -1320,6 +1340,166 @@ describe("x-namespace state preserved on migration failure", () => {
         ).rejects.toThrow();
 
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Migration validation: assertValidFinalMergeState is called before activation
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("migration validation", () => {
+    test("assertValidFinalMergeState rejects target with missing valid flag for up-to-date node", async () => {
+        // A -> B
+        // B is up-to-date with inputs [A]
+        // valid[A] is missing B
+        // This violates the invariant: every up-to-date node must have
+        // valid flags for every input.
+        const storage = makeSchemaStorage();
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
+
+        await storage.inputs.put(aKey, []);
+        await storage.inputs.put(bKey, [aKey]);
+        await storage.values.put(aKey, { type: "all_events", events: [] });
+        await storage.values.put(bKey, { type: "all_events", events: [] });
+        await storage.freshness.put(aKey, "up-to-date");
+        await storage.freshness.put(bKey, "up-to-date");
+        await storage.counters.put(aKey, 1);
+        await storage.counters.put(bKey, 1);
+        // valid[A] intentionally missing B
+
+        const identifiers = await storage.global.get(IDENTIFIERS_KEY);
+        const lookup = makeIdentifierLookup(identifiers);
+
+        await expect(
+            assertValidFinalMergeState(storage, lookup)
+        ).rejects.toThrow(FinalMergeStateError);
+    });
+
+    test("assertValidFinalMergeState rejects valid entry referencing unknown identifier", async () => {
+        const storage = makeSchemaStorage();
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
+
+        await storage.inputs.put(aKey, []);
+        await storage.values.put(aKey, { type: "all_events", events: [] });
+        await storage.freshness.put(aKey, "up-to-date");
+        await storage.counters.put(aKey, 1);
+        // valid references B which is not materialized
+        await storage.valid.put(aKey, [bKey]);
+
+        const identifiers = await storage.global.get(IDENTIFIERS_KEY);
+        const lookup = makeIdentifierLookup(identifiers);
+
+        await expect(
+            assertValidFinalMergeState(storage, lookup)
+        ).rejects.toThrow(FinalMergeStateError);
+    });
+
+    test("valid target passes assertValidFinalMergeState", async () => {
+        const storage = makeSchemaStorage();
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
+
+        await storage.inputs.put(aKey, []);
+        await storage.inputs.put(bKey, [aKey]);
+        await storage.values.put(aKey, { type: "all_events", events: [] });
+        await storage.values.put(bKey, { type: "all_events", events: [] });
+        await storage.freshness.put(aKey, "up-to-date");
+        await storage.freshness.put(bKey, "up-to-date");
+        await storage.counters.put(aKey, 1);
+        await storage.counters.put(bKey, 1);
+        await storage.valid.put(aKey, [bKey]);
+
+        const identifiers = await storage.global.get(IDENTIFIERS_KEY);
+        const lookup = makeIdentifierLookup(identifiers);
+
+        await expect(
+            assertValidFinalMergeState(storage, lookup)
+        ).resolves.toBeUndefined();
+    });
+
+    test("migration validates target and calls setCurrentReplicaPointer when validation passes", async () => {
+        // A -> B, both up-to-date with correct valid flags
+        // The migration keeps both nodes. buildDesiredValid() adds valid[A].has(B).
+        // assertValidFinalMergeState will pass, and setCurrentReplicaPointer is called.
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
+
+        await xStorage.inputs.put(aKey, []);
+        await xStorage.inputs.put(bKey, [aKey]);
+        await xStorage.values.put(aKey, { type: "all_events", events: [] });
+        await xStorage.values.put(bKey, { type: "all_events", events: [] });
+        await xStorage.freshness.put(aKey, "up-to-date");
+        await xStorage.freshness.put(bKey, "up-to-date");
+        await xStorage.counters.put(aKey, 1);
+        await xStorage.counters.put(bKey, 1);
+        // valid[A] already contains B — preserved through migration
+        await xStorage.valid.put(aKey, [bKey]);
+
+        const yStorage = makeSchemaStorage();
+        const mock = makeRootDatabaseMock({
+            prevVersion: "1.0.0",
+            currentVersion: "2.0.0",
+            xStorage,
+            yStorage,
+        });
+
+        const nodeDefs = [
+            { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+            { output: "B", inputs: ["A"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+        ];
+
+        await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+            await storage.keep(aKey);
+            await storage.keep(bKey);
+        });
+
+        expect(mock.setCurrentReplicaPointerCalled).toBe(true);
+    });
+
+    test("migration calls assertValidFinalMergeState before activating replica; rejection blocks activation", async () => {
+        // By mocking assertValidFinalMergeState to throw, we prove the
+        // migration path calls it before setCurrentReplicaPointer.
+        assertValidFinalMergeState.mockRejectedValueOnce(
+            new FinalMergeStateError("simulated: target state invalid")
+        );
+
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const nodeKey = toJsonKey("A");
+        await xStorage.inputs.put(nodeKey, []);
+
+        const yStorage = makeSchemaStorage();
+        const mock = makeRootDatabaseMock({
+            prevVersion: "1.0.0",
+            currentVersion: "2.0.0",
+            xStorage,
+            yStorage,
+        });
+
+        const nodeDefs = [{
+            output: "A",
+            inputs: [],
+            computor: async () => ({ type: "all_events", events: [] }),
+            isDeterministic: true,
+            hasSideEffects: false,
+        }];
+
+        let caughtError;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(nodeKey);
+            });
+        } catch (e) {
+            caughtError = e;
+        }
+
+        expect(assertValidFinalMergeState).toHaveBeenCalled();
+        expect(isFinalMergeStateError(caughtError)).toBe(true);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
     });
 });
 
