@@ -157,6 +157,9 @@ describe("generators/incremental_graph", () => {
             await storage.freshness.put(toJsonKey("input1"), "up-to-date");
             await storage.values.put(toJsonKey("output1"), { type: 'meta_events', meta_events: [] });
             await storage.freshness.put(toJsonKey("output1"), "up-to-date");
+            await storage.inputs.put(toJsonKey("input1"), []);
+            await storage.inputs.put(toJsonKey("output1"), [toJsonKey("input1")]);
+            await storage.valid.put(toJsonKey("input1"), [toJsonKey("output1")]);
 
             const result = await graph.pull("output1");
 

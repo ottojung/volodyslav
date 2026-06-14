@@ -363,17 +363,17 @@ describe('generators/database', () => {
             }
         });
 
-        test('revdeps storage works independently', async () => {
+        test('valid storage works independently', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 const storage = db.getSchemaStorage();
                 
                 // Store dependents as arrays
-                await storage.revdeps.put('dep1', ['node1', 'node2']);
+                await storage.valid.put('dep1', ['node1', 'node2']);
                 
                 // Retrieve dependents array
-                const dependents = await storage.revdeps.get('dep1');
+                const dependents = await storage.valid.get('dep1');
                 
                 expect(dependents).toEqual(['node1', 'node2']);
                 

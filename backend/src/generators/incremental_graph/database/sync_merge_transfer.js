@@ -13,13 +13,12 @@ const { makeDbToDbAdapter, unifyStores } = require('./unification');
 async function copyReplicaGently(rootDatabase, from, to) {
     const src = rootDatabase.schemaStorageForReplica(from);
     const dst = rootDatabase.schemaStorageForReplica(to);
-    await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
+    await unifyStores(makeDbToDbAdapter(src, dst));
     await rootDatabase._rawSync();
 }
 
 /**
  * Build operations that remove every primary record for a discarded identifier.
- * Reverse dependencies are rebuilt from the final lowered graph.
  * @param {SchemaStorage} targetStorage
  * @param {NodeIdentifier} identifier
  * @returns {Array<*>}
@@ -29,7 +28,6 @@ function buildDeleteNodeOps(targetStorage, identifier) {
         targetStorage.values.delOp(identifier),
         targetStorage.freshness.delOp(identifier),
         targetStorage.inputs.delOp(identifier),
-        targetStorage.revdeps.delOp(identifier),
         targetStorage.valid.delOp(identifier),
         targetStorage.counters.delOp(identifier),
         targetStorage.timestamps.delOp(identifier),

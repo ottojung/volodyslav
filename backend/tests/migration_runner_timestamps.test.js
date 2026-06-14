@@ -79,7 +79,6 @@ function makeSchemaStorage() {
     const freshness = makeInMemoryDb("freshness");
     const global = makeInMemoryDb("global");
     const inputs = makeInMemoryDb("inputs");
-    const revdeps = makeInMemoryDb("revdeps");
     const valid = makeInMemoryDb("valid");
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
@@ -104,14 +103,13 @@ function makeSchemaStorage() {
     };
 
     return {
-        values, freshness, global, inputs, revdeps, valid, counters, timestamps,
+        values, freshness, global, inputs, valid, counters, timestamps,
         async batch(operations) {
             for (const op of operations) {
                 values.apply(op);
                 freshness.apply(op);
                 global.apply(op);
                 inputs.apply(op);
-                revdeps.apply(op);
                 valid.apply(op);
                 counters.apply(op);
                 timestamps.apply(op);
@@ -286,7 +284,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             timestamps: NEW_TIMESTAMP,
             inputs: [nkA],
         });
-        await xStorage.revdeps.put(nkA, [nkB]);
+        await xStorage.valid.put(nkA, [nkB]);
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -518,7 +516,7 @@ describe("delete decision: timestamps not present in new storage", () => {
             timestamps: NEW_TIMESTAMP,
             inputs: [nkA],
         });
-        await xStorage.revdeps.put(nkA, [nkB]);
+        await xStorage.valid.put(nkA, [nkB]);
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
@@ -554,7 +552,7 @@ describe("delete decision: sublevels do not retain deleted keys", () => {
             counter: 22,
             freshness: "up-to-date",
         });
-        await xStorage.revdeps.put(nkA, [nkB]);
+        await xStorage.valid.put(nkA, [nkB]);
 
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "1",
@@ -595,7 +593,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             inputs: [nkA],
             counter: 7,
         });
-        await xStorage.revdeps.put(nkA, [nkB]);
+        await xStorage.valid.put(nkA, [nkB]);
         return { nkA, nkB };
     }
 

@@ -31,7 +31,7 @@ After the user-supplied migration callback returns, **every node in `S` must hav
 Traversal helpers expose the **persisted** dependency metadata:
 
 * `getInputs(N)` — the inputs `N` last depended on.
-* `getDependents(N)` — reverse edges: nodes that depended on `N`.
+* `listValidDependents(N)` — nodes authorized by `valid[N]`.
 
 Traversal never re-executes computors; it only reads stored metadata.
 
@@ -59,7 +59,7 @@ All methods are `async`.
 | `has(nodeKey)` | `true` if `nodeKey ∈ S`. |
 | `listMaterializedNodes()` | `AsyncIterable<NodeKeyString>` of all nodes in `S`. |
 | `getInputs(nodeKey)` | Previous-version inputs list. |
-| `getDependents(nodeKey)` | Previous-version dependents list. |
+| `listValidDependents(nodeKey)` | Previous-version validity frontier. |
 
 ---
 

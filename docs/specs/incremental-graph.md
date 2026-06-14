@@ -397,7 +397,7 @@ pull(nodeName, bindings):
 ```
 
 **Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits many essential details. The concrete implementation uses the flag-based inverse validity algorithm (see
-`incremental-graph-flag-based-inverse-validity.md`) for cache validation, `Unchanged` propagation,
+the validity relation for cache validation, `Unchanged` propagation,
 and incremental recomputation.
 
 **REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
@@ -532,7 +532,7 @@ interface GenericDatabase<TValue> {
 
 **REQ-DB-02:** The type parameter `TValue` is consistently used throughout all method signatures to ensure type safety.
 
-**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and reverse dependencies are stored) is implementation-defined and not exposed in the public interface. Implementations MAY choose any internal representation for storing values as long as REQ-DB-01 (deep equality preservation) is satisfied.
+**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and validity sets are stored) is implementation-defined and not exposed in the public interface. Implementations MAY choose any internal representation for storing values as long as REQ-DB-01 (deep equality preservation) is satisfied.
 
 #### RootDatabase
 
@@ -693,11 +693,11 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 
 Computors MAY invoke the `pull` method, or any other methods of the `IncrementalGraph` interface.
 Nodes `pull`ed in this way are **not** schema-derived dependencies of the calling computor's node.
-The implementation MUST NOT treat them as inputs for freshness propagation or reverse-dependency
+The implementation MUST NOT treat them as inputs for freshness propagation or validity
 indexing. This means:
 
 - freshness updates during `invalidate()` are not propagated through dynamically-pulled nodes,
-- dynamically-pulled nodes do not appear in `inputs[N]` or `revdeps`,
+- dynamically-pulled nodes do not appear in `inputs[N]` or `valid`,
 - the cache predicate does not consider dynamically-pulled nodes.
 
 Dynamically-pulled nodes are not part of the flag-based validity algorithm. They are ad-hoc queries

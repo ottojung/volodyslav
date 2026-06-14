@@ -25,7 +25,7 @@ const MIGRATED_VERSION = "0.0.0-dev";
 // ─── Old-format path parsing ────────────────────────────────────────────────
 
 const DATA_SUBLEVELS = new Set([
-    "values", "freshness", "inputs", "revdeps", "counters", "timestamps",
+    "values", "freshness", "inputs", "valid", "counters", "timestamps",
 ]);
 
 /**
@@ -340,7 +340,7 @@ async function migrateSnapshot(snapshotDir) {
             const value = await readValue(filePath);
 
             let convertedValue = value;
-            if (sublevel === "inputs" || sublevel === "revdeps") {
+            if (sublevel === "inputs" || sublevel === "valid") {
                 convertedValue = convertReferences(value, (ref) => {
                     const id = keyToId.get(ref);
                     if (id === undefined) {

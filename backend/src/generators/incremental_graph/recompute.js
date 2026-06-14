@@ -1,5 +1,5 @@
 /**
- * Recalculation helpers for IncrementalGraph — flag-based inverse validity.
+ * Recalculation helpers for IncrementalGraph validity tracking.
  *
  * Transaction context is passed explicitly - no async_hooks or push/pop context.
  *
@@ -128,18 +128,19 @@ async function addValidityFlags(batch, nId, inputEdges) {
 }
 
 /**
- * Propagate potentially-outdated freshness through revdeps[N].
+ * Propagate potentially-outdated freshness through validity sets.
  * Uses an iterative worklist to avoid stack overflow on deep chains.
  * @param {import('./graph_state').GraphStorage} storage
  * @param {BatchBuilder} batch
  * @param {NodeIdentifier} changedIdentifier
+ * @param {NodeIdentifier[]} [initialDependents]
  * @returns {Promise<void>}
  */
-async function propagateOutdatedFrom(storage, batch, changedIdentifier) {
+async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialDependents = undefined) {
     /** @type {Set<string>} */
     const visited = new Set();
     /** @type {NodeIdentifier[]} */
-    const worklist = [changedIdentifier];
+    const worklist = initialDependents === undefined ? [changedIdentifier] : [...initialDependents];
 
     while (worklist.length > 0) {
         const current = worklist.pop();
@@ -148,7 +149,7 @@ async function propagateOutdatedFrom(storage, batch, changedIdentifier) {
         if (visited.has(currentStr)) continue;
         visited.add(currentStr);
 
-        const dependents = await storage.listDependents(current, batch);
+        const dependents = await storage.getValid(current, batch);
         for (const dep of dependents) {
             const depStr = nodeIdentifierToString(dep);
             if (visited.has(depStr)) continue;
@@ -171,7 +172,6 @@ async function propagateOutdatedFrom(storage, batch, changedIdentifier) {
  */
 async function handleUnchanged(incrementalGraph, nodeIdentifier, inputEdges, batch) {
     await incrementalGraph.storage.ensureMaterialized(nodeIdentifier, inputEdges, batch);
-    await incrementalGraph.storage.ensureReverseDepsIndexed(nodeIdentifier, inputEdges, batch);
     await addValidityFlags(batch, nodeIdentifier, inputEdges);
     batch.freshness.put(nodeIdentifier, "up-to-date");
 }
@@ -210,7 +210,15 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
             batch.valid.put(depId, filtered);
         }
     }
+    const downstream = await getValidSet(batch, nodeIdentifier);
     batch.valid.del(nodeIdentifier);
+    for (const dependent of downstream) {
+        const freshness = await batch.freshness.get(dependent);
+        if (freshness === "up-to-date") {
+            batch.freshness.put(dependent, "potentially-outdated");
+        }
+    }
+    await propagateOutdatedFrom(incrementalGraph.storage, batch, nodeIdentifier, downstream);
 
     batch.values.put(nodeIdentifier, newValue);
 
@@ -235,10 +243,8 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
     }
 
     await incrementalGraph.storage.ensureMaterialized(nodeIdentifier, inputEdges, batch);
-    await incrementalGraph.storage.ensureReverseDepsIndexed(nodeIdentifier, inputEdges, batch);
     await addValidityFlags(batch, nodeIdentifier, inputEdges);
     batch.freshness.put(nodeIdentifier, "up-to-date");
-    await propagateOutdatedFrom(incrementalGraph.storage, batch, nodeIdentifier);
 }
 
 /**
@@ -246,15 +252,13 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
  * @param {(nodeKeyStr: NodeKeyString) => Promise<ComputedValue>} pullDependency
  * @param {ResolvedConcreteNode} nodeDefinition
  * @param {Transaction} tx
- * @param {(diff: import('./graph_state').RevdepDiff) => void} reportRevdepDiff
  * @returns {Promise<RecomputeResult>}
  */
 async function internalMaybeRecalculate(
     incrementalGraph,
     pullDependency,
     nodeDefinition,
-    tx,
-    reportRevdepDiff
+    tx
 ) {
     const batch = tx.batch;
     const nodeIdentifier = nodeDefinition.outputIdentifier;
@@ -328,15 +332,6 @@ async function internalMaybeRecalculate(
             computedValue
         );
     }
-
-    // Collect revdep diff for darkroom finalization
-    const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
-    const oldDependencies = readInputRecord(oldInputsRecord);
-    reportRevdepDiff({
-        dependant: nodeIdentifier,
-        oldDependencies,
-        newDependencies: inputEdges,
-    });
 
     // Mark all dependencies as up-to-date
     for (const inputIdentifier of inputEdges) {

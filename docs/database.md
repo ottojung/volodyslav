@@ -23,7 +23,7 @@ Within each namespace there are further typed sublevels:
 | `values`    | The computed output value for each graph node             |
 | `freshness` | Whether a node is `up-to-date` or `potentially-outdated` |
 | `inputs`    | Input dependency list for each node                       |
-| `revdeps`   | Reverse-dependency index (input → list of dependents)     |
+| `valid`     | Validity frontier (input → validated consumers)           |
 | `counters`  | Monotonic integer tracking how many times a value changed |
 | `timestamps`| Creation and last-modification ISO timestamps             |
 | `meta`      | Namespace metadata (currently just the schema version)    |
@@ -71,7 +71,7 @@ await scanFromFilesystem(capabilities, rootDatabase, '/path/to/snapshot');
 Each raw LevelDB key is translated to a *relative file path* inside the snapshot directory.
 The algorithm depends on the key type:
 
-#### Data sublevels (`values`, `freshness`, `inputs`, `revdeps`, `counters`, `timestamps`)
+#### Data sublevels (`values`, `freshness`, `inputs`, `valid`, `counters`, `timestamps`)
 
 The stored key is a JSON-serialised NodeKey object `{"head":"...","args":[...]}`.
 It is decomposed into human-readable path segments:

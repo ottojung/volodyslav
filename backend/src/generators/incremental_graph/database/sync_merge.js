@@ -1,3 +1,4 @@
+/* eslint volodyslav/max-lines-per-file: "off" */
 /**
  * Per-host graph merge for incremental-graph synchronization.
  *
@@ -12,8 +13,7 @@
  *
  * 1. Verify that `H` was written by the same schema version as the local
  *    database.
- * 2. Copy `L` into `T`, excluding reverse dependencies because they are derived
- *    data and are rebuilt after decisions are applied.
+ * 2. Copy `L` into `T`.
  * 3. Parse the target/host identifier lookups and reject only the corrupt case
  *    where one identifier names different semantic keys.
  * 4. Build a semantic-node-key merge plan from timestamps and dependencies. Newer
@@ -22,7 +22,7 @@
  *    the merged inputs.
  * 5. Choose one final identifier per semantic key, lower all chosen inputs to
  *    those identifiers, apply the plan to `T`, and remove losing target records.
- * 6. Validate and persist the newly constructed lookup, rebuild `revdeps`, and
+ * 6. Validate and persist the newly constructed lookup and
  *    switch replicas when graph data or identifier reconciliation changed.
  *
  * Error handling policy:
@@ -47,7 +47,6 @@ const {
 } = require('./identifier_lookup');
 const { LAST_NODE_INDEX_KEY } = require('./root_database');
 const { buildMergePlan } = require('./sync_merge_plan');
-const { unifyRevdeps } = require('./sync_merge_revdeps');
 const {
     assertValidFinalMergeState,
     assertLookupCoversMaterializedNodes,
@@ -360,18 +359,17 @@ function summarizeDecisions(decisions) {
 }
 
 /**
- * Persist the final semantic-plan lookup and derived reverse dependencies.
+ * Persist the final semantic-plan lookup and conservative freshness state.
  * @param {RootDatabase} rootDatabase
  * @param {SchemaStorage} targetStorage
  * @param {ReplicaName} targetReplica
  * @param {IdentifierLookup} finalIdentifierLookup
- * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
  * @param {number} targetLastNodeIndex
  * @returns {Promise<void>}
  */
 async function commitChangedMerge(
     rootDatabase, targetStorage, targetReplica,
-    finalIdentifierLookup, mergedInputsMap, targetLastNodeIndex
+    finalIdentifierLookup, targetLastNodeIndex
 ) {
     const writer = new ReplicaBatchWriter(targetStorage);
     await writer.push(targetStorage.global.putOp(
@@ -380,9 +378,25 @@ async function commitChangedMerge(
     ));
     await writer.push(targetStorage.global.putOp(LAST_NODE_INDEX_KEY, targetLastNodeIndex));
     await writer.flush();
-    await targetStorage.valid.clear();
-    await unifyRevdeps(targetStorage, mergedInputsMap);
     await rootDatabase.setCurrentReplicaPointer(targetReplica);
+}
+
+
+/**
+ * Discard validity and mark every node with inputs for recomputation.
+ * @param {SchemaStorage} targetStorage
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
+ * @returns {Promise<void>}
+ */
+async function discardValidity(targetStorage, mergedInputsMap) {
+    await targetStorage.valid.clear();
+    const writer = new ReplicaBatchWriter(targetStorage);
+    for (const [identifier, inputs] of mergedInputsMap) {
+        if (inputs.length > 0) {
+            await writer.push(targetStorage.freshness.putOp(identifier, 'potentially-outdated'));
+        }
+    }
+    await writer.flush();
 }
 
 /**
@@ -467,17 +481,19 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap
     );
 
-    await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
-
     const summary = summarizeDecisions(decisions.values());
     const hasChanges = summary.hasChanges || hasIdentifierReconciliation;
+    if (hasChanges) {
+        await discardValidity(targetStorage, mergedInputsMap);
+    }
+    await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
+
     if (hasChanges) {
         await commitChangedMerge(
             rootDatabase,
             targetStorage,
             toReplica,
             finalIdentifierLookup,
-            mergedInputsMap,
             targetLastNodeIndex
         );
     }

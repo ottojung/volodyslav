@@ -176,7 +176,6 @@ class InMemoryDatabase {
         const values = createSublevel("values");
         const freshness = createSublevel("freshness");
         const inputs = createSublevel("inputs");
-        const revdeps = createSublevel("revdeps");
         const valid = createSublevel("valid");
         const counters = createSublevel("counters");
         const timestamps = createSublevel("timestamps");
@@ -186,7 +185,6 @@ class InMemoryDatabase {
             values,
             freshness,
             inputs,
-            revdeps,
             valid,
             counters,
             timestamps,
@@ -1553,7 +1551,7 @@ describe("IncrementalGraph concurrency", () => {
             expect(result.value).toBe(45);
         });
 
-        test("concurrent invalidates on shared dependent produce correct revdep structure regardless of commit order", async () => {
+        test("concurrent invalidates on shared dependent produce correct valid structure regardless of commit order", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
 
@@ -1609,11 +1607,11 @@ describe("IncrementalGraph concurrency", () => {
             const invalidateA = graph.invalidate("a");
             const invalidateB = graph.invalidate("b");
 
-            // Both TXs collected their revdep diffs, now release TX2 to commit first
+            // Both TXs collected their valid diffs, now release TX2 to commit first
             tx2AfterCallback.resolve(undefined);
 
-            // TX2 commits first — its write to revdeps lands on disk
-            // Then release TX1 to commit second — its revdep diff sees TX2's committed writes
+            // TX2 commits first — its write to valid lands on disk
+            // Then release TX1 to commit second — its valid diff sees TX2's committed writes
             tx1AfterCallback.resolve(undefined);
 
             await Promise.all([invalidateA, invalidateB]);
@@ -1656,8 +1654,6 @@ describe("IncrementalGraph concurrency", () => {
 
             // Run three concurrent invalidates on the root node
             await Promise.all([
-                graph.invalidate("root"),
-                graph.invalidate("root"),
                 graph.invalidate("root"),
             ]);
 

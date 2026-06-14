@@ -563,7 +563,7 @@ describe("Property 9 — Nested pull shares allocation context", () => {
                     }),
                 ])
             );
-            // outer's flush contains its own value, revdep edge, and identifier
+            // outer's flush contains its own value, valid edge, and identifier
             expect(outerFlush).toEqual(
                 expect.arrayContaining([
                     expect.objectContaining({

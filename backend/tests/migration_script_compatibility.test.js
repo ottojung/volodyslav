@@ -113,8 +113,8 @@ function buildOldFormatFixture(snapshotDir) {
     writeJson(snapshotDir, 'rendered/r/counters/node_b/arg1', 2);
     writeJson(snapshotDir, 'rendered/r/counters/node_b/arg2', 2);
 
-    // r/revdeps/ — node_a revdeps lists both node_b variants (old-format JSON references)
-    writeJson(snapshotDir, 'rendered/r/revdeps/node_a', [
+    // r/valid/ — node_a valid lists both node_b variants (old-format JSON references)
+    writeJson(snapshotDir, 'rendered/r/valid/node_a', [
         '{"head":"node_b","args":["arg1"]}',
         '{"head":"node_b","args":["arg2"]}',
     ]);
@@ -217,7 +217,7 @@ describe('standalone migration script compatibility', () => {
         expect(fileExists(tmpDir, 'rendered/r/values/node_a')).toBe(false); // already removed
     });
 
-    test('reference conversion in inputs and revdeps replaces old-format JSON references with identifiers', async () => {
+    test('reference conversion in inputs and valid replaces old-format JSON references with identifiers', async () => {
         buildOldFormatFixture(tmpDir);
         await migrateSnapshot(tmpDir);
 
@@ -236,10 +236,10 @@ describe('standalone migration script compatibility', () => {
         const inputsRecord = readJson(tmpDir, `rendered/r/inputs/${nodeB1Id}`);
         expect(inputsRecord.inputs).toEqual([nodeAId]);
 
-        // Revdeps record should reference node_b variants by identifier
-        const revdeps = readJson(tmpDir, `rendered/r/revdeps/${nodeAId}`);
-        expect(Array.isArray(revdeps)).toBe(true);
-        for (const ref of revdeps) {
+        // Valid record should reference node_b variants by identifier
+        const valid = readJson(tmpDir, `rendered/r/valid/${nodeAId}`);
+        expect(Array.isArray(valid)).toBe(true);
+        for (const ref of valid) {
             expect(keyToId.has(ref)).toBe(false); // ref should be an identifier, not a key JSON
             expect(typeof ref).toBe('string');
             expect(ref).toMatch(/^[0-9a-z]+-[a-z]{9,}$/);

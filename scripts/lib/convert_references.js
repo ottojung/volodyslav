@@ -1,7 +1,7 @@
 /**
  * Reference conversion for the snapshot migration script.
  *
- * Converts old-format JSON node-key references in inputs/revdeps values
+ * Converts old-format JSON node-key references in inputs/valid values
  * to new-format identifier strings.
  */
 
@@ -16,8 +16,8 @@ function isOldFormatReference(str) {
 }
 
 /**
- * Convert old-format references in inputs/revdeps values to identifier strings.
- * @param {unknown} value - The parsed JSON value from an inputs or revdeps file.
+ * Convert old-format references in inputs/valid values to identifier strings.
+ * @param {unknown} value - The parsed JSON value from an inputs or valid file.
  * @param {(nodeKeyJson: string) => string} keyToId - Maps node key JSON -> identifier
  * @returns {unknown} The value with references converted.
  */

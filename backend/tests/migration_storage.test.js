@@ -42,7 +42,7 @@ function makeInMemorySchemaStorage() {
     const values = makeInMemoryDb();
     const freshness = makeInMemoryDb();
     const inputs = makeInMemoryDb();
-    const revdeps = makeInMemoryDb();
+    const valid = makeInMemoryDb();
     const counters = makeInMemoryDb();
     const global = makeInMemoryDb();
     const originalGlobalGet = global.get.bind(global);
@@ -60,7 +60,7 @@ function makeInMemorySchemaStorage() {
         values,
         freshness,
         inputs,
-        revdeps,
+        valid,
         counters,
         global,
         async batch(_ops) {},
@@ -124,10 +124,10 @@ async function setupStandardGraph(storage, newHeadIndex, opts = {}) {
     await storage.inputs.put(C, []);
     await storage.inputs.put(D, [B, C]);
 
-    // revdeps
-    await storage.revdeps.put(A, [B]);
-    await storage.revdeps.put(B, [D]);
-    await storage.revdeps.put(C, [D]);
+    // valid
+    await storage.valid.put(A, [B]);
+    await storage.valid.put(B, [D]);
+    await storage.valid.put(C, [D]);
 
     return makeMigrationStorage(storage, newHeadIndex, [A, B, C, D]);
 }
@@ -492,21 +492,21 @@ describe("MigrationStorage", () => {
             expect(inputs).toEqual([]);
         });
 
-        test("getDependents(A) returns [B]", async () => {
+        test("listValidDependents(A) returns [B]", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
-            const deps = await ms.getDependents(nk("A"));
+            const deps = await ms.listValidDependents(nk("A"));
             expect(deps).toEqual([nk("B")]);
         });
 
-        test("getDependents(D) returns [] (leaf)", async () => {
+        test("listValidDependents(D) returns [] (leaf)", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
-            const deps = await ms.getDependents(nk("D"));
+            const deps = await ms.listValidDependents(nk("D"));
             expect(deps).toEqual([]);
         });
 

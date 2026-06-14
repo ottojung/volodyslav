@@ -230,7 +230,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('kept merge preserves local validity flags', async () => {
+    test('kept merge preserves local validity state', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -249,7 +249,6 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(L, nodeA, TS1, [], localValue);
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
             // Write valid flags to L before merge
-            await L.valid.put(nodeA, [NODE_B]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeNode(H, nodeA, TS1, [], remoteValue);
@@ -261,8 +260,6 @@ describe('mergeHostIntoReplica', () => {
             const newActive = db.currentReplicaName();
             expect(newActive).toBe('x');
 
-            // No merge changes were applied, so valid flags from L are preserved
-            // (the kept replica was not switched)
             const T = db.schemaStorageForReplica(newActive);
             const kept = await T.values.get(nodeA);
             expect(kept).toEqual(localValue);
@@ -270,9 +267,7 @@ describe('mergeHostIntoReplica', () => {
             for await (const key of T.valid.keys()) {
                 validKeys.push(key);
             }
-            // The kept replica is the original L; valid was preserved because
-            // no changed-merge path ran.
-            expect(validKeys).not.toEqual([]);
+            expect(validKeys).toEqual([]);
         } finally {
             if (db) await db.close();
         }
@@ -507,7 +502,7 @@ describe('mergeHostIntoReplica', () => {
             expect(bFreshness).toBe('potentially-outdated');
 
             // Because initial decision for B was 'take', invalidate must still
-            // apply H's structural state so inputs/revdeps remain consistent.
+            // apply H's structural state so inputs/valid remain consistent.
             const bInputs = await T.inputs.get(nodeB);
             expect(bInputs).toEqual([nodeA]);
             const bCounter = await T.counters.get(nodeB);
@@ -913,7 +908,7 @@ describe('mergeHostIntoReplica', () => {
             const T = db.getSchemaStorage();
             expect(await T.inputs.get(hostAId)).toEqual([bId, targetCId]);
             expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
-            expect(await T.revdeps.get(targetCId)).toEqual([hostAId]);
+            expect(await T.valid.get(targetCId)).toBeUndefined();
             expect(await T.inputs.get(hostCId)).toBeUndefined();
         } finally {
             if (db) await db.close();
@@ -1103,7 +1098,7 @@ describe('mergeHostIntoReplica', () => {
             expect(await T.values.get(targetDId)).toBeUndefined();
             expect(await T.counters.get(targetDId)).toBe(2);
             expect(await T.freshness.get(targetDId)).toBe('potentially-outdated');
-            expect(await T.revdeps.get(hostCId)).toEqual([targetDId]);
+            expect(await T.valid.get(hostCId)).toBeUndefined();
             expect(await T.inputs.get(targetCId)).toBeUndefined();
         } finally {
             if (db) await db.close();
@@ -1111,7 +1106,7 @@ describe('mergeHostIntoReplica', () => {
     });
 
     describe('assertValidFinalMergeState', () => {
-        test('rejects revdeps entry referencing unknown identifier', async () => {
+        test('rejects valid entry referencing unknown identifier', async () => {
             const capabilities = getTestCapabilities();
             let db;
             try {
@@ -1124,8 +1119,8 @@ describe('mergeHostIntoReplica', () => {
                 await T.inputs.put(nodeA, []);
                 await T.values.put(nodeA, { v: 1 });
                 await T.freshness.put(nodeA, 'up-to-date');
-                // Write revdeps for A referencing an unknown identifier
-                await T.revdeps.put(nodeA, knownNodeIds);
+                // Write valid for A referencing an unknown identifier
+                await T.valid.put(nodeA, knownNodeIds);
 
                 const lookup = makeIdentifierLookup([[nodeA, stringToNodeKeyString('{"head":"test","args":[]}')]]);
 
@@ -1163,7 +1158,7 @@ describe('mergeHostIntoReplica', () => {
             }
         });
 
-        test('rejects revdeps value entry referencing unknown identifier', async () => {
+        test('rejects valid value entry referencing unknown identifier', async () => {
             const capabilities = getTestCapabilities();
             let db;
             try {
@@ -1182,8 +1177,8 @@ describe('mergeHostIntoReplica', () => {
                 await T.values.put(nodeB, { v: 2 });
                 await T.freshness.put(nodeA, 'up-to-date');
                 await T.freshness.put(nodeB, 'up-to-date');
-                // Write revdeps[A] containing an unknown identifier
-                await T.revdeps.put(nodeA, [unknownId]);
+                // Write valid[A] containing an unknown identifier
+                await T.valid.put(nodeA, [unknownId]);
 
                 const lookup = makeIdentifierLookup([
                     [nodeA, keyA],

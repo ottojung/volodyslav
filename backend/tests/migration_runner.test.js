@@ -60,7 +60,6 @@ function makeSchemaStorage() {
     const freshness = makeInMemoryDb("freshness");
     const global = makeInMemoryDb("global");
     const inputs = makeInMemoryDb("inputs");
-    const revdeps = makeInMemoryDb("revdeps");
     const valid = makeInMemoryDb("valid");
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
@@ -89,7 +88,6 @@ function makeSchemaStorage() {
         freshness,
         global,
         inputs,
-        revdeps,
         valid,
         counters,
         timestamps,
@@ -99,7 +97,6 @@ function makeSchemaStorage() {
                 freshness.apply(operation);
                 global.apply(operation);
                 inputs.apply(operation);
-                revdeps.apply(operation);
                 valid.apply(operation);
                 counters.apply(operation);
                 timestamps.apply(operation);
@@ -824,8 +821,8 @@ async function captureStorageSnapshot(storage) {
     for await (const key of storage.counters.keys()) {
         snapshot[`counters:${key}`] = await storage.counters.get(key);
     }
-    for await (const key of storage.revdeps.keys()) {
-        snapshot[`revdeps:${key}`] = await storage.revdeps.get(key);
+    for await (const key of storage.valid.keys()) {
+        snapshot[`valid:${key}`] = await storage.valid.get(key);
     }
     for await (const key of storage.timestamps.keys()) {
         snapshot[`timestamps:${key}`] = await storage.timestamps.get(key);
@@ -862,7 +859,7 @@ async function buildTwoNodeGraph(storage, nodeKeyA, nodeKeyB, {
         freshness: "potentially-outdated",
         timestamps: timestampB,
     });
-    await storage.revdeps.put(nodeKeyA, [nodeKeyB]);
+    await storage.valid.put(nodeKeyA, [nodeKeyB]);
 }
 
 /** NodeDefs for a two-node schema [A, B]. */
@@ -884,8 +881,8 @@ async function buildFanInGraph(storage, nkA, nkB, nkC) {
         inputs: [nkA, nkB],
         counter: 1,
     });
-    await storage.revdeps.put(nkA, [nkC]);
-    await storage.revdeps.put(nkB, [nkC]);
+    await storage.valid.put(nkA, [nkC]);
+    await storage.valid.put(nkB, [nkC]);
 }
 
 /** NodeDefs for a fan-in schema A→C, B→C. */
@@ -1022,7 +1019,7 @@ describe("x-namespace state preserved on migration failure", () => {
         // Build a yStorage whose noFlushPut throws on all sublevels
         const yStorage = makeSchemaStorage();
         const writeError = new Error("write failure");
-        for (const name of ['values', 'freshness', 'global', 'inputs', 'revdeps', 'counters', 'timestamps']) {
+        for (const name of ['values', 'freshness', 'global', 'inputs', 'valid', 'counters', 'timestamps']) {
             yStorage[name].noFlushPut = async () => { throw writeError; };
             yStorage[name].noFlushDel = async () => { throw writeError; };
         }
@@ -1400,7 +1397,7 @@ describe("infrastructure failures", () => {
 
         const unificationError = new Error("unification write failure");
         const yStorage = makeSchemaStorage();
-        for (const name of ['values', 'freshness', 'global', 'inputs', 'revdeps', 'counters', 'timestamps']) {
+        for (const name of ['values', 'freshness', 'global', 'inputs', 'valid', 'counters', 'timestamps']) {
             yStorage[name].noFlushPut = async () => { throw unificationError; };
             yStorage[name].noFlushDel = async () => { throw unificationError; };
         }
