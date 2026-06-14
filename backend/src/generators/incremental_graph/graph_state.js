@@ -23,6 +23,8 @@
 const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
+    compareNodeIdentifier,
+    nodeIdentifierFromString,
     nodeIdentifierToString,
     makeTransactionIdentifierLookup,
     txAllocateNodeIdentifier,
@@ -53,6 +55,19 @@ const {
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
 /**
+ * A validity mutation recorded by a graph transaction.
+ * Mutations are resolved against the latest committed state at commit time
+ * to prevent lost updates when concurrent transactions modify validity sets.
+ *
+ * @typedef {object} ValidMutation
+ * @property {"add" | "remove"} kind
+ * @property {NodeIdentifier} dependent
+ *
+ * @typedef {object} ValidClearMutation
+ * @property {"clear"} kind
+ */
+
+/**
  * @template TValue
  * @typedef {object} BatchDatabaseOps
  * @property {(key: NodeIdentifier, value: TValue) => void} put - Queue a put operation in the current batch.
@@ -61,11 +76,21 @@ const {
  */
 
 /**
+ * @typedef {object} ValidBatchOps
+ * @property {(depId: NodeIdentifier, dependentId: NodeIdentifier) => void} add - Record an add-dependency mutation.
+ * @property {(depId: NodeIdentifier, dependentId: NodeIdentifier) => void} remove - Record a remove-dependency mutation.
+ * @property {(depId: NodeIdentifier) => void} clear - Record a clear mutation.
+ * @property {(depId: NodeIdentifier) => Promise<NodeIdentifier[]>} get - Read database value merged with pending transaction-local mutations.
+ * @property {(depId: NodeIdentifier, value: NodeIdentifier[]) => void} put - Convenience: clear followed by add for each element.
+ * @property {(depId: NodeIdentifier) => void} del - Convenience: same as clear.
+ */
+
+/**
  * @typedef {object} BatchBuilder
  * @property {BatchDatabaseOps<ComputedValue>} values - Node value storage.
  * @property {BatchDatabaseOps<Freshness>} freshness - Freshness storage.
  * @property {BatchDatabaseOps<NodeIdentifier[]>} inputs - Dependency metadata storage.
- * @property {BatchDatabaseOps<NodeIdentifier[]>} valid - Inverse validity flags.
+ * @property {ValidBatchOps} valid - Validity flags with mutation tracking for concurrent safety.
  * @property {BatchDatabaseOps<Counter>} counters - Change counters.
  * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Creation/modification timestamps.
  */
@@ -149,23 +174,98 @@ function makeSublevelBatch(db, operations) {
 }
 
 /**
- * Create the batch builder and its shared operations array.
+ * Create transaction-local validity batch operations that record mutations
+ * instead of doing read-modify-write on whole arrays.  Mutations are resolved
+ * against the latest committed state under the darkroom lock at commit time
+ * to prevent lost updates from concurrent graph transactions.
+ *
+ * @param {{ get: (key: NodeIdentifier) => Promise<NodeIdentifier[] | undefined>, putOp: (key: NodeIdentifier, value: NodeIdentifier[]) => object, delOp: (key: NodeIdentifier) => object }} db
+ * @param {Map<string, Array<ValidMutation | ValidClearMutation>>} validMutations
+ * @returns {ValidBatchOps}
+ */
+function makeValidBatchOps(db, validMutations) {
+    return {
+        add(depId, dependentId) {
+            const k = nodeIdentifierToString(depId);
+            let muts = validMutations.get(k);
+            if (!muts) {
+                muts = [];
+                validMutations.set(k, muts);
+            }
+            muts.push({ kind: "add", dependent: dependentId });
+        },
+        remove(depId, dependentId) {
+            const k = nodeIdentifierToString(depId);
+            let muts = validMutations.get(k);
+            if (!muts) {
+                muts = [];
+                validMutations.set(k, muts);
+            }
+            muts.push({ kind: "remove", dependent: dependentId });
+        },
+        clear(depId) {
+            const k = nodeIdentifierToString(depId);
+            validMutations.set(k, [{ kind: "clear" }]);
+        },
+        async get(depId) {
+            const k = nodeIdentifierToString(depId);
+            const muts = validMutations.get(k);
+            let result = await db.get(depId) ?? [];
+            if (muts) {
+                for (const m of muts) {
+                    if (m.kind === "clear") {
+                        result = [];
+                    } else if (m.kind === "add") {
+                        const depStr = nodeIdentifierToString(m.dependent);
+                        if (!result.some(id => nodeIdentifierToString(id) === depStr)) {
+                            result.push(m.dependent);
+                        }
+                    } else if (m.kind === "remove") {
+                        const depStr = nodeIdentifierToString(m.dependent);
+                        result = result.filter(id => nodeIdentifierToString(id) !== depStr);
+                    }
+                }
+                result.sort(compareNodeIdentifier);
+            }
+            return result;
+        },
+        put(depId, value) {
+            this.clear(depId);
+            for (const dep of value) {
+                this.add(depId, dep);
+            }
+        },
+        del(depId) {
+            this.clear(depId);
+        },
+    };
+}
+
+/**
+ * Create the batch builder, its shared operations array, and a validity
+ * mutation log.  The mutation log allows concurrent graph transactions to
+ * record add/remove/clear operations that are merged at commit time instead
+ * of doing read-modify-write on whole `valid[D]` arrays outside the
+ * serialised commit section.
+ *
  * @param {SchemaStorage} schemaStorage
- * @returns {{ batch: BatchBuilder, operations: Array<*> }}
+ * @returns {{ batch: BatchBuilder, operations: Array<*>, validMutations: Map<string, Array<ValidMutation | ValidClearMutation>> }}
  */
 function createBatch(schemaStorage) {
     /** @type {Array<*>} */
     const operations = [];
+    /** @type {Map<string, Array<ValidMutation | ValidClearMutation>>} */
+    const validMutations = new Map();
     /** @type {BatchBuilder} */
     const batch = {
         values: makeSublevelBatch(schemaStorage.values, operations),
         freshness: makeSublevelBatch(schemaStorage.freshness, operations),
         inputs: makeSublevelBatch(schemaStorage.inputs, operations),
-        valid: makeSublevelBatch(schemaStorage.valid, operations),
+        valid: makeValidBatchOps(schemaStorage.valid, validMutations),
         counters: makeSublevelBatch(schemaStorage.counters, operations),
         timestamps: makeSublevelBatch(schemaStorage.timestamps, operations),
     };
-    return { batch, operations };
+    return { batch, operations, validMutations };
 }
 
 /**
@@ -272,7 +372,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
         async withTransaction(fn) {
             const activeSchemaStorage = rootDatabase.getSchemaStorage();
             const txLookup = makeTransactionIdentifierLookup(rootDatabase.getActiveIdentifierLookup());
-            const { batch, operations } = createBatch(activeSchemaStorage);
+            const { batch, operations, validMutations } = createBatch(activeSchemaStorage);
 
             /** @type {Transaction} */
             const tx = { batch, identifierLookup: txLookup };
@@ -282,6 +382,32 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 const value = result.value;
 
                 await darkroomActivity(sleeper, rootDatabase.currentReplicaName(), async () => {
+                    if (validMutations.size > 0) {
+                        for (const [depIdStr, mutations] of validMutations.entries()) {
+                            const depId = nodeIdentifierFromString(depIdStr);
+                            let validSet = await activeSchemaStorage.valid.get(depId) ?? [];
+                            for (const m of mutations) {
+                                if (m.kind === "clear") {
+                                    validSet = [];
+                                } else if (m.kind === "add") {
+                                    const depStr = nodeIdentifierToString(m.dependent);
+                                    if (!validSet.some(id => nodeIdentifierToString(id) === depStr)) {
+                                        validSet.push(m.dependent);
+                                    }
+                                } else if (m.kind === "remove") {
+                                    const depStr = nodeIdentifierToString(m.dependent);
+                                    validSet = validSet.filter(id => nodeIdentifierToString(id) !== depStr);
+                                }
+                            }
+                            validSet.sort(compareNodeIdentifier);
+                            if (validSet.length === 0) {
+                                operations.push(activeSchemaStorage.valid.delOp(depId));
+                            } else {
+                                operations.push(activeSchemaStorage.valid.putOp(depId, validSet));
+                            }
+                        }
+                    }
+
                     const hasPendingOperations = operations.length > 0;
                     const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
 

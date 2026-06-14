@@ -1816,4 +1816,203 @@ describe("IncrementalGraph concurrency", () => {
             expect(lookup.keyToId.has(sourceKey)).toBe(true);
         });
     });
+
+    describe("concurrent validity-set update safety", () => {
+        test("concurrent pulls of nodes sharing a dependency preserve both validity edges", async () => {
+            const db = new InMemoryDatabase();
+
+            const barrier = { promise: Promise.resolve() };
+            let barrierResolve = undefined;
+            barrier.promise = new Promise(r => { barrierResolve = r; });
+            let readyCount = 0;
+
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "x",
+                    inputs: ["z"],
+                    computor: async ([zValue]) => {
+                        readyCount++;
+                        if (readyCount === 2) barrierResolve();
+                        await barrier.promise;
+                        return { type: "x", value: zValue };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "y",
+                    inputs: ["z"],
+                    computor: async ([zValue]) => {
+                        readyCount++;
+                        if (readyCount === 2) barrierResolve();
+                        await barrier.promise;
+                        return { type: "y", value: zValue };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "z",
+                    inputs: [],
+                    computor: async () => Promise.resolve({ type: "z", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Pull x and y concurrently. The barrier forces both computors
+            // to wait until both are ready, then both proceed through
+            // handleChanged → addValidityFlags before either commits.
+            await Promise.all([
+                graph.pull("x"),
+                graph.pull("y"),
+            ]);
+
+            // Verify both are up-to-date after initial pull
+            expect(await graph.getFreshness("x")).toBe("up-to-date");
+            expect(await graph.getFreshness("y")).toBe("up-to-date");
+
+            // Invalidate z and verify both dependents become potentially-outdated.
+            // With the race bug, one dependent's validity entry would be lost,
+            // and it would remain up-to-date after invalidation.
+            await graph.invalidate("z");
+            expect(await graph.getFreshness("x")).toBe("potentially-outdated");
+            expect(await graph.getFreshness("y")).toBe("potentially-outdated");
+        }, 15000);
+
+        test("concurrent validity additions are preserved during recomputation", async () => {
+            const db = new InMemoryDatabase();
+
+            const barrier = { promise: Promise.resolve() };
+            let barrierResolve = undefined;
+            let readyCount = 0;
+            let useBarrier = false;
+
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "x",
+                    inputs: ["z"],
+                    computor: async ([zValue]) => {
+                        if (useBarrier) {
+                            readyCount++;
+                            if (readyCount === 2) barrierResolve();
+                            await barrier.promise;
+                        }
+                        return { type: "x", value: zValue };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "y",
+                    inputs: ["z"],
+                    computor: async ([zValue]) => {
+                        if (useBarrier) {
+                            readyCount++;
+                            if (readyCount === 2) barrierResolve();
+                            await barrier.promise;
+                        }
+                        return { type: "y", value: zValue };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "z",
+                    inputs: [],
+                    computor: async () => Promise.resolve({ type: "z", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            await graph.pull("x");
+            await graph.pull("y");
+
+            await graph.invalidate("z");
+            expect(await graph.getFreshness("x")).toBe("potentially-outdated");
+            expect(await graph.getFreshness("y")).toBe("potentially-outdated");
+
+            // Enable the barrier for the recomputation phase
+            useBarrier = true;
+            readyCount = 0;
+            barrier.promise = new Promise(r => { barrierResolve = r; });
+
+            await Promise.all([
+                graph.pull("x"),
+                graph.pull("y"),
+            ]);
+
+            expect(await graph.getFreshness("x")).toBe("up-to-date");
+            expect(await graph.getFreshness("y")).toBe("up-to-date");
+
+            await graph.invalidate("z");
+            expect(await graph.getFreshness("x")).toBe("potentially-outdated");
+            expect(await graph.getFreshness("y")).toBe("potentially-outdated");
+        }, 15000);
+
+        test("concurrent valid[D] additions via withTransaction are merged at commit time", async () => {
+            const db = new InMemoryDatabase();
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "z",
+                    inputs: [],
+                    computor: async () => Promise.resolve({ type: "z", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "x",
+                    inputs: ["z"],
+                    computor: async () => Promise.resolve({ type: "x", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "y",
+                    inputs: ["z"],
+                    computor: async () => Promise.resolve({ type: "y", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Pull all nodes individually to allocate identifiers
+            await graph.pull("z");
+            await graph.pull("x");
+            await graph.pull("y");
+
+            const zKey = JSON.stringify({ head: "z", args: [] });
+            const xKey = JSON.stringify({ head: "x", args: [] });
+            const yKey = JSON.stringify({ head: "y", args: [] });
+            const zId = graph.rootDatabase.nodeKeyToId(zKey);
+            const xId = graph.rootDatabase.nodeKeyToId(xKey);
+            const yId = graph.rootDatabase.nodeKeyToId(yKey);
+            if (zId === undefined || xId === undefined || yId === undefined) {
+                throw new Error("Expected identifiers after pull");
+            }
+
+            // Clear valid[z] to start from empty
+            await graph.storage.valid.del(zId);
+
+            // Run two concurrent transactions that both add to valid[z]
+            await Promise.all([
+                graph.storage.withTransaction(async (tx) => {
+                    tx.batch.valid.add(zId, xId);
+                    return { value: undefined };
+                }),
+                graph.storage.withTransaction(async (tx) => {
+                    tx.batch.valid.add(zId, yId);
+                    return { value: undefined };
+                }),
+            ]);
+
+            // Verify valid[z] contains both dependents
+            const validSet = await graph.storage.valid.get(zId) ?? [];
+            expect(validSet).toHaveLength(2);
+            const validStrs = validSet.map(id => nodeIdentifierToString(id));
+            expect(validStrs).toContain(nodeIdentifierToString(xId));
+            expect(validStrs).toContain(nodeIdentifierToString(yId));
+        }, 15000);
+    });
 });
