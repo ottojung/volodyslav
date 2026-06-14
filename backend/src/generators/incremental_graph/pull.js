@@ -58,8 +58,12 @@ const { internalMaybeRecalculate } = require("./recompute");
 
 
 /**
- * Read a cached value only when its persisted input edges are authorized by
- * the current validity frontier.
+ * Read a cached value only when authorized.
+ *
+ * Nodes with declared inputs always fall through to internalMaybeRecalculate()
+ * so that schema-derived input edges are validated against the persisted
+ * inputs record.  The early fast-path is limited to zero-input nodes that have
+ * a persisted empty inputs record.
  * @param {IncrementalGraphPullAccess} graph
  * @param {NodeIdentifier} nodeIdentifier
  * @param {boolean} hasDeclaredInputs
@@ -73,21 +77,14 @@ async function readAuthorizedCachedValue(graph, nodeIdentifier, hasDeclaredInput
     if (value === undefined) {
         throw new Error(`Impossible: up-to-date node has no stored value: ${nodeIdentifierToString(nodeIdentifier)}`);
     }
+    if (hasDeclaredInputs) {
+        return undefined;
+    }
     const inputs = await graph.storage.inputs.get(nodeIdentifier);
-    if (inputs === undefined) {
-        if (hasDeclaredInputs) {
-            return undefined;
-        }
+    if (inputs !== undefined && inputs.length === 0) {
         return value;
     }
-    const nodeString = nodeIdentifierToString(nodeIdentifier);
-    for (const input of inputs) {
-        const validDependents = await graph.storage.valid.get(input) ?? [];
-        if (!validDependents.some(dependent => nodeIdentifierToString(dependent) === nodeString)) {
-            return undefined;
-        }
-    }
-    return value;
+    return undefined;
 }
 
 /**

@@ -219,7 +219,7 @@ describe('mergeHostIntoReplica', () => {
             expect(merged).toEqual(remoteValue);
 
             // Changed merge must not preserve stale validity flags.
-            // valid is optional proof metadata and is cleared on changed merge.
+            // valid is mandatory for every up-to-date input edge and is cleared on changed merge.
             const validKeys = [];
             for await (const key of T.valid.keys()) {
                 validKeys.push(key);

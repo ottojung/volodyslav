@@ -1033,6 +1033,67 @@ describe("Incremental graph validity", () => {
         });
     });
 
+    // === Test: Up-to-date node with stale persisted inputs does not fast-path cache hit ===
+    describe("up-to-date node bypass early cache fast-path", () => {
+        it("falls through to recompute even when up-to-date with valid flags and mismatched persisted inputs", async () => {
+            let computorCalls = 0;
+            const nodeDefs = [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => ({ v: "src-actual" }),
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "user(x)",
+                    inputs: ["source"],
+                    computor: async ([input]) => {
+                        computorCalls++;
+                        return { v: "user-" + input.v + "-" + computorCalls };
+                    },
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+            ];
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+
+            // Materialize chain with correct inputs
+            await graph.pull("source");
+            await graph.pull("user", binding);
+
+            expect(computorCalls).toBe(1);
+
+            const userKey = makeNodeStorageKey("user", binding);
+            const srcKey = makeNodeStorageKey("source");
+            const userId = db.nodeKeyToId(userKey);
+            const srcId = db.nodeKeyToId(srcKey);
+
+            // Verify the node is up-to-date with correct inputs
+            expect(db._readSublevel("freshness", userId)).toBe("up-to-date");
+            expect(db._readSublevel("inputs", userId)).toEqual([srcId]);
+
+            // Rewrite persisted inputs to a different value (simulates stale persist)
+            const schemaStorage = db.getSchemaStorage();
+            const oldValue = db._readSublevel("values", userId);
+            await schemaStorage.inputs.put(userId, ["bogus-identifier"]);
+            // Also put a valid flag for the bogus input so the old fast-path
+            // would have considered it authorized
+            await schemaStorage.valid.put("bogus-identifier", [userId]);
+            // Value is still present and node is up-to-date
+            expect(db._readSublevel("freshness", userId)).toBe("up-to-date");
+            expect(db._readSublevel("values", userId)).toEqual(oldValue);
+
+            // Pull user again — must not fast-path return the stale value.
+            // Falls through to recompute, which detects corrupted inputs and throws.
+            await expect(graph.pull("user", binding)).rejects.toThrow(
+                /corrupted inputs record/i
+            );
+        });
+    });
+
     // === Test: Cache hit with missing inputs fails loudly ===
     describe("cache hit with missing inputs record", () => {
         it("throws when valid flags exist but persisted inputs record is missing", async () => {

@@ -3,7 +3,7 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { deserializeNodeKey, stringToNodeKeyString, IDENTIFIERS_KEY, makeNodeIdentifier } = require("./database");
+const { deserializeNodeKey, stringToNodeKeyString, IDENTIFIERS_KEY, makeNodeIdentifier, nodeIdentifierToString } = require("./database");
 const { readInputRecord } = require("./database");
 const {
     makeDecisionConflictError,
@@ -451,12 +451,43 @@ class MigrationStorageClass {
     }
 
     /**
+     * Build a structural dependency map by scanning inputs of every
+     * materialized node.  Returns a Map from input identifier string to
+     * the set of nodes that declare that input.
+     *
+     * Unlike `valid` (which tracks the current runtime invalidation
+     * frontier and omits stale nodes), the structural dependency relation
+     * includes every edge in the persisted inputs records.
+     * @private
+     * @returns {Promise<Map<string, Set<NodeIdentifier>>>}
+     */
+    async _buildStructuralDependents() {
+        /** @type {Map<string, Set<NodeIdentifier>>} */
+        const map = new Map();
+        for (const nodeKey of this.materializedNodes) {
+            const inputs = await readInputsRecord(nodeKey, this.prevStorage);
+            for (const input of inputs) {
+                const inputStr = nodeIdentifierToString(input);
+                const deps = map.get(inputStr) ?? new Set();
+                deps.add(nodeKey);
+                map.set(inputStr, deps);
+            }
+        }
+        return map;
+    }
+
+    /**
      * BFS propagation of DELETE to dependents whose all inputs are deleted,
      * followed by a fan-in violation scan.
+     *
+     * Uses the structural dependency relation (built from inputs) rather
+     * than valid so that stale nodes whose dependents are absent from valid
+     * are still discovered during deletion propagation and fan-in checks.
      * @private
      * @returns {Promise<void>}
      */
     async _propagateDeletesAndCheckFanIn() {
+        const structuralDependents = await this._buildStructuralDependents();
         /** @type {NodeIdentifier[]} */
         const queue = [];
         for (const [nodeKey, decision] of this.decisions) {
@@ -466,11 +497,12 @@ class MigrationStorageClass {
         }
         let head = 0;
         while (head < queue.length) {
-            // noUncheckedIndexedAccess requires an explicit undefined guard
             const nodeKey = queue[head];
             head++;
             if (nodeKey === undefined) break;
-            const dependents = await readValidDependents(nodeKey, this.prevStorage);
+            const nodeKeyStr = nodeIdentifierToString(nodeKey);
+            const dependents = structuralDependents.get(nodeKeyStr);
+            if (dependents === undefined) continue;
             for (const dep of dependents) {
                 if (!this.materializedNodes.has(dep)) continue;
                 if (this.decisions.get(dep)?.kind === "delete") continue;
@@ -491,7 +523,9 @@ class MigrationStorageClass {
         // that was not itself auto-deleted means its inputs are only partially deleted.
         for (const [nodeKey, decision] of this.decisions) {
             if (decision.kind !== "delete") continue;
-            const dependents = await readValidDependents(nodeKey, this.prevStorage);
+            const nodeKeyStr = nodeIdentifierToString(nodeKey);
+            const dependents = structuralDependents.get(nodeKeyStr);
+            if (dependents === undefined) continue;
             for (const dep of dependents) {
                 if (!this.materializedNodes.has(dep)) continue;
                 if (this.decisions.get(dep)?.kind === "delete") continue;

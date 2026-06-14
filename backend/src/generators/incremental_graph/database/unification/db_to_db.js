@@ -74,7 +74,7 @@ function convertUnknownToStoredValue(value) {
 /**
  * The data sublevel names covered by this adapter, in alphabetical order.
  * Alphabetical order ensures that composite keys "{sublevel}\x00{nodeKey}" are
- * globally sorted (because 'c' < 'f' < 'g' < 'i' < 'r' < 't' < 'v'), which is
+ * globally sorted (because 'c' < 'f' < 'g' < 'i' < 't' < 'v'), which is
  * required for the merge-join in core.js to produce correct results.
  * @type {readonly string[]}
  */

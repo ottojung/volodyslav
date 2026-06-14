@@ -96,7 +96,16 @@ async function loadMaterializedNodes(storage) {
 
 
 /**
- * Build validity sets for every node that remains up-to-date.
+ * Build validity sets only for nodes that will be up-to-date after migration.
+ *
+ * The invariant is: for every materialized node N with freshness "up-to-date",
+ * for every D in inputs[N], valid[D] contains N.
+ *
+ * This invariant requires building valid flags for "create" and "override"
+ * nodes (new up-to-date values) and for "keep" nodes whose previous freshness
+ * is "up-to-date".  "invalidate" and "delete" nodes must not receive valid
+ * flags.  Stale "keep" nodes must not gain synthetic valid flags.
+ *
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @returns {Promise<Map<NodeIdentifier, NodeIdentifier[]>>}
@@ -106,6 +115,10 @@ async function buildDesiredValid(prevStorage, decisions) {
     const validSets = new Map();
     for (const [nodeIdentifier, decision] of decisions) {
         if (decision.kind === "delete" || decision.kind === "invalidate") continue;
+        if (decision.kind === "keep") {
+            const freshness = await prevStorage.freshness.get(nodeIdentifier);
+            if (freshness !== "up-to-date") continue;
+        }
         const inputsRecord = decision.kind === "create"
             ? []
             : await prevStorage.inputs.get(nodeIdentifier);

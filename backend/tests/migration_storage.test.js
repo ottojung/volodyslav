@@ -416,6 +416,49 @@ describe("MigrationStorage", () => {
             const err = await ms.finalize().catch((e) => e);
             expect(isDecisionConflict(err)).toBe(true);
         });
+
+        test("delete propagation uses structural inputs when valid flags are missing (stale dependent)", async () => {
+            // A -> B, valid[A] is missing B (stale), delete(A), keep(B).
+            // The structural dependency scan via inputs must still find B
+            // as a dependent of A and auto-delete it since all inputs deleted.
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "B"]);
+            const A = nk("A");
+            const B = nk("B");
+            await storage.inputs.put(A, []);
+            await storage.inputs.put(B, [A]);
+            // valid[A] intentionally left missing for B (simulates stale B)
+            const ms = makeMigrationStorage(storage, headIndex, [A, B]);
+
+            await ms.delete(A);
+            // B is auto-deleted via structural scan even though valid[A] is missing
+            const decisions = await ms.finalize();
+            expect(decisions.get(B)?.kind).toBe("delete");
+        });
+
+        test("fan-in detection uses structural inputs when valid flags are missing (stale dependent)", async () => {
+            // B -> D, C -> D, valid[B] is missing D (stale), delete(B), keep(C), keep(D).
+            // The structural dependency scan must still find D dependent on B
+            // and report PartialDeleteFanInError (C is kept so D has a surviving input).
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["B", "C", "D"]);
+            const B = nk("B");
+            const C = nk("C");
+            const D = nk("D");
+            await storage.inputs.put(B, []);
+            await storage.inputs.put(C, []);
+            await storage.inputs.put(D, [B, C]);
+            await storage.valid.put(C, [D]);
+            // valid[B] intentionally left missing for D (simulates stale D)
+            const ms = makeMigrationStorage(storage, headIndex, [B, C, D]);
+
+            await ms.delete(B);
+            await ms.keep(C);
+            // D is undecided; structural scan finds D depends on B,
+            // but D's other input C is kept → PartialDeleteFanInError
+            const err = await ms.finalize().catch((e) => e);
+            expect(isPartialDeleteFanIn(err)).toBe(true);
+        });
     });
 
     // -----------------------------------------------------------------------

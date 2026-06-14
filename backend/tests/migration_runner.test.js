@@ -403,12 +403,77 @@ describe("runMigration", () => {
             });
 
             // After migration, yStorage must have no valid records.
-            // Valid flags are optional proof metadata and are rebuilt on demand.
+            // Valid flags are mandatory for every up-to-date input edge;
+            // zero-input nodes never have incoming validity.
             const validKeys = [];
             for await (const key of yStorage.valid.keys()) {
                 validKeys.push(key);
             }
             expect(validKeys).toEqual([]);
+        });
+
+        test("kept node with potentially-outdated freshness does not gain valid flags after migration", async () => {
+            const capabilities = await getTestCapabilities();
+            const xStorage = makeSchemaStorage();
+            const depKey = toJsonKey("A");
+            const staleDepKey = toJsonKey("X");
+            const keptKey = toJsonKey("B");
+
+            // Set up a graph in xStorage: A (up-to-date, inputs=[]) and X (up-to-date).
+            // B depends on both A and X, but B is stale (potentially-outdated).
+            // B's inputs are [A, X], but valid is missing for both A and X.
+            await xStorage.inputs.put(depKey, []);
+            await xStorage.inputs.put(staleDepKey, []);
+            await xStorage.inputs.put(keptKey, [depKey, staleDepKey]);
+            await xStorage.values.put(depKey, { type: "all_events", events: [] });
+            await xStorage.values.put(staleDepKey, { type: "all_events", events: [] });
+            await xStorage.values.put(keptKey, { type: "all_events", events: [] });
+            await xStorage.freshness.put(depKey, "up-to-date");
+            await xStorage.freshness.put(staleDepKey, "up-to-date");
+            await xStorage.freshness.put(keptKey, "potentially-outdated");
+
+            const yStorage = makeSchemaStorage();
+            const mock = makeRootDatabaseMock({
+                prevVersion: "1.0.0",
+                currentVersion: "2.0.0",
+                xStorage,
+                yStorage,
+            });
+
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+                { output: "X", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A", "X"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+            ];
+
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(depKey);
+                await storage.keep(staleDepKey);
+                await storage.keep(keptKey);
+            });
+
+            const keptMigratedKey = await getMigratedKey(yStorage, keptKey);
+            const depMigratedKey = await getMigratedKey(yStorage, depKey);
+            const staleDepMigratedKey = await getMigratedKey(yStorage, staleDepKey);
+
+            // A and X are up-to-date keeps with zero inputs → no valid entries for them
+            const validADeps = await yStorage.valid.get(depMigratedKey);
+            const validXDeps = await yStorage.valid.get(staleDepMigratedKey);
+            expect(validADeps).toBeUndefined();
+            expect(validXDeps).toBeUndefined();
+
+            // B's freshness remains potentially-outdated (B was not up-to-date before migration)
+            const bFreshness = await yStorage.freshness.get(keptMigratedKey);
+            expect(bFreshness).toBe("potentially-outdated");
+
+            // B was not up-to-date before migration, so no valid flags were built
+            // representing B as a dependent of A or X.
+            // The valid sublevel must be empty — B did not gain synthetic validity.
+            const allValidKeys = [];
+            for await (const key of yStorage.valid.keys()) {
+                allValidKeys.push(key);
+            }
+            expect(allValidKeys).toEqual([]);
         });
 
         test("writes version to y/global/version before calling setCurrentReplicaPointer", async () => {
