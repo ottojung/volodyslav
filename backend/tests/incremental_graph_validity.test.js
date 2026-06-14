@@ -1033,9 +1033,9 @@ describe("Incremental graph validity", () => {
         });
     });
 
-    // === Test: Up-to-date node with stale persisted inputs does not fast-path cache hit ===
-    describe("up-to-date node bypass early cache fast-path", () => {
-        it("falls through to recompute even when up-to-date with valid flags and mismatched persisted inputs", async () => {
+    // === Test: Up-to-date node with corrupted persisted inputs fails fast ===
+    describe("up-to-date node corrupted persisted inputs", () => {
+        it("detects corrupted inputs in the fast path without pulling dependencies", async () => {
             let computorCalls = 0;
             const nodeDefs = [
                 {
@@ -1086,9 +1086,73 @@ describe("Incremental graph validity", () => {
             expect(db._readSublevel("freshness", userId)).toBe("up-to-date");
             expect(db._readSublevel("values", userId)).toEqual(oldValue);
 
-            // Pull user again — must not fast-path return the stale value.
-            // Falls through to recompute, which detects corrupted inputs and throws.
+            // Pull user again — the fast path detects corrupted inputs
+            // (persisted inputs differ from schema-derived inputEdges) and throws.
             await expect(graph.pull("user", binding)).rejects.toThrow(
+                /corrupted inputs record/i
+            );
+        });
+    });
+
+    // === Test: Up-to-date nodes return cached value without pulling dependencies ===
+    describe("up-to-date fast path avoids computor invocation", () => {
+        it("A → B → C: pull(C) does not invoke computors for A, B, or C when all are up-to-date", async () => {
+            const computeA = jest.fn(async () => ({ v: "A" }));
+            const computeB = jest.fn(async () => ({ v: "B" }));
+            const computeC = jest.fn(async () => ({ v: "C" }));
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: computeA, isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: computeB, isDeterministic: true, hasSideEffects: false },
+                { output: "C", inputs: ["B"], computor: computeC, isDeterministic: true, hasSideEffects: false },
+            ];
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+
+            await graph.pull("A");
+            await graph.pull("B");
+            await graph.pull("C");
+            expect(computeA).toHaveBeenCalledTimes(1);
+            expect(computeB).toHaveBeenCalledTimes(1);
+            expect(computeC).toHaveBeenCalledTimes(1);
+
+            jest.clearAllMocks();
+
+            const result = await graph.pull("C");
+            expect(result).toEqual({ v: "C" });
+            expect(computeA).toHaveBeenCalledTimes(0);
+            expect(computeB).toHaveBeenCalledTimes(0);
+            expect(computeC).toHaveBeenCalledTimes(0);
+        });
+    });
+
+    // === Test: Up-to-date node detection with corrupted inputs fails ===
+    describe("up-to-date node corrupted inputs fails", () => {
+        it("A → B: B is up-to-date, inputs[B] corrupted, pull(B) fails", async () => {
+            const computeA = jest.fn(async () => ({ v: "A" }));
+            const computeB = jest.fn(async () => ({ v: "B" }));
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: computeA, isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: computeB, isDeterministic: true, hasSideEffects: false },
+            ];
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+
+            await graph.pull("A");
+            await graph.pull("B");
+            expect(computeB).toHaveBeenCalledTimes(1);
+
+            const aKey = makeNodeStorageKey("A");
+            const bKey = makeNodeStorageKey("B");
+            const aId = db.nodeKeyToId(aKey);
+            const bId = db.nodeKeyToId(bKey);
+
+            expect(db._readSublevel("freshness", bId)).toBe("up-to-date");
+            expect(db._readSublevel("inputs", bId)).toEqual([aId]);
+
+            const schemaStorage = db.getSchemaStorage();
+            await schemaStorage.inputs.put(bId, ["corrupted-identifier"]);
+
+            await expect(graph.pull("B")).rejects.toThrow(
                 /corrupted inputs record/i
             );
         });

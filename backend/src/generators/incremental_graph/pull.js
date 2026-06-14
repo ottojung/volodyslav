@@ -34,6 +34,7 @@
 /** @typedef {import('./database/types').NodeName} NodeName */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
+/** @typedef {import('./types').ConcreteNode} ConcreteNode */
 /** @typedef {import('./types').ResolvedConcreteNode} ResolvedConcreteNode */
 /** @typedef {import('./database/types').NodeKeyString} StoredNodeKeyString */
 
@@ -56,20 +57,62 @@ const { internalMaybeRecalculate } = require("./recompute");
  * @property {import('../../datetime').Datetime} datetime
  */
 
+/**
+ * Create a dependency accumulator for the materialized dependency record.
+ * @param {NodeIdentifier[]} inputIdentifiers
+ * @returns {NodeIdentifier[]}
+ */
+function normalizeInputEdges(inputIdentifiers) {
+    /** @type {Set<string>} */
+    const seen = new Set();
+    /** @type {NodeIdentifier[]} */
+    const edges = [];
+    for (const id of inputIdentifiers) {
+        const idStr = nodeIdentifierToString(id);
+        if (!seen.has(idStr)) {
+            seen.add(idStr);
+            edges.push(id);
+        }
+    }
+    return edges;
+}
+
+/**
+ * Compare two NodeIdentifier arrays for element-wise equality.
+ * @param {NodeIdentifier[]} a
+ * @param {NodeIdentifier[]} b
+ * @returns {boolean}
+ */
+function arraysOfNodeIdentifiersEqual(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        const aId = a[i];
+        const bId = b[i];
+        if (aId === undefined || bId === undefined) return false;
+        if (nodeIdentifierToString(aId) !== nodeIdentifierToString(bId)) return false;
+    }
+    return true;
+}
 
 /**
  * Read a cached value only when authorized.
  *
- * Nodes with declared inputs always fall through to internalMaybeRecalculate()
- * so that schema-derived input edges are validated against the persisted
- * inputs record.  The early fast-path is limited to zero-input nodes that have
- * a persisted empty inputs record.
+ * For an up-to-date node with inputs, derives current schema input edges,
+ * compares them against persisted inputs[N], and verifies valid[D].has(N)
+ * for every dependency D.  If all checks pass the stored value is returned
+ * without pulling dependencies and without invoking any computor.
+ *
+ * Zero-input nodes return their stored value when a persisted empty inputs
+ * record exists.
+ *
+ * Nodes that are not up-to-date fall through to internalMaybeRecalculate().
+ *
  * @param {IncrementalGraphPullAccess} graph
  * @param {NodeIdentifier} nodeIdentifier
- * @param {boolean} hasDeclaredInputs
+ * @param {ConcreteNode} concreteNode
  * @returns {Promise<ComputedValue | undefined>}
  */
-async function readAuthorizedCachedValue(graph, nodeIdentifier, hasDeclaredInputs) {
+async function readAuthorizedCachedValue(graph, nodeIdentifier, concreteNode) {
     if (await graph.storage.freshness.get(nodeIdentifier) !== "up-to-date") {
         return undefined;
     }
@@ -77,14 +120,39 @@ async function readAuthorizedCachedValue(graph, nodeIdentifier, hasDeclaredInput
     if (value === undefined) {
         throw new Error(`Impossible: up-to-date node has no stored value: ${nodeIdentifierToString(nodeIdentifier)}`);
     }
-    if (hasDeclaredInputs) {
+    if (concreteNode.inputs.length === 0) {
+        const inputs = await graph.storage.inputs.get(nodeIdentifier);
+        if (inputs !== undefined && inputs.length === 0) {
+            return value;
+        }
         return undefined;
     }
-    const inputs = await graph.storage.inputs.get(nodeIdentifier);
-    if (inputs !== undefined && inputs.length === 0) {
-        return value;
+    const persistedInputs = await graph.storage.inputs.get(nodeIdentifier);
+    if (persistedInputs === undefined) {
+        return undefined;
     }
-    return undefined;
+    const inputIdentifiers = [];
+    for (const inputKey of concreteNode.inputs) {
+        const inputId = graph.rootDatabase.nodeKeyToId(inputKey);
+        if (inputId === undefined) {
+            return undefined;
+        }
+        inputIdentifiers.push(inputId);
+    }
+    const inputEdges = normalizeInputEdges(inputIdentifiers);
+    if (!arraysOfNodeIdentifiersEqual(persistedInputs, inputEdges)) {
+        throw new Error(
+            `Corrupted inputs record for node ${String(concreteNode.output)}: ` +
+            `persisted inputs differ from schema-derived inputEdges`
+        );
+    }
+    for (const depId of inputEdges) {
+        const validDeps = await graph.storage.valid.get(depId) ?? [];
+        if (!validDeps.some(dep => nodeIdentifierToString(dep) === nodeIdentifierToString(nodeIdentifier))) {
+            return undefined;
+        }
+    }
+    return value;
 }
 
 /**
@@ -108,7 +176,7 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
 
     const committedIdentifier = graph.rootDatabase.nodeKeyToId(nodeKeyStr);
     if (committedIdentifier !== undefined) {
-        const cachedValue = await readAuthorizedCachedValue(graph, committedIdentifier, concreteNode.inputs.length > 0);
+        const cachedValue = await readAuthorizedCachedValue(graph, committedIdentifier, concreteNode);
         if (cachedValue !== undefined) {
             return { value: cachedValue, status: "cached" };
         }

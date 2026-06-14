@@ -96,15 +96,36 @@ async function loadMaterializedNodes(storage) {
 
 
 /**
- * Build validity sets only for nodes that will be up-to-date after migration.
+ * Add a dependent to a validity set, maintaining deduplication.
+ * @param {Map<string, Set<NodeIdentifier>>} validSets
+ * @param {NodeIdentifier} input
+ * @param {NodeIdentifier} dependent
+ */
+function addToValidSet(validSets, input, dependent) {
+    const inputString = nodeIdentifierToString(input);
+    const dependents = validSets.get(inputString) ?? new Set();
+    dependents.add(dependent);
+    validSets.set(inputString, dependents);
+}
+
+/**
+ * Build validity sets from migration decisions.
  *
  * The invariant is: for every materialized node N with freshness "up-to-date",
  * for every D in inputs[N], valid[D] contains N.
  *
- * This invariant requires building valid flags for "create" and "override"
- * nodes (new up-to-date values) and for "keep" nodes whose previous freshness
- * is "up-to-date".  "invalidate" and "delete" nodes must not receive valid
- * flags.  Stale "keep" nodes must not gain synthetic valid flags.
+ * Rules:
+ * - "create" and "override" nodes produce new up-to-date values and receive
+ *   required incoming valid flags.
+ * - "keep" nodes with freshness "up-to-date" receive required incoming valid
+ *   flags.
+ * - "keep" nodes with freshness "potentially-outdated" do not receive new
+ *   valid flags, but existing valid[D].has(N) proofs are preserved when the
+ *   proof remains true after migration: D is kept (value identity unchanged),
+ *   N is kept (value identity unchanged), and N's inputs still contain D.
+ *   Preserved proofs permit cache reuse after pull confirms inputs unchanged.
+ * - "invalidate" nodes must not receive incoming valid flags.
+ * - "delete" nodes must not appear in valid.
  *
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions
@@ -113,6 +134,7 @@ async function loadMaterializedNodes(storage) {
 async function buildDesiredValid(prevStorage, decisions) {
     /** @type {Map<string, Set<NodeIdentifier>>} */
     const validSets = new Map();
+
     for (const [nodeIdentifier, decision] of decisions) {
         if (decision.kind === "delete" || decision.kind === "invalidate") continue;
         if (decision.kind === "keep") {
@@ -125,12 +147,32 @@ async function buildDesiredValid(prevStorage, decisions) {
         for (const input of readInputRecord(inputsRecord)) {
             const inputDecision = decisions.get(input);
             if (inputDecision?.kind === "delete") continue;
-            const inputString = nodeIdentifierToString(input);
-            const dependents = validSets.get(inputString) ?? new Set();
-            dependents.add(nodeIdentifier);
-            validSets.set(inputString, dependents);
+            addToValidSet(validSets, input, nodeIdentifier);
         }
     }
+
+    for (const [nodeIdentifier, decision] of decisions) {
+        if (decision.kind !== "keep") continue;
+        const freshness = await prevStorage.freshness.get(nodeIdentifier);
+        if (freshness !== "potentially-outdated") continue;
+
+        const inputsRecord = await prevStorage.inputs.get(nodeIdentifier);
+        if (inputsRecord === undefined) continue;
+
+        for (const input of readInputRecord(inputsRecord)) {
+            const inputDecision = decisions.get(input);
+            if (!inputDecision || inputDecision.kind === "delete") continue;
+            if (inputDecision.kind !== "keep") continue;
+
+            const existingValidForD = await prevStorage.valid.get(input) ?? [];
+            if (!existingValidForD.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(nodeIdentifier))) {
+                continue;
+            }
+
+            addToValidSet(validSets, input, nodeIdentifier);
+        }
+    }
+
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const result = new Map();
     for (const [inputString, dependents] of validSets) {

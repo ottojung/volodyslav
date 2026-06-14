@@ -476,6 +476,94 @@ describe("runMigration", () => {
             expect(allValidKeys).toEqual([]);
         });
 
+        test("preserves existing valid flags for stale kept nodes whose dependency's value is unchanged", async () => {
+            // A → B
+            // B is potentially-outdated, valid[A] contains B
+            // migration keeps A and B
+            // after migration valid[A] still contains B
+            const capabilities = await getTestCapabilities();
+            const xStorage = makeSchemaStorage();
+            const aKey = toJsonKey("A");
+            const bKey = toJsonKey("B");
+
+            await xStorage.inputs.put(aKey, []);
+            await xStorage.inputs.put(bKey, [aKey]);
+            await xStorage.values.put(aKey, { type: "all_events", events: [] });
+            await xStorage.values.put(bKey, { type: "all_events", events: [] });
+            await xStorage.freshness.put(aKey, "up-to-date");
+            await xStorage.freshness.put(bKey, "potentially-outdated");
+            await xStorage.valid.put(aKey, [bKey]);
+
+            const yStorage = makeSchemaStorage();
+            const mock = makeRootDatabaseMock({
+                prevVersion: "1.0.0",
+                currentVersion: "2.0.0",
+                xStorage,
+                yStorage,
+            });
+
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+            ];
+
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(aKey);
+                await storage.keep(bKey);
+            });
+
+            const aMigratedKey = await getMigratedKey(yStorage, aKey);
+            const bMigratedKey = await getMigratedKey(yStorage, bKey);
+
+            const validA = await yStorage.valid.get(aMigratedKey) ?? [];
+            const bIdStr = String(bMigratedKey);
+            expect(validA.some(id => String(id) === bIdStr)).toBe(true);
+        });
+
+        test("does not invent valid flags for stale kept nodes when valid was absent before migration", async () => {
+            // A → B
+            // B is potentially-outdated, valid[A] does NOT contain B
+            // migration keeps A and B
+            // after migration valid[A] still does not contain B
+            const capabilities = await getTestCapabilities();
+            const xStorage = makeSchemaStorage();
+            const aKey = toJsonKey("A");
+            const bKey = toJsonKey("B");
+
+            await xStorage.inputs.put(aKey, []);
+            await xStorage.inputs.put(bKey, [aKey]);
+            await xStorage.values.put(aKey, { type: "all_events", events: [] });
+            await xStorage.values.put(bKey, { type: "all_events", events: [] });
+            await xStorage.freshness.put(aKey, "up-to-date");
+            await xStorage.freshness.put(bKey, "potentially-outdated");
+            // valid[A] intentionally missing for B
+
+            const yStorage = makeSchemaStorage();
+            const mock = makeRootDatabaseMock({
+                prevVersion: "1.0.0",
+                currentVersion: "2.0.0",
+                xStorage,
+                yStorage,
+            });
+
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+            ];
+
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(aKey);
+                await storage.keep(bKey);
+            });
+
+            const aMigratedKey = await getMigratedKey(yStorage, aKey);
+            const bMigratedKey = await getMigratedKey(yStorage, bKey);
+
+            const validA = await yStorage.valid.get(aMigratedKey) ?? [];
+            const bIdStr = String(bMigratedKey);
+            expect(validA.some(id => String(id) === bIdStr)).toBe(false);
+        });
+
         test("writes version to y/global/version before calling setCurrentReplicaPointer", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();

@@ -385,25 +385,86 @@ async function commitChangedMerge(
 
 
 /**
- * Rebuild the valid frontier from the final merged graph state.
+ * Rebuild the valid relation from the final merged graph state.
  *
- * For every materialized node N with freshness[N] == "up-to-date":
- *   for every D in inputs[N]: valid[D] contains N.
- *
- * Nodes whose freshness is not "up-to-date" do not receive incoming validity
- * flags. Duplicate dependents are avoided and each valid[D] is written as a
- * sorted array.
+ * The algorithm:
+ * 1. Captures pre-merge valid entries from targetStorage.
+ * 2. Preserves compatible valid[D].has(N) entries for kept nodes whose value
+ *    identity is unchanged and whose input D's value identity is unchanged.
+ * 3. Removes entries for deleted/discarded identifiers, or entries where the
+ *    dependent's inputs no longer contain the dependency.
+ * 4. Removes entries for nodes whose stored value was changed, taken from an
+ *    incompatible side, or invalidated.
+ * 5. Adds required missing valid flags for every up-to-date node according
+ *    to the invariant.
  *
  * @param {SchemaStorage} targetStorage
+ * @param {Map<NodeKeyString, MergeDecision>} decisions
+ * @param {Map<NodeKeyString, 'keep' | 'take'>} initialDecisions
+ * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
+ * @param {IdentifierLookup} targetLookup
  * @returns {Promise<void>}
  */
-async function rebuildValidityFromFreshInputs(targetStorage) {
+async function preserveAndRebuildValidity(
+    targetStorage,
+    decisions,
+    initialDecisions,
+    finalIdentifierForKey,
+    mergedInputsMap,
+    targetLookup
+) {
+    /** @type {Map<string, NodeIdentifier[]>} */
+    const previousValid = new Map();
+    for await (const depId of targetStorage.valid.keys()) {
+        const dependents = await targetStorage.valid.get(depId);
+        if (dependents !== undefined) {
+            previousValid.set(nodeIdentifierToString(depId), dependents);
+        }
+    }
+
     await targetStorage.valid.clear();
 
     /** @type {Map<string, NodeIdentifier[]>} */
     const validMap = new Map();
     /** @type {Map<string, NodeIdentifier>} */
     const depIdCache = new Map();
+
+    for (const [depIdStr, dependents] of previousValid) {
+        const depNodeKey = targetLookup.idToKey.get(depIdStr);
+        if (depNodeKey === undefined) continue;
+        const finalDepId = finalIdentifierForKey.get(depNodeKey);
+        if (finalDepId === undefined) continue;
+
+        const depDecision = decisions.get(depNodeKey);
+        const depInitial = initialDecisions.get(depNodeKey);
+        if (depDecision !== 'keep' || depInitial !== 'keep') continue;
+
+        for (const dependent of dependents) {
+            const depStr = nodeIdentifierToString(dependent);
+            const depNodeKey2 = targetLookup.idToKey.get(depStr);
+            if (depNodeKey2 === undefined) continue;
+            const finalDepId2 = finalIdentifierForKey.get(depNodeKey2);
+            if (finalDepId2 === undefined) continue;
+
+            const dep2Decision = decisions.get(depNodeKey2);
+            const dep2Initial = initialDecisions.get(depNodeKey2);
+            if (dep2Decision !== 'keep' || dep2Initial !== 'keep') continue;
+
+            const dep2Inputs = mergedInputsMap.get(finalDepId2) ?? [];
+            if (!dep2Inputs.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(finalDepId))) {
+                continue;
+            }
+
+            const finalDepIdStr = nodeIdentifierToString(finalDepId);
+            depIdCache.set(finalDepIdStr, finalDepId);
+            let deps = validMap.get(finalDepIdStr) ?? [];
+            validMap.set(finalDepIdStr, deps);
+            if (!deps.some(d => nodeIdentifierToString(d) === nodeIdentifierToString(finalDepId2))) {
+                deps.push(finalDepId2);
+            }
+        }
+    }
 
     for await (const nodeIdentifier of targetStorage.inputs.keys()) {
         const freshness = await targetStorage.freshness.get(nodeIdentifier);
@@ -415,11 +476,8 @@ async function rebuildValidityFromFreshInputs(targetStorage) {
         for (const depId of inputs) {
             const depIdStr = nodeIdentifierToString(depId);
             depIdCache.set(depIdStr, depId);
-            let dependents = validMap.get(depIdStr);
-            if (dependents === undefined) {
-                dependents = [];
-                validMap.set(depIdStr, dependents);
-            }
+            let dependents = validMap.get(depIdStr) ?? [];
+            validMap.set(depIdStr, dependents);
             if (!dependents.some(d => nodeIdentifierToString(d) === nodeIdStr)) {
                 dependents.push(nodeIdentifier);
             }
@@ -522,7 +580,14 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const summary = summarizeDecisions(decisions.values());
     const hasChanges = summary.hasChanges || hasIdentifierReconciliation;
     if (hasChanges) {
-        await rebuildValidityFromFreshInputs(targetStorage);
+        await preserveAndRebuildValidity(
+            targetStorage,
+            decisions,
+            initialDecisions,
+            finalIdentifierForKey,
+            mergedInputsMap,
+            targetLookup
+        );
     }
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
 
