@@ -68,6 +68,45 @@ const {
  */
 
 /**
+ * Apply recorded validity mutations to the latest committed state and push
+ * the resulting put/del operations into the shared operations array.
+ * Used by both withTransaction() and withBatch().
+ *
+ * @param {SchemaStorage} activeSchemaStorage
+ * @param {Array<*>} operations
+ * @param {Map<string, Array<ValidMutation | ValidClearMutation>>} validMutations
+ * @returns {Promise<void>}
+ */
+async function appendValidMutationOps(activeSchemaStorage, operations, validMutations) {
+    if (validMutations.size === 0) {
+        return;
+    }
+    for (const [depIdStr, mutations] of validMutations.entries()) {
+        const depId = nodeIdentifierFromString(depIdStr);
+        let validSet = await activeSchemaStorage.valid.get(depId) ?? [];
+        for (const m of mutations) {
+            if (m.kind === "clear") {
+                validSet = [];
+            } else if (m.kind === "add") {
+                const depStr = nodeIdentifierToString(m.dependent);
+                if (!validSet.some(id => nodeIdentifierToString(id) === depStr)) {
+                    validSet.push(m.dependent);
+                }
+            } else if (m.kind === "remove") {
+                const depStr = nodeIdentifierToString(m.dependent);
+                validSet = validSet.filter(id => nodeIdentifierToString(id) !== depStr);
+            }
+        }
+        validSet.sort(compareNodeIdentifier);
+        if (validSet.length === 0) {
+            operations.push(activeSchemaStorage.valid.delOp(depId));
+        } else {
+            operations.push(activeSchemaStorage.valid.putOp(depId, validSet));
+        }
+    }
+}
+
+/**
  * @template TValue
  * @typedef {object} BatchDatabaseOps
  * @property {(key: NodeIdentifier, value: TValue) => void} put - Queue a put operation in the current batch.
@@ -318,9 +357,16 @@ function makeGraphStorage(rootDatabase, sleeper) {
         get timestamps() { return rootDatabase.getSchemaStorage().timestamps; },
         async withBatch(fn) {
             const activeSchemaStorage = rootDatabase.getSchemaStorage();
-            const { batch, operations } = createBatch(activeSchemaStorage);
+            const { batch, operations, validMutations } = createBatch(activeSchemaStorage);
             const result = await fn(batch);
-            await activeSchemaStorage.batch(operations);
+
+            await darkroomActivity(sleeper, rootDatabase.currentReplicaName(), async () => {
+                await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
+                if (operations.length > 0) {
+                    await activeSchemaStorage.batch(operations);
+                }
+            });
+
             return result;
         },
         /**
@@ -382,31 +428,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 const value = result.value;
 
                 await darkroomActivity(sleeper, rootDatabase.currentReplicaName(), async () => {
-                    if (validMutations.size > 0) {
-                        for (const [depIdStr, mutations] of validMutations.entries()) {
-                            const depId = nodeIdentifierFromString(depIdStr);
-                            let validSet = await activeSchemaStorage.valid.get(depId) ?? [];
-                            for (const m of mutations) {
-                                if (m.kind === "clear") {
-                                    validSet = [];
-                                } else if (m.kind === "add") {
-                                    const depStr = nodeIdentifierToString(m.dependent);
-                                    if (!validSet.some(id => nodeIdentifierToString(id) === depStr)) {
-                                        validSet.push(m.dependent);
-                                    }
-                                } else if (m.kind === "remove") {
-                                    const depStr = nodeIdentifierToString(m.dependent);
-                                    validSet = validSet.filter(id => nodeIdentifierToString(id) !== depStr);
-                                }
-                            }
-                            validSet.sort(compareNodeIdentifier);
-                            if (validSet.length === 0) {
-                                operations.push(activeSchemaStorage.valid.delOp(depId));
-                            } else {
-                                operations.push(activeSchemaStorage.valid.putOp(depId, validSet));
-                            }
-                        }
-                    }
+                    await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
 
                     const hasPendingOperations = operations.length > 0;
                     const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;

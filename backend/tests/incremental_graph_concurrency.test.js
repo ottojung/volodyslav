@@ -2014,5 +2014,202 @@ describe("IncrementalGraph concurrency", () => {
             expect(validStrs).toContain(nodeIdentifierToString(xId));
             expect(validStrs).toContain(nodeIdentifierToString(yId));
         }, 15000);
+
+        test("deterministic barrier proves concurrent valid[D] additions merge when both transactions overlap before commit", async () => {
+            const db = new InMemoryDatabase();
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "z",
+                    inputs: [],
+                    computor: async () => Promise.resolve({ type: "z", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "x",
+                    inputs: ["z"],
+                    computor: async () => Promise.resolve({ type: "x", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "y",
+                    inputs: ["z"],
+                    computor: async () => Promise.resolve({ type: "y", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Pull all nodes to allocate identifiers
+            await graph.pull("z");
+            await graph.pull("x");
+            await graph.pull("y");
+
+            const zKey = JSON.stringify({ head: "z", args: [] });
+            const xKey = JSON.stringify({ head: "x", args: [] });
+            const yKey = JSON.stringify({ head: "y", args: [] });
+            const zId = graph.rootDatabase.nodeKeyToId(zKey);
+            const xId = graph.rootDatabase.nodeKeyToId(xKey);
+            const yId = graph.rootDatabase.nodeKeyToId(yKey);
+            if (!zId || !xId || !yId) {
+                throw new Error("Expected identifiers after pull");
+            }
+
+            // Clear valid[z]
+            await graph.storage.valid.del(zId);
+            expect(await graph.storage.valid.get(zId)).toBeUndefined();
+
+            // Intercept withTransaction to force both callbacks to record
+            // mutations before either enters the darkroom commit section.
+            // This deterministically reproduces the lost-update interleaving
+            // that the mutation-based approach prevents.
+            let callbacksFinished = 0;
+            /** @type {() => void} */
+            let releaseCommit = () => undefined;
+            const releaseCommitPromise = new Promise(resolve => { releaseCommit = resolve; });
+
+            const originalWithTransaction = graph.storage.withTransaction.bind(graph.storage);
+            graph.storage.withTransaction = async (run) => {
+                return originalWithTransaction(async (tx) => {
+                    const result = await run(tx);
+                    callbacksFinished += 1;
+                    if (callbacksFinished === 2) {
+                        releaseCommit();
+                    }
+                    await releaseCommitPromise;
+                    return result;
+                });
+            };
+
+            await Promise.all([
+                graph.storage.withTransaction(async (tx) => {
+                    tx.batch.valid.add(zId, xId);
+                    return { value: undefined };
+                }),
+                graph.storage.withTransaction(async (tx) => {
+                    tx.batch.valid.add(zId, yId);
+                    return { value: undefined };
+                }),
+            ]);
+
+            // Both additions were merged at commit time
+            const validSet = await graph.storage.valid.get(zId) ?? [];
+            expect(validSet).toHaveLength(2);
+            const validStrs = validSet.map(id => nodeIdentifierToString(id));
+            expect(validStrs).toContain(nodeIdentifierToString(xId));
+            expect(validStrs).toContain(nodeIdentifierToString(yId));
+
+            // Behavioral assertion: invalidation reaches both dependents
+            await graph.invalidate("z");
+            expect(await graph.getFreshness("x")).toBe("potentially-outdated");
+            expect(await graph.getFreshness("y")).toBe("potentially-outdated");
+        }, 15000);
+
+        test("withBatch persists valid.add mutations", async () => {
+            const db = new InMemoryDatabase();
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                { output: "z", inputs: [], computor: async () => ({ type: "z", value: 1 }), isDeterministic: true, hasSideEffects: false },
+                { output: "x", inputs: [], computor: async () => ({ type: "x", value: 1 }), isDeterministic: true, hasSideEffects: false },
+            ]);
+
+            await graph.pull("z");
+            await graph.pull("x");
+
+            const zKey = JSON.stringify({ head: "z", args: [] });
+            const xKey = JSON.stringify({ head: "x", args: [] });
+            const zId = graph.rootDatabase.nodeKeyToId(zKey);
+            const xId = graph.rootDatabase.nodeKeyToId(xKey);
+            if (!zId || !xId) {
+                throw new Error("Expected identifiers after pull");
+            }
+
+            // Clear valid[z]
+            await graph.storage.valid.del(zId);
+            expect(await graph.storage.valid.get(zId)).toBeUndefined();
+
+            // Add via withBatch
+            await graph.storage.withBatch(async (batch) => {
+                batch.valid.add(zId, xId);
+                const inside = await batch.valid.get(zId);
+                expect(inside.map(id => nodeIdentifierToString(id))).toContain(nodeIdentifierToString(xId));
+            });
+
+            // Persisted after withBatch commits
+            const persisted = await graph.storage.valid.get(zId) ?? [];
+            expect(persisted.map(id => nodeIdentifierToString(id))).toContain(nodeIdentifierToString(xId));
+        }, 15000);
+
+        test("withBatch persists valid.remove mutation", async () => {
+            const db = new InMemoryDatabase();
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                { output: "z", inputs: [], computor: async () => ({ type: "z", value: 1 }), isDeterministic: true, hasSideEffects: false },
+                { output: "x", inputs: [], computor: async () => ({ type: "x", value: 1 }), isDeterministic: true, hasSideEffects: false },
+                { output: "y", inputs: [], computor: async () => ({ type: "y", value: 1 }), isDeterministic: true, hasSideEffects: false },
+            ]);
+
+            await graph.pull("z");
+            await graph.pull("x");
+            await graph.pull("y");
+
+            const zKey = JSON.stringify({ head: "z", args: [] });
+            const xKey = JSON.stringify({ head: "x", args: [] });
+            const yKey = JSON.stringify({ head: "y", args: [] });
+            const zId = graph.rootDatabase.nodeKeyToId(zKey);
+            const xId = graph.rootDatabase.nodeKeyToId(xKey);
+            const yId = graph.rootDatabase.nodeKeyToId(yKey);
+            if (!zId || !xId || !yId) {
+                throw new Error("Expected identifiers after pull");
+            }
+
+            // Put valid[z] = [x, y]
+            await graph.storage.withBatch(async (batch) => {
+                batch.valid.put(zId, [xId, yId]);
+            });
+            let persisted = await graph.storage.valid.get(zId) ?? [];
+            expect(persisted).toHaveLength(2);
+
+            // Remove x via withBatch
+            await graph.storage.withBatch(async (batch) => {
+                batch.valid.remove(zId, xId);
+            });
+            persisted = await graph.storage.valid.get(zId) ?? [];
+            expect(persisted).toHaveLength(1);
+            expect(nodeIdentifierToString(persisted[0])).toBe(nodeIdentifierToString(yId));
+        }, 15000);
+
+        test("withBatch persists valid.clear mutation", async () => {
+            const db = new InMemoryDatabase();
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                { output: "z", inputs: [], computor: async () => ({ type: "z", value: 1 }), isDeterministic: true, hasSideEffects: false },
+                { output: "x", inputs: [], computor: async () => ({ type: "x", value: 1 }), isDeterministic: true, hasSideEffects: false },
+            ]);
+
+            await graph.pull("z");
+            await graph.pull("x");
+
+            const zKey = JSON.stringify({ head: "z", args: [] });
+            const xKey = JSON.stringify({ head: "x", args: [] });
+            const zId = graph.rootDatabase.nodeKeyToId(zKey);
+            const xId = graph.rootDatabase.nodeKeyToId(xKey);
+            if (!zId || !xId) {
+                throw new Error("Expected identifiers after pull");
+            }
+
+            // Put valid[z] = [x]
+            await graph.storage.withBatch(async (batch) => {
+                batch.valid.put(zId, [xId]);
+            });
+            expect(await graph.storage.valid.get(zId)).toBeDefined();
+
+            // Clear via withBatch
+            await graph.storage.withBatch(async (batch) => {
+                batch.valid.clear(zId);
+            });
+
+            // valid[z] is deleted (absent or empty)
+            const persisted = await graph.storage.valid.get(zId) ?? [];
+            expect(persisted).toHaveLength(0);
+        }, 15000);
     });
 });
