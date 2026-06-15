@@ -1655,6 +1655,8 @@ describe("IncrementalGraph concurrency", () => {
             // Run three concurrent invalidates on the root node
             await Promise.all([
                 graph.invalidate("root"),
+                graph.invalidate("root"),
+                graph.invalidate("root"),
             ]);
 
             // All dependents should be consistently outdated
@@ -1664,6 +1666,165 @@ describe("IncrementalGraph concurrency", () => {
 
             const midResult = await graph.pull("mid");
             expect(midResult.value).toBe(2);
+        });
+
+        test("concurrent invalidates on same root with fan-out: freshness propagates to all dependents idempotently", async () => {
+            const db = new InMemoryDatabase();
+            let joinedComputorCalls = 0;
+
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "root",
+                    inputs: [],
+                    computor: async () => ({ type: "test", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "left",
+                    inputs: ["root"],
+                    computor: async ([r]) => ({ type: "test", value: r.value + 10 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "right",
+                    inputs: ["root"],
+                    computor: async ([r]) => ({ type: "test", value: r.value + 20 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "other",
+                    inputs: ["root"],
+                    computor: async ([r]) => ({ type: "test", value: r.value + 30 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "joined",
+                    inputs: ["left", "right"],
+                    computor: async ([l, r]) => {
+                        joinedComputorCalls++;
+                        return { type: "test", value: l.value + r.value };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Materialize all dependents
+            await graph.pull("left");
+            await graph.pull("right");
+            await graph.pull("other");
+            await graph.pull("joined");
+
+            // Assert all relevant nodes are up-to-date
+            expect(await graph.getFreshness("left")).toBe("up-to-date");
+            expect(await graph.getFreshness("right")).toBe("up-to-date");
+            expect(await graph.getFreshness("other")).toBe("up-to-date");
+            expect(await graph.getFreshness("joined")).toBe("up-to-date");
+
+            const computorCallsBefore = joinedComputorCalls;
+
+            // Run three concurrent invalidates on root
+            await Promise.all([
+                graph.invalidate("root"),
+                graph.invalidate("root"),
+                graph.invalidate("root"),
+            ]);
+
+            // Every direct dependent becomes potentially-outdated
+            expect(await graph.getFreshness("left")).toBe("potentially-outdated");
+            expect(await graph.getFreshness("right")).toBe("potentially-outdated");
+            expect(await graph.getFreshness("other")).toBe("potentially-outdated");
+
+            // joined depends on left and right, both stale, so joined is stale
+            expect(await graph.getFreshness("joined")).toBe("potentially-outdated");
+
+            // Pull root again — the final computed value must be correct
+            const rootValue = await graph.pull("root");
+            expect(rootValue.value).toBe(1);
+
+            // Pull joined — it should recompute correctly
+            const joinedValue = await graph.pull("joined");
+            expect(joinedValue.value).toBe(32); // (1+10) + (1+20) = 32
+
+            // joined's computor should have been called at least once
+            expect(joinedComputorCalls).toBeGreaterThanOrEqual(computorCallsBefore + 1);
+        });
+
+        test("concurrent invalidates on overlapping dependency paths propagate to shared downstream nodes", async () => {
+            const db = new InMemoryDatabase();
+            let leafComputorCalls = 0;
+
+            const graph = makeIncrementalGraph(testCapabilities, db, [
+                {
+                    output: "a",
+                    inputs: [],
+                    computor: async () => ({ type: "test", value: 1 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "b",
+                    inputs: [],
+                    computor: async () => ({ type: "test", value: 2 }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "shared",
+                    inputs: ["a", "b"],
+                    computor: async ([aVal, bVal]) => ({
+                        type: "test",
+                        value: aVal.value + bVal.value,
+                    }),
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "leaf",
+                    inputs: ["shared"],
+                    computor: async ([s]) => {
+                        leafComputorCalls++;
+                        return { type: "test", value: s.value * 2 };
+                    },
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                },
+            ]);
+
+            // Materialize leaf
+            const firstPull = await graph.pull("leaf");
+            expect(firstPull.value).toBe(6); // (1+2)*2 = 6
+
+            // Assert shared and leaf are up-to-date
+            expect(await graph.getFreshness("shared")).toBe("up-to-date");
+            expect(await graph.getFreshness("leaf")).toBe("up-to-date");
+
+            const computorCallsBefore = leafComputorCalls;
+
+            // Run concurrent invalidates on a and b
+            await Promise.all([
+                graph.invalidate("a"),
+                graph.invalidate("b"),
+            ]);
+
+            // Assert shared and leaf become potentially-outdated
+            expect(await graph.getFreshness("shared")).toBe("potentially-outdated");
+            expect(await graph.getFreshness("leaf")).toBe("potentially-outdated");
+
+            // Pull leaf — the recomputed value must be correct
+            const leafValue = await graph.pull("leaf");
+            expect(leafValue.value).toBe(6); // Still (1+2)*2 = 6
+
+            // leaf's computor must have been called at least once
+            expect(leafComputorCalls).toBeGreaterThanOrEqual(computorCallsBefore + 1);
+
+            // After recomputation, shared and leaf are up-to-date again
+            expect(await graph.getFreshness("shared")).toBe("up-to-date");
+            expect(await graph.getFreshness("leaf")).toBe("up-to-date");
         });
 
         test("concurrent invalidates: each TX has its own batch, one TX's writes are invisible to another until commit", async () => {
