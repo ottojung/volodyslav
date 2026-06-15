@@ -9,9 +9,6 @@ The graph needs a way to decide whether a node can safely reuse its current mate
 This specification uses a single inverse edge-validity relation (`valid`) as both the cache-proof
 frontier and the invalidation propagation index.
 
-The implementation has no separate reverse-dependency index. The `valid` relation is the sole
-source of truth for both cache authorization and invalidation propagation.
-
 ## Fixed Model
 
 The schema is fixed for the lifetime of one `IncrementalGraph` instance. A node's concrete input
