@@ -1851,10 +1851,16 @@ describe("IncrementalGraph concurrency", () => {
             // Pull once to materialize
             await graph.pull("dep");
 
-            // Track freshness reads during the second TX
-            const tx1Entered = makeDeferred();
-            const tx2CanRead = makeDeferred();
+            // Barriers to force precise interleaving:
+            // 1. TX1 runs fn(tx) and queues batch writes
+            // 2. TX1 pauses before returning from the callback (so it cannot
+            //    enter the real commit path)
+            // 3. TX2 reads freshness from committed storage (must not see TX1's
+            //    uncommitted writes)
+            // 4. Release TX1 then TX2; both complete
+            const tx1CallbackFinished = makeDeferred();
             const tx2ReadFreshness = makeDeferred();
+            const releaseTx1Commit = makeDeferred();
             let tx2SawValue = undefined;
             let entered = 0;
 
@@ -1865,50 +1871,52 @@ describe("IncrementalGraph concurrency", () => {
                     entered += 1;
 
                     if (myIndex === 0) {
-                        // TX1: let it run (writes freshness in its batch)
-                        tx1Entered.resolve(undefined);
-                        return await fn(tx);
+                        // TX1 runs the invalidate callback and queues its batch
+                        // writes (freshness changes). Because this wrapper has
+                        // not returned yet, the real withTransaction commit path
+                        // cannot have run.
+                        const result = await fn(tx);
+                        tx1CallbackFinished.resolve(undefined);
+                        await releaseTx1Commit.promise;
+                        return result;
                     }
 
-                    // TX2: intercept freshness.get to observe read-committed behavior
+                    // TX2 waits for TX1 to finish its callback and queue writes
+                    await tx1CallbackFinished.promise;
+
+                    // Intercept freshness.get to observe what TX2 reads from
+                    // committed storage (TX1 has NOT committed yet)
                     const originalGet = tx.batch.freshness.get.bind(tx.batch.freshness);
                     tx.batch.freshness.get = async (key) => {
-                        tx2CanRead.resolve(undefined);
                         const value = await originalGet(key);
                         tx2SawValue = value;
                         tx2ReadFreshness.resolve(undefined);
                         return value;
                     };
 
-                    const result = await fn(tx);
-                    return result;
+                    return await fn(tx);
                 });
             };
 
             const invalidate1 = graph.invalidate("src");
 
-            // Wait for TX1 to enter its withTransaction callback
-            await tx1Entered.promise;
+            // Wait for TX1 to finish its withTransaction callback (queued writes
+            // but NOT committed yet)
+            await tx1CallbackFinished.promise;
 
-            // Start TX2 while TX1 is still in flight (hasn't committed yet)
+            // Start TX2 while TX1 has queued writes but is paused before commit
             const invalidate2 = graph.invalidate("src");
 
-            // Wait for TX2 to attempt reading freshness (this is inside TX2's callback)
-            await tx2CanRead.promise;
-
-            // At this point TX1 has written "potentially-outdated" for dep
-            // into its own batch (not committed). TX2 is about to read dep's
-            // freshness via its own batch.get, which falls through to live DB.
-            // Since TX1 hasn't committed, TX2 should NOT see "potentially-outdated".
-
+            // Wait for TX2 to read freshness inside its callback
             await tx2ReadFreshness.promise;
 
-            // TX2 read dep's freshness. If TX1 had already committed, dep would
-            // be "potentially-outdated". But TX1 hasn't committed yet because
-            // we intercepted at TX2's batch.get before TX1's commit.
-            // The live DB freshness for dep is "up-to-date" (from the initial pull).
+            // TX2 read dep's freshness via batch.get, which falls through to the
+            // live DB because TX1 has not committed yet. The live DB still has
+            // "up-to-date" from the initial pull.
             expect(tx2SawValue).toBe("up-to-date");
 
+            // Release TX1 to commit
+            releaseTx1Commit.resolve(undefined);
             await Promise.all([invalidate1, invalidate2]);
 
             // After both commit, dep should be "potentially-outdated"
