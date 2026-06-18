@@ -12,8 +12,7 @@
  *
  * 1. Verify that `H` was written by the same schema version as the local
  *    database.
- * 2. Copy `L` into `T`, excluding reverse dependencies because they are derived
- *    data and are rebuilt after decisions are applied.
+ * 2. Copy `L` into `T`.
  * 3. Parse the target/host identifier lookups and reject only the corrupt case
  *    where one identifier names different semantic keys.
  * 4. Build a semantic-node-key merge plan from timestamps and dependencies. Newer
@@ -22,7 +21,7 @@
  *    the merged inputs.
  * 5. Choose one final identifier per semantic key, lower all chosen inputs to
  *    those identifiers, apply the plan to `T`, and remove losing target records.
- * 6. Validate and persist the newly constructed lookup, rebuild `revdeps`, and
+ * 6. Validate and persist the newly constructed lookup and
  *    switch replicas when graph data or identifier reconciliation changed.
  *
  * Error handling policy:
@@ -39,7 +38,6 @@
 const { isTopologicalSortCycleError } = require('./topo_sort');
 const { IdentifierLookupConflictError } = require('./replica_errors');
 const { versionToString } = require('./types');
-const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const {
     IDENTIFIERS_KEY,
     makeEmptyIdentifierLookup,
@@ -47,7 +45,6 @@ const {
 } = require('./identifier_lookup');
 const { LAST_NODE_INDEX_KEY } = require('./root_database');
 const { buildMergePlan } = require('./sync_merge_plan');
-const { unifyRevdeps } = require('./sync_merge_revdeps');
 const {
     assertValidFinalMergeState,
     assertLookupCoversMaterializedNodes,
@@ -55,6 +52,7 @@ const {
     isFinalMergeStateError,
 } = require('./sync_merge_validation');
 const { buildDeleteNodeOps, copyNodeOps, copyReplicaGently } = require('./sync_merge_transfer');
+const { preserveAndRebuildValidity, ReplicaBatchWriter } = require('./sync_merge_validity');
 const {
     assertNoIdentifierCollisions,
     parseIdentifierLookup,
@@ -123,65 +121,6 @@ class SyncMergeAggregateError extends Error {
  */
 function isSyncMergeAggregateError(object) {
     return object instanceof SyncMergeAggregateError;
-}
-
-/**
- * Small helper around SchemaStorage.batch() that guarantees batch sizes never
- * exceed RAW_BATCH_CHUNK_SIZE while still allowing callers to build operations
- * incrementally.
- */
-class ReplicaBatchWriter {
-    /**
-     * @param {SchemaStorage} storage
-     */
-    constructor(storage) {
-        this._storage = storage;
-        /** @type {Array<*>} */
-        this._pendingOps = [];
-    }
-
-    /**
-     * @param {Array<*>} operations
-     * @returns {Promise<void>}
-     */
-    async pushAll(operations) {
-        this._pendingOps.push(...operations);
-        await this.flushCompleteChunks();
-    }
-
-    /**
-     * @param {*} operation
-     * @returns {Promise<void>}
-     */
-    async push(operation) {
-        this._pendingOps.push(operation);
-        await this.flushCompleteChunks();
-    }
-
-    /**
-     * Flush full chunks and leave any partial chunk queued.
-     * @returns {Promise<void>}
-     */
-    async flushCompleteChunks() {
-        while (this._pendingOps.length >= RAW_BATCH_CHUNK_SIZE) {
-            const chunk = this._pendingOps.slice(0, RAW_BATCH_CHUNK_SIZE);
-            await this._storage.batch(chunk);
-            this._pendingOps = this._pendingOps.slice(RAW_BATCH_CHUNK_SIZE);
-        }
-    }
-
-    /**
-     * Flush all queued operations. No-op when the queue is empty.
-     * @returns {Promise<void>}
-     */
-    async flush() {
-        await this.flushCompleteChunks();
-        if (this._pendingOps.length === 0) {
-            return;
-        }
-        await this._storage.batch(this._pendingOps);
-        this._pendingOps = [];
-    }
 }
 
 /**
@@ -360,18 +299,17 @@ function summarizeDecisions(decisions) {
 }
 
 /**
- * Persist the final semantic-plan lookup and derived reverse dependencies.
+ * Persist the final semantic-plan lookup and commit the inactive replica as active.
  * @param {RootDatabase} rootDatabase
  * @param {SchemaStorage} targetStorage
  * @param {ReplicaName} targetReplica
  * @param {IdentifierLookup} finalIdentifierLookup
- * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
  * @param {number} targetLastNodeIndex
  * @returns {Promise<void>}
  */
 async function commitChangedMerge(
     rootDatabase, targetStorage, targetReplica,
-    finalIdentifierLookup, mergedInputsMap, targetLastNodeIndex
+    finalIdentifierLookup, targetLastNodeIndex
 ) {
     const writer = new ReplicaBatchWriter(targetStorage);
     await writer.push(targetStorage.global.putOp(
@@ -380,10 +318,9 @@ async function commitChangedMerge(
     ));
     await writer.push(targetStorage.global.putOp(LAST_NODE_INDEX_KEY, targetLastNodeIndex));
     await writer.flush();
-    await targetStorage.valid.clear();
-    await unifyRevdeps(targetStorage, mergedInputsMap);
     await rootDatabase.setCurrentReplicaPointer(targetReplica);
 }
+
 
 /**
  * Run the graph-aware merge algorithm for one staged remote hostname.
@@ -467,17 +404,26 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap
     );
 
-    await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
-
     const summary = summarizeDecisions(decisions.values());
     const hasChanges = summary.hasChanges || hasIdentifierReconciliation;
+    if (hasChanges) {
+        await preserveAndRebuildValidity(
+            targetStorage,
+            decisions,
+            initialDecisions,
+            finalIdentifierForKey,
+            mergedInputsMap,
+            targetLookup
+        );
+    }
+    await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
+
     if (hasChanges) {
         await commitChangedMerge(
             rootDatabase,
             targetStorage,
             toReplica,
             finalIdentifierLookup,
-            mergedInputsMap,
             targetLastNodeIndex
         );
     }

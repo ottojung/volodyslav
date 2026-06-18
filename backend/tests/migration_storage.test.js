@@ -42,7 +42,7 @@ function makeInMemorySchemaStorage() {
     const values = makeInMemoryDb();
     const freshness = makeInMemoryDb();
     const inputs = makeInMemoryDb();
-    const revdeps = makeInMemoryDb();
+    const valid = makeInMemoryDb();
     const counters = makeInMemoryDb();
     const global = makeInMemoryDb();
     const originalGlobalGet = global.get.bind(global);
@@ -60,7 +60,7 @@ function makeInMemorySchemaStorage() {
         values,
         freshness,
         inputs,
-        revdeps,
+        valid,
         counters,
         global,
         async batch(_ops) {},
@@ -124,10 +124,10 @@ async function setupStandardGraph(storage, newHeadIndex, opts = {}) {
     await storage.inputs.put(C, []);
     await storage.inputs.put(D, [B, C]);
 
-    // revdeps
-    await storage.revdeps.put(A, [B]);
-    await storage.revdeps.put(B, [D]);
-    await storage.revdeps.put(C, [D]);
+    // valid
+    await storage.valid.put(A, [B]);
+    await storage.valid.put(B, [D]);
+    await storage.valid.put(C, [D]);
 
     return makeMigrationStorage(storage, newHeadIndex, [A, B, C, D]);
 }
@@ -416,6 +416,49 @@ describe("MigrationStorage", () => {
             const err = await ms.finalize().catch((e) => e);
             expect(isDecisionConflict(err)).toBe(true);
         });
+
+        test("delete propagation uses structural inputs when valid flags are missing (stale dependent)", async () => {
+            // A -> B, valid[A] is missing B (stale). delete(A) propagates;
+            // the structural dependency scan via inputs finds B as a dependent
+            // of A and auto-deletes it since all its inputs are deleted.
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "B"]);
+            const A = nk("A");
+            const B = nk("B");
+            await storage.inputs.put(A, []);
+            await storage.inputs.put(B, [A]);
+            // valid[A] intentionally left missing for B (simulates stale B)
+            const ms = makeMigrationStorage(storage, headIndex, [A, B]);
+
+            await ms.delete(A);
+            // B is auto-deleted via structural scan even though valid[A] is missing
+            const decisions = await ms.finalize();
+            expect(decisions.get(B)?.kind).toBe("delete");
+        });
+
+        test("fan-in detection uses structural inputs when valid flags are missing (stale dependent)", async () => {
+            // B -> D, C -> D, valid[B] is missing D (stale). delete(B), keep(C).
+            // The structural dependency scan must still find D dependent on B
+            // and report PartialDeleteFanInError (C is kept so D has a surviving input).
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["B", "C", "D"]);
+            const B = nk("B");
+            const C = nk("C");
+            const D = nk("D");
+            await storage.inputs.put(B, []);
+            await storage.inputs.put(C, []);
+            await storage.inputs.put(D, [B, C]);
+            await storage.valid.put(C, [D]);
+            // valid[B] intentionally left missing for D (simulates stale D)
+            const ms = makeMigrationStorage(storage, headIndex, [B, C, D]);
+
+            await ms.delete(B);
+            await ms.keep(C);
+            // D has no decision; structural scan finds D depends on B,
+            // but D's other input C is kept → PartialDeleteFanInError
+            const err = await ms.finalize().catch((e) => e);
+            expect(isPartialDeleteFanIn(err)).toBe(true);
+        });
     });
 
     // -----------------------------------------------------------------------
@@ -492,21 +535,21 @@ describe("MigrationStorage", () => {
             expect(inputs).toEqual([]);
         });
 
-        test("getDependents(A) returns [B]", async () => {
+        test("listValidDependents(A) returns [B]", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
-            const deps = await ms.getDependents(nk("A"));
+            const deps = await ms.listValidDependents(nk("A"));
             expect(deps).toEqual([nk("B")]);
         });
 
-        test("getDependents(D) returns [] (leaf)", async () => {
+        test("listValidDependents(D) returns [] (leaf)", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
-            const deps = await ms.getDependents(nk("D"));
+            const deps = await ms.listValidDependents(nk("D"));
             expect(deps).toEqual([]);
         });
 

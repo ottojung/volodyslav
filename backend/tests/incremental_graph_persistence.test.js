@@ -1,6 +1,6 @@
 /**
  * Persistence and restart tests for IncrementalGraph.
- * These tests verify that the persistent reverse-dependency index works correctly across restarts.
+ * These tests verify that the persistent validity index works correctly across restarts.
  */
 
 const path = require("path");
@@ -178,7 +178,7 @@ describe("Incremental graph persistence and restart", () => {
             const storage2 = makeSemanticStorage(graph2);
             let dependents2;
             await storage2.withBatch(async (batch) => {
-                dependents2 = await storage2.listDependents(toJsonKey("A"), batch);
+                dependents2 = await storage2.listValidDependents(toJsonKey("A"), batch);
             });
             expect(dependents2).toContain(toJsonKey("B"));
 

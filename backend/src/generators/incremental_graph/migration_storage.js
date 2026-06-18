@@ -3,7 +3,7 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { deserializeNodeKey, stringToNodeKeyString, IDENTIFIERS_KEY, makeNodeIdentifier } = require("./database");
+const { deserializeNodeKey, stringToNodeKeyString, IDENTIFIERS_KEY, makeNodeIdentifier, nodeIdentifierToString } = require("./database");
 const { readInputRecord } = require("./database");
 const {
     makeDecisionConflictError,
@@ -29,7 +29,7 @@ const {
  * @property {{ get(nodeKey: NodeIdentifier): Promise<ComputedValue | undefined> }} values
  * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').Freshness | undefined> }} freshness
  * @property {{ get(nodeKey: NodeIdentifier): Promise<NodeIdentifier[] | undefined> }} inputs
- * @property {{ get(nodeKey: NodeIdentifier): Promise<NodeIdentifier[] | undefined> }} revdeps
+ * @property {{ get(nodeKey: NodeIdentifier): Promise<NodeIdentifier[] | undefined> }} valid
  * @property {{ get(nodeKey: NodeIdentifier): Promise<number | undefined> }} counters
  * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').TimestampRecord | undefined> }} timestamps
  * @property {{ get(key: string): Promise<unknown> }} global
@@ -110,13 +110,13 @@ async function readInputsRecord(nodeKey, prevStorage) {
 }
 
 /**
- * Reads the dependents list for a node from the previous storage.
+ * Reads the validity-authorized consumers for a node from the previous storage.
  * @param {NodeIdentifier} nodeKey
  * @param {ReadableMigrationStorage} prevStorage
  * @returns {Promise<NodeIdentifier[]>}
  */
-async function readDependents(nodeKey, prevStorage) {
-    const dependents = await prevStorage.revdeps.get(nodeKey);
+async function readValidDependents(nodeKey, prevStorage) {
+    const dependents = await prevStorage.valid.get(nodeKey);
     return dependents !== undefined ? dependents : [];
 }
 
@@ -291,7 +291,7 @@ class MigrationStorageClass {
     /**
      * Assign a DELETE decision to a node.
      * Idempotent if the same decision already exists.
-     * DELETE propagation to dependents is deferred to finalize().
+     * DELETE propagation to validity propagation is deferred to finalize().
      * @param {NodeIdentifier} nodeKey
      * @returns {Promise<void>}
      */
@@ -377,15 +377,15 @@ class MigrationStorageClass {
     }
 
     /**
-     * Get the dependents of a node from the previous-version graph.
+     * Get the validity-authorized consumers of a node from the previous-version graph.
      * @param {NodeIdentifier} nodeKey
      * @returns {Promise<readonly NodeIdentifier[]>}
      */
-    async getDependents(nodeKey) {
+    async listValidDependents(nodeKey) {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        return readDependents(nodeKey, this.prevStorage);
+        return readValidDependents(nodeKey, this.prevStorage);
     }
 
     /**
@@ -411,7 +411,7 @@ class MigrationStorageClass {
     }
 
     /**
-     * Propagate INVALIDATE to all dependents of a node recursively.
+     * Propagate INVALIDATE through validity sets of a node recursively.
      * Stops at already-invalidated or deleted nodes.
      * Throws on conflict with KEEP/OVERRIDE decisions.
      * @private
@@ -422,7 +422,7 @@ class MigrationStorageClass {
     async _propagateInvalidate(nodeKey, visited) {
         if (visited.has(nodeKey)) return;
         visited.add(nodeKey);
-        const dependents = await readDependents(nodeKey, this.prevStorage);
+        const dependents = await readValidDependents(nodeKey, this.prevStorage);
         for (const dep of dependents) {
             if (!this.materializedNodes.has(dep)) continue;
             const existing = this.decisions.get(dep);
@@ -451,12 +451,46 @@ class MigrationStorageClass {
     }
 
     /**
+     * Build a structural dependency map by scanning inputs of every
+     * materialized node.  Returns a Map from input identifier string to
+     * the set of nodes that declare that input.
+     *
+     * Migration delete and fan-in checks must use the structural dependency
+     * relation from persisted `inputs` records, not `valid`.  The `valid`
+     * relation is an authorization and invalidation frontier, not a complete
+     * structural dependency graph.  Stale dependents may be absent from
+     * `valid`, so scanning `inputs` is required to discover every node that
+     * references a deleted identifier.
+     * @private
+     * @returns {Promise<Map<string, Set<NodeIdentifier>>>}
+     */
+    async _buildStructuralDependents() {
+        /** @type {Map<string, Set<NodeIdentifier>>} */
+        const map = new Map();
+        for (const nodeKey of this.materializedNodes) {
+            const inputs = await readInputsRecord(nodeKey, this.prevStorage);
+            for (const input of inputs) {
+                const inputStr = nodeIdentifierToString(input);
+                const deps = map.get(inputStr) ?? new Set();
+                deps.add(nodeKey);
+                map.set(inputStr, deps);
+            }
+        }
+        return map;
+    }
+
+    /**
      * BFS propagation of DELETE to dependents whose all inputs are deleted,
      * followed by a fan-in violation scan.
+     *
+     * Uses the structural dependency relation (built from inputs) rather
+     * than valid so that stale nodes whose dependents are absent from valid
+     * are still discovered during deletion propagation and fan-in checks.
      * @private
      * @returns {Promise<void>}
      */
     async _propagateDeletesAndCheckFanIn() {
+        const structuralDependents = await this._buildStructuralDependents();
         /** @type {NodeIdentifier[]} */
         const queue = [];
         for (const [nodeKey, decision] of this.decisions) {
@@ -466,11 +500,12 @@ class MigrationStorageClass {
         }
         let head = 0;
         while (head < queue.length) {
-            // noUncheckedIndexedAccess requires an explicit undefined guard
             const nodeKey = queue[head];
             head++;
             if (nodeKey === undefined) break;
-            const dependents = await readDependents(nodeKey, this.prevStorage);
+            const nodeKeyStr = nodeIdentifierToString(nodeKey);
+            const dependents = structuralDependents.get(nodeKeyStr);
+            if (dependents === undefined) continue;
             for (const dep of dependents) {
                 if (!this.materializedNodes.has(dep)) continue;
                 if (this.decisions.get(dep)?.kind === "delete") continue;
@@ -491,7 +526,9 @@ class MigrationStorageClass {
         // that was not itself auto-deleted means its inputs are only partially deleted.
         for (const [nodeKey, decision] of this.decisions) {
             if (decision.kind !== "delete") continue;
-            const dependents = await readDependents(nodeKey, this.prevStorage);
+            const nodeKeyStr = nodeIdentifierToString(nodeKey);
+            const dependents = structuralDependents.get(nodeKeyStr);
+            if (dependents === undefined) continue;
             for (const dep of dependents) {
                 if (!this.materializedNodes.has(dep)) continue;
                 if (this.decisions.get(dep)?.kind === "delete") continue;

@@ -34,10 +34,11 @@
 /** @typedef {import('./database/types').NodeName} NodeName */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
+/** @typedef {import('./types').ConcreteNode} ConcreteNode */
 /** @typedef {import('./types').ResolvedConcreteNode} ResolvedConcreteNode */
 /** @typedef {import('./database/types').NodeKeyString} StoredNodeKeyString */
 
-const { stringToNodeName } = require("./database");
+const { stringToNodeName, nodeIdentifierToString } = require("./database");
 const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { nighttimeActivity, telescopeActivity } = require("./lock");
@@ -45,6 +46,7 @@ const { deserializeNodeKey, serializeNodeKey, txAllocateNodeIdentifier } = requi
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { internalMaybeRecalculate } = require("./recompute");
+const { normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require("./database");
 
 /**
  * @typedef {object} IncrementalGraphPullAccess
@@ -55,6 +57,67 @@ const { internalMaybeRecalculate } = require("./recompute");
  * @property {import('./lru_cache').ConcreteNodeCache} concreteInstantiations
  * @property {import('../../datetime').Datetime} datetime
  */
+
+/**
+ * Read a cached value only when authorized.
+ *
+ * For an up-to-date node with inputs, derives current schema input edges,
+ * compares them against persisted inputs[N], and verifies valid[D].has(N)
+ * for every dependency D.  If all checks pass the stored value is returned
+ * without pulling dependencies and without invoking any computor.
+ *
+ * Zero-input nodes return their stored value when a persisted empty inputs
+ * record exists.
+ *
+ * Nodes that are not up-to-date fall through to internalMaybeRecalculate().
+ *
+ * @param {IncrementalGraphPullAccess} graph
+ * @param {NodeIdentifier} nodeIdentifier
+ * @param {ConcreteNode} concreteNode
+ * @returns {Promise<ComputedValue | undefined>}
+ */
+async function readAuthorizedCachedValue(graph, nodeIdentifier, concreteNode) {
+    if (await graph.storage.freshness.get(nodeIdentifier) !== "up-to-date") {
+        return undefined;
+    }
+    const value = await graph.storage.values.get(nodeIdentifier);
+    if (value === undefined) {
+        throw new Error(`Impossible: up-to-date node has no stored value: ${nodeIdentifierToString(nodeIdentifier)}`);
+    }
+    if (concreteNode.inputs.length === 0) {
+        const inputs = await graph.storage.inputs.get(nodeIdentifier);
+        if (inputs !== undefined && inputs.length === 0) {
+            return value;
+        }
+        return undefined;
+    }
+    const persistedInputs = await graph.storage.inputs.get(nodeIdentifier);
+    if (persistedInputs === undefined) {
+        return undefined;
+    }
+    const inputIdentifiers = [];
+    for (const inputKey of concreteNode.inputs) {
+        const inputId = graph.rootDatabase.nodeKeyToId(inputKey);
+        if (inputId === undefined) {
+            return undefined;
+        }
+        inputIdentifiers.push(inputId);
+    }
+    const inputEdges = normalizeInputEdges(inputIdentifiers);
+    if (!arraysOfNodeIdentifiersEqual(persistedInputs, inputEdges)) {
+        throw new Error(
+            `Corrupted inputs record for node ${String(concreteNode.output)}: ` +
+            `persisted inputs differ from schema-derived inputEdges`
+        );
+    }
+    for (const depId of inputEdges) {
+        const validDeps = await graph.storage.valid.get(depId) ?? [];
+        if (!validDeps.some(dep => nodeIdentifierToString(dep) === nodeIdentifierToString(nodeIdentifier))) {
+            return undefined;
+        }
+    }
+    return value;
+}
 
 /**
  * Core pull implementation for a node by its serialized key.
@@ -75,23 +138,13 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
     checkArity(compiledNode, nodeKey.args);
     const concreteNode = internalGetOrCreateConcreteNode(graph, nodeKeyStr, compiledNode, nodeKey.args);
 
-        // Early freshness check against committed storage — no Transaction needed.
-        // await sites below: graph.storage.freshness and .values are getters that
-        // call rootDatabase.getSchemaStorage() at each access.
-        // Protected by dome nighttime activity — no concurrent replica switch.
-        const committedIdentifier = graph.rootDatabase.nodeKeyToId(nodeKeyStr);
-        if (committedIdentifier !== undefined) {
-            const nodeFreshness = await graph.storage.freshness.get(committedIdentifier);
-            if (nodeFreshness === "up-to-date") {
-                const result = await graph.storage.values.get(committedIdentifier);
-                if (result !== undefined) {
-                    return { value: result, status: "cached" };
-                }
-                throw new Error(
-                    `Impossible: up-to-date node has no stored value (committed): ${String(nodeKeyStr)}`
-                );
-            }
+    const committedIdentifier = graph.rootDatabase.nodeKeyToId(nodeKeyStr);
+    if (committedIdentifier !== undefined) {
+        const cachedValue = await readAuthorizedCachedValue(graph, committedIdentifier, concreteNode);
+        if (cachedValue !== undefined) {
+            return { value: cachedValue, status: "cached" };
         }
+    }
 
         // storage.withTransaction captures fresh schemaStorage + identifierLookup
         // at entry (via rootDatabase.getSchemaStorage/getActiveIdentifierLookup).
@@ -108,25 +161,6 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
             const computor = concreteNode.computor;
             const nodeDefinition = { outputKey, inputKeys, outputIdentifier, computor };
 
-            /** @type {Array<import('./graph_state').RevdepDiff>} */
-            const revdepDiffs = [];
-
-            const nodeFreshness = await tx.batch.freshness.get(nodeDefinition.outputIdentifier);
-            if (nodeFreshness === "up-to-date") {
-                const storedValue = await tx.batch.values.get(nodeDefinition.outputIdentifier);
-                if (storedValue !== undefined) {
-                    /** @type {RecomputeResult} */
-                    const cachedResult = { value: storedValue, status: "cached" };
-                    return {
-                        value: cachedResult,
-                        revdepDiffs,
-                    };
-                }
-                throw new Error(
-                    `Impossible: up-to-date node has no stored value: ${String(nodeKeyStr)}`
-                );
-            }
-
             // mayRecalculate delegates to internalMaybeRecalculate in recompute.js
             // which runs inside the transaction scope. All awaits inside are
             // protected by dome nighttime activity via the caller.
@@ -134,8 +168,7 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
                 graph,
                 (nodeKeyStr) => internalPullByNodeKeyDuringPull(graph, nodeKeyStr),
                 nodeDefinition,
-                tx,
-                (diff) => revdepDiffs.push(diff)
+                tx
             );
 
             if (computeResult.status === "changed") {
@@ -149,7 +182,6 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
 
             return {
                 value: computeResult,
-                revdepDiffs,
             };
         });
     return result;

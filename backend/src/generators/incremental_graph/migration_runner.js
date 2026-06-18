@@ -17,6 +17,9 @@ const {
     LAST_NODE_INDEX_KEY,
     nodeIdentifierToString,
     stringToNodeIdentifier,
+    makeEmptyIdentifierLookup,
+    parseIdentifierLookup,
+    assertValidFinalMergeState,
 } = require("./database");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
@@ -96,45 +99,90 @@ async function loadMaterializedNodes(storage) {
 
 
 /**
- * Build the desired revdeps map from decisions, reading inputs from prevStorage.
+ * Add a dependent to a validity set, maintaining deduplication.
+ * @param {Map<string, Set<NodeIdentifier>>} validSets
+ * @param {NodeIdentifier} input
+ * @param {NodeIdentifier} dependent
+ */
+function addToValidSet(validSets, input, dependent) {
+    const inputString = nodeIdentifierToString(input);
+    const dependents = validSets.get(inputString) ?? new Set();
+    dependents.add(dependent);
+    validSets.set(inputString, dependents);
+}
+
+/**
+ * Build validity sets from migration decisions.
  *
- * Memory: O(|keys|) — only stores key strings in the result map; no large
- * values are retained.  Reads from prevStorage are streaming (one inputs
- * record at a time).
+ * The invariant is: for every materialized node N with freshness "up-to-date",
+ * for every D in inputs[N], valid[D] contains N.
+ *
+ * Rules:
+ * - "create" and "override" nodes produce new up-to-date values and receive
+ *   required incoming valid flags.
+ * - "keep" nodes with freshness "up-to-date" receive required incoming valid
+ *   flags.
+ * - "keep" nodes with freshness "potentially-outdated" do not receive new
+ *   valid flags, but existing valid[D].has(N) proofs are preserved when the
+ *   proof remains true after migration: D is kept (value identity unchanged),
+ *   N is kept (value identity unchanged), and N's inputs still contain D.
+ *   Preserved proofs permit cache reuse after pull confirms inputs unchanged.
+ * - "invalidate" nodes must not receive incoming valid flags.
+ * - "delete" nodes must not appear in valid.
  *
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @returns {Promise<Map<NodeIdentifier, NodeIdentifier[]>>}
  */
-async function buildDesiredRevdeps(prevStorage, decisions) {
+async function buildDesiredValid(prevStorage, decisions) {
     /** @type {Map<string, Set<NodeIdentifier>>} */
-    const revdepSets = new Map();
+    const validSets = new Map();
 
-    for (const [nodeKey, decision] of decisions) {
-        if (decision.kind === "delete" || decision.kind === "create") continue;
+    for (const [nodeIdentifier, decision] of decisions) {
+        if (decision.kind === "delete" || decision.kind === "invalidate") continue;
+        if (decision.kind === "keep") {
+            const freshness = await prevStorage.freshness.get(nodeIdentifier);
+            if (freshness !== "up-to-date") continue;
+        }
+        const inputsRecord = decision.kind === "create"
+            ? []
+            : await prevStorage.inputs.get(nodeIdentifier);
+        for (const input of readInputRecord(inputsRecord)) {
+            const inputDecision = decisions.get(input);
+            if (inputDecision?.kind === "delete") continue;
+            addToValidSet(validSets, input, nodeIdentifier);
+        }
+    }
 
-        const inputsRecord = await prevStorage.inputs.get(nodeKey);
-        if (!inputsRecord) continue;
+    for (const [nodeIdentifier, decision] of decisions) {
+        if (decision.kind !== "keep") continue;
+        const freshness = await prevStorage.freshness.get(nodeIdentifier);
+        if (freshness !== "potentially-outdated") continue;
 
-        const inputIds = readInputRecord(inputsRecord);
-        for (const inputItem of inputIds) {
-            const inputStr = nodeIdentifierToString(inputItem);
-            const inputDecision = decisions.get(inputItem);
-            if (inputDecision && inputDecision.kind === "delete") continue;
-            const existing = revdepSets.get(inputStr);
-            if (existing) {
-                existing.add(nodeKey);
-            } else {
-                revdepSets.set(inputStr, new Set([nodeKey]));
+        const inputsRecord = await prevStorage.inputs.get(nodeIdentifier);
+        if (inputsRecord === undefined) continue;
+
+        for (const input of readInputRecord(inputsRecord)) {
+            const inputDecision = decisions.get(input);
+            if (!inputDecision || inputDecision.kind === "delete") continue;
+            if (inputDecision.kind !== "keep") continue;
+
+            const existingValidForD = await prevStorage.valid.get(input) ?? [];
+            if (!existingValidForD.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(nodeIdentifier))) {
+                continue;
             }
+
+            addToValidSet(validSets, input, nodeIdentifier);
         }
     }
 
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const result = new Map();
-    for (const [inputStr, depSet] of revdepSets) {
-        const inputKey = stringToNodeIdentifier(inputStr);
-        result.set(inputKey, [...depSet].sort(compareNodeIdentifier));
+    for (const [inputString, dependents] of validSets) {
+        result.set(
+            stringToNodeIdentifier(inputString),
+            [...dependents].sort(compareNodeIdentifier)
+        );
     }
     return result;
 }
@@ -152,18 +200,18 @@ async function buildDesiredRevdeps(prevStorage, decisions) {
  *
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions
- * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredRevdeps
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredValid
  * @param {import('./database/types').Version} newVersion
  * @param {import('../../datetime').Datetime} datetime - Datetime capability for generating timestamps.
  * @param {number} maxAllocatedIndex - The max allocated local index during this migration.
  * @param {string} fingerprint - The database fingerprint to carry forward.
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVersion, datetime, maxAllocatedIndex, fingerprint) {
+function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersion, datetime, maxAllocatedIndex, fingerprint) {
     const sortedDecisionOutputKeys = [...decisions.keys()]
         .sort(compareNodeIdentifier);
 
-    const sortedRevdepKeys = [...desiredRevdeps.keys()].sort();
+    const sortedValidKeys = [...desiredValid.keys()].sort(compareNodeIdentifier);
 
     /**
      * Build the identifiers_keys_map that reflects all decisions:
@@ -265,23 +313,14 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredRevdeps, newVers
                 return await prevStorage.inputs.get(key);
             },
         },
-        revdeps: {
+        valid: {
             async *keys() {
-                for (const key of sortedRevdepKeys) {
+                for (const key of sortedValidKeys) {
                     yield key;
                 }
             },
-            async get(/** @type {NodeIdentifier} */ key) {
-                return desiredRevdeps.get(key);
-            },
-        },
-        valid: {
-            async *keys() {
-                // No validity flags are transferred during migration.
-                // Nodes are invalidated/recomputed after migration to rebuild valid sets.
-            },
-            async get() {
-                return undefined;
+            async get(key) {
+                return desiredValid.get(key);
             },
         },
         counters: {
@@ -480,9 +519,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
             const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
 
-            // Build the desired revdeps map.  Reads inputs from prevStorage once
-            // per non-create/non-delete node; stores only key strings, O(|keys|) mem.
-            const desiredRevdeps = await buildDesiredRevdeps(
+            const desiredValid = await buildDesiredValid(
                 prevStorage,
                 decisions,
             );
@@ -493,7 +530,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const lazySource = makeLazyMigrationSource(
                 prevStorage,
                 decisions,
-                desiredRevdeps,
+                desiredValid,
                 currentVersion,
                 capabilities.datetime,
                 migrationStorage.getMaxAllocatedIndex(),
@@ -509,6 +546,15 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // _rawSync() issues an empty batch with sync:true to flush the WAL
             // without rewriting any keys.
             await rootDatabase._rawSync();
+
+            // Validate the target replica before activating it.
+            // This checks the invariant: every up-to-date node has valid flags
+            // for every input, and no valid entries reference unknown identifiers.
+            const rawIdentifiers = await toStorage.global.get(IDENTIFIERS_KEY);
+            const targetLookup = rawIdentifiers === undefined
+                ? makeEmptyIdentifierLookup()
+                : parseIdentifierLookup(rawIdentifiers, 'migration target replica');
+            await assertValidFinalMergeState(toStorage, targetLookup);
 
             // Persist the new active replica pointer after all writes succeed.
             await rootDatabase.setCurrentReplicaPointer(toReplica);

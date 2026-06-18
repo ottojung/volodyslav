@@ -32,7 +32,7 @@ This changes the release model: the system is allowed to evolve its storage form
 
 Volodyslav tries to avoid exposing half-applied durable state.
 
-Many operations update several records that only make sense together. In the incremental graph, for example, values, freshness, inputs, reverse dependencies, counters, timestamps, and semantic-key-to-identifier mappings together describe one logical graph state. Publishing only some of those records can create a database that is syntactically readable but semantically inconsistent.
+Many operations update several records that only make sense together. In the incremental graph, for example, values, freshness, inputs, validity sets, counters, timestamps, and semantic-key-to-identifier mappings together describe one logical graph state. Publishing only some of those records can create a database that is syntactically readable but semantically inconsistent.
 
 Release-safe persistence code should therefore preserve atomicity at the level of the logical operation, not merely at the level of an individual key-value write.
 

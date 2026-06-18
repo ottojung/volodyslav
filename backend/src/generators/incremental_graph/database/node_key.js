@@ -209,7 +209,6 @@ function compareNodeKey(a, b) {
 
 /**
  * Compare two NodeKeyStrings by deserializing them and delegating to compareNodeKey.
- * This is the canonical comparator for sorted revdeps arrays.
  * @param {NodeKeyString} a
  * @param {NodeKeyString} b
  * @returns {number} negative if a < b, 0 if equal, positive if a > b

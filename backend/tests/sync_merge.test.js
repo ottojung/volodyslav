@@ -218,8 +218,8 @@ describe('mergeHostIntoReplica', () => {
             const merged = await T.values.get(nodeA);
             expect(merged).toEqual(remoteValue);
 
-            // Changed merge must not preserve stale validity flags.
-            // valid is optional proof metadata and is cleared on changed merge.
+            // This changed merge takes a zero-input node. There are no
+            // incoming validity edges to preserve or rebuild.
             const validKeys = [];
             for await (const key of T.valid.keys()) {
                 validKeys.push(key);
@@ -230,7 +230,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('kept merge preserves local validity flags', async () => {
+    test('kept merge preserves local validity state', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -249,7 +249,6 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(L, nodeA, TS1, [], localValue);
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
             // Write valid flags to L before merge
-            await L.valid.put(nodeA, [NODE_B]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeNode(H, nodeA, TS1, [], remoteValue);
@@ -261,8 +260,6 @@ describe('mergeHostIntoReplica', () => {
             const newActive = db.currentReplicaName();
             expect(newActive).toBe('x');
 
-            // No merge changes were applied, so valid flags from L are preserved
-            // (the kept replica was not switched)
             const T = db.schemaStorageForReplica(newActive);
             const kept = await T.values.get(nodeA);
             expect(kept).toEqual(localValue);
@@ -270,9 +267,7 @@ describe('mergeHostIntoReplica', () => {
             for await (const key of T.valid.keys()) {
                 validKeys.push(key);
             }
-            // The kept replica is the original L; valid was preserved because
-            // no changed-merge path ran.
-            expect(validKeys).not.toEqual([]);
+            expect(validKeys).toEqual([]);
         } finally {
             if (db) await db.close();
         }
@@ -507,7 +502,7 @@ describe('mergeHostIntoReplica', () => {
             expect(bFreshness).toBe('potentially-outdated');
 
             // Because initial decision for B was 'take', invalidate must still
-            // apply H's structural state so inputs/revdeps remain consistent.
+            // apply H's structural state so inputs/valid remain consistent.
             const bInputs = await T.inputs.get(nodeB);
             expect(bInputs).toEqual([nodeA]);
             const bCounter = await T.counters.get(nodeB);
@@ -913,7 +908,7 @@ describe('mergeHostIntoReplica', () => {
             const T = db.getSchemaStorage();
             expect(await T.inputs.get(hostAId)).toEqual([bId, targetCId]);
             expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
-            expect(await T.revdeps.get(targetCId)).toEqual([hostAId]);
+            expect(await T.valid.get(targetCId)).toBeUndefined();
             expect(await T.inputs.get(hostCId)).toBeUndefined();
         } finally {
             if (db) await db.close();
@@ -1103,15 +1098,217 @@ describe('mergeHostIntoReplica', () => {
             expect(await T.values.get(targetDId)).toBeUndefined();
             expect(await T.counters.get(targetDId)).toBe(2);
             expect(await T.freshness.get(targetDId)).toBe('potentially-outdated');
-            expect(await T.revdeps.get(hostCId)).toEqual([targetDId]);
+            expect(await T.valid.get(hostCId)).toBeUndefined();
             expect(await T.inputs.get(targetCId)).toBeUndefined();
         } finally {
             if (db) await db.close();
         }
     });
 
+    test('unrelated merge change preserves clean nodes and their validity', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeAId = nodeIdentifierFromString('60-abcdefghi');
+            const nodeBId = nodeIdentifierFromString('61-abcdefghi');
+            const nodeXId = nodeIdentifierFromString('62-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"A_unrelated","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"B_unrelated","args":[]}');
+            const keyX = stringToNodeKeyString('{"head":"X_unrelated","args":[]}');
+            const valueA = { source: 'A' };
+            const valueB = { source: 'B' };
+            const remoteXValue = { source: 'remote X' };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeAId, TS1, [], valueA);
+            await writeNode(L, nodeBId, TS1, [nodeAId], valueB);
+            await L.valid.put(nodeAId, [nodeBId]);
+            await writeIdentifierLookup(L, [[nodeAId, keyA], [nodeBId, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeXId, TS2, [], remoteXValue);
+            await writeIdentifierLookup(H, [[nodeXId, keyX]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            expect(await T.freshness.get(nodeBId)).toBe('up-to-date');
+            expect(await T.valid.get(nodeAId)).toEqual([nodeBId]);
+
+            const computeB = jest.fn(async () => ({ source: 'should not be called' }));
+            const graph = makeIncrementalGraph(capabilities, db, [
+                { output: 'A_unrelated', inputs: [], computor: async () => valueA, isDeterministic: true, hasSideEffects: false },
+                { output: 'B_unrelated', inputs: ['A_unrelated'], computor: computeB, isDeterministic: true, hasSideEffects: false },
+                { output: 'X_unrelated', inputs: [], computor: async () => remoteXValue, isDeterministic: true, hasSideEffects: false },
+            ]);
+
+            const pulled = await graph.pull('B_unrelated');
+            expect(pulled).toEqual(valueB);
+            expect(computeB).toHaveBeenCalledTimes(0);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('precise invalidation coexists with unrelated clean preservation', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeAId = nodeIdentifierFromString('63-abcdefghi');
+            const nodeBId = nodeIdentifierFromString('64-abcdefghi');
+            const nodeCId = nodeIdentifierFromString('65-abcdefghi');
+            const nodeDId = nodeIdentifierFromString('66-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"A_precise","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"B_precise","args":[]}');
+            const keyC = stringToNodeKeyString('{"head":"C_precise","args":[]}');
+            const keyD = stringToNodeKeyString('{"head":"D_precise","args":[]}');
+            const valueC = { source: 'C' };
+            const valueD = { source: 'D' };
+
+            const L = db.schemaStorageForReplica('x');
+            // A -> B side: A is taken from H (H has newer timestamp)
+            await writeNode(L, nodeAId, TS1, [], { source: 'A local' });
+            await writeNode(L, nodeBId, TS2, [nodeAId], { source: 'B local' });
+            // C -> D side: both are kept locally
+            await writeNode(L, nodeCId, TS3, [], valueC);
+            await writeNode(L, nodeDId, TS3, [nodeCId], valueD);
+            await L.valid.put(nodeCId, [nodeDId]);
+            await writeIdentifierLookup(L, [
+                [nodeAId, keyA], [nodeBId, keyB],
+                [nodeCId, keyC], [nodeDId, keyD],
+            ]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeAId, TS2, [], { source: 'A remote' });
+            await writeNode(H, nodeBId, TS1, [nodeAId], { source: 'B remote' });
+            await writeNode(H, nodeCId, TS1, [], { source: 'C remote' });
+            await writeNode(H, nodeDId, TS1, [nodeCId], { source: 'D remote' });
+            await writeIdentifierLookup(H, [
+                [nodeAId, keyA], [nodeBId, keyB],
+                [nodeCId, keyC], [nodeDId, keyD],
+            ]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+
+            // B must be invalidated (take-tainted via A + keep-tainted via self)
+            expect(await T.freshness.get(nodeBId)).toBe('potentially-outdated');
+
+            // D must remain up-to-date
+            expect(await T.freshness.get(nodeDId)).toBe('up-to-date');
+
+            // valid[C] must contain D
+            expect(await T.valid.get(nodeCId)).toEqual([nodeDId]);
+
+            const computeD = jest.fn(async () => ({ source: 'should not be called' }));
+            const graph = makeIncrementalGraph(capabilities, db, [
+                { output: 'A_precise', inputs: [], computor: async () => ({ source: 'A' }), isDeterministic: true, hasSideEffects: false },
+                { output: 'B_precise', inputs: ['A_precise'], computor: async () => ({ source: 'B' }), isDeterministic: true, hasSideEffects: false },
+                { output: 'C_precise', inputs: [], computor: async () => valueC, isDeterministic: true, hasSideEffects: false },
+                { output: 'D_precise', inputs: ['C_precise'], computor: computeD, isDeterministic: true, hasSideEffects: false },
+            ]);
+
+            const pulled = await graph.pull('D_precise');
+            expect(pulled).toEqual(valueD);
+            expect(computeD).toHaveBeenCalledTimes(0);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('rebuilt validity excludes stale nodes', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeAId = nodeIdentifierFromString('67-abcdefghi');
+            const nodeBId = nodeIdentifierFromString('68-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"A_stale","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"B_stale","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeAId, TS1, [], { source: 'A' });
+            await writeNode(L, nodeBId, TS2, [nodeAId], { source: 'B' });
+            await writeIdentifierLookup(L, [[nodeAId, keyA], [nodeBId, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            // H has newer A, older B → A is taken, B is kept but tainted → invalidated
+            await writeNode(H, nodeAId, TS2, [], { source: 'A remote' });
+            await writeNode(H, nodeBId, TS1, [nodeAId], { source: 'B remote' });
+            await writeIdentifierLookup(H, [[nodeAId, keyA], [nodeBId, keyB]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+
+            // B is potentally-outdated after invalidation
+            expect(await T.freshness.get(nodeBId)).toBe('potentially-outdated');
+
+            // B's inputs still reference A (structural data preserved)
+            expect(await T.inputs.get(nodeBId)).toEqual([nodeAId]);
+
+            // valid[A] must not contain the stale B
+            const validA = await T.valid.get(nodeAId) ?? [];
+            const bIdStr = String(nodeBId);
+            expect(validA.some(d => String(d) === bIdStr)).toBe(false);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('final validation rejects up-to-date node lacking incoming validity flag', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+
+            const nodeA = NODE_A;
+            const nodeB = NODE_B;
+            const keyA = stringToNodeKeyString('{"head":"A_missing_valid","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"B_missing_valid","args":[]}');
+            const T = db.schemaStorageForReplica('x');
+
+            await T.inputs.put(nodeA, []);
+            await T.inputs.put(nodeB, [nodeA]);
+            await T.values.put(nodeA, { v: 1 });
+            await T.values.put(nodeB, { v: 2 });
+            await T.freshness.put(nodeA, 'up-to-date');
+            await T.freshness.put(nodeB, 'up-to-date');
+            // valid[A] is missing B — up-to-date B lacks its required validity flag
+
+            const lookup = makeIdentifierLookup([
+                [nodeA, keyA],
+                [nodeB, keyB],
+            ]);
+
+            await expect(
+                assertValidFinalMergeState(T, lookup)
+            ).rejects.toThrow(FinalMergeStateError);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     describe('assertValidFinalMergeState', () => {
-        test('rejects revdeps entry referencing unknown identifier', async () => {
+        test('rejects valid entry referencing unknown identifier', async () => {
             const capabilities = getTestCapabilities();
             let db;
             try {
@@ -1124,8 +1321,8 @@ describe('mergeHostIntoReplica', () => {
                 await T.inputs.put(nodeA, []);
                 await T.values.put(nodeA, { v: 1 });
                 await T.freshness.put(nodeA, 'up-to-date');
-                // Write revdeps for A referencing an unknown identifier
-                await T.revdeps.put(nodeA, knownNodeIds);
+                // Write valid for A referencing an unknown identifier
+                await T.valid.put(nodeA, knownNodeIds);
 
                 const lookup = makeIdentifierLookup([[nodeA, stringToNodeKeyString('{"head":"test","args":[]}')]]);
 
@@ -1163,7 +1360,7 @@ describe('mergeHostIntoReplica', () => {
             }
         });
 
-        test('rejects revdeps value entry referencing unknown identifier', async () => {
+        test('rejects valid value entry referencing unknown identifier', async () => {
             const capabilities = getTestCapabilities();
             let db;
             try {
@@ -1182,8 +1379,8 @@ describe('mergeHostIntoReplica', () => {
                 await T.values.put(nodeB, { v: 2 });
                 await T.freshness.put(nodeA, 'up-to-date');
                 await T.freshness.put(nodeB, 'up-to-date');
-                // Write revdeps[A] containing an unknown identifier
-                await T.revdeps.put(nodeA, [unknownId]);
+                // Write valid[A] containing an unknown identifier
+                await T.valid.put(nodeA, [unknownId]);
 
                 const lookup = makeIdentifierLookup([
                     [nodeA, keyA],
@@ -1197,6 +1394,141 @@ describe('mergeHostIntoReplica', () => {
                 if (db) await db.close();
             }
         });
+    });
+
+    test('merge preserves valid for stale nodes when unrelated change occurs', async () => {
+        // A → B
+        // B is potentially-outdated, valid[A] contains B
+        // merge introduces unrelated node X
+        // after merge valid[A] still contains B
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeAId = nodeIdentifierFromString('69-abcdefghi');
+            const nodeBId = nodeIdentifierFromString('70-abcdefghi');
+            const nodeXId = nodeIdentifierFromString('71-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"A_stale_preserve","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"B_stale_preserve","args":[]}');
+            const keyX = stringToNodeKeyString('{"head":"X_stale_preserve","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeAId, TS1, [], { source: 'A' });
+            await writeNode(L, nodeBId, TS1, [nodeAId], { source: 'B' });
+            await L.freshness.put(nodeBId, 'potentially-outdated');
+            await L.valid.put(nodeAId, [nodeBId]);
+            await writeIdentifierLookup(L, [[nodeAId, keyA], [nodeBId, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeXId, TS2, [], { source: 'remote X' });
+            await writeIdentifierLookup(H, [[nodeXId, keyX]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            expect(await T.freshness.get(nodeBId)).toBe('potentially-outdated');
+            const validA = await T.valid.get(nodeAId) ?? [];
+            const bIdStr = String(nodeBId);
+            expect(validA.some(d => String(d) === bIdStr)).toBe(true);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('merge removes valid for stale nodes when dependency value changes', async () => {
+        // A → B
+        // B is potentially-outdated, valid[A] contains B
+        // merge changes A's value (A is taken from host with newer timestamp)
+        // after merge valid[A] no longer contains B
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeAId = nodeIdentifierFromString('72-abcdefghi');
+            const nodeBId = nodeIdentifierFromString('73-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"A_value_change","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"B_value_change","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeAId, TS1, [], { source: 'A old' });
+            await writeNode(L, nodeBId, TS2, [nodeAId], { source: 'B' });
+            await L.freshness.put(nodeBId, 'potentially-outdated');
+            await L.valid.put(nodeAId, [nodeBId]);
+            await writeIdentifierLookup(L, [[nodeAId, keyA], [nodeBId, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeAId, TS2, [], { source: 'A new remote' });
+            await writeNode(H, nodeBId, TS1, [nodeAId], { source: 'B old' });
+            await writeIdentifierLookup(H, [[nodeAId, keyA], [nodeBId, keyB]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // A is taken from host, B is now tainted → invalidate
+            const validA = await T.valid.get(nodeAId) ?? [];
+            const bIdStr = String(nodeBId);
+            expect(validA.some(d => String(d) === bIdStr)).toBe(false);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('merge ensures required valid flag for up-to-date node even if missing before', async () => {
+        // A → B
+        // B is up-to-date
+        // valid[A] is missing B before merge
+        // merge result keeps B up-to-date (H-only C forces changes)
+        // after merge valid[A] contains B
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeAId = nodeIdentifierFromString('74-abcdefghi');
+            const nodeBId = nodeIdentifierFromString('75-abcdefghi');
+            const nodeCId = nodeIdentifierFromString('76-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"A_required_flag","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"B_required_flag","args":[]}');
+            const keyC = stringToNodeKeyString('{"head":"C_extra","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeAId, TS1, [], { source: 'A' });
+            await writeNode(L, nodeBId, TS1, [nodeAId], { source: 'B' });
+            // valid[A] intentionally missing B
+            await writeIdentifierLookup(L, [[nodeAId, keyA], [nodeBId, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeNode(H, nodeAId, TS1, [], { source: 'A remote' });
+            await writeNode(H, nodeBId, TS1, [nodeAId], { source: 'B remote' });
+            await writeNode(H, nodeCId, TS2, [], { source: 'C remote' });
+            await writeIdentifierLookup(H, [
+                [nodeAId, keyA], [nodeBId, keyB], [nodeCId, keyC]
+            ]);
+
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
+
+            const T = db.getSchemaStorage();
+            expect(await T.freshness.get(nodeBId)).toBe('up-to-date');
+            const validA = await T.valid.get(nodeAId) ?? [];
+            const bIdStr = String(nodeBId);
+            expect(validA.some(d => String(d) === bIdStr)).toBe(true);
+        } finally {
+            if (db) await db.close();
+        }
     });
 
     test('throws IdentifierLookupConflictError when same identifier maps to different semantic keys', async () => {

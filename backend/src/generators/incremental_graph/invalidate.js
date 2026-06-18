@@ -36,7 +36,7 @@ async function internalPropagateOutdated(
     batch,
     nodesBecomingOutdated = new Set()
 ) {
-    const dynamicDependents = await incrementalGraph.storage.listDependents(
+    const dynamicDependents = await incrementalGraph.storage.getValid(
         changedIdentifier,
         batch
     );
@@ -99,18 +99,18 @@ async function internalUnsafeInvalidate(
     await incrementalGraph.storage.withTransaction(async (tx) => {
         const outputIdentifier = lookupNodeIdentifier(tx, concreteKey);
         if (outputIdentifier === undefined) {
-            return { value: undefined, revdepDiffs: [] };
+            return { value: undefined };
         }
 
         const inputsRecord = await tx.batch.inputs.get(outputIdentifier);
         if (inputsRecord === undefined) {
-            return { value: undefined, revdepDiffs: [] };
+            return { value: undefined };
         }
 
         tx.batch.freshness.put(outputIdentifier, "potentially-outdated");
         await internalPropagateOutdated(incrementalGraph, outputIdentifier, tx.batch);
 
-        return { value: undefined, revdepDiffs: [] };
+        return { value: undefined };
     });
 }
 

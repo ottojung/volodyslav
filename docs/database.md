@@ -23,29 +23,38 @@ Within each namespace there are further typed sublevels:
 | `values`    | The computed output value for each graph node             |
 | `freshness` | Whether a node is `up-to-date` or `potentially-outdated` |
 | `inputs`    | Input dependency list for each node                       |
-| `revdeps`   | Reverse-dependency index (input → list of dependents)     |
+| `valid`     | Validity frontier (input → validated consumers)           |
 | `counters`  | Monotonic integer tracking how many times a value changed |
 | `timestamps`| Creation and last-modification ISO timestamps             |
-| `meta`      | Namespace metadata (currently just the schema version)    |
+| `global`    | Namespace metadata (currently just the schema version)    |
 
 There is also a top-level `_meta` sublevel (outside the `x`/`y` namespace) that stores the database
 current replica pointer.
 
 ### Key format
 
-Node keys are JSON-serialised objects of the form `{"head":"<name>","args":[...]}`, for example:
+Data sublevels (`values`, `freshness`, `inputs`, `valid`, `counters`, `timestamps`) are
+keyed by **NodeIdentifier** — an opaque string assigned to each materialised node.
+Semantic node keys (`NodeKey` objects: `{"head":"<name>","args":[...]}`) are mapped to
+their identifiers through an identifier-lookup table stored under the `IDENTIFIERS_KEY`
+in the `global` sublevel.  The relationship between the two addressing schemes is:
 
-```
-{"head":"all_events","args":[]}
-{"head":"event","args":["abc123"]}
-{"head":"transcription","args":["/path/to/audio.mp3"]}
-```
+- **Public IncrementalGraph APIs** (`pull`, `invalidate`, etc.) accept semantic
+  `NodeKey` strings or concrete `NodeKey` descriptors.
+- **Storage** is identifier-native: all data sublevel records are keyed by
+  `NodeIdentifier`.
+- **Migration decisions** (`keep`, `override`, `delete`, `invalidate`, `get`)
+  take `NodeIdentifier` values, since migration operates directly on the
+  stored graph state.
+- **`create(nodeKeyString, value)`** is the special migration case: it
+  accepts a semantic `NodeKey` string, allocates a fresh `NodeIdentifier`,
+  and stores the new value under that identifier.
 
 At the raw LevelDB level these are concatenated with the sublevel prefixes, e.g.
 
 ```
-!x!!values!{"head":"all_events","args":[]}
-!x!!freshness!{"head":"all_events","args":[]}
+!x!!values!gafdmopql
+!x!!freshness!gafdmopql
 !_meta!current_replica
 ```
 
@@ -71,36 +80,31 @@ await scanFromFilesystem(capabilities, rootDatabase, '/path/to/snapshot');
 Each raw LevelDB key is translated to a *relative file path* inside the snapshot directory.
 The algorithm depends on the key type:
 
-#### Data sublevels (`values`, `freshness`, `inputs`, `revdeps`, `counters`, `timestamps`)
+#### Data sublevels (`values`, `freshness`, `inputs`, `valid`, `counters`, `timestamps`)
 
-The stored key is a JSON-serialised NodeKey object `{"head":"...","args":[...]}`.
-It is decomposed into human-readable path segments:
+The stored key is a `NodeIdentifier` — an opaque string that identifies a
+materialised graph node.  It is emitted as a single encoded path segment:
 
 ```
-!x!!values!{"head":"all_events","args":[]}
-  → x/values/all_events
+!x!!values!gafdmopql
+  → x/values/gafdmopql
 
-!x!!values!{"head":"event","args":["abc123"]}
-  → x/values/event/abc123
-
-!x!!values!{"head":"transcription","args":["/audio/x.mp3"]}
-  → x/values/transcription/%2Faudio%2Fx.mp3
+!x!!freshness!gafdmopql
+  → x/freshness/gafdmopql
 ```
 
-String arguments are percent-encoded: `/` → `%2F`, `%` → `%25`, `!` → `%21`.
+The key content is percent-encoded for filesystem safety: `/` → `%2F`, `%` → `%25`, `!` → `%21`.
 Literal dot-segment path components `.` and `..` are encoded as `%2E` and `%2E%2E`
-to prevent path traversal while keeping the key↔path mapping bijective. Non-string arguments
-(numbers, booleans, arrays, objects) are JSON-encoded and prefixed with `~` so they remain
-unambiguous even when string arguments begin with `~`.
+to prevent path traversal while keeping the key↔path mapping bijective.
 
-#### Meta sublevels (`_meta`, `meta`)
+#### Meta sublevels (`_meta`, `global`)
 
 The stored key is a plain string (e.g. `format`, `version`).
 It is used as a single percent-encoded path segment:
 
 ```
 !_meta!current_replica    → _meta/current_replica
-!x!!meta!version → x/meta/version
+!x!!global!version → x/global/version
 ```
 
 ### File-path → key mapping (inverse)
@@ -109,11 +113,9 @@ It is used as a single percent-encoded path segment:
 
 1. **Determine sublevel depth**: if the first segment is `_meta` → depth 1; otherwise depth 2.
 2. **Extract sublevels**: first `depth` segments.
-3. **Determine key type**: if the last sublevel is `_meta` or `meta` → plain string; otherwise NodeKey.
-4. **Reconstruct key**:
-   - Plain string: decode the single remaining segment and reassemble the LevelDB key.
-   - NodeKey: first remaining segment is the node head; subsequent segments are decoded arguments;
-     reassemble using `serializeNodeKey({head, args})` and build the LevelDB key.
+3. **Reconstruct key**: decode the single remaining segment and reassemble the LevelDB key.
+   For data sublevels the key is a `NodeIdentifier` (opaque string, not decomposed); for
+   meta sublevels it is a plain string.
 
 ### Bijection guarantee
 
@@ -123,7 +125,7 @@ For all keys generated by this database the mapping `key → path → key` is an
 relativePathToKey(keyToRelativePath(key)) === key   // for all valid keys
 ```
 
-The `!` character in argument values is encoded as `%21` before splitting, so it can never be
+The `!` character in key or path segments is encoded as `%21` before splitting, so it can never be
 mistaken for the LevelDB sublevel separator.
 
 ### Stale-key deletion (P2)

@@ -17,6 +17,20 @@ jest.mock('../src/generators/incremental_graph/database', () => ({
 }));
 const { checkpointMigration: mockCheckpointMigration } = require('../src/generators/incremental_graph/database');
 
+const validationActual = jest.requireActual('../src/generators/incremental_graph/database/sync_merge_validation');
+jest.mock('../src/generators/incremental_graph/database/sync_merge_validation', () => ({
+    ...jest.requireActual('../src/generators/incremental_graph/database/sync_merge_validation'),
+    assertValidFinalMergeState: jest.fn(),
+}));
+const {
+    assertValidFinalMergeState,
+    FinalMergeStateError,
+    isFinalMergeStateError,
+} = require("../src/generators/incremental_graph/database/sync_merge_validation");
+const {
+    makeIdentifierLookup,
+} = require("../src/generators/incremental_graph/database");
+
 /**
  * Get the migrated identifier for a given node key from the storage's global IDENTIFIERS_KEY.
  * @param {import('../src/generators/incremental_graph/database').SchemaStorage} storage
@@ -60,7 +74,6 @@ function makeSchemaStorage() {
     const freshness = makeInMemoryDb("freshness");
     const global = makeInMemoryDb("global");
     const inputs = makeInMemoryDb("inputs");
-    const revdeps = makeInMemoryDb("revdeps");
     const valid = makeInMemoryDb("valid");
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
@@ -89,7 +102,6 @@ function makeSchemaStorage() {
         freshness,
         global,
         inputs,
-        revdeps,
         valid,
         counters,
         timestamps,
@@ -99,7 +111,6 @@ function makeSchemaStorage() {
                 freshness.apply(operation);
                 global.apply(operation);
                 inputs.apply(operation);
-                revdeps.apply(operation);
                 valid.apply(operation);
                 counters.apply(operation);
                 timestamps.apply(operation);
@@ -212,6 +223,12 @@ function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0
     }];
     return { rootDatabase, nodeDefs, nodeKey, xStorage, yStorage };
 }
+
+beforeEach(() => {
+    assertValidFinalMergeState.mockImplementation(
+        (storage, lookup) => validationActual.assertValidFinalMergeState(storage, lookup)
+    );
+});
 
 describe("runMigration", () => {
     test("invalidate preserves counters from previous storage", async () => {
@@ -406,12 +423,165 @@ describe("runMigration", () => {
             });
 
             // After migration, yStorage must have no valid records.
-            // Valid flags are optional proof metadata and are rebuilt on demand.
+            // Valid flags are mandatory for every up-to-date input edge;
+            // zero-input nodes never have incoming validity.
             const validKeys = [];
             for await (const key of yStorage.valid.keys()) {
                 validKeys.push(key);
             }
             expect(validKeys).toEqual([]);
+        });
+
+        test("kept node with potentially-outdated freshness does not gain valid flags after migration", async () => {
+            const capabilities = await getTestCapabilities();
+            const xStorage = makeSchemaStorage();
+            const depKey = toJsonKey("A");
+            const staleDepKey = toJsonKey("X");
+            const keptKey = toJsonKey("B");
+
+            // Set up a graph in xStorage: A (up-to-date, inputs=[]) and X (up-to-date).
+            // B depends on both A and X, but B is stale (potentially-outdated).
+            // B's inputs are [A, X], but valid is missing for both A and X.
+            await xStorage.inputs.put(depKey, []);
+            await xStorage.inputs.put(staleDepKey, []);
+            await xStorage.inputs.put(keptKey, [depKey, staleDepKey]);
+            await xStorage.values.put(depKey, { type: "all_events", events: [] });
+            await xStorage.values.put(staleDepKey, { type: "all_events", events: [] });
+            await xStorage.values.put(keptKey, { type: "all_events", events: [] });
+            await xStorage.freshness.put(depKey, "up-to-date");
+            await xStorage.freshness.put(staleDepKey, "up-to-date");
+            await xStorage.freshness.put(keptKey, "potentially-outdated");
+
+            const yStorage = makeSchemaStorage();
+            const mock = makeRootDatabaseMock({
+                prevVersion: "1.0.0",
+                currentVersion: "2.0.0",
+                xStorage,
+                yStorage,
+            });
+
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+                { output: "X", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A", "X"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+            ];
+
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(depKey);
+                await storage.keep(staleDepKey);
+                await storage.keep(keptKey);
+            });
+
+            const keptMigratedKey = await getMigratedKey(yStorage, keptKey);
+            const depMigratedKey = await getMigratedKey(yStorage, depKey);
+            const staleDepMigratedKey = await getMigratedKey(yStorage, staleDepKey);
+
+            // A and X are up-to-date keeps with zero inputs → no valid entries for them
+            const validADeps = await yStorage.valid.get(depMigratedKey);
+            const validXDeps = await yStorage.valid.get(staleDepMigratedKey);
+            expect(validADeps).toBeUndefined();
+            expect(validXDeps).toBeUndefined();
+
+            // B's freshness remains potentially-outdated (B was not up-to-date before migration)
+            const bFreshness = await yStorage.freshness.get(keptMigratedKey);
+            expect(bFreshness).toBe("potentially-outdated");
+
+            // B was not up-to-date before migration, so no valid flags were built
+            // representing B as a dependent of A or X.
+            // The valid sublevel must be empty — B did not gain synthetic validity.
+            const allValidKeys = [];
+            for await (const key of yStorage.valid.keys()) {
+                allValidKeys.push(key);
+            }
+            expect(allValidKeys).toEqual([]);
+        });
+
+        test("preserves existing valid flags for stale kept nodes whose dependency's value is unchanged", async () => {
+            // A → B
+            // B is potentially-outdated, valid[A] contains B
+            // migration keeps A and B
+            // after migration valid[A] still contains B
+            const capabilities = await getTestCapabilities();
+            const xStorage = makeSchemaStorage();
+            const aKey = toJsonKey("A");
+            const bKey = toJsonKey("B");
+
+            await xStorage.inputs.put(aKey, []);
+            await xStorage.inputs.put(bKey, [aKey]);
+            await xStorage.values.put(aKey, { type: "all_events", events: [] });
+            await xStorage.values.put(bKey, { type: "all_events", events: [] });
+            await xStorage.freshness.put(aKey, "up-to-date");
+            await xStorage.freshness.put(bKey, "potentially-outdated");
+            await xStorage.valid.put(aKey, [bKey]);
+
+            const yStorage = makeSchemaStorage();
+            const mock = makeRootDatabaseMock({
+                prevVersion: "1.0.0",
+                currentVersion: "2.0.0",
+                xStorage,
+                yStorage,
+            });
+
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+            ];
+
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(aKey);
+                await storage.keep(bKey);
+            });
+
+            const aMigratedKey = await getMigratedKey(yStorage, aKey);
+            const bMigratedKey = await getMigratedKey(yStorage, bKey);
+
+            const validA = await yStorage.valid.get(aMigratedKey) ?? [];
+            const bIdStr = String(bMigratedKey);
+            expect(validA.some(id => String(id) === bIdStr)).toBe(true);
+        });
+
+        test("does not invent valid flags for stale kept nodes when valid was absent before migration", async () => {
+            // A → B
+            // B is potentially-outdated, valid[A] does NOT contain B
+            // migration keeps A and B
+            // after migration valid[A] still does not contain B
+            const capabilities = await getTestCapabilities();
+            const xStorage = makeSchemaStorage();
+            const aKey = toJsonKey("A");
+            const bKey = toJsonKey("B");
+
+            await xStorage.inputs.put(aKey, []);
+            await xStorage.inputs.put(bKey, [aKey]);
+            await xStorage.values.put(aKey, { type: "all_events", events: [] });
+            await xStorage.values.put(bKey, { type: "all_events", events: [] });
+            await xStorage.freshness.put(aKey, "up-to-date");
+            await xStorage.freshness.put(bKey, "potentially-outdated");
+            // valid[A] intentionally missing for B
+
+            const yStorage = makeSchemaStorage();
+            const mock = makeRootDatabaseMock({
+                prevVersion: "1.0.0",
+                currentVersion: "2.0.0",
+                xStorage,
+                yStorage,
+            });
+
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+            ];
+
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(aKey);
+                await storage.keep(bKey);
+            });
+
+            const aMigratedKey = await getMigratedKey(yStorage, aKey);
+            const bMigratedKey = await getMigratedKey(yStorage, bKey);
+
+            const validA = await yStorage.valid.get(aMigratedKey) ?? [];
+            const bIdStr = String(bMigratedKey);
+            expect(validA.some(id => String(id) === bIdStr)).toBe(false);
         });
 
         test("writes version to y/global/version before calling setCurrentReplicaPointer", async () => {
@@ -824,8 +994,8 @@ async function captureStorageSnapshot(storage) {
     for await (const key of storage.counters.keys()) {
         snapshot[`counters:${key}`] = await storage.counters.get(key);
     }
-    for await (const key of storage.revdeps.keys()) {
-        snapshot[`revdeps:${key}`] = await storage.revdeps.get(key);
+    for await (const key of storage.valid.keys()) {
+        snapshot[`valid:${key}`] = await storage.valid.get(key);
     }
     for await (const key of storage.timestamps.keys()) {
         snapshot[`timestamps:${key}`] = await storage.timestamps.get(key);
@@ -862,7 +1032,7 @@ async function buildTwoNodeGraph(storage, nodeKeyA, nodeKeyB, {
         freshness: "potentially-outdated",
         timestamps: timestampB,
     });
-    await storage.revdeps.put(nodeKeyA, [nodeKeyB]);
+    await storage.valid.put(nodeKeyA, [nodeKeyB]);
 }
 
 /** NodeDefs for a two-node schema [A, B]. */
@@ -884,8 +1054,8 @@ async function buildFanInGraph(storage, nkA, nkB, nkC) {
         inputs: [nkA, nkB],
         counter: 1,
     });
-    await storage.revdeps.put(nkA, [nkC]);
-    await storage.revdeps.put(nkB, [nkC]);
+    await storage.valid.put(nkA, [nkC]);
+    await storage.valid.put(nkB, [nkC]);
 }
 
 /** NodeDefs for a fan-in schema A→C, B→C. */
@@ -1022,7 +1192,7 @@ describe("x-namespace state preserved on migration failure", () => {
         // Build a yStorage whose noFlushPut throws on all sublevels
         const yStorage = makeSchemaStorage();
         const writeError = new Error("write failure");
-        for (const name of ['values', 'freshness', 'global', 'inputs', 'revdeps', 'counters', 'timestamps']) {
+        for (const name of ['values', 'freshness', 'global', 'inputs', 'valid', 'counters', 'timestamps']) {
             yStorage[name].noFlushPut = async () => { throw writeError; };
             yStorage[name].noFlushDel = async () => { throw writeError; };
         }
@@ -1170,6 +1340,166 @@ describe("x-namespace state preserved on migration failure", () => {
         ).rejects.toThrow();
 
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Migration validation: assertValidFinalMergeState is called before activation
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("migration validation", () => {
+    test("assertValidFinalMergeState rejects target with missing valid flag for up-to-date node", async () => {
+        // A -> B
+        // B is up-to-date with inputs [A]
+        // valid[A] is missing B
+        // This violates the invariant: every up-to-date node must have
+        // valid flags for every input.
+        const storage = makeSchemaStorage();
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
+
+        await storage.inputs.put(aKey, []);
+        await storage.inputs.put(bKey, [aKey]);
+        await storage.values.put(aKey, { type: "all_events", events: [] });
+        await storage.values.put(bKey, { type: "all_events", events: [] });
+        await storage.freshness.put(aKey, "up-to-date");
+        await storage.freshness.put(bKey, "up-to-date");
+        await storage.counters.put(aKey, 1);
+        await storage.counters.put(bKey, 1);
+        // valid[A] intentionally missing B
+
+        const identifiers = await storage.global.get(IDENTIFIERS_KEY);
+        const lookup = makeIdentifierLookup(identifiers);
+
+        await expect(
+            assertValidFinalMergeState(storage, lookup)
+        ).rejects.toThrow(FinalMergeStateError);
+    });
+
+    test("assertValidFinalMergeState rejects valid entry referencing unknown identifier", async () => {
+        const storage = makeSchemaStorage();
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
+
+        await storage.inputs.put(aKey, []);
+        await storage.values.put(aKey, { type: "all_events", events: [] });
+        await storage.freshness.put(aKey, "up-to-date");
+        await storage.counters.put(aKey, 1);
+        // valid references B which is not materialized
+        await storage.valid.put(aKey, [bKey]);
+
+        const identifiers = await storage.global.get(IDENTIFIERS_KEY);
+        const lookup = makeIdentifierLookup(identifiers);
+
+        await expect(
+            assertValidFinalMergeState(storage, lookup)
+        ).rejects.toThrow(FinalMergeStateError);
+    });
+
+    test("valid target passes assertValidFinalMergeState", async () => {
+        const storage = makeSchemaStorage();
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
+
+        await storage.inputs.put(aKey, []);
+        await storage.inputs.put(bKey, [aKey]);
+        await storage.values.put(aKey, { type: "all_events", events: [] });
+        await storage.values.put(bKey, { type: "all_events", events: [] });
+        await storage.freshness.put(aKey, "up-to-date");
+        await storage.freshness.put(bKey, "up-to-date");
+        await storage.counters.put(aKey, 1);
+        await storage.counters.put(bKey, 1);
+        await storage.valid.put(aKey, [bKey]);
+
+        const identifiers = await storage.global.get(IDENTIFIERS_KEY);
+        const lookup = makeIdentifierLookup(identifiers);
+
+        await expect(
+            assertValidFinalMergeState(storage, lookup)
+        ).resolves.toBeUndefined();
+    });
+
+    test("migration validates target and calls setCurrentReplicaPointer when validation passes", async () => {
+        // A -> B, both up-to-date with correct valid flags
+        // The migration keeps both nodes. buildDesiredValid() adds valid[A].has(B).
+        // assertValidFinalMergeState will pass, and setCurrentReplicaPointer is called.
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
+
+        await xStorage.inputs.put(aKey, []);
+        await xStorage.inputs.put(bKey, [aKey]);
+        await xStorage.values.put(aKey, { type: "all_events", events: [] });
+        await xStorage.values.put(bKey, { type: "all_events", events: [] });
+        await xStorage.freshness.put(aKey, "up-to-date");
+        await xStorage.freshness.put(bKey, "up-to-date");
+        await xStorage.counters.put(aKey, 1);
+        await xStorage.counters.put(bKey, 1);
+        // valid[A] already contains B — preserved through migration
+        await xStorage.valid.put(aKey, [bKey]);
+
+        const yStorage = makeSchemaStorage();
+        const mock = makeRootDatabaseMock({
+            prevVersion: "1.0.0",
+            currentVersion: "2.0.0",
+            xStorage,
+            yStorage,
+        });
+
+        const nodeDefs = [
+            { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+            { output: "B", inputs: ["A"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+        ];
+
+        await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+            await storage.keep(aKey);
+            await storage.keep(bKey);
+        });
+
+        expect(mock.setCurrentReplicaPointerCalled).toBe(true);
+    });
+
+    test("migration calls assertValidFinalMergeState before activating replica; rejection blocks activation", async () => {
+        // By mocking assertValidFinalMergeState to throw, we prove the
+        // migration path calls it before setCurrentReplicaPointer.
+        assertValidFinalMergeState.mockRejectedValueOnce(
+            new FinalMergeStateError("simulated: target state invalid")
+        );
+
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const nodeKey = toJsonKey("A");
+        await xStorage.inputs.put(nodeKey, []);
+
+        const yStorage = makeSchemaStorage();
+        const mock = makeRootDatabaseMock({
+            prevVersion: "1.0.0",
+            currentVersion: "2.0.0",
+            xStorage,
+            yStorage,
+        });
+
+        const nodeDefs = [{
+            output: "A",
+            inputs: [],
+            computor: async () => ({ type: "all_events", events: [] }),
+            isDeterministic: true,
+            hasSideEffects: false,
+        }];
+
+        let caughtError;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(nodeKey);
+            });
+        } catch (e) {
+            caughtError = e;
+        }
+
+        expect(assertValidFinalMergeState).toHaveBeenCalled();
+        expect(isFinalMergeStateError(caughtError)).toBe(true);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
     });
 });
 
@@ -1400,7 +1730,7 @@ describe("infrastructure failures", () => {
 
         const unificationError = new Error("unification write failure");
         const yStorage = makeSchemaStorage();
-        for (const name of ['values', 'freshness', 'global', 'inputs', 'revdeps', 'counters', 'timestamps']) {
+        for (const name of ['values', 'freshness', 'global', 'inputs', 'valid', 'counters', 'timestamps']) {
             yStorage[name].noFlushPut = async () => { throw unificationError; };
             yStorage[name].noFlushDel = async () => { throw unificationError; };
         }

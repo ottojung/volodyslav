@@ -2,7 +2,6 @@
  * Tests for the flag-based inverse validity algorithm.
  *
  * These tests validate the specification defined in:
- * docs/specs/incremental-graph-flag-based-inverse-validity.md
  */
 
 const {
@@ -179,7 +178,6 @@ class InMemoryDatabase {
         const values = createSublevel('values');
         const freshness = createSublevel('freshness');
         const inputs = createSublevel('inputs');
-        const revdeps = createSublevel('revdeps');
         const valid = createSublevel('valid');
         const counters = createSublevel('counters');
         const timestamps = createSublevel('timestamps');
@@ -189,7 +187,6 @@ class InMemoryDatabase {
             values,
             freshness,
             inputs,
-            revdeps,
             valid,
             counters,
             timestamps,
@@ -249,7 +246,7 @@ function countedComputor(_name, valueFactory) {
     return { computor, getCallCount: () => callCount };
 }
 
-describe("Flag-Based Inverse Validity Algorithm", () => {
+describe("Incremental graph validity", () => {
     /**
      * @type {InMemoryDatabase}
      */
@@ -483,8 +480,8 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
         });
     });
 
-    // === Test: Changed value propagates potentially-outdated freshness through revdeps ===
-    describe("changed value propagates outdated through revdeps", () => {
+    // === Test: Changed value propagates potentially-outdated freshness through valid ===
+    describe("changed value propagates outdated through valid", () => {
         it("marks direct and transitive dependents potentially-outdated when value changes via direct storage manipulation bypassing invalidation", async () => {
             let srcValue = 0;
             const { nodeDefs } = createChainGraph(
@@ -514,18 +511,18 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             expect(db._readSublevel('freshness', depId)).toBe("up-to-date");
 
             // Directly mark only source as potentially-outdated in storage.
-            // Do NOT call graph.invalidate() — that already propagates through revdeps.
+            // Do NOT call graph.invalidate() — that already propagates through valid.
             const schemaStorage = db.getSchemaStorage();
             await schemaStorage.freshness.put(srcId, "potentially-outdated");
 
             // Pull source — computor returns changed value (srcValue was 0, now 1).
-            // handleChanged calls propagateOutdatedFrom, which walks revdeps.
+            // handleChanged calls propagateOutdatedFrom, which walks valid.
             await graph.pull("source");
 
-            // Middle is a direct dependent of source via revdeps
+            // Middle is a direct dependent of source via valid
             expect(db._readSublevel('freshness', midId)).toBe("potentially-outdated");
 
-            // Dependent is a transitive dependent via middle's revdeps
+            // Dependent is a transitive dependent via middle's valid
             expect(db._readSublevel('freshness', depId)).toBe("potentially-outdated");
         });
 
@@ -657,7 +654,7 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
 
     // === Test Obligation 7: Failed computor rolls back ===
     describe("test obligation 7: failed computor rolls back", () => {
-        it("does not partially write values, counters, freshness, inputs, revdeps, or valid", async () => {
+        it("does not partially write values, counters, freshness, inputs, or valid", async () => {
             let shouldFail = false;
             const { nodeDefs } = createChainGraph(
                 () => ({ v: "src" }),
@@ -836,60 +833,9 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
         });
     });
 
-    // === Test Obligation 12: valid is not an invalidation index ===
-    describe("test obligation 12: valid is not an invalidation index", () => {
-        it("invalidation walks revdeps, not valid — missing valid flag does not block propagation", async () => {
-            const { nodeDefs } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
-            );
-
-            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
-            const binding = [{ id: "x" }];
-            const midKey = makeNodeStorageKey("middle", binding);
-            const depKey = makeNodeStorageKey("dependent", binding);
-
-            // Materialize all three
-            await graph.pull("source");
-            await graph.pull("middle", binding);
-            await graph.pull("dependent", binding);
-
-            const midId = db.nodeKeyToId(midKey);
-            const depId = db.nodeKeyToId(depKey);
-
-            // Both up-to-date
-            expect(db._readSublevel('freshness', depId)).toBe("up-to-date");
-
-            // valid[mid] exists and contains dep
-            const validMid = db._readSublevel('valid', midId);
-            expect(validMid.some(id => id === nodeIdentifierToString(depId))).toBe(true);
-
-            // Explicitly remove the valid flag (simulating missing optional proof)
-            // but revdeps[mid] still contains dep
-            const filtered = validMid.filter(id => id !== nodeIdentifierToString(depId));
-            const schemaStorage = db.getSchemaStorage();
-            if (filtered.length === 0) {
-                await schemaStorage.valid.del(midId);
-            } else {
-                await schemaStorage.valid.put(midId, filtered);
-            }
-            // Verify the flag is gone but dep exists in revdeps
-            const validMidAfter = db._readSublevel('valid', midId) || [];
-            expect(validMidAfter.some(id => id === nodeIdentifierToString(depId))).toBe(false);
-            const revdepsMid = db._readSublevel('revdeps', midId);
-            expect(revdepsMid.some(id => id === nodeIdentifierToString(depId))).toBe(true);
-
-            // Now invalidate mid — should propagate to dep through revdeps[mis],
-            // even though valid[mis].has(dep) was removed
-            await graph.invalidate("middle", binding);
-            expect(db._readSublevel('freshness', depId)).toBe("potentially-outdated");
-        });
-    });
-
     // === Deterministic serialization ===
     describe("deterministic serialization", () => {
-        it("stores valid and revdeps in sorted order", async () => {
+        it("stores valid sets in sorted order", async () => {
             const { nodeDefs } = createChainGraph(
                 () => ({ v: "src" }),
                 () => ({ v: "mid" }),
@@ -905,14 +851,6 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
 
             const srcKey = makeNodeStorageKey("source");
             const srcId = db.nodeKeyToId(srcKey);
-
-            // Check revdeps are sorted
-            const revdepsSrc = db._readSublevel('revdeps', srcId);
-            expect(revdepsSrc).toBeTruthy();
-            expect(revdepsSrc.length).toBeGreaterThan(0);
-            for (let i = 1; i < revdepsSrc.length; i++) {
-                expect(revdepsSrc[i] >= revdepsSrc[i-1]).toBe(true);
-            }
 
             // Check valid is sorted
             const validSrc = db._readSublevel('valid', srcId);
@@ -1090,6 +1028,131 @@ describe("Flag-Based Inverse Validity Algorithm", () => {
             // still exists, so the cache predicate fires. It detects that persisted
             // inputs differ from schema-derived inputEdges and throws.
             await expect(graph.pull("middle", binding)).rejects.toThrow(
+                /corrupted inputs record/i
+            );
+        });
+    });
+
+    // === Test: Up-to-date node with corrupted persisted inputs fails fast ===
+    describe("up-to-date node corrupted persisted inputs", () => {
+        it("detects corrupted inputs in the fast path without pulling dependencies", async () => {
+            let computorCalls = 0;
+            const nodeDefs = [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => ({ v: "src-actual" }),
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+                {
+                    output: "user(x)",
+                    inputs: ["source"],
+                    computor: async ([input]) => {
+                        computorCalls++;
+                        return { v: "user-" + input.v + "-" + computorCalls };
+                    },
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+            ];
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+
+            // Materialize chain with correct inputs
+            await graph.pull("source");
+            await graph.pull("user", binding);
+
+            expect(computorCalls).toBe(1);
+
+            const userKey = makeNodeStorageKey("user", binding);
+            const srcKey = makeNodeStorageKey("source");
+            const userId = db.nodeKeyToId(userKey);
+            const srcId = db.nodeKeyToId(srcKey);
+
+            // Verify the node is up-to-date with correct inputs
+            expect(db._readSublevel("freshness", userId)).toBe("up-to-date");
+            expect(db._readSublevel("inputs", userId)).toEqual([srcId]);
+
+            // Rewrite persisted inputs to a different value (simulates stale persist)
+            const schemaStorage = db.getSchemaStorage();
+            const oldValue = db._readSublevel("values", userId);
+            await schemaStorage.inputs.put(userId, ["bogus-identifier"]);
+            // Also put a valid flag for the bogus input so the old fast-path
+            // would have considered it authorized
+            await schemaStorage.valid.put("bogus-identifier", [userId]);
+            // Value is still present and node is up-to-date
+            expect(db._readSublevel("freshness", userId)).toBe("up-to-date");
+            expect(db._readSublevel("values", userId)).toEqual(oldValue);
+
+            // Pull user again — the fast path detects corrupted inputs
+            // (persisted inputs differ from schema-derived inputEdges) and throws.
+            await expect(graph.pull("user", binding)).rejects.toThrow(
+                /corrupted inputs record/i
+            );
+        });
+    });
+
+    // === Test: Up-to-date nodes return cached value without pulling dependencies ===
+    describe("up-to-date fast path avoids computor invocation", () => {
+        it("A → B → C: pull(C) does not invoke computors for A, B, or C when all are up-to-date", async () => {
+            const computeA = jest.fn(async () => ({ v: "A" }));
+            const computeB = jest.fn(async () => ({ v: "B" }));
+            const computeC = jest.fn(async () => ({ v: "C" }));
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: computeA, isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: computeB, isDeterministic: true, hasSideEffects: false },
+                { output: "C", inputs: ["B"], computor: computeC, isDeterministic: true, hasSideEffects: false },
+            ];
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+
+            await graph.pull("A");
+            await graph.pull("B");
+            await graph.pull("C");
+            expect(computeA).toHaveBeenCalledTimes(1);
+            expect(computeB).toHaveBeenCalledTimes(1);
+            expect(computeC).toHaveBeenCalledTimes(1);
+
+            jest.clearAllMocks();
+
+            const result = await graph.pull("C");
+            expect(result).toEqual({ v: "C" });
+            expect(computeA).toHaveBeenCalledTimes(0);
+            expect(computeB).toHaveBeenCalledTimes(0);
+            expect(computeC).toHaveBeenCalledTimes(0);
+        });
+    });
+
+    // === Test: Up-to-date node detection with corrupted inputs fails ===
+    describe("up-to-date node corrupted inputs fails", () => {
+        it("A → B: B is up-to-date, inputs[B] corrupted, pull(B) fails", async () => {
+            const computeA = jest.fn(async () => ({ v: "A" }));
+            const computeB = jest.fn(async () => ({ v: "B" }));
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: computeA, isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: computeB, isDeterministic: true, hasSideEffects: false },
+            ];
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+
+            await graph.pull("A");
+            await graph.pull("B");
+            expect(computeB).toHaveBeenCalledTimes(1);
+
+            const aKey = makeNodeStorageKey("A");
+            const bKey = makeNodeStorageKey("B");
+            const aId = db.nodeKeyToId(aKey);
+            const bId = db.nodeKeyToId(bKey);
+
+            expect(db._readSublevel("freshness", bId)).toBe("up-to-date");
+            expect(db._readSublevel("inputs", bId)).toEqual([aId]);
+
+            const schemaStorage = db.getSchemaStorage();
+            await schemaStorage.inputs.put(bId, ["corrupted-identifier"]);
+
+            await expect(graph.pull("B")).rejects.toThrow(
                 /corrupted inputs record/i
             );
         });

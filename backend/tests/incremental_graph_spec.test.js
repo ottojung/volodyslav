@@ -190,7 +190,6 @@ class InMemoryDatabase {
         const values = createSublevel('values');
         const freshness = createSublevel('freshness');
         const inputs = createSublevel('inputs');
-        const revdeps = createSublevel('revdeps');
         const valid = createSublevel('valid');
         const counters = createSublevel('counters');
         const timestamps = createSublevel('timestamps');
@@ -200,7 +199,6 @@ class InMemoryDatabase {
             values,
             freshness,
             inputs,
-            revdeps,
             valid,
             counters,
             timestamps,
@@ -294,7 +292,7 @@ class InMemoryDatabase {
     /**
      * Helper to seed a schema storage directly (for testing seeded databases).
      * This bypasses normal indexing to simulate partially-seeded databases.
-     * @param {string} sublevel - The sublevel name ('values', 'freshness', 'inputs', 'revdeps')
+     * @param {string} sublevel - The sublevel name ('values', 'freshness', 'inputs', 'valid')
      * @param {string} key - The key
      * @param {any} value - The value
      */

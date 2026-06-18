@@ -279,7 +279,7 @@ function topologicalSortFromMap(inputsMap) {
  * B in the result.  Within the same topological depth, nodes are sorted
  * ascending by their NodeIdentifier representation.
  *
- * @param {SchemaStorage} storage - Schema storage whose inputs/revdeps graph to sort.
+ * @param {SchemaStorage} storage - Schema storage whose inputs/valid graph to sort.
  * @returns {Promise<NodeIdentifier[]>}
  * @throws {TopologicalSortCycleError} If the graph contains a cycle.
  */

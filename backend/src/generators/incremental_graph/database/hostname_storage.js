@@ -3,7 +3,7 @@
  *
  * Remote host snapshots are imported into flat `_h_<hostname>` top-level
  * sublevels before graph merge.  Each sublevel mirrors the schema of a replica
- * (values, freshness, inputs, revdeps, counters, timestamps) but uses bare
+ * (values, freshness, inputs, valid, counters, timestamps) but uses bare
  * (unchecked) storage so that the foreign schema version is not enforced.
  *
  * These functions operate directly on the root LevelDB instance so they can
@@ -98,8 +98,6 @@ function buildBareSchemaStorage(namespaceSublevel) {
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
-    const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Counter, NodeIdentifier>} */
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
@@ -120,7 +118,6 @@ function buildBareSchemaStorage(namespaceSublevel) {
         values: makeTypedDatabase(valuesSublevel),
         freshness: makeTypedDatabase(freshnessSublevel),
         inputs: makeTypedDatabase(inputsSublevel),
-        revdeps: makeTypedDatabase(revdepsSublevel),
         valid: makeTypedDatabase(validSublevel),
         counters: makeTypedDatabase(countersSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),

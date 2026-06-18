@@ -5,7 +5,7 @@
 The IncrementalGraph system stores its state in two layers:
 
 1. **Persisted layer** — a LevelDB database on disk. Survives process restarts. Stores node
-   values, freshness markers, input dependency records, reverse-dependency indices, validity flags,
+   values, freshness markers, input dependency records, validity sets,
    monotonic counters, creation/modification timestamps, and the *identifier lookup* (the bijection
    between semantic node keys and deterministic fingerprint-index node identifiers).
 
@@ -42,8 +42,7 @@ Node data is stored in typed sublevels keyed by `NodeIdentifier`:
 | `values` | `NodeIdentifier` | computed node value |
 | `freshness` | `NodeIdentifier` | `'up-to-date'` or `'potentially-outdated'` |
 | `inputs` | `NodeIdentifier` | normalized structural dependency-edge list |
-| `revdeps` | `NodeIdentifier` | reverse-dependency set |
-| `valid` | `NodeIdentifier` | inverse validity-flag set |
+| `valid` | `NodeIdentifier` | validity set |
 | `counters` | `NodeIdentifier` | monotonic integer counter |
 | `timestamps` | `NodeIdentifier` | creation and modification timestamps |
 
@@ -307,7 +306,7 @@ pull.js           Pull algorithm: resolve node keys, check freshness, recompute
                   Depends on graph_state.js and database/.
 
 invalidate.js     Invalidation algorithm: mark nodes potentially-outdated and
-                  propagate through the reverse-dependency index.
+                  propagate through the validity index.
                   Same transaction-based structure as pull.js.
                   Depends on graph_state.js and database/.
 

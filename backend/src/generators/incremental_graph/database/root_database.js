@@ -150,13 +150,6 @@ function assertNeverReplicaName(name) {
  */
 
 /**
- * Database for reverse dependency index.
- * Key: persisted input identifier
- * Value: array of dependent identifiers sorted lexicographically by identifier
- * @typedef {GenericDatabase<NodeIdentifier[], NodeIdentifier>} RevdepsDatabase
- */
-
-/**
  * Database for storing node counters.
  * Key: persisted node identifier
  * Value: counter (monotonic integer tracking value changes)
@@ -192,7 +185,6 @@ function assertNeverReplicaName(name) {
  * @property {ValuesDatabase} values - Node output values
  * @property {FreshnessDatabase} freshness - Node freshness state
  * @property {InputsDatabase} inputs - Node inputs index
- * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
  * @property {ValidDatabase} valid - Inverse validity flags (dependency -> dependents validated against it)
  * @property {CountersDatabase} counters - Node counters (monotonic integers)
  * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
@@ -248,8 +240,6 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
-    const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Counter, NodeIdentifier>} */
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
@@ -288,7 +278,6 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
         values: makeTypedDatabase(valuesSublevel),
         freshness: makeTypedDatabase(freshnessSublevel),
         inputs: makeTypedDatabase(inputsSublevel),
-        revdeps: makeTypedDatabase(revdepsSublevel),
         valid: makeTypedDatabase(validSublevel),
         counters: makeTypedDatabase(countersSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),

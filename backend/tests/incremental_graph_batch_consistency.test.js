@@ -246,8 +246,8 @@ describe("incremental_graph batch consistency", () => {
             });
         });
 
-        describe("revdeps sublevel", () => {
-            test("read-your-writes: get returns revdeps written in same batch", async () => {
+        describe("valid sublevel", () => {
+            test("read-your-writes: get returns valid written in same batch", async () => {
                 const capabilities = getTestCapabilities();
                 const db = await getRootDatabase(capabilities);
 
@@ -276,8 +276,8 @@ describe("incremental_graph batch consistency", () => {
 
                 let readValue;
                 await storage.withBatch(async (batch) => {
-                    batch.revdeps.put(inputKey, dependents);
-                    readValue = await batch.revdeps.get(inputKey);
+                    batch.valid.put(inputKey, dependents);
+                    readValue = await batch.valid.get(inputKey);
                 });
 
                 expect(readValue).toEqual(dependents);
@@ -287,7 +287,7 @@ describe("incremental_graph batch consistency", () => {
     });
 
     describe("Regression tests for lost updates", () => {
-        test("revdeps should not lose updates when two dependents added in same batch", async () => {
+        test("valid should not lose updates when two dependents added in same batch", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -322,16 +322,13 @@ describe("incremental_graph batch consistency", () => {
             const dependentA = '{"head":"dependentA","args":["val1"]}';
             const dependentB = '{"head":"dependentB","args":["val2"]}';
 
-            // Add two dependents in the same batch
             await storage.withBatch(async (batch) => {
-                await storage.ensureReverseDepsIndexed(dependentA, [inputKey], batch);
-                await storage.ensureReverseDepsIndexed(dependentB, [inputKey], batch);
+                batch.valid.put(inputKey, [dependentA, dependentB]);
             });
 
-            // After commit, both should be present
             let dependents;
             await storage.withBatch(async (batch) => {
-                dependents = await storage.listDependents(inputKey, batch);
+                dependents = await storage.listValidDependents(inputKey, batch);
             });
             expect(dependents).toContain(dependentA);
             expect(dependents).toContain(dependentB);

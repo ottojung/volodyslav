@@ -73,30 +73,41 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
             }
         }
     }
-    for await (const identifier of targetStorage.revdeps.keys()) {
-        const identifierString = nodeIdentifierToString(identifier);
-        if (!knownIdentifiers.has(identifierString)) {
-            throw new FinalMergeStateError(
-                `revdeps references discarded identifier ${identifierString}`
-            );
-        }
-        const revdepIds = await targetStorage.revdeps.get(identifier);
-        if (revdepIds !== undefined && Array.isArray(revdepIds)) {
-            for (const revdep of revdepIds) {
-                if (!knownIdentifiers.has(nodeIdentifierToString(revdep))) {
-                    throw new FinalMergeStateError(
-                        `revdeps[${identifierString}] references unknown identifier ${nodeIdentifierToString(revdep)}`
-                    );
-                }
-            }
-        }
-    }
     for await (const identifier of targetStorage.valid.keys()) {
         const identifierString = nodeIdentifierToString(identifier);
         if (!knownIdentifiers.has(identifierString)) {
             throw new FinalMergeStateError(
                 `valid references discarded identifier ${identifierString}`
             );
+        }
+        const validDependents = await targetStorage.valid.get(identifier) ?? [];
+        for (const dependent of validDependents) {
+            const dependentString = nodeIdentifierToString(dependent);
+            if (!knownIdentifiers.has(dependentString)) {
+                throw new FinalMergeStateError(
+                    `valid[${identifierString}] references unknown identifier ${dependentString}`
+                );
+            }
+            const dependentInputs = readInputRecord(await targetStorage.inputs.get(dependent));
+            if (!dependentInputs.some(input => nodeIdentifierToString(input) === identifierString)) {
+                throw new FinalMergeStateError(
+                    `valid[${identifierString}] is incompatible with inputs[${dependentString}]`
+                );
+            }
+        }
+    }
+    for await (const identifier of targetStorage.inputs.keys()) {
+        if (await targetStorage.freshness.get(identifier) !== 'up-to-date') {
+            continue;
+        }
+        const identifierString = nodeIdentifierToString(identifier);
+        for (const input of readInputRecord(await targetStorage.inputs.get(identifier))) {
+            const validDependents = await targetStorage.valid.get(input) ?? [];
+            if (!validDependents.some(dependent => nodeIdentifierToString(dependent) === identifierString)) {
+                throw new FinalMergeStateError(
+                    `up-to-date node ${identifierString} lacks validity for input ${nodeIdentifierToString(input)}`
+                );
+            }
         }
     }
 }
