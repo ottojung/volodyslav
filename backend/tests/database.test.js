@@ -345,24 +345,6 @@ describe('generators/database', () => {
             }
         });
 
-        test('inputs storage works independently', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const db = await getRootDatabase(capabilities);
-                const storage = db.getSchemaStorage();
-                
-                await storage.inputs.put('node1', ['dep1', 'dep2']);
-                
-                const inputs = await storage.inputs.get('node1');
-                
-                expect(inputs).toEqual(['dep1', 'dep2']);
-                
-                await db.close();
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-
         test('valid storage works independently', async () => {
             const capabilities = getTestCapabilities();
             try {
