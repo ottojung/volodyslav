@@ -77,11 +77,19 @@ function makeSchemaStorage() {
     const valid = makeInMemoryDb("valid");
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
-
     // Tests use simplified mocks where the "NodeIdentifier" string is the same
     // as the semantic node key JSON string. When identifiers_keys_map is not
     // explicitly seeded, fall back to an identity mapping derived from the
     // currently materialized inputs keys.
+    const originalInputsPut = inputs.put.bind(inputs);
+    inputs.put = async (key, value) => {
+        await originalInputsPut(key, value);
+        const existingValue = await values.get(key);
+        if (existingValue === undefined) {
+            await values.put(key, { type: "all_events", events: [] });
+        }
+    };
+
     const originalGlobalGet = global.get.bind(global);
     global.get = async (key) => {
         if (key !== IDENTIFIERS_KEY) {
@@ -383,10 +391,10 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            // y namespace is populated with the migrated node's stored inputs.
+            // y namespace is populated with the migrated node's stored data.
             const migratedKey = await getMigratedKey(yStorage, nodeKey);
-            const migratedInputs = await yStorage.inputs.get(migratedKey);
-            expect(migratedInputs).toBeDefined();
+            const migratedValue = await yStorage.values.get(migratedKey);
+            expect(migratedValue).toBeDefined();
         });
 
         test("migration does not transfer valid flags from old graph state", async () => {
@@ -1355,6 +1363,13 @@ describe("migration validation", () => {
         // This violates the invariant: every up-to-date node must have
         // valid flags for every input.
         const storage = makeSchemaStorage();
+        await storage.global.put('graph_scheme', JSON.stringify({
+            format: 1,
+            nodes: [
+                { head: "A", arity: 0, inputTemplates: [] },
+                { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+            ],
+        }));
         const aKey = toJsonKey("A");
         const bKey = toJsonKey("B");
 
@@ -1378,6 +1393,13 @@ describe("migration validation", () => {
 
     test("assertValidFinalMergeState rejects valid entry referencing unknown identifier", async () => {
         const storage = makeSchemaStorage();
+        await storage.global.put('graph_scheme', JSON.stringify({
+            format: 1,
+            nodes: [
+                { head: "A", arity: 0, inputTemplates: [] },
+                { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+            ],
+        }));
         const aKey = toJsonKey("A");
         const bKey = toJsonKey("B");
 
@@ -1398,6 +1420,13 @@ describe("migration validation", () => {
 
     test("valid target passes assertValidFinalMergeState", async () => {
         const storage = makeSchemaStorage();
+        await storage.global.put('graph_scheme', JSON.stringify({
+            format: 1,
+            nodes: [
+                { head: "A", arity: 0, inputTemplates: [] },
+                { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+            ],
+        }));
         const aKey = toJsonKey("A");
         const bKey = toJsonKey("B");
 
