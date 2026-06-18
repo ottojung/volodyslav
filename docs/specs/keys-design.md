@@ -152,13 +152,11 @@ This applies to:
 - `timestamps[id] -> TimestampRecord`
 - `inputs[id] -> NodeIdentifier[]`
 - `valid[id] -> NodeIdentifier[]`
-- `valid[id] -> NodeIdentifier[]`
 
 ### Storage invariants
 
 - graph-state sublevel keys are `NodeIdentifier`
 - `inputs[id]` contains the normalized structural dependency-edge list as `NodeIdentifier[]`
-- `valid[id]` contains `NodeIdentifier[]`
 - `valid[id]` contains `NodeIdentifier[]`
 - validity sets are sorted by `NodeIdentifier` (lexicographic), never by `NodeKey`
 - render/scan paths use direct identifier path segments

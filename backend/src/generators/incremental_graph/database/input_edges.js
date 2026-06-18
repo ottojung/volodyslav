@@ -1,7 +1,7 @@
 /**
  * Shared utilities for input-edge normalization and comparison.
  *
- * Input edges are the deduplicated, sorted structural dependency lists
+ * Input edges are the deduplicated, first-occurrence-preserving structural dependency lists
  * stored in the persisted "inputs" records.
  */
 

@@ -455,9 +455,12 @@ class MigrationStorageClass {
      * materialized node.  Returns a Map from input identifier string to
      * the set of nodes that declare that input.
      *
-     * Unlike `valid` (which tracks the current runtime invalidation
-     * frontier and omits stale nodes), the structural dependency relation
-     * includes every edge in the persisted inputs records.
+     * Migration delete and fan-in checks must use the structural dependency
+     * relation from persisted `inputs` records, not `valid`.  The `valid`
+     * relation is an authorization and invalidation frontier, not a complete
+     * structural dependency graph.  Stale dependents may be absent from
+     * `valid`, so scanning `inputs` is required to discover every node that
+     * references a deleted identifier.
      * @private
      * @returns {Promise<Map<string, Set<NodeIdentifier>>>}
      */

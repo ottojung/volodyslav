@@ -133,8 +133,11 @@ the cached value. This ensures structural consistency without pulling dependenci
 A zero-input node may use the fast path only if it has a persisted empty `inputs` record and a
 materialized value.
 
-If persisted `inputs[N]` does not match the current schema-derived `inputEdges`, or if any
-`valid[D]` is missing `N` for an input `D`, the fast path falls through to full recomputation.
+If persisted `inputs[N]` does not match the current schema-derived `inputEdges`, the fast path
+rejects the state as corruption. Missing `valid[D].has(N)` for a known input `D` is a cache miss
+and falls through to full recomputation. An up-to-date node with no persisted `inputs` record
+also falls through; the fast path does not silently authorize cache reuse without input metadata.
+A zero-input node uses the fast path only when a persisted empty `inputs` record exists.
 
 ### Cache predicate (step 5)
 
