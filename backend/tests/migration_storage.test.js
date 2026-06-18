@@ -13,7 +13,6 @@ const {
     isSchemaCompatibility,
     isGetMissingNode,
     isGetMissingValue,
-    isMissingDependencyMetadata,
     isCreateExistingNode,
 } = require("../src/generators/incremental_graph/migration_errors");
 const { toJsonKey } = require("./test_json_key_helper");
