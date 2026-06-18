@@ -45,21 +45,22 @@ All methods are `async`.
 
 | Method | Description |
 |--------|-------------|
-| `get(nodeKey)` | Return the previous-version value. |
-| `keep(nodeKey)` | Preserve node as-is in the new version. |
-| `override(nodeKey, value)` | Replace the node's value with the result of `value(nodeKey)` (a `NodeKey => Promise<ComputedValue>`). |
-| `invalidate(nodeKey)` | Mark the node for recomputation. |
-| `delete(nodeKey)` | Remove the node from the new version entirely. |
-| `create(nodeKey, value)` | Create a new node (not in the previous version) in the new schema with the result of `value(nodeKey)` (a `NodeKey => Promise<ComputedValue>`) as its initial value. |
+| `get(nodeIdentifier)` | Return the previous-version value. |
+| `keep(nodeIdentifier)` | Preserve node as-is in the new version. |
+| `override(nodeIdentifier, value)` | Replace the node's value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`). |
+| `invalidate(nodeIdentifier)` | Mark the node for recomputation. |
+| `delete(nodeIdentifier)` | Remove the node from the new version entirely. |
+| `create(nodeKeyString, value)` | Create a new node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
 
 ### Traversal methods
 
 | Method | Description |
 |--------|-------------|
-| `has(nodeKey)` | `true` if `nodeKey ∈ S`. |
-| `listMaterializedNodes()` | `AsyncIterable<NodeKeyString>` of all nodes in `S`. |
-| `getInputs(nodeKey)` | Previous-version inputs list. |
-| `listValidDependents(nodeKey)` | Previous-version validity frontier. |
+| `has(nodeIdentifier)` | `true` if `nodeIdentifier ∈ S`. |
+| `listMaterializedNodes()` | `AsyncIterable<NodeIdentifier>` of all nodes in `S`. |
+| `getInputs(nodeIdentifier)` | Previous-version inputs list (returns `NodeIdentifier[]`). |
+| `listValidDependents(nodeIdentifier)` | Previous-version validity frontier (returns `NodeIdentifier[]`). |
+| `resolveNodeKey(nodeIdentifier)` | Resolve a `NodeIdentifier` to the parsed semantic `NodeKey` used by the previous replica, if available. |
 
 ---
 
@@ -121,12 +122,12 @@ Use `runMigration()` from the `incremental_graph` module:
 const { runMigration } = require('./generators/incremental_graph');
 
 await runMigration(rootDatabase, newVersionNodeDefs, async (storage) => {
-    for await (const nodeKey of storage.listMaterializedNodes()) {
+    for await (const nodeIdentifier of storage.listMaterializedNodes()) {
         // Decide what to do with each node
-        if (shouldKeep(nodeKey)) {
-            await storage.keep(nodeKey);
+        if (shouldKeep(nodeIdentifier)) {
+            await storage.keep(nodeIdentifier);
         } else {
-            await storage.delete(nodeKey);
+            await storage.delete(nodeIdentifier);
         }
     }
 });

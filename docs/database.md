@@ -33,19 +33,18 @@ current replica pointer.
 
 ### Key format
 
-Node keys are JSON-serialised objects of the form `{"head":"<name>","args":[...]}`, for example:
-
-```
-{"head":"all_events","args":[]}
-{"head":"event","args":["abc123"]}
-{"head":"transcription","args":["/path/to/audio.mp3"]}
-```
+Data sublevels (`values`, `freshness`, `inputs`, `valid`, `counters`, `timestamps`) are
+keyed by **NodeIdentifier** — an opaque string assigned to each materialised node.
+Semantic node keys (`NodeKey` objects: `{"head":"<name>","args":[...]}`) are mapped to
+their identifiers through an identifier-lookup table stored under the `IDENTIFIERS_KEY`
+in the `global` sublevel.  Public migration and incremental-graph APIs accept semantic
+node-key strings, but the storage layer is identifier-native.
 
 At the raw LevelDB level these are concatenated with the sublevel prefixes, e.g.
 
 ```
-!x!!values!{"head":"all_events","args":[]}
-!x!!freshness!{"head":"all_events","args":[]}
+!x!!values!gafdmopql
+!x!!freshness!gafdmopql
 !_meta!current_replica
 ```
 
@@ -73,25 +72,20 @@ The algorithm depends on the key type:
 
 #### Data sublevels (`values`, `freshness`, `inputs`, `valid`, `counters`, `timestamps`)
 
-The stored key is a JSON-serialised NodeKey object `{"head":"...","args":[...]}`.
-It is decomposed into human-readable path segments:
+The stored key is a `NodeIdentifier` — an opaque string that identifies a
+materialised graph node.  It is emitted as a single encoded path segment:
 
 ```
-!x!!values!{"head":"all_events","args":[]}
-  → x/values/all_events
+!x!!values!gafdmopql
+  → x/values/gafdmopql
 
-!x!!values!{"head":"event","args":["abc123"]}
-  → x/values/event/abc123
-
-!x!!values!{"head":"transcription","args":["/audio/x.mp3"]}
-  → x/values/transcription/%2Faudio%2Fx.mp3
+!x!!freshness!gafdmopql
+  → x/freshness/gafdmopql
 ```
 
-String arguments are percent-encoded: `/` → `%2F`, `%` → `%25`, `!` → `%21`.
+The key content is percent-encoded for filesystem safety: `/` → `%2F`, `%` → `%25`, `!` → `%21`.
 Literal dot-segment path components `.` and `..` are encoded as `%2E` and `%2E%2E`
-to prevent path traversal while keeping the key↔path mapping bijective. Non-string arguments
-(numbers, booleans, arrays, objects) are JSON-encoded and prefixed with `~` so they remain
-unambiguous even when string arguments begin with `~`.
+to prevent path traversal while keeping the key↔path mapping bijective.
 
 #### Meta sublevels (`_meta`, `meta`)
 
@@ -109,11 +103,9 @@ It is used as a single percent-encoded path segment:
 
 1. **Determine sublevel depth**: if the first segment is `_meta` → depth 1; otherwise depth 2.
 2. **Extract sublevels**: first `depth` segments.
-3. **Determine key type**: if the last sublevel is `_meta` or `meta` → plain string; otherwise NodeKey.
-4. **Reconstruct key**:
-   - Plain string: decode the single remaining segment and reassemble the LevelDB key.
-   - NodeKey: first remaining segment is the node head; subsequent segments are decoded arguments;
-     reassemble using `serializeNodeKey({head, args})` and build the LevelDB key.
+3. **Reconstruct key**: decode the single remaining segment and reassemble the LevelDB key.
+   For data sublevels the key is a `NodeIdentifier` (opaque string, not decomposed); for
+   meta sublevels it is a plain string.
 
 ### Bijection guarantee
 

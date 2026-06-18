@@ -418,9 +418,9 @@ describe("MigrationStorage", () => {
         });
 
         test("delete propagation uses structural inputs when valid flags are missing (stale dependent)", async () => {
-            // A -> B, valid[A] is missing B (stale), delete(A), keep(B).
-            // The structural dependency scan via inputs must still find B
-            // as a dependent of A and auto-delete it since all inputs deleted.
+            // A -> B, valid[A] is missing B (stale). delete(A) propagates;
+            // the structural dependency scan via inputs finds B as a dependent
+            // of A and auto-deletes it since all its inputs are deleted.
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B"]);
             const A = nk("A");
@@ -437,7 +437,7 @@ describe("MigrationStorage", () => {
         });
 
         test("fan-in detection uses structural inputs when valid flags are missing (stale dependent)", async () => {
-            // B -> D, C -> D, valid[B] is missing D (stale), delete(B), keep(C), keep(D).
+            // B -> D, C -> D, valid[B] is missing D (stale). delete(B), keep(C).
             // The structural dependency scan must still find D dependent on B
             // and report PartialDeleteFanInError (C is kept so D has a surviving input).
             const storage = makeInMemorySchemaStorage();
@@ -454,7 +454,7 @@ describe("MigrationStorage", () => {
 
             await ms.delete(B);
             await ms.keep(C);
-            // D is undecided; structural scan finds D depends on B,
+            // D has no decision; structural scan finds D depends on B,
             // but D's other input C is kept → PartialDeleteFanInError
             const err = await ms.finalize().catch((e) => e);
             expect(isPartialDeleteFanIn(err)).toBe(true);
