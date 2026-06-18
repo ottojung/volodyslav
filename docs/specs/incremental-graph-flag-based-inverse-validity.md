@@ -85,6 +85,57 @@ The reverse implication is also operationally important:
 This means valid flags for stale nodes are meaningful cache proofs. They are not discarded merely
 because the node is stale.
 
+## Correctness model for "valid"
+
+### Terminology
+
+- A **structural edge** `D -> N` exists iff `D ∈ inputs[N]`.
+- A **validity edge** `D ⇝ N` exists iff `N ∈ valid[D]`.
+- `inputs` is the complete structural dependency relation across all materialized nodes.
+- `valid` is not the complete reverse dependency relation. It is a cache-proof and invalidation-frontier relation.
+- `valid[D]` is the **outgoing validity frontier** of `D`: the nodes whose cached values are authorized relative to `D`'s current stored value.
+- The **incoming validity proofs** of a node `N` are the edges `D ⇝ N` for every `D ∈ inputs[N]`.
+
+### Invariants
+
+#### 1. Structural soundness of validity
+
+If `N ∈ valid[D]`, then both identifiers are known materialized identifiers and `D ∈ inputs[N]`.
+
+This prevents validity edges from pointing to nonexistent nodes or to nodes that do not structurally depend on the key.
+
+#### 2. Required incoming validity for clean nodes
+
+If `freshness[N] === "up-to-date"` and `D ∈ inputs[N]`, then `N ∈ valid[D]`.
+
+This means every clean non-source materialized node carries the proofs needed for cache reuse.
+
+#### 3. Cache return is authorized
+
+A cached value for `N` may be returned only when:
+
+- `freshness[N] === "up-to-date"`;
+- a value for `N` exists;
+- the current schema-derived input edge list equals the persisted `inputs[N]`;
+- for every `D ∈ inputs[N]`, `N ∈ valid[D]`.
+
+For zero-input nodes, the fast path is authorized only when there is a persisted empty `inputs[N]` record.
+
+#### 4. Validity is allowed to be incomplete
+
+Missing `D ⇝ N` does not mean `N` is not a structural dependent of `D`. It only means `N` does not currently have a cache proof with respect to `D`.
+
+Therefore, operations that need the full structural graph, such as migration delete/fan-in checks, must scan `inputs`, not `valid`.
+
+#### 5. Stale nodes may retain conditional outgoing proofs
+
+A potentially-outdated node may still have a nonempty `valid[N]`. These outgoing edges are conditional proofs for downstream nodes. They are not enough to return `N` itself from cache, because `N`'s own freshness blocks that.
+
+These edges become useful only after `N` is pulled:
+
+- if `N` recomputes and changes value, `valid[N]` is cleared and downstream nodes remain stale;
+- if `N` returns "unchanged", the preserved outgoing proofs are still sound.
+
 ## Pull Algorithm
 
 ```
@@ -242,6 +293,22 @@ running the computor, validity flags involving the old value would become stale.
 to change a value is through a successful recomputation, and recomputation always performs the
 validity cleanup in `handleChanged`, validity flags never survive across value changes.
 
+### Explicit invalidation semantics
+
+The `invalidate(N)` operation has two possible semantics:
+
+1. **Soft invalidation:** mark `N` and downstream as potentially-outdated, but allow `N` to reuse its old value if all dependencies are pulled and all incoming validity proofs still hold.
+
+2. **Hard invalidation:** force `N`'s computor to run next time, regardless of incoming validity proofs.
+
+The current algorithm implements **soft invalidation for non-zero-input nodes** and **hard invalidation for zero-input nodes**.
+
+For non-zero-input nodes, invalidation preserves existing validity flags (Invariant 5). If all incoming validity proofs are intact after the node is pulled, the cache predicate succeeds and the computor is not invoked. This is the soft semantics.
+
+For zero-input nodes, `inputs[N]` is empty, so there are no incoming validity proofs to check. The cache predicate explicitly rejects zero-input nodes (`inputEdges.length > 0` is required for the cache predicate to pass). Therefore an invalidated zero-input node always runs its computor on the next pull. This is the hard semantics.
+
+No additional mechanism is needed because the existing cache predicate enforces this distinction: non-zero-input nodes can cache-hit through preserved validity flags, while zero-input nodes have no dependencies to validate against and must recompute.
+
 ## Concurrent Validity Updates
 
 Updates to `valid[D]` must be linearizable with respect to concurrent graph transactions.
@@ -346,6 +413,124 @@ Migration rebuilds `valid` from the final migrated graph state:
 
 The migration path validates the target replica before activating it, checking the invariants
 described in the Invariants section above.
+
+## Proof Sketches
+
+### Theorem 1: Cache safety
+
+**Claim:** If `pull(N)` returns a cached value for `N`, then every current dependency value used to justify that cache is the same stored value relative to which `N` was last authorized.
+
+**Proof sketch:**
+
+- A direct fast-path cache return requires `freshness[N] === "up-to-date"`.
+- It also checks the current schema-derived input edge list against persisted `inputs[N]`.
+- It requires all incoming validity proofs `D ⇝ N` for every `D ∈ inputs[N]`.
+- In the recompute path, dependencies are pulled before `N` checks whether it can reuse its old value.
+- Therefore `N` cannot be returned merely because some old outgoing validity edge exists. Its own freshness and incoming validity must be established.
+
+### Theorem 2: Changed values revoke downstream authorization
+
+**Claim:** If a node `D` is recomputed and its value changes, then cached values depending on the old value of `D` cannot be returned as clean without recomputation or proof repair.
+
+**Proof sketch:**
+
+- On changed result, the algorithm reads `valid[D]` as the downstream frontier.
+- It clears `valid[D]`.
+- It marks direct downstream nodes potentially-outdated.
+- It propagates through preserved outgoing validity frontiers to mark transitive clean dependents stale.
+- Since `valid[D]` is cleared, any direct dependent requiring `D ⇝ N` cannot pass the cache authorization predicate until it recomputes or re-establishes the proof.
+
+### Theorem 3: Preserved stale outgoing validity is safe
+
+Consider the concrete trace `A -> B -> C`.
+
+**Initial state:**
+
+```
+freshness[A] = up-to-date
+freshness[B] = up-to-date
+freshness[C] = up-to-date
+
+inputs[B] = [A]
+inputs[C] = [B]
+
+valid[A] = [B]
+valid[B] = [C]
+```
+
+Now `A` changes.
+
+**After handling the changed value of `A`:**
+
+```
+freshness[A] = up-to-date
+freshness[B] = potentially-outdated
+freshness[C] = potentially-outdated
+
+valid[A] = []
+valid[B] = [C]
+```
+
+**Why this is safe:**
+
+- `valid[B] = [C]` does not authorize returning `B`; `B` is stale.
+- Pulling `C` must pull `B` first.
+- If `B` changes, `valid[B]` is cleared and `C` cannot use its cached value.
+- If `B` returns "unchanged", then `C`'s old cached value is still valid relative to `B`, so preserving `valid[B] = [C]` was correct.
+
+This is the central vocabulary point: `valid[B] = [C]` is not a global claim that `C` is clean. It is a conditional proof that can only be used after the upstream node's own freshness and proof obligations have been satisfied.
+
+### Theorem 4: Runtime invalidation can use "valid" as a frontier
+
+**Claim:** For runtime invalidation of a changed or potentially changed node, walking `valid[D]` is sufficient to find clean cached nodes that need to be marked stale.
+
+**Proof sketch:**
+
+- By the required incoming validity invariant, any up-to-date node `N` structurally depending on `D` must have `N ∈ valid[D]`.
+- Therefore every clean dependent that can be returned from cache is on the `valid` frontier.
+- If a structural dependent is absent from `valid[D]`, it lacks an incoming cache proof relative to `D`; it is already unable to pass cache authorization through that dependency.
+- Therefore it does not need to be discovered for the purpose of preventing unsound cache return.
+
+This theorem is about runtime cache invalidation, not about structural graph operations.
+
+### Theorem 5: "valid" is not a structural graph replacement
+
+**Claim:** `valid` is safe as a cache-authorization and runtime invalidation frontier, but it is not safe as the complete structural reverse dependency graph.
+
+**Proof sketch:**
+
+- Stale nodes may lack some incoming validity proofs.
+- Missing validity does not imply missing structural dependency.
+- Therefore migration deletion, fan-in checks, and any operation that needs all structural dependents must scan `inputs`.
+
+Document this explicitly because it prevents a future reader from treating `valid` as a renamed reverse-dependency index.
+
+### Theorem 6: Merge validity reconstruction preserves soundness
+
+**Claim:** After sync merge validity reconstruction, the final state satisfies:
+
+- every `valid[D]` entry points only to known identifiers;
+- every validity edge is compatible with final `inputs`;
+- every up-to-date node has all required incoming validity proofs;
+- stale nodes are not accidentally promoted to clean by validity preservation.
+
+**Proof sketch:**
+
+- Previous validity entries are captured before clearing.
+- A previous validity edge is preserved only when both sides map through the target lookup, both final identifiers exist, both decisions are compatible with keeping the old value identity, and the final structural input edge still exists.
+- Required incoming validity is then added for every node whose final freshness is `"up-to-date"`.
+- Final validation checks unknown identifiers, compatibility with `inputs`, and required incoming validity for clean nodes.
+
+### Theorem 7: Validity mutation logs avoid lost updates
+
+**Claim:** Concurrent transactions modifying the same `valid[D]` array do not lose each other's add/remove/clear operations merely because they started from the same old array.
+
+**Proof sketch:**
+
+- Transactions record validity mutations rather than writing full arrays directly.
+- At commit time, under the per-replica commit lock, each mutation list is replayed against the latest committed `valid[D]`.
+- Therefore two concurrent additions to the same `valid[D]` are merged instead of one overwriting the other.
+- Clear/remove/add order is still meaningful within a single transaction's mutation list; a `clear` followed by `add` within the same transaction produces a set containing only the added elements.
 
 ## Non-Goals
 
