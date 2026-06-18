@@ -157,25 +157,6 @@ async function preserveAndRebuildValidity(
         }
     }
 
-    for await (const nodeIdentifier of targetStorage.inputs.keys()) {
-        const freshness = await targetStorage.freshness.get(nodeIdentifier);
-        if (freshness !== "up-to-date") {
-            continue;
-        }
-        const persistedInputs = await targetStorage.inputs.get(nodeIdentifier);
-        const inputs = Array.isArray(persistedInputs) ? persistedInputs : [];
-        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
-        for (const depId of inputs) {
-            const depIdStr = nodeIdentifierToString(depId);
-            depIdCache.set(depIdStr, depId);
-            let dependents = validMap.get(depIdStr) ?? [];
-            validMap.set(depIdStr, dependents);
-            if (!dependents.some(d => nodeIdentifierToString(d) === nodeIdStr)) {
-                dependents.push(nodeIdentifier);
-            }
-        }
-    }
-
     const writer = new ReplicaBatchWriter(targetStorage);
     for (const [depIdStr, dependents] of validMap) {
         const depId = depIdCache.get(depIdStr);

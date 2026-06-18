@@ -22,18 +22,18 @@ All writes are applied atomically.  If anything goes wrong during planning or va
 
 ### Migration scope `S`
 
-`S` is the set of all nodes materialized in the previous version.  A node is materialized if it has an entry in the `inputs` database (even if no computed value was stored).
+`S` is the set of all nodes materialized in the previous version. A node is materialized if it has an entry in the `values` database.
 
 After the user-supplied migration callback returns, **every node in `S` must have exactly one decision**.  Missing decisions cause `UndecidedNodesError`.
 
 ### Previous-version graph edges
 
-Traversal helpers expose the **persisted** dependency metadata:
+Traversal helpers expose dependency metadata derived from durable graph metadata:
 
-* `getInputs(N)` — the inputs `N` last depended on.
+* Dependencies are derived from the stored graph scheme and identifiers lookup.
 * `listValidDependents(N)` — nodes authorized by `valid[N]`.
 
-Traversal never re-executes computors; it only reads stored metadata.
+Traversal never re-executes computors; it derives dependency edges from `global/graph_scheme` and `identifiers_keys_map`.
 
 ---
 
@@ -58,7 +58,7 @@ All methods are `async`.
 |--------|-------------|
 | `has(nodeIdentifier)` | `true` if `nodeIdentifier ∈ S`. |
 | `listMaterializedNodes()` | `AsyncIterable<NodeIdentifier>` of all nodes in `S`. |
-| `getInputs(nodeIdentifier)` | Previous-version inputs list (returns `NodeIdentifier[]`). |
+| Dependency inspection | Derived from the stored graph scheme and identifiers lookup. |
 | `listValidDependents(nodeIdentifier)` | Previous-version validity frontier (returns `NodeIdentifier[]`). |
 | `resolveNodeKey(nodeIdentifier)` | Resolve a `NodeIdentifier` to the parsed semantic `NodeKey` used by the previous replica, if available. |
 

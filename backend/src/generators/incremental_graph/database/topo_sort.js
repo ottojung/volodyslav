@@ -169,7 +169,7 @@ function isTopologicalSortCycleError(object) {
 async function collectAllNodes(storage) {
     /** @type {NodeIdentifier[]} */
     const nodes = [];
-    for await (const key of storage.inputs.keys()) {
+    for await (const key of storage.values.keys()) {
         nodes.push(key);
     }
     return nodes;
@@ -293,16 +293,8 @@ async function topologicalSort(storage) {
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const inputsMap = new Map();
     for (const node of allNodes) {
-        const record = await storage.inputs.get(node);
-        if (record === undefined) {
-            inputsMap.set(node, []);
-        } else if (!Array.isArray(record)) {
-            throw new Error('Malformed stored inputs for topological sort');
-        } else {
-            inputsMap.set(node, record);
-        }
+        inputsMap.set(node, []);
     }
-
     return topologicalSortFromMap(inputsMap);
 }
 

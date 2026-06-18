@@ -27,7 +27,6 @@ function buildDeleteNodeOps(targetStorage, identifier) {
     return [
         targetStorage.values.delOp(identifier),
         targetStorage.freshness.delOp(identifier),
-        targetStorage.inputs.delOp(identifier),
         targetStorage.valid.delOp(identifier),
         targetStorage.counters.delOp(identifier),
         targetStorage.timestamps.delOp(identifier),
@@ -51,7 +50,6 @@ async function copyNodeOps({
     sourceStorage,
     sourceId,
     destinationId,
-    finalInputsForDestination,
 }) {
     /** @type {Array<*>} */
     const ops = [];
@@ -70,11 +68,6 @@ async function copyNodeOps({
     ops.push(sourceTimestamps === undefined
         ? targetStorage.timestamps.delOp(destinationId)
         : targetStorage.timestamps.putOp(destinationId, sourceTimestamps));
-
-    const sourceInputs = await sourceStorage.inputs.get(sourceId);
-    ops.push(sourceInputs === undefined
-        ? targetStorage.inputs.delOp(destinationId)
-        : targetStorage.inputs.putOp(destinationId, finalInputsForDestination));
 
     const sourceCounter = await sourceStorage.counters.get(sourceId);
     ops.push(sourceCounter === undefined

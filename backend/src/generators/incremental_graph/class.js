@@ -39,6 +39,7 @@ const {
 const {
     makeGraphStorage,
 } = require("./graph_state");
+const { buildGraphSchemeFromNodeDefs, serializeGraphScheme, GRAPH_SCHEME_KEY } = require("./database");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -91,6 +92,7 @@ class IncrementalGraphClass {
         validateSingleArityPerHead(compiledNodes);
         validateInputArities(compiledNodes);
 
+        this.graphScheme = buildGraphSchemeFromNodeDefs(compiledNodes);
         this.storage = makeGraphStorage(rootDatabase, capabilities.sleeper);
         this.rootDatabase = rootDatabase;
         this.dbVersion = rootDatabase.getVersion();
@@ -98,6 +100,8 @@ class IncrementalGraphClass {
         for (const compiledNode of compiledNodes) {
             this.headIndex.set(compiledNode.head, compiledNode);
         }
+
+        void rootDatabase.getSchemaStorage().global.put(GRAPH_SCHEME_KEY, JSON.stringify(serializeGraphScheme(this.graphScheme)));
 
         this.concreteInstantiations = makeConcreteNodeCache();
         this.sleeper = capabilities.sleeper;

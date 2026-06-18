@@ -109,14 +109,6 @@ function makeSemanticStorage(graph) {
                         jsonKey
                     );
                     if (databaseName === "inputs") {
-                        const inputKeys = value;
-                        tx.batch.inputs.put(nodeIdentifier, inputKeys.map((inputKey) =>
-                            getOrAllocateNodeIdentifierForTest(
-                                tx,
-                                graph.rootDatabase,
-                                toJsonKey(inputKey)
-                            )
-                        ));
                         return { value: undefined };
                     }
                     if (databaseName === "valid") {
@@ -157,15 +149,8 @@ function makeSemanticStorage(graph) {
         valid: makeDatabase("valid"),
         counters: makeDatabase("counters"),
         timestamps: makeDatabase("timestamps"),
-        async ensureMaterialized(node, inputs, batch) {
-            batch.inputs.put(node, inputs);
-        },
         async listValidDependents(input, batch) {
             return (await batch.valid.get(input)) ?? [];
-        },
-        async getInputs(node, batch) {
-            const record = await batch.inputs.get(node);
-            return record ?? null;
         },
         async withBatch(run) {
             return await graph.storage.withTransaction(async (tx) => {
@@ -179,14 +164,6 @@ function makeSemanticStorage(graph) {
                             const nodeIdentifier =
                                 getOrAllocateNodeIdentifierForTest(tx, graph.rootDatabase, jsonKey);
                             if (databaseName === "inputs") {
-                                const inputKeys = value;
-                                tx.batch.inputs.put(nodeIdentifier, inputKeys.map((inputKey) =>
-                                    getOrAllocateNodeIdentifierForTest(
-                                        tx,
-                                        graph.rootDatabase,
-                                        toJsonKey(inputKey)
-                                    )
-                                ));
                                 return;
                             }
                             if (databaseName === "valid") {

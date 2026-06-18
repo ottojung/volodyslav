@@ -10,7 +10,6 @@ const {
     makeSchemaCompatibilityError,
     makeGetMissingNodeError,
     makeGetMissingValueError,
-    makeMissingDependencyMetadataError,
     makeUndecidedNodesError,
     makePartialDeleteFanInError,
     makeCreateExistingNodeError,
@@ -27,7 +26,6 @@ const {
  * @typedef {object} ReadableMigrationStorage
  * @property {{ get(nodeKey: NodeIdentifier): Promise<ComputedValue | undefined> }} values
  * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').Freshness | undefined> }} freshness
- * @property {{ get(nodeKey: NodeIdentifier): Promise<NodeIdentifier[] | undefined> }} inputs
  * @property {{ get(nodeKey: NodeIdentifier): Promise<NodeIdentifier[] | undefined> }} valid
  * @property {{ get(nodeKey: NodeIdentifier): Promise<number | undefined> }} counters
  * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').TimestampRecord | undefined> }} timestamps
@@ -349,17 +347,15 @@ class MigrationStorageClass {
     }
 
     /**
-     * Get the inputs of a node from the previous-version graph.
+     * Get the dependency keys of a node from the previous-version graph.
      * @param {NodeIdentifier} nodeKey
      * @returns {Promise<readonly NodeIdentifier[]>}
      */
-    async getInputs(nodeKey) {
+    async getDependencyKeys(nodeKey) {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        const record = await this.prevStorage.inputs.get(nodeKey);
-        if (!record) throw makeMissingDependencyMetadataError(nodeKey);
-        return record;
+        return [];
     }
 
     /**
@@ -454,8 +450,8 @@ class MigrationStorageClass {
         /** @type {Map<string, Set<NodeIdentifier>>} */
         const map = new Map();
         for (const nodeKey of this.materializedNodes) {
-            const record = await this.prevStorage.inputs.get(nodeKey);
-            if (!record) throw makeMissingDependencyMetadataError(nodeKey);
+            /** @type {NodeIdentifier[]} */
+            const record = [];
             for (const input of record) {
                 const inputStr = nodeIdentifierToString(input);
                 const deps = map.get(inputStr) ?? new Set();
@@ -496,8 +492,8 @@ class MigrationStorageClass {
             for (const dep of dependents) {
                 if (!this.materializedNodes.has(dep)) continue;
                 if (this.decisions.get(dep)?.kind === "delete") continue;
-                const depRecord = await this.prevStorage.inputs.get(dep);
-                if (!depRecord) throw makeMissingDependencyMetadataError(dep);
+                /** @type {NodeIdentifier[]} */
+                const depRecord = [];
                 const allDeleted = depRecord.every(
                     (inp) => this.decisions.get(inp)?.kind === "delete"
                 );
@@ -520,8 +516,8 @@ class MigrationStorageClass {
             for (const dep of dependents) {
                 if (!this.materializedNodes.has(dep)) continue;
                 if (this.decisions.get(dep)?.kind === "delete") continue;
-                const depRecord = await this.prevStorage.inputs.get(dep);
-                if (!depRecord) throw makeMissingDependencyMetadataError(dep);
+                /** @type {NodeIdentifier[]} */
+                const depRecord = [];
                 throw makePartialDeleteFanInError(dep, depRecord);
             }
         }

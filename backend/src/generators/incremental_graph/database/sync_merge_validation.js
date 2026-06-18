@@ -28,7 +28,7 @@ function isFinalMergeStateError(object) {
 
 /**
  * Validate the identifier-keyed final state before making the replica active.
- * The inputs sublevel is the materialized-node registry.
+ * Materialized nodes are identified by values.keys().
  * @param {SchemaStorage} targetStorage
  * @param {IdentifierLookup} finalLookup
  * @returns {Promise<void>}
@@ -36,79 +36,35 @@ function isFinalMergeStateError(object) {
 async function assertValidFinalMergeState(targetStorage, finalLookup) {
     const knownIdentifiers = new Set(finalLookup.idToKey.keys());
     const materializedIdentifiers = new Set();
-    for await (const identifier of targetStorage.inputs.keys()) {
+    for await (const identifier of targetStorage.values.keys()) {
         const identifierString = nodeIdentifierToString(identifier);
         materializedIdentifiers.add(identifierString);
         if (!knownIdentifiers.has(identifierString)) {
             throw new FinalMergeStateError(`stored node ${identifierString} has no lookup entry`);
         }
-        const inputs = await targetStorage.inputs.get(identifier);
-        const inputIds = Array.isArray(inputs) ? inputs : [];
-        for (const input of inputIds) {
-            if (!knownIdentifiers.has(nodeIdentifierToString(input))) {
-                throw new FinalMergeStateError(
-                    `node ${identifierString} references unknown input ${nodeIdentifierToString(input)}`
-                );
-            }
-        }
     }
     for (const identifierString of knownIdentifiers) {
         if (!materializedIdentifiers.has(identifierString)) {
-            throw new FinalMergeStateError(
-                `lookup identifier ${identifierString} has no materialized node`
-            );
+            throw new FinalMergeStateError(`lookup identifier ${identifierString} has no materialized node`);
         }
     }
-    for (const sublevel of [
-        targetStorage.values,
-        targetStorage.freshness,
-        targetStorage.counters,
-        targetStorage.timestamps,
-    ]) {
+    for (const sublevel of [targetStorage.values, targetStorage.freshness, targetStorage.counters, targetStorage.timestamps]) {
         for await (const identifier of sublevel.keys()) {
             if (!knownIdentifiers.has(nodeIdentifierToString(identifier))) {
-                throw new FinalMergeStateError(
-                    `discarded identifier ${nodeIdentifierToString(identifier)} remains in storage`
-                );
+                throw new FinalMergeStateError(`discarded identifier ${nodeIdentifierToString(identifier)} remains in storage`);
             }
         }
     }
     for await (const identifier of targetStorage.valid.keys()) {
         const identifierString = nodeIdentifierToString(identifier);
         if (!knownIdentifiers.has(identifierString)) {
-            throw new FinalMergeStateError(
-                `valid references discarded identifier ${identifierString}`
-            );
+            throw new FinalMergeStateError(`valid references discarded identifier ${identifierString}`);
         }
         const validDependents = await targetStorage.valid.get(identifier) ?? [];
         for (const dependent of validDependents) {
             const dependentString = nodeIdentifierToString(dependent);
-            if (!knownIdentifiers.has(dependentString)) {
-                throw new FinalMergeStateError(
-                    `valid[${identifierString}] references unknown identifier ${dependentString}`
-                );
-            }
-            const dependentStored = await targetStorage.inputs.get(dependent);
-            const dependentInputs = Array.isArray(dependentStored) ? dependentStored : [];
-            if (!dependentInputs.some(input => nodeIdentifierToString(input) === identifierString)) {
-                throw new FinalMergeStateError(
-                    `valid[${identifierString}] is incompatible with inputs[${dependentString}]`
-                );
-            }
-        }
-    }
-    for await (const identifier of targetStorage.inputs.keys()) {
-        if (await targetStorage.freshness.get(identifier) !== 'up-to-date') {
-            continue;
-        }
-        const identifierString = nodeIdentifierToString(identifier);
-        const storedInputs = await targetStorage.inputs.get(identifier);
-        for (const input of Array.isArray(storedInputs) ? storedInputs : []) {
-            const validDependents = await targetStorage.valid.get(input) ?? [];
-            if (!validDependents.some(dependent => nodeIdentifierToString(dependent) === identifierString)) {
-                throw new FinalMergeStateError(
-                    `up-to-date node ${identifierString} lacks validity for input ${nodeIdentifierToString(input)}`
-                );
+            if (!knownIdentifiers.has(dependentString) || !materializedIdentifiers.has(dependentString)) {
+                throw new FinalMergeStateError(`valid[${identifierString}] references unknown identifier ${dependentString}`);
             }
         }
     }
@@ -125,7 +81,7 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
  * @returns {Promise<void>}
  */
 async function assertLookupCoversMaterializedNodes(storage, lookup, context) {
-    for await (const id of storage.inputs.keys()) {
+    for await (const id of storage.values.keys()) {
         if (!lookup.idToKey.has(nodeIdentifierToString(id))) {
             throw new IdentifierLookupConflictError(
                 `${context}: materialized node ${nodeIdentifierToString(id)} has no identifiers_keys_map entry`

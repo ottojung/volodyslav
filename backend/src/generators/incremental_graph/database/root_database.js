@@ -14,6 +14,7 @@ const {
     versionToString,
 } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
+const { GRAPH_SCHEME_KEY } = require('./graph_scheme');
 const {
     IDENTIFIERS_KEY,
     cloneIdentifierLookup,
@@ -184,7 +185,6 @@ function assertNeverReplicaName(name) {
  * @typedef {object} SchemaStorage
  * @property {ValuesDatabase} values - Node output values
  * @property {FreshnessDatabase} freshness - Node freshness state
- * @property {InputsDatabase} inputs - Node inputs index
  * @property {ValidDatabase} valid - Inverse validity flags (dependency -> dependents validated against it)
  * @property {CountersDatabase} counters - Node counters (monotonic integers)
  * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
@@ -238,8 +238,6 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
-    const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Counter, NodeIdentifier>} */
     const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
@@ -277,7 +275,6 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
         batch,
         values: makeTypedDatabase(valuesSublevel),
         freshness: makeTypedDatabase(freshnessSublevel),
-        inputs: makeTypedDatabase(inputsSublevel),
         valid: makeTypedDatabase(validSublevel),
         counters: makeTypedDatabase(countersSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
@@ -1183,7 +1180,7 @@ function isRootDatabase(object) {
 
 /** @typedef {RootDatabaseClass} RootDatabase */
 
-module.exports = {
+module.exports = { GRAPH_SCHEME_KEY,
     makeRootDatabase,
     isRootDatabase,
     isInvalidReplicaPointerError,

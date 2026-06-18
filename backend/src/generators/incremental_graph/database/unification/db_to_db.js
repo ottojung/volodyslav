@@ -2,7 +2,7 @@
  * DB-to-DB unification adapter.
  *
  * Unifies one SchemaStorage into another by iterating all data sublevels
- * (counters, freshness, global, inputs, timestamps, valid, values) as a unified
+ * (counters, freshness, global, timestamps, valid, values) as a unified
  * key space.  Only puts keys whose serialised value differs; deletes keys
  * absent from the source.
  *
@@ -65,7 +65,6 @@ function convertUnknownToStoredValue(value) {
  * @property {ReadableNodeSublevel} values
  * @property {ReadableNodeSublevel} freshness
  * @property {ReadableGlobalSublevel} global
- * @property {ReadableNodeSublevel} inputs
  * @property {ReadableNodeSublevel} valid
  * @property {ReadableNodeSublevel} counters
  * @property {ReadableNodeSublevel} timestamps
@@ -82,7 +81,6 @@ const DATA_SUBLEVELS = Object.freeze([
     'counters',
     'freshness',
     'global',
-    'inputs',
     'timestamps',
     'valid',
     'values',
@@ -125,14 +123,13 @@ function parseCompositeKey(compositeKey) {
  *
  * @param {ReadableSchemaStorage} source
  * @param {string} sublevel
- * @returns {ReadableSchemaStorage['values'] | ReadableSchemaStorage['freshness'] | ReadableSchemaStorage['global'] | ReadableSchemaStorage['inputs'] | ReadableSchemaStorage['valid'] | ReadableSchemaStorage['counters'] | ReadableSchemaStorage['timestamps']}
+ * @returns {ReadableSchemaStorage['values'] | ReadableSchemaStorage['freshness'] | ReadableSchemaStorage['global'] | ReadableSchemaStorage['valid'] | ReadableSchemaStorage['counters'] | ReadableSchemaStorage['timestamps']}
  */
 function getSourceSubDb(source, sublevel) {
     switch (sublevel) {
         case 'values': return source.values;
         case 'freshness': return source.freshness;
         case 'global': return source.global;
-        case 'inputs': return source.inputs;
         case 'valid': return source.valid;
         case 'counters': return source.counters;
         case 'timestamps': return source.timestamps;
@@ -198,7 +195,6 @@ function makeDbToDbAdapter(source, target, options = {}) {
             switch (sublevel) {
                 case 'values': return await source.values.get(stringToNodeIdentifier(nodeKey));
                 case 'freshness': return await source.freshness.get(stringToNodeIdentifier(nodeKey));
-                case 'inputs': return await source.inputs.get(stringToNodeIdentifier(nodeKey));
                 case 'valid': return await source.valid.get(stringToNodeIdentifier(nodeKey));
                 case 'counters': return await source.counters.get(stringToNodeIdentifier(nodeKey));
                 case 'timestamps': return await source.timestamps.get(stringToNodeIdentifier(nodeKey));
@@ -212,7 +208,6 @@ function makeDbToDbAdapter(source, target, options = {}) {
             switch (sublevel) {
                 case 'values': return await target.values.get(stringToNodeIdentifier(nodeKey));
                 case 'freshness': return await target.freshness.get(stringToNodeIdentifier(nodeKey));
-                case 'inputs': return await target.inputs.get(stringToNodeIdentifier(nodeKey));
                 case 'valid': return await target.valid.get(stringToNodeIdentifier(nodeKey));
                 case 'counters': return await target.counters.get(stringToNodeIdentifier(nodeKey));
                 case 'timestamps': return await target.timestamps.get(stringToNodeIdentifier(nodeKey));
@@ -233,7 +228,6 @@ function makeDbToDbAdapter(source, target, options = {}) {
             switch (sublevel) {
                 case 'values': await target.values.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
                 case 'freshness': await target.freshness.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
-                case 'inputs': await target.inputs.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
                 case 'valid': await target.valid.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
                 case 'counters': await target.counters.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
                 case 'timestamps': await target.timestamps.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
@@ -250,7 +244,6 @@ function makeDbToDbAdapter(source, target, options = {}) {
             switch (sublevel) {
                 case 'values': await target.values.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
                 case 'freshness': await target.freshness.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
-                case 'inputs': await target.inputs.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
                 case 'valid': await target.valid.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
                 case 'counters': await target.counters.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
                 case 'timestamps': await target.timestamps.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
@@ -296,7 +289,7 @@ function makeDbToDbAdapter(source, target, options = {}) {
  * checking in batch() — it is intended purely as a temporary capture store for
  * tests or intermediate computation, not as a durable replica.
  *
- * @returns {{ values: object, freshness: object, global: object, inputs: object, valid: object, counters: object, timestamps: object, batch: function, _stores: object }}
+ * @returns {{ values: object, freshness: object, global: object, valid: object, counters: object, timestamps: object, batch: function, _stores: object }}
  */
 function makeInMemorySchemaStorage() {
     /** @type {Map<string, unknown>} */
@@ -306,7 +299,6 @@ function makeInMemorySchemaStorage() {
     /** @type {Map<string, unknown>} */
     const globalStore = new Map();
     /** @type {Map<string, unknown>} */
-    const inputsStore = new Map();
     /** @type {Map<string, unknown>} */
     /** @type {Map<string, unknown>} */
     const validStore = new Map();
@@ -372,7 +364,6 @@ function makeInMemorySchemaStorage() {
             case 'values': return valuesStore;
             case 'freshness': return freshnessStore;
             case 'global': return globalStore;
-            case 'inputs': return inputsStore;
             case 'valid': return validStore;
             case 'counters': return countersStore;
             case 'timestamps': return timestampsStore;
@@ -401,7 +392,6 @@ function makeInMemorySchemaStorage() {
         values: makeSubstorage(valuesStore, 'values'),
         freshness: makeSubstorage(freshnessStore, 'freshness'),
         global: makeSubstorage(globalStore, 'global'),
-        inputs: makeSubstorage(inputsStore, 'inputs'),
         valid: makeSubstorage(validStore, 'valid'),
         counters: makeSubstorage(countersStore, 'counters'),
         timestamps: makeSubstorage(timestampsStore, 'timestamps'),
@@ -410,7 +400,6 @@ function makeInMemorySchemaStorage() {
             values: valuesStore,
             freshness: freshnessStore,
             global: globalStore,
-            inputs: inputsStore,
             valid: validStore,
             counters: countersStore,
             timestamps: timestampsStore,

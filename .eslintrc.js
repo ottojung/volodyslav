@@ -117,6 +117,13 @@ module.exports = {
                 __BASE_PATH__: "readonly",
             },
         },
+
+        {
+            files: ["backend/src/generators/incremental_graph/database/graph_scheme.js"],
+            rules: {
+                "@typescript-eslint/ban-ts-comment": "off",
+            },
+        },
         {
             // Test files are excluded from the max-lines-per-file rule because they
             // often need many test cases in a single file.

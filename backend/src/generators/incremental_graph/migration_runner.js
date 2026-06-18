@@ -89,7 +89,7 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
 async function loadMaterializedNodes(storage) {
     /** @type {NodeIdentifier[]} */
     const nodes = [];
-    for await (const key of storage.inputs.keys()) {
+    for await (const key of storage.values.keys()) {
         nodes.push(key);
     }
     return nodes;
@@ -143,9 +143,8 @@ async function buildDesiredValid(prevStorage, decisions) {
             const freshness = await prevStorage.freshness.get(nodeIdentifier);
             if (freshness !== "up-to-date") continue;
         }
-        const storedInputEdges = decision.kind === "create"
-            ? []
-            : await prevStorage.inputs.get(nodeIdentifier);
+        /** @type {NodeIdentifier[]} */
+        const storedInputEdges = [];
         for (const input of Array.isArray(storedInputEdges) ? storedInputEdges : []) {
             const inputDecision = decisions.get(input);
             if (inputDecision?.kind === "delete") continue;
@@ -158,7 +157,8 @@ async function buildDesiredValid(prevStorage, decisions) {
         const freshness = await prevStorage.freshness.get(nodeIdentifier);
         if (freshness !== "potentially-outdated") continue;
 
-        const persistedInputEdges = await prevStorage.inputs.get(nodeIdentifier);
+        /** @type {NodeIdentifier[]} */
+        const persistedInputEdges = [];
         if (persistedInputEdges === undefined) continue;
 
         for (const input of persistedInputEdges) {
@@ -290,26 +290,6 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 if (decision.kind === "create" || decision.kind === "override") return "up-to-date";
                 if (decision.kind === "invalidate") return "potentially-outdated";
                 return await prevStorage.freshness.get(key);
-            },
-        },
-        inputs: {
-            async *keys() {
-                for (const outputKey of sortedDecisionOutputKeys) {
-                    const decision = decisions.get(outputKey);
-                    if (!decision || decision.kind === "delete") continue;
-                    if (decision.kind === "create") {
-                        yield outputKey;
-                    } else {
-                        const ir = await prevStorage.inputs.get(outputKey);
-                        if (ir !== undefined) yield outputKey;
-                    }
-                }
-            },
-            async get(key) {
-                const decision = decisions.get(key);
-                if (!decision || decision.kind === "delete") return undefined;
-                if (decision.kind === "create") return [];
-                return await prevStorage.inputs.get(key);
             },
         },
         valid: {
