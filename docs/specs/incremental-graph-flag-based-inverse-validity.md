@@ -143,7 +143,7 @@ pull(N):
 
 1. If freshness[N] is "up-to-date":
        Derive current inputEdges from schema.
-       Verify persisted inputs[N] matches current inputEdges.
+        Verify derived inputEdges from graph_scheme are consistent.
        For every D in inputEdges: verify valid[D].has(N).
        Return values[N].
 

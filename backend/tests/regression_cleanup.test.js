@@ -23,7 +23,7 @@ function grepCount(pattern, paths) {
 }
 
 describe('regression: banned terminology', () => {
-    const SEARCH_PATHS = ['backend', 'docs', 'scripts'];
+    const SEARCH_PATHS = ['backend/src', 'backend/tests', 'docs', 'scripts'];
 
     const BANNED_PATTERNS = [
         'readInputRecord',
@@ -33,6 +33,7 @@ describe('regression: banned terminology', () => {
         'inputCounters',
         'inputs record',
         'input record',
+        'ensureMaterialized',
     ];
 
     for (const pattern of BANNED_PATTERNS) {
@@ -44,6 +45,27 @@ describe('regression: banned terminology', () => {
 
     test('old object-shaped "{ inputs:" must not appear in stored inputs', () => {
         const count = grepCount('\\{ *inputs *:', SEARCH_PATHS);
+        expect(count).toBe(0);
+    });
+
+    test('durable inputs sublevel access patterns must not appear in backend/src', () => {
+        for (const pattern of ['storage\\.inputs', 'batch\\.inputs', 'getInputs']) {
+            const count = grepCount(pattern, ['backend/src']);
+            expect(count).toBe(0);
+        }
+    });
+
+    test('graph_scheme constant-style template arg must not appear', () => {
+        // Only match { kind: "const" ... } or {kind:'const'...} patterns
+        const precise = execSync(
+            'grep -rn ' + EXCLUDE_GLOB + " 'kind.*\"const\"\\|kind.*\\x27const\\x27' backend/src backend/tests docs 2>/dev/null | grep -v fixtures | grep -v rendered | wc -l",
+            { encoding: 'utf-8', cwd: ROOT }
+        );
+        expect(parseInt(precise.trim(), 10)).toBe(0);
+    });
+
+    test('fake makeDatabase("inputs") must not appear in test helpers', () => {
+        const count = grepCount('makeDatabase.*inputs', ['backend/tests']);
         expect(count).toBe(0);
     });
 });
