@@ -6,7 +6,7 @@
  * freshness, while preserving compatible validity entries for kept nodes.
  */
 
-const { readInputRecord } = require('./input_record');
+
 const { compareNodeIdentifier } = require('./node_identifier');
 const { nodeIdentifierToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
@@ -162,7 +162,8 @@ async function preserveAndRebuildValidity(
         if (freshness !== "up-to-date") {
             continue;
         }
-        const inputs = readInputRecord(await targetStorage.inputs.get(nodeIdentifier));
+        const persistedInputs = await targetStorage.inputs.get(nodeIdentifier);
+        const inputs = Array.isArray(persistedInputs) ? persistedInputs : [];
         const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
         for (const depId of inputs) {
             const depIdStr = nodeIdentifierToString(depId);

@@ -1,5 +1,5 @@
 const { IdentifierLookupConflictError } = require('./replica_errors');
-const { readInputRecord } = require('./input_record');
+
 const { nodeIdentifierToString } = require('./types');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
@@ -43,7 +43,7 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
             throw new FinalMergeStateError(`stored node ${identifierString} has no lookup entry`);
         }
         const inputs = await targetStorage.inputs.get(identifier);
-        const inputIds = readInputRecord(inputs);
+        const inputIds = Array.isArray(inputs) ? inputs : [];
         for (const input of inputIds) {
             if (!knownIdentifiers.has(nodeIdentifierToString(input))) {
                 throw new FinalMergeStateError(
@@ -88,7 +88,8 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
                     `valid[${identifierString}] references unknown identifier ${dependentString}`
                 );
             }
-            const dependentInputs = readInputRecord(await targetStorage.inputs.get(dependent));
+            const dependentStored = await targetStorage.inputs.get(dependent);
+            const dependentInputs = Array.isArray(dependentStored) ? dependentStored : [];
             if (!dependentInputs.some(input => nodeIdentifierToString(input) === identifierString)) {
                 throw new FinalMergeStateError(
                     `valid[${identifierString}] is incompatible with inputs[${dependentString}]`
@@ -101,7 +102,8 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
             continue;
         }
         const identifierString = nodeIdentifierToString(identifier);
-        for (const input of readInputRecord(await targetStorage.inputs.get(identifier))) {
+        const storedInputs = await targetStorage.inputs.get(identifier);
+        for (const input of Array.isArray(storedInputs) ? storedInputs : []) {
             const validDependents = await targetStorage.valid.get(input) ?? [];
             if (!validDependents.some(dependent => nodeIdentifierToString(dependent) === identifierString)) {
                 throw new FinalMergeStateError(

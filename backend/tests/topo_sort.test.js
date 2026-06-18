@@ -58,7 +58,7 @@ const NODE_M = makeTestId(12); // 'mmmmmmmmm'
 const NODE_Z = makeTestId(25); // 'z-abcdefghi'
 
 /**
- * Write an inputs record for `node` whose dependencies are `inputs`.
+ * Write stored inputs for `node` whose dependencies are `inputKeys`.
  *
  * @param {object} storage - SchemaStorage instance.
  * @param {string} nodeKey

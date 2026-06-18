@@ -4,7 +4,6 @@
  */
 
 const { deserializeNodeKey, stringToNodeKeyString, IDENTIFIERS_KEY, makeNodeIdentifier, nodeIdentifierToString } = require("./database");
-const { readInputRecord } = require("./database");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,
@@ -92,21 +91,6 @@ async function checkSchemaCompatibility(nodeKey, newHeadIndex, identifiersKeysIn
     const compiled = newHeadIndex.get(head);
     if (!compiled) throw makeSchemaCompatibilityError(nodeKey, `head '${head}' does not exist in the new schema`);
     if (compiled.arity !== arity) throw makeSchemaCompatibilityError(nodeKey, `arity mismatch: node has ${arity} argument(s) but new schema expects ${compiled.arity}`);
-}
-
-/**
- * Reads the inputs list for a node from the previous storage.
- * Throws MissingDependencyMetadataError if the record is absent or corrupted.
- * @param {NodeIdentifier} nodeKey
- * @param {ReadableMigrationStorage} prevStorage
- * @returns {Promise<NodeIdentifier[]>}
- */
-async function readInputsRecord(nodeKey, prevStorage) {
-    const record = await prevStorage.inputs.get(nodeKey);
-    if (!record) {
-        throw makeMissingDependencyMetadataError(nodeKey);
-    }
-    return readInputRecord(record);
 }
 
 /**
@@ -373,7 +357,9 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        return readInputsRecord(nodeKey, this.prevStorage);
+        const record = await this.prevStorage.inputs.get(nodeKey);
+        if (!record) throw makeMissingDependencyMetadataError(nodeKey);
+        return record;
     }
 
     /**
@@ -468,8 +454,9 @@ class MigrationStorageClass {
         /** @type {Map<string, Set<NodeIdentifier>>} */
         const map = new Map();
         for (const nodeKey of this.materializedNodes) {
-            const inputs = await readInputsRecord(nodeKey, this.prevStorage);
-            for (const input of inputs) {
+            const record = await this.prevStorage.inputs.get(nodeKey);
+            if (!record) throw makeMissingDependencyMetadataError(nodeKey);
+            for (const input of record) {
                 const inputStr = nodeIdentifierToString(input);
                 const deps = map.get(inputStr) ?? new Set();
                 deps.add(nodeKey);
@@ -509,8 +496,9 @@ class MigrationStorageClass {
             for (const dep of dependents) {
                 if (!this.materializedNodes.has(dep)) continue;
                 if (this.decisions.get(dep)?.kind === "delete") continue;
-                const inputs = await readInputsRecord(dep, this.prevStorage);
-                const allDeleted = inputs.every(
+                const depRecord = await this.prevStorage.inputs.get(dep);
+                if (!depRecord) throw makeMissingDependencyMetadataError(dep);
+                const allDeleted = depRecord.every(
                     (inp) => this.decisions.get(inp)?.kind === "delete"
                 );
                 if (!allDeleted) continue;
@@ -532,8 +520,9 @@ class MigrationStorageClass {
             for (const dep of dependents) {
                 if (!this.materializedNodes.has(dep)) continue;
                 if (this.decisions.get(dep)?.kind === "delete") continue;
-                const inputs = await readInputsRecord(dep, this.prevStorage);
-                throw makePartialDeleteFanInError(dep, inputs);
+                const depRecord = await this.prevStorage.inputs.get(dep);
+                if (!depRecord) throw makeMissingDependencyMetadataError(dep);
+                throw makePartialDeleteFanInError(dep, depRecord);
             }
         }
     }

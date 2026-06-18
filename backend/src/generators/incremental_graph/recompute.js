@@ -35,7 +35,7 @@ const {
     nodeIdentifierToString,
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
-const { readInputRecord, normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require("./database");
+const { normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require("./database");
 
 /**
  * Read the current valid set for a dependency from the mutation-aware batch.
@@ -148,11 +148,17 @@ async function handleUnchanged(incrementalGraph, nodeIdentifier, inputEdges, bat
  * @returns {Promise<void>}
  */
 async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, batch) {
-    const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
-    const oldEdges = readInputRecord(oldInputsRecord);
+    const oldStored = await batch.inputs.get(nodeIdentifier);
+    if (oldStored !== undefined && !Array.isArray(oldStored)) {
+        throw new Error(
+            `Malformed stored inputs for node ${nodeIdentifierToString(nodeIdentifier)}: ` +
+            `expected NodeIdentifier[], got ${typeof oldStored}`
+        );
+    }
+    const previousEdges = oldStored === undefined ? [] : oldStored;
     /** @type {Set<string>} */
     const seen = new Set();
-    for (const edge of [...inputEdges, ...oldEdges]) {
+    for (const edge of [...inputEdges, ...previousEdges]) {
         const str = nodeIdentifierToString(edge);
         if (!seen.has(str)) {
             seen.add(str);
@@ -248,19 +254,19 @@ async function internalMaybeRecalculate(
             const persistedInputs = await batch.inputs.get(nodeIdentifier);
             if (persistedInputs === undefined) {
                 throw new Error(
-                    `Missing inputs record for node ${String(nodeDefinition.outputKey)}: ` +
-                    `a materialized node must have an inputs record`
+                    `Missing stored inputs for node ${String(nodeDefinition.outputKey)}: ` +
+                    `a materialized node must have stored inputs`
                 );
             }
             if (!Array.isArray(persistedInputs)) {
                 throw new Error(
-                    `Malformed inputs record for node ${String(nodeDefinition.outputKey)}: ` +
+                    `Malformed stored inputs for node ${String(nodeDefinition.outputKey)}: ` +
                     `expected NodeIdentifier[], got ${typeof persistedInputs}`
                 );
             }
             if (!arraysOfNodeIdentifiersEqual(persistedInputs, inputEdges)) {
                 throw new Error(
-                    `Corrupted inputs record for node ${String(nodeDefinition.outputKey)}: ` +
+                    `Corrupted stored inputs for node ${String(nodeDefinition.outputKey)}: ` +
                     `persisted inputs differ from schema-derived inputEdges`
                 );
             }

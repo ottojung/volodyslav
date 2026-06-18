@@ -396,8 +396,7 @@ pull(nodeName, bindings):
   return r
 ```
 
-**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits many essential details. The concrete implementation uses the flag-based inverse validity algorithm (see
-the validity relation for cache validation, `Unchanged` propagation,
+**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits many essential details. The concrete implementation uses the [flag-based inverse validity algorithm](incremental-graph-flag-based-inverse-validity.md) for cache validation, `Unchanged` propagation,
 and incremental recomputation.
 
 **REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.

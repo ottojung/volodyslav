@@ -383,7 +383,7 @@ describe("generators/incremental_graph counters", () => {
 
             // Corrupted inputs are detected and cause a loud failure
             await expect(graph.pull("derived")).rejects.toThrow(
-                /corrupted inputs record/i
+                /corrupted stored inputs/i
             );
 
             await db.close();
@@ -439,7 +439,7 @@ describe("generators/incremental_graph counters", () => {
 
             // Corrupted inputs are detected and cause a loud failure
             await expect(graph.pull("derived")).rejects.toThrow(
-                /corrupted inputs record/i
+                /corrupted stored inputs/i
             );
 
             await db.close();

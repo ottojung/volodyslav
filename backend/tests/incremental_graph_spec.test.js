@@ -1531,15 +1531,15 @@ describe("Inspection interface", () => {
         const list2 = await g.listMaterializedNodes();
         expect(list2).toContainEqual(["source", []]);
 
-        // Also verify that the node is properly indexed (has an inputs record)
+        // Also verify that the node is properly indexed (has stored inputs)
         // This is important for restart resilience
         const storage = makeSemanticStorage(g);
-        let inputsRecord;
+        let storedInputEdges;
         await storage.withBatch(async (batch) => {
-            inputsRecord = await storage.getInputs(toJsonKey("source"), batch);
+            storedInputEdges = await storage.getInputs(toJsonKey("source"), batch);
         });
-        expect(inputsRecord).not.toBeNull();
-        expect(inputsRecord).toEqual([]);
+        expect(storedInputEdges).not.toBeNull();
+        expect(storedInputEdges).toEqual([]);
     });
 
     test("pull() on leaf node (inputs=[]) must include it in listMaterializedNodes", async () => {
@@ -1565,15 +1565,15 @@ describe("Inspection interface", () => {
         const list1 = await g.listMaterializedNodes();
         expect(list1).toContainEqual(["leaf", []]);
 
-        // Also verify that the node is properly indexed (has an inputs record)
+        // Also verify that the node is properly indexed (has stored inputs)
         // This is important for restart resilience
         const storage = makeSemanticStorage(g);
-        let inputsRecord;
+        let storedInputEdges;
         await storage.withBatch(async (batch) => {
-            inputsRecord = await storage.getInputs(toJsonKey("leaf"), batch);
+            storedInputEdges = await storage.getInputs(toJsonKey("leaf"), batch);
         });
-        expect(inputsRecord).not.toBeNull();
-        expect(inputsRecord).toEqual([]);
+        expect(storedInputEdges).not.toBeNull();
+        expect(storedInputEdges).toEqual([]);
     });
 });
 

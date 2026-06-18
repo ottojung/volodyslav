@@ -23,7 +23,6 @@ const {
 } = require("./database");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
-const { readInputRecord } = require("./database");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
 
@@ -144,10 +143,10 @@ async function buildDesiredValid(prevStorage, decisions) {
             const freshness = await prevStorage.freshness.get(nodeIdentifier);
             if (freshness !== "up-to-date") continue;
         }
-        const inputsRecord = decision.kind === "create"
+        const storedInputEdges = decision.kind === "create"
             ? []
             : await prevStorage.inputs.get(nodeIdentifier);
-        for (const input of readInputRecord(inputsRecord)) {
+        for (const input of Array.isArray(storedInputEdges) ? storedInputEdges : []) {
             const inputDecision = decisions.get(input);
             if (inputDecision?.kind === "delete") continue;
             addToValidSet(validSets, input, nodeIdentifier);
@@ -159,10 +158,10 @@ async function buildDesiredValid(prevStorage, decisions) {
         const freshness = await prevStorage.freshness.get(nodeIdentifier);
         if (freshness !== "potentially-outdated") continue;
 
-        const inputsRecord = await prevStorage.inputs.get(nodeIdentifier);
-        if (inputsRecord === undefined) continue;
+        const persistedInputEdges = await prevStorage.inputs.get(nodeIdentifier);
+        if (persistedInputEdges === undefined) continue;
 
-        for (const input of readInputRecord(inputsRecord)) {
+        for (const input of persistedInputEdges) {
             const inputDecision = decisions.get(input);
             if (!inputDecision || inputDecision.kind === "delete") continue;
             if (inputDecision.kind !== "keep") continue;

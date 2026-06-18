@@ -9,7 +9,7 @@
  *
  * In normal pull/commit operation every identifier that enters the map does
  * so atomically with an `ensureMaterialized` call that writes the corresponding
- * inputs record (both happen inside `withTransaction`). Conversely, every
+ * stored inputs (both happen inside `withTransaction`). Conversely, every
  * materialized node must have a map entry—otherwise there is no way to
  * recover its semantic key from the identifier stored in the inputs sublevel.
  *

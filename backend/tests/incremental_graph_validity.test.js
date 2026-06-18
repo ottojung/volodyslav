@@ -753,9 +753,9 @@ describe("Incremental graph validity", () => {
             // Structural inputs should have only 1 entry (collapsed)
             const dupKey = makeNodeStorageKey("dup_user", binding);
             const dupId = db.nodeKeyToId(dupKey);
-            const inputsRecord = db._readSublevel('inputs', dupId);
-            expect(Array.isArray(inputsRecord)).toBe(true);
-            expect(inputsRecord.length).toBe(1); // collapsed, not 2
+            const storedInputEdges = db._readSublevel('inputs', dupId);
+            expect(Array.isArray(storedInputEdges)).toBe(true);
+            expect(storedInputEdges.length).toBe(1); // collapsed, not 2
         });
     });
 
@@ -863,7 +863,7 @@ describe("Incremental graph validity", () => {
     });
 
     // === Inputs without counters ===
-    describe("inputs record shape", () => {
+    describe("stored inputs shape", () => {
         it("stores inputs as a plain array of identifiers", async () => {
             const { nodeDefs } = createChainGraph(
                 () => ({ v: "src" }),
@@ -880,9 +880,9 @@ describe("Incremental graph validity", () => {
             const midKey = makeNodeStorageKey("middle", binding);
             const midId = db.nodeKeyToId(midKey);
 
-            const inputsRecord = db._readSublevel('inputs', midId);
-            expect(inputsRecord).toBeTruthy();
-            expect(Array.isArray(inputsRecord)).toBe(true);
+            const storedInputEdges = db._readSublevel('inputs', midId);
+            expect(storedInputEdges).toBeTruthy();
+            expect(Array.isArray(storedInputEdges)).toBe(true);
         });
     });
 
@@ -1028,7 +1028,7 @@ describe("Incremental graph validity", () => {
             // still exists, so the cache predicate fires. It detects that persisted
             // inputs differ from schema-derived inputEdges and throws.
             await expect(graph.pull("middle", binding)).rejects.toThrow(
-                /corrupted inputs record/i
+                /corrupted stored inputs/i
             );
         });
     });
@@ -1089,7 +1089,7 @@ describe("Incremental graph validity", () => {
             // Pull user again — the fast path detects corrupted inputs
             // (persisted inputs differ from schema-derived inputEdges) and throws.
             await expect(graph.pull("user", binding)).rejects.toThrow(
-                /corrupted inputs record/i
+                /corrupted stored inputs/i
             );
         });
     });
@@ -1153,14 +1153,14 @@ describe("Incremental graph validity", () => {
             await schemaStorage.inputs.put(bId, ["corrupted-identifier"]);
 
             await expect(graph.pull("B")).rejects.toThrow(
-                /corrupted inputs record/i
+                /corrupted stored inputs/i
             );
         });
     });
 
-    // === Test: Cache hit with missing inputs fails loudly ===
-    describe("cache hit with missing inputs record", () => {
-        it("throws when valid flags exist but persisted inputs record is missing", async () => {
+    // === Test: Cache hit with missing stored inputs ===
+    describe("cache hit with missing stored inputs", () => {
+        it("throws when valid flags exist but stored inputs are missing", async () => {
             const { nodeDefs } = createChainGraph(
                 () => ({ v: "src" }),
                 () => ({ v: "mid" }),
@@ -1183,11 +1183,11 @@ describe("Incremental graph validity", () => {
             const validSrc = db._readSublevel('valid', srcId);
             expect(validSrc.some(id => id === nodeIdentifierToString(midId))).toBe(true);
 
-            // Delete the inputs record for middle
+            // Delete the stored inputs for middle
             const schemaStorage = db.getSchemaStorage();
             await schemaStorage.inputs.del(midId);
 
-            // Verify inputs record is gone
+            // Verify stored inputs are gone
             expect(db._readSublevel('inputs', midId)).toBeUndefined();
 
             // Set freshness to potentially-outdated directly.
@@ -1196,19 +1196,19 @@ describe("Incremental graph validity", () => {
             await schemaStorage.freshness.put(midId, "potentially-outdated");
 
             // Pull middle — cache predicate fires (valid[source].has(middle) exists),
-            // but inputs record is missing → must throw
+            // but stored inputs are missing → must throw
             await expect(graph.pull("middle", binding)).rejects.toThrow(
-                /missing inputs record/i
+                /missing stored inputs/i
             );
         });
     });
 
     // === Test: Malformed inputs fail loudly ===
-    describe("malformed inputs records", () => {
+    describe("malformed stored inputs", () => {
         /**
-         * Helper: materialize dependent, then corrupt its inputs record.
+         * Helper: materialize dependent, then corrupt its stored inputs.
          * After invalidation, pulling dependent should throw because
-         * readInputRecord rejects the malformed value.
+         * the malformed value is rejected.
          */
         async function setupAndCorruptInputs(db, corruptedInputs) {
             const nodeDefs = [
@@ -1240,24 +1240,24 @@ describe("Incremental graph validity", () => {
             const depId = db.nodeKeyToId(depKey);
             expect(depId).toBeTruthy();
 
-            // Corrupt the inputs record for the committed identifier
+            // Corrupt the stored inputs for the committed identifier
             await schemaStorage.inputs.put(depId, corruptedInputs);
 
             await graph.invalidate("source");
             return { binding };
         }
 
-        it("throws when inputs record is an object (non-array shape)", async () => {
+        it("throws when stored inputs is an object (non-array shape)", async () => {
             const { binding } = await setupAndCorruptInputs(db, {});
             await expect(graph.pull("dependent", binding)).rejects.toThrow(
-                /malformed inputs record/i
+                /malformed stored inputs/i
             );
         });
 
-        it("throws when inputs record is a number (invalid shape)", async () => {
+        it("throws when stored inputs is a number (invalid shape)", async () => {
             const { binding } = await setupAndCorruptInputs(db, 42);
             await expect(graph.pull("dependent", binding)).rejects.toThrow(
-                /malformed inputs record/i
+                /malformed stored inputs/i
             );
         });
 
@@ -1283,7 +1283,7 @@ describe("Incremental graph validity", () => {
             const srcId = db.nodeKeyToId(srcKey);
             expect(db._readSublevel('valid', srcId).some(id => id === nodeIdentifierToString(midId))).toBe(true);
 
-            // Replace inputs record with a non-array object on middle
+            // Replace stored inputs with a non-array object on middle
             const schemaStorage = db.getSchemaStorage();
             await schemaStorage.inputs.put(midId, {});
 
@@ -1292,7 +1292,7 @@ describe("Incremental graph validity", () => {
 
             // Cache predicate fires (valid flags exist), Array.isArray check rejects the object
             await expect(graph.pull("middle", binding)).rejects.toThrow(
-                /malformed inputs record/i
+                /malformed stored inputs/i
             );
         });
     });

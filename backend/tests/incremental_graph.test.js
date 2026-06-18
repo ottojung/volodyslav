@@ -1056,7 +1056,7 @@ describe("generators/incremental_graph", () => {
             await testDb.put("leafNode", { data: "cached_external_data" });
             await testDb.put(freshnessKey("leafNode"), "up-to-date");
 
-            // A zero-input node must have a persisted empty inputs record for
+            // A zero-input node must have persisted empty inputs for
             // the cache fast-path to authorize the hit.
             const semanticStorage = makeSemanticStorage(graph);
             await semanticStorage.inputs.put("leafNode", []);

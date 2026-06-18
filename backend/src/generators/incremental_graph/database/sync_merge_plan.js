@@ -2,7 +2,7 @@ const { topologicalSortFromMap } = require('./topo_sort');
 const { compareIsoTimestamps } = require('./sync_merge_timestamps');
 const { makeIdentifierLookup } = require('./identifier_lookup');
 const { IdentifierLookupConflictError } = require('./replica_errors');
-const { readInputRecord } = require('./input_record');
+
 const { nodeIdentifierToString } = require('./types');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
@@ -20,7 +20,10 @@ const { nodeIdentifierToString } = require('./types');
 async function semanticInputs(storage, lookup, identifier) {
     const record = await storage.inputs.get(identifier);
     if (record === undefined) return [];
-    const inputIds = readInputRecord(record);
+    if (!Array.isArray(record)) {
+        throw new Error(`Malformed stored inputs for ${nodeIdentifierToString(identifier)}`);
+    }
+    const inputIds = record;
     return inputIds.map(input => {
         const nodeKey = lookup.idToKey.get(nodeIdentifierToString(input));
         if (nodeKey === undefined) {
@@ -186,7 +189,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             return inputId;
         });
         mergedInputsMap.set(finalId, finalInputIds);
-        const sourceInputIds = readInputRecord(sourceInputs);
+        const sourceInputIds = sourceInputs === undefined ? [] : sourceInputs;
         if (
             sourceInputIds.length !== finalInputIds.length
         ) {

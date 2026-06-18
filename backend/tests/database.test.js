@@ -351,11 +351,11 @@ describe('generators/database', () => {
                 const db = await getRootDatabase(capabilities);
                 const storage = db.getSchemaStorage();
                 
-                await storage.inputs.put('node1', { inputs: ['dep1', 'dep2'] });
+                await storage.inputs.put('node1', ['dep1', 'dep2']);
                 
                 const inputs = await storage.inputs.get('node1');
                 
-                expect(inputs).toEqual({ inputs: ['dep1', 'dep2'] });
+                expect(inputs).toEqual(['dep1', 'dep2']);
                 
                 await db.close();
             } finally {

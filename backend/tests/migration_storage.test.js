@@ -118,7 +118,7 @@ async function setupStandardGraph(storage, newHeadIndex, opts = {}) {
         await storage.values.put(D, DUMMY_VALUE);
     }
 
-    // inputs records (inputs stored as plain strings = NodeKeyStrings at runtime)
+    // stored inputs (inputs stored as plain strings = NodeKeyStrings at runtime)
     await storage.inputs.put(A, []);
     await storage.inputs.put(B, [A]);
     await storage.inputs.put(C, []);
@@ -253,7 +253,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            // Write inputs record but no value
+            // Write stored inputs but no value
             await storage.inputs.put(A, []);
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
@@ -568,7 +568,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            // materializedNodes contains A but no inputs record written → corrupt state
+            // materializedNodes contains A but no stored inputs written → corrupt state
             const ms = makeMigrationStorage(storage, headIndex, [A]);
 
             const err = await ms.getInputs(A).catch((e) => e);

@@ -106,7 +106,7 @@ async function readAuthorizedCachedValue(graph, nodeIdentifier, concreteNode) {
     const inputEdges = normalizeInputEdges(inputIdentifiers);
     if (!arraysOfNodeIdentifiersEqual(persistedInputs, inputEdges)) {
         throw new Error(
-            `Corrupted inputs record for node ${String(concreteNode.output)}: ` +
+            `Corrupted stored inputs for node ${String(concreteNode.output)}: ` +
             `persisted inputs differ from schema-derived inputEdges`
         );
     }

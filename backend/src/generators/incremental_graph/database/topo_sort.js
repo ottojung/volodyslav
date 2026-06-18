@@ -12,7 +12,7 @@
  * if the graph contains a cycle (which is treated as data corruption).
  */
 
-const { readInputRecord } = require('./input_record');
+
 
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -294,14 +294,13 @@ async function topologicalSort(storage) {
     const inputsMap = new Map();
     for (const node of allNodes) {
         const record = await storage.inputs.get(node);
-        /** @type {NodeIdentifier[]} */
-        let inputs;
         if (record === undefined) {
-            inputs = [];
+            inputsMap.set(node, []);
+        } else if (!Array.isArray(record)) {
+            throw new Error('Malformed stored inputs for topological sort');
         } else {
-            inputs = readInputRecord(record);
+            inputsMap.set(node, record);
         }
-        inputsMap.set(node, inputs);
     }
 
     return topologicalSortFromMap(inputsMap);

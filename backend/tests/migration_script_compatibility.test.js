@@ -101,12 +101,8 @@ function buildOldFormatFixture(snapshotDir) {
 
     // r/inputs/ — node_b/arg1 depends on node_a (old-format JSON reference)
     writeJson(snapshotDir, 'rendered/r/inputs/node_a', []);
-    writeJson(snapshotDir, 'rendered/r/inputs/node_b/arg1', {
-        inputs: ['{"head":"node_a","args":[]}'],
-    });
-    writeJson(snapshotDir, 'rendered/r/inputs/node_b/arg2', {
-        inputs: ['{"head":"node_a","args":[]}'],
-    });
+    writeJson(snapshotDir, 'rendered/r/inputs/node_b/arg1', ['{"head":"node_a","args":[]}']);
+    writeJson(snapshotDir, 'rendered/r/inputs/node_b/arg2', ['{"head":"node_a","args":[]}']);
 
     // r/counters/
     writeJson(snapshotDir, 'rendered/r/counters/node_a', 1);
@@ -232,9 +228,9 @@ describe('standalone migration script compatibility', () => {
         const nodeAId = keyToId.get(JSON.stringify({ head: 'node_a', args: [] }));
         const nodeB1Id = keyToId.get(JSON.stringify({ head: 'node_b', args: ['arg1'] }));
 
-        // Inputs record should reference node_a by identifier
-        const inputsRecord = readJson(tmpDir, `rendered/r/inputs/${nodeB1Id}`);
-        expect(inputsRecord.inputs).toEqual([nodeAId]);
+        // Stored inputs should reference node_a by identifier
+        const storedInputEdges = readJson(tmpDir, `rendered/r/inputs/${nodeB1Id}`);
+        expect(storedInputEdges).toEqual([nodeAId]);
 
         // Valid record should reference node_b variants by identifier
         const valid = readJson(tmpDir, `rendered/r/valid/${nodeAId}`);
@@ -255,9 +251,7 @@ describe('standalone migration script compatibility', () => {
         writeJson(tmpDir, 'rendered/r/global/version', OLD_VERSION_STRING);
         writeJson(tmpDir, `rendered/r/values/test_node/arg%2Fwith%252Fslash`, { result: 'encoded' });
         writeJson(tmpDir, 'rendered/r/freshness/test_node/arg%2Fwith%252Fslash', 'up-to-date');
-        writeJson(tmpDir, 'rendered/r/inputs/test_node/arg%2Fwith%252Fslash', {
-            inputs: [],
-        });
+        writeJson(tmpDir, 'rendered/r/inputs/test_node/arg%2Fwith%252Fslash', []);
         writeJson(tmpDir, 'rendered/r/counters/test_node/arg%2Fwith%252Fslash', 1);
         writeJson(tmpDir, 'rendered/r/timestamps/test_node/arg%2Fwith%252Fslash', {
             createdAt: '2024-06-01T00:00:00.000Z',

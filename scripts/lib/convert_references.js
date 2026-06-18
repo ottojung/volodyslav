@@ -17,6 +17,12 @@ function isOldFormatReference(str) {
 
 /**
  * Convert old-format references in inputs/valid values to identifier strings.
+ *
+ * Legacy input files wrapped the array in an object under the key "inputs".
+ * Any value that is an object with exactly one key "inputs" whose value is
+ * an array is unwrapped: the inner array is converted and returned directly,
+ * so the output is always a plain array.
+ *
  * @param {unknown} value - The parsed JSON value from an inputs or valid file.
  * @param {(nodeKeyJson: string) => string} keyToId - Maps node key JSON -> identifier
  * @returns {unknown} The value with references converted.
@@ -38,22 +44,14 @@ function convertReferences(value, keyToId) {
     }
 
     if (value !== null && typeof value === "object") {
+        const keys = Object.keys(value);
+        // Legacy inputs wrapper: strip the outer object, keep the inner array.
+        if (keys.length === 1 && keys[0] === "inputs" && Array.isArray(value.inputs)) {
+            return convertReferences(value.inputs, keyToId);
+        }
         const result = {};
         for (const [k, v] of Object.entries(value)) {
-            if (k === "inputs" && Array.isArray(v)) {
-                result[k] = v.map((ref) => {
-                    if (typeof ref === "string" && isOldFormatReference(ref)) {
-                        const id = keyToId(ref);
-                        if (id === undefined) {
-                            throw new Error(`Cannot find identifier for input reference: ${ref}`);
-                        }
-                        return id;
-                    }
-                    return ref;
-                });
-            } else {
-                result[k] = convertReferences(v, keyToId);
-            }
+            result[k] = convertReferences(v, keyToId);
         }
         return result;
     }

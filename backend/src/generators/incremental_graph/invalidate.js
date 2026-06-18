@@ -102,8 +102,8 @@ async function internalUnsafeInvalidate(
             return { value: undefined };
         }
 
-        const inputsRecord = await tx.batch.inputs.get(outputIdentifier);
-        if (inputsRecord === undefined) {
+        const storedInputEdges = await tx.batch.inputs.get(outputIdentifier);
+        if (storedInputEdges === undefined) {
             return { value: undefined };
         }
 

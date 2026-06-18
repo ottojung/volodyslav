@@ -383,7 +383,7 @@ describe("runMigration", () => {
                 await storage.keep(nodeKey);
             });
 
-            // y namespace is populated with the migrated node's inputs record.
+            // y namespace is populated with the migrated node's stored inputs.
             const migratedKey = await getMigratedKey(yStorage, nodeKey);
             const migratedInputs = await yStorage.inputs.get(migratedKey);
             expect(migratedInputs).toBeDefined();
