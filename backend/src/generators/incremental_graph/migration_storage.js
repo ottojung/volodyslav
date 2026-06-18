@@ -3,7 +3,15 @@
  * Provides a strict decision-based API for migrating previous-version graph data.
  */
 
-const { deserializeNodeKey, stringToNodeKeyString, IDENTIFIERS_KEY, makeNodeIdentifier, nodeIdentifierToString } = require("./database");
+const {
+    deserializeNodeKey,
+    stringToNodeKeyString,
+    IDENTIFIERS_KEY,
+    makeNodeIdentifier,
+    nodeIdentifierToString,
+    deriveInputEdges,
+    deriveInputPositions,
+} = require("./database");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,
@@ -137,14 +145,26 @@ class MigrationStorageClass {
      */
     _identifiersKeysIndex;
 
+    /** @type {import('./database/graph_scheme').GraphScheme} */
+    oldGraphScheme;
+
+    /** @type {import('./database/graph_scheme').GraphScheme} */
+    newGraphScheme;
+
+    /** @type {import('./database/identifier_lookup').IdentifierLookup} */
+    oldLookup;
+
     /**
      * @param {ReadableMigrationStorage} prevStorage
      * @param {Map<NodeName, CompiledNode>} newHeadIndex
      * @param {NodeIdentifier[]} materializedNodes
      * @param {string} fingerprint - The database fingerprint for identifier allocation.
      * @param {number} lastNodeIndex - The current last_node_index watermark.
+     * @param {import('./database/graph_scheme').GraphScheme} oldGraphScheme
+     * @param {import('./database/graph_scheme').GraphScheme} newGraphScheme
+     * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
      */
-    constructor(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex) {
+    constructor(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, oldLookup) {
         this.prevStorage = prevStorage;
         this.newHeadIndex = newHeadIndex;
         this.materializedNodes = new Set(materializedNodes);
@@ -152,6 +172,9 @@ class MigrationStorageClass {
         this._fingerprint = fingerprint;
         this._nextIndex = lastNodeIndex + 1;
         this._identifiersKeysIndex = undefined;
+        this.oldGraphScheme = oldGraphScheme;
+        this.newGraphScheme = newGraphScheme;
+        this.oldLookup = oldLookup;
     }
 
     /**
@@ -209,6 +232,23 @@ class MigrationStorageClass {
     }
 
     /**
+     * @param {NodeIdentifier} nodeKey
+     * @returns {Promise<void>}
+     */
+    async _assertKeepInputPositionsCompatible(nodeKey) {
+        const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
+        const nodeKeyString = identifiersKeysIndex.get(nodeIdentifierToString(nodeKey));
+        if (nodeKeyString === undefined) {
+            throw makeSchemaCompatibilityError(nodeKey, "cannot resolve node key via identifiers_keys_map");
+        }
+        const oldPositions = deriveInputPositions(this.oldGraphScheme, stringToNodeKeyString(nodeKeyString));
+        const newPositions = deriveInputPositions(this.newGraphScheme, stringToNodeKeyString(nodeKeyString));
+        if (oldPositions.length !== newPositions.length || oldPositions.some((value, index) => String(value) !== String(newPositions[index]))) {
+            throw makeSchemaCompatibilityError(nodeKey, "input positions changed in the new schema");
+        }
+    }
+
+    /**
      * Assign a KEEP decision to a node.
      * Idempotent if the same decision already exists.
      * @param {NodeIdentifier} nodeKey
@@ -219,6 +259,7 @@ class MigrationStorageClass {
             throw makeGetMissingNodeError(nodeKey);
         }
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, await this._getIdentifiersKeysIndex(), this.decisions);
+        await this._assertKeepInputPositionsCompatible(nodeKey);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "keep") return;
@@ -306,7 +347,7 @@ class MigrationStorageClass {
      * The node must exist in the new schema.
      * The identifier is auto-generated deterministically using the database
      * fingerprint and a monotonic index.
-     * The new node is created as up-to-date with the provided value and empty inputs.
+     * The new node is created as up-to-date with dependencies derived from the new graph scheme.
      * @param {import('./database/types').NodeKeyString} nodeKeyString - The semantic key JSON string
      * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
      * @returns {Promise<void>}
@@ -355,7 +396,7 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        return [];
+        return deriveInputEdges(this.oldGraphScheme, this.oldLookup, nodeKey);
     }
 
     /**
@@ -433,16 +474,10 @@ class MigrationStorageClass {
     }
 
     /**
-     * Build a structural dependency map by scanning inputs of every
-     * materialized node.  Returns a Map from input identifier string to
-     * the set of nodes that declare that input.
-     *
-     * Migration delete and fan-in checks must use the structural dependency
-     * relation from persisted `inputs` records, not `valid`.  The `valid`
-     * relation is an authorization and invalidation frontier, not a complete
-     * structural dependency graph.  Stale dependents may be absent from
-     * `valid`, so scanning `inputs` is required to discover every node that
-     * references a deleted identifier.
+     * Build a structural dependency map by deriving dependency edges for every
+     * materialized node from the stored graph scheme and identifier lookup.
+     * The `valid` relation is an authorization frontier, not a complete
+     * structural dependency graph.
      * @private
      * @returns {Promise<Map<string, Set<NodeIdentifier>>>}
      */
@@ -450,8 +485,7 @@ class MigrationStorageClass {
         /** @type {Map<string, Set<NodeIdentifier>>} */
         const map = new Map();
         for (const nodeKey of this.materializedNodes) {
-            /** @type {NodeIdentifier[]} */
-            const record = [];
+            const record = deriveInputEdges(this.oldGraphScheme, this.oldLookup, nodeKey);
             for (const input of record) {
                 const inputStr = nodeIdentifierToString(input);
                 const deps = map.get(inputStr) ?? new Set();
@@ -466,9 +500,8 @@ class MigrationStorageClass {
      * BFS propagation of DELETE to dependents whose all inputs are deleted,
      * followed by a fan-in violation scan.
      *
-     * Uses the structural dependency relation (built from inputs) rather
-     * than valid so that stale nodes whose dependents are absent from valid
-     * are still discovered during deletion propagation and fan-in checks.
+     * Uses scheme-derived structural dependencies rather than valid so that
+     * stale nodes whose dependents are absent from valid are still discovered.
      * @private
      * @returns {Promise<void>}
      */
@@ -492,8 +525,7 @@ class MigrationStorageClass {
             for (const dep of dependents) {
                 if (!this.materializedNodes.has(dep)) continue;
                 if (this.decisions.get(dep)?.kind === "delete") continue;
-                /** @type {NodeIdentifier[]} */
-                const depRecord = [];
+                const depRecord = deriveInputEdges(this.oldGraphScheme, this.oldLookup, dep);
                 const allDeleted = depRecord.every(
                     (inp) => this.decisions.get(inp)?.kind === "delete"
                 );
@@ -516,8 +548,7 @@ class MigrationStorageClass {
             for (const dep of dependents) {
                 if (!this.materializedNodes.has(dep)) continue;
                 if (this.decisions.get(dep)?.kind === "delete") continue;
-                /** @type {NodeIdentifier[]} */
-                const depRecord = [];
+                const depRecord = deriveInputEdges(this.oldGraphScheme, this.oldLookup, dep);
                 throw makePartialDeleteFanInError(dep, depRecord);
             }
         }
@@ -549,10 +580,13 @@ class MigrationStorageClass {
  * @param {NodeIdentifier[]} materializedNodes
  * @param {string} [fingerprint="testfingerprint"] - The database fingerprint for identifier allocation.
  * @param {number} [lastNodeIndex=0] - The current last_node_index watermark.
+ * @param {import('./database/graph_scheme').GraphScheme} [oldGraphScheme]
+ * @param {import('./database/graph_scheme').GraphScheme} [newGraphScheme]
+ * @param {import('./database/identifier_lookup').IdentifierLookup} [oldLookup]
  * @returns {MigrationStorageClass}
  */
-function makeMigrationStorage(prevStorage, newHeadIndex, materializedNodes, fingerprint = "testfingerprint", lastNodeIndex = 0) {
-    return new MigrationStorageClass(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex);
+function makeMigrationStorage(prevStorage, newHeadIndex, materializedNodes, fingerprint = "testfingerprint", lastNodeIndex = 0, oldGraphScheme = { format: 1, nodes: [] }, newGraphScheme = { format: 1, nodes: [] }, oldLookup = { keyToId: new Map(), idToKey: new Map(), serialized: [] }) {
+    return new MigrationStorageClass(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, oldLookup);
 }
 
 /**

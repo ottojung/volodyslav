@@ -80,6 +80,9 @@ class IncrementalGraphClass {
     /** @type {RootDatabase} */
     rootDatabase;
 
+    /** @type {Promise<void>} */
+    _graphSchemeReady;
+
     /**
      * @param {IncrementalGraphCapabilities} capabilities
      * @param {RootDatabase} rootDatabase
@@ -101,11 +104,19 @@ class IncrementalGraphClass {
             this.headIndex.set(compiledNode.head, compiledNode);
         }
 
-        void rootDatabase.getSchemaStorage().global.put(GRAPH_SCHEME_KEY, JSON.stringify(serializeGraphScheme(this.graphScheme)));
+        this._graphSchemeReady = rootDatabase.getSchemaStorage().global.put(
+            GRAPH_SCHEME_KEY,
+            JSON.stringify(serializeGraphScheme(this.graphScheme))
+        );
 
         this.concreteInstantiations = makeConcreteNodeCache();
         this.sleeper = capabilities.sleeper;
         this.datetime = capabilities.datetime;
+    }
+
+    /** @returns {Promise<void>} */
+    async _ensureGraphSchemeStored() {
+        await this._graphSchemeReady;
     }
 
     /**
@@ -114,6 +125,7 @@ class IncrementalGraphClass {
      * @returns {Promise<void>}
      */
     async invalidate(nodeName, bindings = []) {
+        await this._ensureGraphSchemeStored();
         await internalInvalidate(this, nodeName, bindings);
     }
 
@@ -123,6 +135,7 @@ class IncrementalGraphClass {
      * @returns {Promise<ComputedValue>}
      */
     async pull(nodeName, bindings = []) {
+        await this._ensureGraphSchemeStored();
         return await internalPull(this, nodeName, bindings);
     }
 
@@ -132,6 +145,7 @@ class IncrementalGraphClass {
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
     async getFreshness(head, bindings = []) {
+        await this._ensureGraphSchemeStored();
         return await internalGetFreshness(this, head, bindings);
     }
 
@@ -141,6 +155,7 @@ class IncrementalGraphClass {
      * @returns {Promise<ComputedValue | undefined>}
      */
     async getValue(head, bindings = []) {
+        await this._ensureGraphSchemeStored();
         return await internalGetValue(this, head, bindings);
     }
 
@@ -159,6 +174,7 @@ class IncrementalGraphClass {
 
     /** @returns {Promise<Array<[string, Array<ConstValue>]>>} */
     async listMaterializedNodes() {
+        await this._ensureGraphSchemeStored();
         return await internalListMaterializedNodes(this);
     }
 
@@ -173,6 +189,7 @@ class IncrementalGraphClass {
      * @returns {Promise<DateTime>}
      */
     async getCreationTime(nodeName, bindings = []) {
+        await this._ensureGraphSchemeStored();
         return await internalGetCreationTime(this, nodeName, bindings);
     }
 
@@ -182,6 +199,7 @@ class IncrementalGraphClass {
      * @returns {Promise<DateTime>}
      */
     async getModificationTime(nodeName, bindings = []) {
+        await this._ensureGraphSchemeStored();
         return await internalGetModificationTime(this, nodeName, bindings);
     }
 }

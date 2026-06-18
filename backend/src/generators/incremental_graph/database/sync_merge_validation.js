@@ -1,6 +1,7 @@
 const { IdentifierLookupConflictError } = require('./replica_errors');
 
 const { nodeIdentifierToString } = require('./types');
+const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges } = require('./graph_scheme');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -34,6 +35,7 @@ function isFinalMergeStateError(object) {
  * @returns {Promise<void>}
  */
 async function assertValidFinalMergeState(targetStorage, finalLookup) {
+    const scheme = parseGraphScheme(await targetStorage.global.get(GRAPH_SCHEME_KEY));
     const knownIdentifiers = new Set(finalLookup.idToKey.keys());
     const materializedIdentifiers = new Set();
     for await (const identifier of targetStorage.values.keys()) {
@@ -65,6 +67,24 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
             const dependentString = nodeIdentifierToString(dependent);
             if (!knownIdentifiers.has(dependentString) || !materializedIdentifiers.has(dependentString)) {
                 throw new FinalMergeStateError(`valid[${identifierString}] references unknown identifier ${dependentString}`);
+            }
+            const derivedEdges = deriveInputEdges(scheme, finalLookup, dependent);
+            if (!derivedEdges.some(edge => nodeIdentifierToString(edge) === identifierString)) {
+                throw new FinalMergeStateError(`valid[${identifierString}] is not derived dependency of ${dependentString}`);
+            }
+        }
+    }
+    for await (const identifier of targetStorage.values.keys()) {
+        if (await targetStorage.freshness.get(identifier) !== 'up-to-date') {
+            continue;
+        }
+        const identifierString = nodeIdentifierToString(identifier);
+        const derivedEdges = deriveInputEdges(scheme, finalLookup, identifier);
+        for (const input of derivedEdges) {
+            const inputString = nodeIdentifierToString(input);
+            const validDependents = await targetStorage.valid.get(input) ?? [];
+            if (!validDependents.some(dependent => nodeIdentifierToString(dependent) === identifierString)) {
+                throw new FinalMergeStateError(`up-to-date node ${identifierString} lacks validity for input ${inputString}`);
             }
         }
     }

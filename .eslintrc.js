@@ -118,10 +118,11 @@ module.exports = {
             },
         },
 
+
         {
-            files: ["backend/src/generators/incremental_graph/database/graph_scheme.js"],
+            files: ["backend/src/generators/incremental_graph/migration_storage.js"],
             rules: {
-                "@typescript-eslint/ban-ts-comment": "off",
+                "volodyslav/max-lines-per-file": "off",
             },
         },
         {

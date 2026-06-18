@@ -157,6 +157,25 @@ async function preserveAndRebuildValidity(
         }
     }
 
+
+    for await (const nodeIdentifier of targetStorage.values.keys()) {
+        const freshness = await targetStorage.freshness.get(nodeIdentifier);
+        if (freshness !== "up-to-date") {
+            continue;
+        }
+        const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
+        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+        for (const depId of requiredInputs) {
+            const depIdStr = nodeIdentifierToString(depId);
+            depIdCache.set(depIdStr, depId);
+            const dependents = validMap.get(depIdStr) ?? [];
+            validMap.set(depIdStr, dependents);
+            if (!dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
+                dependents.push(nodeIdentifier);
+            }
+        }
+    }
+
     const writer = new ReplicaBatchWriter(targetStorage);
     for (const [depIdStr, dependents] of validMap) {
         const depId = depIdCache.get(depIdStr);
