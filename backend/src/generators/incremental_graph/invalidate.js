@@ -62,6 +62,12 @@ async function internalPropagateOutdated(
             currentFreshness === undefined ||
             currentFreshness === "potentially-outdated"
         ) {
+            await internalPropagateOutdated(
+                incrementalGraph,
+                output,
+                batch,
+                nodesBecomingOutdated
+            );
             continue;
         }
 
