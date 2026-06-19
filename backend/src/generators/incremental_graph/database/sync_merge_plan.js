@@ -4,6 +4,8 @@ const { makeIdentifierLookup } = require('./identifier_lookup');
 const { IdentifierLookupConflictError } = require('./replica_errors');
 
 const { nodeIdentifierToString } = require('./types');
+const { GRAPH_SCHEME_KEY, parseGraphScheme, semanticInputKeys } = require('./graph_scheme');
+const { normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require('./input_edges');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -11,26 +13,15 @@ const { nodeIdentifierToString } = require('./types');
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 
 /**
- * Resolve identifier-keyed inputs into semantic node keys.
+ * Resolve identifier-keyed nodes into semantic input keys using the stored graph scheme.
  * @param {SchemaStorage} storage
  * @param {IdentifierLookup} lookup
  * @param {NodeIdentifier} identifier
  * @returns {Promise<NodeKeyString[]>}
  */
 async function semanticInputs(storage, lookup, identifier) {
-    const record = await storage.inputs.get(identifier);
-    if (record === undefined) return [];
-    if (!Array.isArray(record)) {
-        throw new Error(`Malformed stored inputs for ${nodeIdentifierToString(identifier)}`);
-    }
-    const inputIds = record;
-    return inputIds.map(input => {
-        const nodeKey = lookup.idToKey.get(nodeIdentifierToString(input));
-        if (nodeKey === undefined) {
-            throw new IdentifierLookupConflictError(`Input identifier ${nodeIdentifierToString(input)} is absent from identifiers_keys_map`);
-        }
-        return nodeKey;
-    });
+    const scheme = parseGraphScheme(await storage.global.get(GRAPH_SCHEME_KEY));
+    return semanticInputKeys(scheme, lookup, identifier);
 }
 
 /**
@@ -181,37 +172,36 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         if (sourceId === undefined || finalId === undefined) {
             throw new IdentifierLookupConflictError(`Missing lowered identifier for ${String(nodeKey)}`);
         }
-        const sourceInputs = await storage.inputs.get(sourceId);
         const inputKeys = await semanticInputs(storage, lookup, sourceId);
-        const finalInputIds = inputKeys.map(inputKey => {
-            const inputId = finalIdentifierForKey.get(inputKey);
-            if (inputId === undefined) throw new IdentifierLookupConflictError(`Missing lowered input identifier for ${String(inputKey)}`);
+
+        const sourceInputIds = inputKeys.map((inputKey) => {
+            const inputId = lookup.keyToId.get(String(inputKey));
+            if (inputId === undefined) {
+                throw new IdentifierLookupConflictError(
+                    `Missing source input identifier for ${String(inputKey)}`
+                );
+            }
             return inputId;
         });
-        mergedInputsMap.set(finalId, finalInputIds);
-        const sourceInputIds = sourceInputs === undefined ? [] : sourceInputs;
-        if (
-            sourceInputIds.length !== finalInputIds.length
-        ) {
+
+        const finalInputIds = inputKeys.map((inputKey) => {
+            const inputId = finalIdentifierForKey.get(inputKey);
+            if (inputId === undefined) {
+                throw new IdentifierLookupConflictError(
+                    `Missing lowered input identifier for ${String(inputKey)}`
+                );
+            }
+            return inputId;
+        });
+
+        const sourceInputEdges = normalizeInputEdges(sourceInputIds);
+        const finalInputEdges = normalizeInputEdges(finalInputIds);
+
+        if (!arraysOfNodeIdentifiersEqual(sourceInputEdges, finalInputEdges)) {
             directlyReloweredNodes.add(nodeKey);
-        } else {
-            let mismatched = false;
-            for (let idx = 0; idx < sourceInputIds.length; idx++) {
-                const sId = sourceInputIds[idx];
-                const fId = finalInputIds[idx];
-                if (sId === undefined || fId === undefined) {
-                    mismatched = true;
-                    break;
-                }
-                if (nodeIdentifierToString(sId) !== nodeIdentifierToString(fId)) {
-                    mismatched = true;
-                    break;
-                }
-            }
-            if (mismatched) {
-                directlyReloweredNodes.add(nodeKey);
-            }
         }
+
+        mergedInputsMap.set(finalId, finalInputEdges);
     }
 
     /** @type {Set<NodeKeyString>} */

@@ -7,9 +7,13 @@
  */
 
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
+const { compileNodeDef } = require("../src/generators/incremental_graph/compiled_node");
 const {
     IDENTIFIERS_KEY,
+    GRAPH_SCHEME_KEY,
     nodeIdentifierToString,
+    buildGraphSchemeFromNodeDefs,
+    serializeGraphScheme,
 } = require("../src/generators/incremental_graph/database");
 const { toJsonKey } = require("./test_json_key_helper");
 const { getMockedRootCapabilities } = require("./spies");
@@ -78,38 +82,33 @@ function makeSchemaStorage() {
     const values = makeInMemoryDb("values");
     const freshness = makeInMemoryDb("freshness");
     const global = makeInMemoryDb("global");
-    const inputs = makeInMemoryDb("inputs");
     const valid = makeInMemoryDb("valid");
     const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
 
-    // Tests use simplified mocks where the "NodeIdentifier" string is the same
-    // as the semantic node key JSON string. When identifiers_keys_map is not
-    // explicitly seeded, fall back to an identity mapping derived from the
-    // currently materialized inputs keys.
     const originalGlobalGet = global.get.bind(global);
     global.get = async (key) => {
         if (key !== IDENTIFIERS_KEY) {
             return await originalGlobalGet(key);
         }
+
         const stored = await originalGlobalGet(key);
         if (stored !== undefined) return stored;
 
         const out = [];
-        for await (const k of inputs.keys()) {
+        for await (const k of values.keys()) {
             out.push([k, k]);
         }
         return out;
     };
 
     return {
-        values, freshness, global, inputs, valid, counters, timestamps,
+        values, freshness, global, valid, counters, timestamps,
         async batch(operations) {
             for (const op of operations) {
                 values.apply(op);
                 freshness.apply(op);
                 global.apply(op);
-                inputs.apply(op);
                 valid.apply(op);
                 counters.apply(op);
                 timestamps.apply(op);
@@ -177,20 +176,30 @@ function makeNodeDefs(names) {
     }));
 }
 
-/** Seed a node in storage with value, inputs, freshness, counter, and optional timestamps. */
+/** Seed a node in storage with value, freshness, counter, and optional timestamps. */
 async function seedNode(storage, nodeKey, {
     timestamps = undefined,
     counter = 1,
     freshness = "up-to-date",
-    inputs = [],
 } = {}) {
     await storage.values.put(nodeKey, { type: "all_events", events: [] });
     await storage.freshness.put(nodeKey, freshness);
-    await storage.inputs.put(nodeKey, inputs);
     await storage.counters.put(nodeKey, counter);
     if (timestamps !== undefined) {
         await storage.timestamps.put(nodeKey, timestamps);
     }
+}
+
+
+/**
+ * Seed the stored graph scheme required by versioned migration sources.
+ * @param {ReturnType<typeof makeSchemaStorage>} storage
+ * @param {ReturnType<typeof makeNodeDefs>} nodeDefs
+ */
+async function seedGraphScheme(storage, nodeDefs) {
+    const compiledNodes = nodeDefs.map(compileNodeDef);
+    const scheme = serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes));
+    await storage.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,6 +218,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.keep(nodeKey);
         });
@@ -227,6 +237,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.keep(nodeKey);
         });
@@ -246,6 +257,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.keep(nodeKey);
         });
@@ -265,6 +277,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.keep(nodeKey);
         });
@@ -289,6 +302,7 @@ describe("keep decision: timestamps copied to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.keep(nkA);
             await storage.keep(nkB);
@@ -315,6 +329,7 @@ describe("override decision: timestamps copied to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
@@ -333,6 +348,7 @@ describe("override decision: timestamps copied to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
@@ -352,6 +368,7 @@ describe("override decision: timestamps copied to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
@@ -376,6 +393,7 @@ describe("create decision: timestamps written to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.create(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
@@ -402,6 +420,7 @@ describe("create decision: timestamps written to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.create(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
@@ -423,6 +442,7 @@ describe("create decision: timestamps written to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.create(nkA, async () => ({ type: "all_events", events: [] }));
             await storage.create(nkB, async () => ({ type: "all_events", events: [] }));
@@ -453,6 +473,7 @@ describe("invalidate decision: timestamps copied to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.invalidate(nodeKey);
         });
@@ -471,6 +492,7 @@ describe("invalidate decision: timestamps copied to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.invalidate(nodeKey);
         });
@@ -490,6 +512,7 @@ describe("invalidate decision: timestamps copied to new storage", () => {
             prevVersion: "1", currentVersion: "2", xStorage, yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.invalidate(nodeKey);
         });
@@ -522,6 +545,7 @@ describe("delete decision: timestamps not present in new storage", () => {
         });
 
         // Deleting both; B auto-deleted because A is deleted (fan-out propagation)
+        await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.delete(nkA);
             await storage.delete(nkB);
@@ -561,17 +585,15 @@ describe("delete decision: sublevels do not retain deleted keys", () => {
             yStorage,
         });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.delete(nkA);
             await storage.delete(nkB);
         });
 
-        const inputKeys = await collectKeys(yStorage.inputs);
         const counterKeys = await collectKeys(yStorage.counters);
         const timestampKeys = await collectKeys(yStorage.timestamps);
 
-        expect(inputKeys).not.toContain(nkA);
-        expect(inputKeys).not.toContain(nkB);
         expect(counterKeys).not.toContain(nkA);
         expect(counterKeys).not.toContain(nkB);
         expect(timestampKeys).not.toContain(nkA);
@@ -604,6 +626,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const { nkA, nkB } = await buildChain(xStorage);
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.keep(nkA);
             await storage.keep(nkB);
@@ -620,6 +643,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const { nkA, nkB } = await buildChain(xStorage);
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.keep(nkA);
             await storage.invalidate(nkB);
@@ -636,6 +660,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const { nkA, nkB } = await buildChain(xStorage);
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.keep(nkA);
             await storage.override(nkB, async () => ({ type: "all_events", events: [] }));
@@ -654,6 +679,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         // Override A; B is automatically invalidated (it depends on A)
+        await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.override(nkA, async () => ({ type: "all_events", events: [] }));
             // nkB is auto-invalidated by override(nkA)
@@ -670,6 +696,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         const { nkA, nkB } = await buildChain(xStorage);
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.invalidate(nkA);
             await storage.invalidate(nkB);
@@ -694,6 +721,7 @@ describe("failed migration: x-namespace timestamps unchanged", () => {
         await seedNode(xStorage, nodeKey, { timestamps: OLD_TIMESTAMP });
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await expect(
             runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async () => {
                 throw new Error("boom");
@@ -714,6 +742,7 @@ describe("failed migration: x-namespace timestamps unchanged", () => {
         await seedNode(xStorage, nkB, { timestamps: NEW_TIMESTAMP });
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
+        await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await expect(
             runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
                 await storage.keep(nkA);

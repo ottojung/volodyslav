@@ -4,19 +4,19 @@
  *
  * The identifiers_keys_map (persisted as `r/<replica>/global/identifiers_keys_map`)
  * is the authoritative bijection between semantic node keys and deterministic identifiers.
- * A node is "materialized" when it has a record in the `inputs` sublevel
- * (`r/<replica>/inputs/<identifier>`).
+ * A node is "materialized" when it has a record in the `values` sublevel
+ * (`r/<replica>/values/<identifier>`).
  *
  * In normal pull/commit operation every identifier that enters the map does
- * so atomically with an `ensureMaterialized` call that writes the corresponding
- * stored inputs (both happen inside `withTransaction`). Conversely, every
- * materialized node must have a map entry—otherwise there is no way to
- * recover its semantic key from the identifier stored in the inputs sublevel.
+ * so atomically with a write to the values sublevel (both happen inside
+ * `withTransaction`). Conversely, every materialized node must have a map
+ * entry—otherwise there is no way to recover its semantic key from the
+ * identifier stored in the values sublevel.
  *
  * This file tests both directions of the invariant:
- *   1. Map → inputs: For every identifier in identifiers_keys_map, there is a
- *      corresponding entry in the inputs sublevel.
- *   2. Inputs → map: For every entry in the inputs sublevel, the identifier
+ *   1. Map → values: For every identifier in identifiers_keys_map, there is a
+ *      corresponding entry in the values sublevel.
+ *   2. Values → map: For every entry in the values sublevel, the identifier
  *      appears in identifiers_keys_map.
  */
 
@@ -56,14 +56,14 @@ function collectMapIdentifiers(lookup) {
 }
 
 /**
- * Collect all identifier strings from the inputs sublevel into a Set.
+ * Collect all identifier strings from the values sublevel into a Set.
  * @param {import('../src/generators/incremental_graph/database').RootDatabase} db
  * @returns {Promise<Set<string>>}
  */
-async function collectInputsIdentifiers(db) {
+async function collectValuesIdentifiers(db) {
     const ids = new Set();
-    const inputs = db.getSchemaStorage().inputs;
-    for await (const nodeId of inputs.keys()) {
+    const values = db.getSchemaStorage().values;
+    for await (const nodeId of values.keys()) {
         ids.add(nodeIdentifierToString(nodeId));
     }
     return ids;
@@ -77,25 +77,25 @@ async function collectInputsIdentifiers(db) {
  */
 async function expectInvariant(lookup, db) {
     const mapIds = collectMapIdentifiers(lookup);
-    const inputsIds = await collectInputsIdentifiers(db);
+    const valuesIds = await collectValuesIdentifiers(db);
 
-    // Direction 1: every identifier in the map must be materialized.
-    const mapWithoutInputs = new Set();
+    // Direction 1: every identifier in the map must have a stored value.
+    const mapWithoutValues = new Set();
     for (const idStr of mapIds) {
-        if (!inputsIds.has(idStr)) {
-            mapWithoutInputs.add(idStr);
+        if (!valuesIds.has(idStr)) {
+            mapWithoutValues.add(idStr);
         }
     }
-    expect(mapWithoutInputs).toEqual(new Set());
+    expect(mapWithoutValues).toEqual(new Set());
 
-    // Direction 2: every materialized node must have a map entry.
-    const inputsWithoutMap = new Set();
-    for (const idStr of inputsIds) {
+    // Direction 2: every node with a stored value must have a map entry.
+    const valuesWithoutMap = new Set();
+    for (const idStr of valuesIds) {
         if (!mapIds.has(idStr)) {
-            inputsWithoutMap.add(idStr);
+            valuesWithoutMap.add(idStr);
         }
     }
-    expect(inputsWithoutMap).toEqual(new Set());
+    expect(valuesWithoutMap).toEqual(new Set());
 }
 
 describe("materialized node invariant", () => {

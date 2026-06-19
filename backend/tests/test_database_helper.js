@@ -59,7 +59,7 @@ function toJsonKey(key) {
  */
 function makeSemanticStorage(graph) {
     /**
-     * @param {"values" | "freshness" | "inputs" | "valid" | "counters" | "timestamps"} databaseName
+     * @param {"values" | "freshness" | "valid" | "counters" | "timestamps"} databaseName
      */
     function makeDatabase(databaseName) {
         return {
@@ -72,20 +72,6 @@ function makeSemanticStorage(graph) {
                 const value = await graph.storage[databaseName].get(nodeIdentifier);
                 if (value === undefined) {
                     return undefined;
-                }
-                if (databaseName === "inputs") {
-                    const inputIds = value;
-                    return inputIds.map((inputIdentifier) => {
-                        const nodeKey = graph.rootDatabase.nodeIdToKey(
-                            inputIdentifier
-                        );
-                        if (nodeKey === undefined) {
-                            throw new Error(
-                                `Missing semantic node key for input identifier ${String(inputIdentifier)} in get() for parent key ${String(key)} (json key ${String(jsonKey)})`
-                            );
-                        }
-                        return String(nodeKey);
-                    });
                 }
                 if (databaseName === "valid") {
                     return value.map((nodeIdentifierValue) => {
@@ -108,17 +94,6 @@ function makeSemanticStorage(graph) {
                         graph.rootDatabase,
                         jsonKey
                     );
-                    if (databaseName === "inputs") {
-                        const inputKeys = value;
-                        tx.batch.inputs.put(nodeIdentifier, inputKeys.map((inputKey) =>
-                            getOrAllocateNodeIdentifierForTest(
-                                tx,
-                                graph.rootDatabase,
-                                toJsonKey(inputKey)
-                            )
-                        ));
-                        return { value: undefined };
-                    }
                     if (databaseName === "valid") {
                         tx.batch.valid.put(
                             nodeIdentifier,
@@ -153,24 +128,16 @@ function makeSemanticStorage(graph) {
     return {
         values: makeDatabase("values"),
         freshness: makeDatabase("freshness"),
-        inputs: makeDatabase("inputs"),
         valid: makeDatabase("valid"),
         counters: makeDatabase("counters"),
         timestamps: makeDatabase("timestamps"),
-        async ensureMaterialized(node, inputs, batch) {
-            batch.inputs.put(node, inputs);
-        },
         async listValidDependents(input, batch) {
             return (await batch.valid.get(input)) ?? [];
-        },
-        async getInputs(node, batch) {
-            const record = await batch.inputs.get(node);
-            return record ?? null;
         },
         async withBatch(run) {
             return await graph.storage.withTransaction(async (tx) => {
                 /**
-                 * @param {"values" | "freshness" | "inputs" | "valid" | "counters" | "timestamps"} databaseName
+                 * @param {"values" | "freshness" | "valid" | "counters" | "timestamps"} databaseName
                  */
                 function makeBatchDatabase(databaseName) {
                     return {
@@ -178,17 +145,6 @@ function makeSemanticStorage(graph) {
                             const jsonKey = toJsonKey(key);
                             const nodeIdentifier =
                                 getOrAllocateNodeIdentifierForTest(tx, graph.rootDatabase, jsonKey);
-                            if (databaseName === "inputs") {
-                                const inputKeys = value;
-                                tx.batch.inputs.put(nodeIdentifier, inputKeys.map((inputKey) =>
-                                    getOrAllocateNodeIdentifierForTest(
-                                        tx,
-                                        graph.rootDatabase,
-                                        toJsonKey(inputKey)
-                                    )
-                                ));
-                                return;
-                            }
                             if (databaseName === "valid") {
                                 tx.batch.valid.put(
                                     nodeIdentifier,
@@ -224,14 +180,6 @@ function makeSemanticStorage(graph) {
                             if (value === undefined) {
                                 return undefined;
                             }
-                            if (databaseName === "inputs") {
-                                const inputIds = value;
-                                return inputIds.map((inputIdentifier) =>
-                                    String(
-                                        requireNodeKey(tx, inputIdentifier)
-                                    )
-                                );
-                            }
                             if (databaseName === "valid") {
                                 return value.map((dependentIdentifier) =>
                                     requireNodeKey(tx, dependentIdentifier)
@@ -245,7 +193,6 @@ function makeSemanticStorage(graph) {
                 const semanticBatch = {
                     values: makeBatchDatabase("values"),
                     freshness: makeBatchDatabase("freshness"),
-                    inputs: makeBatchDatabase("inputs"),
                     valid: makeBatchDatabase("valid"),
                     counters: makeBatchDatabase("counters"),
                     timestamps: makeBatchDatabase("timestamps"),

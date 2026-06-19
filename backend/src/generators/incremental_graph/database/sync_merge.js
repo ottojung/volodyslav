@@ -190,7 +190,6 @@ async function loadTargetLookup(targetStorage) {
  * @param {Set<NodeKeyString>} directlyReloweredNodes
  * @param {Set<NodeKeyString>} reloweringInvalidatedNodes
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
- * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
  * @returns {Promise<void>}
  */
 async function applyNodeDecisions(
@@ -203,8 +202,7 @@ async function applyNodeDecisions(
     hostOnlyNodesNeedingInvalidation,
     directlyReloweredNodes,
     reloweringInvalidatedNodes,
-    finalIdentifierForKey,
-    mergedInputsMap
+    finalIdentifierForKey
 ) {
     const writer = new ReplicaBatchWriter(targetStorage);
 
@@ -229,7 +227,6 @@ async function applyNodeDecisions(
                 sourceStorage,
                 sourceId,
                 destinationId,
-                finalInputsForDestination: mergedInputsMap.get(destinationId) ?? [],
             }));
         }
         if (directlyReloweredNodes.has(nodeKey)) {
@@ -400,8 +397,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         hOnlyNeedsInvalidate,
         directlyReloweredNodes,
         reloweringInvalidatedNodes,
-        finalIdentifierForKey,
-        mergedInputsMap
+        finalIdentifierForKey
     );
 
     const summary = summarizeDecisions(decisions.values());

@@ -207,45 +207,6 @@ describe("incremental_graph batch consistency", () => {
             });
         });
 
-        describe("inputs sublevel", () => {
-            test("read-your-writes: get returns inputs written in same batch", async () => {
-                const capabilities = getTestCapabilities();
-                const db = await getRootDatabase(capabilities);
-
-                const graphDef = [
-                    {
-                        output: "derived",
-                        inputs: ["source"],
-                        computor: () => ({ type: "meta_events", meta_events: [] }),
-                        isDeterministic: true,
-                        hasSideEffects: false,
-                    },
-                    {
-                        output: "source",
-                        inputs: [],
-                        computor: () => ({ type: "all_events", events: [] }),
-                        isDeterministic: true,
-                        hasSideEffects: false,
-                    },
-                ];
-
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
-                const storage = makeSemanticStorage(graph);
-
-                const testKey = '{"head":"derived","args":[]}';
-                const testValue = ['{"head":"source","args":[]}'];
-
-                let readValue;
-                await storage.withBatch(async (batch) => {
-                    batch.inputs.put(testKey, testValue);
-                    readValue = await batch.inputs.get(testKey);
-                });
-
-                expect(readValue).toEqual(testValue);
-                await db.close();
-            });
-        });
-
         describe("valid sublevel", () => {
             test("read-your-writes: get returns valid written in same batch", async () => {
                 const capabilities = getTestCapabilities();
@@ -337,52 +298,5 @@ describe("incremental_graph batch consistency", () => {
             await db.close();
         });
 
-        test("inputs should not be overwritten by stale reads in same batch", async () => {
-            const capabilities = getTestCapabilities();
-            const db = await getRootDatabase(capabilities);
-
-            const graphDef = [
-                {
-                    output: "source",
-                    inputs: [],
-                    computor: () => ({ type: "all_events", events: [] }),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "derived",
-                    inputs: ["source"],
-                    computor: () => ({ type: "meta_events", meta_events: [] }),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-            ];
-
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
-            const storage = makeSemanticStorage(graph);
-
-            const nodeKey = '{"head":"derived","args":[]}';
-            const inputA = '{"head":"source","args":["A"]}';
-            const inputB = '{"head":"source","args":["B"]}';
-
-            await storage.withBatch(async (batch) => {
-                // First stage inputs with inputA
-                batch.inputs.put(nodeKey, [inputA]);
-
-                // Then call ensureMaterialized with inputB
-                // With the new implementation, this WILL overwrite (always writes)
-                await storage.ensureMaterialized(nodeKey, [inputB], batch);
-            });
-
-            // After commit, should have inputB (the last write), not inputA
-            // This is different from the old behavior where it wouldn't overwrite
-            let inputs;
-            await storage.withBatch(async (batch) => {
-                inputs = await storage.getInputs(nodeKey, batch);
-            });
-            expect(inputs).toEqual([inputB]);
-
-            await db.close();
-        });
     });
 });

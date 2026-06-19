@@ -35,7 +35,7 @@ const {
     nodeIdentifierToString,
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
-const { normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require("./database");
+const { normalizeInputEdges } = require("./database");
 
 /**
  * Read the current valid set for a dependency from the mutation-aware batch.
@@ -121,14 +121,13 @@ async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialD
 
 /**
  * Handle Unchanged computor result: add validity flags, preserve counter and valid[N].
- * @param {IncrementalGraphRecomputeAccess} incrementalGraph
+ * @param {IncrementalGraphRecomputeAccess} _incrementalGraph
  * @param {NodeIdentifier} nodeIdentifier
  * @param {NodeIdentifier[]} inputEdges
  * @param {BatchBuilder} batch
  * @returns {Promise<void>}
  */
-async function handleUnchanged(incrementalGraph, nodeIdentifier, inputEdges, batch) {
-    await incrementalGraph.storage.ensureMaterialized(nodeIdentifier, inputEdges, batch);
+async function handleUnchanged(_incrementalGraph, nodeIdentifier, inputEdges, batch) {
     addValidityFlags(batch, nodeIdentifier, inputEdges);
     batch.freshness.put(nodeIdentifier, "up-to-date");
 }
@@ -148,22 +147,8 @@ async function handleUnchanged(incrementalGraph, nodeIdentifier, inputEdges, bat
  * @returns {Promise<void>}
  */
 async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, batch) {
-    const oldStored = await batch.inputs.get(nodeIdentifier);
-    if (oldStored !== undefined && !Array.isArray(oldStored)) {
-        throw new Error(
-            `Malformed stored inputs for node ${nodeIdentifierToString(nodeIdentifier)}: ` +
-            `expected NodeIdentifier[], got ${typeof oldStored}`
-        );
-    }
-    const previousEdges = oldStored === undefined ? [] : oldStored;
-    /** @type {Set<string>} */
-    const seen = new Set();
-    for (const edge of [...inputEdges, ...previousEdges]) {
-        const str = nodeIdentifierToString(edge);
-        if (!seen.has(str)) {
-            seen.add(str);
-            batch.valid.remove(edge, nodeIdentifier);
-        }
+    for (const edge of inputEdges) {
+        batch.valid.remove(edge, nodeIdentifier);
     }
     const downstream = await getValidSet(batch, nodeIdentifier);
     batch.valid.clear(nodeIdentifier);
@@ -197,7 +182,6 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
         batch.timestamps.put(nodeIdentifier, { createdAt, modifiedAt: nowIso });
     }
 
-    await incrementalGraph.storage.ensureMaterialized(nodeIdentifier, inputEdges, batch);
     addValidityFlags(batch, nodeIdentifier, inputEdges);
     batch.freshness.put(nodeIdentifier, "up-to-date");
 }
@@ -251,25 +235,6 @@ async function internalMaybeRecalculate(
     // 3. valid[D].has(N) for every D in inputEdges.
     if (oldValue !== undefined && inputEdges.length > 0) {
         if (await allValidityFlagsPresent(batch, nodeIdentifier, inputEdges)) {
-            const persistedInputs = await batch.inputs.get(nodeIdentifier);
-            if (persistedInputs === undefined) {
-                throw new Error(
-                    `Missing stored inputs for node ${String(nodeDefinition.outputKey)}: ` +
-                    `a materialized node must have stored inputs`
-                );
-            }
-            if (!Array.isArray(persistedInputs)) {
-                throw new Error(
-                    `Malformed stored inputs for node ${String(nodeDefinition.outputKey)}: ` +
-                    `expected NodeIdentifier[], got ${typeof persistedInputs}`
-                );
-            }
-            if (!arraysOfNodeIdentifiersEqual(persistedInputs, inputEdges)) {
-                throw new Error(
-                    `Corrupted stored inputs for node ${String(nodeDefinition.outputKey)}: ` +
-                    `persisted inputs differ from schema-derived inputEdges`
-                );
-            }
             batch.freshness.put(nodeIdentifier, "up-to-date");
             return { value: oldValue, status: "cached" };
         }

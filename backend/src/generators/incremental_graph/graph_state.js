@@ -41,7 +41,6 @@ const {
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./database/root_database').ValuesDatabase} ValuesDatabase */
 /** @typedef {import('./database/root_database').FreshnessDatabase} FreshnessDatabase */
-/** @typedef {import('./database/root_database').InputsDatabase} InputsDatabase */
 /** @typedef {import('./database/root_database').ValidDatabase} ValidDatabase */
 /** @typedef {import('./database/root_database').CountersDatabase} CountersDatabase */
 /** @typedef {import('./database/root_database').TimestampsDatabase} TimestampsDatabase */
@@ -128,7 +127,6 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
  * @typedef {object} BatchBuilder
  * @property {BatchDatabaseOps<ComputedValue>} values - Node value storage.
  * @property {BatchDatabaseOps<Freshness>} freshness - Freshness storage.
- * @property {BatchDatabaseOps<NodeIdentifier[]>} inputs - Dependency metadata storage.
  * @property {ValidBatchOps} valid - Validity flags with mutation tracking for concurrent safety.
  * @property {BatchDatabaseOps<Counter>} counters - Change counters.
  * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Creation/modification timestamps.
@@ -155,14 +153,11 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
  * @typedef {object} GraphStorage
  * @property {ValuesDatabase} values - Identifier-keyed value storage.
  * @property {FreshnessDatabase} freshness - Identifier-keyed freshness storage.
- * @property {InputsDatabase} inputs - Identifier-keyed input metadata storage.
  * @property {ValidDatabase} valid - Identifier-keyed inverse validity flags.
  * @property {CountersDatabase} counters - Identifier-keyed counters.
  * @property {TimestampsDatabase} timestamps - Identifier-keyed timestamps.
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
  * @property {<T>(fn: (tx: Transaction) => Promise<{value: T}>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
- * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current input edges for a node.
- * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[] | null>} getInputs - Read a node's inputs inside the current batch.
  * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} getValid - Read a node's valid set inside the current batch.
  * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List all materialized node identifiers.
  * @property {<T>(procedure: () => Promise<T>) => Promise<T>} withCommitSnapshot - Run a read while darkroom publication is paused.
@@ -299,7 +294,6 @@ function createBatch(schemaStorage) {
     const batch = {
         values: makeSublevelBatch(schemaStorage.values, operations),
         freshness: makeSublevelBatch(schemaStorage.freshness, operations),
-        inputs: makeSublevelBatch(schemaStorage.inputs, operations),
         valid: makeValidBatchOps(schemaStorage.valid, validMutations),
         counters: makeSublevelBatch(schemaStorage.counters, operations),
         timestamps: makeSublevelBatch(schemaStorage.timestamps, operations),
@@ -315,34 +309,11 @@ function createBatch(schemaStorage) {
  */
 function makeGraphStorage(rootDatabase, sleeper) {
     /**
-     * @param {NodeIdentifier} node
-     * @param {NodeIdentifier[]} inputs
-     * @param {BatchBuilder} batch
-     * @returns {Promise<void>}
-     */
-    async function ensureMaterialized(node, inputs, batch) {
-        batch.inputs.put(node, inputs);
-    }
-
-    /**
-     * @param {NodeIdentifier} node
-     * @param {BatchBuilder} batch
-     * @returns {Promise<NodeIdentifier[] | null>}
-     */
-    async function getInputs(node, batch) {
-        const record = await batch.inputs.get(node);
-        if (record === undefined) {
-            return null;
-        }
-        return record;
-    }
-
-    /**
      * @returns {Promise<NodeIdentifier[]>}
      */
     async function listMaterializedNodes() {
         const nodes = [];
-        for await (const key of rootDatabase.getSchemaStorage().inputs.keys()) {
+        for await (const key of rootDatabase.getSchemaStorage().values.keys()) {
             nodes.push(key);
         }
         return nodes;
@@ -351,7 +322,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
     return {
         get values() { return rootDatabase.getSchemaStorage().values; },
         get freshness() { return rootDatabase.getSchemaStorage().freshness; },
-        get inputs() { return rootDatabase.getSchemaStorage().inputs; },
         get valid() { return rootDatabase.getSchemaStorage().valid; },
         get counters() { return rootDatabase.getSchemaStorage().counters; },
         get timestamps() { return rootDatabase.getSchemaStorage().timestamps; },
@@ -470,8 +440,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 rootDatabase.releaseIdentifierReservations(txLookup.ownedKeys);
             }
         },
-        ensureMaterialized,
-        getInputs,
         /**
          * @param {NodeIdentifier} node
          * @param {BatchBuilder} batch

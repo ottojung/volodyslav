@@ -39,6 +39,7 @@ const {
 const {
     makeGraphStorage,
 } = require("./graph_state");
+const { buildGraphSchemeFromNodeDefs, serializeGraphScheme, GRAPH_SCHEME_KEY } = require("./database");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -79,6 +80,9 @@ class IncrementalGraphClass {
     /** @type {RootDatabase} */
     rootDatabase;
 
+    /** @type {Promise<void>} */
+    _graphSchemeReady;
+
     /**
      * @param {IncrementalGraphCapabilities} capabilities
      * @param {RootDatabase} rootDatabase
@@ -91,6 +95,7 @@ class IncrementalGraphClass {
         validateSingleArityPerHead(compiledNodes);
         validateInputArities(compiledNodes);
 
+        this.graphScheme = buildGraphSchemeFromNodeDefs(compiledNodes);
         this.storage = makeGraphStorage(rootDatabase, capabilities.sleeper);
         this.rootDatabase = rootDatabase;
         this.dbVersion = rootDatabase.getVersion();
@@ -99,9 +104,26 @@ class IncrementalGraphClass {
             this.headIndex.set(compiledNode.head, compiledNode);
         }
 
+        // The constructor stores a promise instead of using await because
+        // constructors cannot be async.  Every public method that touches
+        // graph storage awaits _ensureGraphSchemeStored() before proceeding,
+        // so the write is guaranteed to complete before any observable
+        // storage operation.  Pure schema introspection methods
+        // (getSchemas, getSchemaByHead, getDbVersion) skip the await because
+        // they do not touch database state.
+        this._graphSchemeReady = rootDatabase.getSchemaStorage().global.put(
+            GRAPH_SCHEME_KEY,
+            JSON.stringify(serializeGraphScheme(this.graphScheme))
+        );
+
         this.concreteInstantiations = makeConcreteNodeCache();
         this.sleeper = capabilities.sleeper;
         this.datetime = capabilities.datetime;
+    }
+
+    /** @returns {Promise<void>} */
+    async _ensureGraphSchemeStored() {
+        await this._graphSchemeReady;
     }
 
     /**
@@ -110,6 +132,7 @@ class IncrementalGraphClass {
      * @returns {Promise<void>}
      */
     async invalidate(nodeName, bindings = []) {
+        await this._ensureGraphSchemeStored();
         await internalInvalidate(this, nodeName, bindings);
     }
 
@@ -119,6 +142,7 @@ class IncrementalGraphClass {
      * @returns {Promise<ComputedValue>}
      */
     async pull(nodeName, bindings = []) {
+        await this._ensureGraphSchemeStored();
         return await internalPull(this, nodeName, bindings);
     }
 
@@ -128,6 +152,7 @@ class IncrementalGraphClass {
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
     async getFreshness(head, bindings = []) {
+        await this._ensureGraphSchemeStored();
         return await internalGetFreshness(this, head, bindings);
     }
 
@@ -137,6 +162,7 @@ class IncrementalGraphClass {
      * @returns {Promise<ComputedValue | undefined>}
      */
     async getValue(head, bindings = []) {
+        await this._ensureGraphSchemeStored();
         return await internalGetValue(this, head, bindings);
     }
 
@@ -155,6 +181,7 @@ class IncrementalGraphClass {
 
     /** @returns {Promise<Array<[string, Array<ConstValue>]>>} */
     async listMaterializedNodes() {
+        await this._ensureGraphSchemeStored();
         return await internalListMaterializedNodes(this);
     }
 
@@ -169,6 +196,7 @@ class IncrementalGraphClass {
      * @returns {Promise<DateTime>}
      */
     async getCreationTime(nodeName, bindings = []) {
+        await this._ensureGraphSchemeStored();
         return await internalGetCreationTime(this, nodeName, bindings);
     }
 
@@ -178,6 +206,7 @@ class IncrementalGraphClass {
      * @returns {Promise<DateTime>}
      */
     async getModificationTime(nodeName, bindings = []) {
+        await this._ensureGraphSchemeStored();
         return await internalGetModificationTime(this, nodeName, bindings);
     }
 }

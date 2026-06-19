@@ -17,9 +17,16 @@ const {
     LAST_NODE_INDEX_KEY,
     nodeIdentifierToString,
     stringToNodeIdentifier,
+    stringToNodeKeyString,
     makeEmptyIdentifierLookup,
     parseIdentifierLookup,
     assertValidFinalMergeState,
+    buildGraphSchemeFromNodeDefs,
+    serializeGraphScheme,
+    parseGraphScheme,
+    deriveInputEdges,
+    GRAPH_SCHEME_KEY,
+    MissingGraphSchemeError,
 } = require("./database");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
@@ -89,7 +96,7 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
 async function loadMaterializedNodes(storage) {
     /** @type {NodeIdentifier[]} */
     const nodes = [];
-    for await (const key of storage.inputs.keys()) {
+    for await (const key of storage.values.keys()) {
         nodes.push(key);
     }
     return nodes;
@@ -111,77 +118,105 @@ function addToValidSet(validSets, input, dependent) {
 }
 
 /**
- * Build validity sets from migration decisions.
- *
- * The invariant is: for every materialized node N with freshness "up-to-date",
- * for every D in inputs[N], valid[D] contains N.
- *
- * Rules:
- * - "create" and "override" nodes produce new up-to-date values and receive
- *   required incoming valid flags.
- * - "keep" nodes with freshness "up-to-date" receive required incoming valid
- *   flags.
- * - "keep" nodes with freshness "potentially-outdated" do not receive new
- *   valid flags, but existing valid[D].has(N) proofs are preserved when the
- *   proof remains true after migration: D is kept (value identity unchanged),
- *   N is kept (value identity unchanged), and N's inputs still contain D.
- *   Preserved proofs permit cache reuse after pull confirms inputs unchanged.
- * - "invalidate" nodes must not receive incoming valid flags.
- * - "delete" nodes must not appear in valid.
- *
+ * Build the identifiers_keys_map that reflects all decisions.
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions
- * @returns {Promise<Map<NodeIdentifier, NodeIdentifier[]>>}
+ * @returns {Promise<Array<[NodeIdentifier, NodeKeyString]>>}
  */
-async function buildDesiredValid(prevStorage, decisions) {
-    /** @type {Map<string, Set<NodeIdentifier>>} */
-    const validSets = new Map();
+async function buildDecisionsMap(prevStorage, decisions) {
+    const oldEntries = await prevStorage.global.get(IDENTIFIERS_KEY);
 
-    for (const [nodeIdentifier, decision] of decisions) {
-        if (decision.kind === "delete" || decision.kind === "invalidate") continue;
-        if (decision.kind === "keep") {
-            const freshness = await prevStorage.freshness.get(nodeIdentifier);
-            if (freshness !== "up-to-date") continue;
-        }
-        const storedInputEdges = decision.kind === "create"
-            ? []
-            : await prevStorage.inputs.get(nodeIdentifier);
-        for (const input of Array.isArray(storedInputEdges) ? storedInputEdges : []) {
-            const inputDecision = decisions.get(input);
-            if (inputDecision?.kind === "delete") continue;
-            addToValidSet(validSets, input, nodeIdentifier);
+    /** @type {Map<string, NodeKeyString>} */
+    const idToKey = new Map();
+    if (Array.isArray(oldEntries)) {
+        for (const [id, nodeKeyJson] of oldEntries) {
+            const decision = decisions.get(stringToNodeIdentifier(String(id)));
+            if (!decision || decision.kind !== "delete") {
+                idToKey.set(String(id), stringToNodeKeyString(String(nodeKeyJson)));
+            }
         }
     }
 
+    for (const [nodeKey, decision] of decisions) {
+        if (decision.kind === "create" && decision.nodeKeyString !== undefined) {
+            idToKey.set(nodeIdentifierToString(nodeKey), stringToNodeKeyString(decision.nodeKeyString));
+        }
+    }
+
+    /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
+    const entries = [];
+    for (const [id, key] of idToKey.entries()) {
+        entries.push([stringToNodeIdentifier(id), key]);
+    }
+    entries.sort(([leftId], [rightId]) => compareNodeIdentifier(leftId, rightId));
+    return entries;
+}
+
+/**
+ * @param {Map<NodeIdentifier, Decision>} decisions
+ * @returns {Set<string>}
+ */
+function materializedDecisionStrings(decisions) {
+    const result = new Set();
+    for (const [identifier, decision] of decisions) {
+        if (decision.kind !== "delete") {
+            result.add(nodeIdentifierToString(identifier));
+        }
+    }
+    return result;
+}
+
+/**
+ * Build validity sets from migration decisions and scheme-derived final edges.
+ * @param {ReadableMigrationStorage} prevStorage
+ * @param {Map<NodeIdentifier, Decision>} decisions
+ * @param {import('./database/graph_scheme').GraphScheme} oldScheme
+ * @param {import('./database/graph_scheme').GraphScheme} newScheme
+ * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
+ * @param {import('./database/identifier_lookup').IdentifierLookup} finalLookup
+ * @returns {Promise<Map<NodeIdentifier, NodeIdentifier[]>>}
+ */
+async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, oldLookup, finalLookup) {
+    /** @type {Map<string, Set<NodeIdentifier>>} */
+    const validSets = new Map();
+    const materialized = materializedDecisionStrings(decisions);
+
     for (const [nodeIdentifier, decision] of decisions) {
-        if (decision.kind !== "keep") continue;
-        const freshness = await prevStorage.freshness.get(nodeIdentifier);
-        if (freshness !== "potentially-outdated") continue;
-
-        const persistedInputEdges = await prevStorage.inputs.get(nodeIdentifier);
-        if (persistedInputEdges === undefined) continue;
-
-        for (const input of persistedInputEdges) {
-            const inputDecision = decisions.get(input);
-            if (!inputDecision || inputDecision.kind === "delete") continue;
-            if (inputDecision.kind !== "keep") continue;
-
-            const existingValidForD = await prevStorage.valid.get(input) ?? [];
-            if (!existingValidForD.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(nodeIdentifier))) {
-                continue;
+        if (decision.kind === "delete" || decision.kind === "invalidate") continue;
+        const finalEdges = deriveInputEdges(newScheme, finalLookup, nodeIdentifier);
+        for (const edge of finalEdges) {
+            if (!materialized.has(nodeIdentifierToString(edge))) {
+                throw new Error(`Migration dependency ${nodeIdentifierToString(edge)} for ${nodeIdentifierToString(nodeIdentifier)} is not materialized in the target replica`);
             }
+        }
 
-            addToValidSet(validSets, input, nodeIdentifier);
+        const finalFreshness = decision.kind === "keep"
+            ? await prevStorage.freshness.get(nodeIdentifier)
+            : "up-to-date";
+        if (finalFreshness === "up-to-date") {
+            for (const input of finalEdges) {
+                addToValidSet(validSets, input, nodeIdentifier);
+            }
+            continue;
+        }
+
+        if (decision.kind !== "keep" || finalFreshness !== "potentially-outdated") continue;
+        const oldEdges = deriveInputEdges(oldScheme, oldLookup, nodeIdentifier);
+        for (const input of finalEdges) {
+            const inputDecision = decisions.get(input);
+            if (!inputDecision || inputDecision.kind !== "keep") continue;
+            if (!oldEdges.some(edge => nodeIdentifierToString(edge) === nodeIdentifierToString(input))) continue;
+            const existingValidForD = await prevStorage.valid.get(input) ?? [];
+            if (existingValidForD.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(nodeIdentifier))) {
+                addToValidSet(validSets, input, nodeIdentifier);
+            }
         }
     }
 
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const result = new Map();
     for (const [inputString, dependents] of validSets) {
-        result.set(
-            stringToNodeIdentifier(inputString),
-            [...dependents].sort(compareNodeIdentifier)
-        );
+        result.set(stringToNodeIdentifier(inputString), [...dependents].sort(compareNodeIdentifier));
     }
     return result;
 }
@@ -204,49 +239,14 @@ async function buildDesiredValid(prevStorage, decisions) {
  * @param {import('../../datetime').Datetime} datetime - Datetime capability for generating timestamps.
  * @param {number} maxAllocatedIndex - The max allocated local index during this migration.
  * @param {string} fingerprint - The database fingerprint to carry forward.
+ * @param {import('./database/graph_scheme').GraphScheme} graphScheme
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersion, datetime, maxAllocatedIndex, fingerprint) {
+function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersion, datetime, maxAllocatedIndex, fingerprint, graphScheme) {
     const sortedDecisionOutputKeys = [...decisions.keys()]
         .sort(compareNodeIdentifier);
 
     const sortedValidKeys = [...desiredValid.keys()].sort(compareNodeIdentifier);
-
-    /**
-     * Build the identifiers_keys_map that reflects all decisions:
-     * - Existing entries for keep/override/invalidate nodes are kept as-is.
-     * - Entries for deleted nodes are removed.
-     * - Entries for created nodes are added using the stored nodeKeyString.
-     * @param {ReadableMigrationStorage} prevStorage
-     * @param {Map<NodeIdentifier, Decision>} decisions
-     * @returns {Promise<Array<[string, string]>>}
-     */
-    async function buildDecisionsMap(prevStorage, decisions) {
-        const oldEntries = await prevStorage.global.get(IDENTIFIERS_KEY);
-
-        /** @type {Map<string, string>} */
-        const idToKey = new Map();
-        if (Array.isArray(oldEntries)) {
-            for (const [id, nodeKeyJson] of oldEntries) {
-                const decision = decisions.get(stringToNodeIdentifier(id));
-                if (!decision || decision.kind !== "delete") {
-                    idToKey.set(String(id), String(nodeKeyJson));
-                }
-            }
-        }
-
-        for (const [nodeKey, decision] of decisions) {
-            if (decision.kind === "create" && decision.nodeKeyString !== undefined) {
-                const idStr = nodeIdentifierToString(nodeKey);
-                if (!idToKey.has(idStr)) {
-                    idToKey.set(idStr, decision.nodeKeyString);
-                }
-            }
-        }
-
-        return [...idToKey.entries()]
-            .sort(([leftId], [rightId]) => String(leftId).localeCompare(String(rightId)));
-    }
 
     return {
         values: {
@@ -256,7 +256,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                     if (!decision || decision.kind === "delete") continue;
                     if (decision.kind === "create" || decision.kind === "override") {
                         yield outputKey;
-                    } else if (decision.kind === "keep") {
+                    } else if (decision.kind === "keep" || decision.kind === "invalidate") {
                         const v = await prevStorage.values.get(outputKey);
                         if (v !== undefined) yield outputKey;
                     }
@@ -290,26 +290,6 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 if (decision.kind === "create" || decision.kind === "override") return "up-to-date";
                 if (decision.kind === "invalidate") return "potentially-outdated";
                 return await prevStorage.freshness.get(key);
-            },
-        },
-        inputs: {
-            async *keys() {
-                for (const outputKey of sortedDecisionOutputKeys) {
-                    const decision = decisions.get(outputKey);
-                    if (!decision || decision.kind === "delete") continue;
-                    if (decision.kind === "create") {
-                        yield outputKey;
-                    } else {
-                        const ir = await prevStorage.inputs.get(outputKey);
-                        if (ir !== undefined) yield outputKey;
-                    }
-                }
-            },
-            async get(key) {
-                const decision = decisions.get(key);
-                if (!decision || decision.kind === "delete") return undefined;
-                if (decision.kind === "create") return [];
-                return await prevStorage.inputs.get(key);
             },
         },
         valid: {
@@ -375,6 +355,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 yield IDENTIFIERS_KEY;
                 yield LAST_NODE_INDEX_KEY;
                 yield 'fingerprint';
+                yield GRAPH_SCHEME_KEY;
             },
             async get(key) {
                 if (key === 'version') {
@@ -391,6 +372,9 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 }
                 if (key === 'fingerprint') {
                     return fingerprint;
+                }
+                if (key === GRAPH_SCHEME_KEY) {
+                    return JSON.stringify(graphScheme);
                 }
                 return await prevStorage.global.get(key);
             },
@@ -459,7 +443,14 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             { currentVersion, activeReplica },
             'Migration not required: no stored version found in active replica; marking fresh database with current version'
         );
-        // No previous version recorded; fresh database: record current version, nothing to migrate.
+        // No previous version recorded; fresh database: record current version
+        // and graph_scheme, nothing to migrate.
+        const compiledNodes = nodeDefs.map(compileNodeDef);
+        const currentGraphScheme = JSON.stringify(
+            serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes))
+        );
+        const schemaStorage = rootDatabase.getSchemaStorage();
+        await schemaStorage.global.put(GRAPH_SCHEME_KEY, currentGraphScheme);
         await rootDatabase.setGlobalVersion(rootDatabase.getVersion());
         return rootDatabase;
     }
@@ -495,6 +486,18 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
             // Compile new schema and build head index for compatibility checks.
             const compiledNodes = nodeDefs.map(compileNodeDef);
+            const newGraphScheme = serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes));
+            const storedOldScheme = await prevStorage.global.get(GRAPH_SCHEME_KEY);
+            if (storedOldScheme === undefined) {
+                throw new MissingGraphSchemeError(
+                    `migration source replica (${fromReplica})`
+                );
+            }
+            const oldGraphScheme = parseGraphScheme(storedOldScheme);
+            const rawOldIdentifiers = await prevStorage.global.get(IDENTIFIERS_KEY);
+            const oldLookup = rawOldIdentifiers === undefined
+                ? makeEmptyIdentifierLookup()
+                : parseIdentifierLookup(rawOldIdentifiers, 'migration source replica');
             /** @type {Map<NodeName, CompiledNode>} */
             const newHeadIndex = new Map(compiledNodes.map((n) => [n.head, n]));
 
@@ -507,7 +510,10 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 newHeadIndex,
                 materializedNodes,
                 rootDatabase.getFingerprint(),
-                rootDatabase.getLastNodeIndex()
+                rootDatabase.getLastNodeIndex(),
+                oldGraphScheme,
+                newGraphScheme,
+                oldLookup
             );
 
             // Execute user migration callback.
@@ -518,9 +524,18 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
             const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
 
+            const finalLookup = parseIdentifierLookup(
+                await buildDecisionsMap(prevStorage, decisions),
+                'migration target replica'
+            );
+
             const desiredValid = await buildDesiredValid(
                 prevStorage,
                 decisions,
+                oldGraphScheme,
+                newGraphScheme,
+                oldLookup,
+                finalLookup
             );
 
             // Create a lazy source that computes desired values on demand.
@@ -533,7 +548,8 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 currentVersion,
                 capabilities.datetime,
                 migrationStorage.getMaxAllocatedIndex(),
-                rootDatabase.getFingerprint()
+                rootDatabase.getFingerprint(),
+                newGraphScheme
             );
 
             // Gently unify the desired state into the target replica.

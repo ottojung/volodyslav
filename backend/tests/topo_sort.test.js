@@ -13,6 +13,8 @@
 const {
     getRootDatabase,
     nodeIdentifierFromString,
+    GRAPH_SCHEME_KEY,
+    IDENTIFIERS_KEY,
 } = require('../src/generators/incremental_graph/database');
 const {
     topologicalSort,
@@ -22,6 +24,7 @@ const {
 } = require('../src/generators/incremental_graph/database/topo_sort');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
+const { toJsonKey } = require('./test_json_key_helper');
 
 jest.setTimeout(15000);
 
@@ -57,16 +60,36 @@ const NODE_E = makeTestId(4);  // 'eeeeeeeee'  (used as external/unlisted node)
 const NODE_M = makeTestId(12); // 'mmmmmmmmm'
 const NODE_Z = makeTestId(25); // 'z-abcdefghi'
 
+const LINEAR_CHAIN_SCHEME = {
+    format: 1,
+    nodes: [
+        { head: "A", arity: 0, inputTemplates: [] },
+        { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+        { head: "C", arity: 0, inputTemplates: [{ head: "B", args: [] }] },
+    ],
+};
+
 /**
- * Write stored inputs for `node` whose dependencies are `inputKeys`.
- *
- * @param {object} storage - SchemaStorage instance.
- * @param {string} nodeKey
- * @param {string[]} inputKeys - NodeKeyString array.
+ * Write the graph scheme and identity lookup for the A -> B -> C test graph.
+ * @param {import('../src/generators/incremental_graph/database').SchemaStorage} storage
+ * @param {Array<[string, string]>} entries
  * @returns {Promise<void>}
  */
-async function putNode(storage, nodeKey, inputKeys) {
-    await storage.inputs.put(nodeKey, inputKeys);
+async function writeLinearChainMetadata(storage, entries) {
+    await storage.global.put(GRAPH_SCHEME_KEY, JSON.stringify(LINEAR_CHAIN_SCHEME));
+    await storage.global.put(IDENTIFIERS_KEY, entries);
+}
+
+/**
+ * Write materialized values in the requested order.
+ * @param {import('../src/generators/incremental_graph/database').SchemaStorage} storage
+ * @param {string[]} identifiers
+ * @returns {Promise<void>}
+ */
+async function writeValues(storage, identifiers) {
+    for (const identifier of identifiers) {
+        await storage.values.put(identifier, { value: identifier });
+    }
 }
 
 describe('topologicalSort', () => {
@@ -83,137 +106,168 @@ describe('topologicalSort', () => {
         }
     });
 
-    test('returns a single node for a single-node graph', async () => {
+    test('orders storage-level linear chain A -> B -> C from graph_scheme', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
             db = await getRootDatabase(capabilities);
             const storage = db.getSchemaStorage();
-            const nodeA = NODE_A;
-            await putNode(storage, nodeA, []);
-            const result = await topologicalSort(storage);
-            expect(result).toEqual([nodeA]);
+            const idA = NODE_A, idB = NODE_B, idC = NODE_C;
+            await writeLinearChainMetadata(storage, [
+                [idA, toJsonKey('A')],
+                [idB, toJsonKey('B')],
+                [idC, toJsonKey('C')],
+            ]);
+            await writeValues(storage, [idA, idB, idC]);
+
+            expect(await topologicalSort(storage)).toEqual([idA, idB, idC]);
         } finally {
             if (db) await db.close();
         }
+    });
+
+    test('storage-level sort fails when graph_scheme is missing', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const storage = db.getSchemaStorage();
+            await storage.global.put(IDENTIFIERS_KEY, [[NODE_A, toJsonKey('A')]]);
+            await writeValues(storage, [NODE_A]);
+
+            await expect(topologicalSort(storage)).rejects.toThrow(/graph_scheme/);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('storage-level sort fails when identifiers_keys_map is missing', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const storage = db.getSchemaStorage();
+            await storage.global.put(GRAPH_SCHEME_KEY, JSON.stringify(LINEAR_CHAIN_SCHEME));
+            await storage.global.del(IDENTIFIERS_KEY);
+            await writeValues(storage, [NODE_A]);
+
+            await expect(topologicalSort(storage)).rejects.toThrow(/identifiers_keys_map/);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('storage-level sort follows scheme dependencies instead of insertion order', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const storage = db.getSchemaStorage();
+            const idA = NODE_A, idB = NODE_B, idC = NODE_C;
+            await writeLinearChainMetadata(storage, [
+                [idA, toJsonKey('A')],
+                [idB, toJsonKey('B')],
+                [idC, toJsonKey('C')],
+            ]);
+            await writeValues(storage, [idC, idB, idA]);
+
+            expect(await topologicalSort(storage)).toEqual([idA, idB, idC]);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('returns a single node for a single-node graph', async () => {
+        const nodeA = NODE_A;
+        const map = new Map([[nodeA, []]]);
+        const result = topologicalSortFromMap(map);
+        expect(result).toEqual([nodeA]);
     });
 
     test('orders a linear chain A → B → C correctly (A first)', async () => {
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const storage = db.getSchemaStorage();
-            const nodeA = NODE_A;
-            const nodeB = NODE_B;
-            const nodeC = NODE_C;
-            // B depends on A, C depends on B.
-            await putNode(storage, nodeA, []);
-            await putNode(storage, nodeB, [nodeA]);
-            await putNode(storage, nodeC, [nodeB]);
-            const result = await topologicalSort(storage);
-            expect(result).toEqual([nodeA, nodeB, nodeC]);
-        } finally {
-            if (db) await db.close();
-        }
+        const nodeA = NODE_A;
+        const nodeB = NODE_B;
+        const nodeC = NODE_C;
+        // B depends on A, C depends on B.
+        const map = new Map([
+            [nodeA, []],
+            [nodeB, [nodeA]],
+            [nodeC, [nodeB]],
+        ]);
+        const result = topologicalSortFromMap(map);
+        expect(result).toEqual([nodeA, nodeB, nodeC]);
     });
 
     test('handles diamond dependency A → {B,C} → D', async () => {
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const storage = db.getSchemaStorage();
-            const nodeA = NODE_A;
-            const nodeB = NODE_B;
-            const nodeC = NODE_C;
-            const nodeD = NODE_D;
-            // B and C both depend on A; D depends on both B and C.
-            await putNode(storage, nodeA, []);
-            await putNode(storage, nodeB, [nodeA]);
-            await putNode(storage, nodeC, [nodeA]);
-            await putNode(storage, nodeD, [nodeB, nodeC]);
-            const result = await topologicalSort(storage);
-            // A must be first; D must be last; B and C between them.
-            expect(result[0]).toBe(nodeA);
-            expect(result[result.length - 1]).toBe(nodeD);
-            // Both B and C must appear before D.
-            const idxB = result.indexOf(nodeB);
-            const idxC = result.indexOf(nodeC);
-            const idxD = result.indexOf(nodeD);
-            expect(idxB).toBeGreaterThan(-1);
-            expect(idxC).toBeGreaterThan(-1);
-            expect(idxB).toBeLessThan(idxD);
-            expect(idxC).toBeLessThan(idxD);
-        } finally {
-            if (db) await db.close();
-        }
+        const nodeA = NODE_A;
+        const nodeB = NODE_B;
+        const nodeC = NODE_C;
+        const nodeD = NODE_D;
+        // B and C both depend on A; D depends on both B and C.
+        const map = new Map([
+            [nodeA, []],
+            [nodeB, [nodeA]],
+            [nodeC, [nodeA]],
+            [nodeD, [nodeB, nodeC]],
+        ]);
+        const result = topologicalSortFromMap(map);
+        // A must be first; D must be last; B and C between them.
+        expect(result[0]).toBe(nodeA);
+        expect(result[result.length - 1]).toBe(nodeD);
+        // Both B and C must appear before D.
+        const idxB = result.indexOf(nodeB);
+        const idxC = result.indexOf(nodeC);
+        const idxD = result.indexOf(nodeD);
+        expect(idxB).toBeGreaterThan(-1);
+        expect(idxC).toBeGreaterThan(-1);
+        expect(idxB).toBeLessThan(idxD);
+        expect(idxC).toBeLessThan(idxD);
     });
 
     test('nodes at the same depth are sorted by NodeKeyString ascending (stability)', async () => {
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const storage = db.getSchemaStorage();
-            // Three independent root nodes; they should appear in ascending key order.
-            const nodeZ = NODE_Z;
-            const nodeA = NODE_A;
-            const nodeM = NODE_M;
-            await putNode(storage, nodeZ, []);
-            await putNode(storage, nodeA, []);
-            await putNode(storage, nodeM, []);
-            const result = await topologicalSort(storage);
-            expect(result.length).toBe(3);
-            // Result must be sorted ascending by key string.
-            const sorted = [...result].sort();
-            expect(result).toEqual(sorted);
-        } finally {
-            if (db) await db.close();
-        }
+        // Three independent root nodes; they should appear in ascending key order.
+        const nodeZ = NODE_Z;
+        const nodeA = NODE_A;
+        const nodeM = NODE_M;
+        const map = new Map([
+            [nodeZ, []],
+            [nodeA, []],
+            [nodeM, []],
+        ]);
+        const result = topologicalSortFromMap(map);
+        expect(result.length).toBe(3);
+        // Result must be sorted ascending by key string.
+        const sorted = [...result].sort();
+        expect(result).toEqual(sorted);
     });
 
     test('throws TopologicalSortCycleError when the graph has a cycle', async () => {
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            const storage = db.getSchemaStorage();
-            const nodeA = NODE_A;
-            const nodeB = NODE_B;
-            // A → B and B → A form a cycle.
-            await putNode(storage, nodeA, [nodeB]);
-            await putNode(storage, nodeB, [nodeA]);
-            await expect(topologicalSort(storage)).rejects.toBeInstanceOf(
-                TopologicalSortCycleError
-            );
-        } finally {
-            if (db) await db.close();
-        }
+        const nodeA = NODE_A;
+        const nodeB = NODE_B;
+        // A → B and B → A form a cycle.
+        const map = new Map([
+            [nodeA, [nodeB]],
+            [nodeB, [nodeA]],
+        ]);
+        expect(() => topologicalSortFromMap(map)).toThrow(TopologicalSortCycleError);
     });
 
     test('isTopologicalSortCycleError identifies the error correctly', async () => {
-        const capabilities = getTestCapabilities();
-        let db;
+        const nodeA = NODE_A;
+        const nodeB = NODE_B;
+        const map = new Map([
+            [nodeA, [nodeB]],
+            [nodeB, [nodeA]],
+        ]);
+        let caught;
         try {
-            db = await getRootDatabase(capabilities);
-            const storage = db.getSchemaStorage();
-            const nodeA = NODE_A;
-            const nodeB = NODE_B;
-            await putNode(storage, nodeA, [nodeB]);
-            await putNode(storage, nodeB, [nodeA]);
-            let caught;
-            try {
-                await topologicalSort(storage);
-            } catch (err) {
-                caught = err;
-            }
-            expect(caught).toBeDefined();
-            expect(isTopologicalSortCycleError(caught)).toBe(true);
-            expect(isTopologicalSortCycleError(new Error('other'))).toBe(false);
-        } finally {
-            if (db) await db.close();
+            topologicalSortFromMap(map);
+        } catch (err) {
+            caught = err;
         }
+        expect(caught).toBeDefined();
+        expect(isTopologicalSortCycleError(caught)).toBe(true);
+        expect(isTopologicalSortCycleError(new Error('other'))).toBe(false);
     });
 });
 

@@ -46,7 +46,7 @@ const { deserializeNodeKey, serializeNodeKey, txAllocateNodeIdentifier } = requi
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { internalMaybeRecalculate } = require("./recompute");
-const { normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require("./database");
+const { normalizeInputEdges } = require("./database");
 
 /**
  * @typedef {object} IncrementalGraphPullAccess
@@ -61,13 +61,11 @@ const { normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require("./databas
 /**
  * Read a cached value only when authorized.
  *
- * For an up-to-date node with inputs, derives current schema input edges,
- * compares them against persisted inputs[N], and verifies valid[D].has(N)
- * for every dependency D.  If all checks pass the stored value is returned
- * without pulling dependencies and without invoking any computor.
+ * For an up-to-date node, derives current schema input edges and verifies
+ * valid[D].has(N) for every dependency D. If all checks pass the stored value
+ * is returned without pulling dependencies and without invoking any computor.
  *
- * Zero-input nodes return their stored value when a persisted empty inputs
- * record exists.
+ * Zero-input nodes return their stored value immediately.
  *
  * Nodes that are not up-to-date fall through to internalMaybeRecalculate().
  *
@@ -84,17 +82,6 @@ async function readAuthorizedCachedValue(graph, nodeIdentifier, concreteNode) {
     if (value === undefined) {
         throw new Error(`Impossible: up-to-date node has no stored value: ${nodeIdentifierToString(nodeIdentifier)}`);
     }
-    if (concreteNode.inputs.length === 0) {
-        const inputs = await graph.storage.inputs.get(nodeIdentifier);
-        if (inputs !== undefined && inputs.length === 0) {
-            return value;
-        }
-        return undefined;
-    }
-    const persistedInputs = await graph.storage.inputs.get(nodeIdentifier);
-    if (persistedInputs === undefined) {
-        return undefined;
-    }
     const inputIdentifiers = [];
     for (const inputKey of concreteNode.inputs) {
         const inputId = graph.rootDatabase.nodeKeyToId(inputKey);
@@ -104,11 +91,8 @@ async function readAuthorizedCachedValue(graph, nodeIdentifier, concreteNode) {
         inputIdentifiers.push(inputId);
     }
     const inputEdges = normalizeInputEdges(inputIdentifiers);
-    if (!arraysOfNodeIdentifiersEqual(persistedInputs, inputEdges)) {
-        throw new Error(
-            `Corrupted stored inputs for node ${String(concreteNode.output)}: ` +
-            `persisted inputs differ from schema-derived inputEdges`
-        );
+    if (inputEdges.length === 0) {
+        return value;
     }
     for (const depId of inputEdges) {
         const validDeps = await graph.storage.valid.get(depId) ?? [];

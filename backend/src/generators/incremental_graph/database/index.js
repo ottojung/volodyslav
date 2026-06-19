@@ -88,6 +88,19 @@ const {
     normalizeInputEdges,
     arraysOfNodeIdentifiersEqual,
 } = require('./input_edges');
+const {
+    GRAPH_SCHEME_KEY,
+    GraphSchemeError,
+    MissingGraphSchemeError,
+    isGraphSchemeError,
+    isMissingGraphSchemeError,
+    buildGraphSchemeFromNodeDefs,
+    serializeGraphScheme,
+    parseGraphScheme,
+    deriveInputPositions,
+    deriveInputEdges,
+    semanticInputKeys,
+} = require('./graph_scheme');
 
 const {
     assertValidFinalMergeState,
@@ -173,6 +186,17 @@ module.exports = {
     unifyStores,
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
+    GRAPH_SCHEME_KEY,
+    GraphSchemeError,
+    MissingGraphSchemeError,
+    isGraphSchemeError,
+    isMissingGraphSchemeError,
+    buildGraphSchemeFromNodeDefs,
+    serializeGraphScheme,
+    parseGraphScheme,
+    deriveInputPositions,
+    deriveInputEdges,
+    semanticInputKeys,
     normalizeInputEdges,
     arraysOfNodeIdentifiersEqual,
     assertValidFinalMergeState,
