@@ -91,6 +91,12 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
                     `up-to-date node ${identifierString} depends on non-materialized input ${inputString}`
                 );
             }
+            const inputFreshness = await targetStorage.freshness.get(input);
+            if (inputFreshness === 'potentially-outdated') {
+                throw new FinalMergeStateError(
+                    `up-to-date node ${identifierString} depends on stale input ${inputString}`
+                );
+            }
             const validDependents = await targetStorage.valid.get(input) ?? [];
             if (!validDependents.some(dependent => nodeIdentifierToString(dependent) === identifierString)) {
                 throw new FinalMergeStateError(`up-to-date node ${identifierString} lacks validity for input ${inputString}`);
