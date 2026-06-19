@@ -291,6 +291,12 @@ async function topologicalSort(storage) {
     }
 
     const rawScheme = await storage.global.get(GRAPH_SCHEME_KEY);
+    if (rawScheme === undefined) {
+        throw new Error(
+            'Missing global/graph_scheme for topological sort: ' +
+            'cannot derive dependencies without a stored graph_scheme'
+        );
+    }
     const rawLookup = await storage.global.get(IDENTIFIERS_KEY);
     if (!Array.isArray(rawLookup)) {
         throw new Error('Missing identifiers_keys_map for topological sort');

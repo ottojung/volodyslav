@@ -578,14 +578,20 @@ class MigrationStorageClass {
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeName, CompiledNode>} newHeadIndex
  * @param {NodeIdentifier[]} materializedNodes
- * @param {string} [fingerprint="testfingerprint"] - The database fingerprint for identifier allocation.
- * @param {number} [lastNodeIndex=0] - The current last_node_index watermark.
- * @param {import('./database/graph_scheme').GraphScheme} [oldGraphScheme]
- * @param {import('./database/graph_scheme').GraphScheme} [newGraphScheme]
- * @param {import('./database/identifier_lookup').IdentifierLookup} [oldLookup]
+ * @param {string} fingerprint - The database fingerprint for identifier allocation.
+ * @param {number} lastNodeIndex - The current last_node_index watermark.
+ * @param {import('./database/graph_scheme').GraphScheme} oldGraphScheme
+ * @param {import('./database/graph_scheme').GraphScheme} newGraphScheme
+ * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
  * @returns {MigrationStorageClass}
  */
-function makeMigrationStorage(prevStorage, newHeadIndex, materializedNodes, fingerprint = "testfingerprint", lastNodeIndex = 0, oldGraphScheme = { format: 1, nodes: [] }, newGraphScheme = { format: 1, nodes: [] }, oldLookup = { keyToId: new Map(), idToKey: new Map(), serialized: [] }) {
+function makeMigrationStorage(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, oldLookup) {
+    if (oldGraphScheme === undefined || newGraphScheme === undefined || oldLookup === undefined) {
+        throw new Error(
+            "makeMigrationStorage: oldGraphScheme, newGraphScheme, and oldLookup are required. " +
+            "Test callers must build real graph schemes and identifier lookups."
+        );
+    }
     return new MigrationStorageClass(prevStorage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, oldLookup);
 }
 

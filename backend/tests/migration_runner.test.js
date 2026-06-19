@@ -1,7 +1,13 @@
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
+const { compileNodeDef } = require("../src/generators/incremental_graph/compiled_node");
 const {
     IDENTIFIERS_KEY,
+    GRAPH_SCHEME_KEY,
     nodeIdentifierToString,
+    nodeNameToString,
+    deserializeNodeKey,
+    buildGraphSchemeFromNodeDefs,
+    serializeGraphScheme,
 } = require("../src/generators/incremental_graph/database");
 const {
     isUndecidedNodes,
@@ -81,11 +87,53 @@ function makeSchemaStorage() {
     // as the semantic node key JSON string. When identifiers_keys_map is not
     // explicitly seeded, fall back to an identity mapping derived from the
     // currently materialized values keys.
+    // When graph_scheme is not explicitly seeded, auto-generate from values + valid.
     const originalGlobalGet = global.get.bind(global);
     global.get = async (key) => {
+        if (key === GRAPH_SCHEME_KEY) {
+            const stored = await originalGlobalGet(key);
+            if (stored !== undefined) return stored;
+            // Build scheme from materialized node keys and the valid sublevel.
+            const headArity = new Map();
+            for await (const k of values.keys()) {
+                try {
+                    const parsed = deserializeNodeKey(k);
+                    const head = nodeNameToString(parsed.head);
+                    if (!headArity.has(head)) {
+                        headArity.set(head, parsed.args.length);
+                    }
+                } catch { /* skip unparseable keys */ }
+            }
+            // valid[D] = [N1, N2, ...] means N1 and N2 list D as a dependency.
+            const depMap = new Map();
+            for await (const depId of valid.keys()) {
+                const dependents = await valid.get(depId) ?? [];
+                for (const dep of dependents) {
+                    try {
+                        const depParsed = deserializeNodeKey(dep);
+                        const depHead = nodeNameToString(depParsed.head);
+                        const depDeps = depMap.get(depHead) ?? new Set();
+                        const depIdParsed = deserializeNodeKey(depId);
+                        depDeps.add(nodeNameToString(depIdParsed.head));
+                        depMap.set(depHead, depDeps);
+                    } catch { /* skip unparseable keys */ }
+                }
+            }
+            const nodes = [...headArity.entries()]
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([head, arity]) => {
+                    const deps = depMap.get(head);
+                    const inputTemplates = deps
+                        ? [...deps].sort().map(dh => ({ head: dh, args: [] }))
+                        : [];
+                    return { head, arity, inputTemplates };
+                });
+            return JSON.stringify({ format: 1, nodes });
+        }
         if (key !== IDENTIFIERS_KEY) {
             return await originalGlobalGet(key);
         }
+
         const stored = await originalGlobalGet(key);
         if (stored !== undefined) return stored;
 
@@ -198,6 +246,18 @@ async function getTestCapabilities() {
 }
 
 /**
+ * Seed a graph_scheme in xStorage from the given nodeDefs.
+ * Used by tests where auto-generation from valid cannot infer dependency edges.
+ * @param {import('../src/generators/incremental_graph/database').SchemaStorage} storage
+ * @param {Array<import('../src/generators/incremental_graph/types').NodeDef>} nodeDefs
+ */
+async function seedGraphScheme(storage, nodeDefs) {
+    const compiledNodes = nodeDefs.map(compileNodeDef);
+    const scheme = serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes));
+    await storage.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
+}
+
+/**
  * Builds a minimal but representative migration scenario.
  * The xStorage has one node ("A") that the migration callback can act upon.
  */
@@ -205,12 +265,6 @@ function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0
     const xStorage = makeSchemaStorage();
     const yStorage = makeSchemaStorage();
     const nodeKey = toJsonKey("A");
-    const { rootDatabase } = makeRootDatabaseMock({
-        prevVersion,
-        currentVersion,
-        xStorage,
-        yStorage,
-    });
     const nodeDefs = [{
         output: "A",
         inputs: [],
@@ -218,6 +272,13 @@ function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0
         isDeterministic: true,
         hasSideEffects: false,
     }];
+    // graph_scheme is auto-generated from values + valid in makeSchemaStorage's global.get
+    const { rootDatabase } = makeRootDatabaseMock({
+        prevVersion,
+        currentVersion,
+        xStorage,
+        yStorage,
+    });
     return { rootDatabase, nodeDefs, nodeKey, xStorage, yStorage };
 }
 
@@ -460,6 +521,8 @@ describe("runMigration", () => {
                 { output: "X", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
                 { output: "B", inputs: ["A", "X"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
             ];
+            // valid is intentionally empty, so auto-generation cannot infer B's dependencies.
+            await seedGraphScheme(xStorage, nodeDefs);
 
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(depKey);
@@ -521,6 +584,7 @@ describe("runMigration", () => {
                 { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
                 { output: "B", inputs: ["A"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
             ];
+            // valid[A] = [B] is set above, so auto-generation from valid handles this test.
 
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(aKey);
@@ -565,6 +629,8 @@ describe("runMigration", () => {
                 { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
                 { output: "B", inputs: ["A"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
             ];
+            // valid is intentionally empty, so auto-generation cannot infer B's dependency.
+            await seedGraphScheme(xStorage, nodeDefs);
 
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(aKey);

@@ -9,7 +9,10 @@
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
 const {
     IDENTIFIERS_KEY,
+    GRAPH_SCHEME_KEY,
     nodeIdentifierToString,
+    nodeNameToString,
+    deserializeNodeKey,
 } = require("../src/generators/incremental_graph/database");
 const { toJsonKey } = require("./test_json_key_helper");
 const { getMockedRootCapabilities } = require("./spies");
@@ -86,11 +89,53 @@ function makeSchemaStorage() {
     // as the semantic node key JSON string. When identifiers_keys_map is not
     // explicitly seeded, fall back to an identity mapping derived from the
     // currently materialized values keys.
+    // When graph_scheme is not explicitly seeded, auto-generate from values + valid.
     const originalGlobalGet = global.get.bind(global);
     global.get = async (key) => {
+        if (key === GRAPH_SCHEME_KEY) {
+            const stored = await originalGlobalGet(key);
+            if (stored !== undefined) return stored;
+            // Build scheme from materialized node keys and the valid sublevel.
+            const headArity = new Map();
+            for await (const k of values.keys()) {
+                try {
+                    const parsed = deserializeNodeKey(k);
+                    const head = nodeNameToString(parsed.head);
+                    if (!headArity.has(head)) {
+                        headArity.set(head, parsed.args.length);
+                    }
+                } catch { /* skip unparseable keys */ }
+            }
+            // valid[D] = [N1, N2, ...] means N1 and N2 list D as a dependency.
+            const depMap = new Map();
+            for await (const depId of valid.keys()) {
+                const dependents = await valid.get(depId) ?? [];
+                for (const dep of dependents) {
+                    try {
+                        const depParsed = deserializeNodeKey(dep);
+                        const depHead = nodeNameToString(depParsed.head);
+                        const depDeps = depMap.get(depHead) ?? new Set();
+                        const depIdParsed = deserializeNodeKey(depId);
+                        depDeps.add(nodeNameToString(depIdParsed.head));
+                        depMap.set(depHead, depDeps);
+                    } catch { /* skip unparseable keys */ }
+                }
+            }
+            const nodes = [...headArity.entries()]
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([head, arity]) => {
+                    const deps = depMap.get(head);
+                    const inputTemplates = deps
+                        ? [...deps].sort().map(dh => ({ head: dh, args: [] }))
+                        : [];
+                    return { head, arity, inputTemplates };
+                });
+            return JSON.stringify({ format: 1, nodes });
+        }
         if (key !== IDENTIFIERS_KEY) {
             return await originalGlobalGet(key);
         }
+
         const stored = await originalGlobalGet(key);
         if (stored !== undefined) return stored;
 

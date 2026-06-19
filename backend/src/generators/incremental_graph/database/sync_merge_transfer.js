@@ -35,14 +35,14 @@ function buildDeleteNodeOps(targetStorage, identifier) {
 
 /**
  * Build operations that copy a node between potentially different identifiers.
- * Inputs are supplied by the semantic planner after lowering to final identifiers.
+ * Validity is not copied here — it is rebuilt by the caller from scheme-derived
+ * edges in preserveAndRebuildValidity.
  *
  * @param {object} options
  * @param {SchemaStorage} options.targetStorage
  * @param {SchemaStorage} options.sourceStorage
  * @param {NodeIdentifier} options.sourceId
  * @param {NodeIdentifier} options.destinationId
- * @param {NodeIdentifier[]} options.finalInputsForDestination
  * @returns {Promise<Array<*>>}
  */
 async function copyNodeOps({

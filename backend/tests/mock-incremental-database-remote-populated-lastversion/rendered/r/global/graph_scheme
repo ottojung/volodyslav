@@ -1,0 +1,1 @@
+{"format":1,"nodes":[{"head":"all_events","arity":0,"inputTemplates":[]},{"head":"config","arity":0,"inputTemplates":[]},{"head":"event","arity":1,"inputTemplates":[]},{"head":"events_count","arity":0,"inputTemplates":[{"head":"all_events","args":[]}]}]}

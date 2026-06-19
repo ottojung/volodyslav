@@ -104,6 +104,13 @@ class IncrementalGraphClass {
             this.headIndex.set(compiledNode.head, compiledNode);
         }
 
+        // The constructor stores a promise instead of using await because
+        // constructors cannot be async.  Every public method that touches
+        // graph storage awaits _ensureGraphSchemeStored() before proceeding,
+        // so the write is guaranteed to complete before any observable
+        // storage operation.  Pure schema introspection methods
+        // (getSchemas, getSchemaByHead, getDbVersion) skip the await because
+        // they do not touch database state.
         this._graphSchemeReady = rootDatabase.getSchemaStorage().global.put(
             GRAPH_SCHEME_KEY,
             JSON.stringify(serializeGraphScheme(this.graphScheme))

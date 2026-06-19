@@ -26,6 +26,7 @@ const {
     parseGraphScheme,
     deriveInputEdges,
     GRAPH_SCHEME_KEY,
+    MissingGraphSchemeError,
 } = require("./database");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
@@ -442,7 +443,14 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             { currentVersion, activeReplica },
             'Migration not required: no stored version found in active replica; marking fresh database with current version'
         );
-        // No previous version recorded; fresh database: record current version, nothing to migrate.
+        // No previous version recorded; fresh database: record current version
+        // and graph_scheme, nothing to migrate.
+        const compiledNodes = nodeDefs.map(compileNodeDef);
+        const currentGraphScheme = JSON.stringify(
+            serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes))
+        );
+        const schemaStorage = rootDatabase.getSchemaStorage();
+        await schemaStorage.global.put(GRAPH_SCHEME_KEY, currentGraphScheme);
         await rootDatabase.setGlobalVersion(rootDatabase.getVersion());
         return rootDatabase;
     }
@@ -480,9 +488,12 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const compiledNodes = nodeDefs.map(compileNodeDef);
             const newGraphScheme = serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes));
             const storedOldScheme = await prevStorage.global.get(GRAPH_SCHEME_KEY);
-            const oldGraphScheme = storedOldScheme === undefined
-                ? newGraphScheme
-                : parseGraphScheme(storedOldScheme);
+            if (storedOldScheme === undefined) {
+                throw new MissingGraphSchemeError(
+                    `migration source replica (${fromReplica})`
+                );
+            }
+            const oldGraphScheme = parseGraphScheme(storedOldScheme);
             const rawOldIdentifiers = await prevStorage.global.get(IDENTIFIERS_KEY);
             const oldLookup = rawOldIdentifiers === undefined
                 ? makeEmptyIdentifierLookup()

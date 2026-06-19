@@ -84,6 +84,26 @@ function makeSingleNodeScheme(head) {
 }
 
 /**
+ * Empty graph scheme for tests that do not exercise scheme-derived operations.
+ * @type {import('../src/generators/incremental_graph/database/graph_scheme').GraphScheme}
+ */
+const EMPTY_SCHEME = { format: 1, nodes: [] };
+
+/**
+ * Empty identifier lookup for tests that do not exercise lookup-based operations.
+ * @type {import('../src/generators/incremental_graph/database/identifier_lookup').IdentifierLookup}
+ */
+const EMPTY_LOOKUP = { keyToId: new Map(), idToKey: new Map(), serialized: [] };
+
+/**
+ * Create a MigrationStorage with empty scheme/lookup defaults.
+ * Tests that need real schemes or lookups should call makeMigrationStorage directly.
+ */
+function makeMs(storage, headIndex, materializedNodes) {
+    return makeMigrationStorage(storage, headIndex, materializedNodes, "testfingerprint", 0, EMPTY_SCHEME, EMPTY_SCHEME, EMPTY_LOOKUP);
+}
+
+/**
  * Build an identifier lookup mapping each NodeKeyString to itself.
  * @param {string[]} nodeKeyStrings
  * @returns {import('../src/generators/incremental_graph/database/identifier_lookup').IdentifierLookup}
@@ -193,7 +213,7 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
             await storage.values.put(A, DUMMY_VALUE);
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             await ms.invalidate(A);
             await expect(ms.invalidate(A)).resolves.toBeUndefined();
@@ -203,7 +223,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             await ms.delete(A);
             await expect(ms.delete(A)).resolves.toBeUndefined();
@@ -214,7 +234,7 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
             await storage.values.put(A, DUMMY_VALUE);
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             await ms.override(A, () => Promise.resolve(DUMMY_VALUE));
             const err = await ms.override(A, () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
@@ -226,7 +246,7 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
             await storage.values.put(A, DUMMY_VALUE);
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             await ms.override(A, () => Promise.resolve(DUMMY_VALUE));
             const err = await ms.override(A, () => Promise.resolve(DUMMY_VALUE_2)).catch((e) => e);
@@ -281,7 +301,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A"), B = nk("B");
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             const err = await ms.get(B).catch((e) => e);
             expect(isGetMissingNode(err)).toBe(true);
@@ -291,7 +311,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             const err = await ms.get(A).catch((e) => e);
             expect(isGetMissingValue(err)).toBe(true);
@@ -302,7 +322,7 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
             await storage.values.put(A, DUMMY_VALUE);
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             const result = await ms.get(A);
             expect(result).toEqual(DUMMY_VALUE);
@@ -313,7 +333,7 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
             await storage.values.put(A, DUMMY_VALUE);
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             await ms.override(A, () => Promise.resolve(DUMMY_VALUE_2));
             const result = await ms.get(A);
@@ -561,7 +581,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             expect(await ms.has(A)).toBe(true);
             expect(await ms.has(nk("Z"))).toBe(false);
@@ -701,7 +721,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B"]);
             const A = nk("A");
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             const err = await ms.create(nk("NONEXISTENT"), () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isSchemaCompatibility(err)).toBe(true);
@@ -712,7 +732,7 @@ describe("MigrationStorage", () => {
             // "event(e)" has arity 1
             const headIndex = makeHeadIndex(["A", "event(e)"]);
             const A = nk("A");
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             // nk("event") produces arity 0 — mismatch with schema arity 1
             const err = await ms.create(nk("event"), () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
@@ -723,7 +743,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             const { stringToNodeKeyString } = require("../src/generators/incremental_graph/database");
             const malformedKey = stringToNodeKeyString("not valid json");
@@ -754,7 +774,7 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
             await storage.values.put(A, DUMMY_VALUE);
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             const err = await ms.create(A, () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isCreateExistingNode(err)).toBe(true);
@@ -1010,7 +1030,7 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
             await storage.values.put(A, DUMMY_VALUE);
-            const ms = makeMigrationStorage(storage, headIndex, [A]);
+            const ms = makeMs(storage, headIndex, [A]);
 
             // Pass a function that returns a promise that never resolves; override() should return immediately
             const neverResolves = () => new Promise(() => {});

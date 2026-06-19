@@ -24,12 +24,32 @@ class GraphSchemeError extends Error {
     }
 }
 
+class MissingGraphSchemeError extends GraphSchemeError {
+    /** @param {string} sourceDescription */
+    constructor(sourceDescription) {
+        super(
+            `Missing global/graph_scheme in ${sourceDescription}: ` +
+            "the source replica is versioned but has no graph_scheme key. " +
+            "This indicates corruption or an incomplete migration."
+        );
+        this.name = "MissingGraphSchemeError";
+    }
+}
+
 /**
  * @param {unknown} object
  * @returns {object is GraphSchemeError}
  */
 function isGraphSchemeError(object) {
     return object instanceof GraphSchemeError;
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is MissingGraphSchemeError}
+ */
+function isMissingGraphSchemeError(object) {
+    return object instanceof MissingGraphSchemeError;
 }
 
 /**
@@ -86,6 +106,9 @@ function buildGraphSchemeFromNodeDefs(compiledNodes) {
  * @returns {GraphScheme}
  */
 function parseGraphScheme(raw) {
+    if (raw === undefined || raw === null) {
+        throw new GraphSchemeError("Missing or null graph_scheme record: cannot derive dependencies without a stored graph_scheme");
+    }
     const value = typeof raw === "string" ? JSON.parse(raw) : raw;
     if (!value || typeof value !== "object") {
         throw new GraphSchemeError("Invalid graph_scheme record");
@@ -241,7 +264,9 @@ function semanticInputKeys(graphScheme, identifierLookup, outputIdentifier) {
 module.exports = {
     GRAPH_SCHEME_KEY,
     GraphSchemeError,
+    MissingGraphSchemeError,
     isGraphSchemeError,
+    isMissingGraphSchemeError,
     buildGraphSchemeFromNodeDefs,
     serializeGraphScheme,
     parseGraphScheme,
