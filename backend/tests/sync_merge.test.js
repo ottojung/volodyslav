@@ -1514,6 +1514,67 @@ describe('mergeHostIntoReplica', () => {
                 if (db) await db.close();
             }
         });
+
+        test('rejects valid entry when dependency is in lookup but not materialized', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+
+                const parentId = nodeIdentifierFromString('91-abcdefghi');
+                const childId = nodeIdentifierFromString('92-abcdefghi');
+                const parentKey = stringToNodeKeyString('{"head":"parent","args":[]}');
+                const childKey = stringToNodeKeyString('{"head":"child","args":[]}');
+                const T = db.schemaStorageForReplica('x');
+                await writeGraphScheme(T);
+                // child is materialized, parent is in lookup but NOT materialized
+                await T.values.put(childId, { v: 2 });
+                await T.freshness.put(childId, 'up-to-date');
+                // valid[parentId] = [childId]
+                await T.valid.put(parentId, [childId]);
+
+                const lookup = makeIdentifierLookup([
+                    [parentId, parentKey],
+                    [childId, childKey],
+                ]);
+
+                await expect(
+                    assertValidFinalMergeState(T, lookup)
+                ).rejects.toThrow(FinalMergeStateError);
+            } finally {
+                if (db) await db.close();
+            }
+        });
+
+        test('rejects up-to-date node depending on non-materialized input', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+
+                const parentId = nodeIdentifierFromString('93-abcdefghi');
+                const childId = nodeIdentifierFromString('94-abcdefghi');
+                const parentKey = stringToNodeKeyString('{"head":"parent","args":[]}');
+                const childKey = stringToNodeKeyString('{"head":"child","args":[]}');
+                const T = db.schemaStorageForReplica('x');
+                await writeGraphScheme(T);
+                // child is materialized and up-to-date, depends on parent per scheme
+                await T.values.put(childId, { v: 2 });
+                await T.freshness.put(childId, 'up-to-date');
+                // parent is in lookup but NOT materialized (no values entry)
+
+                const lookup = makeIdentifierLookup([
+                    [parentId, parentKey],
+                    [childId, childKey],
+                ]);
+
+                await expect(
+                    assertValidFinalMergeState(T, lookup)
+                ).rejects.toThrow(FinalMergeStateError);
+            } finally {
+                if (db) await db.close();
+            }
+        });
     });
 
     test('merge preserves valid for stale nodes when unrelated change occurs', async () => {

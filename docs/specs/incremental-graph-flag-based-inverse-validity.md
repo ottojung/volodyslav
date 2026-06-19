@@ -25,21 +25,22 @@ replacement operation in this algorithm.
 ```
 values    : Map<NodeIdentifier, Value>
 freshness : Map<NodeIdentifier, "up-to-date" | "potentially-outdated">
-inputs    : Map<NodeIdentifier, Array<NodeIdentifier>>
 valid     : Map<NodeIdentifier, Array<NodeIdentifier>>
 ```
 
-- `values` — current materialized values.
-- `freshness` — fast-path guard: an up-to-date node may be returned immediately. The invariant
-  `freshness[N] = "up-to-date"` implies `N` has a materialized value.
-- `inputs` — persisted normalized structural dependency-edge list for a materialized node.
-- `valid` — inverse validity flags. `valid[D]` is an array of dependents `N` such that `N` has been
-  validated with respect to the current value of `D`. `valid[D]` serves as both the cache-proof
-  frontier and the invalidation propagation index.
+- `values` — persisted materialized node values. `values.keys()` is the materialized-node registry.
+- `freshness` — persisted fast-path guard: an up-to-date node may be returned immediately.
+  The invariant `freshness[N] = "up-to-date"` implies `N` has a materialized value.
+- `valid` — persisted inverse validity flags. `valid[D]` is an array of dependents `N` such that
+  `N` has been validated with respect to the current value of `D`. `valid[D]` is both the
+  cache-proof frontier and the invalidation propagation index.
+
+There is no persisted per-node input storage. Structural dependency edges are derived from the
+stored `graph_scheme`, the `identifiers_keys_map`, and the node's semantic key.
 
 ## Input Terminology
 
-There are two related but distinct concepts:
+There are two related but distinct concepts, both derived (not persisted per node):
 
 **inputPositions(N)** — the ordered concrete input positions derived from the node definition and
 bindings. Duplicates are preserved. This list drives recursive pulls and the argument array passed
@@ -48,12 +49,17 @@ to the computor.
 Example: `inputPositions(N) = [A, A, B]` means the computor receives `[value(A), value(A), value(B)]`.
 
 **inputEdges(N)** — the normalized structural dependency-edge list. Duplicate input positions
-collapse to one edge, preserving first occurrence for deterministic storage. This list drives
-`inputs[N]` and `valid`.
+collapse to one edge, preserving first occurrence for deterministic ordering. This list drives the
+`valid` relation (via the cache predicate and the `addValidityFlags` helper).
 
 Example: `inputPositions(N) = [A, A, B]` → `inputEdges(N) = [A, B]`.
 
-`inputs[N]` stores `inputEdges(N)` for a materialized node.
+`inputEdges(N)` is always derived from the graph scheme and identifier lookup; it is not persisted.
+The derivation uses three sources:
+
+1. The persisted `global/graph_scheme` record, which maps each node head to its input templates.
+2. The `identifiers_keys_map`, which maps semantic node keys to runtime identifiers.
+3. The node's own semantic key (head + bindings).
 
 ### Edge immutability
 
@@ -61,17 +67,12 @@ For a stable schema and a stable `NodeIdentifier`, `inputEdges(N)` is immutable.
 schema-derived dependency edges cannot change without changing the node's schema or bindings, both
 of which are fixed for the lifetime of the `IncrementalGraph` instance.
 
-If an implementation ever observes persisted `inputs[N]` differing from the schema-derived
-`inputEdges(N)`, that is schema migration or repair territory and is outside this algorithm.
-The handlers in this spec do not reconcile removed or added edges; they assume the input edge set
-is identical at every materialization of the same node.
-
 ## Invariants
 
-For every materialized node `N` and every `D` in `inputs[N]`:
+For every materialized node `N` and every `D` in `inputEdges(N)`:
 
 - If `freshness[N] == "up-to-date"`, then `valid[D]` contains `N`.
-- Every entry `N ∈ valid[D]` implies `inputs[N]` contains `D` and `N` is a known materialized node.
+- Every entry `N ∈ valid[D]` implies `D ∈ inputEdges(N)` and `N` is a known materialized node.
 - No `valid` entry points to discarded identifiers after merge or migration.
 
 The reverse implication is also operationally important:
@@ -86,24 +87,24 @@ because the node is stale.
 
 ### Terminology
 
-- A **structural edge** `D -> N` exists iff `D ∈ inputs[N]`.
+- A **structural edge** `D -> N` exists iff `D ∈ inputEdges(N)`.
 - A **validity edge** `D ⇝ N` exists iff `N ∈ valid[D]`.
-- `inputs` is the complete structural dependency relation across all materialized nodes.
+- `inputEdges` is the derived structural dependency relation across all materialized nodes.
 - `valid` is not the complete reverse dependency relation. It is a cache-proof and invalidation-frontier relation.
 - `valid[D]` is the **outgoing validity frontier** of `D`: the nodes whose cached values are authorized relative to `D`'s current stored value.
-- The **incoming validity proofs** of a node `N` are the edges `D ⇝ N` for every `D ∈ inputs[N]`.
+- The **incoming validity proofs** of a node `N` are the edges `D ⇝ N` for every `D ∈ inputEdges(N)`.
 
 ### Invariants
 
 #### 1. Structural soundness of validity
 
-If `N ∈ valid[D]`, then both identifiers are known materialized identifiers and `D ∈ inputs[N]`.
+If `N ∈ valid[D]`, then both identifiers are known materialized identifiers and `D ∈ inputEdges(N)`.
 
 This prevents validity edges from pointing to nonexistent nodes or to nodes that do not structurally depend on the key.
 
 #### 2. Required incoming validity for clean nodes
 
-If `freshness[N] === "up-to-date"` and `D ∈ inputs[N]`, then `N ∈ valid[D]`.
+If `freshness[N] === "up-to-date"` and `D ∈ inputEdges(N)`, then `N ∈ valid[D]`.
 
 This means every clean non-source materialized node carries the proofs needed for cache reuse.
 
@@ -113,16 +114,17 @@ A cached value for `N` may be returned only when:
 
 - `freshness[N] === "up-to-date"`;
 - a value for `N` exists;
-- the current schema-derived input edge list equals the persisted `inputs[N]`;
-- for every `D ∈ inputs[N]`, `N ∈ valid[D]`.
+- for every `D ∈ inputEdges(N)`, `N ∈ valid[D]`.
 
-For zero-input nodes, the fast path is authorized only when there is a persisted empty `inputs[N]` record.
+For zero-input nodes, the fast path is authorized immediately: there are no dependencies to validate
+against. An up-to-date zero-input node with a materialized value returns without pulling
+dependencies or running the computor.
 
 #### 4. Validity is allowed to be incomplete
 
 Missing `D ⇝ N` does not mean `N` is not a structural dependent of `D`. It only means `N` does not currently have a cache proof with respect to `D`.
 
-Therefore, operations that need the full structural graph, such as migration delete/fan-in checks, must scan `inputs`, not `valid`.
+Therefore, operations that need the full structural graph, such as migration delete/fan-in checks, must use the derived `inputEdges`, not `valid`.
 
 #### 5. Stale nodes may retain conditional outgoing proofs
 
@@ -140,7 +142,6 @@ pull(N):
 
 1. If freshness[N] is "up-to-date":
        Derive current inputEdges from schema.
-        Verify derived inputEdges from graph_scheme are consistent.
        For every D in inputEdges: verify valid[D].has(N).
        Return values[N].
 
@@ -174,18 +175,15 @@ pull(N):
 
 ### Up-to-date fast path (step 1)
 
-For an up-to-date node with declared inputs, the fast path validates the current schema-derived
-input edges against persisted `inputs[N]` and checks every `valid[D].has(N)` before returning
-the cached value. This ensures structural consistency without pulling dependencies.
+For an up-to-date node with declared inputs, the fast path derives the current schema-based
+`inputEdges(N)` and checks every `valid[D].has(N)` before returning the cached value.
+This ensures all incoming cache proofs are intact without pulling dependencies.
 
-A zero-input node may use the fast path only if it has a persisted empty `inputs` record and a
-materialized value.
+A zero-input node may use the fast path immediately: there are no dependencies to validate.
+An up-to-date zero-input node with a materialized value returns it without further checks.
 
-If persisted `inputs[N]` does not match the current schema-derived `inputEdges`, the fast path
-rejects the state as corruption. Missing `valid[D].has(N)` for a known input `D` is a cache miss
-and falls through to full recomputation. An up-to-date node with no persisted `inputs` record
-also falls through; the fast path does not silently authorize cache reuse without input metadata.
-A zero-input node uses the fast path only when a persisted empty `inputs` record exists.
+Missing `valid[D].has(N)` for a known input `D` is a cache miss and falls through to full
+recomputation.
 
 ### Cache predicate (step 5)
 
@@ -207,7 +205,6 @@ handleUnchanged(N, inputEdges):
 
 require N has a materialized value
 
-inputs[N] = inputEdges
 for every D in inputEdges:
     valid[D].add(N)
 
@@ -234,7 +231,6 @@ clear valid[N]
 
 values[N] = newValue
 
-inputs[N] = inputEdges
 for every D in inputEdges:
     valid[D].add(N)
 
@@ -369,10 +365,11 @@ to refresh validity.
 ## Persistence Requirements
 
 - `valid[D]` serializes as an array of `NodeIdentifier` values in canonical sorted order.
-- `inputs[N]` serializes as the normalized dependency-edge list in deterministic first-occurrence
-  order (after duplicate collapse).
+- No per-node input storage exists. `inputEdges(N)` is always derived from the stored
+  `graph_scheme` and the `identifiers_keys_map`.
 
-Sorting is required for stable storage, stable rendered output, snapshots, merges, and diffs.
+Sorting of `valid[D]` is required for stable storage, stable rendered output, snapshots, merges,
+and diffs.
 
 ## Sync Merge and Migration
 
@@ -384,23 +381,23 @@ transactions are active. In these contexts, raw full-array writes to `valid[D]` 
 After applying precise merge decisions, the merge flow:
 
 1. Preserves compatible `valid` entries from the surviving side where both the dependent and its
-   dependency have unchanged value identity and the dependent's `inputs` still includes the
-   dependency.
+   dependency have unchanged value identity and the dependent's derived `inputEdges` still include
+   the dependency.
 2. Removes entries for deleted or discarded identifiers.
 3. Removes entries whose dependent's value was changed, taken from an incompatible side, or whose
-   inputs no longer contain the dependency.
+   derived input edges no longer contain the dependency.
 4. Adds required missing flags for every up-to-date node per the invariant:
-   for every `D` in `inputs[N]`, `valid[D]` contains `N`.
+   for every `D` in `inputEdges(N)`, `valid[D]` contains `N`.
 
 ### Migration
 
 Migration rebuilds `valid` from the final migrated graph state:
 
-- `create` and `override` nodes receive incoming valid flags for their current inputs.
+- `create` and `override` nodes receive incoming valid flags for their current derived inputs.
 - `keep` nodes receive incoming valid flags only if their previous freshness is `"up-to-date"`.
 - Existing compatible valid proofs for stale kept nodes are preserved when they remain true
   after migration (the dependent survives, the dependency survives with unchanged value identity,
-  and the inputs still contain the dependency).
+  and the derived input edges still contain the dependency).
 - `invalidate` nodes do not receive incoming valid flags.
 - `delete` nodes do not appear in `valid`.
 - Any `valid` entry pointing to a deleted identifier is absent after migration.
@@ -417,8 +414,7 @@ described in the Invariants section above.
 **Proof sketch:**
 
 - A direct fast-path cache return requires `freshness[N] === "up-to-date"`.
-- It also checks the current schema-derived input edge list against persisted `inputs[N]`.
-- It requires all incoming validity proofs `D ⇝ N` for every `D ∈ inputs[N]`.
+- It requires all incoming validity proofs `D ⇝ N` for every `D ∈ inputEdges(N)`.
 - In the recompute path, dependencies are pulled before `N` checks whether it can reuse its old value.
 - Therefore `N` cannot be returned merely because some old outgoing validity edge exists. Its own freshness and incoming validity must be established.
 
@@ -445,8 +441,8 @@ freshness[A] = up-to-date
 freshness[B] = up-to-date
 freshness[C] = up-to-date
 
-inputs[B] = [A]
-inputs[C] = [B]
+inputEdges(B) = [A]
+inputEdges(C) = [B]
 
 valid[A] = [B]
 valid[B] = [C]
@@ -495,7 +491,7 @@ This theorem is about runtime cache invalidation, not about structural graph ope
 
 - Stale nodes may lack some incoming validity proofs.
 - Missing validity does not imply missing structural dependency.
-- Therefore migration deletion, fan-in checks, and any operation that needs all structural dependents must scan `inputs`.
+- Therefore migration deletion, fan-in checks, and any operation that needs all structural dependents must use the derived `inputEdges`.
 
 Document this explicitly because it prevents a future reader from treating `valid` as a renamed reverse-dependency index.
 
@@ -504,16 +500,16 @@ Document this explicitly because it prevents a future reader from treating `vali
 **Claim:** After sync merge validity reconstruction, the final state satisfies:
 
 - every `valid[D]` entry points only to known identifiers;
-- every validity edge is compatible with final `inputs`;
+- every validity edge is compatible with the derived `inputEdges`;
 - every up-to-date node has all required incoming validity proofs;
 - stale nodes are not accidentally promoted to clean by validity preservation.
 
 **Proof sketch:**
 
 - Previous validity entries are captured before clearing.
-- A previous validity edge is preserved only when both sides map through the target lookup, both final identifiers exist, both decisions are compatible with keeping the old value identity, and the final structural input edge still exists.
+- A previous validity edge is preserved only when both sides map through the target lookup, both final identifiers exist, both decisions are compatible with keeping the old value identity, and the dependent's derived input edges still include the dependency.
 - Required incoming validity is then added for every node whose final freshness is `"up-to-date"`.
-- Final validation checks unknown identifiers, compatibility with `inputs`, and required incoming validity for clean nodes.
+- Final validation checks unknown identifiers, compatibility with derived input edges, and required incoming validity for clean nodes.
 
 ### Theorem 7: Validity mutation logs avoid lost updates
 

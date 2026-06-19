@@ -696,7 +696,7 @@ The implementation MUST NOT treat them as inputs for freshness propagation or va
 indexing. This means:
 
 - freshness updates during `invalidate()` are not propagated through dynamically-pulled nodes,
-- dynamically-pulled nodes do not appear in `inputs[N]` or `valid`,
+- dynamically-pulled nodes do not appear in `inputEdges(N)` or `valid`,
 - the cache predicate does not consider dynamically-pulled nodes.
 
 Dynamically-pulled nodes are not part of the flag-based validity algorithm. They are ad-hoc queries

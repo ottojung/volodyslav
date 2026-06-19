@@ -61,8 +61,10 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
     }
     for await (const identifier of targetStorage.valid.keys()) {
         const identifierString = nodeIdentifierToString(identifier);
-        if (!knownIdentifiers.has(identifierString)) {
-            throw new FinalMergeStateError(`valid references discarded identifier ${identifierString}`);
+        if (!knownIdentifiers.has(identifierString) || !materializedIdentifiers.has(identifierString)) {
+            throw new FinalMergeStateError(
+                `valid key ${identifierString} is not a known materialized identifier`
+            );
         }
         const validDependents = await targetStorage.valid.get(identifier) ?? [];
         for (const dependent of validDependents) {
@@ -84,6 +86,11 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
         const derivedEdges = deriveInputEdges(scheme, finalLookup, identifier);
         for (const input of derivedEdges) {
             const inputString = nodeIdentifierToString(input);
+            if (!knownIdentifiers.has(inputString) || !materializedIdentifiers.has(inputString)) {
+                throw new FinalMergeStateError(
+                    `up-to-date node ${identifierString} depends on non-materialized input ${inputString}`
+                );
+            }
             const validDependents = await targetStorage.valid.get(input) ?? [];
             if (!validDependents.some(dependent => nodeIdentifierToString(dependent) === identifierString)) {
                 throw new FinalMergeStateError(`up-to-date node ${identifierString} lacks validity for input ${inputString}`);

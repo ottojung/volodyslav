@@ -13,14 +13,13 @@ const { normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require('./input_e
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 
 /**
- * Resolve identifier-keyed nodes into semantic input keys using the stored graph scheme.
- * @param {SchemaStorage} storage
+ * Resolve identifier-keyed nodes into semantic input keys using a parsed graph scheme.
+ * @param {ReturnType<typeof parseGraphScheme>} scheme
  * @param {IdentifierLookup} lookup
  * @param {NodeIdentifier} identifier
- * @returns {Promise<NodeKeyString[]>}
+ * @returns {NodeKeyString[]}
  */
-async function semanticInputs(storage, lookup, identifier) {
-    const scheme = parseGraphScheme(await storage.global.get(GRAPH_SCHEME_KEY));
+function semanticInputsFromScheme(scheme, lookup, identifier) {
     return semanticInputKeys(scheme, lookup, identifier);
 }
 
@@ -44,6 +43,9 @@ async function semanticInputs(storage, lookup, identifier) {
  * }>} 
  */
 async function buildMergePlan(T, H, targetLookup, hostLookup) {
+    const targetScheme = parseGraphScheme(await T.global.get(GRAPH_SCHEME_KEY));
+    const hostScheme = parseGraphScheme(await H.global.get(GRAPH_SCHEME_KEY));
+
     /** @type {Map<NodeKeyString, 'keep' | 'take'>} */
     const initialDecisions = new Map();
     /** @type {Set<NodeKeyString>} */
@@ -93,12 +95,12 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     const initiallyChosenInputsMap = new Map();
     for (const [nodeKey, initial] of initialDecisions) {
         const lookup = initial === 'take' ? hostLookup : targetLookup;
-        const storage = initial === 'take' ? H : T;
+        const scheme = initial === 'take' ? hostScheme : targetScheme;
         const identifier = lookup.keyToId.get(String(nodeKey));
         if (identifier === undefined) {
             throw new IdentifierLookupConflictError(`Missing ${initial} identifier for semantic node ${String(nodeKey)}`);
         }
-        initiallyChosenInputsMap.set(nodeKey, await semanticInputs(storage, lookup, identifier));
+        initiallyChosenInputsMap.set(nodeKey, semanticInputsFromScheme(scheme, lookup, identifier));
     }
 
     const topoList = topologicalSortFromMap(initiallyChosenInputsMap);
@@ -166,13 +168,13 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         const initial = initialDecisions.get(nodeKey);
         const structuralSide = decision === 'invalidate' ? initial : decision;
         const lookup = structuralSide === 'take' ? hostLookup : targetLookup;
-        const storage = structuralSide === 'take' ? H : T;
+        const scheme = structuralSide === 'take' ? hostScheme : targetScheme;
         const sourceId = lookup.keyToId.get(String(nodeKey));
         const finalId = finalIdentifierForKey.get(nodeKey);
         if (sourceId === undefined || finalId === undefined) {
             throw new IdentifierLookupConflictError(`Missing lowered identifier for ${String(nodeKey)}`);
         }
-        const inputKeys = await semanticInputs(storage, lookup, sourceId);
+        const inputKeys = semanticInputsFromScheme(scheme, lookup, sourceId);
 
         const sourceInputIds = inputKeys.map((inputKey) => {
             const inputId = lookup.keyToId.get(String(inputKey));
