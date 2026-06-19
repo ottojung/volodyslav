@@ -439,7 +439,7 @@ Implementations MAY use any strategy to achieve property PROP-03 (e.g., memoizat
 2. Node MUST be marked `up-to-date`
 3. The stored value must remain a valid `ComputedValue` (never the sentinel itself)
 4. The implementation MUST add validity flags (`valid[D].add(N)`) for every schema-derived
-   dependency edge `D`, without clearing `valid[N]` or incrementing the value counter.
+   dependency edge `D`, without clearing `valid[N]`.
 
 **REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing **if and only if** it can prove D's value would be unchanged given current input values.
 
@@ -500,9 +500,9 @@ interface IncrementalGraph {
 
 **REQ-IFACE-05 (Timestamp API):** Implementations MUST record timestamps for each node instance when its value is first set or changed.
 
-**REQ-IFACE-06 (getCreationTime):** `getCreationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance was first given a value (i.e. when its value counter was initialized to 1). MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
+**REQ-IFACE-06 (getCreationTime):** `getCreationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance was first given a value. MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
 
-**REQ-IFACE-07 (getModificationTime):** `getModificationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance's value last changed (i.e. the last time its computor returned a new value, incrementing the counter). MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
+**REQ-IFACE-07 (getModificationTime):** `getModificationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance's value last changed. MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
 
 **REQ-IFACE-08 (Timestamp Invariants):**
 * `getCreationTime(N, B) <= getModificationTime(N, B)` for any materialized node instance `N@B`.

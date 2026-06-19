@@ -42,11 +42,9 @@ const {
 /** @typedef {import('./database/root_database').ValuesDatabase} ValuesDatabase */
 /** @typedef {import('./database/root_database').FreshnessDatabase} FreshnessDatabase */
 /** @typedef {import('./database/root_database').ValidDatabase} ValidDatabase */
-/** @typedef {import('./database/root_database').CountersDatabase} CountersDatabase */
 /** @typedef {import('./database/root_database').TimestampsDatabase} TimestampsDatabase */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
-/** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
@@ -128,7 +126,6 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
  * @property {BatchDatabaseOps<ComputedValue>} values - Node value storage.
  * @property {BatchDatabaseOps<Freshness>} freshness - Freshness storage.
  * @property {ValidBatchOps} valid - Validity flags with mutation tracking for concurrent safety.
- * @property {BatchDatabaseOps<Counter>} counters - Change counters.
  * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Creation/modification timestamps.
  */
 
@@ -154,7 +151,6 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
  * @property {ValuesDatabase} values - Identifier-keyed value storage.
  * @property {FreshnessDatabase} freshness - Identifier-keyed freshness storage.
  * @property {ValidDatabase} valid - Identifier-keyed inverse validity flags.
- * @property {CountersDatabase} counters - Identifier-keyed counters.
  * @property {TimestampsDatabase} timestamps - Identifier-keyed timestamps.
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
  * @property {<T>(fn: (tx: Transaction) => Promise<{value: T}>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
@@ -295,7 +291,6 @@ function createBatch(schemaStorage) {
         values: makeSublevelBatch(schemaStorage.values, operations),
         freshness: makeSublevelBatch(schemaStorage.freshness, operations),
         valid: makeValidBatchOps(schemaStorage.valid, validMutations),
-        counters: makeSublevelBatch(schemaStorage.counters, operations),
         timestamps: makeSublevelBatch(schemaStorage.timestamps, operations),
     };
     return { batch, operations, validMutations };
@@ -323,7 +318,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
         get values() { return rootDatabase.getSchemaStorage().values; },
         get freshness() { return rootDatabase.getSchemaStorage().freshness; },
         get valid() { return rootDatabase.getSchemaStorage().valid; },
-        get counters() { return rootDatabase.getSchemaStorage().counters; },
         get timestamps() { return rootDatabase.getSchemaStorage().timestamps; },
         async withBatch(fn) {
             const activeSchemaStorage = rootDatabase.getSchemaStorage();

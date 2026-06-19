@@ -24,15 +24,12 @@ replacement operation in this algorithm.
 
 ```
 values    : Map<NodeIdentifier, Value>
-counters  : Map<NodeIdentifier, RecomputeCounter>
 freshness : Map<NodeIdentifier, "up-to-date" | "potentially-outdated">
 inputs    : Map<NodeIdentifier, Array<NodeIdentifier>>
 valid     : Map<NodeIdentifier, Array<NodeIdentifier>>
 ```
 
 - `values` — current materialized values.
-- `counters` — monotonic recompute counters incremented on value change. Not used for cache
-  validation.
 - `freshness` — fast-path guard: an up-to-date node may be returned immediately. The invariant
   `freshness[N] = "up-to-date"` implies `N` has a materialized value.
 - `inputs` — persisted normalized structural dependency-edge list for a materialized node.
@@ -218,7 +215,6 @@ freshness[N] = "up-to-date"
 ```
 
 - `values[N]` is unchanged.
-- `counters[N]` is unchanged.
 - `valid[N]` is not cleared.
 - Validity facts from `N` to its dependents remain valid.
 
@@ -237,7 +233,6 @@ let downstream = valid[N]
 clear valid[N]
 
 values[N] = newValue
-counters[N] += 1
 
 inputs[N] = inputEdges
 for every D in inputEdges:
@@ -354,13 +349,12 @@ the transaction are consistent with the transaction's uncommitted changes.
 
 During recomputation of `N`, the implementation may compute candidate `inputEdges`, but it must not
 commit changes to `inputs[N]` or `valid` for `N` until the computor result has been accepted. All
-mutations to `valid`, `values`, `counters`, `freshness`, and `inputs` caused by recomputing `N`
+mutations to `valid`, `values`, `freshness`, and `inputs` caused by recomputing `N`
 must be committed only after the computor successfully returns a valid result.
 
 If the computor throws or returns an invalid value:
 
 - do not write `values[N]`,
-- do not increment `counters[N]`,
 - do not add validity flags,
 - do not mark `freshness[N]` as up-to-date,
 - do not partially mutate structural metadata for `N`.
@@ -535,4 +529,4 @@ Document this explicitly because it prevents a future reader from treating `vali
 ## Non-Goals
 
 This spec does not cover schema migration, repair of stale dependency records, dynamic dependency
-discovery, direct value replacement, or counter-snapshot cache validation.
+discovery, direct value replacement.

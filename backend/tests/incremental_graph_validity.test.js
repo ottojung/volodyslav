@@ -178,7 +178,6 @@ class InMemoryDatabase {
         const values = createSublevel('values');
         const freshness = createSublevel('freshness');
         const valid = createSublevel('valid');
-        const counters = createSublevel('counters');
         const timestamps = createSublevel('timestamps');
         const global = createSublevel('global');
 
@@ -186,7 +185,6 @@ class InMemoryDatabase {
             values,
             freshness,
             valid,
-            counters,
             timestamps,
             global,
             batch: async (operations) => {
@@ -402,7 +400,6 @@ describe("Incremental graph validity", () => {
             const validSrcBefore = db._readSublevel('valid', srcId);
             expect(validSrcBefore.some(id => id === nodeIdentifierToString(midId))).toBe(true);
 
-            const midCounterBefore = db._readSublevel('counters', midId);
 
             // Invalidate source, pull it, then pull middle (returns Unchanged)
             await graph.invalidate("source");
@@ -410,8 +407,6 @@ describe("Incremental graph validity", () => {
             await graph.pull("middle", binding);
             expect(midCalls).toBe(2);
 
-            // Counter not incremented (Unchanged)
-            expect(db._readSublevel('counters', midId)).toBe(midCounterBefore);
 
             // valid[mid] was NOT cleared (Unchanged preserves downstream validity)
             const validMid = db._readSublevel('valid', midId);
@@ -452,7 +447,6 @@ describe("Incremental graph validity", () => {
             const validMidBefore = db._readSublevel('valid', midId);
             expect(validMidBefore.some(id => id === nodeIdentifierToString(depId))).toBe(true);
 
-            const depCounterBefore = db._readSublevel('counters', depId);
 
             // Invalidate and pull source with changed value
             // → middle recomputes (changed) → dependent becomes potentially-outdated
@@ -469,8 +463,6 @@ describe("Incremental graph validity", () => {
             // Pull dependent: must recompute (valid[mid].has(dep) was cleared)
             await graph.pull("dependent", binding);
 
-            // Counter incremented
-            expect(db._readSublevel('counters', depId)).toBe((depCounterBefore || 0) + 1);
 
             // Fresh valid flags established after recompute
             const validMidFinal = db._readSublevel('valid', midId);
@@ -652,7 +644,7 @@ describe("Incremental graph validity", () => {
 
     // === Test Obligation 7: Failed computor rolls back ===
     describe("test obligation 7: failed computor rolls back", () => {
-        it("does not partially write values, counters, freshness, inputs, or valid", async () => {
+        it("does not partially write values, freshness, inputs, or valid", async () => {
             let shouldFail = false;
             const { nodeDefs } = createChainGraph(
                 () => ({ v: "src" }),
@@ -673,7 +665,6 @@ describe("Incremental graph validity", () => {
 
             const midId = db.nodeKeyToId(midKey);
             const oldValue = db._readSublevel('values', midId);
-            const oldCounter = db._readSublevel('counters', midId);
             const oldInputs = db._readSublevel('inputs', midId);
             const oldValid = db._readSublevel('valid', midId);
 
@@ -685,7 +676,6 @@ describe("Incremental graph validity", () => {
 
             // After failure: all of middle's state is preserved
             expect(db._readSublevel('values', midId)).toEqual(oldValue);
-            expect(db._readSublevel('counters', midId)).toBe(oldCounter);
             expect(db._readSublevel('inputs', midId)).toEqual(oldInputs);
             expect(db._readSublevel('valid', midId)).toEqual(oldValid);
             // Freshness left as potentially-outdated (from the invalidation)
@@ -859,148 +849,6 @@ describe("Incremental graph validity", () => {
             for (let i = 1; i < validSrc.length; i++) {
                 expect(validSrc[i] >= validSrc[i-1]).toBe(true);
             }
-        });
-    });
-
-    // === Inputs without counters ===
-    // Note: stored inputs shape tests removed because inputs are no longer
-    // persisted directly — they are derived from graph_scheme at read time.
-
-    // === Test: Unchanged does not repair missing counter ===
-    describe("Unchanged with missing counter", () => {
-        it("does not recreate counter when node has value but counter is missing", async () => {
-            let midCalls = 0;
-            const nodeDefs = [
-                {
-                    output: "source",
-                    inputs: [],
-                    computor: async () => ({ v: "src" }),
-                    isDeterministic: false,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "middle(x)",
-                    inputs: ["source"],
-                    computor: async () => {
-                        midCalls++;
-                        return midCalls === 1 ? { v: "mid-first" } : makeUnchanged();
-                    },
-                    isDeterministic: false,
-                    hasSideEffects: false,
-                },
-            ];
-
-            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
-            const binding = [{ id: "x" }];
-
-            // Materialize
-            await graph.pull("source");
-            await graph.pull("middle", binding);
-            expect(midCalls).toBe(1);
-
-            const midKey = makeNodeStorageKey("middle", binding);
-            const midId = db.nodeKeyToId(midKey);
-
-            // Delete the counter directly from storage
-            const schemaStorage = db.getSchemaStorage();
-            await schemaStorage.counters.del(midId);
-
-            // Verify counter is gone
-            expect(db._readSublevel('counters', midId)).toBeUndefined();
-
-            // Invalidate and pull — middle returns Unchanged on second call
-            await graph.invalidate("source");
-            await graph.pull("source");
-            await graph.pull("middle", binding);
-            expect(midCalls).toBe(2);
-
-            // Counter was NOT recreated
-            expect(db._readSublevel('counters', midId)).toBeUndefined();
-
-            // Value and freshness are correct
-            expect(db._readSublevel('values', midId)).toEqual({ v: "mid-first" });
-            expect(db._readSublevel('freshness', midId)).toBe("up-to-date");
-        });
-    });
-
-    // === Test: Cache hit without counter ===
-    describe("cache hit without counter", () => {
-        it("succeeds via valid flags even when counter is missing", async () => {
-            const { nodeDefs, dependentCC } = createChainGraph(
-                () => ({ v: "src" }),
-                () => ({ v: "mid" }),
-                () => ({ v: "dep" })
-            );
-
-            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
-            const binding = [{ id: "x" }];
-            const depKey = makeNodeStorageKey("dependent", binding);
-
-            // Materialize chain
-            await graph.pull("source");
-            await graph.pull("middle", binding);
-            await graph.pull("dependent", binding);
-
-            const depId = db.nodeKeyToId(depKey);
-
-            // Delete the counter for dependent directly from storage
-            const schemaStorage = db.getSchemaStorage();
-            await schemaStorage.counters.del(depId);
-            expect(db._readSublevel('counters', depId)).toBeUndefined();
-
-            // Set dependent freshness to potentially-outdated directly.
-            // This bypasses the freshness fast-path without triggering
-            // an invalidation cascade that would clear valid flags.
-            await schemaStorage.freshness.put(depId, "potentially-outdated");
-            expect(db._readSublevel('freshness', depId)).toBe("potentially-outdated");
-
-            // valid[mid].has(dep) still exists from initial materialization
-            const midKey = makeNodeStorageKey("middle", binding);
-            const midId = db.nodeKeyToId(midKey);
-            const validMid = db._readSublevel('valid', midId);
-            expect(validMid.some(id => id === nodeIdentifierToString(depId))).toBe(true);
-
-            // Pull dependent — should cache-hit via valid flags despite missing counter.
-            // Middle and source are up-to-date, so no cascading recomputation.
-            const depCallsBefore = dependentCC.getCallCount();
-            const result = await graph.pull("dependent", binding);
-            expect(dependentCC.getCallCount()).toBe(depCallsBefore);
-            expect(result).toEqual({ v: "dep" });
-        });
-    });
-
-    // Note: corrupted/missing/malformed stored inputs tests removed because
-    // the `inputs` sublevel is no longer part of SchemaStorage. Inputs are
-    // derived from graph_scheme at read time.
-
-    // === Test: Up-to-date nodes return cached value without pulling dependencies ===
-    describe("up-to-date fast path avoids computor invocation", () => {
-        it("A → B → C: pull(C) does not invoke computors for A, B, or C when all are up-to-date", async () => {
-            const computeA = jest.fn(async () => ({ v: "A" }));
-            const computeB = jest.fn(async () => ({ v: "B" }));
-            const computeC = jest.fn(async () => ({ v: "C" }));
-            const nodeDefs = [
-                { output: "A", inputs: [], computor: computeA, isDeterministic: true, hasSideEffects: false },
-                { output: "B", inputs: ["A"], computor: computeB, isDeterministic: true, hasSideEffects: false },
-                { output: "C", inputs: ["B"], computor: computeC, isDeterministic: true, hasSideEffects: false },
-            ];
-
-            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
-
-            await graph.pull("A");
-            await graph.pull("B");
-            await graph.pull("C");
-            expect(computeA).toHaveBeenCalledTimes(1);
-            expect(computeB).toHaveBeenCalledTimes(1);
-            expect(computeC).toHaveBeenCalledTimes(1);
-
-            jest.clearAllMocks();
-
-            const result = await graph.pull("C");
-            expect(result).toEqual({ v: "C" });
-            expect(computeA).toHaveBeenCalledTimes(0);
-            expect(computeB).toHaveBeenCalledTimes(0);
-            expect(computeC).toHaveBeenCalledTimes(0);
         });
     });
 

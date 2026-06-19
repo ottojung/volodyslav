@@ -59,7 +59,7 @@ function toJsonKey(key) {
  */
 function makeSemanticStorage(graph) {
     /**
-     * @param {"values" | "freshness" | "valid" | "counters" | "timestamps"} databaseName
+     * @param {"values" | "freshness" | "valid" | "timestamps"} databaseName
      */
     function makeDatabase(databaseName) {
         return {
@@ -129,7 +129,6 @@ function makeSemanticStorage(graph) {
         values: makeDatabase("values"),
         freshness: makeDatabase("freshness"),
         valid: makeDatabase("valid"),
-        counters: makeDatabase("counters"),
         timestamps: makeDatabase("timestamps"),
         async listValidDependents(input, batch) {
             return (await batch.valid.get(input)) ?? [];
@@ -137,7 +136,7 @@ function makeSemanticStorage(graph) {
         async withBatch(run) {
             return await graph.storage.withTransaction(async (tx) => {
                 /**
-                 * @param {"values" | "freshness" | "valid" | "counters" | "timestamps"} databaseName
+                 * @param {"values" | "freshness" | "valid" | "timestamps"} databaseName
                  */
                 function makeBatchDatabase(databaseName) {
                     return {
@@ -194,7 +193,6 @@ function makeSemanticStorage(graph) {
                     values: makeBatchDatabase("values"),
                     freshness: makeBatchDatabase("freshness"),
                     valid: makeBatchDatabase("valid"),
-                    counters: makeBatchDatabase("counters"),
                     timestamps: makeBatchDatabase("timestamps"),
                 };
                 const runResult = await run(semanticBatch);

@@ -25,7 +25,6 @@ const { MigrationStorageClass } = require("./migration_storage_class");
  * @property {{ get(nodeKey: NodeIdentifier): Promise<ComputedValue | undefined> }} values
  * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').Freshness | undefined> }} freshness
  * @property {{ get(nodeKey: NodeIdentifier): Promise<NodeIdentifier[] | undefined> }} valid
- * @property {{ get(nodeKey: NodeIdentifier): Promise<number | undefined> }} counters
  * @property {{ get(nodeKey: NodeIdentifier): Promise<import('./database/types').TimestampRecord | undefined> }} timestamps
  * @property {{ get(key: string): Promise<unknown> }} global
  * @property {(operations: import('./database/types').DatabaseBatchOperation[]) => Promise<void>} [batch]

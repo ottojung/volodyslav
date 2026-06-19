@@ -51,12 +51,10 @@ describe('makeInMemorySchemaStorage', () => {
 
         const ops = [
             storage.freshness.putOp(nodeKey, 'outdated'),
-            storage.counters.putOp(nodeKey, 5),
         ];
         await storage.batch(ops);
 
         expect(await storage.freshness.get(nodeKey)).toBe('outdated');
-        expect(await storage.counters.get(nodeKey)).toBe(5);
         // Other sublevels untouched
         expect(await storage.values.get(nodeKey)).toBeUndefined();
     });
@@ -93,7 +91,6 @@ function makeFakeSchemaStorage() {
         freshness: new Map(),
         global: new Map(),
         valid: new Map(),
-        counters: new Map(),
         timestamps: new Map(),
     };
     const allOps = [];
@@ -124,7 +121,6 @@ function makeFakeSchemaStorage() {
         freshness: makeSubDb('freshness'),
         global: makeSubDb('global'),
         valid: makeSubDb('valid'),
-        counters: makeSubDb('counters'),
         timestamps: makeSubDb('timestamps'),
         async batch(ops) {
             for (const op of ops) {
@@ -194,26 +190,24 @@ describe('makeDbToDbAdapter', () => {
         expect(dstData.freshness.has(String(NODE_S))).toBe(false);
     });
 
-    test('covers all data sublevels: values, freshness, global, valid, counters, timestamps', async () => {
+    test('covers all data sublevels: values, freshness, global, valid, timestamps', async () => {
         const { storage: src } = makeFakeSchemaStorage();
         const k = NODE_N;
         await src.values.put(k, 'val');
         await src.freshness.put(k, 'fresh');
         await src.global.put('version', '1.0.0');
         await src.valid.put(k, ['dep1']);
-        await src.counters.put(k, 1);
         await src.timestamps.put(k, { createdAt: 'x', modifiedAt: 'y' });
 
         const { storage: dst, data: dstData } = makeFakeSchemaStorage();
 
         const stats = await unifyStores(makeDbToDbAdapter(src, dst));
 
-        expect(stats.putCount).toBe(6);
+        expect(stats.putCount).toBe(5);
         expect(dstData.values.get(String(k))).toBe('val');
         expect(dstData.freshness.get(String(k))).toBe('fresh');
         expect(dstData.global.get('version')).toBe('1.0.0');
         expect(dstData.valid.get(String(k))).toEqual(['dep1']);
-        expect(dstData.counters.get(String(k))).toBe(1);
         expect(dstData.timestamps.get(String(k))).toEqual({ createdAt: 'x', modifiedAt: 'y' });
     });
 

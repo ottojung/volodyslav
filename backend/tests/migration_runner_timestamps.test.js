@@ -83,7 +83,6 @@ function makeSchemaStorage() {
     const freshness = makeInMemoryDb("freshness");
     const global = makeInMemoryDb("global");
     const valid = makeInMemoryDb("valid");
-    const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
 
     const originalGlobalGet = global.get.bind(global);
@@ -103,14 +102,13 @@ function makeSchemaStorage() {
     };
 
     return {
-        values, freshness, global, valid, counters, timestamps,
+        values, freshness, global, valid, timestamps,
         async batch(operations) {
             for (const op of operations) {
                 values.apply(op);
                 freshness.apply(op);
                 global.apply(op);
                 valid.apply(op);
-                counters.apply(op);
                 timestamps.apply(op);
             }
         },
@@ -176,15 +174,13 @@ function makeNodeDefs(names) {
     }));
 }
 
-/** Seed a node in storage with value, freshness, counter, and optional timestamps. */
+/** Seed a node in storage with value, freshness, and optional timestamps. */
 async function seedNode(storage, nodeKey, {
     timestamps = undefined,
-    counter = 1,
     freshness = "up-to-date",
 } = {}) {
     await storage.values.put(nodeKey, { type: "all_events", events: [] });
     await storage.freshness.put(nodeKey, freshness);
-    await storage.counters.put(nodeKey, counter);
     if (timestamps !== undefined) {
         await storage.timestamps.put(nodeKey, timestamps);
     }
@@ -557,7 +553,7 @@ describe("delete decision: timestamps not present in new storage", () => {
 });
 
 describe("delete decision: sublevels do not retain deleted keys", () => {
-    test("deleted nodes are removed from inputs/counters/timestamps key lists", async () => {
+    test("deleted nodes are removed from inputs/timestamps key lists", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -591,11 +587,8 @@ describe("delete decision: sublevels do not retain deleted keys", () => {
             await storage.delete(nkB);
         });
 
-        const counterKeys = await collectKeys(yStorage.counters);
         const timestampKeys = await collectKeys(yStorage.timestamps);
 
-        expect(counterKeys).not.toContain(nkA);
-        expect(counterKeys).not.toContain(nkB);
         expect(timestampKeys).not.toContain(nkA);
         expect(timestampKeys).not.toContain(nkB);
     });

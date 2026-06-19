@@ -120,7 +120,7 @@ async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialD
 }
 
 /**
- * Handle Unchanged computor result: add validity flags, preserve counter and valid[N].
+ * Handle Unchanged computor result: add validity flags and preserve valid[N].
  * @param {IncrementalGraphRecomputeAccess} _incrementalGraph
  * @param {NodeIdentifier} nodeIdentifier
  * @param {NodeIdentifier[]} inputEdges
@@ -162,24 +162,19 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
 
     batch.values.put(nodeIdentifier, newValue);
 
-    const oldCounter = await batch.counters.get(nodeIdentifier);
-    const newCounter = oldCounter !== undefined ? oldCounter + 1 : 1;
-    batch.counters.put(nodeIdentifier, newCounter);
-
     const datetime = incrementalGraph.datetime;
     const nowIso = datetime.now().toISOString();
-    if (oldCounter === undefined) {
+    const existingTimestamp = await batch.timestamps.get(nodeIdentifier);
+    if (existingTimestamp === undefined) {
         batch.timestamps.put(nodeIdentifier, {
             createdAt: nowIso,
             modifiedAt: nowIso,
         });
     } else {
-        const existingTimestamp = await batch.timestamps.get(nodeIdentifier);
-        const createdAt =
-            existingTimestamp !== undefined
-                ? existingTimestamp.createdAt
-                : nowIso;
-        batch.timestamps.put(nodeIdentifier, { createdAt, modifiedAt: nowIso });
+        batch.timestamps.put(nodeIdentifier, {
+            createdAt: existingTimestamp.createdAt,
+            modifiedAt: nowIso,
+        });
     }
 
     addValidityFlags(batch, nodeIdentifier, inputEdges);

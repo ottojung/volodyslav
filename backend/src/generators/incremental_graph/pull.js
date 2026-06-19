@@ -154,16 +154,6 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
                 nodeDefinition,
                 tx
             );
-
-            if (computeResult.status === "changed") {
-                const counter = await tx.batch.counters.get(nodeDefinition.outputIdentifier);
-                if (counter === undefined) {
-                    throw new Error(
-                        `Impossible: changed node has no stored counter: ${String(nodeKeyStr)}`
-                    );
-                }
-            }
-
             return {
                 value: computeResult,
             };

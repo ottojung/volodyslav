@@ -190,7 +190,6 @@ class InMemoryDatabase {
         const values = createSublevel('values');
         const freshness = createSublevel('freshness');
         const valid = createSublevel('valid');
-        const counters = createSublevel('counters');
         const timestamps = createSublevel('timestamps');
         const global = createSublevel('global');
 
@@ -198,7 +197,6 @@ class InMemoryDatabase {
             values,
             freshness,
             valid,
-            counters,
             timestamps,
             global,
             batch: async (operations) => {
@@ -1584,7 +1582,7 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
             const db = new InMemoryDatabase();
 
             // Build chain A -> N1 -> N2 -> ... -> Nk
-            const counters = {};
+            const callCounts = {};
             const nodeDefs = [];
 
             // Source node A
@@ -1609,7 +1607,7 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
                     })
                 );
 
-                counters[nodeName] = counter;
+                callCounts[nodeName] = counter;
                 nodeDefs.push({
                     output: nodeName,
                     inputs: [prevNode],
@@ -1630,7 +1628,7 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
 
             // Check each node computed once
             for (let i = 1; i <= k; i++) {
-                expect(counters[`n${i}`].calls).toBe(1);
+                expect(callCounts[`n${i}`].calls).toBe(1);
             }
 
             // Second pull: should trigger NO recomputation (freshness caching)
@@ -1638,7 +1636,7 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
             expect(v2).toEqual({ n: k });
 
             for (let i = 1; i <= k; i++) {
-                expect(counters[`n${i}`].calls).toBe(1); // still 1
+                expect(callCounts[`n${i}`].calls).toBe(1); // still 1
             }
 
             // Third pull: should trigger NO recomputation (freshness caching)
@@ -1646,7 +1644,7 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
             expect(v3).toEqual({ n: k });
 
             for (let i = 1; i <= k; i++) {
-                expect(counters[`n${i}`].calls).toBe(1); // still 1
+                expect(callCounts[`n${i}`].calls).toBe(1); // still 1
             }
 
             // After set(A), pull(tail) should recompute each downstream node exactly once
@@ -1656,7 +1654,7 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
             expect(v4).toEqual({ n: 100 + k });
 
             for (let i = 1; i <= k; i++) {
-                expect(counters[`n${i}`].calls).toBe(2); // now 2
+                expect(callCounts[`n${i}`].calls).toBe(2); // now 2
             }
         }
     );
@@ -1937,7 +1935,7 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
         const db = new InMemoryDatabase();
 
         // Build a graph where source has many direct and transitive dependents
-        const counters = {};
+        const callCounts = {};
         const sourceCell = { value: { n: 0 } };
         const nodeDefs = [
             {
@@ -1955,7 +1953,7 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
                 `d${i}`,
                 async ([s]) => ({ n: s.n + i })
             );
-            counters[`d${i}`] = counter;
+            callCounts[`d${i}`] = counter;
             nodeDefs.push({ output: `d${i}`, inputs: ["source"], computor, isDeterministic: true, hasSideEffects: false });
         }
 
@@ -1965,7 +1963,7 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
                 `t${i}`,
                 async ([d]) => ({ n: d.n * 2 })
             );
-            counters[`t${i}`] = counter;
+            callCounts[`t${i}`] = counter;
             nodeDefs.push({ output: `t${i}`, inputs: [`d${i}`], computor, isDeterministic: true, hasSideEffects: false });
         }
 

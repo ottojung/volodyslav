@@ -41,7 +41,6 @@ function makeInMemorySchemaStorage() {
     const values = makeInMemoryDb();
     const freshness = makeInMemoryDb();
     const valid = makeInMemoryDb();
-    const counters = makeInMemoryDb();
     const global = makeInMemoryDb();
     const originalGlobalGet = global.get.bind(global);
     global.get = async (key) => {
@@ -58,7 +57,6 @@ function makeInMemorySchemaStorage() {
         values,
         freshness,
         valid,
-        counters,
         global,
         async batch(_ops) {},
     };

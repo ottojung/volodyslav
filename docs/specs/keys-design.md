@@ -19,7 +19,7 @@ node addressing. It describes the model as it is meant to be.
 - **NodeKey**: the schema-derived identity of a concrete node instance, based on
   `(head, args)`
 - **NodeIdentifier**: the deterministic persisted identifier attached to a materialized node
-- **graph-state sublevels**: `values`, `freshness`, `inputs`, `valid`, `counters`,
+- **graph-state sublevels**: `values`, `freshness`, `inputs`, `valid`,
   `timestamps`
 
 ## Boundary
@@ -148,7 +148,6 @@ This applies to:
 
 - `values[id] -> ComputedValue`
 - `freshness[id] -> Freshness`
-- `counters[id] -> Counter`
 - `timestamps[id] -> TimestampRecord`
 - `inputs[id] -> NodeIdentifier[]`
 - `valid[id] -> NodeIdentifier[]`
@@ -253,7 +252,6 @@ and analogously for the other graph-state sublevels:
 - `rendered/r/freshness/nodeid1`
 - `rendered/r/inputs/nodeid1`
 - `rendered/r/valid/nodeid1`
-- `rendered/r/counters/nodeid1`
 - `rendered/r/timestamps/nodeid1`
 
 Lookup metadata remains explicit and separate:
