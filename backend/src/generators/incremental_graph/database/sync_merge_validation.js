@@ -1,6 +1,7 @@
 const { IdentifierLookupConflictError } = require('./replica_errors');
 
 const { nodeIdentifierToString } = require('./types');
+const { nodeIdentifierFromString } = require('./node_identifier');
 const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges } = require('./graph_scheme');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
@@ -46,8 +47,9 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
         }
     }
     for (const identifierString of knownIdentifiers) {
-        if (!materializedIdentifiers.has(identifierString)) {
-            throw new FinalMergeStateError(`lookup identifier ${identifierString} has no materialized node`);
+        const freshness = await targetStorage.freshness.get(nodeIdentifierFromString(identifierString));
+        if (freshness === 'up-to-date' && !materializedIdentifiers.has(identifierString)) {
+            throw new FinalMergeStateError(`up-to-date lookup identifier ${identifierString} has no materialized node`);
         }
     }
     for (const sublevel of [targetStorage.values, targetStorage.freshness, targetStorage.counters, targetStorage.timestamps]) {

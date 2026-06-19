@@ -5,6 +5,7 @@ const { IdentifierLookupConflictError } = require('./replica_errors');
 
 const { nodeIdentifierToString } = require('./types');
 const { GRAPH_SCHEME_KEY, parseGraphScheme, semanticInputKeys } = require('./graph_scheme');
+const { normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require('./input_edges');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -172,12 +173,35 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             throw new IdentifierLookupConflictError(`Missing lowered identifier for ${String(nodeKey)}`);
         }
         const inputKeys = await semanticInputs(storage, lookup, sourceId);
-        const finalInputIds = inputKeys.map(inputKey => {
-            const inputId = finalIdentifierForKey.get(inputKey);
-            if (inputId === undefined) throw new IdentifierLookupConflictError(`Missing lowered input identifier for ${String(inputKey)}`);
+
+        const sourceInputIds = inputKeys.map((inputKey) => {
+            const inputId = lookup.keyToId.get(String(inputKey));
+            if (inputId === undefined) {
+                throw new IdentifierLookupConflictError(
+                    `Missing source input identifier for ${String(inputKey)}`
+                );
+            }
             return inputId;
         });
-        mergedInputsMap.set(finalId, finalInputIds);
+
+        const finalInputIds = inputKeys.map((inputKey) => {
+            const inputId = finalIdentifierForKey.get(inputKey);
+            if (inputId === undefined) {
+                throw new IdentifierLookupConflictError(
+                    `Missing lowered input identifier for ${String(inputKey)}`
+                );
+            }
+            return inputId;
+        });
+
+        const sourceInputEdges = normalizeInputEdges(sourceInputIds);
+        const finalInputEdges = normalizeInputEdges(finalInputIds);
+
+        if (!arraysOfNodeIdentifiersEqual(sourceInputEdges, finalInputEdges)) {
+            directlyReloweredNodes.add(nodeKey);
+        }
+
+        mergedInputsMap.set(finalId, finalInputEdges);
     }
 
     /** @type {Set<NodeKeyString>} */

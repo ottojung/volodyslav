@@ -367,8 +367,11 @@ describe('mergeHostIntoReplica', () => {
                 [targetParent, parentKey],
                 [hostChild, childKey],
             ]);
-            const validParent = await T.valid.get(targetParent) ?? [];
-            expect(validParent.some(id => String(id) === String(hostChild))).toBe(true);
+            // Child's structural dependency on parent changed from hostParent to
+            // targetParent, making it directly relowered. Its value is deleted
+            // and freshness becomes potentially-outdated.
+            expect(await T.freshness.get(hostChild)).toBe('potentially-outdated');
+            expect(await T.values.get(hostChild)).toBeUndefined();
             expect(await T.values.get(targetChild)).toBeUndefined();
             expect(await T.values.get(hostParent)).toBeUndefined();
         } finally {
@@ -1047,7 +1050,12 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(H, [[hostCId, keyC], [hostAId, keyA]]);
 
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
-            expect(await db.getSchemaStorage().values.get(hostAId)).toBeDefined();
+
+            // The directly relowered node should be stale because its structural
+            // dependency changed from hostCId to targetCId.
+            const T = db.getSchemaStorage();
+            expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
+
             const computeA = jest.fn(async ([input]) => ({ source: `recomputed from ${input.source}` }));
             const graph = makeIncrementalGraph(capabilities, db, [
                 {
@@ -1066,8 +1074,8 @@ describe('mergeHostIntoReplica', () => {
                 },
             ]);
 
-            await expect(graph.pull('a_counter_collision')).resolves.toEqual(staleAValue);
-            expect(computeA).toHaveBeenCalledTimes(0);
+            await expect(graph.pull('a_counter_collision')).resolves.toEqual({ source: 'recomputed from target C' });
+            expect(computeA).toHaveBeenCalledTimes(1);
         } finally {
             if (db) await db.close();
         }
@@ -1113,9 +1121,11 @@ describe('mergeHostIntoReplica', () => {
             ]);
 
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            // Directly relowered node and its transitive dependent are both stale.
             const T = db.getSchemaStorage();
-            expect(await T.freshness.get(hostAId)).toBe('up-to-date');
-            expect(await T.freshness.get(hostDId)).toBe('up-to-date');
+            expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
+            expect(await T.freshness.get(hostDId)).toBe('potentially-outdated');
 
             const computeA = jest.fn(async ([input]) => ({ source: `A from ${input.source}` }));
             const computeD = jest.fn(async ([input]) => ({ source: `D from ${input.source}` }));
@@ -1144,10 +1154,10 @@ describe('mergeHostIntoReplica', () => {
             ]);
 
             await expect(graph.pull('d_transitive_relower')).resolves.toEqual({
-                source: 'stale D',
+                source: 'D from A from target C',
             });
-            expect(computeA).toHaveBeenCalledTimes(0);
-            expect(computeD).toHaveBeenCalledTimes(0);
+            expect(computeA).toHaveBeenCalledTimes(1);
+            expect(computeD).toHaveBeenCalledTimes(1);
         } finally {
             if (db) await db.close();
         }
@@ -1194,8 +1204,10 @@ describe('mergeHostIntoReplica', () => {
                 [hostCId, keyC],
                 [targetDId, keyD],
             ]);
-            expect(await T.values.get(targetDId)).toEqual(targetDValue);
-            expect(await T.counters.get(targetDId)).toBe(2);
+            // D's dependency C was relowered from targetCId to hostCId, making
+            // D directly relowered. Its value is deleted and freshness becomes
+            // potentially-outdated.
+            expect(await T.values.get(targetDId)).toBeUndefined();
             expect(await T.freshness.get(targetDId)).toBe('potentially-outdated');
             expect(await T.valid.get(hostCId)).toBeUndefined();
             expect(await T.values.get(targetCId)).toBeUndefined();

@@ -50,7 +50,6 @@
         "backend/src/**/*.js"
     ],
     "exclude": [
-        "frontend/src/sw.js",
-        "backend/src/generators/incremental_graph/database/graph_scheme.js"
+        "frontend/src/sw.js"
     ]
 }

@@ -3,6 +3,30 @@ const { stringToNodeName, nodeNameToString, nodeKeyStringToString } = require(".
 const { nodeIdentifierToString } = require("./node_identifier");
 const { normalizeInputEdges } = require("./input_edges");
 
+/**
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
+function isRecord(value) {
+    return value !== null && typeof value === "object";
+}
+
+/**
+ * @param {IdentifierLookup | TransactionIdentifierLookup} lookup
+ * @returns {lookup is TransactionIdentifierLookup}
+ */
+function hasBaseLookup(lookup) {
+    return "base" in lookup;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is number}
+ */
+function isInteger(value) {
+    return Number.isInteger(value);
+}
+
 /** @typedef {import("../types").CompiledNode} CompiledNode */
 /** @typedef {import("../expr").ParsedExpr} ParsedExpr */
 /** @typedef {import("./types").NodeIdentifier} NodeIdentifier */
@@ -77,6 +101,9 @@ function templateFromExpr(inputExpr, varToPosition) {
     /** @type {number[]} */
     const args = [];
     for (const arg of inputExpr.args) {
+        if (arg === undefined) {
+            throw new GraphSchemeError("Input expression contains a missing argument");
+        }
         const index = varToPosition.get(arg.value);
         if (index === undefined) {
             throw new GraphSchemeError(`Input variable ${arg.value} is not present in output`);
@@ -109,45 +136,64 @@ function parseGraphScheme(raw) {
     if (raw === undefined || raw === null) {
         throw new GraphSchemeError("Missing or null graph_scheme record: cannot derive dependencies without a stored graph_scheme");
     }
-    const value = typeof raw === "string" ? JSON.parse(raw) : raw;
-    if (!value || typeof value !== "object") {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!isRecord(parsed)) {
         throw new GraphSchemeError("Invalid graph_scheme record");
     }
-    if (!("format" in value) || value.format !== GRAPH_SCHEME_FORMAT || !("nodes" in value) || !Array.isArray(value.nodes)) {
+    const format = parsed["format"];
+    const rawNodes = parsed["nodes"];
+    if (format !== GRAPH_SCHEME_FORMAT || !Array.isArray(rawNodes)) {
         throw new GraphSchemeError("Invalid graph_scheme record");
     }
     /** @type {Set<string>} */
     const heads = new Set();
     /** @type {GraphSchemeNode[]} */
     const nodes = [];
-    for (const node of value.nodes) {
-        if (!node || typeof node !== "object") {
+    for (const node of rawNodes) {
+        if (!isRecord(node)) {
             throw new GraphSchemeError("Invalid graph_scheme node record");
         }
-        if (!("head" in node) || typeof node.head !== "string" || !("arity" in node) || !Number.isInteger(node.arity) || node.arity < 0 || !("inputTemplates" in node) || !Array.isArray(node.inputTemplates)) {
+        const head = node["head"];
+        const arity = node["arity"];
+        const inputTemplates = node["inputTemplates"];
+        if (typeof head !== "string" || !Array.isArray(inputTemplates)) {
             throw new GraphSchemeError("Invalid graph_scheme node record");
         }
-        if (heads.has(node.head)) {
-            throw new GraphSchemeError(`Duplicate graph_scheme head: ${node.head}`);
+        if (!isInteger(arity)) {
+            throw new GraphSchemeError("Invalid graph_scheme node record");
         }
-        heads.add(node.head);
+        if (arity < 0) {
+            throw new GraphSchemeError("Invalid graph_scheme node record");
+        }
+        if (heads.has(head)) {
+            throw new GraphSchemeError(`Duplicate graph_scheme head: ${head}`);
+        }
+        heads.add(head);
         /** @type {GraphSchemeInputTemplate[]} */
-        const inputTemplates = [];
-        for (const template of node.inputTemplates) {
-            if (!template || typeof template !== "object" || !("head" in template) || typeof template.head !== "string" || !("args" in template) || !Array.isArray(template.args)) {
-                throw new GraphSchemeError(`Invalid graph_scheme input template for ${node.head}`);
+        const parsedInputTemplates = [];
+        for (const template of inputTemplates) {
+            if (!isRecord(template)) {
+                throw new GraphSchemeError(`Invalid graph_scheme input template for ${head}`);
+            }
+            const templateHead = template["head"];
+            const templateArgs = template["args"];
+            if (typeof templateHead !== "string" || !Array.isArray(templateArgs)) {
+                throw new GraphSchemeError(`Invalid graph_scheme input template for ${head}`);
             }
             /** @type {number[]} */
             const args = [];
-            for (const arg of template.args) {
-                if (!Number.isInteger(arg) || arg < 0 || arg >= node.arity) {
-                    throw new GraphSchemeError(`Invalid graph_scheme arg index for ${node.head}: ${String(arg)}`);
+            for (const arg of templateArgs) {
+                if (!isInteger(arg)) {
+                    throw new GraphSchemeError(`Invalid graph_scheme arg index for ${head}: ${String(arg)}`);
+                }
+                if (arg < 0 || arg >= arity) {
+                    throw new GraphSchemeError(`Invalid graph_scheme arg index for ${head}: ${String(arg)}`);
                 }
                 args.push(arg);
             }
-            inputTemplates.push({ head: template.head, args });
+            parsedInputTemplates.push({ head: templateHead, args });
         }
-        nodes.push({ head: node.head, arity: node.arity, inputTemplates });
+        nodes.push({ head, arity, inputTemplates: parsedInputTemplates });
     }
     nodes.sort((a, b) => a.head.localeCompare(b.head));
     for (const node of nodes) {
@@ -204,7 +250,7 @@ function deriveInputPositions(graphScheme, outputNodeKeyString) {
 function lookupKeyToId(identifierLookup, key) {
     const direct = identifierLookup.keyToId.get(nodeKeyStringToString(key));
     if (direct !== undefined) return direct;
-    if ("base" in identifierLookup) {
+    if (hasBaseLookup(identifierLookup)) {
         return identifierLookup.base.keyToId.get(nodeKeyStringToString(key));
     }
     return undefined;
@@ -219,7 +265,7 @@ function lookupIdToKey(identifierLookup, id) {
     const idString = nodeIdentifierToString(id);
     const direct = identifierLookup.idToKey.get(idString);
     if (direct !== undefined) return direct;
-    if ("base" in identifierLookup) {
+    if (hasBaseLookup(identifierLookup)) {
         return identifierLookup.base.idToKey.get(idString);
     }
     return undefined;
