@@ -411,11 +411,12 @@ describe("runMigration", () => {
 
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => {});
 
+            const compiledNodes = nodeDefs.map(compileNodeDef);
+            const expectedScheme = JSON.stringify(
+                serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes))
+            );
             const storedScheme = await xStorage.global.get(GRAPH_SCHEME_KEY);
-            expect(storedScheme).toBeDefined();
-            const parsed = JSON.parse(storedScheme);
-            expect(parsed.format).toBe(1);
-            expect(parsed.nodes.length).toBeGreaterThan(0);
+            expect(storedScheme).toBe(expectedScheme);
         });
     });
 
