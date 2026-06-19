@@ -13,6 +13,8 @@
 const {
     getRootDatabase,
     nodeIdentifierFromString,
+    GRAPH_SCHEME_KEY,
+    IDENTIFIERS_KEY,
 } = require('../src/generators/incremental_graph/database');
 const {
     topologicalSort,
@@ -22,6 +24,7 @@ const {
 } = require('../src/generators/incremental_graph/database/topo_sort');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
+const { toJsonKey } = require('./test_json_key_helper');
 
 jest.setTimeout(15000);
 
@@ -57,6 +60,38 @@ const NODE_E = makeTestId(4);  // 'eeeeeeeee'  (used as external/unlisted node)
 const NODE_M = makeTestId(12); // 'mmmmmmmmm'
 const NODE_Z = makeTestId(25); // 'z-abcdefghi'
 
+const LINEAR_CHAIN_SCHEME = {
+    format: 1,
+    nodes: [
+        { head: "A", arity: 0, inputTemplates: [] },
+        { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+        { head: "C", arity: 0, inputTemplates: [{ head: "B", args: [] }] },
+    ],
+};
+
+/**
+ * Write the graph scheme and identity lookup for the A -> B -> C test graph.
+ * @param {import('../src/generators/incremental_graph/database').SchemaStorage} storage
+ * @param {Array<[string, string]>} entries
+ * @returns {Promise<void>}
+ */
+async function writeLinearChainMetadata(storage, entries) {
+    await storage.global.put(GRAPH_SCHEME_KEY, JSON.stringify(LINEAR_CHAIN_SCHEME));
+    await storage.global.put(IDENTIFIERS_KEY, entries);
+}
+
+/**
+ * Write materialized values in the requested order.
+ * @param {import('../src/generators/incremental_graph/database').SchemaStorage} storage
+ * @param {string[]} identifiers
+ * @returns {Promise<void>}
+ */
+async function writeValues(storage, identifiers) {
+    for (const identifier of identifiers) {
+        await storage.values.put(identifier, { value: identifier });
+    }
+}
+
 describe('topologicalSort', () => {
     test('returns empty array for an empty graph', async () => {
         const capabilities = getTestCapabilities();
@@ -66,6 +101,77 @@ describe('topologicalSort', () => {
             const storage = db.getSchemaStorage();
             const result = await topologicalSort(storage);
             expect(result).toEqual([]);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('orders storage-level linear chain A -> B -> C from graph_scheme', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const storage = db.getSchemaStorage();
+            const idA = NODE_A, idB = NODE_B, idC = NODE_C;
+            await writeLinearChainMetadata(storage, [
+                [idA, toJsonKey('A')],
+                [idB, toJsonKey('B')],
+                [idC, toJsonKey('C')],
+            ]);
+            await writeValues(storage, [idA, idB, idC]);
+
+            expect(await topologicalSort(storage)).toEqual([idA, idB, idC]);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('storage-level sort fails when graph_scheme is missing', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const storage = db.getSchemaStorage();
+            await storage.global.put(IDENTIFIERS_KEY, [[NODE_A, toJsonKey('A')]]);
+            await writeValues(storage, [NODE_A]);
+
+            await expect(topologicalSort(storage)).rejects.toThrow(/graph_scheme/);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('storage-level sort fails when identifiers_keys_map is missing', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const storage = db.getSchemaStorage();
+            await storage.global.put(GRAPH_SCHEME_KEY, JSON.stringify(LINEAR_CHAIN_SCHEME));
+            await storage.global.del(IDENTIFIERS_KEY);
+            await writeValues(storage, [NODE_A]);
+
+            await expect(topologicalSort(storage)).rejects.toThrow(/identifiers_keys_map/);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('storage-level sort follows scheme dependencies instead of insertion order', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const storage = db.getSchemaStorage();
+            const idA = NODE_A, idB = NODE_B, idC = NODE_C;
+            await writeLinearChainMetadata(storage, [
+                [idA, toJsonKey('A')],
+                [idB, toJsonKey('B')],
+                [idC, toJsonKey('C')],
+            ]);
+            await writeValues(storage, [idC, idB, idA]);
+
+            expect(await topologicalSort(storage)).toEqual([idA, idB, idC]);
         } finally {
             if (db) await db.close();
         }

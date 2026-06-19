@@ -4,10 +4,9 @@ const {
     IDENTIFIERS_KEY,
     GRAPH_SCHEME_KEY,
     nodeIdentifierToString,
-    nodeNameToString,
-    deserializeNodeKey,
     buildGraphSchemeFromNodeDefs,
     serializeGraphScheme,
+    isMissingGraphSchemeError,
 } = require("../src/generators/incremental_graph/database");
 const {
     isUndecidedNodes,
@@ -85,51 +84,9 @@ function makeSchemaStorage() {
 
     // Tests use simplified mocks where the "NodeIdentifier" string is the same
     // as the semantic node key JSON string. When identifiers_keys_map is not
-    // explicitly seeded, fall back to an identity mapping derived from the
-    // currently materialized values keys.
-    // When graph_scheme is not explicitly seeded, auto-generate from values + valid.
+    // explicitly seeded, fall back to an identity mapping derived from values.
     const originalGlobalGet = global.get.bind(global);
     global.get = async (key) => {
-        if (key === GRAPH_SCHEME_KEY) {
-            const stored = await originalGlobalGet(key);
-            if (stored !== undefined) return stored;
-            // Build scheme from materialized node keys and the valid sublevel.
-            const headArity = new Map();
-            for await (const k of values.keys()) {
-                try {
-                    const parsed = deserializeNodeKey(k);
-                    const head = nodeNameToString(parsed.head);
-                    if (!headArity.has(head)) {
-                        headArity.set(head, parsed.args.length);
-                    }
-                } catch { /* skip unparseable keys */ }
-            }
-            // valid[D] = [N1, N2, ...] means N1 and N2 list D as a dependency.
-            const depMap = new Map();
-            for await (const depId of valid.keys()) {
-                const dependents = await valid.get(depId) ?? [];
-                for (const dep of dependents) {
-                    try {
-                        const depParsed = deserializeNodeKey(dep);
-                        const depHead = nodeNameToString(depParsed.head);
-                        const depDeps = depMap.get(depHead) ?? new Set();
-                        const depIdParsed = deserializeNodeKey(depId);
-                        depDeps.add(nodeNameToString(depIdParsed.head));
-                        depMap.set(depHead, depDeps);
-                    } catch { /* skip unparseable keys */ }
-                }
-            }
-            const nodes = [...headArity.entries()]
-                .sort(([a], [b]) => a.localeCompare(b))
-                .map(([head, arity]) => {
-                    const deps = depMap.get(head);
-                    const inputTemplates = deps
-                        ? [...deps].sort().map(dh => ({ head: dh, args: [] }))
-                        : [];
-                    return { head, arity, inputTemplates };
-                });
-            return JSON.stringify({ format: 1, nodes });
-        }
         if (key !== IDENTIFIERS_KEY) {
             return await originalGlobalGet(key);
         }
@@ -258,6 +215,20 @@ async function seedGraphScheme(storage, nodeDefs) {
 }
 
 /**
+ * Seed the standard zero-arity A graph scheme used by single-node tests.
+ * @param {import('../src/generators/incremental_graph/database').SchemaStorage} storage
+ */
+async function seedSingleAGraphScheme(storage) {
+    await seedGraphScheme(storage, [{
+        output: "A",
+        inputs: [],
+        computor: async () => ({ type: "all_events", events: [] }),
+        isDeterministic: true,
+        hasSideEffects: false,
+    }]);
+}
+
+/**
  * Builds a minimal but representative migration scenario.
  * The xStorage has one node ("A") that the migration callback can act upon.
  */
@@ -272,7 +243,6 @@ function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0
         isDeterministic: true,
         hasSideEffects: false,
     }];
-    // graph_scheme is auto-generated from values + valid in makeSchemaStorage's global.get
     const { rootDatabase } = makeRootDatabaseMock({
         prevVersion,
         currentVersion,
@@ -289,6 +259,49 @@ beforeEach(() => {
 });
 
 describe("runMigration", () => {
+
+    test("versioned source without graph_scheme fails before activating target", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const nodeKey = toJsonKey("A");
+        const value = { type: "all_events", events: [] };
+
+        await xStorage.values.put(nodeKey, value);
+        await xStorage.freshness.put(nodeKey, "up-to-date");
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, [[nodeKey, nodeKey]]);
+
+        const mock = makeRootDatabaseMock({
+            prevVersion: "1.0.0",
+            currentVersion: "2.0.0",
+            xStorage,
+            yStorage,
+        });
+        const nodeDefs = [{
+            output: "A",
+            inputs: [],
+            computor: async () => value,
+            isDeterministic: true,
+            hasSideEffects: false,
+        }];
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(nodeKey);
+            });
+        } catch (error) {
+            caught = error;
+        }
+
+        expect(caught).toBeDefined();
+        expect(String(caught && caught.message)).toContain("global/graph_scheme");
+        expect(isMissingGraphSchemeError(caught)).toBe(true);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+        expect(mock.setCurrentReplicaPointerCalledWith).toBeUndefined();
+        expect(await yStorage.global.get("version")).toBeUndefined();
+    });
     test("invalidate preserves counters from previous storage", async () => {
         const capabilities = await getTestCapabilities();
         const previousStorage = makeSchemaStorage();
@@ -315,6 +328,7 @@ describe("runMigration", () => {
             hasSideEffects: false,
         }];
 
+        await seedGraphScheme(previousStorage, nodeDefs);
         await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
             await storage.invalidate(nodeKey);
         });
@@ -436,6 +450,7 @@ describe("runMigration", () => {
                 hasSideEffects: false,
             }];
 
+            await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
             });
@@ -474,6 +489,7 @@ describe("runMigration", () => {
                 hasSideEffects: false,
             }];
 
+            await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
             });
@@ -586,6 +602,7 @@ describe("runMigration", () => {
             ];
             // valid[A] = [B] is set above, so auto-generation from valid handles this test.
 
+            await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(aKey);
                 await storage.keep(bKey);
@@ -691,6 +708,7 @@ describe("runMigration", () => {
                 hasSideEffects: false,
             }];
 
+            await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
             });
@@ -731,6 +749,7 @@ describe("runMigration", () => {
                 hasSideEffects: false,
             }];
 
+            await seedGraphScheme(previousStorage, nodeDefs);
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
             });
@@ -743,6 +762,7 @@ describe("runMigration", () => {
             const { rootDatabase, nodeDefs, nodeKey, xStorage } = makeSimpleMigrationSetup();
             await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
 
+            await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
             });
@@ -758,6 +778,7 @@ describe("runMigration", () => {
             });
             await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
 
+            await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
             });
@@ -776,6 +797,7 @@ describe("runMigration", () => {
             });
             await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
 
+            await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
             });
@@ -824,6 +846,7 @@ describe("runMigration", () => {
                 hasSideEffects: false,
             }];
 
+            await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
             });
@@ -873,6 +896,7 @@ describe("runMigration", () => {
                 hasSideEffects: false,
             }];
 
+            await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
             });
@@ -907,6 +931,7 @@ describe("runMigration", () => {
             }];
 
             const callbackError = new Error("callback failure");
+            await seedGraphScheme(xStorage, nodeDefs);
             await expect(
                 runMigration(capabilities, mock.rootDatabase, nodeDefs, async (_storage) => {
                     throw callbackError;
@@ -941,6 +966,7 @@ describe("runMigration", () => {
             // Callback runs but assigns no decision to node A
             let caughtError;
             try {
+                await seedGraphScheme(xStorage, nodeDefs);
                 await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (_storage) => {
                     // intentionally leave A undecided
                 });
@@ -974,6 +1000,7 @@ describe("runMigration", () => {
                 hasSideEffects: false,
             }];
 
+            await seedGraphScheme(xStorage, nodeDefs);
             await expect(
                 runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => {
                     throw new Error("intentional failure");
@@ -995,6 +1022,7 @@ describe("runMigration", () => {
                 callOrder.push(`checkpoint:${postMessage}`);
             });
 
+            await seedGraphScheme(xStorage, nodeDefs);
             await expect(
                 runMigration(capabilities, rootDatabase, nodeDefs, async () => {
                     throw new Error("intentional failure");
@@ -1018,6 +1046,7 @@ describe("runMigration", () => {
             });
 
             // Callback runs but assigns no decision → finalize throws UndecidedNodesError
+            await seedGraphScheme(xStorage, nodeDefs);
             await expect(
                 runMigration(capabilities, rootDatabase, nodeDefs, async (_storage) => {
                     // intentionally leave the node undecided
@@ -1130,6 +1159,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 42, freshness: "up-to-date" });
+        await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -1148,6 +1178,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 11 });
+        await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -1169,6 +1200,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const nkB = toJsonKey("B");
         await populateNode(xStorage, nkA, { counter: 5 });
         await populateNode(xStorage, nkB, { counter: 9, freshness: "potentially-outdated" });
+        await seedGraphScheme(xStorage, makeTwoNodeDefs());
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
@@ -1177,6 +1209,7 @@ describe("x-namespace state preserved on migration failure", () => {
         // Callback only decides A, leaves B undecided → UndecidedNodesError
         let caughtUndecided;
         try {
+            await seedGraphScheme(xStorage, makeTwoNodeDefs());
             await runMigration(capabilities, rootDatabase, makeTwoNodeDefs(), async (storage) => {
                 await storage.keep(nkA);
                 // B intentionally left undecided
@@ -1200,6 +1233,7 @@ describe("x-namespace state preserved on migration failure", () => {
         // Delete only A but keep B → fan-in violation on C
         let caughtFanIn;
         try {
+            await seedGraphScheme(xStorage, makeFanInNodeDefs());
             await runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
                 await storage.delete(nkA);
                 await storage.keep(nkB);
@@ -1216,6 +1250,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 3 });
+        await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -1240,6 +1275,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 99 });
+        await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
         // Build a yStorage whose noFlushPut throws on all sublevels
@@ -1266,6 +1302,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 7 });
+        await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
         const globalWriteError = new Error("global noFlushPut failure");
@@ -1294,6 +1331,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 2 });
+        await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
         const swapError = new Error("swap failed");
@@ -1340,6 +1378,7 @@ describe("x-namespace state preserved on migration failure", () => {
         // Only decide A; B is left undecided
         let caughtUndecided2;
         try {
+            await seedGraphScheme(xStorage, makeTwoNodeDefs());
             await runMigration(capabilities, rootDatabase, makeTwoNodeDefs(), async (storage) => {
                 await storage.keep(nkA);
             });
@@ -1359,6 +1398,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
+        await seedGraphScheme(xStorage, makeTwoNodeDefs());
         await expect(
             runMigration(capabilities, rootDatabase, makeTwoNodeDefs(), async (storage) => {
                 await storage.keep(nkA);
@@ -1383,6 +1423,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
+        await seedGraphScheme(xStorage, makeFanInNodeDefs());
         await expect(
             runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
                 await storage.delete(nkA);
@@ -1524,6 +1565,7 @@ describe("migration validation", () => {
             { output: "B", inputs: ["A"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
         ];
 
+        await seedGraphScheme(xStorage, nodeDefs);
         await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
             await storage.keep(aKey);
             await storage.keep(bKey);
@@ -1562,6 +1604,7 @@ describe("migration validation", () => {
 
         let caughtError;
         try {
+            await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
             });
@@ -1585,6 +1628,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
+        await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -1602,6 +1646,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
+        await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -1625,6 +1670,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
         const { yStorage } = makeYDb(makeSchemaStorage());
         const mock = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
+        await seedGraphScheme(xStorage, makeFanInNodeDefs());
         await expect(
             runMigration(capabilities, mock.rootDatabase, makeFanInNodeDefs(), async (storage) => {
                 await storage.delete(nkA);
@@ -1649,6 +1695,7 @@ describe("error identity: exact thrown object propagates", () => {
         const specificError = new Error("unique error " + Math.random());
         let caught;
         try {
+            await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, rootDatabase, nodeDefs, async () => {
                 throw specificError;
             });
@@ -1669,6 +1716,7 @@ describe("error identity: exact thrown object propagates", () => {
 
         let caught;
         try {
+            await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
             });
@@ -1685,13 +1733,16 @@ describe("error identity: exact thrown object propagates", () => {
         const nkA = toJsonKey("A");
         const nkB = toJsonKey("B");
         await populateNode(xStorage, nkA);
+        await seedSingleAGraphScheme(xStorage);
         await populateNode(xStorage, nkB);
+        await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         let caught;
         try {
+            await seedGraphScheme(xStorage, makeTwoNodeDefs());
             await runMigration(capabilities, rootDatabase, makeTwoNodeDefs(), async (storage) => {
                 await storage.keep(nkA);
                 // B left undecided
@@ -1717,6 +1768,7 @@ describe("error identity: exact thrown object propagates", () => {
 
         let caught;
         try {
+            await seedGraphScheme(xStorage, makeFanInNodeDefs());
             await runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
                 await storage.delete(nkA);
                 await storage.keep(nkB);
@@ -1733,6 +1785,7 @@ describe("error identity: exact thrown object propagates", () => {
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey);
+        await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -1824,6 +1877,7 @@ describe("infrastructure failures", () => {
         };
 
         let callbackRan = false;
+        await seedSingleAGraphScheme(xStorage);
         await expect(
             runMigration(capabilities, rootDatabase, [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }],
                 async (storage) => { callbackRan = true; await storage.keep(nodeKey); })
@@ -1848,6 +1902,7 @@ describe("infrastructure failures", () => {
         const freshMock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage: freshXStorage, yStorage });
 
         let callbackRan = false;
+        await seedGraphScheme(xStorage, nodeDefs);
         await expect(
             runMigration(capabilities, freshMock.rootDatabase, nodeDefs, async (storage) => {
                 callbackRan = true;
@@ -1867,6 +1922,7 @@ describe("infrastructure failures", () => {
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await populateNode(xStorage, nodeKey, { counter: 55 });
+        await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
@@ -1901,6 +1957,7 @@ describe("infrastructure failures", () => {
 
         let caught;
         try {
+            await seedGraphScheme(freshXStorage, nodeDefs);
             await runMigration(capabilities, freshMock.rootDatabase, nodeDefs, async (storage) => {
                 await storage.keep(nodeKey);
             });
@@ -1924,6 +1981,7 @@ describe("retry after failure", () => {
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
         await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
+        await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
@@ -1954,6 +2012,8 @@ describe("retry after failure", () => {
 
         const nodeDef = { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false };
 
+        await seedGraphScheme(xStorage, [nodeDef]);
+
         // First attempt: one checkpointMigration call, but it fails after the pre commit
         await expect(
             runMigration(capabilities, rootDatabase, [nodeDef], async () => { throw new Error("fail"); })
@@ -1983,6 +2043,7 @@ describe("retry after failure", () => {
         // First attempt: only decide A, B undecided → fail
         let caughtRetry;
         try {
+            await seedGraphScheme(xStorage, makeTwoNodeDefs());
             await runMigration(capabilities, mock.rootDatabase, makeTwoNodeDefs(), async (storage) => {
                 await storage.keep(nkA);
                 // B left undecided
@@ -1993,6 +2054,7 @@ describe("retry after failure", () => {
         expect(mock.setCurrentReplicaPointerCalled).toBe(false);
 
         // Second attempt: correct, decides both nodes
+        await seedGraphScheme(xStorage, makeTwoNodeDefs());
         await runMigration(capabilities, mock.rootDatabase, makeTwoNodeDefs(), async (storage) => {
             await storage.keep(nkA);
             await storage.keep(nkB);
