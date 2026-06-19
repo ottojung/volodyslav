@@ -435,12 +435,9 @@ describe("generators/incremental_graph", () => {
             await graph.invalidate("input1");
             
             // Pull level3 again
-            // level1, level2, level3 all return Unchanged, so counters don't change
             // level1 must recompute (source changed)
-            // but level2 and level3 should skip (level1's counter didn't change)
             const result = await graph.pull("level3");
 
-            // Should only compute level1, then skip level2 and level3 via counter check
             expect(result.count).toBe(4); // Original value from first pull
             expect(computeCalls).toEqual(["level1"]);
 
@@ -696,7 +693,7 @@ describe("generators/incremental_graph", () => {
             input2Cell.value = { value: 2 };
             await graph.invalidate("input2");
             
-            // First pull to materialize all nodes with proper counters
+            // First pull to materialize all nodes
             await graph.pull("nodeE");
             expect(computeCalls).toEqual(["nodeA", "nodeB", "nodeC", "nodeE"]);
             
@@ -704,7 +701,7 @@ describe("generators/incremental_graph", () => {
             computeCalls.length = 0;
             
             // Now change input1, which should trigger recomputation
-            input1Cell.value = { value: 1 }; // Same value, but counter increments
+            input1Cell.value = { value: 1 };
             await graph.invalidate("input1");
 
             // Complex graph:
@@ -715,7 +712,6 @@ describe("generators/incremental_graph", () => {
 
             // input1=1 -> nodeA=10 -> nodeC(10+20=30) -> nodeE=90
             // nodeB should skip recomputation (unchanged input)
-            // nodeA recomputes, nodeC recomputes (nodeA's counter changed), nodeE recomputes (nodeC's counter changed)
             expect(result.value).toBe(90);
             expect(computeCalls).toEqual(["nodeA", "nodeC", "nodeE"]);
 
@@ -1260,7 +1256,6 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
-            // Set up properly with counters
             input1Cell.value = { value: 10 };
             await graph.invalidate("input1");
             input2Cell.value = { value: 20 };
@@ -1677,7 +1672,6 @@ describe("generators/incremental_graph", () => {
 
             const graph = makeIncrementalGraph(capabilities, db, graphDef);
 
-            // Set up properly with counters
             inputCell.value = { value: 5 };
             await graph.invalidate("input");
             await graph.pull("output");

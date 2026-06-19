@@ -24,7 +24,6 @@ Within each namespace there are further typed sublevels:
 | `freshness` | Whether a node is `up-to-date` or `potentially-outdated` |
 | `inputs`    | Input dependency list for each node                       |
 | `valid`     | Validity frontier (input → validated consumers)           |
-| `counters`  | Monotonic integer tracking how many times a value changed |
 | `timestamps`| Creation and last-modification ISO timestamps             |
 | `global`    | Namespace metadata (currently just the schema version)    |
 
@@ -33,7 +32,7 @@ current replica pointer.
 
 ### Key format
 
-Data sublevels (`values`, `freshness`, `inputs`, `valid`, `counters`, `timestamps`) are
+Data sublevels (`values`, `freshness`, `inputs`, `valid`, `timestamps`) are
 keyed by **NodeIdentifier** — an opaque string assigned to each materialised node.
 Semantic node keys (`NodeKey` objects: `{"head":"<name>","args":[...]}`) are mapped to
 their identifiers through an identifier-lookup table stored under the `IDENTIFIERS_KEY`
@@ -80,7 +79,7 @@ await scanFromFilesystem(capabilities, rootDatabase, '/path/to/snapshot');
 Each raw LevelDB key is translated to a *relative file path* inside the snapshot directory.
 The algorithm depends on the key type:
 
-#### Data sublevels (`values`, `freshness`, `inputs`, `valid`, `counters`, `timestamps`)
+#### Data sublevels (`values`, `freshness`, `inputs`, `valid`, `timestamps`)
 
 The stored key is a `NodeIdentifier` — an opaque string that identifies a
 materialised graph node.  It is emitted as a single encoded path segment:

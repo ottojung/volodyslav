@@ -52,7 +52,6 @@ const {
 /** @typedef {import('./types').SublevelFormat} SublevelFormat */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
-/** @typedef {import('./types').Counter} Counter */
 /** @typedef {import('./types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
@@ -144,13 +143,6 @@ function assertNeverReplicaName(name) {
  */
 
 /**
- * Database for storing node counters.
- * Key: persisted node identifier
- * Value: counter (monotonic integer tracking value changes)
- * @typedef {GenericDatabase<Counter, NodeIdentifier>} CountersDatabase
- */
-
-/**
  * Database for storing node timestamps (creation and modification times).
  * Key: persisted node identifier
  * Value: timestamp record with createdAt and modifiedAt ISO strings
@@ -179,7 +171,6 @@ function assertNeverReplicaName(name) {
  * @property {ValuesDatabase} values - Node output values
  * @property {FreshnessDatabase} freshness - Node freshness state
  * @property {ValidDatabase} valid - Inverse validity flags (dependency -> dependents validated against it)
- * @property {CountersDatabase} counters - Node counters (monotonic integers)
  * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
  * @property {GlobalVersionDatabase} global - Replica-level global state (version + identifiers lookup metadata)
  * @property {(operations: DatabaseBatchOperation[]) => Promise<void>} batch - Batch operation interface for atomic writes
@@ -232,8 +223,6 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
     const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Counter, NodeIdentifier>} */
-    const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
@@ -269,7 +258,6 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
         values: makeTypedDatabase(valuesSublevel),
         freshness: makeTypedDatabase(freshnessSublevel),
         valid: makeTypedDatabase(validSublevel),
-        counters: makeTypedDatabase(countersSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
         global: makeTypedDatabase(globalSublevel),
     };

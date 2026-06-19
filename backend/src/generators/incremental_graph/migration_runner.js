@@ -38,7 +38,6 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
-/** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database').ReadableSchemaStorage} ReadableSchemaStorage */
@@ -300,30 +299,6 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
             },
             async get(key) {
                 return desiredValid.get(key);
-            },
-        },
-        counters: {
-            async *keys() {
-                for (const outputKey of sortedDecisionOutputKeys) {
-                    const decision = decisions.get(outputKey);
-                    if (!decision || decision.kind === "delete") continue;
-                    if (decision.kind === "create" || decision.kind === "override") {
-                        yield outputKey;
-                    } else {
-                        const c = await prevStorage.counters.get(outputKey);
-                        if (c !== undefined) yield outputKey;
-                    }
-                }
-            },
-            async get(key) {
-                const decision = decisions.get(key);
-                if (!decision || decision.kind === "delete") return undefined;
-                if (decision.kind === "create") return 1;
-                if (decision.kind === "override") {
-                    const prev = await prevStorage.counters.get(key);
-                    return prev !== undefined ? prev + 1 : 1;
-                }
-                return await prevStorage.counters.get(key);
             },
         },
         timestamps: {

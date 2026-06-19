@@ -52,7 +52,7 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
             throw new FinalMergeStateError(`up-to-date lookup identifier ${identifierString} has no materialized node`);
         }
     }
-    for (const sublevel of [targetStorage.values, targetStorage.freshness, targetStorage.counters, targetStorage.timestamps]) {
+    for (const sublevel of [targetStorage.values, targetStorage.freshness, targetStorage.timestamps]) {
         for await (const identifier of sublevel.keys()) {
             if (!knownIdentifiers.has(nodeIdentifierToString(identifier))) {
                 throw new FinalMergeStateError(`discarded identifier ${nodeIdentifierToString(identifier)} remains in storage`);

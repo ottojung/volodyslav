@@ -270,7 +270,6 @@ describe('keyToRelativePath / relativePathToKey bijection', () => {
         '!x!!freshness!{"head":"all_events","args":[]}',
         '!x!!inputs!{"head":"event","args":["abc123"]}',
         '!x!!valid!{"head":"event","args":["abc123"]}',
-        '!x!!counters!{"head":"all_events","args":[]}',
         '!x!!timestamps!{"head":"all_events","args":[]}',
         '!x!!values!{"head":"transcription","args":["/path/to/audio.mp3"]}',
         '!x!!values!{"head":"event","args":["id/with/slashes"]}',
@@ -843,7 +842,6 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
         const seed = [
             ['!x!!values!{"head":"all_events","args":[]}', { type: 'all_events', events: [] }],
             ['!x!!freshness!{"head":"all_events","args":[]}', 'up-to-date'],
-            ['!x!!counters!{"head":"all_events","args":[]}', 1],
         ];
         const { dbAEntries, dbBEntries } = await renderAndScan(seed);
         expect(dbBEntries.size).toBeGreaterThanOrEqual(seed.length);
@@ -941,7 +939,6 @@ describe('renderToFilesystem / scanFromFilesystem bijection', () => {
             ['!x!!freshness!{"head":"all_events","args":[]}', 'up-to-date'],
             ['!x!!inputs!{"head":"event","args":["abc"]}', ['all_events']],
             ['!x!!valid!{"head":"all_events","args":[]}', ['{"head":"event","args":["abc"]}']],
-            ['!x!!counters!{"head":"all_events","args":[]}', 5],
             ['!x!!timestamps!{"head":"all_events","args":[]}', { createdAt: '2024-01-01T00:00:00.000Z', modifiedAt: '2024-01-02T00:00:00.000Z' }],
             ['!x!!values!{"head":"transcription","args":["/path/to/file.mp3"]}', { type: 'transcription', value: 'spoken words' }],
         ];

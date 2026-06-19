@@ -79,7 +79,6 @@ function makeSchemaStorage() {
     const freshness = makeInMemoryDb("freshness");
     const global = makeInMemoryDb("global");
     const valid = makeInMemoryDb("valid");
-    const counters = makeInMemoryDb("counters");
     const timestamps = makeInMemoryDb("timestamps");
 
     // Tests use simplified mocks where the "NodeIdentifier" string is the same
@@ -106,7 +105,6 @@ function makeSchemaStorage() {
         freshness,
         global,
         valid,
-        counters,
         timestamps,
         async batch(operations) {
             for (const operation of operations) {
@@ -114,7 +112,6 @@ function makeSchemaStorage() {
                 freshness.apply(operation);
                 global.apply(operation);
                 valid.apply(operation);
-                counters.apply(operation);
                 timestamps.apply(operation);
             }
         },
@@ -302,7 +299,7 @@ describe("runMigration", () => {
         expect(mock.setCurrentReplicaPointerCalledWith).toBeUndefined();
         expect(await yStorage.global.get("version")).toBeUndefined();
     });
-    test("invalidate preserves counters from previous storage", async () => {
+    test("invalidate preserves graph records from previous storage", async () => {
         const capabilities = await getTestCapabilities();
         const previousStorage = makeSchemaStorage();
         const currentStorage = makeSchemaStorage();
@@ -310,7 +307,6 @@ describe("runMigration", () => {
 
         await previousStorage.values.put(nodeKey, { type: "all_events", events: [] });
         await previousStorage.freshness.put(nodeKey, "up-to-date");
-        await previousStorage.counters.put(nodeKey, 5);
 
         const { yStorage } = makeYDb(currentStorage);
         const { rootDatabase } = makeRootDatabaseMock({
@@ -334,7 +330,6 @@ describe("runMigration", () => {
         });
 
         const migratedKey = await getMigratedKey(currentStorage, nodeKey);
-        await expect(currentStorage.counters.get(migratedKey)).resolves.toBe(5);
         await expect(currentStorage.freshness.get(migratedKey)).resolves.toBe("potentially-outdated");
     });
 
@@ -760,7 +755,6 @@ describe("runMigration", () => {
             const nodeKey = toJsonKey("A");
             await previousStorage.values.put(nodeKey, { type: "all_events", events: [] });
             await previousStorage.freshness.put(nodeKey, "up-to-date");
-            await previousStorage.counters.put(nodeKey, 2);
 
             const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
@@ -1106,9 +1100,6 @@ async function captureStorageSnapshot(storage) {
     for await (const key of storage.freshness.keys()) {
         snapshot[`freshness:${key}`] = await storage.freshness.get(key);
     }
-    for await (const key of storage.counters.keys()) {
-        snapshot[`counters:${key}`] = await storage.counters.get(key);
-    }
     for await (const key of storage.valid.keys()) {
         snapshot[`valid:${key}`] = await storage.valid.get(key);
     }
@@ -1122,12 +1113,10 @@ async function captureStorageSnapshot(storage) {
 async function populateNode(storage, nodeKey, {
     value = { type: "all_events", events: [] },
     freshness = "up-to-date",
-    counter = 1,
     timestamps = undefined,
 } = {}) {
     await storage.values.put(nodeKey, value);
     await storage.freshness.put(nodeKey, freshness);
-    await storage.counters.put(nodeKey, counter);
     if (timestamps !== undefined) {
         await storage.timestamps.put(nodeKey, timestamps);
     }
@@ -1138,9 +1127,8 @@ async function buildTwoNodeGraph(storage, nodeKeyA, nodeKeyB, {
     timestampA = undefined,
     timestampB = undefined,
 } = {}) {
-    await populateNode(storage, nodeKeyA, { counter: 3, timestamps: timestampA });
+        await populateNode(storage, nodeKeyA, { timestamps: timestampA });
     await populateNode(storage, nodeKeyB, {
-        counter: 7,
         freshness: "potentially-outdated",
         timestamps: timestampB,
     });
@@ -1160,11 +1148,9 @@ function makeTwoNodeDefs() {
 
 /** Build a three-node fan-in graph: A → C, B → C. */
 async function buildFanInGraph(storage, nkA, nkB, nkC) {
-    await populateNode(storage, nkA, { counter: 1 });
-    await populateNode(storage, nkB, { counter: 2 });
-    await populateNode(storage, nkC, {
-        counter: 1,
-    });
+    await populateNode(storage, nkA);
+    await populateNode(storage, nkB);
+    await populateNode(storage, nkC);
     await storage.valid.put(nkA, [nkC]);
     await storage.valid.put(nkB, [nkC]);
 }
@@ -1187,7 +1173,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 42, freshness: "up-to-date" });
+        await populateNode(xStorage, nodeKey, { freshness: "up-to-date" });
         await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
@@ -1206,7 +1192,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 11 });
+        await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
@@ -1227,8 +1213,8 @@ describe("x-namespace state preserved on migration failure", () => {
         const xStorage = makeSchemaStorage();
         const nkA = toJsonKey("A");
         const nkB = toJsonKey("B");
-        await populateNode(xStorage, nkA, { counter: 5 });
-        await populateNode(xStorage, nkB, { counter: 9, freshness: "potentially-outdated" });
+        await populateNode(xStorage, nkA);
+        await populateNode(xStorage, nkB, { freshness: "potentially-outdated" });
         await seedGraphScheme(xStorage, makeTwoNodeDefs());
 
         const { yStorage } = makeYDb(makeSchemaStorage());
@@ -1278,7 +1264,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 3 });
+        await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
@@ -1303,14 +1289,14 @@ describe("x-namespace state preserved on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 99 });
+        await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
         // Build a yStorage whose noFlushPut throws on all sublevels
         const yStorage = makeSchemaStorage();
         const writeError = new Error("write failure");
-        for (const name of ['values', 'freshness', 'global', 'valid', 'counters', 'timestamps']) {
+        for (const name of ['values', 'freshness', 'global', 'valid', 'timestamps']) {
             yStorage[name].noFlushPut = async () => { throw writeError; };
             yStorage[name].noFlushDel = async () => { throw writeError; };
         }
@@ -1330,7 +1316,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 7 });
+        await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
@@ -1359,7 +1345,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 2 });
+        await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
@@ -1417,7 +1403,7 @@ describe("x-namespace state preserved on migration failure", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("multi-node graph: counter, freshness all preserved after callback error", async () => {
+    test("multi-node graph: freshness and values preserved after callback error", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nkA = toJsonKey("A");
@@ -1436,8 +1422,6 @@ describe("x-namespace state preserved on migration failure", () => {
         ).rejects.toThrow("halfway failure");
 
         // Verify each sublevel individually for clarity
-        await expect(xStorage.counters.get(nkA)).resolves.toBe(3);
-        await expect(xStorage.counters.get(nkB)).resolves.toBe(7);
         await expect(xStorage.freshness.get(nkA)).resolves.toBe("up-to-date");
         await expect(xStorage.freshness.get(nkB)).resolves.toBe("potentially-outdated");
     });
@@ -1493,8 +1477,6 @@ describe("migration validation", () => {
         await storage.values.put(bKey, { type: "all_events", events: [] });
         await storage.freshness.put(aKey, "up-to-date");
         await storage.freshness.put(bKey, "up-to-date");
-        await storage.counters.put(aKey, 1);
-        await storage.counters.put(bKey, 1);
         // valid[A] intentionally missing B
 
         const identifiers = await storage.global.get(IDENTIFIERS_KEY);
@@ -1519,7 +1501,6 @@ describe("migration validation", () => {
 
         await storage.values.put(aKey, { type: "all_events", events: [] });
         await storage.freshness.put(aKey, "up-to-date");
-        await storage.counters.put(aKey, 1);
         // valid references B which is not materialized
         await storage.valid.put(aKey, [bKey]);
 
@@ -1549,8 +1530,6 @@ describe("migration validation", () => {
         await storage.values.put(bKey, { type: "all_events", events: [] });
         await storage.freshness.put(aKey, "up-to-date");
         await storage.freshness.put(bKey, "up-to-date");
-        await storage.counters.put(aKey, 1);
-        await storage.counters.put(bKey, 1);
         await storage.valid.put(aKey, [bKey]);
 
         const identifiers = await storage.global.get(IDENTIFIERS_KEY);
@@ -1576,8 +1555,6 @@ describe("migration validation", () => {
         await xStorage.values.put(bKey, { type: "all_events", events: [] });
         await xStorage.freshness.put(aKey, "up-to-date");
         await xStorage.freshness.put(bKey, "up-to-date");
-        await xStorage.counters.put(aKey, 1);
-        await xStorage.counters.put(bKey, 1);
         // valid[A] already contains B — preserved through migration
         await xStorage.valid.put(aKey, [bKey]);
 
@@ -1884,7 +1861,7 @@ describe("infrastructure failures", () => {
 
         const unificationError = new Error("unification write failure");
         const yStorage = makeSchemaStorage();
-        for (const name of ['values', 'freshness', 'global', 'valid', 'counters', 'timestamps']) {
+        for (const name of ['values', 'freshness', 'global', 'valid', 'timestamps']) {
             yStorage[name].noFlushPut = async () => { throw unificationError; };
             yStorage[name].noFlushDel = async () => { throw unificationError; };
         }
@@ -1950,7 +1927,7 @@ describe("infrastructure failures", () => {
 
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 55 });
+        await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 

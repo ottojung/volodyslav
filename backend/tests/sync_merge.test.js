@@ -560,7 +560,6 @@ describe('mergeHostIntoReplica', () => {
             // In T: A is force-kept (T-newer); B has no deps (independent of A).
             await writeNode(L, nodeA, TS3, undefined);
             await writeNode(L, nodeB, TS1, localValueB);
-            await L.counters.put(nodeB, 1);
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
@@ -568,7 +567,6 @@ describe('mergeHostIntoReplica', () => {
             // In H: A is older; B is newer AND now depends on A.
             await writeNode(H, nodeA, TS1, undefined);
             await writeNode(H, nodeB, TS2, remoteValueB);
-            await H.counters.put(nodeB, 2);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
             db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
@@ -583,8 +581,6 @@ describe('mergeHostIntoReplica', () => {
 
             // Because initial decision for B was 'take', invalidate must still
             // apply H's structural state so inputs/valid remain consistent.
-            const bCounter = await T.counters.get(nodeB);
-            expect(bCounter).toBe(2);
             const bValue = await T.values.get(nodeB);
             expect(bValue).toEqual(remoteValueB);
 
@@ -887,21 +883,19 @@ describe('mergeHostIntoReplica', () => {
 
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, targetId, TS2, localValue);
-            await L.counters.put(targetId, 7);
             await writeNode(L, dependentId, TS2, undefined);
             await writeIdentifierLookup(L, [[targetId, sharedKey], [dependentId, dependentKey]]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeGraphScheme(H);
             await writeNode(H, hostId, TS2, { value: { id: 'host', type: 'test', description: 'host' }, isDirty: false });
-            await H.counters.put(hostId, 9);
             await writeNode(H, dependentId, TS2, undefined);
             await writeIdentifierLookup(H, [[hostId, sharedKey], [dependentId, dependentKey]]);
 
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
             const T = db.getSchemaStorage();
             expect(await T.values.get(targetId)).toEqual(localValue);
-            for (const sublevel of [T.values, T.freshness, T.counters, T.timestamps]) {
+            for (const sublevel of [T.values, T.freshness, T.timestamps]) {
                 expect(await sublevel.get(hostId)).toBeUndefined();
             }
             const validShared = await T.valid.get(targetId) ?? [];
@@ -959,19 +953,17 @@ describe('mergeHostIntoReplica', () => {
             const nodeKey = stringToNodeKeyString('{"head":"newer-host","args":[]}');
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, targetId, TS1, undefined);
-            await L.counters.put(targetId, 1);
             await writeIdentifierLookup(L, [[targetId, nodeKey]]);
             const H = db.hostnameSchemaStorage(hostname);
             await writeGraphScheme(H);
             await writeNode(H, hostId, TS3, undefined);
-            await H.counters.put(hostId, 3);
             await writeIdentifierLookup(H, [[hostId, nodeKey]]);
 
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
             const T = db.getSchemaStorage();
             expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([[hostId, nodeKey]]);
             expect(await T.freshness.get(hostId)).toBeDefined();
-            for (const sublevel of [T.values, T.freshness, T.counters, T.timestamps]) {
+            for (const sublevel of [T.values, T.freshness, T.timestamps]) {
                 expect(await sublevel.get(targetId)).toBeUndefined();
             }
         } finally {
@@ -1017,7 +1009,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('pull recomputes a directly relowered node even when dependency counters collide', async () => {
+    test('pull recomputes a directly relowered node when validity flags are rebuilt', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -1038,15 +1030,12 @@ describe('mergeHostIntoReplica', () => {
 
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, targetCId, TS1, targetCValue);
-            await L.counters.put(targetCId, 1);
             await writeIdentifierLookup(L, [[targetCId, keyC]]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeGraphScheme(H);
             await writeNode(H, hostCId, TS1, { source: 'host C' });
-            await H.counters.put(hostCId, 1);
             await writeNode(H, hostAId, TS1, staleAValue);
-            await H.counters.put(hostAId, 1);
             await writeIdentifierLookup(H, [[hostCId, keyC], [hostAId, keyA]]);
 
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
@@ -1103,17 +1092,13 @@ describe('mergeHostIntoReplica', () => {
 
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, targetCId, TS1, targetCValue);
-            await L.counters.put(targetCId, 1);
             await writeIdentifierLookup(L, [[targetCId, keyC]]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeGraphScheme(H);
             await writeNode(H, hostCId, TS1, { source: 'host C' });
-            await H.counters.put(hostCId, 1);
             await writeNode(H, hostAId, TS1, { source: 'stale A' });
-            await H.counters.put(hostAId, 1);
             await writeNode(H, hostDId, TS1, { source: 'stale D' });
-            await H.counters.put(hostDId, 1);
             await writeIdentifierLookup(H, [
                 [hostCId, keyC],
                 [hostAId, keyA],
@@ -1187,7 +1172,6 @@ describe('mergeHostIntoReplica', () => {
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, targetCId, TS1, undefined);
             await writeNode(L, targetDId, TS2, targetDValue);
-            await L.counters.put(targetDId, 2);
             await writeIdentifierLookup(L, [
                 [targetCId, keyC],
                 [targetDId, keyD],
