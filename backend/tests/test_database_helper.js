@@ -94,7 +94,7 @@ function makeSemanticStorage(graph) {
                         graph.rootDatabase,
                         jsonKey
                     );
-                                    if (databaseName === "valid") {
+                    if (databaseName === "valid") {
                         tx.batch.valid.put(
                             nodeIdentifier,
                             value.map((dependentKey) =>
@@ -145,7 +145,7 @@ function makeSemanticStorage(graph) {
                             const jsonKey = toJsonKey(key);
                             const nodeIdentifier =
                                 getOrAllocateNodeIdentifierForTest(tx, graph.rootDatabase, jsonKey);
-                                            if (databaseName === "valid") {
+                            if (databaseName === "valid") {
                                 tx.batch.valid.put(
                                     nodeIdentifier,
                                     value.map((dependentKey) =>
@@ -180,7 +180,7 @@ function makeSemanticStorage(graph) {
                             if (value === undefined) {
                                 return undefined;
                             }
-                                            if (databaseName === "valid") {
+                            if (databaseName === "valid") {
                                 return value.map((dependentIdentifier) =>
                                     requireNodeKey(tx, dependentIdentifier)
                                 );

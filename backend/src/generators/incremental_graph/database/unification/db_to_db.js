@@ -299,8 +299,6 @@ function makeInMemorySchemaStorage() {
     /** @type {Map<string, unknown>} */
     const globalStore = new Map();
     /** @type {Map<string, unknown>} */
-    /** @type {Map<string, unknown>} */
-    /** @type {Map<string, unknown>} */
     const validStore = new Map();
     /** @type {Map<string, unknown>} */
     const countersStore = new Map();

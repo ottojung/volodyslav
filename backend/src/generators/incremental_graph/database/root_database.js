@@ -144,13 +144,6 @@ function assertNeverReplicaName(name) {
  */
 
 /**
- * Database for storing node input dependencies.
- * Key: persisted node identifier
- * Value: normalized structural dependency-edge list (NodeIdentifier[])
- * @typedef {GenericDatabase<NodeIdentifier[], NodeIdentifier>} InputsDatabase
- */
-
-/**
  * Database for storing node counters.
  * Key: persisted node identifier
  * Value: counter (monotonic integer tracking value changes)

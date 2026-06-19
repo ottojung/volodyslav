@@ -389,6 +389,34 @@ describe("runMigration", () => {
 
             expect(capabilities.checkpointMigration).not.toHaveBeenCalled();
         });
+
+        test("writes graph_scheme in global for fresh initialization", async () => {
+            const capabilities = await getTestCapabilities();
+            const xStorage = makeSchemaStorage();
+            const { yStorage } = makeYDb(makeSchemaStorage());
+            const mock = makeRootDatabaseMock({
+                prevVersion: undefined,
+                currentVersion: "1.0.0",
+                xStorage,
+                yStorage,
+            });
+
+            const nodeDefs = [{
+                output: "A",
+                inputs: [],
+                computor: async () => ({ type: "all_events", events: [] }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            }];
+
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => {});
+
+            const storedScheme = await xStorage.global.get(GRAPH_SCHEME_KEY);
+            expect(storedScheme).toBeDefined();
+            const parsed = JSON.parse(storedScheme);
+            expect(parsed.format).toBe(1);
+            expect(parsed.nodes.length).toBeGreaterThan(0);
+        });
     });
 
     describe("no migration needed (version already matches)", () => {
