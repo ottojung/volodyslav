@@ -117,14 +117,6 @@ module.exports = {
                 __BASE_PATH__: "readonly",
             },
         },
-
-
-        {
-            files: ["backend/src/generators/incremental_graph/migration_storage.js"],
-            rules: {
-                "volodyslav/max-lines-per-file": "off",
-            },
-        },
         {
             // Test files are excluded from the max-lines-per-file rule because they
             // often need many test cases in a single file.
