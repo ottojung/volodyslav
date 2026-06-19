@@ -11,6 +11,14 @@ const { MigrationStorageClass } = require("./migration_storage_class");
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 
 /**
+ * @typedef {{ kind: 'keep' }} KeepDecision
+ * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} OverrideDecision
+ * @typedef {{ kind: 'invalidate' }} InvalidateDecision
+ * @typedef {{ kind: 'delete' }} DeleteDecision
+ * @typedef {{ kind: 'create', nodeKeyString: string, value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} CreateDecision
+ * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision | CreateDecision} Decision
+
+/**
  * Read-only database view used by migration decision logic.
  * Migration callbacks never write directly to the previous replica.
  * @typedef {object} ReadableMigrationStorage
