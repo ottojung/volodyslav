@@ -52,7 +52,7 @@ const {
     isFinalMergeStateError,
 } = require('./sync_merge_validation');
 const { buildDeleteNodeOps, copyNodeOps, copyReplicaGently } = require('./sync_merge_transfer');
-const { preserveAndRebuildValidity, ReplicaBatchWriter } = require('./sync_merge_validity');
+const { rebuildMergedValidity, buildValueOriginByKey, ReplicaBatchWriter } = require('./sync_merge_validity');
 const {
     assertNoIdentifierCollisions,
     parseIdentifierLookup,
@@ -403,14 +403,26 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const summary = summarizeDecisions(decisions.values());
     const hasChanges = summary.hasChanges || hasIdentifierReconciliation;
     if (hasChanges) {
-        await preserveAndRebuildValidity(
-            targetStorage,
-            decisions,
+        const valueOriginByKey = buildValueOriginByKey(
             initialDecisions,
+            decisions,
+            targetLookup,
+            hostLookup,
+            directlyReloweredNodes
+        );
+
+        const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
+
+        await rebuildMergedValidity({
+            targetStorage,
+            targetSourceStorage,
+            hostSourceStorage: hostStorage,
+            targetLookup,
+            hostLookup,
             finalIdentifierForKey,
             mergedInputsMap,
-            targetLookup
-        );
+            valueOriginByKey,
+        });
     }
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
 
