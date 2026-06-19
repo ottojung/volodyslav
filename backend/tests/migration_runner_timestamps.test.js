@@ -562,14 +562,10 @@ describe("delete decision: sublevels do not retain deleted keys", () => {
 
         await seedNode(xStorage, nkA, {
             timestamps: OLD_TIMESTAMP,
-            inputs: [],
-            counter: 11,
             freshness: "up-to-date",
         });
         await seedNode(xStorage, nkB, {
             timestamps: NEW_TIMESTAMP,
-            inputs: [nkA],
-            counter: 22,
             freshness: "up-to-date",
         });
         await xStorage.valid.put(nkA, [nkB]);
@@ -602,11 +598,9 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
     async function buildChain(xStorage) {
         const nkA = toJsonKey("A");
         const nkB = toJsonKey("B");
-        await seedNode(xStorage, nkA, { timestamps: OLD_TIMESTAMP, counter: 3 });
+        await seedNode(xStorage, nkA, { timestamps: OLD_TIMESTAMP });
         await seedNode(xStorage, nkB, {
             timestamps: NEW_TIMESTAMP,
-            inputs: [nkA],
-            counter: 7,
         });
         await xStorage.valid.put(nkA, [nkB]);
         return { nkA, nkB };

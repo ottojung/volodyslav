@@ -1127,9 +1127,8 @@ async function buildTwoNodeGraph(storage, nodeKeyA, nodeKeyB, {
     timestampA = undefined,
     timestampB = undefined,
 } = {}) {
-    await populateNode(storage, nodeKeyA, { counter: 3, timestamps: timestampA });
+        await populateNode(storage, nodeKeyA, { timestamps: timestampA });
     await populateNode(storage, nodeKeyB, {
-        counter: 7,
         freshness: "potentially-outdated",
         timestamps: timestampB,
     });
@@ -1149,11 +1148,9 @@ function makeTwoNodeDefs() {
 
 /** Build a three-node fan-in graph: A → C, B → C. */
 async function buildFanInGraph(storage, nkA, nkB, nkC) {
-    await populateNode(storage, nkA, { counter: 1 });
-    await populateNode(storage, nkB, { counter: 2 });
-    await populateNode(storage, nkC, {
-        counter: 1,
-    });
+    await populateNode(storage, nkA);
+    await populateNode(storage, nkB);
+    await populateNode(storage, nkC);
     await storage.valid.put(nkA, [nkC]);
     await storage.valid.put(nkB, [nkC]);
 }
@@ -1176,7 +1173,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 42, freshness: "up-to-date" });
+        await populateNode(xStorage, nodeKey, { freshness: "up-to-date" });
         await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
@@ -1195,7 +1192,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 11 });
+        await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
@@ -1216,8 +1213,8 @@ describe("x-namespace state preserved on migration failure", () => {
         const xStorage = makeSchemaStorage();
         const nkA = toJsonKey("A");
         const nkB = toJsonKey("B");
-        await populateNode(xStorage, nkA, { counter: 5 });
-        await populateNode(xStorage, nkB, { counter: 9, freshness: "potentially-outdated" });
+        await populateNode(xStorage, nkA);
+        await populateNode(xStorage, nkB, { freshness: "potentially-outdated" });
         await seedGraphScheme(xStorage, makeTwoNodeDefs());
 
         const { yStorage } = makeYDb(makeSchemaStorage());
@@ -1267,7 +1264,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 3 });
+        await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
 
         const { yStorage } = makeYDb(makeSchemaStorage());
@@ -1292,7 +1289,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 99 });
+        await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
@@ -1319,7 +1316,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 7 });
+        await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
@@ -1348,7 +1345,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 2 });
+        await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
@@ -1406,7 +1403,7 @@ describe("x-namespace state preserved on migration failure", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("multi-node graph: counter, freshness all preserved after callback error", async () => {
+    test("multi-node graph: freshness and values preserved after callback error", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const nkA = toJsonKey("A");
@@ -1930,7 +1927,7 @@ describe("infrastructure failures", () => {
 
         const xStorage = makeSchemaStorage();
         const nodeKey = toJsonKey("A");
-        await populateNode(xStorage, nodeKey, { counter: 55 });
+        await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
