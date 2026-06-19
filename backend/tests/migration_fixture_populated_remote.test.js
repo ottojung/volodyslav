@@ -45,7 +45,7 @@ describe("populated rendered fixture migration", () => {
             await assertDirectoriesExactlyEqual(
                 path.join(clonedRemote, DATABASE_SUBPATH),
                 path.join(__dirname, "mock-incremental-database-remote-populated", DATABASE_SUBPATH),
-                new Set(["_meta/current_replica", "r/global/fingerprint", "r/global/last_node_index", "r/global/graph_scheme"])
+                new Set(["_meta/current_replica", "r/global/fingerprint", "r/global/last_node_index"])
             );
         } finally {
             await capabilities.deleter.deleteDirectory(clonedRemote);
