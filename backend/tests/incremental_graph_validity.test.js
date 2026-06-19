@@ -370,9 +370,9 @@ describe("Incremental graph validity", () => {
 
     // === Test Obligation 3: Unchanged adds validity flags ===
     describe("test obligation 3: Unchanged adds validity flags", () => {
-        it("records valid[D].add(N) for every dependency edge without incrementing counter", async () => {
+        it("records valid[D].add(N) for every dependency edge while preserving downstream validity", async () => {
             let midCalls = 0;
-            const { nodeDefs } = createChainGraph(
+            const { nodeDefs, dependentCC } = createChainGraph(
                 () => ({ v: "src" }),
                 () => {
                     midCalls++;
@@ -417,13 +417,16 @@ describe("Incremental graph validity", () => {
             expect(validSrcAfter.some(id => id === nodeIdentifierToString(midId))).toBe(true);
 
             // Dependent cache-hits because valid[mid].has(dep) was preserved
-            await graph.pull("dependent", binding);
+            const depCallsBefore = dependentCC.getCallCount();
+            const result = await graph.pull("dependent", binding);
+            expect(dependentCC.getCallCount()).toBe(depCallsBefore);
+            expect(result).toEqual({ v: "dep" });
         });
     });
 
     // === Test Obligation 4: Changed value clears validity ===
     describe("test obligation 4: changed value clears validity", () => {
-        it("deletes N from each valid[D], clears valid[N], writes new counter", async () => {
+        it("removes stale incoming validity, clears downstream validity, and writes the changed value", async () => {
             let srcValue = 0;
             const { nodeDefs } = createChainGraph(
                 () => ({ v: ++srcValue }),
