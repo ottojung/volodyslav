@@ -166,6 +166,93 @@ function originMatches(origin, side, sourceId) {
 }
 
 /**
+ * Compare stored graph values by JSON-like structure without observing
+ * prototypes or mutating either value.
+ * @param {*} left
+ * @param {*} right
+ * @returns {boolean}
+ */
+function storageValuesEqual(left, right) {
+    if (Object.is(left, right)) {
+        return true;
+    }
+    if (left === null || right === null) {
+        return false;
+    }
+    if (typeof left !== 'object' || typeof right !== 'object') {
+        return false;
+    }
+    if (Array.isArray(left) || Array.isArray(right)) {
+        if (!Array.isArray(left) || !Array.isArray(right)) {
+            return false;
+        }
+        if (left.length !== right.length) {
+            return false;
+        }
+        for (let index = 0; index < left.length; index += 1) {
+            if (!storageValuesEqual(left[index], right[index])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    if (leftKeys.length !== rightKeys.length) {
+        return false;
+    }
+    for (let index = 0; index < leftKeys.length; index += 1) {
+        const key = leftKeys[index];
+        const rightKey = rightKeys[index];
+        if (key === undefined || key !== rightKey) {
+            return false;
+        }
+        if (!storageValuesEqual(left[key], right[key])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Check whether a source-side value can justify transporting a source-side
+ * validity endpoint onto the final endpoint.
+ * @param {object} options
+ * @param {'target' | 'host'} options.side
+ * @param {SchemaStorage} options.sourceStorage
+ * @param {NodeIdentifier} options.sourceId
+ * @param {NodeKeyString} options.sourceKey
+ * @param {NodeIdentifier} options.finalId
+ * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
+ * @param {SchemaStorage} options.targetStorage
+ * @returns {Promise<boolean>}
+ */
+async function sourceValueCompatibleWithFinal({
+    side,
+    sourceStorage,
+    sourceId,
+    sourceKey,
+    finalId,
+    valueOriginByKey,
+    targetStorage,
+}) {
+    if (originMatches(valueOriginByKey.get(sourceKey), side, sourceId)) {
+        return true;
+    }
+
+    const sourceValue = await sourceStorage.values.get(sourceId);
+    if (sourceValue === undefined) {
+        return false;
+    }
+    const finalValue = await targetStorage.values.get(finalId);
+    if (finalValue === undefined) {
+        return false;
+    }
+    return storageValuesEqual(sourceValue, finalValue);
+}
+
+/**
  * Check whether a NodeIdentifier is present in a list.
  * @param {NodeIdentifier[]} list
  * @param {NodeIdentifier} id
@@ -174,6 +261,61 @@ function originMatches(origin, side, sourceId) {
 function containsIdentifier(list, id) {
     const idStr = nodeIdentifierToString(id);
     return list.some(item => nodeIdentifierToString(item) === idStr);
+}
+
+/**
+ * @param {Map<string, NodeIdentifier[]>} validMap
+ * @returns {Map<string, string[]>}
+ */
+function canonicalizeValidMap(validMap) {
+    /** @type {Map<string, string[]>} */
+    const canonical = new Map();
+    for (const [depIdStr, dependents] of validMap) {
+        if (dependents.length === 0) {
+            continue;
+        }
+        const dependentStrings = Array.from(new Set(dependents.map(nodeIdentifierToString))).sort();
+        if (dependentStrings.length > 0) {
+            canonical.set(depIdStr, dependentStrings);
+        }
+    }
+    return canonical;
+}
+
+/**
+ * @param {SchemaStorage} targetStorage
+ * @returns {Promise<Map<string, string[]>>}
+ */
+async function readCanonicalValidMap(targetStorage) {
+    /** @type {Map<string, NodeIdentifier[]>} */
+    const validMap = new Map();
+    for await (const depId of targetStorage.valid.keys()) {
+        validMap.set(nodeIdentifierToString(depId), await targetStorage.valid.get(depId) ?? []);
+    }
+    return canonicalizeValidMap(validMap);
+}
+
+/**
+ * @param {Map<string, string[]>} left
+ * @param {Map<string, string[]>} right
+ * @returns {boolean}
+ */
+function canonicalValidMapsEqual(left, right) {
+    if (left.size !== right.size) {
+        return false;
+    }
+    for (const [depIdStr, leftDependents] of left) {
+        const rightDependents = right.get(depIdStr);
+        if (rightDependents === undefined || leftDependents.length !== rightDependents.length) {
+            return false;
+        }
+        for (let index = 0; index < leftDependents.length; index += 1) {
+            if (leftDependents[index] !== rightDependents[index]) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 /**
@@ -197,7 +339,7 @@ function containsIdentifier(list, id) {
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
  * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
- * @returns {Promise<void>}
+ * @returns {Promise<boolean>} Whether the canonical valid relation changed.
  */
 async function rebuildMergedValidity({
     targetStorage,
@@ -209,6 +351,8 @@ async function rebuildMergedValidity({
     mergedInputsMap,
     valueOriginByKey,
 }) {
+    const oldCanonicalValidMap = await readCanonicalValidMap(targetStorage);
+
     /** @type {Map<string, NodeIdentifier[]>} */
     const validMap = new Map();
     /** @type {Map<string, NodeIdentifier>} */
@@ -231,8 +375,15 @@ async function rebuildMergedValidity({
             const finalDepId = finalIdForKey.get(depKey);
             if (finalDepId === undefined) continue;
 
-            const depOrigin = valueOriginByKey.get(depKey);
-            if (!originMatches(depOrigin, side, sourceDepId)) continue;
+            if (!await sourceValueCompatibleWithFinal({
+                side,
+                sourceStorage,
+                sourceId: sourceDepId,
+                sourceKey: depKey,
+                finalId: finalDepId,
+                valueOriginByKey,
+                targetStorage,
+            })) continue;
 
             for (const sourceDependentId of sourceDependents) {
                 const dependentIdStr = nodeIdentifierToString(sourceDependentId);
@@ -242,8 +393,15 @@ async function rebuildMergedValidity({
                 const finalDependentId = finalIdForKey.get(dependentKey);
                 if (finalDependentId === undefined) continue;
 
-                const dependentOrigin = valueOriginByKey.get(dependentKey);
-                if (!originMatches(dependentOrigin, side, sourceDependentId)) continue;
+                if (!await sourceValueCompatibleWithFinal({
+                    side,
+                    sourceStorage,
+                    sourceId: sourceDependentId,
+                    sourceKey: dependentKey,
+                    finalId: finalDependentId,
+                    valueOriginByKey,
+                    targetStorage,
+                })) continue;
 
                 const finalInputs = mergedInputsMap.get(finalDependentId) ?? [];
                 if (!containsIdentifier(finalInputs, finalDepId)) continue;
@@ -293,10 +451,12 @@ async function rebuildMergedValidity({
         }
     }
     await writer.flush();
+    return !canonicalValidMapsEqual(oldCanonicalValidMap, canonicalizeValidMap(validMap));
 }
 
 module.exports = {
     rebuildMergedValidity,
     buildValueOriginByKey,
     ReplicaBatchWriter,
+    storageValuesEqual,
 };
