@@ -35,7 +35,7 @@ function buildDeleteNodeOps(targetStorage, identifier) {
 /**
  * Build operations that copy a node between potentially different identifiers.
  * Validity is not copied here — it is rebuilt by the caller from scheme-derived
- * edges in preserveAndRebuildValidity.
+ * edges by provenance-aware validity reconstruction.
  *
  * @param {object} options
  * @param {SchemaStorage} options.targetStorage

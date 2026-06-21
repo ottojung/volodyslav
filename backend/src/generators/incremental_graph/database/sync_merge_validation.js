@@ -92,7 +92,7 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
                 );
             }
             const inputFreshness = await targetStorage.freshness.get(input);
-            if (inputFreshness === 'potentially-outdated') {
+            if (inputFreshness !== 'up-to-date') {
                 throw new FinalMergeStateError(
                     `up-to-date node ${identifierString} depends on stale input ${inputString}`
                 );

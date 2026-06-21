@@ -88,117 +88,6 @@ class ReplicaBatchWriter {
 }
 
 /**
- * Rebuild the valid relation from the final merged graph state.
- *
- * 1. Capture validity entries currently present in the merge target.
- * 2. Preserve compatible valid[D].has(N) entries for kept nodes whose value
- *    identity is unchanged and whose input D's value identity is unchanged.
- * 3. Remove entries for deleted/discarded identifiers, or entries where the
- *    dependent's inputs no longer contain the dependency.
- * 4. Remove entries for nodes whose stored value was changed, taken from an
- *    incompatible side, or invalidated.
- * 5. Add required missing valid flags for every up-to-date node according
- *    to the invariant.
- *
- * @param {SchemaStorage} targetStorage
- * @param {Map<NodeKeyString, MergeDecision>} decisions
- * @param {Map<NodeKeyString, 'keep' | 'take'>} initialDecisions
- * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
- * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
- * @param {IdentifierLookup} targetLookup
- * @returns {Promise<void>}
- */
-async function preserveAndRebuildValidity(
-    targetStorage,
-    decisions,
-    initialDecisions,
-    finalIdentifierForKey,
-    mergedInputsMap,
-    targetLookup
-) {
-    /** @type {Map<string, NodeIdentifier[]>} */
-    const previousValid = new Map();
-    for await (const depId of targetStorage.valid.keys()) {
-        const dependents = await targetStorage.valid.get(depId);
-        if (dependents !== undefined) {
-            previousValid.set(nodeIdentifierToString(depId), dependents);
-        }
-    }
-
-    await targetStorage.valid.clear();
-
-    /** @type {Map<string, NodeIdentifier[]>} */
-    const validMap = new Map();
-    /** @type {Map<string, NodeIdentifier>} */
-    const depIdCache = new Map();
-
-    for (const [depIdStr, dependents] of previousValid) {
-        const depNodeKey = targetLookup.idToKey.get(depIdStr);
-        if (depNodeKey === undefined) continue;
-        const finalDepId = finalIdentifierForKey.get(depNodeKey);
-        if (finalDepId === undefined) continue;
-
-        const depDecision = decisions.get(depNodeKey);
-        const depInitial = initialDecisions.get(depNodeKey);
-        if (depDecision !== 'keep' || depInitial !== 'keep') continue;
-
-        for (const dependent of dependents) {
-            const depStr = nodeIdentifierToString(dependent);
-            const depNodeKey2 = targetLookup.idToKey.get(depStr);
-            if (depNodeKey2 === undefined) continue;
-            const finalDepId2 = finalIdentifierForKey.get(depNodeKey2);
-            if (finalDepId2 === undefined) continue;
-
-            const dep2Decision = decisions.get(depNodeKey2);
-            const dep2Initial = initialDecisions.get(depNodeKey2);
-            if (dep2Decision !== 'keep' || dep2Initial !== 'keep') continue;
-
-            const dep2Inputs = mergedInputsMap.get(finalDepId2) ?? [];
-            if (!dep2Inputs.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(finalDepId))) {
-                continue;
-            }
-
-            const finalDepIdStr = nodeIdentifierToString(finalDepId);
-            depIdCache.set(finalDepIdStr, finalDepId);
-            let deps = validMap.get(finalDepIdStr) ?? [];
-            validMap.set(finalDepIdStr, deps);
-            if (!deps.some(d => nodeIdentifierToString(d) === nodeIdentifierToString(finalDepId2))) {
-                deps.push(finalDepId2);
-            }
-        }
-    }
-
-
-    for await (const nodeIdentifier of targetStorage.values.keys()) {
-        const freshness = await targetStorage.freshness.get(nodeIdentifier);
-        if (freshness !== "up-to-date") {
-            continue;
-        }
-        const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
-        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
-        for (const depId of requiredInputs) {
-            const depIdStr = nodeIdentifierToString(depId);
-            depIdCache.set(depIdStr, depId);
-            const dependents = validMap.get(depIdStr) ?? [];
-            validMap.set(depIdStr, dependents);
-            if (!dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
-                dependents.push(nodeIdentifier);
-            }
-        }
-    }
-
-    const writer = new ReplicaBatchWriter(targetStorage);
-    for (const [depIdStr, dependents] of validMap) {
-        const depId = depIdCache.get(depIdStr);
-        if (depId !== undefined && dependents.length > 0) {
-            dependents.sort(compareNodeIdentifier);
-            await writer.push(targetStorage.valid.putOp(depId, dependents));
-        }
-    }
-    await writer.flush();
-}
-
-/**
  * Build the valueOriginByKey map from merge plan data.
  *
  * The map describes the provenance of every final stored value:
@@ -212,20 +101,33 @@ async function preserveAndRebuildValidity(
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
  * @param {Set<NodeKeyString>} directlyReloweredNodes
- * @returns {Map<NodeKeyString, ValueOrigin>}
+ * @param {SchemaStorage} targetStorage
+ * @param {SchemaStorage} targetSourceStorage
+ * @param {SchemaStorage} hostSourceStorage
+ * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
+ * @returns {Promise<Map<NodeKeyString, ValueOrigin>>}
  */
-function buildValueOriginByKey(
+async function buildValueOriginByKey(
     initialDecisions,
     decisions,
     targetLookup,
     hostLookup,
-    directlyReloweredNodes
+    directlyReloweredNodes,
+    targetStorage,
+    targetSourceStorage,
+    hostSourceStorage,
+    finalIdentifierForKey
 ) {
     /** @type {Map<NodeKeyString, ValueOrigin>} */
     const map = new Map();
 
     for (const [nodeKey] of decisions) {
         if (directlyReloweredNodes.has(nodeKey)) {
+            map.set(nodeKey, { kind: 'none' });
+            continue;
+        }
+        const finalId = finalIdentifierForKey.get(nodeKey);
+        if (finalId === undefined || await targetStorage.values.get(finalId) === undefined) {
             map.set(nodeKey, { kind: 'none' });
             continue;
         }
@@ -237,8 +139,9 @@ function buildValueOriginByKey(
         const decision = decisions.get(nodeKey);
         const sourceSide = decision === 'invalidate' ? initial : decision;
         const sourceLookup = sourceSide === 'take' ? hostLookup : targetLookup;
+        const sourceStorage = sourceSide === 'take' ? hostSourceStorage : targetSourceStorage;
         const sourceId = sourceLookup.keyToId.get(String(nodeKey));
-        if (sourceId === undefined) {
+        if (sourceId === undefined || await sourceStorage.values.get(sourceId) === undefined) {
             map.set(nodeKey, { kind: 'none' });
             continue;
         }
@@ -393,7 +296,6 @@ async function rebuildMergedValidity({
 }
 
 module.exports = {
-    preserveAndRebuildValidity,
     rebuildMergedValidity,
     buildValueOriginByKey,
     ReplicaBatchWriter,
