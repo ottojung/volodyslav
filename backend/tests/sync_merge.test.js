@@ -2136,6 +2136,59 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
+    test('cross-side equal-value proof is not imported when the dependent is directly relowered', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            // Target has A_target (TS3), no B.
+            // Host has A_host (TS1, same value), B_host (TS2 with dep on A).
+            const targetA = nodeIdentifierFromString('116-abcdefghi');
+            const hostA = nodeIdentifierFromString('117-abcdefghi');
+            const hostB = nodeIdentifierFromString('118-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"cross_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"cross_B","args":[]}');
+            const equalValue = { source: 'shared', version: 1 };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetA, TS3, equalValue);
+            await writeIdentifierLookup(L, [[targetA, keyA]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, hostA, TS1, equalValue);
+            await writeNode(H, hostB, TS2, { source: 'B host' });
+            await H.freshness.put(hostB, 'potentially-outdated');
+            await H.valid.put(hostA, [hostB]);
+            await writeIdentifierLookup(H, [[hostA, keyA], [hostB, keyB]]);
+
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
+
+            const T = db.getSchemaStorage();
+            // A is kept (target-newer, TS3 > TS1)
+            expect(await T.values.get(targetA)).toEqual(equalValue);
+            // hostA is deleted (keep chose targetA)
+            expect(await T.values.get(hostA)).toBeUndefined();
+            // B was taken but directly relowered (input changed from hostA to
+            // targetA). The dep check passes via structural equality (A's values
+            // match), but the dependent check fails because B's final value was
+            // deleted by direct relowering. The equality fallback on the dep side
+            // alone is not enough — the dependent must also have a compatible
+            // final value for the proof to transport.
+            const validA = await T.valid.get(targetA) ?? [];
+            const bIdStr = String(hostB);
+            expect(validA.some(d => String(d) === bIdStr)).toBe(false);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     test('4. identifier lowering transports valid proofs to final identifiers', async () => {
         const { rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
         const capabilities = getTestCapabilities();

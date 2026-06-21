@@ -3,7 +3,8 @@
  *
  * After node decisions are applied and the final graph state is assembled,
  * this module rebuilds the valid relation from the final merged inputs and
- * freshness, while preserving compatible validity entries for kept nodes.
+ * freshness, while transporting compatible validity entries from both the
+ * original target replica and the staged host replica.
  */
 
 
