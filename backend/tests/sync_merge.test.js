@@ -801,6 +801,174 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
+    test('metadata-only host validity proof import switches to inactive replica', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeA = nodeIdentifierFromString('701-abcdefghi');
+            const nodeB = nodeIdentifierFromString('702-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
+            const valueA = { source: 'A', nested: { items: [1, true, null] } };
+            const valueB = { source: 'B', nested: { items: ['same'] } };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, valueA);
+            await writeNode(L, nodeB, TS1, valueB);
+            await L.freshness.put(nodeB, 'potentially-outdated');
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, { nested: { items: [1, true, null] }, source: 'A' });
+            await writeNode(H, nodeB, TS1, { nested: { items: ['same'] }, source: 'B' });
+            await H.freshness.put(nodeB, 'potentially-outdated');
+            await H.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
+
+            expect(db.currentReplicaName()).toBe('x');
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
+
+            expect(switched).toBe(true);
+            expect(db.currentReplicaName()).toBe('y');
+            const T = db.getSchemaStorage();
+            expect(await T.values.get(nodeA)).toEqual(valueA);
+            expect(await T.values.get(nodeB)).toEqual(valueB);
+            expect(await T.freshness.get(nodeA)).toBe('up-to-date');
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+            const validA = await T.valid.get(nodeA) ?? [];
+            expect(validA.some(dependent => String(dependent) === String(nodeB))).toBe(true);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('metadata-only merge does not switch when host validity adds nothing', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeA = nodeIdentifierFromString('703-abcdefghi');
+            const nodeB = nodeIdentifierFromString('704-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
+            const valueA = { source: 'A' };
+            const valueB = { source: 'B' };
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, valueA);
+            await writeNode(L, nodeB, TS1, valueB);
+            await L.freshness.put(nodeB, 'potentially-outdated');
+            await L.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, valueA);
+            await writeNode(H, nodeB, TS1, valueB);
+            await H.freshness.put(nodeB, 'potentially-outdated');
+            await H.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
+            expect(switched).toBe(false);
+            expect(db.currentReplicaName()).toBe('x');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('host validity proof is not imported when dependent value differs', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeA = nodeIdentifierFromString('705-abcdefghi');
+            const nodeB = nodeIdentifierFromString('706-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, { source: 'A' });
+            await writeNode(L, nodeB, TS1, { source: 'B local' });
+            await L.freshness.put(nodeB, 'potentially-outdated');
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, { source: 'A' });
+            await writeNode(H, nodeB, TS1, { source: 'B host' });
+            await H.freshness.put(nodeB, 'potentially-outdated');
+            await H.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
+            expect(switched).toBe(false);
+            const validA = await db.getSchemaStorage().valid.get(nodeA) ?? [];
+            expect(validA.some(dependent => String(dependent) === String(nodeB))).toBe(false);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('host validity proof is not imported when dependency value differs', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeA = nodeIdentifierFromString('707-abcdefghi');
+            const nodeB = nodeIdentifierFromString('708-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, { source: 'A local' });
+            await writeNode(L, nodeB, TS1, { source: 'B' });
+            await L.freshness.put(nodeB, 'potentially-outdated');
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, { source: 'A host' });
+            await writeNode(H, nodeB, TS1, { source: 'B' });
+            await H.freshness.put(nodeB, 'potentially-outdated');
+            await H.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
+            expect(switched).toBe(false);
+            const validA = await db.getSchemaStorage().valid.get(nodeA) ?? [];
+            expect(validA.some(dependent => String(dependent) === String(nodeB))).toBe(false);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     test('rejects malformed host identifiers lookup during host merge', async () => {
         const capabilities = getTestCapabilities();
         let db;
