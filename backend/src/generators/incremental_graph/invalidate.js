@@ -46,36 +46,27 @@ async function internalPropagateOutdated(
             continue;
         }
 
+        nodesBecomingOutdated.add(outputIdentifierString);
         const currentFreshness = await batch.freshness.get(output);
         if (currentFreshness === "up-to-date") {
             batch.freshness.put(output, "potentially-outdated");
-            nodesBecomingOutdated.add(outputIdentifierString);
-            await internalPropagateOutdated(
-                incrementalGraph,
-                output,
-                batch,
-                nodesBecomingOutdated
-            );
-            continue;
-        }
-        if (
-            currentFreshness === undefined ||
-            currentFreshness === "potentially-outdated"
+        } else if (
+            currentFreshness !== undefined &&
+            currentFreshness !== "potentially-outdated"
         ) {
-            await internalPropagateOutdated(
-                incrementalGraph,
-                output,
-                batch,
-                nodesBecomingOutdated
+            /** @type {never} */
+            const freshness = currentFreshness;
+            throw new Error(
+                `Unexpected freshness value ${freshness} for node ${outputIdentifierString}`
             );
-            continue;
         }
-
-        /** @type {never} */
-        const freshness = currentFreshness;
-        throw new Error(
-            `Unexpected freshness value ${freshness} for node ${outputIdentifierString}`
+        await internalPropagateOutdated(
+            incrementalGraph,
+            output,
+            batch,
+            nodesBecomingOutdated
         );
+
     }
 }
 

@@ -403,15 +403,18 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const summary = summarizeDecisions(decisions.values());
     const hasChanges = summary.hasChanges || hasIdentifierReconciliation;
     if (hasChanges) {
-        const valueOriginByKey = buildValueOriginByKey(
+        const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
+        const valueOriginByKey = await buildValueOriginByKey(
             initialDecisions,
             decisions,
             targetLookup,
             hostLookup,
-            directlyReloweredNodes
+            directlyReloweredNodes,
+            targetStorage,
+            targetSourceStorage,
+            hostStorage,
+            finalIdentifierForKey
         );
-
-        const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
 
         await rebuildMergedValidity({
             targetStorage,
