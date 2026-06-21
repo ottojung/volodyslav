@@ -322,12 +322,14 @@ function canonicalValidMapsEqual(left, right) {
  * Rebuild the valid relation from provenance-based value origin transport.
  *
  * Algorithm:
- * 1. Transport validity entries from both source sides based on value origin.
+ * 1. Transport validity entries from both source sides based on compatible
+ *    endpoint values.
  * 2. Add mandatory flags for every up-to-date node.
  * 3. Clear the existing valid sublevel and write the rebuilt relation.
  *
- * A validity proof valid[D].has(N) is transported from a source side only when:
- * - Both D and N have value origin from that same side with matching source identifiers.
+ * A validity proof valid[D].has(N) is transported from a source side only
+ * when D and N have compatible endpoint values (either a provenance-origin
+ * match or structural value equality).
  * - D is still a structural input of N in the merged graph.
  *
  * @param {object} options
