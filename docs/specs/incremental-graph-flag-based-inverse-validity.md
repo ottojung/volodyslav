@@ -110,15 +110,27 @@ This means every clean non-source materialized node carries the proofs needed fo
 
 #### 3. Cache return is authorized
 
-A cached value for `N` may be returned only when:
+A cached value for `N` may be returned in exactly two situations:
+
+**Up-to-date path (no validity check):**
 
 - `freshness[N] === "up-to-date"`;
-- a value for `N` exists;
+- a value for `N` exists.
+
+The completeness of validity flags for up-to-date nodes is a storage invariant enforced by
+writers (handleUnchanged, handleChanged), migrations, sync merge, and validation, not by
+the read fast path.
+
+**Potentially-outdated path (validity check):**
+
+- `freshness[N] === "potentially-outdated"`;
+- a materialized value for `N` exists;
+- `inputEdges(N)` is non-empty;
 - for every `D ∈ inputEdges(N)`, `N ∈ valid[D]`.
 
-For zero-input nodes, the fast path is authorized immediately: there are no dependencies to validate
-against. An up-to-date zero-input node with a materialized value returns without pulling
-dependencies or running the computor.
+For zero-input nodes, `inputEdges(N)` is empty, so the potentially-outdated predicate
+cannot pass. An up-to-date zero-input node returns immediately through the up-to-date path.
+A potentially-outdated zero-input node must recompute.
 
 #### 4. Validity is allowed to be incomplete
 
@@ -141,8 +153,6 @@ These edges become useful only after `N` is pulled:
 pull(N):
 
 1. If freshness[N] is "up-to-date":
-       Derive current inputEdges from schema.
-       For every D in inputEdges: verify valid[D].has(N).
        Return values[N].
 
 2. Let inputPositions = schema-derived concrete input positions of N.
@@ -175,15 +185,16 @@ pull(N):
 
 ### Up-to-date fast path (step 1)
 
-For an up-to-date node with declared inputs, the fast path derives the current schema-based
-`inputEdges(N)` and checks every `valid[D].has(N)` before returning the cached value.
-This ensures all incoming cache proofs are intact without pulling dependencies.
+For an up-to-date node, the stored value is returned directly. Validity flags are not
+consulted because the invariant `freshness[N] === "up-to-date"` implies that all validity
+flags are complete for `N` in well-formed storage.
 
-A zero-input node may use the fast path immediately: there are no dependencies to validate.
-An up-to-date zero-input node with a materialized value returns it without further checks.
+If the invariant is violated — an up-to-date node lacks a materialized value — the
+implementation throws an error. This is not a runtime recovery scenario but a
+corruption/integrity check.
 
-Missing `valid[D].has(N)` for a known input `D` is a cache miss and falls through to full
-recomputation.
+Zero-input nodes follow the same fast path: an up-to-date zero-input node returns its
+value immediately.
 
 ### Cache predicate (step 5)
 
@@ -414,9 +425,14 @@ described in the Invariants section above.
 **Proof sketch:**
 
 - A direct fast-path cache return requires `freshness[N] === "up-to-date"`.
-- It requires all incoming validity proofs `D ⇝ N` for every `D ∈ inputEdges(N)`.
-- In the recompute path, dependencies are pulled before `N` checks whether it can reuse its old value.
-- Therefore `N` cannot be returned merely because some old outgoing validity edge exists. Its own freshness and incoming validity must be established.
+- The invariant `freshness[N] === "up-to-date"` implies all incoming validity proofs exist
+  (by the writer contract: handleUnchanged and handleChanged always write validity flags
+  before marking up-to-date).
+- In the potentially-outdated recompute path, dependencies are pulled before `N` checks
+  whether it can reuse its old value. The cache predicate verifies all incoming validity
+  proofs.
+- Therefore `N` cannot be returned merely because some old outgoing validity edge exists.
+  Its own freshness and incoming validity must be established.
 
 ### Theorem 2: Changed values revoke downstream authorization
 
@@ -476,7 +492,7 @@ This is the central vocabulary point: `valid[B] = [C]` is not a global claim tha
 
 **Proof sketch:**
 
-- By the required incoming validity invariant, any up-to-date node `N` structurally depending on `D` must have `N ∈ valid[D]`.
+- By the required incoming validity invariant (enforced by writers, not the read path), any up-to-date node `N` structurally depending on `D` must have `N ∈ valid[D]`.
 - Therefore every clean dependent that can be returned from cache is on the `valid` frontier.
 - If a structural dependent is absent from `valid[D]`, it lacks an incoming cache proof relative to `D`; it is already unable to pass cache authorization through that dependency.
 - Therefore it does not need to be discovered for the purpose of preventing unsound cache return.

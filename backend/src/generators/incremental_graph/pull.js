@@ -46,7 +46,6 @@ const { deserializeNodeKey, serializeNodeKey, txAllocateNodeIdentifier } = requi
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { internalMaybeRecalculate } = require("./recompute");
-const { normalizeInputEdges } = require("./database");
 
 /**
  * @typedef {object} IncrementalGraphPullAccess
@@ -59,46 +58,26 @@ const { normalizeInputEdges } = require("./database");
  */
 
 /**
- * Read a cached value only when authorized.
+ * Read a cached value for an up-to-date node immediately.
  *
- * For an up-to-date node, derives current schema input edges and verifies
- * valid[D].has(N) for every dependency D. If all checks pass the stored value
- * is returned without pulling dependencies and without invoking any computor.
- *
- * Zero-input nodes return their stored value immediately.
+ * For an up-to-date node, the stored value is returned directly without
+ * checking validity flags. The completeness of validity flags for up-to-date
+ * nodes is a storage invariant enforced by writers, migrations, sync merge,
+ * and validation, not by the read fast path.
  *
  * Nodes that are not up-to-date fall through to internalMaybeRecalculate().
  *
  * @param {IncrementalGraphPullAccess} graph
  * @param {NodeIdentifier} nodeIdentifier
- * @param {ConcreteNode} concreteNode
  * @returns {Promise<ComputedValue | undefined>}
  */
-async function readAuthorizedCachedValue(graph, nodeIdentifier, concreteNode) {
+async function readAuthorizedCachedValue(graph, nodeIdentifier) {
     if (await graph.storage.freshness.get(nodeIdentifier) !== "up-to-date") {
         return undefined;
     }
     const value = await graph.storage.values.get(nodeIdentifier);
     if (value === undefined) {
         throw new Error(`Impossible: up-to-date node has no stored value: ${nodeIdentifierToString(nodeIdentifier)}`);
-    }
-    const inputIdentifiers = [];
-    for (const inputKey of concreteNode.inputs) {
-        const inputId = graph.rootDatabase.nodeKeyToId(inputKey);
-        if (inputId === undefined) {
-            return undefined;
-        }
-        inputIdentifiers.push(inputId);
-    }
-    const inputEdges = normalizeInputEdges(inputIdentifiers);
-    if (inputEdges.length === 0) {
-        return value;
-    }
-    for (const depId of inputEdges) {
-        const validDeps = await graph.storage.valid.get(depId) ?? [];
-        if (!validDeps.some(dep => nodeIdentifierToString(dep) === nodeIdentifierToString(nodeIdentifier))) {
-            return undefined;
-        }
     }
     return value;
 }
@@ -124,7 +103,7 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
 
     const committedIdentifier = graph.rootDatabase.nodeKeyToId(nodeKeyStr);
     if (committedIdentifier !== undefined) {
-        const cachedValue = await readAuthorizedCachedValue(graph, committedIdentifier, concreteNode);
+        const cachedValue = await readAuthorizedCachedValue(graph, committedIdentifier);
         if (cachedValue !== undefined) {
             return { value: cachedValue, status: "cached" };
         }

@@ -855,4 +855,150 @@ describe("Incremental graph validity", () => {
         });
     });
 
+    // === Test: Up-to-date node returns from cache without checking validity flags ===
+    describe("up-to-date fast path does not consult validity flags", () => {
+        it("returns cached value for up-to-date non-source node even when validity flags are removed", async () => {
+            const { nodeDefs, dependentCC } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const midKey = makeNodeStorageKey("middle", binding);
+            const depKey = makeNodeStorageKey("dependent", binding);
+
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            const srcId = db.nodeKeyToId(makeNodeStorageKey("source"));
+            const midId = db.nodeKeyToId(midKey);
+            const depId = db.nodeKeyToId(depKey);
+
+            // All nodes are up-to-date with valid flags
+            expect(db._readSublevel('freshness', depId)).toBe("up-to-date");
+
+            // Directly remove validity flags from storage to simulate invariant violation
+            // (this is not a normal runtime state, but the fast path should not check it)
+            const schemaStorage = db.getSchemaStorage();
+            await schemaStorage.valid.put(srcId, []);
+            await schemaStorage.valid.put(midId, []);
+
+            // Verify validity flags are gone
+            expect(db._readSublevel('valid', srcId)).toEqual([]);
+            expect(db._readSublevel('valid', midId)).toEqual([]);
+
+            // Pull dependent: freshness is "up-to-date", fast path returns without checking valid
+            const depCallsBefore = dependentCC.getCallCount();
+            const result = await graph.pull("dependent", binding);
+
+            expect(dependentCC.getCallCount()).toBe(depCallsBefore);
+            expect(result).toEqual({ v: "dep" });
+        });
+
+        it("returns cached value for up-to-date zero-input node (no validity flags needed)", async () => {
+            let callCount = 0;
+            const nodeDefs = [
+                {
+                    output: "source",
+                    inputs: [],
+                    computor: async () => {
+                        callCount++;
+                        return { v: "src" };
+                    },
+                    isDeterministic: false,
+                    hasSideEffects: false,
+                },
+            ];
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+
+            await graph.pull("source");
+            expect(callCount).toBe(1);
+
+            // source is up-to-date, no validity flags exist (zero-input node has no valid entries)
+            const srcKey = makeNodeStorageKey("source");
+            const srcId = db.nodeKeyToId(srcKey);
+            expect(db._readSublevel('valid', srcId) ?? []).toEqual([]);
+
+            // Second pull: fast path returns cached value without checking valid
+            const result = await graph.pull("source");
+            expect(callCount).toBe(1);
+            expect(result).toEqual({ v: "src" });
+        });
+    });
+
+    // === Test: Potentially-outdated with missing validity flags recomputes ===
+    describe("potentially-outdated node with missing validity flags", () => {
+        it("recomputes when potentially-outdated and validity flags are missing", async () => {
+            let srcValue = 0;
+            const { nodeDefs, dependentCC } = createChainGraph(
+                () => ({ v: ++srcValue }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const depKey = makeNodeStorageKey("dependent", binding);
+
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            const srcKey = makeNodeStorageKey("source");
+            const srcId = db.nodeKeyToId(srcKey);
+            const midId = db.nodeKeyToId(makeNodeStorageKey("middle", binding));
+            const depId = db.nodeKeyToId(depKey);
+
+            // All up-to-date
+            expect(db._readSublevel('freshness', depId)).toBe("up-to-date");
+
+            // Invalidate dependent → potentially-outdated
+            await graph.invalidate("dependent", binding);
+
+            // Remove validity flags so the cache predicate fails
+            const schemaStorage = db.getSchemaStorage();
+            await schemaStorage.valid.put(srcId, []);
+            await schemaStorage.valid.put(midId, []);
+
+            const depCallsBefore = dependentCC.getCallCount();
+
+            // Pull dependent: potentially-outdated + no valid flags → must recompute
+            const result = await graph.pull("dependent", binding);
+            expect(dependentCC.getCallCount()).toBe(depCallsBefore + 1);
+            expect(result).toEqual({ v: "dep" });
+        });
+    });
+
+    // === Test: Up-to-date node with missing value throws ===
+    describe("up-to-date node invariant enforcement", () => {
+        it("throws when up-to-date node has no stored value", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            graph = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const depKey = makeNodeStorageKey("dependent", binding);
+
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            // Remove the value from storage while keeping freshness = up-to-date
+            // This simulates a corruption scenario
+            const schemaStorage = db.getSchemaStorage();
+            const depId = db.nodeKeyToId(depKey);
+            await schemaStorage.values.del(depId);
+
+            await expect(graph.pull("dependent", binding)).rejects.toThrow(
+                /up-to-date node has no stored value/
+            );
+        });
+    });
 });
