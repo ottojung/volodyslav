@@ -39,7 +39,12 @@ const {
 const {
     makeGraphStorage,
 } = require("./graph_state");
-const { buildGraphSchemeFromNodeDefs, serializeGraphScheme, GRAPH_SCHEME_KEY } = require("./database");
+const {
+    buildGraphSchemeFromNodeDefs,
+    serializeGraphScheme,
+    GRAPH_SCHEME_KEY,
+    assertExactStoredGraphSchemeMatches,
+} = require("./database");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -106,23 +111,66 @@ class IncrementalGraphClass {
 
         // The constructor stores a promise instead of using await because
         // constructors cannot be async.  Every public method that touches
-        // graph storage awaits _ensureGraphSchemeStored() before proceeding,
-        // so the write is guaranteed to complete before any observable
-        // storage operation.  Pure schema introspection methods
+        // graph storage awaits _initializeGraphScheme() before proceeding,
+        // so the init/validation is guaranteed to complete before any
+        // observable storage operation.  Pure schema introspection methods
         // (getSchemas, getSchemaByHead, getDbVersion) skip the await because
         // they do not touch database state.
-        this._graphSchemeReady = rootDatabase.getSchemaStorage().global.put(
-            GRAPH_SCHEME_KEY,
-            JSON.stringify(serializeGraphScheme(this.graphScheme))
-        );
+        //
+        // global/graph_scheme is treated as initialization metadata:
+        // - For a fresh (unversioned) database: write graph_scheme together with
+        //   the implicit initialization of global/version.
+        // - For an existing initialized database: validate that the stored scheme
+        //   matches the current scheme exactly.  No overwriting.
+        this.graphSchemeString = JSON.stringify(serializeGraphScheme(this.graphScheme));
+        this._graphSchemeReady = this._initializeGraphScheme();
 
         this.concreteInstantiations = makeConcreteNodeCache();
         this.sleeper = capabilities.sleeper;
         this.datetime = capabilities.datetime;
     }
 
+    /**
+     * Initialize or validate the stored graph_scheme.
+     *
+     * For a genuinely fresh database (no stored version), writes the current
+     * graph_scheme as part of initialization.
+     *
+     * For an existing initialized database whose stored version matches the
+     * current application version, validates that the stored scheme matches
+     * the current scheme exactly.  No overwriting, no normalization,
+     * no silent backfill.
+     *
+     * For an existing initialized database whose stored version differs from
+     * the current application version (needs migration), the stored scheme
+     * is allowed to differ — the migration callback will write the new scheme
+     * as part of the migration process.
+     *
+     * @returns {Promise<void>}
+     */
+    async _initializeGraphScheme() {
+        const schemaStorage = this.rootDatabase.getSchemaStorage();
+        const storedScheme = await schemaStorage.global.get(GRAPH_SCHEME_KEY);
+        if (storedScheme === undefined) {
+            const storedVersion = await schemaStorage.global.get('version');
+            if (storedVersion === undefined) {
+                await schemaStorage.global.put(GRAPH_SCHEME_KEY, this.graphSchemeString);
+                return;
+            }
+        }
+        const storedVersion = await schemaStorage.global.get('version');
+        if (storedVersion !== undefined && storedVersion !== this.dbVersion) {
+            return;
+        }
+        assertExactStoredGraphSchemeMatches(
+            storedScheme,
+            this.graphSchemeString,
+            `active replica '${this.rootDatabase.currentReplicaName()}'`
+        );
+    }
+
     /** @returns {Promise<void>} */
-    async _ensureGraphSchemeStored() {
+    async _ensureGraphSchemeReady() {
         await this._graphSchemeReady;
     }
 
@@ -132,7 +180,7 @@ class IncrementalGraphClass {
      * @returns {Promise<void>}
      */
     async invalidate(nodeName, bindings = []) {
-        await this._ensureGraphSchemeStored();
+        await this._ensureGraphSchemeReady();
         await internalInvalidate(this, nodeName, bindings);
     }
 
@@ -142,7 +190,7 @@ class IncrementalGraphClass {
      * @returns {Promise<ComputedValue>}
      */
     async pull(nodeName, bindings = []) {
-        await this._ensureGraphSchemeStored();
+        await this._ensureGraphSchemeReady();
         return await internalPull(this, nodeName, bindings);
     }
 
@@ -152,7 +200,7 @@ class IncrementalGraphClass {
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
     async getFreshness(head, bindings = []) {
-        await this._ensureGraphSchemeStored();
+        await this._ensureGraphSchemeReady();
         return await internalGetFreshness(this, head, bindings);
     }
 
@@ -162,7 +210,7 @@ class IncrementalGraphClass {
      * @returns {Promise<ComputedValue | undefined>}
      */
     async getValue(head, bindings = []) {
-        await this._ensureGraphSchemeStored();
+        await this._ensureGraphSchemeReady();
         return await internalGetValue(this, head, bindings);
     }
 
@@ -181,7 +229,7 @@ class IncrementalGraphClass {
 
     /** @returns {Promise<Array<[string, Array<ConstValue>]>>} */
     async listMaterializedNodes() {
-        await this._ensureGraphSchemeStored();
+        await this._ensureGraphSchemeReady();
         return await internalListMaterializedNodes(this);
     }
 
@@ -196,7 +244,7 @@ class IncrementalGraphClass {
      * @returns {Promise<DateTime>}
      */
     async getCreationTime(nodeName, bindings = []) {
-        await this._ensureGraphSchemeStored();
+        await this._ensureGraphSchemeReady();
         return await internalGetCreationTime(this, nodeName, bindings);
     }
 
@@ -206,7 +254,7 @@ class IncrementalGraphClass {
      * @returns {Promise<DateTime>}
      */
     async getModificationTime(nodeName, bindings = []) {
-        await this._ensureGraphSchemeStored();
+        await this._ensureGraphSchemeReady();
         return await internalGetModificationTime(this, nodeName, bindings);
     }
 }

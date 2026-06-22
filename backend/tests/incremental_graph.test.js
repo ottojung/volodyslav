@@ -48,6 +48,8 @@ describe("generators/incremental_graph", () => {
 
             expect(isIncrementalGraph(graph)).toBe(true);
 
+            // Ensure async graph_scheme init completes before closing the DB
+            await graph._ensureGraphSchemeReady();
             await db.close();
         });
     });
@@ -1712,6 +1714,8 @@ describe("generators/incremental_graph", () => {
             expect(isIncrementalGraph(null)).toBe(false);
             expect(isIncrementalGraph(undefined)).toBe(false);
 
+            // Ensure async graph_scheme init completes before closing the DB
+            await graph._ensureGraphSchemeReady();
             await db.close();
         });
     });

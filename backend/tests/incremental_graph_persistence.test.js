@@ -128,17 +128,10 @@ describe("Incremental graph persistence and restart", () => {
 
             const cellA = { value: { value: 0 } };
 
-            const schemas1 = [
-                {
-                    output: "A",
-                    inputs: [],
-                    computor: () => cellA.value,
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-            ];
-
-            const schemas2 = [
+            // Both graphs must use the same full schema because
+            // global/graph_scheme is immutable initialization metadata.
+            // graph1 just happens to only pull A.
+            const fullSchemas = [
                 {
                     output: "A",
                     inputs: [],
@@ -157,21 +150,22 @@ describe("Incremental graph persistence and restart", () => {
                 },
             ];
 
-            // Create graph with schema1
-            const graph1 = makeIncrementalGraph(capabilities, db, schemas1);
+            // Create graph with the full schema
+            const graph1 = makeIncrementalGraph(capabilities, db, fullSchemas);
             const version1 = graph1.getDbVersion();
 
             cellA.value = { value: 10 };
             await graph1.invalidate("A");
 
-            // Create graph with schema2 (different schema)
-            const graph2 = makeIncrementalGraph(capabilities, db, schemas2);
+            // Create another graph with the same full schema.
+            // The stored graph_scheme matches exactly, so this succeeds.
+            const graph2 = makeIncrementalGraph(capabilities, db, fullSchemas);
             const version2 = graph2.getDbVersion();
 
             // Both graphs use the same dbVersion since they share the same database
             expect(version1).toBe(version2);
 
-            // Pull B with schema2
+            // Pull B with graph2
             await graph2.pull("B");
 
             // Verify that schema2 can list dependents properly

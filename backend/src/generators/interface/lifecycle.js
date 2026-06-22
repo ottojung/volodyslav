@@ -240,6 +240,10 @@ async function internalEnsureInitializedWithMigration(
             database,
             nodeDefs
         );
+        // Ensure graph_scheme initialization completes before the
+        // caller starts using the database (e.g. synchronizeDatabase
+        // closes the current database).
+        await incrementalGraph._ensureGraphSchemeReady();
         interfaceInstance._database = database;
         interfaceInstance._incrementalGraph = incrementalGraph;
         interfaceInstance._allEventsBox = allEventsBox;

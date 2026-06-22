@@ -100,6 +100,7 @@ const {
     deriveInputPositions,
     deriveInputEdges,
     semanticInputKeys,
+    assertExactStoredGraphSchemeMatches,
 } = require('./graph_scheme');
 
 const {
@@ -199,6 +200,7 @@ module.exports = {
     semanticInputKeys,
     normalizeInputEdges,
     arraysOfNodeIdentifiersEqual,
+    assertExactStoredGraphSchemeMatches,
     assertValidFinalMergeState,
     FinalMergeStateError,
     isFinalMergeStateError,

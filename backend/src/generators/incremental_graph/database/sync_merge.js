@@ -376,11 +376,11 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
     const targetSchemeRaw = await targetStorage.global.get(GRAPH_SCHEME_KEY);
     const hostSchemeRaw = await hostStorage.global.get(GRAPH_SCHEME_KEY);
-    if (JSON.stringify(targetSchemeRaw) !== JSON.stringify(hostSchemeRaw)) {
+    if (targetSchemeRaw !== hostSchemeRaw) {
         throw new Error(
             `Cannot merge host '${hostname}': ` +
-            `same version but different graph_scheme definition ` +
-            `(local scheme differs from host scheme)`
+            `same version but different graph_scheme ` +
+            `(exact string comparison failed)`
         );
     }
 

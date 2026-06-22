@@ -10,6 +10,7 @@ const {
     isUnchanged,
 } = require("../src/generators/incremental_graph");
 const {
+    GRAPH_SCHEME_KEY,
     makeEmptyIdentifierLookup,
     cloneIdentifierLookup,
     nodeIdToKeyFromLookup,
@@ -997,6 +998,117 @@ describe("Incremental graph validity", () => {
             await expect(graph.pull("dependent", binding)).rejects.toThrow(
                 /up-to-date node has no stored value/
             );
+        });
+    });
+
+    // === graph_scheme tests ===
+    describe("graph_scheme persistence model", () => {
+        it("writes graph_scheme on fresh database", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            const freshDb = new InMemoryDatabase();
+            const g = makeIncrementalGraph(testCapabilities, freshDb, nodeDefs);
+
+            // Await a pull to ensure async _initializeGraphScheme() completes
+            await g.pull("source");
+
+            const schemaStorage = freshDb.getSchemaStorage();
+            const stored = await schemaStorage.global.get(GRAPH_SCHEME_KEY);
+            expect(stored).toBeDefined();
+            expect(typeof stored).toBe("string");
+
+            const parsed = JSON.parse(stored);
+            expect(parsed.format).toBe(1);
+            const heads = parsed.nodes.map((n) => n.head);
+            expect(heads).toContain("source");
+            expect(heads).toContain("middle");
+            expect(heads).toContain("dependent");
+        });
+
+        it("does not overwrite graph_scheme on existing initialized database with matching scheme", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            // Compute the exact scheme the constructor would produce
+            const compiledNodes = nodeDefs.map(
+                (nd) => require("../src/generators/incremental_graph/compiled_node").compileNodeDef(nd)
+            );
+            const { buildGraphSchemeFromNodeDefs, serializeGraphScheme } =
+                require("../src/generators/incremental_graph/database");
+            const exactScheme = JSON.stringify(
+                serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes))
+            );
+
+            // Pre-seed storage with the EXACT matching scheme
+            const existingDb = new InMemoryDatabase();
+            const storage = existingDb.getSchemaStorage();
+            await storage.global.put(GRAPH_SCHEME_KEY, exactScheme);
+            await storage.global.put("version", "test-version");
+
+            // Create graph — should NOT throw because schemes match
+            const g = makeIncrementalGraph(testCapabilities, existingDb, nodeDefs);
+
+            // Verify graph_scheme was NOT overwritten (still the same reference)
+            const stored = await storage.global.get(GRAPH_SCHEME_KEY);
+            expect(stored).toBe(exactScheme);
+
+            // Pull should also succeed
+            await g.pull("source");
+        });
+
+        it("semantically equivalent but differently formatted scheme fails validation", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            // Pre-seed with a scheme that has different node ordering
+            // (source, middle, dependent) vs canonical alphabetical
+            // (dependent, middle, source).  The JSON is semantically identical
+            // but the serialized strings differ.
+            const schemeDiffOrder = JSON.stringify({
+                format: 1,
+                nodes: [
+                    { head: "source", arity: 0, inputTemplates: [] },
+                    { head: "middle", arity: 1, inputTemplates: [{ head: "source", args: [0] }] },
+                    { head: "dependent", arity: 1, inputTemplates: [{ head: "middle", args: [0] }] },
+                ],
+            });
+
+            const existingDb = new InMemoryDatabase();
+            const storage = existingDb.getSchemaStorage();
+            await storage.global.put(GRAPH_SCHEME_KEY, schemeDiffOrder);
+            await storage.global.put("version", "test-version");
+
+            const g = makeIncrementalGraph(testCapabilities, existingDb, nodeDefs);
+
+            // The constructor reads the pre-seeded scheme, finds it differs
+            // from the canonical scheme, and the error surfaces on first pull
+            await expect(g.pull("source")).rejects.toThrow(/graph_scheme/);
+        });
+
+        it("versioned database missing graph_scheme fails", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+
+            const existingDb = new InMemoryDatabase();
+            const storage = existingDb.getSchemaStorage();
+            // Write version but NO graph_scheme
+            await storage.global.put("version", "test-version");
+
+            const g = makeIncrementalGraph(testCapabilities, existingDb, nodeDefs);
+            await expect(g.pull("source")).rejects.toThrow(/global\/graph_scheme/);
         });
     });
 });

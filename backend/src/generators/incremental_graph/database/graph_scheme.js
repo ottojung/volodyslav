@@ -307,6 +307,39 @@ function semanticInputKeys(graphScheme, identifierLookup, outputIdentifier) {
     return deriveInputPositions(graphScheme, outputKey);
 }
 
+/**
+ * Assert that the stored graph_scheme string matches the expected string exactly.
+ *
+ * This function enforces the invariant that global/graph_scheme is initialization
+ * metadata, not mutable runtime state. No normalization, parsing, or reserialization
+ * is performed. Formatting differences count as differences.
+ *
+ * For an initialized database, the stored scheme must exist and must byte-for-byte
+ * equal the current scheme. Missing schemes fail.
+ *
+ * If the stored value is a parsed JSON object (from LevelDB's JSON encoding), it is
+ * stringified with JSON.stringify for the comparison. This is not semantic
+ * normalization — it is a storage-encoding conversion to the canonical string form.
+ *
+ * @param {unknown} stored - Raw value read from global storage.
+ * @param {string} expected - The exact expected graph_scheme JSON string.
+ * @param {string} contextDescription - Human-readable description for error messages.
+ * @returns {void}
+ */
+function assertExactStoredGraphSchemeMatches(stored, expected, contextDescription) {
+    if (stored === undefined) {
+        throw new MissingGraphSchemeError(contextDescription);
+    }
+    const storedStr = typeof stored === 'string' ? stored : JSON.stringify(stored);
+    if (storedStr !== expected) {
+        throw new GraphSchemeError(
+            `Exact graph_scheme string mismatch in ${contextDescription}: ` +
+            `stored scheme does not match current graph scheme. ` +
+            `Formatting differences count as differences.`
+        );
+    }
+}
+
 module.exports = {
     GRAPH_SCHEME_KEY,
     GraphSchemeError,
@@ -320,4 +353,5 @@ module.exports = {
     deriveInputEdges,
     normalizeInputEdges,
     semanticInputKeys,
+    assertExactStoredGraphSchemeMatches,
 };

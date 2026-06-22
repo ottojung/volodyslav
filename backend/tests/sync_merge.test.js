@@ -1334,6 +1334,15 @@ describe('mergeHostIntoReplica', () => {
             const T = db.getSchemaStorage();
             expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
 
+            // Write exact graph_scheme matching the nodeDefs below (nodes are sorted alphabetically by head)
+            await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
+                format: 1,
+                nodes: [
+                    { head: "a_counter_collision", arity: 0, inputTemplates: [{ head: "c_counter_collision", args: [] }] },
+                    { head: "c_counter_collision", arity: 0, inputTemplates: [] },
+                ],
+            }));
+
             const computeA = jest.fn(async ([input]) => ({ source: `recomputed from ${input.source}` }));
             const graph = makeIncrementalGraph(capabilities, db, [
                 {
@@ -1400,6 +1409,16 @@ describe('mergeHostIntoReplica', () => {
             const T = db.getSchemaStorage();
             expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
             expect(await T.freshness.get(hostDId)).toBe('potentially-outdated');
+
+            // Write exact graph_scheme matching the nodeDefs below (nodes are sorted alphabetically by head)
+            await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
+                format: 1,
+                nodes: [
+                    { head: "a_transitive_relower", arity: 0, inputTemplates: [{ head: "c_transitive_relower", args: [] }] },
+                    { head: "c_transitive_relower", arity: 0, inputTemplates: [] },
+                    { head: "d_transitive_relower", arity: 0, inputTemplates: [{ head: "a_transitive_relower", args: [] }] },
+                ],
+            }));
 
             const computeA = jest.fn(async ([input]) => ({ source: `A from ${input.source}` }));
             const computeD = jest.fn(async ([input]) => ({ source: `D from ${input.source}` }));
@@ -1527,6 +1546,16 @@ describe('mergeHostIntoReplica', () => {
             expect(await T.freshness.get(nodeBId)).toBe('up-to-date');
             expect(await T.valid.get(nodeAId)).toEqual([nodeBId]);
 
+            // Write exact graph_scheme matching the nodeDefs below
+            await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
+                format: 1,
+                nodes: [
+                    { head: "A_unrelated", arity: 0, inputTemplates: [] },
+                    { head: "B_unrelated", arity: 0, inputTemplates: [{ head: "A_unrelated", args: [] }] },
+                    { head: "X_unrelated", arity: 0, inputTemplates: [] },
+                ],
+            }));
+
             const computeB = jest.fn(async () => ({ source: 'should not be called' }));
             const graph = makeIncrementalGraph(capabilities, db, [
                 { output: 'A_unrelated', inputs: [], computor: async () => valueA, isDeterministic: true, hasSideEffects: false },
@@ -1600,6 +1629,17 @@ describe('mergeHostIntoReplica', () => {
 
             // valid[C] must contain D
             expect(await T.valid.get(nodeCId)).toEqual([nodeDId]);
+
+            // Write exact graph_scheme matching the nodeDefs below
+            await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
+                format: 1,
+                nodes: [
+                    { head: "A_precise", arity: 0, inputTemplates: [] },
+                    { head: "B_precise", arity: 0, inputTemplates: [{ head: "A_precise", args: [] }] },
+                    { head: "C_precise", arity: 0, inputTemplates: [] },
+                    { head: "D_precise", arity: 0, inputTemplates: [{ head: "C_precise", args: [] }] },
+                ],
+            }));
 
             const computeD = jest.fn(async () => ({ source: 'should not be called' }));
             const graph = makeIncrementalGraph(capabilities, db, [
@@ -2482,6 +2522,17 @@ describe('mergeHostIntoReplica', () => {
             // Reload DB to populate in-memory identifier lookup from LevelDB
             await db.close();
             db = await getRootDatabase(testCapabilities);
+
+            // Write a graph_scheme matching the nodeDefs used below.
+            const schemeStorage = db.getSchemaStorage();
+            await schemeStorage.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
+                format: 1,
+                nodes: [
+                    { head: "prop_A", arity: 0, inputTemplates: [] },
+                    { head: "prop_B", arity: 0, inputTemplates: [{ head: "prop_A", args: [] }] },
+                    { head: "prop_C", arity: 0, inputTemplates: [{ head: "prop_B", args: [] }] },
+                ],
+            }));
 
             const graph = makeIncrementalGraph(testCapabilities, db, [
                 { output: 'prop_A', inputs: [], computor: async () => ({ v: 2 }), isDeterministic: true, hasSideEffects: false },
