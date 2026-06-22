@@ -3,7 +3,7 @@
  *
  * After node decisions are applied and the final graph state is assembled,
  * this module rebuilds the valid relation from the final merged inputs and
- * freshness, while transporting compatible validity entries from both the
+ * freshness, while transporting provenance-backed validity entries from both the
  * original target replica and the staged host replica.
  */
 
@@ -167,93 +167,6 @@ function originMatches(origin, side, sourceId) {
 }
 
 /**
- * Compare stored graph values by JSON-like structure without observing
- * prototypes or mutating either value.
- * @param {*} left
- * @param {*} right
- * @returns {boolean}
- */
-function storageValuesEqual(left, right) {
-    if (Object.is(left, right)) {
-        return true;
-    }
-    if (left === null || right === null) {
-        return false;
-    }
-    if (typeof left !== 'object' || typeof right !== 'object') {
-        return false;
-    }
-    if (Array.isArray(left) || Array.isArray(right)) {
-        if (!Array.isArray(left) || !Array.isArray(right)) {
-            return false;
-        }
-        if (left.length !== right.length) {
-            return false;
-        }
-        for (let index = 0; index < left.length; index += 1) {
-            if (!storageValuesEqual(left[index], right[index])) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    const leftKeys = Object.keys(left).sort();
-    const rightKeys = Object.keys(right).sort();
-    if (leftKeys.length !== rightKeys.length) {
-        return false;
-    }
-    for (let index = 0; index < leftKeys.length; index += 1) {
-        const key = leftKeys[index];
-        const rightKey = rightKeys[index];
-        if (key === undefined || key !== rightKey) {
-            return false;
-        }
-        if (!storageValuesEqual(left[key], right[key])) {
-            return false;
-        }
-    }
-    return true;
-}
-
-/**
- * Check whether a source-side value can justify transporting a source-side
- * validity endpoint onto the final endpoint.
- * @param {object} options
- * @param {'target' | 'host'} options.side
- * @param {SchemaStorage} options.sourceStorage
- * @param {NodeIdentifier} options.sourceId
- * @param {NodeKeyString} options.sourceKey
- * @param {NodeIdentifier} options.finalId
- * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
- * @param {SchemaStorage} options.targetStorage
- * @returns {Promise<boolean>}
- */
-async function sourceValueCompatibleWithFinal({
-    side,
-    sourceStorage,
-    sourceId,
-    sourceKey,
-    finalId,
-    valueOriginByKey,
-    targetStorage,
-}) {
-    if (originMatches(valueOriginByKey.get(sourceKey), side, sourceId)) {
-        return true;
-    }
-
-    const sourceValue = await sourceStorage.values.get(sourceId);
-    if (sourceValue === undefined) {
-        return false;
-    }
-    const finalValue = await targetStorage.values.get(finalId);
-    if (finalValue === undefined) {
-        return false;
-    }
-    return storageValuesEqual(sourceValue, finalValue);
-}
-
-/**
  * Check whether a NodeIdentifier is present in a list.
  * @param {NodeIdentifier[]} list
  * @param {NodeIdentifier} id
@@ -323,14 +236,14 @@ function canonicalValidMapsEqual(left, right) {
  * Rebuild the valid relation from provenance-based value origin transport.
  *
  * Algorithm:
- * 1. Transport validity entries from both source sides based on compatible
- *    endpoint values.
+ * 1. Transport validity entries from both source sides based on source
+ *    provenance for both endpoints.
  * 2. Add mandatory flags for every up-to-date node.
  * 3. Clear the existing valid sublevel and write the rebuilt relation.
  *
  * A validity proof valid[D].has(N) is transported from a source side only
- * when D and N have compatible endpoint values (either a provenance-origin
- * match or structural value equality).
+ * when D and N both resolve through the same source side and their final values
+ * preserve those exact source identifiers.
  * - D is still a structural input of N in the merged graph.
  *
  * @param {object} options
@@ -378,15 +291,7 @@ async function rebuildMergedValidity({
             const finalDepId = finalIdForKey.get(depKey);
             if (finalDepId === undefined) continue;
 
-            if (!await sourceValueCompatibleWithFinal({
-                side,
-                sourceStorage,
-                sourceId: sourceDepId,
-                sourceKey: depKey,
-                finalId: finalDepId,
-                valueOriginByKey,
-                targetStorage,
-            })) continue;
+            if (!originMatches(valueOriginByKey.get(depKey), side, sourceDepId)) continue;
 
             for (const sourceDependentId of sourceDependents) {
                 const dependentIdStr = nodeIdentifierToString(sourceDependentId);
@@ -396,15 +301,7 @@ async function rebuildMergedValidity({
                 const finalDependentId = finalIdForKey.get(dependentKey);
                 if (finalDependentId === undefined) continue;
 
-                if (!await sourceValueCompatibleWithFinal({
-                    side,
-                    sourceStorage,
-                    sourceId: sourceDependentId,
-                    sourceKey: dependentKey,
-                    finalId: finalDependentId,
-                    valueOriginByKey,
-                    targetStorage,
-                })) continue;
+                if (!originMatches(valueOriginByKey.get(dependentKey), side, sourceDependentId)) continue;
 
                 const finalInputs = mergedInputsMap.get(finalDependentId) ?? [];
                 if (!containsIdentifier(finalInputs, finalDepId)) continue;
@@ -461,5 +358,4 @@ module.exports = {
     rebuildMergedValidity,
     buildValueOriginByKey,
     ReplicaBatchWriter,
-    storageValuesEqual,
 };

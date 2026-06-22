@@ -544,7 +544,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const targetLookup = rawIdentifiers === undefined
                 ? makeEmptyIdentifierLookup()
                 : parseIdentifierLookup(rawIdentifiers, 'migration target replica');
-            await assertValidFinalMergeState(toStorage, targetLookup);
+            await assertValidFinalMergeState(toStorage, targetLookup, { requireUpToDateTimestamps: false });
 
             // Persist the new active replica pointer after all writes succeed.
             await rootDatabase.setCurrentReplicaPointer(toReplica);

@@ -33,9 +33,11 @@ function isFinalMergeStateError(object) {
  * Materialized nodes are identified by values.keys().
  * @param {SchemaStorage} targetStorage
  * @param {IdentifierLookup} finalLookup
+ * @param {{ requireUpToDateTimestamps?: boolean }} [options]
  * @returns {Promise<void>}
  */
-async function assertValidFinalMergeState(targetStorage, finalLookup) {
+async function assertValidFinalMergeState(targetStorage, finalLookup, options = {}) {
+    const requireUpToDateTimestamps = options.requireUpToDateTimestamps !== false;
     const scheme = parseGraphScheme(await targetStorage.global.get(GRAPH_SCHEME_KEY));
     const knownIdentifiers = new Set(finalLookup.idToKey.keys());
     const materializedIdentifiers = new Set();
@@ -50,6 +52,13 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
         const freshness = await targetStorage.freshness.get(nodeIdentifierFromString(identifierString));
         if (freshness === 'up-to-date' && !materializedIdentifiers.has(identifierString)) {
             throw new FinalMergeStateError(`up-to-date lookup identifier ${identifierString} has no materialized node`);
+        }
+        if (
+            requireUpToDateTimestamps
+            && freshness === 'up-to-date'
+            && await targetStorage.timestamps.get(nodeIdentifierFromString(identifierString)) === undefined
+        ) {
+            throw new FinalMergeStateError(`up-to-date materialized node ${identifierString} has no timestamps entry`);
         }
     }
     for (const sublevel of [targetStorage.values, targetStorage.freshness, targetStorage.timestamps]) {
@@ -125,9 +134,32 @@ async function assertLookupCoversMaterializedNodes(storage, lookup, context) {
     }
 }
 
+/**
+ * Validate that every materialized node covered by the identifier lookup has
+ * timestamps before sync merge planning compares freshness across replicas.
+ * @param {SchemaStorage} storage
+ * @param {IdentifierLookup} lookup
+ * @param {string} context
+ * @returns {Promise<void>}
+ */
+async function assertMaterializedNodesHaveTimestamps(storage, lookup, context) {
+    for await (const id of storage.values.keys()) {
+        if (!lookup.idToKey.has(nodeIdentifierToString(id))) {
+            continue;
+        }
+        const timestamps = await storage.timestamps.get(id);
+        if (timestamps === undefined) {
+            throw new IdentifierLookupConflictError(
+                `${context}: materialized node ${nodeIdentifierToString(id)} has no timestamps entry`
+            );
+        }
+    }
+}
+
 module.exports = {
     assertValidFinalMergeState,
     assertLookupCoversMaterializedNodes,
+    assertMaterializedNodesHaveTimestamps,
     FinalMergeStateError,
     isFinalMergeStateError,
 };
