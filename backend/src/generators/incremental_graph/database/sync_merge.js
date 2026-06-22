@@ -48,6 +48,7 @@ const { buildMergePlan } = require('./sync_merge_plan');
 const {
     assertValidFinalMergeState,
     assertLookupCoversMaterializedNodes,
+    assertMaterializedNodesHaveTimestamps,
     FinalMergeStateError,
     isFinalMergeStateError,
 } = require('./sync_merge_validation');
@@ -368,7 +369,9 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const targetLookup = await loadTargetLookup(targetStorage);
     assertNoIdentifierCollisions(targetLookup, hostLookup);
     await assertLookupCoversMaterializedNodes(hostStorage, hostLookup, 'staged host snapshot');
+    await assertMaterializedNodesHaveTimestamps(hostStorage, hostLookup, 'staged host snapshot');
     await assertLookupCoversMaterializedNodes(targetStorage, targetLookup, 'merge target replica');
+    await assertMaterializedNodesHaveTimestamps(targetStorage, targetLookup, 'merge target replica');
 
     const targetLastNodeIndex = rootDatabase.getLastNodeIndex();
 

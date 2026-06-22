@@ -251,7 +251,7 @@ function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0
 
 beforeEach(() => {
     assertValidFinalMergeState.mockImplementation(
-        (storage, lookup) => validationActual.assertValidFinalMergeState(storage, lookup)
+        (storage, lookup, options) => validationActual.assertValidFinalMergeState(storage, lookup, options)
     );
 });
 
@@ -1530,6 +1530,8 @@ describe("migration validation", () => {
         await storage.values.put(bKey, { type: "all_events", events: [] });
         await storage.freshness.put(aKey, "up-to-date");
         await storage.freshness.put(bKey, "up-to-date");
+        await storage.timestamps.put(aKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
+        await storage.timestamps.put(bKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
         await storage.valid.put(aKey, [bKey]);
 
         const identifiers = await storage.global.get(IDENTIFIERS_KEY);
