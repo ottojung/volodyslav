@@ -24,7 +24,7 @@
 
 const { getRootDatabase, nodeIdentifierToString } = require("../src/generators/incremental_graph/database");
 const {
-    makeIncrementalGraph,
+    createIncrementalGraph,
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
@@ -111,7 +111,7 @@ describe("materialized node invariant", () => {
     async function buildGraph(nodeDefs) {
         const capabilities = getTestCapabilities();
         db = await getRootDatabase(capabilities);
-        graph = makeIncrementalGraph(capabilities, db, nodeDefs);
+        graph = await createIncrementalGraph(capabilities, db, nodeDefs);
     }
 
     async function closeDb() {

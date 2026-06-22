@@ -5,7 +5,7 @@
  */
 
 const {
-    makeIncrementalGraph,
+    createIncrementalGraph,
 } = require("../src/generators/incremental_graph");
 const {
     makeEmptyIdentifierLookup,
@@ -208,7 +208,7 @@ describe("IncrementalGraph concurrency", () => {
             const db = new InMemoryDatabase();
             const sourceCell = { value: { type: "test", value: 0 } };
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -253,7 +253,7 @@ describe("IncrementalGraph concurrency", () => {
             const source1Cell = { value: { type: "test", value: 0 } };
             const source2Cell = { value: { type: "test", value: 0 } };
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "source1",
                     inputs: [],
@@ -297,7 +297,7 @@ describe("IncrementalGraph concurrency", () => {
             let computeCount = 0;
             const sourceCell = { value: { type: "test", value: 5 } };
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -351,7 +351,7 @@ describe("IncrementalGraph concurrency", () => {
             const source1Cell = { value: { type: "test", value: 1 } };
             const source2Cell = { value: { type: "test", value: 2 } };
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "source1",
                     inputs: [],
@@ -394,7 +394,7 @@ describe("IncrementalGraph concurrency", () => {
             const db = new InMemoryDatabase();
             const sourceCell = { value: { type: "test", value: 0 } };
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -441,7 +441,7 @@ describe("IncrementalGraph concurrency", () => {
             let computeCount = 0;
             const sourceCell = { value: { type: "test", value: 5 } };
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -497,7 +497,7 @@ describe("IncrementalGraph concurrency", () => {
             const db = new InMemoryDatabase();
             const counterCell = { value: { type: "test", value: 0 } };
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "counter",
                     inputs: [],
@@ -555,7 +555,7 @@ describe("IncrementalGraph concurrency", () => {
             const aCell = { value: { type: "test", value: 1 } };
             const bCell = { value: { type: "test", value: 2 } };
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "a",
                     inputs: [],
@@ -648,7 +648,7 @@ describe("IncrementalGraph concurrency", () => {
             const source1Cell = { value: { type: "test", value: 1 } };
             const source2Cell = { value: { type: "test", value: 2 } };
 
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "source1",
                     inputs: [],
@@ -694,7 +694,7 @@ describe("IncrementalGraph concurrency", () => {
             const db = new InMemoryDatabase();
             const sourceCell = { value: { type: "test", value: 1 } };
 
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -737,7 +737,7 @@ describe("IncrementalGraph concurrency", () => {
             const pullStarted = makeDeferred();
             const releasePull = makeDeferred();
 
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -779,7 +779,7 @@ describe("IncrementalGraph concurrency", () => {
             let activeComputations = 0;
             let maxActiveComputations = 0;
 
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -817,7 +817,7 @@ describe("IncrementalGraph concurrency", () => {
             const releaseBoth = makeDeferred();
             const started = [];
 
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "source1",
                     inputs: [],
@@ -860,7 +860,7 @@ describe("IncrementalGraph concurrency", () => {
             let activeSlowComputations = 0;
             let maxActiveSlowComputations = 0;
 
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "slow",
                     inputs: [],
@@ -1319,7 +1319,7 @@ describe("IncrementalGraph concurrency", () => {
         test("static inputs in inverse order do not deadlock", async () => {
             const db = new InMemoryDatabase();
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "x",
                     inputs: [],
@@ -1379,7 +1379,7 @@ describe("IncrementalGraph concurrency", () => {
         test("deep diamond with inverse order at inner level does not deadlock", async () => {
             const db = new InMemoryDatabase();
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "z",
                     inputs: [],
@@ -1468,8 +1468,8 @@ describe("IncrementalGraph concurrency", () => {
             return { promise, resolve };
         }
 
-        function buildChainGraph(db, capabilities) {
-            return makeIncrementalGraph(capabilities, db, [
+        async function buildChainGraph(db, capabilities) {
+            return await createIncrementalGraph(capabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -1496,7 +1496,7 @@ describe("IncrementalGraph concurrency", () => {
 
         test("concurrent invalidates on dependency chain: leaf freshness is potentially-outdated after both complete", async () => {
             const db = new InMemoryDatabase();
-            const graph = buildChainGraph(db, testCapabilities);
+            const graph = await buildChainGraph(db, testCapabilities);
 
             // Pull once to materialize the chain
             await graph.pull("leaf");
@@ -1531,7 +1531,7 @@ describe("IncrementalGraph concurrency", () => {
                 isDeterministic: true,
                 hasSideEffects: false,
             };
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 ...sources, aggregator,
             ]);
 
@@ -1551,7 +1551,7 @@ describe("IncrementalGraph concurrency", () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
 
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "a",
                     inputs: [],
@@ -1621,7 +1621,7 @@ describe("IncrementalGraph concurrency", () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
 
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "root",
                     inputs: [],
@@ -1668,7 +1668,7 @@ describe("IncrementalGraph concurrency", () => {
             const db = new InMemoryDatabase();
             let joinedComputorCalls = 0;
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "root",
                     inputs: [],
@@ -1754,7 +1754,7 @@ describe("IncrementalGraph concurrency", () => {
             const db = new InMemoryDatabase();
             let leafComputorCalls = 0;
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "a",
                     inputs: [],
@@ -1827,7 +1827,7 @@ describe("IncrementalGraph concurrency", () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
 
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "src",
                     inputs: [],
@@ -1924,7 +1924,7 @@ describe("IncrementalGraph concurrency", () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
 
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -1991,7 +1991,7 @@ describe("IncrementalGraph concurrency", () => {
             barrier.promise = new Promise(r => { barrierResolve = r; });
             let readyCount = 0;
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "x",
                     inputs: ["z"],
@@ -2053,7 +2053,7 @@ describe("IncrementalGraph concurrency", () => {
             let readyCount = 0;
             let useBarrier = false;
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "x",
                     inputs: ["z"],
@@ -2118,7 +2118,7 @@ describe("IncrementalGraph concurrency", () => {
 
         test("concurrent valid[D] additions via withTransaction are merged at commit time", async () => {
             const db = new InMemoryDatabase();
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "z",
                     inputs: [],
@@ -2182,7 +2182,7 @@ describe("IncrementalGraph concurrency", () => {
 
         test("deterministic barrier proves concurrent valid[D] additions merge when both transactions overlap before commit", async () => {
             const db = new InMemoryDatabase();
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "z",
                     inputs: [],
@@ -2273,7 +2273,7 @@ describe("IncrementalGraph concurrency", () => {
 
         test("withBatch persists valid.add mutations", async () => {
             const db = new InMemoryDatabase();
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 { output: "z", inputs: [], computor: async () => ({ type: "z", value: 1 }), isDeterministic: true, hasSideEffects: false },
                 { output: "x", inputs: [], computor: async () => ({ type: "x", value: 1 }), isDeterministic: true, hasSideEffects: false },
             ]);
@@ -2307,7 +2307,7 @@ describe("IncrementalGraph concurrency", () => {
 
         test("withBatch persists valid.remove mutation", async () => {
             const db = new InMemoryDatabase();
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 { output: "z", inputs: [], computor: async () => ({ type: "z", value: 1 }), isDeterministic: true, hasSideEffects: false },
                 { output: "x", inputs: [], computor: async () => ({ type: "x", value: 1 }), isDeterministic: true, hasSideEffects: false },
                 { output: "y", inputs: [], computor: async () => ({ type: "y", value: 1 }), isDeterministic: true, hasSideEffects: false },
@@ -2345,7 +2345,7 @@ describe("IncrementalGraph concurrency", () => {
 
         test("withBatch persists valid.clear mutation", async () => {
             const db = new InMemoryDatabase();
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 { output: "z", inputs: [], computor: async () => ({ type: "z", value: 1 }), isDeterministic: true, hasSideEffects: false },
                 { output: "x", inputs: [], computor: async () => ({ type: "x", value: 1 }), isDeterministic: true, hasSideEffects: false },
             ]);

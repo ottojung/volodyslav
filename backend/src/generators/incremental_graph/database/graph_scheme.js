@@ -215,6 +215,16 @@ function serializeGraphScheme(graphScheme) {
 }
 
 /**
+ * Build the canonical graph scheme JSON string from compiled node definitions.
+ * The returned string is the canonical form used for exact comparison.
+ * @param {CompiledNode[]} compiledNodes
+ * @returns {string}
+ */
+function buildGraphSchemeStringFromNodeDefs(compiledNodes) {
+    return JSON.stringify(serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes)));
+}
+
+/**
  * @param {GraphScheme} graphScheme
  * @param {NodeKeyString} outputNodeKeyString
  * @returns {NodeKeyString[]}
@@ -347,6 +357,7 @@ module.exports = {
     isGraphSchemeError,
     isMissingGraphSchemeError,
     buildGraphSchemeFromNodeDefs,
+    buildGraphSchemeStringFromNodeDefs,
     serializeGraphScheme,
     parseGraphScheme,
     deriveInputPositions,

@@ -5,7 +5,7 @@
  */
 
 const {
-    makeIncrementalGraph,
+    createIncrementalGraph,
     isIncrementalGraph,
     makeUnchanged,
     isUnchanged,
@@ -311,8 +311,8 @@ function deepClone(x) {
 const testCapabilities = getMockedRootCapabilities();
 
 /** Helper to build a graph and assert it "looks like" a IncrementalGraph. */
-function buildGraph(db, nodeDefs) {
-    const g = makeIncrementalGraph(testCapabilities, db, nodeDefs);
+async function buildGraph(db, nodeDefs) {
+    const g = await createIncrementalGraph(testCapabilities, db, nodeDefs);
     expect(isIncrementalGraph(g)).toBe(true);
     expect(typeof g.pull).toBe("function");
     expect(typeof g.invalidate).toBe("function");
@@ -336,7 +336,7 @@ function countedComputor(name, fn) {
 
 describe("IncrementalGraph Conformance: module surface", () => {
     test("exports required symbols", () => {
-        expect(typeof makeIncrementalGraph).toBe("function");
+        expect(typeof createIncrementalGraph).toBe("function");
         expect(typeof isIncrementalGraph).toBe("function");
         expect(typeof makeUnchanged).toBe("function");
         expect(typeof isUnchanged).toBe("function");
@@ -354,10 +354,10 @@ describe("IncrementalGraph Conformance: module surface", () => {
 });
 
 describe("Schema validation (construction-time errors)", () => {
-    test("throws InvalidExpressionError for invalid schema expression syntax", () => {
+    test("throws InvalidExpressionError for invalid schema expression syntax", async () => {
         const db = new InMemoryDatabase();
-        expect(() =>
-            makeIncrementalGraph(testCapabilities, db, [
+        await expect(
+            createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "bad(",
                     inputs: [],
@@ -366,9 +366,9 @@ describe("Schema validation (construction-time errors)", () => {
                     hasSideEffects: false,
                 },
             ])
-        ).toThrow();
+        ).rejects.toThrow();
         try {
-            makeIncrementalGraph(testCapabilities, db, [
+            await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "bad(",
                     inputs: [],
@@ -383,11 +383,11 @@ describe("Schema validation (construction-time errors)", () => {
         }
     });
 
-    test("throws InvalidSchemaError for duplicate variable names in output", () => {
+    test("throws InvalidSchemaError for duplicate variable names in output", async () => {
         const db = new InMemoryDatabase();
         let error;
         try {
-            makeIncrementalGraph(testCapabilities, db, [
+            await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "event(a, b, c, b, d)",
                     inputs: [],
@@ -404,11 +404,11 @@ describe("Schema validation (construction-time errors)", () => {
         expect(error.message).toMatch(/Duplicate variable 'b'/);
     });
 
-    test("throws InvalidSchemaError for duplicate variable names in input", () => {
+    test("throws InvalidSchemaError for duplicate variable names in input", async () => {
         const db = new InMemoryDatabase();
         let error;
         try {
-            makeIncrementalGraph(testCapabilities, db, [
+            await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "derived(x, y)",
                     inputs: ["source(x, z, x)"],
@@ -425,10 +425,10 @@ describe("Schema validation (construction-time errors)", () => {
         expect(error.message).toMatch(/Duplicate variable 'x'/);
     });
 
-    test("throws InvalidSchemaError when output variables do not cover input variables", () => {
+    test("throws InvalidSchemaError when output variables do not cover input variables", async () => {
         const db = new InMemoryDatabase();
-        expect(() =>
-            makeIncrementalGraph(testCapabilities, db, [
+        await expect(
+            createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "derived_event()",
                     inputs: ["event_context(e)"],
@@ -437,9 +437,9 @@ describe("Schema validation (construction-time errors)", () => {
                     hasSideEffects: false,
                 },
             ])
-        ).toThrow();
+        ).rejects.toThrow();
         try {
-            makeIncrementalGraph(testCapabilities, db, [
+            await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "derived_event()",
                     inputs: ["event_context(e)"],
@@ -454,11 +454,11 @@ describe("Schema validation (construction-time errors)", () => {
         }
     });
 
-    test("throws SchemaOverlapError for trivially overlapping patterns node(x) vs node(y)", () => {
+    test("throws SchemaOverlapError for trivially overlapping patterns node(x) vs node(y)", async () => {
         const db = new InMemoryDatabase();
         let error;
         try {
-            makeIncrementalGraph(testCapabilities, db, [
+            await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "node(x)",
                     inputs: [],
@@ -483,12 +483,10 @@ describe("Schema validation (construction-time errors)", () => {
         expect(Array.isArray(error.patterns)).toBe(true);
     });
 
-
-
-    test("throws SchemaCycleError for a <-> b cycle", () => {
+    test("throws SchemaCycleError for a <-> b cycle", async () => {
         const db = new InMemoryDatabase();
-        expect(() =>
-            makeIncrementalGraph(testCapabilities, db, [
+        await expect(
+            createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "a",
                     inputs: ["b"],
@@ -504,9 +502,9 @@ describe("Schema validation (construction-time errors)", () => {
                     hasSideEffects: false,
                 },
             ])
-        ).toThrow();
+        ).rejects.toThrow();
         try {
-            makeIncrementalGraph(testCapabilities, db, [
+            await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "a",
                     inputs: ["b"],
@@ -528,10 +526,10 @@ describe("Schema validation (construction-time errors)", () => {
         }
     });
 
-    test("throws SchemaCycleError for parameterized cycle f(x)->g(x)->f(x)", () => {
+    test("throws SchemaCycleError for parameterized cycle f(x)->g(x)->f(x)", async () => {
         const db = new InMemoryDatabase();
-        expect(() =>
-            makeIncrementalGraph(testCapabilities, db, [
+        await expect(
+            createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "f(x)",
                     inputs: ["g(x)"],
@@ -547,9 +545,9 @@ describe("Schema validation (construction-time errors)", () => {
                     hasSideEffects: false,
                 },
             ])
-        ).toThrow();
+        ).rejects.toThrow();
         try {
-            makeIncrementalGraph(testCapabilities, db, [
+            await createIncrementalGraph(testCapabilities, db, [
                 {
                     output: "f(x)",
                     inputs: ["g(x)"],
@@ -586,17 +584,17 @@ describe("Schema validation (construction-time errors)", () => {
         const bC = unoptimizedComputor("b");
 
         // Should throw because b(x) expects one argument but a(x) provides none.
-        expect(() => buildGraph(db, [
+        await expect(buildGraph(db, [
             { output: "a(x)", inputs: [], computor: aC.computor, isDeterministic: true, hasSideEffects: false },
             { output: "b(x)", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
-        ])).toThrow(/arguments/);
+        ])).rejects.toThrow(/arguments/);
     });
 });
 
 describe("Expression parsing & canonicalization at API boundaries", () => {
     test("rejects compound expressions", async () => {
         const db = new InMemoryDatabase();
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "id(n)",
                 inputs: [],
@@ -613,7 +611,7 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
 
     test("rejects abstract expressions", async () => {
         const db = new InMemoryDatabase();
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "id(n)",
                 inputs: [],
@@ -630,7 +628,7 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
 
     test("rejects bracketed atoms", async () => {
         const db = new InMemoryDatabase();
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "id()",
                 inputs: [],
@@ -649,7 +647,7 @@ describe("Expression parsing & canonicalization at API boundaries", () => {
 describe("pull/set concrete-ness & node existence errors", () => {
     test("pull rejects non-concrete nodeName (free variables) with NonConcreteNodeError", async () => {
         const db = new InMemoryDatabase();
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "event_context(e)",
                 inputs: [],
@@ -668,7 +666,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
 
     test("invalidate rejects non-concrete nodeName (free variables) with NonConcreteNodeError", async () => {
         const db = new InMemoryDatabase();
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "event_context(e)",
                 inputs: [],
@@ -689,7 +687,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
 
     test("pull rejects invalid node names with InvalidNodeNameError", async () => {
         const db = new InMemoryDatabase();
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             { output: "a", inputs: [], computor: async () => ({ a: 1 }), isDeterministic: true, hasSideEffects: false },
         ]);
 
@@ -700,7 +698,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
 
     test("invalidate rejects invalid node names with InvalidNodeNameError", async () => {
         const db = new InMemoryDatabase();
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             { output: "a", inputs: [], computor: async () => ({ a: 1 }), isDeterministic: true, hasSideEffects: false },
         ]);
 
@@ -711,7 +709,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
 
     test("pull unknown concrete node throws InvalidNodeError", async () => {
         const db = new InMemoryDatabase();
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             { output: "a", inputs: [], computor: async () => ({ a: 1 }), isDeterministic: true, hasSideEffects: false },
         ]);
 
@@ -722,7 +720,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
 
     test("invalidate unknown concrete node throws InvalidNodeError", async () => {
         const db = new InMemoryDatabase();
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             { output: "a", inputs: [], computor: async () => ({ a: 1 }), isDeterministic: true, hasSideEffects: false },
         ]);
 
@@ -736,7 +734,7 @@ describe("pull/set concrete-ness & node existence errors", () => {
         
         const aCell = { value: { n: 0 } };
         
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
@@ -784,7 +782,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         // External state cell for source node "a"
         const aCell = { value: { n: 0 } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
@@ -812,7 +810,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         // External state cell for source node "a"
         const aCell = { value: { n: 0 } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
@@ -842,7 +840,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         // External state cell for source node "a"
         const aCell = { value: { n: 0 } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
@@ -871,7 +869,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         // External state cell for source node "a"
         const aCell = { value: { n: 0 } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
@@ -901,7 +899,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         // External state cell for source node "a"
         const aCell = { value: { s: "a()" } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
@@ -934,7 +932,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         // External state cell for source node "a"
         const aCell = { value: { s: "a()" } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
@@ -1011,7 +1009,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         // External state cell for source node "a"
         const aCell = { value: { s: "a()" } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
@@ -1105,7 +1103,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
 
         const aCell = { value: { s: "a()" } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             { output: "a", inputs: [], computor: async () => aCell.value, isDeterministic: true, hasSideEffects: false },
             { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
             { output: "c", inputs: ["b"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
@@ -1212,7 +1210,7 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
 
         const aCell = { value: { s: "a()" } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             { output: "a", inputs: [], computor: async () => aCell.value, isDeterministic: true, hasSideEffects: false },
             { output: "b", inputs: ["a"], computor: bC.computor, isDeterministic: true, hasSideEffects: false },
             { output: "c", inputs: ["b"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
@@ -1334,7 +1332,7 @@ describe("P3: computor invoked at most once per node per top-level pull (diamond
 
         const aCell = { value: { n: 0 } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
@@ -1367,7 +1365,7 @@ describe("P3: computor invoked at most once per node per top-level pull (diamond
 
         const aCell = { value: { n: 0 } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
@@ -1403,7 +1401,7 @@ describe("Unchanged semantics (observable storage behavior)", () => {
 
         const aCell = { value: { n: 0 } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
@@ -1437,7 +1435,7 @@ describe("Unchanged semantics (observable storage behavior)", () => {
 
     test("Unchanged does not leak as return value (pull returns DatabaseValue, not sentinel)", async () => {
         const db = new InMemoryDatabase();
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "x",
                 inputs: [],
@@ -1463,7 +1461,7 @@ describe("Inspection interface", () => {
 
         const aCell = { value: { n: 0 } };
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "a",
                 inputs: [],
@@ -1500,7 +1498,7 @@ describe("Inspection interface", () => {
     test("pull() on source node materializes it and invalidate() preserves materialization", async () => {
         const db = new InMemoryDatabase();
         const sourceCell = { value: { n: 0 } };
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "source",
                 inputs: [],
@@ -1539,7 +1537,7 @@ describe("Inspection interface", () => {
 
     test("pull() on leaf node (inputs=[]) must include it in listMaterializedNodes", async () => {
         const db = new InMemoryDatabase();
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "leaf",
                 inputs: [],
@@ -1617,7 +1615,7 @@ describe("1. Deep linear chains: freshness should prevent reevaluation", () => {
                 });
             }
 
-            const g = buildGraph(db, nodeDefs);
+            const g = await buildGraph(db, nodeDefs);
 
             // First pull: should compute each node exactly once
             aCell.value = { n: 0 };
@@ -1687,7 +1685,7 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
             n: c1.n + c2.n,
         }));
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             { output: "shared", inputs: [], computor: sharedC.computor, isDeterministic: true, hasSideEffects: false },
             { output: "b1", inputs: ["shared"], computor: b1C.computor, isDeterministic: true, hasSideEffects: false },
             { output: "b2", inputs: ["shared"], computor: b2C.computor, isDeterministic: true, hasSideEffects: false },
@@ -1747,7 +1745,7 @@ describe("2. Deep reconvergent DAGs: dedupe across multiple levels", () => {
             n: c1.n + c2.n,
         }));
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             { output: "a", inputs: [], computor: aC.computor, isDeterministic: true, hasSideEffects: false },
             { output: "b1", inputs: ["a"], computor: b1C.computor, isDeterministic: true, hasSideEffects: false },
             { output: "b2", inputs: ["a"], computor: b2C.computor, isDeterministic: true, hasSideEffects: false },
@@ -1784,7 +1782,7 @@ describe("3. Duplicate dependencies beyond trivial ['b','b'] case", () => {
         const yC = countedComputor("y", async ([z]) => ({ n: z.n + 20 }));
         const dC = countedComputor("d", async ([x, y]) => ({ n: x.n + y.n }));
 
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             { output: "w", inputs: [], computor: wC.computor, isDeterministic: true, hasSideEffects: false },
             { output: "z", inputs: ["w"], computor: zC.computor, isDeterministic: true, hasSideEffects: false },
             { output: "x", inputs: ["z"], computor: xC.computor, isDeterministic: true, hasSideEffects: false },
@@ -1822,7 +1820,7 @@ describe("6. oldValue plumbing: correct previous-value visibility", () => {
         );
 
         const sourceCell = { value: { n: 0 } };
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "source",
                 inputs: [],
@@ -1855,7 +1853,7 @@ describe("6. oldValue plumbing: correct previous-value visibility", () => {
         );
 
         const sourceCell = { value: { n: 0 } };
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "source",
                 inputs: [],
@@ -1897,7 +1895,7 @@ describe("6. oldValue plumbing: correct previous-value visibility", () => {
         );
 
         const sourceCell = { value: { flag: "init" } };
-        const g = buildGraph(db, [
+        const g = await buildGraph(db, [
             {
                 output: "source",
                 inputs: [],
@@ -1967,7 +1965,7 @@ describe("11. set() batching remains single atomic batch with invalidation fanou
             nodeDefs.push({ output: `t${i}`, inputs: [`d${i}`], computor, isDeterministic: true, hasSideEffects: false });
         }
 
-        const g = buildGraph(db, nodeDefs);
+        const g = await buildGraph(db, nodeDefs);
 
         sourceCell.value = { n: 1 };
         await g.invalidate("source");
@@ -2009,7 +2007,7 @@ describe("12. (Optional) Concurrent pulls of the same node", () => {
             );
 
             const sourceCell = { value: { n: 0 } };
-            const g = buildGraph(db, [
+            const g = await buildGraph(db, [
                 {
                     output: "source",
                     inputs: [],

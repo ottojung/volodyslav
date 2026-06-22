@@ -28,7 +28,7 @@ const {
     assertValidFinalMergeState,
     FinalMergeStateError,
 } = require('../src/generators/incremental_graph/database/sync_merge_validation');
-const { makeIncrementalGraph } = require('../src/generators/incremental_graph');
+const { createIncrementalGraph } = require('../src/generators/incremental_graph');
 const {
     IdentifierLookupConflictError,
     isIdentifierLookupConflictError,
@@ -1344,7 +1344,7 @@ describe('mergeHostIntoReplica', () => {
             }));
 
             const computeA = jest.fn(async ([input]) => ({ source: `recomputed from ${input.source}` }));
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: 'c_counter_collision',
                     inputs: [],
@@ -1422,7 +1422,7 @@ describe('mergeHostIntoReplica', () => {
 
             const computeA = jest.fn(async ([input]) => ({ source: `A from ${input.source}` }));
             const computeD = jest.fn(async ([input]) => ({ source: `D from ${input.source}` }));
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: 'c_transitive_relower',
                     inputs: [],
@@ -1557,7 +1557,7 @@ describe('mergeHostIntoReplica', () => {
             }));
 
             const computeB = jest.fn(async () => ({ source: 'should not be called' }));
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 { output: 'A_unrelated', inputs: [], computor: async () => valueA, isDeterministic: true, hasSideEffects: false },
                 { output: 'B_unrelated', inputs: ['A_unrelated'], computor: computeB, isDeterministic: true, hasSideEffects: false },
                 { output: 'X_unrelated', inputs: [], computor: async () => remoteXValue, isDeterministic: true, hasSideEffects: false },
@@ -1642,7 +1642,7 @@ describe('mergeHostIntoReplica', () => {
             }));
 
             const computeD = jest.fn(async () => ({ source: 'should not be called' }));
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 { output: 'A_precise', inputs: [], computor: async () => ({ source: 'A' }), isDeterministic: true, hasSideEffects: false },
                 { output: 'B_precise', inputs: ['A_precise'], computor: async () => ({ source: 'B' }), isDeterministic: true, hasSideEffects: false },
                 { output: 'C_precise', inputs: [], computor: async () => valueC, isDeterministic: true, hasSideEffects: false },
@@ -2534,7 +2534,7 @@ describe('mergeHostIntoReplica', () => {
                 ],
             }));
 
-            const graph = makeIncrementalGraph(testCapabilities, db, [
+            const graph = await createIncrementalGraph(testCapabilities, db, [
                 { output: 'prop_A', inputs: [], computor: async () => ({ v: 2 }), isDeterministic: true, hasSideEffects: false },
                 { output: 'prop_B', inputs: ['prop_A'], computor: async () => ({ v: 2 }), isDeterministic: true, hasSideEffects: false },
                 { output: 'prop_C', inputs: ['prop_B'], computor: async () => ({ v: 3 }), isDeterministic: true, hasSideEffects: false },
@@ -2675,7 +2675,7 @@ describe('mergeHostIntoReplica', () => {
             await storage.valid.put(nodeA, [nodeB]);
             await storage.valid.put(nodeB, [nodeA]);
 
-            const graph = makeIncrementalGraph(capabilities, db, []);
+            const graph = await createIncrementalGraph(capabilities, db, []);
             await graph.storage.withTransaction(async (tx) => {
                 await internalPropagateOutdated(graph, nodeA, tx.batch);
                 return { value: undefined };

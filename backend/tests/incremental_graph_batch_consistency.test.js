@@ -7,7 +7,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
-const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
+const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { makeSemanticStorage } = require("./test_database_helper");
 const { stubLogger, stubEnvironment } = require("./stubs");
@@ -48,7 +48,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
+                const graph = await createIncrementalGraph(capabilities, db, graphDef);
                 const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
@@ -80,7 +80,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
+                const graph = await createIncrementalGraph(capabilities, db, graphDef);
                 const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
@@ -116,7 +116,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
+                const graph = await createIncrementalGraph(capabilities, db, graphDef);
                 const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
@@ -156,7 +156,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
+                const graph = await createIncrementalGraph(capabilities, db, graphDef);
                 const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
@@ -185,7 +185,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
+                const graph = await createIncrementalGraph(capabilities, db, graphDef);
                 const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
@@ -229,7 +229,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
+                const graph = await createIncrementalGraph(capabilities, db, graphDef);
                 const storage = makeSemanticStorage(graph);
 
                 const inputKey = '{"head":"source","args":[]}';
@@ -276,7 +276,7 @@ describe("incremental_graph batch consistency", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
             const storage = makeSemanticStorage(graph);
 
             const inputKey = '{"head":"source","args":[]}';

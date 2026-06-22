@@ -6,7 +6,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
-const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
+const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
 
@@ -53,7 +53,7 @@ describe("Bound variables with DatabaseValue objects", () => {
             },
         ];
 
-        const graph = makeIncrementalGraph(capabilities, db, schemas);
+        const graph = await createIncrementalGraph(capabilities, db, schemas);
 
         // Invalidate source value
         await graph.invalidate("source");
@@ -101,7 +101,7 @@ describe("Bound variables with DatabaseValue objects", () => {
             },
         ];
 
-        const graph = makeIncrementalGraph(capabilities, db, schemas);
+        const graph = await createIncrementalGraph(capabilities, db, schemas);
         await graph.invalidate("source");
 
         // Pull with different object bindings
@@ -150,7 +150,7 @@ describe("Bound variables with DatabaseValue objects", () => {
             },
         ];
 
-        const graph = makeIncrementalGraph(capabilities, db, schemas);
+        const graph = await createIncrementalGraph(capabilities, db, schemas);
         await graph.invalidate("source");
 
         const binding = { type: "all_events", events: [{ id: "test" }] };

@@ -7,7 +7,7 @@ const fs = require("fs");
 const os = require("os");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const {
-    makeIncrementalGraph,
+    createIncrementalGraph,
     isIncrementalGraph,
     makeUnchanged,
 } = require("../src/generators/incremental_graph");
@@ -40,16 +40,14 @@ function getTestCapabilities() {
 }
 
 describe("generators/incremental_graph", () => {
-    describe("makeIncrementalGraph()", () => {
+    describe("createIncrementalGraph()", () => {
         test("creates and returns a incremental graph instance", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-            const graph = makeIncrementalGraph(capabilities, db, []);
+            const graph = await createIncrementalGraph(capabilities, db, []);
 
             expect(isIncrementalGraph(graph)).toBe(true);
 
-            // Ensure async graph_scheme init completes before closing the DB
-            await graph._ensureGraphSchemeReady();
             await db.close();
         });
     });
@@ -104,7 +102,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             // Seed input1
             input1Cell.value = { type: 'all_events', events: [] };
@@ -150,7 +148,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const storage = makeSemanticStorage(graph);
 
@@ -194,7 +192,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -222,7 +220,7 @@ describe("generators/incremental_graph", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const graph = makeIncrementalGraph(capabilities, db, []);
+            const graph = await createIncrementalGraph(capabilities, db, []);
 
             const testDb = makeTestDatabase(graph);
 
@@ -264,7 +262,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -327,7 +325,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -422,7 +420,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             // Set up chain properly: input1 -> level1 -> level2 -> level3
             input1Cell.value = { count: 1 };
@@ -498,7 +496,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -579,7 +577,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -687,7 +685,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             // Set up the graph properly
             input1Cell.value = { value: 1 };
@@ -764,7 +762,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             // Set up the graph properly
             inputCell.value = { value: 1 };
@@ -823,7 +821,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -916,7 +914,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -998,7 +996,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1045,7 +1043,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1094,7 +1092,7 @@ describe("generators/incremental_graph", () => {
                 }
             }
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1177,7 +1175,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1256,7 +1254,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             input1Cell.value = { value: 10 };
             await graph.invalidate("input1");
@@ -1333,7 +1331,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1442,7 +1440,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1562,7 +1560,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             const testDb = makeTestDatabase(graph);
 
@@ -1672,7 +1670,7 @@ describe("generators/incremental_graph", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             inputCell.value = { value: 5 };
             await graph.invalidate("input");
@@ -1707,15 +1705,13 @@ describe("generators/incremental_graph", () => {
         test("isIncrementalGraph correctly identifies instances", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-            const graph = makeIncrementalGraph(capabilities, db, []);
+            const graph = await createIncrementalGraph(capabilities, db, []);
 
             expect(isIncrementalGraph(graph)).toBe(true);
             expect(isIncrementalGraph({})).toBe(false);
             expect(isIncrementalGraph(null)).toBe(false);
             expect(isIncrementalGraph(undefined)).toBe(false);
 
-            // Ensure async graph_scheme init completes before closing the DB
-            await graph._ensureGraphSchemeReady();
             await db.close();
         });
     });
@@ -1744,7 +1740,7 @@ describe("generators/incremental_graph", () => {
                 }
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
             // Initially missing
             expect(await graph.getFreshness("node1")).toBe("missing");
 
@@ -1786,7 +1782,7 @@ describe("generators/incremental_graph", () => {
                 }
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
 
             // Initially empty
             expect(await graph.listMaterializedNodes()).toEqual([]);
@@ -1833,14 +1829,14 @@ describe("generators/incremental_graph", () => {
                 }
             ];
 
-            let error;
+            await expect(
+                createIncrementalGraph(capabilities, db, graphDef)
+            ).rejects.toThrow();
             try {
-                makeIncrementalGraph(capabilities, db, graphDef);
+                await createIncrementalGraph(capabilities, db, graphDef);
             } catch (e) {
-                error = e;
+                expect(e.name).toBe("SchemaCycleError");
             }
-            expect(error).toBeDefined();
-            expect(error.name).toBe("SchemaCycleError");
 
             await db.close();
         });
@@ -1866,14 +1862,14 @@ describe("generators/incremental_graph", () => {
                 }
             ];
 
-            let error;
+            await expect(
+                createIncrementalGraph(capabilities, db, graphDef)
+            ).rejects.toThrow();
             try {
-                makeIncrementalGraph(capabilities, db, graphDef);
+                await createIncrementalGraph(capabilities, db, graphDef);
             } catch (e) {
-                error = e;
+                expect(e.name).toBe("SchemaOverlapError");
             }
-            expect(error).toBeDefined();
-            expect(error.name).toBe("SchemaOverlapError");
 
             await db.close();
         });

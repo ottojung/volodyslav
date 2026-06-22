@@ -13,14 +13,8 @@ const fs = require("fs");
 const os = require("os");
 const {
     getRootDatabase,
-    GRAPH_SCHEME_KEY,
-    buildGraphSchemeFromNodeDefs,
-    serializeGraphScheme,
 } = require("../src/generators/incremental_graph/database");
-const {
-    compileNodeDef,
-} = require("../src/generators/incremental_graph/compiled_node");
-const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
+const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
 
@@ -66,7 +60,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, schemas);
+            const graph = await createIncrementalGraph(capabilities, db, schemas);
 
             // Set source value
             sourceCell.value = { value: 42 };
@@ -108,7 +102,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, schemas);
+            const graph = await createIncrementalGraph(capabilities, db, schemas);
             sourceCell.value = { value: 1 };
             await graph.invalidate("source");
 
@@ -155,7 +149,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, schemas);
+            const graph = await createIncrementalGraph(capabilities, db, schemas);
             sourceCell.value = { value: 1 };
             await graph.invalidate("source");
 
@@ -202,7 +196,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, schemas);
+            const graph = await createIncrementalGraph(capabilities, db, schemas);
             sourceCell.value = { value: 1 };
             await graph.invalidate("source");
 
@@ -256,7 +250,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph1 = makeIncrementalGraph(capabilities, db1, schemas);
+            const graph1 = await createIncrementalGraph(capabilities, db1, schemas);
             sourceCell.value = { value: 1 };
             await graph1.invalidate("source");
 
@@ -268,13 +262,7 @@ describe("Bound variables in computors", () => {
 
             // Reopen database
             const db2 = await getRootDatabase(capabilities);
-            // Persist graph_scheme so the reopened graph can validate it
-            const compiledForReopen = schemas.map(compileNodeDef);
-            const schemeForReopen = JSON.stringify(
-                serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledForReopen))
-            );
-            await db2.getSchemaStorage().global.put(GRAPH_SCHEME_KEY, schemeForReopen);
-            const graph2 = makeIncrementalGraph(capabilities, db2, schemas);
+            const graph2 = await createIncrementalGraph(capabilities, db2, schemas);
 
             // Pull should get cached values
             const result1 = await graph2.pull("derived", ["first"]);
@@ -322,7 +310,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, schemas);
+            const graph = await createIncrementalGraph(capabilities, db, schemas);
             sourceCell.value = { value: 10 };
             await graph.invalidate("source");
 
@@ -387,7 +375,7 @@ describe("Bound variables in computors", () => {
                 })),
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, schemas);
+            const graph = await createIncrementalGraph(capabilities, db, schemas);
             sourceCell.value = { value: 1 };
             await graph.invalidate("source");
 
@@ -435,7 +423,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, schemas);
+            const graph = await createIncrementalGraph(capabilities, db, schemas);
 
             // Pull f with specific bindings
             const result = await graph.pull("f", ["A", "B"]);
@@ -505,7 +493,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, schemas);
+            const graph = await createIncrementalGraph(capabilities, db, schemas);
 
             // Pull f with specific bindings
             const result = await graph.pull("f", ["A", "B", "C"]);
@@ -572,7 +560,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, schemas);
+            const graph = await createIncrementalGraph(capabilities, db, schemas);
             sourceCell.value = { value: 1 };
             await graph.invalidate("source");
 
@@ -604,7 +592,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, schemas);
+            const graph = await createIncrementalGraph(capabilities, db, schemas);
 
             // Pull without required binding
             await expect(graph.pull("derived")).rejects.toThrow(
@@ -630,7 +618,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, schemas);
+            const graph = await createIncrementalGraph(capabilities, db, schemas);
 
             // Pull with wrong number of bindings (arity mismatch)
             await expect(graph.pull("derived", [1, 2])).rejects.toThrow(
@@ -665,7 +653,7 @@ describe("Bound variables in computors", () => {
                 },
             ];
 
-            expect(() => makeIncrementalGraph(capabilities, db, schemas)).toThrow(
+            await expect(createIncrementalGraph(capabilities, db, schemas)).rejects.toThrow(
                 /input variable 'x' is not present in/i
             );
 

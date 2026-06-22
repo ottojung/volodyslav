@@ -8,6 +8,15 @@
  * - Explicit over ambient: Transaction context is passed as a direct function argument
  * - No global state, no async_hooks
  * - Disk before memory: in-memory state is updated only after LevelDB batch flushes
+ *
+ * Lifecycle:
+ *   IncrementalGraphClass construction is a pure object construction step with
+ *   respect to storage lifecycle.  The constructor compiles node definitions,
+ *   validates the pure node schema, builds pure in-memory indexes, and attaches
+ *   already-opened storage handles.  It does NOT perform any async storage reads
+ *   or writes.  The `prepareIncrementalGraphStorage()` function handles all async
+ *   database lifecycle — reading/validating global/graph_scheme, writing it for
+ *   fresh databases, etc. — before graph construction.
  */
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -20,6 +29,7 @@
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
+/** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./graph_state').GraphStorage} GraphStorage */
 /** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
 /** @typedef {import('./graph_state').Transaction} Transaction */
@@ -28,24 +38,15 @@
 /** @typedef {import('../../datetime').Datetime} Datetime */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
+/** @typedef {import('./database/graph_scheme').GraphScheme} GraphScheme */
+/** @typedef {import('./prepare_graph_storage').PreparedGraphStorage} PreparedGraphStorage */
 
-const {
-    compileNodeDef,
-    validateAcyclic,
-    validateInputArities,
-    validateNoOverlap,
-    validateSingleArityPerHead,
-} = require("./compiled_node");
 const {
     makeGraphStorage,
 } = require("./graph_state");
 const {
-    buildGraphSchemeFromNodeDefs,
-    serializeGraphScheme,
-    GRAPH_SCHEME_KEY,
-    MissingGraphSchemeError,
-    assertExactStoredGraphSchemeMatches,
-} = require("./database");
+    prepareIncrementalGraphStorage,
+} = require("./prepare_graph_storage");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -65,7 +66,7 @@ const {
 } = require("./pull");
 
 class IncrementalGraphClass {
-    /** @type {Map<import('./types').NodeName, CompiledNode>} */
+    /** @type {Map<NodeName, CompiledNode>} */
     headIndex;
 
     /** @type {ConcreteNodeCache} */
@@ -86,108 +87,27 @@ class IncrementalGraphClass {
     /** @type {RootDatabase} */
     rootDatabase;
 
-    /** @type {Promise<void>} */
-    _graphSchemeReady;
+    /** @type {GraphScheme} */
+    graphScheme;
+
+    /** @type {string} */
+    graphSchemeString;
 
     /**
      * @param {IncrementalGraphCapabilities} capabilities
      * @param {RootDatabase} rootDatabase
-     * @param {Array<NodeDef>} nodeDefs
+     * @param {PreparedGraphStorage} prepared
      */
-    constructor(capabilities, rootDatabase, nodeDefs) {
-        const compiledNodes = nodeDefs.map(compileNodeDef);
-        validateNoOverlap(compiledNodes);
-        validateAcyclic(compiledNodes);
-        validateSingleArityPerHead(compiledNodes);
-        validateInputArities(compiledNodes);
-
-        this.graphScheme = buildGraphSchemeFromNodeDefs(compiledNodes);
+    constructor(capabilities, rootDatabase, prepared) {
+        this.graphScheme = prepared.graphScheme;
+        this.graphSchemeString = prepared.graphSchemeString;
+        this.headIndex = prepared.headIndex;
         this.storage = makeGraphStorage(rootDatabase, capabilities.sleeper);
         this.rootDatabase = rootDatabase;
         this.dbVersion = rootDatabase.getVersion();
-        this.headIndex = new Map();
-        for (const compiledNode of compiledNodes) {
-            this.headIndex.set(compiledNode.head, compiledNode);
-        }
-
-        // The constructor stores a promise instead of using await because
-        // constructors cannot be async.  Every public method that touches
-        // graph storage awaits _initializeGraphScheme() before proceeding,
-        // so the init/validation is guaranteed to complete before any
-        // observable storage operation.  Pure schema introspection methods
-        // (getSchemas, getSchemaByHead, getDbVersion) skip the await because
-        // they do not touch database state.
-        //
-        // global/graph_scheme is immutable initialization metadata.
-        // It is written only where global/version is written (migration/init).
-        // The constructor validates but never writes.
-        this.graphSchemeString = JSON.stringify(serializeGraphScheme(this.graphScheme));
-        this._graphSchemeReady = this._initializeGraphScheme();
-
         this.concreteInstantiations = makeConcreteNodeCache();
         this.sleeper = capabilities.sleeper;
         this.datetime = capabilities.datetime;
-    }
-
-    /**
-     * Validate the stored graph_scheme against the current scheme.
-     *
-     * global/graph_scheme is written only where global/version is written,
-     * i.e. by migration/init code.  The constructor does not write to global.
-     *
-     * For a genuinely fresh database (no stored version and no stored scheme),
-     * the scheme will be written by the migration runner (runMigrationUnsafe)
-     * alongside global/version before any graph storage operations.
-     *
-     * For an existing initialized database whose stored version matches the
-     * current application version, validates that the stored scheme matches
-     * the current scheme exactly.  No overwriting, no normalization,
-     * no silent backfill.
-     *
-     * For an existing initialized database whose stored version differs from
-     * the current application version (needs migration), the stored scheme
-     * is allowed to differ — the migration callback will write the new scheme
-     * as part of the migration process.
-     *
-     * If a versioned database has no stored graph_scheme, treats this as
-     * corruption and throws MissingGraphSchemeError.
-     *
-     * @returns {Promise<void>}
-     */
-    async _initializeGraphScheme() {
-        const schemaStorage = this.rootDatabase.getSchemaStorage();
-        const storedScheme = await schemaStorage.global.get(GRAPH_SCHEME_KEY);
-        if (storedScheme !== undefined) {
-            // Stored scheme exists — validate exact match
-            // after checking version.
-            const storedVersion = await schemaStorage.global.get('version');
-            if (storedVersion !== undefined && storedVersion !== this.dbVersion) {
-                // Version differs — skip validation (migration owns the new scheme)
-                return;
-            }
-            assertExactStoredGraphSchemeMatches(
-                storedScheme,
-                this.graphSchemeString,
-                `active replica '${this.rootDatabase.currentReplicaName()}'`
-            );
-            return;
-        }
-        // No stored scheme.
-        const storedVersion = await schemaStorage.global.get('version');
-        if (storedVersion === undefined) {
-            // Fresh database — no stored scheme, no stored version.
-            // Migration/init code will write both.
-            return;
-        }
-        // Versioned database with no graph_scheme — corruption.
-        throw new MissingGraphSchemeError(
-            `active replica '${this.rootDatabase.currentReplicaName()}'`
-        );
-    }
-
-    /** @returns {Promise<void>} */
-    async _ensureGraphSchemeReady() {
-        await this._graphSchemeReady;
     }
 
     /**
@@ -196,7 +116,6 @@ class IncrementalGraphClass {
      * @returns {Promise<void>}
      */
     async invalidate(nodeName, bindings = []) {
-        await this._ensureGraphSchemeReady();
         await internalInvalidate(this, nodeName, bindings);
     }
 
@@ -206,7 +125,6 @@ class IncrementalGraphClass {
      * @returns {Promise<ComputedValue>}
      */
     async pull(nodeName, bindings = []) {
-        await this._ensureGraphSchemeReady();
         return await internalPull(this, nodeName, bindings);
     }
 
@@ -216,7 +134,6 @@ class IncrementalGraphClass {
      * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
      */
     async getFreshness(head, bindings = []) {
-        await this._ensureGraphSchemeReady();
         return await internalGetFreshness(this, head, bindings);
     }
 
@@ -226,7 +143,6 @@ class IncrementalGraphClass {
      * @returns {Promise<ComputedValue | undefined>}
      */
     async getValue(head, bindings = []) {
-        await this._ensureGraphSchemeReady();
         return await internalGetValue(this, head, bindings);
     }
 
@@ -245,7 +161,6 @@ class IncrementalGraphClass {
 
     /** @returns {Promise<Array<[string, Array<ConstValue>]>>} */
     async listMaterializedNodes() {
-        await this._ensureGraphSchemeReady();
         return await internalListMaterializedNodes(this);
     }
 
@@ -260,7 +175,6 @@ class IncrementalGraphClass {
      * @returns {Promise<DateTime>}
      */
     async getCreationTime(nodeName, bindings = []) {
-        await this._ensureGraphSchemeReady();
         return await internalGetCreationTime(this, nodeName, bindings);
     }
 
@@ -270,19 +184,34 @@ class IncrementalGraphClass {
      * @returns {Promise<DateTime>}
      */
     async getModificationTime(nodeName, bindings = []) {
-        await this._ensureGraphSchemeReady();
         return await internalGetModificationTime(this, nodeName, bindings);
     }
 }
 
 /**
+ * Construct an incremental graph from already-prepared storage state.
+ * The caller must have called `prepareIncrementalGraphStorage` first.
  * @param {IncrementalGraphCapabilities} capabilities
  * @param {RootDatabase} rootDatabase
- * @param {Array<NodeDef>} nodeDefs
+ * @param {PreparedGraphStorage} prepared
  * @returns {IncrementalGraphClass}
  */
-function makeIncrementalGraph(capabilities, rootDatabase, nodeDefs) {
-    return new IncrementalGraphClass(capabilities, rootDatabase, nodeDefs);
+function makeIncrementalGraph(capabilities, rootDatabase, prepared) {
+    return new IncrementalGraphClass(capabilities, rootDatabase, prepared);
+}
+
+/**
+ * Async convenience factory: prepares storage and constructs the graph.
+ * This is the typical entry point for callers that do not need explicit
+ * lifecycle control between preparation and construction.
+ * @param {IncrementalGraphCapabilities} capabilities
+ * @param {RootDatabase} rootDatabase
+ * @param {import('./types').NodeDef[]} nodeDefs
+ * @returns {Promise<IncrementalGraphClass>}
+ */
+async function createIncrementalGraph(capabilities, rootDatabase, nodeDefs) {
+    const prepared = await prepareIncrementalGraphStorage(rootDatabase, nodeDefs);
+    return new IncrementalGraphClass(capabilities, rootDatabase, prepared);
 }
 
 /**
@@ -297,5 +226,6 @@ function isIncrementalGraph(object) {
 
 module.exports = {
     makeIncrementalGraph,
+    createIncrementalGraph,
     isIncrementalGraph,
 };

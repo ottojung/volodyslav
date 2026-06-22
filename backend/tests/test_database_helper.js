@@ -5,7 +5,7 @@
  * Usage:
  *   const db = await getRootDatabase(capabilities);
  *   const graphDef = [..];
- *   const graph = makeIncrementalGraph(db, graphDef);
+ *   const graph = await createIncrementalGraph(db, graphDef);
  *   const testDb = makeTestDatabase(graph);
  *
  *   // Now use old pattern:

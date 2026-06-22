@@ -27,6 +27,7 @@ const {
     deriveInputEdges,
     GRAPH_SCHEME_KEY,
     MissingGraphSchemeError,
+    versionToString,
 } = require("./database");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
@@ -419,14 +420,16 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             'Migration not required: no stored version found in active replica; marking fresh database with current version'
         );
         // No previous version recorded; fresh database: record current version
-        // and graph_scheme, nothing to migrate.
+        // and graph_scheme together as one logical initialization operation.
         const compiledNodes = nodeDefs.map(compileNodeDef);
         const currentGraphScheme = JSON.stringify(
             serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes))
         );
         const schemaStorage = rootDatabase.getSchemaStorage();
-        await schemaStorage.global.put(GRAPH_SCHEME_KEY, currentGraphScheme);
-        await rootDatabase.setGlobalVersion(rootDatabase.getVersion());
+        await schemaStorage.batch([
+            schemaStorage.global.putOp('version', versionToString(currentVersion)),
+            schemaStorage.global.putOp(GRAPH_SCHEME_KEY, currentGraphScheme),
+        ]);
         return rootDatabase;
     }
 

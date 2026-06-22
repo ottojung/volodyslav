@@ -7,7 +7,7 @@ const fs = require("fs");
 const os = require("os");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const {
-    makeIncrementalGraph,
+    createIncrementalGraph,
     isInvalidNode,
     isSchemaPatternNotAllowed,
 } = require("../src/generators/incremental_graph");
@@ -44,7 +44,7 @@ describe("Parameterized node schemas", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, schemas);
+            const graph = await createIncrementalGraph(capabilities, db, schemas);
 
             // Try to pull with an identifier that looks like a pattern
             // In the new API, "derived(x)" is a schema pattern with variables
@@ -81,7 +81,7 @@ describe("Parameterized node schemas", () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
-            const graph = makeIncrementalGraph(capabilities, db, []);
+            const graph = await createIncrementalGraph(capabilities, db, []);
 
 
             let error = null;
@@ -98,7 +98,7 @@ describe("Parameterized node schemas", () => {
     });
 
     describe("Schema overlap detection (T3)", () => {
-        test("rejects truly overlapping schemas", () => {
+        test("rejects truly overlapping schemas", async () => {
             // These truly overlap: pair(x,y) and pair(a,b) can match pair(1,2)
             const overlappingSchemas = [
                 {
@@ -117,11 +117,9 @@ describe("Parameterized node schemas", () => {
                 },
             ];
 
-            expect(() => {
-                const capabilities = getTestCapabilities();
-                const db = {};  // Dummy - won't be used
-                makeIncrementalGraph(capabilities, db, overlappingSchemas);
-            }).toThrow("Schema patterns overlap");
+            const capabilities = getTestCapabilities();
+            const db = {};
+            await expect(createIncrementalGraph(capabilities, db, overlappingSchemas)).rejects.toThrow("Schema patterns overlap");
         });
     });
 

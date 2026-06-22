@@ -353,7 +353,7 @@ describe("runMigration", () => {
             expect(mock.setCurrentReplicaPointerCalled).toBe(false);
         });
 
-        test("records current version via setGlobalVersion so future upgrades are detected", async () => {
+        test("records current version via batch so future upgrades are detected", async () => {
               const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const { yStorage } = makeYDb(makeSchemaStorage());
@@ -366,7 +366,8 @@ describe("runMigration", () => {
 
             await runMigration(capabilities, mock.rootDatabase, [], async () => {});
 
-            expect(mock.setGlobalVersionCalledWith).toBe("1.0.0");
+            const storedVersion = await xStorage.global.get("version");
+            expect(storedVersion).toBe("1.0.0");
         });
 
         test("does not call checkpointMigration", async () => {
