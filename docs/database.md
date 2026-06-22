@@ -26,6 +26,12 @@ Within each namespace there are further typed sublevels:
 | `timestamps`| Creation and last-modification ISO timestamps             |
 | `global`    | Namespace metadata (version, identifiers_keys_map, last_node_index, fingerprint, graph_scheme) |
 
+Structural dependency edges (`inputEdges(N)`) are not persisted per node. They are derived from
+`global/graph_scheme` (the schema's input-position definitions), `global/identifiers_keys_map`
+(the semantic-key-to-identifier bijection), and the node's own semantic key. The resulting
+`NodeIdentifier[]` is computed at runtime and used for validity checking. Because the
+graph scheme defines the dependency shape centrally, per-node input storage is unnecessary.
+
 There is also a top-level `_meta` sublevel (outside the `x`/`y` namespace) that stores the database
 current replica pointer.
 

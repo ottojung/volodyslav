@@ -5,7 +5,7 @@
 The IncrementalGraph system stores its state in two layers:
 
 1. **Persisted layer** — a LevelDB database on disk. Survives process restarts. Stores node
-   values, freshness markers, input dependency records, validity sets,
+   values, freshness markers, validity sets,
    creation/modification timestamps, and the *identifier lookup* (the bijection
    between semantic node keys and deterministic fingerprint-index node identifiers).
 
