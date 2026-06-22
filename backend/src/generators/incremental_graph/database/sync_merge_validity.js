@@ -3,7 +3,8 @@
  *
  * After node decisions are applied and the final graph state is assembled,
  * this module rebuilds the valid relation from the final merged inputs and
- * freshness, while preserving compatible validity entries for kept nodes.
+ * freshness, while transporting provenance-backed validity entries from both the
+ * original target replica and the staged host replica.
  */
 
 
@@ -16,6 +17,17 @@ const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {'keep' | 'take' | 'invalidate'} MergeDecision */
+
+/**
+ * @typedef {object} SourceValueOrigin
+ * @property {'source'} kind
+ * @property {'target' | 'host'} side
+ * @property {NodeIdentifier} sourceId
+ */
+
+/**
+ * @typedef {SourceValueOrigin | { kind: 'none' }} ValueOrigin
+ */
 
 /**
  * Small helper around SchemaStorage.batch() that guarantees batch sizes never
@@ -77,92 +89,244 @@ class ReplicaBatchWriter {
 }
 
 /**
- * Rebuild the valid relation from the final merged graph state.
+ * Build the valueOriginByKey map from merge plan data.
  *
- * 1. Capture validity entries currently present in the merge target.
- * 2. Preserve compatible valid[D].has(N) entries for kept nodes whose value
- *    identity is unchanged and whose input D's value identity is unchanged.
- * 3. Remove entries for deleted/discarded identifiers, or entries where the
- *    dependent's inputs no longer contain the dependency.
- * 4. Remove entries for nodes whose stored value was changed, taken from an
- *    incompatible side, or invalidated.
- * 5. Add required missing valid flags for every up-to-date node according
- *    to the invariant.
+ * The map describes the provenance of every final stored value:
+ * - { kind: "source", side, sourceId } if the final value is a byte-for-byte
+ *   copy preserved from that side's source identifier.
+ * - { kind: "none" } if the final value is deleted, absent, or not a preserved
+ *   copy from either source.
  *
- * @param {SchemaStorage} targetStorage
- * @param {Map<NodeKeyString, MergeDecision>} decisions
  * @param {Map<NodeKeyString, 'keep' | 'take'>} initialDecisions
- * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
- * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
+ * @param {Map<NodeKeyString, MergeDecision>} decisions
  * @param {IdentifierLookup} targetLookup
- * @returns {Promise<void>}
+ * @param {IdentifierLookup} hostLookup
+ * @param {Set<NodeKeyString>} directlyReloweredNodes
+ * @param {SchemaStorage} targetStorage
+ * @param {SchemaStorage} targetSourceStorage
+ * @param {SchemaStorage} hostSourceStorage
+ * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
+ * @returns {Promise<Map<NodeKeyString, ValueOrigin>>}
  */
-async function preserveAndRebuildValidity(
-    targetStorage,
-    decisions,
+async function buildValueOriginByKey(
     initialDecisions,
-    finalIdentifierForKey,
-    mergedInputsMap,
-    targetLookup
+    decisions,
+    targetLookup,
+    hostLookup,
+    directlyReloweredNodes,
+    targetStorage,
+    targetSourceStorage,
+    hostSourceStorage,
+    finalIdentifierForKey
 ) {
-    /** @type {Map<string, NodeIdentifier[]>} */
-    const previousValid = new Map();
-    for await (const depId of targetStorage.valid.keys()) {
-        const dependents = await targetStorage.valid.get(depId);
-        if (dependents !== undefined) {
-            previousValid.set(nodeIdentifierToString(depId), dependents);
+    /** @type {Map<NodeKeyString, ValueOrigin>} */
+    const map = new Map();
+
+    for (const [nodeKey] of decisions) {
+        if (directlyReloweredNodes.has(nodeKey)) {
+            map.set(nodeKey, { kind: 'none' });
+            continue;
         }
+        const finalId = finalIdentifierForKey.get(nodeKey);
+        if (finalId === undefined || await targetStorage.values.get(finalId) === undefined) {
+            map.set(nodeKey, { kind: 'none' });
+            continue;
+        }
+        const initial = initialDecisions.get(nodeKey);
+        if (initial === undefined) {
+            map.set(nodeKey, { kind: 'none' });
+            continue;
+        }
+        const decision = decisions.get(nodeKey);
+        const sourceSide = decision === 'invalidate' ? initial : decision;
+        const sourceLookup = sourceSide === 'take' ? hostLookup : targetLookup;
+        const sourceStorage = sourceSide === 'take' ? hostSourceStorage : targetSourceStorage;
+        const sourceId = sourceLookup.keyToId.get(String(nodeKey));
+        if (sourceId === undefined || await sourceStorage.values.get(sourceId) === undefined) {
+            map.set(nodeKey, { kind: 'none' });
+            continue;
+        }
+        map.set(nodeKey, { kind: 'source', side: sourceSide === 'take' ? 'host' : 'target', sourceId });
     }
 
-    await targetStorage.valid.clear();
+    return map;
+}
+
+/**
+ * Check whether a ValueOrigin matches a specific source side and source identifier.
+ * @param {ValueOrigin | undefined} origin
+ * @param {'target' | 'host'} side
+ * @param {NodeIdentifier} sourceId
+ * @returns {boolean}
+ */
+function originMatches(origin, side, sourceId) {
+    return origin !== undefined
+        && origin.kind === 'source'
+        && origin.side === side
+        && nodeIdentifierToString(origin.sourceId) === nodeIdentifierToString(sourceId);
+}
+
+/**
+ * Check whether a NodeIdentifier is present in a list.
+ * @param {NodeIdentifier[]} list
+ * @param {NodeIdentifier} id
+ * @returns {boolean}
+ */
+function containsIdentifier(list, id) {
+    const idStr = nodeIdentifierToString(id);
+    return list.some(item => nodeIdentifierToString(item) === idStr);
+}
+
+/**
+ * @param {Map<string, NodeIdentifier[]>} validMap
+ * @returns {Map<string, string[]>}
+ */
+function canonicalizeValidMap(validMap) {
+    /** @type {Map<string, string[]>} */
+    const canonical = new Map();
+    for (const [depIdStr, dependents] of validMap) {
+        if (dependents.length === 0) {
+            continue;
+        }
+        const dependentStrings = Array.from(new Set(dependents.map(nodeIdentifierToString))).sort();
+        if (dependentStrings.length > 0) {
+            canonical.set(depIdStr, dependentStrings);
+        }
+    }
+    return canonical;
+}
+
+/**
+ * @param {SchemaStorage} targetStorage
+ * @returns {Promise<Map<string, string[]>>}
+ */
+async function readCanonicalValidMap(targetStorage) {
+    /** @type {Map<string, NodeIdentifier[]>} */
+    const validMap = new Map();
+    for await (const depId of targetStorage.valid.keys()) {
+        validMap.set(nodeIdentifierToString(depId), await targetStorage.valid.get(depId) ?? []);
+    }
+    return canonicalizeValidMap(validMap);
+}
+
+/**
+ * @param {Map<string, string[]>} left
+ * @param {Map<string, string[]>} right
+ * @returns {boolean}
+ */
+function canonicalValidMapsEqual(left, right) {
+    if (left.size !== right.size) {
+        return false;
+    }
+    for (const [depIdStr, leftDependents] of left) {
+        const rightDependents = right.get(depIdStr);
+        if (rightDependents === undefined || leftDependents.length !== rightDependents.length) {
+            return false;
+        }
+        for (let index = 0; index < leftDependents.length; index += 1) {
+            if (leftDependents[index] !== rightDependents[index]) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * Rebuild the valid relation from provenance-based value origin transport.
+ *
+ * Algorithm:
+ * 1. Transport validity entries from both source sides based on source
+ *    provenance for both endpoints.
+ * 2. Add mandatory flags for every up-to-date node.
+ * 3. Clear the existing valid sublevel and write the rebuilt relation.
+ *
+ * A validity proof valid[D].has(N) is transported from a source side only
+ * when D and N both resolve through the same source side and their final values
+ * preserve those exact source identifiers.
+ * - D is still a structural input of N in the merged graph.
+ *
+ * @param {object} options
+ * @param {SchemaStorage} options.targetStorage
+ * @param {SchemaStorage} options.targetSourceStorage
+ * @param {SchemaStorage} options.hostSourceStorage
+ * @param {IdentifierLookup} options.targetLookup
+ * @param {IdentifierLookup} options.hostLookup
+ * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
+ * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
+ * @returns {Promise<boolean>} Whether the canonical valid relation changed.
+ */
+async function rebuildMergedValidity({
+    targetStorage,
+    targetSourceStorage,
+    hostSourceStorage,
+    targetLookup,
+    hostLookup,
+    finalIdentifierForKey: finalIdForKey,
+    mergedInputsMap,
+    valueOriginByKey,
+}) {
+    const oldCanonicalValidMap = await readCanonicalValidMap(targetStorage);
 
     /** @type {Map<string, NodeIdentifier[]>} */
     const validMap = new Map();
     /** @type {Map<string, NodeIdentifier>} */
     const depIdCache = new Map();
 
-    for (const [depIdStr, dependents] of previousValid) {
-        const depNodeKey = targetLookup.idToKey.get(depIdStr);
-        if (depNodeKey === undefined) continue;
-        const finalDepId = finalIdentifierForKey.get(depNodeKey);
-        if (finalDepId === undefined) continue;
+    /**
+     * @param {'target' | 'host'} side
+     * @param {SchemaStorage} sourceStorage
+     * @param {IdentifierLookup} sourceLookup
+     * @returns {Promise<void>}
+     */
+    async function transportValidityFromSide(side, sourceStorage, sourceLookup) {
+        for await (const sourceDepId of sourceStorage.valid.keys()) {
+            const sourceDependents = await sourceStorage.valid.get(sourceDepId) ?? [];
 
-        const depDecision = decisions.get(depNodeKey);
-        const depInitial = initialDecisions.get(depNodeKey);
-        if (depDecision !== 'keep' || depInitial !== 'keep') continue;
+            const depIdStr = nodeIdentifierToString(sourceDepId);
+            const depKey = sourceLookup.idToKey.get(depIdStr);
+            if (depKey === undefined) continue;
 
-        for (const dependent of dependents) {
-            const depStr = nodeIdentifierToString(dependent);
-            const depNodeKey2 = targetLookup.idToKey.get(depStr);
-            if (depNodeKey2 === undefined) continue;
-            const finalDepId2 = finalIdentifierForKey.get(depNodeKey2);
-            if (finalDepId2 === undefined) continue;
+            const finalDepId = finalIdForKey.get(depKey);
+            if (finalDepId === undefined) continue;
 
-            const dep2Decision = decisions.get(depNodeKey2);
-            const dep2Initial = initialDecisions.get(depNodeKey2);
-            if (dep2Decision !== 'keep' || dep2Initial !== 'keep') continue;
+            if (!originMatches(valueOriginByKey.get(depKey), side, sourceDepId)) continue;
 
-            const dep2Inputs = mergedInputsMap.get(finalDepId2) ?? [];
-            if (!dep2Inputs.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(finalDepId))) {
-                continue;
-            }
+            for (const sourceDependentId of sourceDependents) {
+                const dependentIdStr = nodeIdentifierToString(sourceDependentId);
+                const dependentKey = sourceLookup.idToKey.get(dependentIdStr);
+                if (dependentKey === undefined) continue;
 
-            const finalDepIdStr = nodeIdentifierToString(finalDepId);
-            depIdCache.set(finalDepIdStr, finalDepId);
-            let deps = validMap.get(finalDepIdStr) ?? [];
-            validMap.set(finalDepIdStr, deps);
-            if (!deps.some(d => nodeIdentifierToString(d) === nodeIdentifierToString(finalDepId2))) {
-                deps.push(finalDepId2);
+                const finalDependentId = finalIdForKey.get(dependentKey);
+                if (finalDependentId === undefined) continue;
+
+                if (!originMatches(valueOriginByKey.get(dependentKey), side, sourceDependentId)) continue;
+
+                const finalInputs = mergedInputsMap.get(finalDependentId) ?? [];
+                if (!containsIdentifier(finalInputs, finalDepId)) continue;
+
+                const finalDepIdStr = nodeIdentifierToString(finalDepId);
+                depIdCache.set(finalDepIdStr, finalDepId);
+                let deps = validMap.get(finalDepIdStr);
+                if (deps === undefined) {
+                    deps = [];
+                    validMap.set(finalDepIdStr, deps);
+                }
+                if (!containsIdentifier(deps, finalDependentId)) {
+                    deps.push(finalDependentId);
+                }
             }
         }
     }
 
+    await transportValidityFromSide('target', targetSourceStorage, targetLookup);
+    await transportValidityFromSide('host', hostSourceStorage, hostLookup);
 
     for await (const nodeIdentifier of targetStorage.values.keys()) {
         const freshness = await targetStorage.freshness.get(nodeIdentifier);
-        if (freshness !== "up-to-date") {
-            continue;
-        }
+        if (freshness !== 'up-to-date') continue;
+
         const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
         const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
         for (const depId of requiredInputs) {
@@ -176,6 +340,8 @@ async function preserveAndRebuildValidity(
         }
     }
 
+    await targetStorage.valid.clear();
+
     const writer = new ReplicaBatchWriter(targetStorage);
     for (const [depIdStr, dependents] of validMap) {
         const depId = depIdCache.get(depIdStr);
@@ -185,9 +351,11 @@ async function preserveAndRebuildValidity(
         }
     }
     await writer.flush();
+    return !canonicalValidMapsEqual(oldCanonicalValidMap, canonicalizeValidMap(validMap));
 }
 
 module.exports = {
-    preserveAndRebuildValidity,
+    rebuildMergedValidity,
+    buildValueOriginByKey,
     ReplicaBatchWriter,
 };

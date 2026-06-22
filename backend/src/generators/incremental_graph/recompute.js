@@ -113,8 +113,8 @@ async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialD
             const freshness = await batch.freshness.get(dep);
             if (freshness === "up-to-date") {
                 batch.freshness.put(dep, "potentially-outdated");
-                worklist.push(dep);
             }
+            worklist.push(dep);
         }
     }
 }

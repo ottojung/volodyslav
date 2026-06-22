@@ -27,49 +27,46 @@ const { lookupNodeIdentifier } = require("./graph_state");
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
  * @param {import('./database/types').NodeIdentifier} changedIdentifier
  * @param {BatchBuilder} batch
- * @param {Set<string>} [nodesBecomingOutdated]
  * @returns {Promise<void>}
  */
 async function internalPropagateOutdated(
     incrementalGraph,
     changedIdentifier,
-    batch,
-    nodesBecomingOutdated = new Set()
+    batch
 ) {
-    const dynamicDependents = await incrementalGraph.storage.getValid(
-        changedIdentifier,
-        batch
-    );
-    for (const output of dynamicDependents) {
-        const outputIdentifierString = nodeIdentifierToString(output);
-        if (nodesBecomingOutdated.has(outputIdentifierString)) {
-            continue;
-        }
+    /** @type {Set<string>} */
+    const visited = new Set();
+    /** @type {import('./database/types').NodeIdentifier[]} */
+    const worklist = [changedIdentifier];
 
-        const currentFreshness = await batch.freshness.get(output);
-        if (currentFreshness === "up-to-date") {
-            batch.freshness.put(output, "potentially-outdated");
-            nodesBecomingOutdated.add(outputIdentifierString);
-            await internalPropagateOutdated(
-                incrementalGraph,
-                output,
-                batch,
-                nodesBecomingOutdated
-            );
-            continue;
-        }
-        if (
-            currentFreshness === undefined ||
-            currentFreshness === "potentially-outdated"
-        ) {
-            continue;
-        }
+    while (worklist.length > 0) {
+        const current = worklist.pop();
+        if (current === undefined) continue;
 
-        /** @type {never} */
-        const freshness = currentFreshness;
-        throw new Error(
-            `Unexpected freshness value ${freshness} for node ${outputIdentifierString}`
+        const dynamicDependents = await incrementalGraph.storage.getValid(
+            current,
+            batch
         );
+        for (const output of dynamicDependents) {
+            const outputStr = nodeIdentifierToString(output);
+            if (visited.has(outputStr)) continue;
+            visited.add(outputStr);
+
+            const currentFreshness = await batch.freshness.get(output);
+            if (currentFreshness === "up-to-date") {
+                batch.freshness.put(output, "potentially-outdated");
+            } else if (
+                currentFreshness !== undefined &&
+                currentFreshness !== "potentially-outdated"
+            ) {
+                /** @type {never} */
+                const freshness = currentFreshness;
+                throw new Error(
+                    `Unexpected freshness value ${freshness} for node ${outputStr}`
+                );
+            }
+            worklist.push(output);
+        }
     }
 }
 

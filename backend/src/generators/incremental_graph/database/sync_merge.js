@@ -48,11 +48,12 @@ const { buildMergePlan } = require('./sync_merge_plan');
 const {
     assertValidFinalMergeState,
     assertLookupCoversMaterializedNodes,
+    assertMaterializedNodesHaveTimestamps,
     FinalMergeStateError,
     isFinalMergeStateError,
 } = require('./sync_merge_validation');
 const { buildDeleteNodeOps, copyNodeOps, copyReplicaGently } = require('./sync_merge_transfer');
-const { preserveAndRebuildValidity, ReplicaBatchWriter } = require('./sync_merge_validity');
+const { rebuildMergedValidity, buildValueOriginByKey, ReplicaBatchWriter } = require('./sync_merge_validity');
 const {
     assertNoIdentifierCollisions,
     parseIdentifierLookup,
@@ -328,11 +329,13 @@ async function commitChangedMerge(
  * - The live database is locked for the duration of this call.
  *
  * Post-conditions on success:
- * - If the merge changed graph data or reconciled identifiers, the inactive
- *   replica contains the merged graph and is made active.
- * - If every node and identifier was kept, the active replica pointer is unchanged. The
- *   inactive replica may still have been refreshed as a copy of the active
- *   replica, but callers must continue reading from the active pointer.
+ * - If the merge changed graph data, reconciled identifiers, or imported new
+ *   validity metadata, the inactive replica contains the merged graph and is
+ *   made active.
+ * - If every node, identifier, and validity relation was kept, the active
+ *   replica pointer is unchanged. The inactive replica may still have been
+ *   refreshed as a copy of the active replica, but callers must continue
+ *   reading from the active pointer.
  * - Hostname staging storage is not cleared here; the caller owns cleanup.
  *
  * @param {Logger} logger
@@ -366,7 +369,9 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const targetLookup = await loadTargetLookup(targetStorage);
     assertNoIdentifierCollisions(targetLookup, hostLookup);
     await assertLookupCoversMaterializedNodes(hostStorage, hostLookup, 'staged host snapshot');
+    await assertMaterializedNodesHaveTimestamps(hostStorage, hostLookup, 'staged host snapshot');
     await assertLookupCoversMaterializedNodes(targetStorage, targetLookup, 'merge target replica');
+    await assertMaterializedNodesHaveTimestamps(targetStorage, targetLookup, 'merge target replica');
 
     const targetLastNodeIndex = rootDatabase.getLastNodeIndex();
 
@@ -401,17 +406,31 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     );
 
     const summary = summarizeDecisions(decisions.values());
-    const hasChanges = summary.hasChanges || hasIdentifierReconciliation;
-    if (hasChanges) {
-        await preserveAndRebuildValidity(
-            targetStorage,
-            decisions,
-            initialDecisions,
-            finalIdentifierForKey,
-            mergedInputsMap,
-            targetLookup
-        );
-    }
+    const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation;
+    const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
+    const valueOriginByKey = await buildValueOriginByKey(
+        initialDecisions,
+        decisions,
+        targetLookup,
+        hostLookup,
+        directlyReloweredNodes,
+        targetStorage,
+        targetSourceStorage,
+        hostStorage,
+        finalIdentifierForKey
+    );
+
+    const validityChanged = await rebuildMergedValidity({
+        targetStorage,
+        targetSourceStorage,
+        hostSourceStorage: hostStorage,
+        targetLookup,
+        hostLookup,
+        finalIdentifierForKey,
+        mergedInputsMap,
+        valueOriginByKey,
+    });
+    const hasChanges = hasSemanticChanges || validityChanged;
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
 
     if (hasChanges) {
