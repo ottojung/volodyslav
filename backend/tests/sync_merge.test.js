@@ -209,6 +209,78 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
+    test('rejects merge when version matches but graph_scheme differs', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeId = nodeIdentifierFromString('137-abcdefghi');
+            const nodeKey = stringToNodeKeyString('{"head":"X","args":[]}');
+
+            // Write scheme A on local
+            const L = db.schemaStorageForReplica('x');
+            await L.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
+                format: 1,
+                nodes: [{ head: "X", arity: 0, inputTemplates: [] }],
+            }));
+            await writeIdentifierLookup(L, [[nodeId, nodeKey]]);
+
+            // Write different scheme B on host
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
+                format: 1,
+                nodes: [{ head: "Y", arity: 0, inputTemplates: [] }],
+            }));
+            await writeIdentifierLookup(H, []);
+
+            await expect(
+                mergeHostIntoReplica(logger, db, hostname)
+            ).rejects.toThrow(/different graph_scheme/);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('accepts merge when version and graph_scheme both match', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeId = nodeIdentifierFromString('138-abcdefghi');
+            const nodeKey = stringToNodeKeyString('{"head":"X","args":[]}');
+
+            // Write identical scheme on both sides
+            const scheme = {
+                format: 1,
+                nodes: [{ head: "X", arity: 0, inputTemplates: [] }],
+            };
+            const L = db.schemaStorageForReplica('x');
+            await L.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
+            await writeIdentifierLookup(L, [[nodeId, nodeKey]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
+            await writeIdentifierLookup(H, []);
+
+            // Merge succeeds because no host node data exists.
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     test('isHostVersionMismatchError identifies the error', () => {
         const err = new HostVersionMismatchError('host', 'v1', 'v2');
         expect(isHostVersionMismatchError(err)).toBe(true);

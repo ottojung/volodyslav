@@ -43,6 +43,7 @@ const {
     makeEmptyIdentifierLookup,
     serializeIdentifierLookup,
 } = require('./identifier_lookup');
+const { GRAPH_SCHEME_KEY } = require('./graph_scheme');
 const { LAST_NODE_INDEX_KEY } = require('./root_database');
 const { buildMergePlan } = require('./sync_merge_plan');
 const {
@@ -372,6 +373,16 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     await assertMaterializedNodesHaveTimestamps(hostStorage, hostLookup, 'staged host snapshot');
     await assertLookupCoversMaterializedNodes(targetStorage, targetLookup, 'merge target replica');
     await assertMaterializedNodesHaveTimestamps(targetStorage, targetLookup, 'merge target replica');
+
+    const targetSchemeRaw = await targetStorage.global.get(GRAPH_SCHEME_KEY);
+    const hostSchemeRaw = await hostStorage.global.get(GRAPH_SCHEME_KEY);
+    if (JSON.stringify(targetSchemeRaw) !== JSON.stringify(hostSchemeRaw)) {
+        throw new Error(
+            `Cannot merge host '${hostname}': ` +
+            `same version but different graph_scheme definition ` +
+            `(local scheme differs from host scheme)`
+        );
+    }
 
     const targetLastNodeIndex = rootDatabase.getLastNodeIndex();
 

@@ -2,7 +2,7 @@
  * Shared utilities for input-edge normalization and comparison.
  *
  * Input edges are the deduplicated, first-occurrence-preserving structural dependency lists
- * stored in the persisted "inputs" records.
+ * derived from the graph scheme and identifier lookup, not persisted per node.
  */
 
 const { nodeIdentifierToString } = require("./types");
