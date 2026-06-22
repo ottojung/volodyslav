@@ -426,10 +426,12 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes))
         );
         const schemaStorage = rootDatabase.getSchemaStorage();
-        await schemaStorage.batch([
+        /** @type {Array<*>} */
+        const initOps = [
             schemaStorage.global.putOp('version', versionToString(currentVersion)),
             schemaStorage.global.putOp(GRAPH_SCHEME_KEY, currentGraphScheme),
-        ]);
+        ];
+        await schemaStorage.batch(initOps);
         return rootDatabase;
     }
 

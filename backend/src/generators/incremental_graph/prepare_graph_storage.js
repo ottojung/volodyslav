@@ -14,11 +14,11 @@
  * After construction the graph is immediately usable — no hidden async promises.
  */
 
-/** @typedef {import('../types').NodeDef} NodeDef */
-/** @typedef {import('../types').CompiledNode} CompiledNode */
-/** @typedef {import('./graph_scheme').GraphScheme} GraphScheme */
-/** @typedef {import('./root_database').RootDatabase} RootDatabase */
-/** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
+/** @typedef {import('./types').NodeDef} NodeDef */
+/** @typedef {import('./types').CompiledNode} CompiledNode */
+/** @typedef {import('./database/graph_scheme').GraphScheme} GraphScheme */
+/** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
+/** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 
 const {
     compileNodeDef,
@@ -31,9 +31,7 @@ const {
     GRAPH_SCHEME_KEY,
     buildGraphSchemeFromNodeDefs,
     buildGraphSchemeStringFromNodeDefs,
-    serializeGraphScheme,
     assertExactStoredGraphSchemeMatches,
-    MissingGraphSchemeError,
 } = require("./database/graph_scheme");
 const { versionToString } = require("./database/types");
 
@@ -43,7 +41,7 @@ const { versionToString } = require("./database/types");
  * @property {CompiledNode[]} compiledNodes
  * @property {GraphScheme} graphScheme
  * @property {string} graphSchemeString
- * @property {Map<import('../types').NodeName, CompiledNode>} headIndex
+ * @property {Map<import('./types').NodeName, CompiledNode>} headIndex
  */
 
 /**
@@ -78,7 +76,7 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
     const graphScheme = buildGraphSchemeFromNodeDefs(compiledNodes);
     const graphSchemeString = buildGraphSchemeStringFromNodeDefs(compiledNodes);
 
-    /** @type {Map<import('../types').NodeName, CompiledNode>} */
+    /** @type {Map<import('./types').NodeName, CompiledNode>} */
     const headIndex = new Map();
     for (const compiledNode of compiledNodes) {
         headIndex.set(compiledNode.head, compiledNode);
@@ -93,10 +91,12 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
             // Genuinely fresh database: write version and graph_scheme
             // together as one logical initialization operation.
             const currentVersion = rootDatabase.getVersion();
-            await schemaStorage.batch([
+            /** @type {Array<*>} */
+            const initOps = [
                 schemaStorage.global.putOp('version', versionToString(currentVersion)),
                 schemaStorage.global.putOp(GRAPH_SCHEME_KEY, graphSchemeString),
-            ]);
+            ];
+            await schemaStorage.batch(initOps);
         }
         // If storedScheme exists but version doesn't, proceed without validation.
         // This state should not normally occur and may be handled by migration.
