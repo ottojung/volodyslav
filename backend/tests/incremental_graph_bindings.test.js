@@ -11,7 +11,15 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase } = require("../src/generators/incremental_graph/database");
+const {
+    getRootDatabase,
+    GRAPH_SCHEME_KEY,
+    buildGraphSchemeFromNodeDefs,
+    serializeGraphScheme,
+} = require("../src/generators/incremental_graph/database");
+const {
+    compileNodeDef,
+} = require("../src/generators/incremental_graph/compiled_node");
 const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
@@ -260,6 +268,12 @@ describe("Bound variables in computors", () => {
 
             // Reopen database
             const db2 = await getRootDatabase(capabilities);
+            // Persist graph_scheme so the reopened graph can validate it
+            const compiledForReopen = schemas.map(compileNodeDef);
+            const schemeForReopen = JSON.stringify(
+                serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledForReopen))
+            );
+            await db2.getSchemaStorage().global.put(GRAPH_SCHEME_KEY, schemeForReopen);
             const graph2 = makeIncrementalGraph(capabilities, db2, schemas);
 
             // Pull should get cached values

@@ -6,7 +6,10 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { getRootDatabase, IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/database");
+const { getRootDatabase, IDENTIFIERS_KEY, GRAPH_SCHEME_KEY, buildGraphSchemeFromNodeDefs, serializeGraphScheme } = require("../src/generators/incremental_graph/database");
+const {
+    compileNodeDef,
+} = require("../src/generators/incremental_graph/compiled_node");
 const {
     makeIncrementalGraph,
     makeUnchanged,
@@ -95,6 +98,13 @@ describe("Incremental graph persistence and restart", () => {
             expect(await graph1.getFreshness("A")).toBe("up-to-date");
             expect(await graph1.getFreshness("B")).toBe("up-to-date");
             expect(await graph1.getFreshness("C")).toBe("up-to-date");
+
+            // Persist graph_scheme so the second construction can validate it
+            const compiledForRestart = schemas.map(compileNodeDef);
+            const schemeForRestart = JSON.stringify(
+                serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledForRestart))
+            );
+            await db.getSchemaStorage().global.put(GRAPH_SCHEME_KEY, schemeForRestart);
 
             // *** RESTART ***
             computeCalls.length = 0;

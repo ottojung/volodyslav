@@ -1003,7 +1003,7 @@ describe("Incremental graph validity", () => {
 
     // === graph_scheme tests ===
     describe("graph_scheme persistence model", () => {
-        it("writes graph_scheme on fresh database", async () => {
+        it("does not write graph_scheme from constructor on fresh database", async () => {
             const { nodeDefs } = createChainGraph(
                 () => ({ v: "src" }),
                 () => ({ v: "mid" }),
@@ -1016,17 +1016,14 @@ describe("Incremental graph validity", () => {
             // Await a pull to ensure async _initializeGraphScheme() completes
             await g.pull("source");
 
+            // Constructor does not write to global — graph_scheme is written
+            // only by migration/init code alongside global/version.
             const schemaStorage = freshDb.getSchemaStorage();
             const stored = await schemaStorage.global.get(GRAPH_SCHEME_KEY);
-            expect(stored).toBeDefined();
-            expect(typeof stored).toBe("string");
+            expect(stored).toBeUndefined();
 
-            const parsed = JSON.parse(stored);
-            expect(parsed.format).toBe(1);
-            const heads = parsed.nodes.map((n) => n.head);
-            expect(heads).toContain("source");
-            expect(heads).toContain("middle");
-            expect(heads).toContain("dependent");
+            // Graph still works without persisted scheme (it's in memory)
+            expect(await g.pull("source")).toEqual({ v: "src" });
         });
 
         it("does not overwrite graph_scheme on existing initialized database with matching scheme", async () => {

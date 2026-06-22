@@ -43,6 +43,7 @@ const {
     buildGraphSchemeFromNodeDefs,
     serializeGraphScheme,
     GRAPH_SCHEME_KEY,
+    MissingGraphSchemeError,
     assertExactStoredGraphSchemeMatches,
 } = require("./database");
 const {
@@ -117,11 +118,9 @@ class IncrementalGraphClass {
         // (getSchemas, getSchemaByHead, getDbVersion) skip the await because
         // they do not touch database state.
         //
-        // global/graph_scheme is treated as initialization metadata:
-        // - For a fresh (unversioned) database: write graph_scheme together with
-        //   the implicit initialization of global/version.
-        // - For an existing initialized database: validate that the stored scheme
-        //   matches the current scheme exactly.  No overwriting.
+        // global/graph_scheme is immutable initialization metadata.
+        // It is written only where global/version is written (migration/init).
+        // The constructor validates but never writes.
         this.graphSchemeString = JSON.stringify(serializeGraphScheme(this.graphScheme));
         this._graphSchemeReady = this._initializeGraphScheme();
 
@@ -131,10 +130,14 @@ class IncrementalGraphClass {
     }
 
     /**
-     * Initialize or validate the stored graph_scheme.
+     * Validate the stored graph_scheme against the current scheme.
      *
-     * For a genuinely fresh database (no stored version), writes the current
-     * graph_scheme as part of initialization.
+     * global/graph_scheme is written only where global/version is written,
+     * i.e. by migration/init code.  The constructor does not write to global.
+     *
+     * For a genuinely fresh database (no stored version and no stored scheme),
+     * the scheme will be written by the migration runner (runMigrationUnsafe)
+     * alongside global/version before any graph storage operations.
      *
      * For an existing initialized database whose stored version matches the
      * current application version, validates that the stored scheme matches
@@ -146,25 +149,38 @@ class IncrementalGraphClass {
      * is allowed to differ — the migration callback will write the new scheme
      * as part of the migration process.
      *
+     * If a versioned database has no stored graph_scheme, treats this as
+     * corruption and throws MissingGraphSchemeError.
+     *
      * @returns {Promise<void>}
      */
     async _initializeGraphScheme() {
         const schemaStorage = this.rootDatabase.getSchemaStorage();
         const storedScheme = await schemaStorage.global.get(GRAPH_SCHEME_KEY);
-        if (storedScheme === undefined) {
+        if (storedScheme !== undefined) {
+            // Stored scheme exists — validate exact match
+            // after checking version.
             const storedVersion = await schemaStorage.global.get('version');
-            if (storedVersion === undefined) {
-                await schemaStorage.global.put(GRAPH_SCHEME_KEY, this.graphSchemeString);
+            if (storedVersion !== undefined && storedVersion !== this.dbVersion) {
+                // Version differs — skip validation (migration owns the new scheme)
                 return;
             }
-        }
-        const storedVersion = await schemaStorage.global.get('version');
-        if (storedVersion !== undefined && storedVersion !== this.dbVersion) {
+            assertExactStoredGraphSchemeMatches(
+                storedScheme,
+                this.graphSchemeString,
+                `active replica '${this.rootDatabase.currentReplicaName()}'`
+            );
             return;
         }
-        assertExactStoredGraphSchemeMatches(
-            storedScheme,
-            this.graphSchemeString,
+        // No stored scheme.
+        const storedVersion = await schemaStorage.global.get('version');
+        if (storedVersion === undefined) {
+            // Fresh database — no stored scheme, no stored version.
+            // Migration/init code will write both.
+            return;
+        }
+        // Versioned database with no graph_scheme — corruption.
+        throw new MissingGraphSchemeError(
             `active replica '${this.rootDatabase.currentReplicaName()}'`
         );
     }
