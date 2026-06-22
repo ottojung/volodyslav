@@ -647,7 +647,7 @@ describe("Incremental graph validity", () => {
 
     // === Test Obligation 7: Failed computor rolls back ===
     describe("test obligation 7: failed computor rolls back", () => {
-        it("does not partially write values, freshness, inputs, or valid", async () => {
+        it("does not partially write values, freshness, or valid", async () => {
             let shouldFail = false;
             const { nodeDefs } = createChainGraph(
                 () => ({ v: "src" }),
@@ -668,7 +668,6 @@ describe("Incremental graph validity", () => {
 
             const midId = db.nodeKeyToId(midKey);
             const oldValue = db._readSublevel('values', midId);
-            const oldInputs = db._readSublevel('inputs', midId);
             const oldValid = db._readSublevel('valid', midId);
 
             shouldFail = true;
@@ -679,7 +678,6 @@ describe("Incremental graph validity", () => {
 
             // After failure: all of middle's state is preserved
             expect(db._readSublevel('values', midId)).toEqual(oldValue);
-            expect(db._readSublevel('inputs', midId)).toEqual(oldInputs);
             expect(db._readSublevel('valid', midId)).toEqual(oldValid);
             // Freshness left as potentially-outdated (from the invalidation)
             expect(db._readSublevel('freshness', midId)).toBe("potentially-outdated");

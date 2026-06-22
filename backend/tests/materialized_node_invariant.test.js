@@ -70,8 +70,8 @@ async function collectValuesIdentifiers(db) {
 }
 
 /**
- * Assert that every identifier in the map has a corresponding inputs entry
- * and every inputs entry has a corresponding map entry.
+ * Assert that every identifier in the map has a corresponding values entry
+ * and every values entry has a corresponding map entry.
  * @param {import('../src/generators/incremental_graph/database').IdentifierLookup} lookup
  * @param {import('../src/generators/incremental_graph/database').RootDatabase} db
  */

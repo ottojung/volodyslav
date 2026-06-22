@@ -30,7 +30,7 @@ const {
  */
 
 /**
- * Reads the validity-authorized consumers for a node from the previous storage.
+ * Reads the outgoing validity frontier for a node from the previous storage.
  * @param {NodeIdentifier} nodeKey
  * @param {ReadableMigrationStorage} prevStorage
  * @returns {Promise<NodeIdentifier[]>}
@@ -84,8 +84,8 @@ async function propagateInvalidate(ctx) {
 /**
  * Build a structural dependency map by deriving dependency edges for every
  * materialized node from the stored graph scheme and identifier lookup.
- * The `valid` relation is an authorization frontier, not a complete
- * structural dependency graph.
+ * The `valid` relation is a stale-cache proof and invalidation frontier,
+ * not a complete structural dependency graph.
  * @param {Set<NodeIdentifier>} materializedNodes
  * @param {import('./database/graph_scheme').GraphScheme} oldGraphScheme
  * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup

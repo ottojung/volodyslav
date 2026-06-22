@@ -31,7 +31,7 @@ After the user-supplied migration callback returns, **every node in `S` must hav
 Traversal helpers expose dependency metadata derived from durable graph metadata:
 
 * Dependencies are derived from the stored graph scheme and identifiers lookup.
-* `listValidDependents(N)` — nodes authorized by `valid[N]`.
+* `listValidDependents(N)` — nodes in `valid[N]` (outgoing validity frontier).
 
 Traversal never re-executes computors; it derives dependency edges from `global/graph_scheme` and `identifiers_keys_map`.
 
@@ -110,7 +110,7 @@ This means that to delete a fan-in node `D = f(B, C)`, both `B` and `C` must be 
 | `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `GetMissingValueError` | `get()` called for a node in `S` with no computed value. |
-| `MissingDependencyMetadataError` | A materialized node has missing or corrupted inputs metadata. |
+| `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 
 ---
 

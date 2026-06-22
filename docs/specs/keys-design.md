@@ -19,7 +19,7 @@ node addressing. It describes the model as it is meant to be.
 - **NodeKey**: the schema-derived identity of a concrete node instance, based on
   `(head, args)`
 - **NodeIdentifier**: the deterministic persisted identifier attached to a materialized node
-- **graph-state sublevels**: `values`, `freshness`, `inputs`, `valid`,
+- **graph-state sublevels**: `values`, `freshness`, `valid`,
   `timestamps`
 
 ## Boundary
@@ -58,7 +58,7 @@ operations rather than concrete-node operations.
 Migration code is internal storage logic, so migrations are fully `NodeIdentifier`-addressed.
 
 - Migration callbacks must receive and return concrete-node references as `NodeIdentifier` values.
-- Migration-produced `inputs`/`valid` must contain only `NodeIdentifier` values.
+- Migration-produced `valid` must contain only `NodeIdentifier` values.
 - Migration control decisions (`keep`, `override`, `invalidate`, `create`, `delete`) operate on `NodeIdentifier`-addressed state, with `NodeKey` used only via the lookup bijection when needed for schema/head filtering or inspection.
 
 There is no mixed-mode migration API: `NodeKey`-addressed migration payloads are out of scope and unsupported.
@@ -139,7 +139,6 @@ All persisted graph state addresses nodes by `NodeIdentifier`, not by `NodeKeySt
 This applies to:
 
 - keys in all graph-state sublevels
-- values inside `inputs`
 - values inside `valid`
 - all migration callback payloads and migration-produced state
 - filesystem-rendered snapshots
@@ -149,13 +148,11 @@ This applies to:
 - `values[id] -> ComputedValue`
 - `freshness[id] -> Freshness`
 - `timestamps[id] -> TimestampRecord`
-- `inputs[id] -> NodeIdentifier[]`
 - `valid[id] -> NodeIdentifier[]`
 
 ### Storage invariants
 
 - graph-state sublevel keys are `NodeIdentifier`
-- `inputs[id]` contains the normalized structural dependency-edge list as `NodeIdentifier[]`
 - `valid[id]` contains `NodeIdentifier[]`
 - validity sets are sorted by `NodeIdentifier` (lexicographic), never by `NodeKey`
 - render/scan paths use direct identifier path segments
@@ -187,7 +184,7 @@ Lifecycle rules:
 - if `nodeKeyToId(nodeKey)` is called for a non-materialized node, it returns missing (or equivalent lookup-miss error/value).
 - the materialization write path is responsible for atomically inserting both graph-state records and id↔key entry.
 - node deletion/de-materialization path is responsible for atomically removing both graph-state records and id↔key entry.
-- `inputs`/`valid` may reference only materialized-node identifiers; they must never require lookup entries for non-materialized nodes.
+- `valid` may reference only materialized-node identifiers; it must never require lookup entries for non-materialized nodes.
 - migration/render/scan/sync validation must fail fast if any graph-state id lacks a key entry, or if any key entry exists without materialized graph-state presence.
 
 ## Allocation and stability
@@ -250,7 +247,6 @@ Each graph-state record appears at a direct identifier path, for example:
 and analogously for the other graph-state sublevels:
 
 - `rendered/r/freshness/nodeid1`
-- `rendered/r/inputs/nodeid1`
 - `rendered/r/valid/nodeid1`
 - `rendered/r/timestamps/nodeid1`
 
@@ -308,8 +304,7 @@ For every materialized node identifier `id`:
 1. `nodeIdToKey(id) = key`
 2. `nodeKeyToId(key) = id`
 3. all graph-state records for that node are keyed by `id`
-4. every entry inside `inputs[id]` is a valid `NodeIdentifier`
-5. every entry inside `valid[id]` is a valid `NodeIdentifier`
+4. every entry inside `valid[id]` is a valid `NodeIdentifier`
 
 No persisted graph edge may point directly to a `NodeKeyString`.
 
@@ -321,4 +316,4 @@ The following states are invalid:
 - `nodeIdToKey(id)` exists but `nodeKeyToId(key)` is missing
 - lookup entries disagree about each other
 - a graph-state record exists for an id with no `nodeIdToKey(id)` entry
-- `inputs` or `valid` mention an unknown id
+- `valid` mentions an unknown id

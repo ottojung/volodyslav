@@ -41,7 +41,6 @@ Node data is stored in typed sublevels keyed by `NodeIdentifier`:
 |----------|-----|-------|
 | `values` | `NodeIdentifier` | computed node value |
 | `freshness` | `NodeIdentifier` | `'up-to-date'` or `'potentially-outdated'` |
-| `inputs` | `NodeIdentifier` | normalized structural dependency-edge list |
 | `valid` | `NodeIdentifier` | validity set |
 | `timestamps` | `NodeIdentifier` | creation and modification timestamps |
 
@@ -200,7 +199,7 @@ When the operation completes inside its concurrency scope:
 1. If any new identifier allocations were made during the transaction, append to the batch:
    - the updated `identifiers_keys_map` (the full working lookup);
    - the updated `last_node_index` (the committed allocation watermark).
-2. Append any node records (values, freshness, inputs, timestamps) accumulated by the
+2. Append any node records (values, freshness, timestamps) accumulated by the
    transaction to the batch.
 3. Flush the batch to LevelDB atomically.
 4. **Only after a successful flush**:

@@ -288,7 +288,7 @@ class InMemoryDatabase {
     /**
      * Helper to seed a schema storage directly (for testing seeded databases).
      * This bypasses normal indexing to simulate partially-seeded databases.
-     * @param {string} sublevel - The sublevel name ('values', 'freshness', 'inputs', 'valid')
+     * @param {string} sublevel - The sublevel name ('values', 'freshness', 'valid')
      * @param {string} key - The key
      * @param {any} value - The value
      */

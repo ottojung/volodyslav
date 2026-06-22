@@ -322,7 +322,7 @@ class MigrationStorageClass {
     }
 
     /**
-     * Get the validity-authorized consumers of a node from the previous-version graph.
+     * Get the outgoing validity frontier of a node from the previous-version graph.
      * @param {NodeIdentifier} nodeKey
      * @returns {Promise<readonly NodeIdentifier[]>}
      */

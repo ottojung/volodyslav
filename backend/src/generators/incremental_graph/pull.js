@@ -71,7 +71,7 @@ const { internalMaybeRecalculate } = require("./recompute");
  * @param {NodeIdentifier} nodeIdentifier
  * @returns {Promise<ComputedValue | undefined>}
  */
-async function readAuthorizedCachedValue(graph, nodeIdentifier) {
+async function readUpToDateCachedValue(graph, nodeIdentifier) {
     if (await graph.storage.freshness.get(nodeIdentifier) !== "up-to-date") {
         return undefined;
     }
@@ -103,7 +103,7 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
 
     const committedIdentifier = graph.rootDatabase.nodeKeyToId(nodeKeyStr);
     if (committedIdentifier !== undefined) {
-        const cachedValue = await readAuthorizedCachedValue(graph, committedIdentifier);
+        const cachedValue = await readUpToDateCachedValue(graph, committedIdentifier);
         if (cachedValue !== undefined) {
             return { value: cachedValue, status: "cached" };
         }
