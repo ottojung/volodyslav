@@ -10,8 +10,6 @@ const {
     createIncrementalGraph,
     isIncrementalGraph,
     makeUnchanged,
-    makeSchemaCycleError,
-    makeSchemaOverlapError,
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const {
@@ -1833,7 +1831,7 @@ describe("generators/incremental_graph", () => {
 
             await expect(
                 createIncrementalGraph(capabilities, db, graphDef)
-            ).rejects.toThrow(makeSchemaCycleError([["node1", "node2"]]).name);
+            ).rejects.toThrow("Schema cycle detected");
 
             await db.close();
         });
@@ -1861,7 +1859,7 @@ describe("generators/incremental_graph", () => {
 
             await expect(
                 createIncrementalGraph(capabilities, db, graphDef)
-            ).rejects.toThrow(makeSchemaOverlapError(["node(x)", "node(y)"]).name);
+            ).rejects.toThrow("Schema patterns overlap");
 
             await db.close();
         });
