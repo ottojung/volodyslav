@@ -90,9 +90,6 @@ class IncrementalGraphClass {
     /** @type {GraphScheme} */
     graphScheme;
 
-    /** @type {string} */
-    graphSchemeString;
-
     /**
      * @param {IncrementalGraphCapabilities} capabilities
      * @param {RootDatabase} rootDatabase
@@ -100,7 +97,6 @@ class IncrementalGraphClass {
      */
     constructor(capabilities, rootDatabase, prepared) {
         this.graphScheme = prepared.graphScheme;
-        this.graphSchemeString = prepared.graphSchemeString;
         this.headIndex = prepared.headIndex;
         this.storage = makeGraphStorage(rootDatabase, capabilities.sleeper);
         this.rootDatabase = rootDatabase;
