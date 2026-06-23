@@ -1,5 +1,5 @@
 const { serializeNodeKey, deserializeNodeKey } = require("./node_key");
-const { stringToNodeName, nodeNameToString, nodeKeyStringToString } = require("./types");
+const { stringToNodeName, nodeNameToString, nodeKeyStringToString, versionToString } = require("./types");
 const { nodeIdentifierToString } = require("./node_identifier");
 const { normalizeInputEdges } = require("./input_edges");
 
@@ -320,16 +320,15 @@ function semanticInputKeys(graphScheme, identifierLookup, outputIdentifier) {
 /**
  * Assert that the stored graph_scheme string matches the expected string exactly.
  *
- * This function enforces the invariant that global/graph_scheme is initialization
- * metadata, not mutable runtime state. No normalization, parsing, or reserialization
- * is performed. Formatting differences count as differences.
+ * `global/graph_scheme` is persisted initialization metadata, stored as a string.
+ * This function enforces the invariant that the stored string must byte-for-byte
+ * equal the current canonical graph scheme string.
  *
- * For an initialized database, the stored scheme must exist and must byte-for-byte
- * equal the current scheme. Missing schemes fail.
- *
- * If the stored value is a parsed JSON object (from LevelDB's JSON encoding), it is
- * stringified with JSON.stringify for the comparison. This is not semantic
- * normalization — it is a storage-encoding conversion to the canonical string form.
+ * - Missing stored values fail with MissingGraphSchemeError.
+ * - Non-string stored values fail with GraphSchemeError (persisted type is part of
+ *   the durable format).
+ * - No normalization, parsing, or reserialization is performed. Formatting
+ *   differences are intentional and count as differences.
  *
  * @param {unknown} stored - Raw value read from global storage.
  * @param {string} expected - The exact expected graph_scheme JSON string.
@@ -340,14 +339,38 @@ function assertExactStoredGraphSchemeMatches(stored, expected, contextDescriptio
     if (stored === undefined) {
         throw new MissingGraphSchemeError(contextDescription);
     }
-    const storedStr = typeof stored === 'string' ? stored : JSON.stringify(stored);
-    if (storedStr !== expected) {
+    if (typeof stored !== "string") {
+        throw new GraphSchemeError(
+            `Invalid graph_scheme in ${contextDescription}: expected string`
+        );
+    }
+    if (stored !== expected) {
         throw new GraphSchemeError(
             `Exact graph_scheme string mismatch in ${contextDescription}: ` +
             `stored scheme does not match current graph scheme. ` +
             `Formatting differences count as differences.`
         );
     }
+}
+
+/**
+ * Initialize replica global metadata for a fresh database.
+ *
+ * `global/version` and `global/graph_scheme` are written together as one
+ * logical initialization operation. This is the single place where fresh
+ * initialization writes both keys.
+ *
+ * @param {import('./root_database').SchemaStorage} schemaStorage
+ * @param {{ version: import('./types').Version, graphSchemeString: string }} params
+ * @returns {Promise<void>}
+ */
+async function initializeReplicaGlobals(schemaStorage, { version, graphSchemeString }) {
+    /** @type {Array<*>} */
+    const ops = [
+        schemaStorage.global.putOp("version", versionToString(version)),
+        schemaStorage.global.putOp(GRAPH_SCHEME_KEY, graphSchemeString),
+    ];
+    await schemaStorage.batch(ops);
 }
 
 module.exports = {
@@ -365,4 +388,5 @@ module.exports = {
     normalizeInputEdges,
     semanticInputKeys,
     assertExactStoredGraphSchemeMatches,
+    initializeReplicaGlobals,
 };

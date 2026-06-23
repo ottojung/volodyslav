@@ -1,14 +1,22 @@
 /**
  * Async preparation step for incremental graph storage lifecycle.
  *
- * This module provides `prepareIncrementalGraphStorage()` which runs all async
- * storage lifecycle that used to be inside the IncrementalGraphClass constructor.
+ * `global/graph_scheme` is immutable replica initialization metadata, stored as a
+ * string. It must be born together with `global/version`. Runtime graph construction
+ * must never initialize, repair, backfill, or skip validation of durable graph
+ * metadata.
+ *
+ * This function enforces the strict lifecycle:
+ * - Uninitialized: both "version" and "graph_scheme" missing → initialize both.
+ * - Half-initialized: one present without the other → throw clearly.
+ * - Initialized, matching version: exact string compare graph_scheme.
+ * - Version mismatch: graph construction over a replica that needs migration is
+ *   not allowed → throw clearly.
  *
  * The caller's responsibility is:
  *   1. Open the root database.
  *   2. Run migration (if needed).
- *   3. Call `prepareIncrementalGraphStorage()` to validate/initialize
- *      persistent schema metadata and compile the node definitions.
+ *   3. Call `prepareIncrementalGraphStorage()` to validate/initialize.
  *   4. Construct IncrementalGraphClass with the prepared state.
  *
  * After construction the graph is immediately usable — no hidden async promises.
@@ -29,10 +37,12 @@ const {
 } = require("./compiled_node");
 const {
     GRAPH_SCHEME_KEY,
+    GraphSchemeError,
+    MissingGraphSchemeError,
     buildGraphSchemeFromNodeDefs,
     buildGraphSchemeStringFromNodeDefs,
     assertExactStoredGraphSchemeMatches,
-    versionToString,
+    initializeReplicaGlobals,
 } = require("./database");
 
 /**
@@ -48,19 +58,16 @@ const {
  * Prepare incremental graph storage by validating persistent schema metadata and
  * compiling node definitions.
  *
- * This function:
- * - Compiles node definitions and validates the pure schema (no async).
- * - Builds the current graph scheme string from compiled nodes.
- * - Reads the stored global/version and global/graph_scheme.
- * - For a genuinely fresh database (no stored version and no stored scheme):
- *   writes global/version and global/graph_scheme together as one batch.
- * - For an initialized database with matching version: validates that the stored
- *   graph_scheme matches the current scheme exactly (raw string comparison).
- * - For an initialized database with a different version (pre-migration): allows
- *   the stored scheme to differ — the migration runner has already or will write
- *   the new scheme as part of the migration process.
- * - For a versioned database with no stored graph_scheme: throws
- *   MissingGraphSchemeError (corruption).
+ * Lifecycle logic:
+ * - If both "version" and "graph_scheme" are missing → genuinely fresh replica.
+ *   Initializes both via initializeReplicaGlobals.
+ * - If "graph_scheme" exists but "version" is missing → half-initialized state,
+ *   throws GraphSchemeError.
+ * - If "version" exists but "graph_scheme" is missing → initialized replica
+ *   without schema metadata, throws MissingGraphSchemeError.
+ * - If both exist but version differs from current → migration needed, throws.
+ * - If both exist and version matches → exact string comparison of graph_scheme
+ *   via assertExactStoredGraphSchemeMatches.
  *
  * @param {RootDatabase} rootDatabase
  * @param {Array<NodeDef>} nodeDefs
@@ -85,33 +92,35 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
     const schemaStorage = rootDatabase.getSchemaStorage();
     const storedVersion = await schemaStorage.global.get('version');
     const storedScheme = await schemaStorage.global.get(GRAPH_SCHEME_KEY);
+    const currentVersion = rootDatabase.getVersion();
 
-    if (storedVersion === undefined) {
-        if (storedScheme === undefined) {
-            // Genuinely fresh database: write version and graph_scheme
-            // together as one logical initialization operation.
-            const currentVersion = rootDatabase.getVersion();
-            /** @type {Array<*>} */
-            const initOps = [
-                schemaStorage.global.putOp('version', versionToString(currentVersion)),
-                schemaStorage.global.putOp(GRAPH_SCHEME_KEY, graphSchemeString),
-            ];
-            await schemaStorage.batch(initOps);
-        }
-        // If storedScheme exists but version doesn't, proceed without validation.
-        // This state should not normally occur and may be handled by migration.
+    if (storedVersion === undefined && storedScheme === undefined) {
+        // Genuinely fresh active replica: initialize both together.
+        await initializeReplicaGlobals(schemaStorage, {
+            version: currentVersion,
+            graphSchemeString,
+        });
+    } else if (storedVersion === undefined && storedScheme !== undefined) {
+        throw new GraphSchemeError(
+            "Invalid graph storage: graph_scheme exists but version is missing"
+        );
+    } else if (storedVersion !== undefined && storedScheme === undefined) {
+        throw new MissingGraphSchemeError(
+            `active replica '${rootDatabase.currentReplicaName()}'`
+        );
     } else {
-        // Versioned database: validate stored graph_scheme.
-        const currentVersion = rootDatabase.getVersion();
-        if (storedVersion === currentVersion) {
-            assertExactStoredGraphSchemeMatches(
-                storedScheme,
-                graphSchemeString,
-                `active replica '${rootDatabase.currentReplicaName()}'`
+        // Both exist.
+        if (storedVersion !== currentVersion) {
+            throw new Error(
+                `Cannot prepare incremental graph storage: active replica version ${String(storedVersion)} does not match current version ${String(currentVersion)}. Run migration before graph construction.`
             );
         }
-        // If stored version differs from current version, migration owns writing
-        // the new scheme.  No validation needed here.
+
+        assertExactStoredGraphSchemeMatches(
+            storedScheme,
+            graphSchemeString,
+            `active replica '${rootDatabase.currentReplicaName()}'`
+        );
     }
 
     return {

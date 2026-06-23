@@ -102,6 +102,7 @@ const {
     deriveInputEdges,
     semanticInputKeys,
     assertExactStoredGraphSchemeMatches,
+    initializeReplicaGlobals,
 } = require('./graph_scheme');
 
 const {
@@ -203,6 +204,7 @@ module.exports = {
     normalizeInputEdges,
     arraysOfNodeIdentifiersEqual,
     assertExactStoredGraphSchemeMatches,
+    initializeReplicaGlobals,
     assertValidFinalMergeState,
     FinalMergeStateError,
     isFinalMergeStateError,

@@ -2499,7 +2499,6 @@ describe('mergeHostIntoReplica', () => {
         let db;
         try {
             db = await getRootDatabase(testCapabilities);
-            await writeGraphScheme(db.schemaStorageForReplica('x'));
 
             const nodeA = nodeIdentifierFromString('117-abcdefghi');
             const nodeB = nodeIdentifierFromString('118-abcdefghi');
@@ -2509,7 +2508,6 @@ describe('mergeHostIntoReplica', () => {
             const keyC = stringToNodeKeyString('{"head":"prop_C","args":[]}');
 
             const L = db.schemaStorageForReplica('x');
-            await writeGraphScheme(L);
             await writeNode(L, nodeA, TS1, { v: 1 });
             await writeNode(L, nodeB, TS1, { v: 2 });
             await writeNode(L, nodeC, TS1, { v: 3 });
@@ -2523,16 +2521,9 @@ describe('mergeHostIntoReplica', () => {
             await db.close();
             db = await getRootDatabase(testCapabilities);
 
-            // Write a graph_scheme matching the nodeDefs used below.
-            const schemeStorage = db.getSchemaStorage();
-            await schemeStorage.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
-                format: 1,
-                nodes: [
-                    { head: "prop_A", arity: 0, inputTemplates: [] },
-                    { head: "prop_B", arity: 0, inputTemplates: [{ head: "prop_A", args: [] }] },
-                    { head: "prop_C", arity: 0, inputTemplates: [{ head: "prop_B", args: [] }] },
-                ],
-            }));
+            // constructorIncrementalGraph handles fresh DB initialization (version + graph_scheme).
+            // The scheme derived from these nodeDefs must match what's needed for invalidation
+            // propagation (linear A→B→C chain).
 
             const graph = await createIncrementalGraph(testCapabilities, db, [
                 { output: 'prop_A', inputs: [], computor: async () => ({ v: 2 }), isDeterministic: true, hasSideEffects: false },

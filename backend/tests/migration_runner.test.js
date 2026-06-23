@@ -353,7 +353,7 @@ describe("runMigration", () => {
             expect(mock.setCurrentReplicaPointerCalled).toBe(false);
         });
 
-        test("records current version via batch so future upgrades are detected", async () => {
+        test("fresh init is now owned by prepareIncrementalGraphStorage, not runMigration", async () => {
               const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const { yStorage } = makeYDb(makeSchemaStorage());
@@ -366,8 +366,10 @@ describe("runMigration", () => {
 
             await runMigration(capabilities, mock.rootDatabase, [], async () => {});
 
+            // runMigration no longer writes version for fresh databases.
+            // Fresh initialization is handled by prepareIncrementalGraphStorage.
             const storedVersion = await xStorage.global.get("version");
-            expect(storedVersion).toBe("1.0.0");
+            expect(storedVersion).toBeUndefined();
         });
 
         test("does not call checkpointMigration", async () => {
@@ -386,7 +388,7 @@ describe("runMigration", () => {
             expect(capabilities.checkpointMigration).not.toHaveBeenCalled();
         });
 
-        test("writes graph_scheme in global for fresh initialization", async () => {
+        test("fresh graph_scheme init is owned by prepareIncrementalGraphStorage", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const { yStorage } = makeYDb(makeSchemaStorage());
@@ -407,12 +409,9 @@ describe("runMigration", () => {
 
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => {});
 
-            const compiledNodes = nodeDefs.map(compileNodeDef);
-            const expectedScheme = JSON.stringify(
-                serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes))
-            );
+            // runMigration no longer writes graph_scheme for fresh databases.
             const storedScheme = await xStorage.global.get(GRAPH_SCHEME_KEY);
-            expect(storedScheme).toBe(expectedScheme);
+            expect(storedScheme).toBeUndefined();
         });
     });
 

@@ -26,8 +26,8 @@ const {
     parseGraphScheme,
     deriveInputEdges,
     GRAPH_SCHEME_KEY,
+    GraphSchemeError,
     MissingGraphSchemeError,
-    versionToString,
 } = require("./database");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
@@ -417,21 +417,11 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
     if (prevVersion === undefined) {
         capabilities.logger.logDebug(
             { currentVersion, activeReplica },
-            'Migration not required: no stored version found in active replica; marking fresh database with current version'
+            'Migration not required: no stored version found in active replica; database initialization is handled by prepareIncrementalGraphStorage'
         );
-        // No previous version recorded; fresh database: record current version
-        // and graph_scheme together as one logical initialization operation.
-        const compiledNodes = nodeDefs.map(compileNodeDef);
-        const currentGraphScheme = JSON.stringify(
-            serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes))
-        );
-        const schemaStorage = rootDatabase.getSchemaStorage();
-        /** @type {Array<*>} */
-        const initOps = [
-            schemaStorage.global.putOp('version', versionToString(currentVersion)),
-            schemaStorage.global.putOp(GRAPH_SCHEME_KEY, currentGraphScheme),
-        ];
-        await schemaStorage.batch(initOps);
+        // No previous version recorded; database is uninitialized.
+        // Fresh database initialization is owned by prepareIncrementalGraphStorage,
+        // which writes global/version and global/graph_scheme together.
         return rootDatabase;
     }
 
@@ -471,6 +461,11 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             if (storedOldScheme === undefined) {
                 throw new MissingGraphSchemeError(
                     `migration source replica (${fromReplica})`
+                );
+            }
+            if (typeof storedOldScheme !== "string") {
+                throw new GraphSchemeError(
+                    `Invalid graph_scheme in migration source replica (${fromReplica}): expected string`
                 );
             }
             const oldGraphScheme = parseGraphScheme(storedOldScheme);
