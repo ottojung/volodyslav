@@ -25,11 +25,10 @@ const {
     synchronizeNoLock,
     holidayActivity,
     migrationCallback,
-    prepareIncrementalGraphStorage,
+    createIncrementalGraph,
     LIVE_DATABASE_WORKING_PATH,
     CHECKPOINT_WORKING_PATH,
 } = require("../incremental_graph");
-const { makePreparedIncrementalGraph } = require("../incremental_graph" + "/class");
 const { defaultBranch, workingRepository } = require("../../gitstore");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
@@ -235,16 +234,11 @@ async function internalEnsureInitializedWithMigration(
             nodeDefs,
             migrationCallback(capabilities),
         );
-        capabilities.logger.logDebug({}, 'Initialization: migration gate completed, preparing graph storage');
-        const prepared = await prepareIncrementalGraphStorage(
-            database,
-            nodeDefs
-        );
-        capabilities.logger.logDebug({}, 'Initialization: constructing incremental graph');
-        const incrementalGraph = makePreparedIncrementalGraph(
+        capabilities.logger.logDebug({}, 'Initialization: migration gate completed, constructing incremental graph');
+        const incrementalGraph = await createIncrementalGraph(
             capabilities,
             database,
-            prepared
+            nodeDefs
         );
         interfaceInstance._database = database;
         interfaceInstance._incrementalGraph = incrementalGraph;

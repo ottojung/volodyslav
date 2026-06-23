@@ -279,8 +279,8 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                     if (decision.kind === "create" || decision.kind === "override" || decision.kind === "invalidate") {
                         yield outputKey;
                     } else if (decision.kind === "keep") {
-                        const f = await prevStorage.freshness.get(outputKey);
-                        if (f !== undefined) yield outputKey;
+                        const v = await prevStorage.values.get(outputKey);
+                        if (v !== undefined) yield outputKey;
                     }
                 }
             },
@@ -289,7 +289,10 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 if (!decision || decision.kind === "delete") return undefined;
                 if (decision.kind === "create" || decision.kind === "override") return "up-to-date";
                 if (decision.kind === "invalidate") return "potentially-outdated";
-                return await prevStorage.freshness.get(key);
+                const freshness = await prevStorage.freshness.get(key);
+                if (freshness !== undefined) return freshness;
+                const value = await prevStorage.values.get(key);
+                return value === undefined ? undefined : "potentially-outdated";
             },
         },
         valid: {
@@ -536,12 +539,6 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // _rawSync() issues an empty batch with sync:true to flush the WAL
             // without rewriting any keys.
             await rootDatabase._rawSync();
-
-            for await (const identifier of toStorage.values.keys()) {
-                if (await toStorage.freshness.get(identifier) === undefined) {
-                    await toStorage.freshness.put(identifier, 'potentially-outdated');
-                }
-            }
 
             // Validate the target replica before activating it.
             // This checks the invariant: every up-to-date node has valid flags

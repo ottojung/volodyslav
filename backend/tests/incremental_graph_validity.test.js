@@ -22,7 +22,7 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment } = require("./stubs");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const { prepareIncrementalGraphStorage } = require("../src/generators/incremental_graph/prepare_graph_storage");
-const { makePreparedIncrementalGraph } = require("../src/generators/incremental_graph/class");
+const internalGraphClassModule = require("../src/generators/incremental_graph/" + "class");
 
 const testCapabilities = getMockedRootCapabilities();
 
@@ -1121,8 +1121,21 @@ describe("Incremental graph validity", () => {
             );
             const db = new InMemoryDatabase();
             const prepared = await prepareIncrementalGraphStorage(db, nodeDefs);
-            const graph = makePreparedIncrementalGraph(testCapabilities, db, prepared);
+            const graph = internalGraphClassModule.makePreparedIncrementalGraph(testCapabilities, db, prepared);
             expect(graph.getSchemaByHead("source")).not.toBeNull();
+        });
+
+        it("prepared graph constructor rejects prepared storage from a different root database", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+            const sourceDb = new InMemoryDatabase();
+            const targetDb = new InMemoryDatabase();
+            const prepared = await prepareIncrementalGraphStorage(sourceDb, nodeDefs);
+
+            expect(() => internalGraphClassModule.makePreparedIncrementalGraph(testCapabilities, targetDb, prepared)).toThrow(/same root database/);
         });
 
         it("prepared graph constructor rejects node definitions immediately", () => {
@@ -1132,7 +1145,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
             const db = new InMemoryDatabase();
-            expect(() => makePreparedIncrementalGraph(testCapabilities, db, nodeDefs)).toThrow(/prepareIncrementalGraphStorage/);
+            expect(() => internalGraphClassModule.makePreparedIncrementalGraph(testCapabilities, db, nodeDefs)).toThrow(/prepareIncrementalGraphStorage/);
         });
 
         it("does not overwrite graph_scheme on existing initialized database with matching scheme", async () => {

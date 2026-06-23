@@ -185,11 +185,16 @@ class IncrementalGraphClass {
 }
 
 
+
 /**
- * @param {*} prepared
- * @returns {void}
+ * Construct an incremental graph from already-prepared storage state.
+ * The caller must have called `prepareIncrementalGraphStorage` first.
+ * @param {IncrementalGraphCapabilities} capabilities
+ * @param {RootDatabase} rootDatabase
+ * @param {PreparedGraphStorage} prepared
+ * @returns {IncrementalGraphClass}
  */
-function assertPreparedGraphStorage(prepared) {
+function makePreparedIncrementalGraph(capabilities, rootDatabase, prepared) {
     if (
         prepared === null
         || typeof prepared !== "object"
@@ -204,18 +209,12 @@ function assertPreparedGraphStorage(prepared) {
             "Use createIncrementalGraph(...) or call prepareIncrementalGraphStorage(...) first."
         );
     }
-}
-
-/**
- * Construct an incremental graph from already-prepared storage state.
- * The caller must have called `prepareIncrementalGraphStorage` first.
- * @param {IncrementalGraphCapabilities} capabilities
- * @param {RootDatabase} rootDatabase
- * @param {PreparedGraphStorage} prepared
- * @returns {IncrementalGraphClass}
- */
-function makePreparedIncrementalGraph(capabilities, rootDatabase, prepared) {
-    assertPreparedGraphStorage(prepared);
+    if (prepared.rootDatabase !== rootDatabase) {
+        throw new Error(
+            "makePreparedIncrementalGraph requires prepared storage for the same root database. " +
+            "Use createIncrementalGraph(...) or call prepareIncrementalGraphStorage(...) for this root database first."
+        );
+    }
     return new IncrementalGraphClass(capabilities, rootDatabase, prepared);
 }
 
