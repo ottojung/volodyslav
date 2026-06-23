@@ -205,11 +205,12 @@ async function loadIdentifierLookupFromGlobal(globalSublevel, context) {
 /**
  * Build a SchemaStorage for one replica namespace.
  * The returned storage's `batch` function verifies the replica's global/version on
- * the first write (initialising it when absent, or throwing on mismatch), then
- * caches the result so subsequent batches pay no I/O overhead for the check.
+ * the first non-empty write when a version is already present, throwing on mismatch.
+ * Fresh replica initialization is explicit lifecycle work owned by graph preparation
+ * and migration paths, so ordinary batches never create global metadata by themselves.
  *
  * When the replica is cleared (`clearReplicaStorage`), a fresh SchemaStorage is
- * built by the owner so the version-initialisation cache is reset.
+ * built by the owner so the version-check cache is reset.
  *
  * @param {SchemaSublevelType} namespaceSublevel - The replica's top-level sublevel.
  * @param {GlobalSublevelType} globalSublevel - The replica's global sublevel (`<ns>/global`).
@@ -226,7 +227,7 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
-    // True once this closure's first batch() verifies/writes global/version.
+    // True once this closure's first non-empty batch() verifies any existing global/version.
     // Prevents redundant DB reads on subsequent batch calls.
     // Reset to false by rebuilding this SchemaStorage inside clearReplicaStorage().
     let touchedSchema = false;
@@ -238,10 +239,7 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
         }
         if (!touchedSchema) {
             const existing = await globalSublevel.get('version');
-            if (existing === undefined) {
-                // New or freshly-cleared namespace: write version to global to initialise.
-                await globalSublevel.put('version', version);
-            } else if (typeof existing !== 'string' || existing !== versionToString(version)) {
+            if (existing !== undefined && (typeof existing !== 'string' || existing !== versionToString(version))) {
                 // Version mismatch indicates a logic error in migration or usage of staging namespace.
                 const foundVersion = typeof existing === 'string'
                     ? stringToVersion(existing)

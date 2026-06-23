@@ -537,6 +537,12 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // without rewriting any keys.
             await rootDatabase._rawSync();
 
+            for await (const identifier of toStorage.values.keys()) {
+                if (await toStorage.freshness.get(identifier) === undefined) {
+                    await toStorage.freshness.put(identifier, 'potentially-outdated');
+                }
+            }
+
             // Validate the target replica before activating it.
             // This checks the invariant: every up-to-date node has valid flags
             // for every input, and no valid entries reference unknown identifiers.

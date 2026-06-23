@@ -20,7 +20,6 @@
 
 const path = require('path');
 const {
-    makeIncrementalGraph,
     getRootDatabase,
     runMigrationUnsafe,
     synchronizeNoLock,
@@ -30,6 +29,7 @@ const {
     LIVE_DATABASE_WORKING_PATH,
     CHECKPOINT_WORKING_PATH,
 } = require("../incremental_graph");
+const { makePreparedIncrementalGraph } = require("../incremental_graph" + "/class");
 const { defaultBranch, workingRepository } = require("../../gitstore");
 const { createDefaultGraphDefinition } = require("./default_graph");
 const { makeSynchronizeDatabaseError } = require("./errors");
@@ -241,7 +241,7 @@ async function internalEnsureInitializedWithMigration(
             nodeDefs
         );
         capabilities.logger.logDebug({}, 'Initialization: constructing incremental graph');
-        const incrementalGraph = makeIncrementalGraph(
+        const incrementalGraph = makePreparedIncrementalGraph(
             capabilities,
             database,
             prepared

@@ -1758,6 +1758,65 @@ describe('mergeHostIntoReplica', () => {
             }
         });
 
+
+
+        test('rejects materialized node with missing freshness', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+                const T = db.schemaStorageForReplica('x');
+                await writeGraphScheme(T);
+                await T.values.put(NODE_A, { v: 1 });
+
+                const lookup = makeIdentifierLookup([[NODE_A, stringToNodeKeyString('{"head":"test","args":[]}')]]);
+
+                await expect(
+                    assertValidFinalMergeState(T, lookup)
+                ).rejects.toThrow(FinalMergeStateError);
+            } finally {
+                if (db) await db.close();
+            }
+        });
+
+        test('rejects materialized node with invalid freshness', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+                const T = db.schemaStorageForReplica('x');
+                await writeGraphScheme(T);
+                await T.values.put(NODE_A, { v: 1 });
+                await T.freshness.put(NODE_A, 'mystery');
+
+                const lookup = makeIdentifierLookup([[NODE_A, stringToNodeKeyString('{"head":"test","args":[]}')]]);
+
+                await expect(
+                    assertValidFinalMergeState(T, lookup)
+                ).rejects.toThrow(FinalMergeStateError);
+            } finally {
+                if (db) await db.close();
+            }
+        });
+
+        test('accepts materialized node with valid potentially-outdated freshness', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+                const T = db.schemaStorageForReplica('x');
+                await writeGraphScheme(T);
+                await T.values.put(NODE_A, { v: 1 });
+                await T.freshness.put(NODE_A, 'potentially-outdated');
+
+                const lookup = makeIdentifierLookup([[NODE_A, stringToNodeKeyString('{"head":"test","args":[]}')]]);
+
+                await expect(assertValidFinalMergeState(T, lookup)).resolves.toBeUndefined();
+            } finally {
+                if (db) await db.close();
+            }
+        });
+
         test('rejects valid entry referencing unknown identifier', async () => {
             const capabilities = getTestCapabilities();
             let db;

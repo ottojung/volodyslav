@@ -47,6 +47,13 @@ async function assertValidFinalMergeState(targetStorage, finalLookup, options = 
         if (!knownIdentifiers.has(identifierString)) {
             throw new FinalMergeStateError(`stored node ${identifierString} has no lookup entry`);
         }
+        const freshness = await targetStorage.freshness.get(identifier);
+        if (freshness === undefined) {
+            throw new FinalMergeStateError(`materialized node ${identifierString} has no freshness entry`);
+        }
+        if (freshness !== 'up-to-date' && freshness !== 'potentially-outdated') {
+            throw new FinalMergeStateError(`materialized node ${identifierString} has invalid freshness ${String(freshness)}`);
+        }
     }
     for (const identifierString of knownIdentifiers) {
         const freshness = await targetStorage.freshness.get(nodeIdentifierFromString(identifierString));

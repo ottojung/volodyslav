@@ -100,41 +100,6 @@ function readLevel(directoryPath) {
     return records;
 }
 
-function requireArray(value, description) {
-    if (!Array.isArray(value)) {
-        throw new SnapshotMigrationError(`Malformed ${description}: expected array`);
-    }
-    return value;
-}
-
-function parseInputRecord(raw, id) {
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-        throw new SnapshotMigrationError(`Malformed inputs record for ${id}: expected object`);
-    }
-    const inputs = requireArray(raw.inputs, `inputs.${id}.inputs`);
-    const inputCounters = requireArray(raw.inputCounters, `inputs.${id}.inputCounters`);
-    for (let index = 0; index < inputCounters.length; index++) {
-        requireNumber(inputCounters[index], `inputs.${id}.inputCounters[${index}]`);
-    }
-    if (inputs.length !== inputCounters.length) {
-        throw new SnapshotMigrationError(`Malformed inputCounters for ${id}: length mismatch`);
-    }
-    return { inputs, inputCounters };
-}
-
-function assertSameInputs(id, oldInputs, derivedInputs) {
-    const oldStrings = oldInputs.map(String);
-    const derivedStrings = derivedInputs.map(nodeIdentifierToString);
-    if (oldStrings.length !== derivedStrings.length) {
-        throw new SnapshotMigrationError(`Input mismatch for ${id}: length differs`);
-    }
-    for (let index = 0; index < oldStrings.length; index++) {
-        if (oldStrings[index] !== derivedStrings[index]) {
-            throw new SnapshotMigrationError(`Input mismatch for ${id} at index ${index}`);
-        }
-    }
-}
-
 function addValid(validMap, dependency, dependent) {
     const dependencyString = nodeIdentifierToString(dependency);
     const dependentString = nodeIdentifierToString(dependent);
@@ -150,7 +115,6 @@ function migrateSnapshot(snapshotDirectory) {
 
     const valuesDirectory = path.join(replica, "values");
     const freshnessDirectory = path.join(replica, "freshness");
-    const inputsDirectory = path.join(replica, "inputs");
     const revdepsDirectory = path.join(replica, "revdeps");
     const countersDirectory = path.join(replica, "counters");
     const validDirectory = path.join(replica, "valid");
@@ -158,7 +122,6 @@ function migrateSnapshot(snapshotDirectory) {
 
     requireDirectory(valuesDirectory);
     requireDirectory(freshnessDirectory);
-    requireDirectory(inputsDirectory);
     requireDirectory(revdepsDirectory);
     requireDirectory(countersDirectory);
     requireDirectory(globalDirectory);
@@ -169,7 +132,6 @@ function migrateSnapshot(snapshotDirectory) {
     const lookup = loadIdentifierLookup(globalDirectory);
     const values = readLevel(valuesDirectory);
     const freshness = readLevel(freshnessDirectory);
-    const inputs = readLevel(inputsDirectory);
     const counters = readLevel(countersDirectory);
     const { graphScheme, graphSchemeString } = currentGraphScheme();
     parseGraphScheme(graphSchemeString);
@@ -195,13 +157,7 @@ function migrateSnapshot(snapshotDirectory) {
         nextFreshness.set(idString, oldFreshness);
         if (derivedInputs.length === 0) continue;
 
-        if (!inputs.has(idString)) {
-            throw new SnapshotMigrationError(`Missing inputs record for non-zero-input node: ${idString}`);
-        }
-        const inputRecord = parseInputRecord(inputs.get(idString), idString);
-        assertSameInputs(idString, inputRecord.inputs, derivedInputs);
-        for (let index = 0; index < derivedInputs.length; index++) {
-            const dependency = derivedInputs[index];
+        for (const dependency of derivedInputs) {
             const dependencyString = nodeIdentifierToString(dependency);
             if (!materializedIds.has(dependencyString)) {
                 throw new SnapshotMigrationError(`Dependency id missing from values: ${dependencyString}`);
@@ -209,8 +165,8 @@ function migrateSnapshot(snapshotDirectory) {
             if (!counters.has(dependencyString)) {
                 throw new SnapshotMigrationError(`Dependency id missing from counters: ${dependencyString}`);
             }
-            const dependencyCounter = requireNumber(counters.get(dependencyString), `counters.${dependencyString}`);
-            if (isUpToDate || inputRecord.inputCounters[index] === dependencyCounter) {
+            requireNumber(counters.get(dependencyString), `counters.${dependencyString}`);
+            if (isUpToDate) {
                 addValid(valid, dependency, id);
             }
         }
@@ -230,7 +186,7 @@ function migrateSnapshot(snapshotDirectory) {
     fs.mkdirSync(validDirectory, { recursive: true });
     for (const [dependency, dependents] of validObject) writeJson(path.join(validDirectory, dependency), dependents);
     writeJson(path.join(globalDirectory, "graph_scheme"), graphSchemeString);
-    fs.rmSync(inputsDirectory, { recursive: true, force: true });
+    fs.rmSync(path.join(replica, "inputs"), { recursive: true, force: true });
     fs.rmSync(revdepsDirectory, { recursive: true, force: true });
     fs.rmSync(countersDirectory, { recursive: true, force: true });
 

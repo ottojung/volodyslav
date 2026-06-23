@@ -184,6 +184,28 @@ class IncrementalGraphClass {
     }
 }
 
+
+/**
+ * @param {*} prepared
+ * @returns {void}
+ */
+function assertPreparedGraphStorage(prepared) {
+    if (
+        prepared === null
+        || typeof prepared !== "object"
+        || prepared.graphScheme === undefined
+        || !(prepared.headIndex instanceof Map)
+        || prepared.rootDatabase === undefined
+        || prepared.schemaStorage === undefined
+        || !Array.isArray(prepared.compiledNodes)
+    ) {
+        throw new Error(
+            "makePreparedIncrementalGraph requires prepared graph storage. " +
+            "Use createIncrementalGraph(...) or call prepareIncrementalGraphStorage(...) first."
+        );
+    }
+}
+
 /**
  * Construct an incremental graph from already-prepared storage state.
  * The caller must have called `prepareIncrementalGraphStorage` first.
@@ -192,7 +214,8 @@ class IncrementalGraphClass {
  * @param {PreparedGraphStorage} prepared
  * @returns {IncrementalGraphClass}
  */
-function makeIncrementalGraph(capabilities, rootDatabase, prepared) {
+function makePreparedIncrementalGraph(capabilities, rootDatabase, prepared) {
+    assertPreparedGraphStorage(prepared);
     return new IncrementalGraphClass(capabilities, rootDatabase, prepared);
 }
 
@@ -207,7 +230,7 @@ function makeIncrementalGraph(capabilities, rootDatabase, prepared) {
  */
 async function createIncrementalGraph(capabilities, rootDatabase, nodeDefs) {
     const prepared = await prepareIncrementalGraphStorage(rootDatabase, nodeDefs);
-    return new IncrementalGraphClass(capabilities, rootDatabase, prepared);
+    return makePreparedIncrementalGraph(capabilities, rootDatabase, prepared);
 }
 
 /**
@@ -221,7 +244,7 @@ function isIncrementalGraph(object) {
 /** @typedef {IncrementalGraphClass} IncrementalGraph */
 
 module.exports = {
-    makeIncrementalGraph,
+    makePreparedIncrementalGraph,
     createIncrementalGraph,
     isIncrementalGraph,
 };
