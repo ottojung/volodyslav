@@ -19,6 +19,10 @@ const {
     nodeIdentifierToString,
 } = require("../src/generators/incremental_graph/database");
 const { getMockedRootCapabilities } = require("./spies");
+const { stubEnvironment } = require("./stubs");
+const { getRootDatabase } = require("../src/generators/incremental_graph/database");
+const { prepareIncrementalGraphStorage } = require("../src/generators/incremental_graph/prepare_graph_storage");
+const internalGraphClassModule = require("../src/generators/incremental_graph/" + "class");
 
 const testCapabilities = getMockedRootCapabilities();
 
@@ -1020,6 +1024,128 @@ describe("Incremental graph validity", () => {
 
             const storedVersion = await schemaStorage.global.get("version");
             expect(storedVersion).toBe("test-version");
+        });
+
+
+
+        it("direct fresh schema batch does not initialize version without graph_scheme", async () => {
+            const capabilities = getMockedRootCapabilities();
+            stubEnvironment(capabilities);
+            const db = await getRootDatabase(capabilities);
+            try {
+                const storage = db.getSchemaStorage();
+                await storage.batch([
+                    storage.values.putOp(nodeIdentifierFromString("1-abcdefghi"), { v: "stored" }),
+                ]);
+
+                expect(await storage.global.get("version")).toBeUndefined();
+                expect(await storage.global.get(GRAPH_SCHEME_KEY)).toBeUndefined();
+            } finally {
+                await db.close();
+            }
+        });
+
+        it("prepareIncrementalGraphStorage writes version and graph_scheme on fresh database", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+            const freshDb = new InMemoryDatabase();
+
+            const prepared = await prepareIncrementalGraphStorage(freshDb, nodeDefs);
+            expect(prepared.graphScheme).toBeDefined();
+            const schemaStorage = freshDb.getSchemaStorage();
+            expect(await schemaStorage.global.get("version")).toBe("test-version");
+            expect(typeof await schemaStorage.global.get(GRAPH_SCHEME_KEY)).toBe("string");
+        });
+
+        it("graph_scheme without version fails as graph scheme metadata error", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+            const existingDb = new InMemoryDatabase();
+            await existingDb.getSchemaStorage().global.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
+
+            await expect(
+                prepareIncrementalGraphStorage(existingDb, nodeDefs)
+            ).rejects.toThrow(/graph_scheme exists but version is missing/);
+        });
+
+        it("malformed graph_scheme JSON fails as graph scheme metadata error", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+            const existingDb = new InMemoryDatabase();
+            const storage = existingDb.getSchemaStorage();
+            await storage.global.put("version", "test-version");
+            await storage.global.put(GRAPH_SCHEME_KEY, "{not-json");
+
+            await expect(
+                prepareIncrementalGraphStorage(existingDb, nodeDefs)
+            ).rejects.toThrow(/Invalid graph_scheme JSON/);
+        });
+
+        it("non-string stored graph_scheme fails as graph scheme metadata error", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+            const existingDb = new InMemoryDatabase();
+            const storage = existingDb.getSchemaStorage();
+            await storage.global.put("version", "test-version");
+            await storage.global.put(GRAPH_SCHEME_KEY, { format: 1, nodes: [] });
+
+            await expect(
+                prepareIncrementalGraphStorage(existingDb, nodeDefs)
+            ).rejects.toThrow(/expected string/);
+        });
+
+        it("public index exports ordinary factory but not prepared constructor", async () => {
+            const publicIndex = require("../src/generators/incremental_graph");
+            expect(typeof publicIndex.createIncrementalGraph).toBe("function");
+            expect(publicIndex.makePreparedIncrementalGraph).toBeUndefined();
+            expect(publicIndex.makeIncrementalGraph).toBeUndefined();
+        });
+
+        it("prepared graph constructor accepts prepared storage", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+            const db = new InMemoryDatabase();
+            const prepared = await prepareIncrementalGraphStorage(db, nodeDefs);
+            const graph = internalGraphClassModule.makePreparedIncrementalGraph(testCapabilities, db, prepared);
+            expect(graph.getSchemaByHead("source")).not.toBeNull();
+        });
+
+        it("prepared graph constructor rejects prepared storage from a different root database", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+            const sourceDb = new InMemoryDatabase();
+            const targetDb = new InMemoryDatabase();
+            const prepared = await prepareIncrementalGraphStorage(sourceDb, nodeDefs);
+
+            expect(() => internalGraphClassModule.makePreparedIncrementalGraph(testCapabilities, targetDb, prepared)).toThrow(/same root database/);
+        });
+
+        it("prepared graph constructor rejects node definitions immediately", () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+            const db = new InMemoryDatabase();
+            expect(() => internalGraphClassModule.makePreparedIncrementalGraph(testCapabilities, db, nodeDefs)).toThrow(/prepareIncrementalGraphStorage/);
         });
 
         it("does not overwrite graph_scheme on existing initialized database with matching scheme", async () => {

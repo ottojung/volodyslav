@@ -786,6 +786,7 @@ describe('generators/database', () => {
                 // Populate y with a version but a malformed identifiers_keys_map.
                 const yStorage = db.schemaStorageForReplica('y');
                 await yStorage.batch([
+                    yStorage.global.putOp('version', db.version),
                     yStorage.values.putOp('node', { val: 1 }),
                 ]);
                 await yStorage.global.put(IDENTIFIERS_KEY, 12345);

@@ -8,7 +8,8 @@
 const { nodeIdentifierToString } = require("./types");
 
 /**
- * Create a dependency accumulator for the materialized dependency record.
+ * Normalize positional input identifiers into structural dependency edges.
+ * Duplicates are removed while preserving first occurrence order.
  * @param {import('./types').NodeIdentifier[]} inputIdentifiers
  * @returns {import('./types').NodeIdentifier[]}
  */

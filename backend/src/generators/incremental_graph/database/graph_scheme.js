@@ -136,7 +136,15 @@ function parseGraphScheme(raw) {
     if (raw === undefined || raw === null) {
         throw new GraphSchemeError("Missing or null graph_scheme record: cannot derive dependencies without a stored graph_scheme");
     }
-    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    let parsed = raw;
+    if (typeof raw === "string") {
+        try {
+            parsed = JSON.parse(raw);
+        } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            throw new GraphSchemeError(`Invalid graph_scheme JSON: ${detail}`);
+        }
+    }
     if (!isRecord(parsed)) {
         throw new GraphSchemeError("Invalid graph_scheme record");
     }
@@ -327,8 +335,9 @@ function semanticInputKeys(graphScheme, identifierLookup, outputIdentifier) {
  * - Missing stored values fail with MissingGraphSchemeError.
  * - Non-string stored values fail with GraphSchemeError (persisted type is part of
  *   the durable format).
- * - No normalization, parsing, or reserialization is performed. Formatting
- *   differences are intentional and count as differences.
+ * - Stored JSON is parsed for durable-format validation before exact comparison.
+ *   No normalization or reserialization is performed; formatting differences are
+ *   intentional and count as differences.
  *
  * @param {unknown} stored - Raw value read from global storage.
  * @param {string} expected - The exact expected graph_scheme JSON string.
@@ -344,6 +353,7 @@ function assertExactStoredGraphSchemeMatches(stored, expected, contextDescriptio
             `Invalid graph_scheme in ${contextDescription}: expected string`
         );
     }
+    parseGraphScheme(stored);
     if (stored !== expected) {
         throw new GraphSchemeError(
             `Exact graph_scheme string mismatch in ${contextDescription}: ` +

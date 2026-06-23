@@ -23,7 +23,7 @@ function writeJson(filePath, value) {
     fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function makeSnapshot({ parentFreshness = "up-to-date", inputCounters = [1], counter = 1, includeCounter = true, inputId = "a", lastNodeIndex = 1 } = {}) {
+function makeSnapshot({ parentFreshness = "up-to-date", counter = 1, includeCounter = true, lastNodeIndex = 1 } = {}) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "volodyslav-migration-"));
     const r = path.join(root, "rendered", "r");
     writeJson(path.join(r, "global", "identifiers_keys_map"), [
@@ -37,7 +37,7 @@ function makeSnapshot({ parentFreshness = "up-to-date", inputCounters = [1], cou
     writeJson(path.join(r, "values", "b"), { type: "events_count", count: 0 });
     writeJson(path.join(r, "freshness", "a"), "up-to-date");
     writeJson(path.join(r, "freshness", "b"), parentFreshness);
-    writeJson(path.join(r, "inputs", "b"), { inputs: [inputId], inputCounters });
+    fs.mkdirSync(path.join(r, "inputs"), { recursive: true });
     fs.mkdirSync(path.join(r, "revdeps"), { recursive: true });
     writeJson(path.join(r, "revdeps", "a"), ["b"]);
     if (includeCounter) writeJson(path.join(r, "counters", "a"), counter);
@@ -167,18 +167,12 @@ describe("migrate-snapshot-to-flag-validity", () => {
         expect(JSON.parse(fs.readFileSync(path.join(r, "valid", "a"), "utf8"))).toEqual(["b"]);
     });
 
-    test("potentially-outdated node with all counters matching writes complete flags", () => {
-        const root = makeSnapshot({ parentFreshness: "potentially-outdated", inputCounters: [7], counter: 7 });
+    test("potentially-outdated node omits validity flags", () => {
+        const root = makeSnapshot({ parentFreshness: "potentially-outdated", counter: 7 });
         migrateSnapshot(root);
         const r = path.join(root, "rendered", "r");
         expect(JSON.parse(fs.readFileSync(path.join(r, "freshness", "b"), "utf8"))).toBe("potentially-outdated");
-        expect(JSON.parse(fs.readFileSync(path.join(r, "valid", "a"), "utf8"))).toEqual(["b"]);
-    });
-
-    test("potentially-outdated node with one counter mismatch omits that flag", () => {
-        const root = makeSnapshot({ parentFreshness: "potentially-outdated", inputCounters: [6], counter: 7 });
-        migrateSnapshot(root);
-        expect(fs.existsSync(path.join(root, "rendered", "r", "valid", "a"))).toBe(false);
+        expect(fs.existsSync(path.join(r, "valid", "a"))).toBe(false);
     });
 
     test("zero-input stale node writes no flags", () => {
@@ -186,7 +180,6 @@ describe("migrate-snapshot-to-flag-validity", () => {
         const r = path.join(root, "rendered", "r");
         fs.rmSync(path.join(r, "values", "b"));
         fs.rmSync(path.join(r, "freshness", "b"));
-        fs.rmSync(path.join(r, "inputs", "b"));
         writeJson(path.join(r, "freshness", "a"), "potentially-outdated");
         migrateSnapshot(root);
         expect(JSON.parse(fs.readFileSync(path.join(r, "freshness", "a"), "utf8"))).toBe("potentially-outdated");
@@ -194,7 +187,7 @@ describe("migrate-snapshot-to-flag-validity", () => {
     });
 
     test("dependency changes before parent pull is represented by missing validity", () => {
-        const root = makeSnapshot({ parentFreshness: "potentially-outdated", inputCounters: [1], counter: 2 });
+        const root = makeSnapshot({ parentFreshness: "potentially-outdated", counter: 2 });
         migrateSnapshot(root);
         expect(fs.existsSync(path.join(root, "rendered", "r", "valid", "a"))).toBe(false);
     });
@@ -202,9 +195,7 @@ describe("migrate-snapshot-to-flag-validity", () => {
     test.each([
         ["missing identifiers entry", (r) => writeJson(path.join(r, "global", "identifiers_keys_map"), [["a", nodeKey("all_events")]])],
         ["missing counter", (r) => fs.rmSync(path.join(r, "counters", "a"))],
-        ["input mismatch", (r) => writeJson(path.join(r, "inputs", "b"), { inputs: ["missing"], inputCounters: [1] })],
         ["malformed freshness", (r) => writeJson(path.join(r, "freshness", "b"), "stale")],
-        ["malformed input counter", (r) => writeJson(path.join(r, "inputs", "b"), { inputs: ["a"], inputCounters: ["1"] })],
         ["malformed dependency counter", (r) => writeJson(path.join(r, "counters", "a"), "1")],
         ["missing fingerprint", (r) => fs.rmSync(path.join(r, "global", "fingerprint"))],
         ["malformed last_node_index", (r) => writeJson(path.join(r, "global", "last_node_index"), "1")],
@@ -216,20 +207,8 @@ describe("migrate-snapshot-to-flag-validity", () => {
     });
 
 
-    test("runtime pull cache-returns migrated potentially-outdated node when counters match", async () => {
-        const root = makeSnapshot({ parentFreshness: "potentially-outdated", inputCounters: [3], counter: 3 });
-        migrateSnapshot(root);
-        const capabilities = getMockedRootCapabilities();
-        const { nodeDefs, eventsCountCalls } = graphDefinitionsWithCountedEventsCount(capabilities);
-        const db = new MigratedSnapshotDatabase(root);
-        const graph = await createIncrementalGraph(capabilities, db, nodeDefs);
-
-        await expect(graph.pull("events_count")).resolves.toEqual({ type: "events_count", count: 0 });
-        expect(eventsCountCalls()).toBe(0);
-    });
-
-    test("runtime pull invokes computor for migrated potentially-outdated node when counters mismatch", async () => {
-        const root = makeSnapshot({ parentFreshness: "potentially-outdated", inputCounters: [2], counter: 3 });
+    test("runtime pull invokes computor for migrated potentially-outdated node", async () => {
+        const root = makeSnapshot({ parentFreshness: "potentially-outdated", counter: 3 });
         migrateSnapshot(root);
         const capabilities = getMockedRootCapabilities();
         const { nodeDefs, eventsCountCalls } = graphDefinitionsWithCountedEventsCount(capabilities);
@@ -239,6 +218,7 @@ describe("migrate-snapshot-to-flag-validity", () => {
         await expect(graph.pull("events_count")).resolves.toEqual({ type: "events_count", count: 0 });
         expect(eventsCountCalls()).toBe(1);
     });
+
 
     test("target shape removes source sublevels and writes graph_scheme and valid", () => {
         const root = makeSnapshot();

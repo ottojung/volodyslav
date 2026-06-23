@@ -3,7 +3,7 @@
  * Provides an abstraction over the database for managing event dependencies.
  */
 
-const { makeIncrementalGraph, createIncrementalGraph, isIncrementalGraph } = require('./class');
+const { createIncrementalGraph, isIncrementalGraph } = require('./class');
 const { makeUnchanged, isUnchanged } = require('./unchanged');
 const { 
     makeInvalidNodeError, 
@@ -68,7 +68,6 @@ module.exports = {
     getRootDatabase,
     LIVE_DATABASE_WORKING_PATH,
     CHECKPOINT_WORKING_PATH,
-    makeIncrementalGraph,
     createIncrementalGraph,
     isIncrementalGraph,
     makeUnchanged,

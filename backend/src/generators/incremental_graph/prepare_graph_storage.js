@@ -51,6 +51,7 @@ const {
  * @property {CompiledNode[]} compiledNodes
  * @property {GraphScheme} graphScheme
  * @property {Map<import('./types').NodeName, CompiledNode>} headIndex
+ * @property {SchemaStorage} schemaStorage
  */
 
 /**
@@ -127,6 +128,7 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
         compiledNodes,
         graphScheme,
         headIndex,
+        schemaStorage,
     };
 }
 
