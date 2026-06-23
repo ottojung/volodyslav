@@ -11,12 +11,12 @@
  *
  * Lifecycle:
  *   IncrementalGraphClass construction is a pure object construction step with
- *   respect to storage lifecycle.  The constructor compiles node definitions,
- *   validates the pure node schema, builds pure in-memory indexes, and attaches
- *   already-opened storage handles.  It does NOT perform any async storage reads
- *   or writes.  The `prepareIncrementalGraphStorage()` function handles all async
- *   database lifecycle — reading/validating global/graph_scheme, writing it for
- *   fresh databases, etc. — before graph construction.
+ *   respect to storage lifecycle. The constructor receives already-prepared graph
+ *   schema state, builds the runtime storage facade, and attaches capabilities.
+ *   It does NOT compile node definitions, validate persistent metadata, or perform
+ *   async storage reads/writes. prepareIncrementalGraphStorage() owns schema
+ *   compilation, pure validation, durable metadata initialization, and durable
+ *   metadata validation before graph construction.
  */
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
