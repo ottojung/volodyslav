@@ -59,12 +59,36 @@ function currentGraphScheme() {
     };
 }
 
+function requireNumber(value, description) {
+    if (!Number.isInteger(value)) {
+        throw new SnapshotMigrationError(`Malformed ${description}: expected integer`);
+    }
+    return value;
+}
+
 function loadIdentifierLookup(globalDirectory) {
+    validateGlobalMetadata(globalDirectory);
     const raw = readJson(path.join(globalDirectory, "identifiers_keys_map"));
     if (!Array.isArray(raw)) {
         throw new SnapshotMigrationError("Malformed identifiers_keys_map: expected an array");
     }
     return makeIdentifierLookup(raw);
+}
+
+function validateGlobalMetadata(globalDirectory) {
+    const fingerprint = readJson(path.join(globalDirectory, "fingerprint"));
+    if (typeof fingerprint !== "string" || fingerprint.length === 0) {
+        throw new SnapshotMigrationError("Malformed fingerprint: expected non-empty string");
+    }
+    const lastNodeIndex = readJson(path.join(globalDirectory, "last_node_index"));
+    requireNumber(lastNodeIndex, "last_node_index");
+    if (lastNodeIndex < 0) {
+        throw new SnapshotMigrationError("Malformed last_node_index: expected non-negative integer");
+    }
+    const version = readJson(path.join(globalDirectory, "version"));
+    if (typeof version !== "string" || version.length === 0) {
+        throw new SnapshotMigrationError("Malformed version: expected non-empty string");
+    }
 }
 
 function readLevel(directoryPath) {
@@ -89,6 +113,9 @@ function parseInputRecord(raw, id) {
     }
     const inputs = requireArray(raw.inputs, `inputs.${id}.inputs`);
     const inputCounters = requireArray(raw.inputCounters, `inputs.${id}.inputCounters`);
+    for (let index = 0; index < inputCounters.length; index++) {
+        requireNumber(inputCounters[index], `inputs.${id}.inputCounters[${index}]`);
+    }
     if (inputs.length !== inputCounters.length) {
         throw new SnapshotMigrationError(`Malformed inputCounters for ${id}: length mismatch`);
     }
@@ -157,9 +184,15 @@ function migrateSnapshot(snapshotDirectory) {
             throw new SnapshotMigrationError(`Materialized value id missing from identifiers_keys_map: ${idString}`);
         }
         const derivedInputs = deriveInputEdges(graphScheme, lookup, id);
+        if (!freshness.has(idString)) {
+            throw new SnapshotMigrationError(`Missing freshness record for materialized node: ${idString}`);
+        }
         const oldFreshness = freshness.get(idString);
+        if (oldFreshness !== "up-to-date" && oldFreshness !== "potentially-outdated") {
+            throw new SnapshotMigrationError(`Malformed freshness for ${idString}: expected up-to-date or potentially-outdated`);
+        }
         const isUpToDate = oldFreshness === "up-to-date";
-        nextFreshness.set(idString, isUpToDate ? "up-to-date" : "potentially-outdated");
+        nextFreshness.set(idString, oldFreshness);
         if (derivedInputs.length === 0) continue;
 
         if (!inputs.has(idString)) {
@@ -176,7 +209,8 @@ function migrateSnapshot(snapshotDirectory) {
             if (!counters.has(dependencyString)) {
                 throw new SnapshotMigrationError(`Dependency id missing from counters: ${dependencyString}`);
             }
-            if (isUpToDate || inputRecord.inputCounters[index] === counters.get(dependencyString)) {
+            const dependencyCounter = requireNumber(counters.get(dependencyString), `counters.${dependencyString}`);
+            if (isUpToDate || inputRecord.inputCounters[index] === dependencyCounter) {
                 addValid(valid, dependency, id);
             }
         }
