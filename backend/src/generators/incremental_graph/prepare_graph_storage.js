@@ -32,8 +32,8 @@ const {
     buildGraphSchemeFromNodeDefs,
     buildGraphSchemeStringFromNodeDefs,
     assertExactStoredGraphSchemeMatches,
-} = require("./database/graph_scheme");
-const { versionToString } = require("./database/types");
+    versionToString,
+} = require("./database");
 
 /**
  * @typedef {object} PreparedGraphStorage
