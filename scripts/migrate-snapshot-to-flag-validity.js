@@ -44,11 +44,6 @@ function requireDirectory(directoryPath) {
     }
 }
 
-function optionalDirectoryEntries(directoryPath) {
-    if (!fs.existsSync(directoryPath)) return [];
-    requireDirectory(directoryPath);
-    return fs.readdirSync(directoryPath).sort();
-}
 
 function currentGraphScheme() {
     const nodeDefs = createDefaultGraphDefinition({});
@@ -100,12 +95,6 @@ function readLevel(directoryPath) {
     return records;
 }
 
-function addValid(validMap, dependency, dependent) {
-    const dependencyString = nodeIdentifierToString(dependency);
-    const dependentString = nodeIdentifierToString(dependent);
-    if (!validMap.has(dependencyString)) validMap.set(dependencyString, new Set());
-    validMap.get(dependencyString).add(dependentString);
-}
 
 function migrateSnapshot(snapshotDirectory) {
     const rendered = path.join(snapshotDirectory, "rendered");
@@ -133,47 +122,41 @@ function migrateSnapshot(snapshotDirectory) {
     const values = readLevel(valuesDirectory);
     const freshness = readLevel(freshnessDirectory);
     const counters = readLevel(countersDirectory);
+    const timestampsDirectory = path.join(replica, "timestamps");
     const { graphScheme, graphSchemeString } = currentGraphScheme();
     parseGraphScheme(graphSchemeString);
 
-    const materializedIds = new Set(values.keys());
+    const materializedIds = new Set(lookup.idToKey.keys());
+    const cachedIds = new Set(values.keys());
     const nextFreshness = new Map();
     const valid = new Map();
 
     for (const idString of [...materializedIds].sort((a, b) => compareNodeIdentifier(nodeIdentifierFromString(a), nodeIdentifierFromString(b)))) {
         const id = nodeIdentifierFromString(idString);
-        if (!lookup.idToKey.has(idString)) {
-            throw new SnapshotMigrationError(`Materialized value id missing from identifiers_keys_map: ${idString}`);
-        }
         const derivedInputs = deriveInputEdges(graphScheme, lookup, id);
-        if (!freshness.has(idString)) {
-            throw new SnapshotMigrationError(`Missing freshness record for materialized node: ${idString}`);
+        if (!cachedIds.has(idString)) {
+            nextFreshness.set(idString, "missing");
+            continue;
         }
         const oldFreshness = freshness.get(idString);
-        if (oldFreshness !== "up-to-date" && oldFreshness !== "potentially-outdated") {
+        if (oldFreshness !== undefined && oldFreshness !== "up-to-date" && oldFreshness !== "potentially-outdated") {
             throw new SnapshotMigrationError(`Malformed freshness for ${idString}: expected up-to-date or potentially-outdated`);
         }
-        const isUpToDate = oldFreshness === "up-to-date";
-        nextFreshness.set(idString, oldFreshness);
-        if (derivedInputs.length === 0) continue;
-
+        nextFreshness.set(idString, "potentially-outdated");
         for (const dependency of derivedInputs) {
             const dependencyString = nodeIdentifierToString(dependency);
             if (!materializedIds.has(dependencyString)) {
-                throw new SnapshotMigrationError(`Dependency id missing from values: ${dependencyString}`);
+                throw new SnapshotMigrationError(`Dependency id missing from identifiers_keys_map: ${dependencyString}`);
             }
             if (!counters.has(dependencyString)) {
                 throw new SnapshotMigrationError(`Dependency id missing from counters: ${dependencyString}`);
             }
             requireNumber(counters.get(dependencyString), `counters.${dependencyString}`);
-            if (isUpToDate) {
-                addValid(valid, dependency, id);
-            }
         }
     }
 
     for (const idString of freshness.keys()) {
-        if (!materializedIds.has(idString)) throw new SnapshotMigrationError(`Freshness id is not materialized: ${idString}`);
+        if (!materializedIds.has(idString)) throw new SnapshotMigrationError(`Freshness id has no identifier lookup entry: ${idString}`);
     }
 
     const validObject = [...valid.entries()]
@@ -183,6 +166,10 @@ function migrateSnapshot(snapshotDirectory) {
     validateResult(graphScheme, lookup, materializedIds, nextFreshness, validObject);
 
     for (const [id, state] of nextFreshness.entries()) writeJson(path.join(freshnessDirectory, id), state);
+    for (const id of materializedIds) {
+        const nowIso = "1970-01-01T00:00:00.000Z";
+        writeJson(path.join(timestampsDirectory, id), { createdAt: nowIso, modifiedAt: nowIso });
+    }
     fs.mkdirSync(validDirectory, { recursive: true });
     for (const [dependency, dependents] of validObject) writeJson(path.join(validDirectory, dependency), dependents);
     writeJson(path.join(globalDirectory, "graph_scheme"), graphSchemeString);
@@ -197,6 +184,7 @@ function validateResult(graphScheme, lookup, materializedIds, freshness, validOb
     for (const idString of materializedIds) {
         const id = nodeIdentifierFromString(idString);
         deriveInputEdges(graphScheme, lookup, id);
+        if (!freshness.has(idString)) throw new SnapshotMigrationError(`Materialized node is missing freshness: ${idString}`);
     }
     for (const [dependency, dependents] of validObject) {
         if (!materializedIds.has(dependency)) throw new SnapshotMigrationError(`Valid key is not materialized: ${dependency}`);
@@ -207,7 +195,7 @@ function validateResult(graphScheme, lookup, materializedIds, freshness, validOb
         }
     }
     for (const [idString, state] of freshness.entries()) {
-        if (!materializedIds.has(idString)) throw new SnapshotMigrationError(`Freshness id is not materialized: ${idString}`);
+        if (!materializedIds.has(idString)) throw new SnapshotMigrationError(`Freshness id has no identifier lookup entry: ${idString}`);
         if (state === "up-to-date") {
             const edges = deriveInputEdges(graphScheme, lookup, nodeIdentifierFromString(idString)).map(nodeIdentifierToString);
             for (const dependency of edges) {
@@ -225,7 +213,7 @@ function validateWrittenSnapshot(replica, graphScheme, lookup) {
     for (const removed of ["inputs", "revdeps", "counters"]) {
         if (fs.existsSync(path.join(replica, removed))) throw new SnapshotMigrationError(`Removed source directory still exists: ${removed}`);
     }
-    const materializedIds = new Set(optionalDirectoryEntries(path.join(replica, "values")));
+    const materializedIds = new Set(lookup.idToKey.keys());
     const freshness = readLevel(path.join(replica, "freshness"));
     const valid = readLevel(path.join(replica, "valid"));
     const validObject = [...valid.entries()];

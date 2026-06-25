@@ -257,6 +257,7 @@ describe("synchronizeNoLock", () => {
                 entries: [
                     [`!x!!values!${aliceNodeIdentifier}`, { source: "alice" }],
                     [aliceTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+                    [`!x!!freshness!${aliceNodeIdentifier}`, "up-to-date"],
                     ["!x!!global!identifiers_keys_map", [[aliceNodeIdentifier, aliceNodeArgs]]],
                     ["!x!!global!graph_scheme", aliceGraphScheme],
                 ],
@@ -299,6 +300,7 @@ describe("synchronizeNoLock", () => {
                 entries: [
                     [`!x!!values!${bobNodeIdentifier}`, { source: "bob" }],
                     [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+                    [`!x!!freshness!${bobNodeIdentifier}`, "up-to-date"],
                     ["!x!!global!identifiers_keys_map", [[bobNodeIdentifier, bobNodeArgs]]],
                     ["!x!!global!graph_scheme", graphSchemeJson],
                 ],

@@ -255,6 +255,7 @@ function canonicalValidMapsEqual(left, right) {
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
  * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
+ * @param {string} options.mergeTimestampIso
  * @returns {Promise<boolean>} Whether the canonical valid relation changed.
  */
 async function rebuildMergedValidity({
@@ -266,6 +267,7 @@ async function rebuildMergedValidity({
     finalIdentifierForKey: finalIdForKey,
     mergedInputsMap,
     valueOriginByKey,
+    mergeTimestampIso,
 }) {
     const oldCanonicalValidMap = await readCanonicalValidMap(targetStorage);
 
@@ -323,13 +325,42 @@ async function rebuildMergedValidity({
     await transportValidityFromSide('target', targetSourceStorage, targetLookup);
     await transportValidityFromSide('host', hostSourceStorage, hostLookup);
 
+    const cachedIds = new Set();
+    for await (const cachedId of targetStorage.values.keys()) {
+        cachedIds.add(nodeIdentifierToString(cachedId));
+    }
+
+    const writer = new ReplicaBatchWriter(targetStorage);
+
     for await (const nodeIdentifier of targetStorage.values.keys()) {
         const freshness = await targetStorage.freshness.get(nodeIdentifier);
         if (freshness !== 'up-to-date') continue;
 
         const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
-        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+        const cleanInputs = [];
+        let clean = true;
         for (const depId of requiredInputs) {
+            const depIdStr = nodeIdentifierToString(depId);
+            if (!cachedIds.has(depIdStr) || await targetStorage.freshness.get(depId) !== 'up-to-date') {
+                clean = false;
+                break;
+            }
+            cleanInputs.push(depId);
+        }
+        if (!clean) {
+            await writer.push(targetStorage.freshness.putOp(nodeIdentifier, 'potentially-outdated'));
+            const timestamps = await targetStorage.timestamps.get(nodeIdentifier);
+            if (timestamps !== undefined && mergeTimestampIso !== undefined) {
+                await writer.push(targetStorage.timestamps.putOp(nodeIdentifier, {
+                    createdAt: timestamps.createdAt,
+                    modifiedAt: mergeTimestampIso,
+                }));
+            }
+            continue;
+        }
+
+        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+        for (const depId of cleanInputs) {
             const depIdStr = nodeIdentifierToString(depId);
             depIdCache.set(depIdStr, depId);
             const dependents = validMap.get(depIdStr) ?? [];
@@ -341,8 +372,6 @@ async function rebuildMergedValidity({
     }
 
     await targetStorage.valid.clear();
-
-    const writer = new ReplicaBatchWriter(targetStorage);
     for (const [depIdStr, dependents] of validMap) {
         const depId = depIdCache.get(depIdStr);
         if (depId !== undefined && dependents.length > 0) {

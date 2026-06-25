@@ -21,10 +21,10 @@ Within each namespace there are further typed sublevels:
 | Sublevel    | Purpose                                                   |
 |-------------|-----------------------------------------------------------|
 | `values`    | The computed output value for each graph node             |
-| `freshness` | Whether a node is `up-to-date` or `potentially-outdated` |
-| `valid`     | Validity frontier (input → validated consumers)           |
-| `timestamps`| Creation and last-modification ISO timestamps             |
-| `global`    | Namespace metadata (version, identifiers_keys_map, last_node_index, fingerprint, graph_scheme) |
+| `freshness` | Total materialized-node freshness table: `missing`, `potentially-outdated`, or `up-to-date` |
+| `valid`     | Inverse validity relation for cached values (input → validated cached consumers) |
+| `timestamps`| Total materialized-node timestamp table (`createdAt` identity creation, `modifiedAt` record change) |
+| `global`    | Namespace metadata (version, identifiers_keys_map materialized-node registry, last_node_index, fingerprint, graph_scheme) |
 
 Structural dependency edges (`inputEdges(N)`) are not persisted per node. They are derived from
 `global/graph_scheme` (the schema's input-position definitions), `global/identifiers_keys_map`
@@ -37,7 +37,7 @@ current replica pointer.
 
 ### Key format
 
-Data sublevels (`values`, `freshness`, `valid`, `timestamps`) are
+Data sublevels (`values` cached value storage, `freshness`, `valid`, `timestamps`) are
 keyed by **NodeIdentifier** — an opaque string assigned to each materialised node.
 Semantic node keys (`NodeKey` objects: `{"head":"<name>","args":[...]}`) are mapped to
 their identifiers through an identifier-lookup table stored under the `IDENTIFIERS_KEY`

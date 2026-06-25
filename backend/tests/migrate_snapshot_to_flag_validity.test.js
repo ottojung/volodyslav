@@ -4,6 +4,7 @@ const path = require("path");
 const { migrateSnapshot } = require("../../scripts/migrate-snapshot-to-flag-validity");
 const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { createDefaultGraphDefinition } = require("../src/generators/interface/default_graph");
+const allEvents = require("../src/generators/individual/all_events/wrapper");
 const { getMockedRootCapabilities } = require("./spies");
 const {
     makeIdentifierLookup,
@@ -145,7 +146,7 @@ class MigratedSnapshotDatabase {
 
 function graphDefinitionsWithCountedEventsCount(capabilities) {
     let calls = 0;
-    const nodeDefs = createDefaultGraphDefinition(capabilities).map((nodeDef) => {
+    const nodeDefs = createDefaultGraphDefinition(capabilities, undefined, allEvents.makeBox()).map((nodeDef) => {
         if (nodeDef.output !== "events_count") return nodeDef;
         return {
             ...nodeDef,
@@ -159,12 +160,12 @@ function graphDefinitionsWithCountedEventsCount(capabilities) {
 }
 
 describe("migrate-snapshot-to-flag-validity", () => {
-    test("up-to-date non-source node preserves freshness and writes complete validity flags", () => {
+    test("cached non-source node is marked potentially-outdated without minted validity flags", () => {
         const root = makeSnapshot();
         migrateSnapshot(root);
         const r = path.join(root, "rendered", "r");
-        expect(JSON.parse(fs.readFileSync(path.join(r, "freshness", "b"), "utf8"))).toBe("up-to-date");
-        expect(JSON.parse(fs.readFileSync(path.join(r, "valid", "a"), "utf8"))).toEqual(["b"]);
+        expect(JSON.parse(fs.readFileSync(path.join(r, "freshness", "b"), "utf8"))).toBe("potentially-outdated");
+        expect(fs.existsSync(path.join(r, "valid", "a"))).toBe(false);
     });
 
     test("potentially-outdated node omits validity flags", () => {
@@ -183,6 +184,7 @@ describe("migrate-snapshot-to-flag-validity", () => {
         writeJson(path.join(r, "freshness", "a"), "potentially-outdated");
         migrateSnapshot(root);
         expect(JSON.parse(fs.readFileSync(path.join(r, "freshness", "a"), "utf8"))).toBe("potentially-outdated");
+        expect(JSON.parse(fs.readFileSync(path.join(r, "freshness", "b"), "utf8"))).toBe("missing");
         expect(fs.readdirSync(path.join(r, "valid"))).toEqual([]);
     });
 
