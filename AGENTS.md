@@ -624,6 +624,14 @@ It is always safe to commit, do it even if you weren't explicitly told to.
 When posting a comment on github, include `@ottojung` substring at the end.
 Github posts must use humor and metaphors.
 
+## Static analysis
+
+The project has very precise and valuable rules for the codebase, and enforces them via `npm run static-analysis`.
+Important:
+- linter configs must not be changed unless explicitly asked to by the user.
+- type checker configs must not be changed unless explicitly asked to by the user.
+- static analysis rules must not be ignored or disabled.
+
 ## Additional Guidelines
 
 - Follow existing naming conventions (snake_case for files, camelCase for functions)
