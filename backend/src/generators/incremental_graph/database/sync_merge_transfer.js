@@ -60,13 +60,16 @@ async function copyNodeOps({
     const sourceFreshness = await sourceStorage.freshness.get(sourceId);
     ops.push(targetStorage.freshness.putOp(
         destinationId,
-        sourceFreshness ?? 'potentially-outdated'
+        sourceValue === undefined ? 'missing' : (sourceFreshness ?? 'potentially-outdated')
     ));
 
     const sourceTimestamps = await sourceStorage.timestamps.get(sourceId);
-    ops.push(sourceTimestamps === undefined
-        ? targetStorage.timestamps.delOp(destinationId)
-        : targetStorage.timestamps.putOp(destinationId, sourceTimestamps));
+    if (sourceTimestamps === undefined) {
+        const nowIso = "1970-01-01T00:00:00.000Z";
+        ops.push(targetStorage.timestamps.putOp(destinationId, { createdAt: nowIso, modifiedAt: nowIso }));
+    } else {
+        ops.push(targetStorage.timestamps.putOp(destinationId, sourceTimestamps));
+    }
     return ops;
 }
 

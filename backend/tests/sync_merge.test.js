@@ -456,7 +456,7 @@ describe('mergeHostIntoReplica', () => {
             // Child's structural dependency on parent changed from hostParent to
             // targetParent, making it directly relowered. Its value is deleted
             // and freshness becomes potentially-outdated.
-            expect(await T.freshness.get(hostChild)).toBe('potentially-outdated');
+            expect(await T.freshness.get(hostChild)).toBe('missing');
             expect(await T.values.get(hostChild)).toBeUndefined();
             expect(await T.values.get(targetChild)).toBeUndefined();
             expect(await T.values.get(hostParent)).toBeUndefined();
@@ -1290,7 +1290,7 @@ describe('mergeHostIntoReplica', () => {
 
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
             const T = db.getSchemaStorage();
-            expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
+            expect(await T.freshness.get(hostAId)).toBe('missing');
             expect(await T.valid.get(targetCId)).toBeUndefined();
             expect(await T.values.get(hostCId)).toBeUndefined();
         } finally {
@@ -1332,7 +1332,7 @@ describe('mergeHostIntoReplica', () => {
             // The directly relowered node should be stale because its structural
             // dependency changed from hostCId to targetCId.
             const T = db.getSchemaStorage();
-            expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
+            expect(await T.freshness.get(hostAId)).toBe('missing');
 
             // Write exact graph_scheme matching the nodeDefs below (nodes are sorted alphabetically by head)
             await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
@@ -1407,7 +1407,7 @@ describe('mergeHostIntoReplica', () => {
 
             // Directly relowered node and its transitive dependent are both stale.
             const T = db.getSchemaStorage();
-            expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
+            expect(await T.freshness.get(hostAId)).toBe('missing');
             expect(await T.freshness.get(hostDId)).toBe('potentially-outdated');
 
             // Write exact graph_scheme matching the nodeDefs below (nodes are sorted alphabetically by head)
@@ -1500,7 +1500,7 @@ describe('mergeHostIntoReplica', () => {
             // D directly relowered. Its value is deleted and freshness becomes
             // potentially-outdated.
             expect(await T.values.get(targetDId)).toBeUndefined();
-            expect(await T.freshness.get(targetDId)).toBe('potentially-outdated');
+            expect(await T.freshness.get(targetDId)).toBe('missing');
             expect(await T.valid.get(hostCId)).toBeUndefined();
             expect(await T.values.get(targetCId)).toBeUndefined();
         } finally {
@@ -1808,6 +1808,7 @@ describe('mergeHostIntoReplica', () => {
                 await writeGraphScheme(T);
                 await T.values.put(NODE_A, { v: 1 });
                 await T.freshness.put(NODE_A, 'potentially-outdated');
+                await T.timestamps.put(NODE_A, { createdAt: '2024-01-01T00:00:00.000Z', modifiedAt: '2024-01-01T00:00:00.000Z' });
 
                 const lookup = makeIdentifierLookup([[NODE_A, stringToNodeKeyString('{"head":"test","args":[]}')]]);
 
@@ -2544,7 +2545,7 @@ describe('mergeHostIntoReplica', () => {
             // host-side proof valid[hostA] = [hostB] must NOT transport.
             // hostA is deleted (A kept from target), so valid[hostA] doesn't exist.
             expect(await T.values.get(hostB)).toBeUndefined();
-            expect(await T.freshness.get(hostB)).toBe('potentially-outdated');
+            expect(await T.freshness.get(hostB)).toBe('missing');
             const validTargetA = await T.valid.get(targetA) ?? [];
             expect(validTargetA.some(dependent => String(dependent) === String(hostB))).toBe(false);
             expect(await T.valid.get(hostA) ?? []).toEqual([]);

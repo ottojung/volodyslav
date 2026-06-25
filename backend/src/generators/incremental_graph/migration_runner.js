@@ -94,12 +94,13 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
  * @returns {Promise<NodeIdentifier[]>}
  */
 async function loadMaterializedNodes(storage) {
-    /** @type {NodeIdentifier[]} */
-    const nodes = [];
-    for await (const key of storage.values.keys()) {
-        nodes.push(key);
-    }
-    return nodes;
+    const rawIdentifiers = await storage.global.get(IDENTIFIERS_KEY);
+    const lookup = rawIdentifiers === undefined
+        ? makeEmptyIdentifierLookup()
+        : parseIdentifierLookup(rawIdentifiers, 'migration source replica');
+    return [...lookup.idToKey.keys()]
+        .map(stringToNodeIdentifier)
+        .sort(compareNodeIdentifier);
 }
 
 
@@ -180,6 +181,15 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
     /** @type {Map<string, Set<NodeIdentifier>>} */
     const validSets = new Map();
     const materialized = materializedDecisionStrings(decisions);
+    const cached = new Set();
+    for (const [nodeIdentifier, decision] of decisions) {
+        if (decision.kind === 'delete') continue;
+        if (decision.kind === 'create' || decision.kind === 'override') {
+            cached.add(nodeIdentifierToString(nodeIdentifier));
+        } else if (await prevStorage.values.get(nodeIdentifier) !== undefined) {
+            cached.add(nodeIdentifierToString(nodeIdentifier));
+        }
+    }
 
     for (const [nodeIdentifier, decision] of decisions) {
         if (decision.kind === "delete" || decision.kind === "invalidate") continue;
@@ -190,12 +200,16 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
             }
         }
 
+        if (!cached.has(nodeIdentifierToString(nodeIdentifier))) continue;
+
         const finalFreshness = decision.kind === "keep"
             ? await prevStorage.freshness.get(nodeIdentifier)
             : "up-to-date";
         if (finalFreshness === "up-to-date") {
             for (const input of finalEdges) {
-                addToValidSet(validSets, input, nodeIdentifier);
+                if (cached.has(nodeIdentifierToString(input))) {
+                    addToValidSet(validSets, input, nodeIdentifier);
+                }
             }
             continue;
         }
@@ -205,6 +219,7 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
         for (const input of finalEdges) {
             const inputDecision = decisions.get(input);
             if (!inputDecision || inputDecision.kind !== "keep") continue;
+            if (!cached.has(nodeIdentifierToString(input))) continue;
             if (!oldEdges.some(edge => nodeIdentifierToString(edge) === nodeIdentifierToString(input))) continue;
             const existingValidForD = await prevStorage.valid.get(input) ?? [];
             if (existingValidForD.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(nodeIdentifier))) {
@@ -276,23 +291,20 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 for (const outputKey of sortedDecisionOutputKeys) {
                     const decision = decisions.get(outputKey);
                     if (!decision || decision.kind === "delete") continue;
-                    if (decision.kind === "create" || decision.kind === "override" || decision.kind === "invalidate") {
-                        yield outputKey;
-                    } else if (decision.kind === "keep") {
-                        const v = await prevStorage.values.get(outputKey);
-                        if (v !== undefined) yield outputKey;
-                    }
+                    yield outputKey;
                 }
             },
             async get(key) {
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
+                const value = decision.kind === "create" || decision.kind === "override"
+                    ? await decision.value(key)
+                    : await prevStorage.values.get(key);
+                if (value === undefined) return "missing";
                 if (decision.kind === "create" || decision.kind === "override") return "up-to-date";
                 if (decision.kind === "invalidate") return "potentially-outdated";
                 const freshness = await prevStorage.freshness.get(key);
-                if (freshness !== undefined) return freshness;
-                const value = await prevStorage.values.get(key);
-                return value === undefined ? undefined : "potentially-outdated";
+                return freshness === "up-to-date" ? "potentially-outdated" : (freshness ?? "potentially-outdated");
             },
         },
         valid: {
@@ -310,22 +322,25 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 for (const outputKey of sortedDecisionOutputKeys) {
                     const decision = decisions.get(outputKey);
                     if (!decision || decision.kind === "delete") continue;
-                    if (decision.kind === "create") {
-                        yield outputKey;
-                        continue;
-                    }
-                    const ts = await prevStorage.timestamps.get(outputKey);
-                    if (ts !== undefined) yield outputKey;
+                    yield outputKey;
                 }
             },
             async get(key) {
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
-                if (decision.kind === "create") {
-                    const nowIso = datetime.now().toISOString();
+                const nowIso = datetime.now().toISOString();
+                const existing = await prevStorage.timestamps.get(key);
+                if (decision.kind === "create" || existing === undefined) {
                     return { createdAt: nowIso, modifiedAt: nowIso };
                 }
-                return await prevStorage.timestamps.get(key);
+                if (decision.kind === "override" || decision.kind === "invalidate") {
+                    return { createdAt: existing.createdAt, modifiedAt: nowIso };
+                }
+                const value = await prevStorage.values.get(key);
+                if (value === undefined) {
+                    return { createdAt: existing.createdAt, modifiedAt: nowIso };
+                }
+                return existing;
             },
         },
         global: {

@@ -323,6 +323,11 @@ async function rebuildMergedValidity({
     await transportValidityFromSide('target', targetSourceStorage, targetLookup);
     await transportValidityFromSide('host', hostSourceStorage, hostLookup);
 
+    const cachedIds = new Set();
+    for await (const cachedId of targetStorage.values.keys()) {
+        cachedIds.add(nodeIdentifierToString(cachedId));
+    }
+
     for await (const nodeIdentifier of targetStorage.values.keys()) {
         const freshness = await targetStorage.freshness.get(nodeIdentifier);
         if (freshness !== 'up-to-date') continue;
@@ -331,6 +336,7 @@ async function rebuildMergedValidity({
         const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
         for (const depId of requiredInputs) {
             const depIdStr = nodeIdentifierToString(depId);
+            if (!cachedIds.has(depIdStr)) continue;
             depIdCache.set(depIdStr, depId);
             const dependents = validMap.get(depIdStr) ?? [];
             validMap.set(depIdStr, dependents);

@@ -2,10 +2,10 @@
 
 ## Purpose
 
-The incremental graph stores materialized node values. A node may depend on other nodes, and its
-computor may either produce a new value or report that the current materialized value is unchanged.
+The incremental graph stores materialized node records and cached values. A node may depend on other nodes, and its
+computor may either produce a new value or report that the current cached value is unchanged.
 
-The graph needs a way to decide whether a node can safely reuse its current materialized value.
+The graph needs a way to decide whether a node can safely reuse its current cached value.
 This specification uses a single inverse edge-validity relation (`valid`) as both the cache-proof
 frontier and the invalidation propagation index.
 
@@ -23,18 +23,48 @@ replacement operation in this algorithm.
 ## State
 
 ```
-values    : Map<NodeIdentifier, Value>
-freshness : Map<NodeIdentifier, "up-to-date" | "potentially-outdated">
-valid     : Map<NodeIdentifier, Array<NodeIdentifier>>
+identifiers_keys_map : Map<NodeIdentifier, NodeKeyString>
+values               : Map<NodeIdentifier, Value>
+freshness            : Map<NodeIdentifier, "missing" | "potentially-outdated" | "up-to-date">
+timestamps           : Map<NodeIdentifier, { createdAt: ISOString, modifiedAt: ISOString }>
+valid                : Map<NodeIdentifier, Array<NodeIdentifier>>
 ```
 
-- `values` — persisted materialized node values. `values.keys()` is the materialized-node registry.
-- `freshness` — persisted read-path state. `freshness[N]` is the local scheduling state for node `N`:
-  an `"up-to-date"` node may be returned immediately without consulting validity flags.
-  The invariant `freshness[N] = "up-to-date"` implies `N` has a materialized value.
-- `valid` — persisted stale-cache proof and invalidation frontier. `valid[D]` is an array of
-  dependents `N` such that the cached value of `N` is still known to be valid with respect to the
-  current stored value of `D`.
+- `identifiers_keys_map` is the materialized node registry. A materialized node is an identity-level database record.
+- `values` is cached value storage. `values.keys()` is the cached-node set, not the materialized-node set.
+- `freshness` is the total materialized-node freshness table.
+- `timestamps` is the total materialized-node timestamp table. `createdAt` is when the materialized node identity was first created; `modifiedAt` is when the materialized node record last changed.
+- `valid` is the inverse validity relation for cached values. `valid[D]` contains dependents `N` whose cached value is known to be valid with respect to `D`'s current cached value.
+
+Terminology:
+
+```text
+materialized node = node whose identifier exists in identifiers_keys_map
+cached node       = materialized node with an entry in values
+missing node      = materialized node without an entry in values
+fresh node        = materialized node with freshness == "up-to-date"
+stale node        = materialized node with freshness == "potentially-outdated"
+```
+
+Storage invariants:
+
+```text
+IdSet = keys(identifiers_keys_map)
+
+keys(freshness)  == IdSet
+keys(timestamps) == IdSet
+keys(values)     ⊆ IdSet
+keys(valid)      ⊆ keys(values)
+
+freshness[id] == "missing"              ⇔ id ∉ keys(values)
+freshness[id] == "potentially-outdated" => id may or may not have a cached value
+freshness[id] == "up-to-date"           => id ∈ keys(values)
+
+valid[D] contains N =>
+  D ∈ keys(values)
+  N ∈ keys(values)
+  D is a derived input edge of N
+```
 
 There is no persisted per-node input storage. Structural dependency edges are derived from the
 stored `graph_scheme`, the `identifiers_keys_map`, and the node's semantic key.
@@ -147,7 +177,7 @@ for an up-to-date node — it relies on the invariant being enforced by mutation
 A potentially-outdated node `N` may reuse its old cached value without running the computor
 iff:
 
-- a materialized value for `N` exists;
+- a cached value for `N` exists;
 - `inputEdges(N)` is non-empty;
 - for every `D ∈ inputEdges(N)`, `N ∈ valid[D]`.
 
@@ -233,7 +263,7 @@ For up-to-date nodes, the stored value is returned directly without consulting v
 flags. The completeness of validity flags for up-to-date nodes is a storage invariant
 enforced by writers, not the read fast path.
 
-If the invariant is violated — an up-to-date node lacks a materialized value — the
+If the invariant is violated — an up-to-date node lacks a cached value — the
 implementation throws an error. This is not a runtime recovery scenario but a
 corruption/integrity check.
 
@@ -253,12 +283,12 @@ against, so the predicate cannot pass and the node must run its computor.
 
 ## Handling `Unchanged`
 
-When the computor returns `Unchanged`, the materialized value of `N` did not change.
+When the computor returns `Unchanged`, the cached value of `N` did not change.
 
 ```
 handleUnchanged(N, inputEdges):
 
-require N has a materialized value
+require N has a cached value
 
 for every D in inputEdges:
     valid[D].add(N)
@@ -311,7 +341,7 @@ When a node `N` changes value, its dependents are marked potentially-outdated as
 
 ### External invalidation without value change
 
-Marking a node potentially-outdated does not by itself change its materialized value:
+Marking a node potentially-outdated does not by itself change its cached value:
 
 ```
 invalidate(D):
@@ -328,7 +358,7 @@ for every N in valid[D]:
 ```
 
 Invalidation does not modify `valid`. Existing validity flags are edge facts about current
-materialized values. Marking freshness as potentially-outdated does not by itself falsify those
+cached values. Marking freshness as potentially-outdated does not by itself falsify those
 edge facts. On subsequent `pull`, the cache predicate checks `valid[D].has(N)` for every input
 `D`. Even if `valid` still contains the flag, if the input's value actually changed, the
 `handleChanged` path would have cleared the flag.

@@ -1,3 +1,4 @@
+/* eslint volodyslav/max-lines-per-file: "off" */
 /**
  * Per-host graph merge for incremental-graph synchronization.
  *
@@ -233,6 +234,14 @@ async function applyNodeDecisions(
         }
         if (directlyReloweredNodes.has(nodeKey)) {
             await writer.push(targetStorage.values.delOp(destinationId));
+            await writer.push(targetStorage.freshness.putOp(destinationId, 'missing'));
+            await writer.push(targetStorage.valid.delOp(destinationId));
+            const existingTimestamp = await targetStorage.timestamps.get(destinationId);
+            const nowIso = existingTimestamp?.modifiedAt ?? "1970-01-01T00:00:00.000Z";
+            await writer.push(targetStorage.timestamps.putOp(destinationId, {
+                createdAt: existingTimestamp?.createdAt ?? nowIso,
+                modifiedAt: nowIso,
+            }));
         }
 
         if (
@@ -254,6 +263,20 @@ async function applyNodeDecisions(
                     }));
                 }
             }
+        }
+
+        const destinationHasCachedValue = shouldCopy
+            ? await sourceStorage.values.get(sourceId) !== undefined && !directlyReloweredNodes.has(nodeKey)
+            : await targetStorage.values.get(destinationId) !== undefined;
+        if (!destinationHasCachedValue) {
+            await writer.push(targetStorage.freshness.putOp(destinationId, 'missing'));
+            await writer.push(targetStorage.valid.delOp(destinationId));
+        }
+        if (await targetStorage.timestamps.get(destinationId) === undefined) {
+            await writer.push(targetStorage.timestamps.putOp(destinationId, {
+                createdAt: '1970-01-01T00:00:00.000Z',
+                modifiedAt: '1970-01-01T00:00:00.000Z',
+            }));
         }
     }
 

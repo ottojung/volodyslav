@@ -15,6 +15,7 @@
  * @property {Map<import('./types').NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
+ * @property {import('../../datetime').Datetime} datetime
  */
 
 const { stringToNodeName, nodeIdentifierToString, serializeNodeKey } = require("./database");
@@ -57,7 +58,8 @@ async function internalPropagateOutdated(
                 batch.freshness.put(output, "potentially-outdated");
             } else if (
                 currentFreshness !== undefined &&
-                currentFreshness !== "potentially-outdated"
+                currentFreshness !== "potentially-outdated" &&
+                currentFreshness !== "missing"
             ) {
                 /** @type {never} */
                 const freshness = currentFreshness;
@@ -104,6 +106,12 @@ async function internalUnsafeInvalidate(
         }
 
         tx.batch.freshness.put(outputIdentifier, "potentially-outdated");
+        const nowIso = incrementalGraph.datetime.now().toISOString();
+        const existingTimestamp = await tx.batch.timestamps.get(outputIdentifier);
+        tx.batch.timestamps.put(outputIdentifier, {
+            createdAt: existingTimestamp === undefined ? nowIso : existingTimestamp.createdAt,
+            modifiedAt: nowIso,
+        });
         await internalPropagateOutdated(incrementalGraph, outputIdentifier, tx.batch);
 
         return { value: undefined };

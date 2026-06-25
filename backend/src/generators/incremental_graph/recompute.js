@@ -224,8 +224,8 @@ async function internalMaybeRecalculate(
     // inputEdges are the normalized structural dependency-edge list.
     const inputEdges = normalizeInputEdges(inputIdentifiers);
 
-    // Cache predicate: reuse materialized value iff:
-    // 1. materialized value exists,
+    // Cache predicate: reuse cached value iff:
+    // 1. cached value exists,
     // 2. inputEdges is non-empty,
     // 3. valid[D].has(N) for every D in inputEdges.
     if (oldValue !== undefined && inputEdges.length > 0) {
