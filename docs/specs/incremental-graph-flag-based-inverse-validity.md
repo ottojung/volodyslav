@@ -57,7 +57,7 @@ keys(values)     ⊆ IdSet
 keys(valid)      ⊆ keys(values)
 
 freshness[id] == "missing"              ⇔ id ∉ keys(values)
-freshness[id] == "potentially-outdated" => id may or may not have a cached value
+freshness[id] == "potentially-outdated" => id ∈ keys(values)
 freshness[id] == "up-to-date"           => id ∈ keys(values)
 
 valid[D] contains N =>

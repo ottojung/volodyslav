@@ -100,62 +100,78 @@ async function assertValidFinalMergeState(targetStorage, finalLookup, options = 
             }
         }
     }
+
+    for (const identifierString of materializedIdentifiers) {
+        const identifier = nodeIdentifierFromString(identifierString);
+        if (await targetStorage.freshness.get(identifier) !== 'up-to-date') continue;
+        const derivedEdges = deriveInputEdges(scheme, finalLookup, identifier);
+        for (const input of derivedEdges) {
+            const inputString = nodeIdentifierToString(input);
+            if (!materializedIdentifiers.has(inputString)) {
+                throw new FinalMergeStateError(`up-to-date node ${identifierString} depends on non-materialized input ${inputString}`);
+            }
+            if (!cachedIdentifiers.has(inputString)) {
+                throw new FinalMergeStateError(`up-to-date node ${identifierString} depends on non-cached input ${inputString}`);
+            }
+            const inputFreshness = await targetStorage.freshness.get(input);
+            if (inputFreshness !== 'up-to-date') {
+                throw new FinalMergeStateError(`up-to-date node ${identifierString} depends on non-up-to-date input ${inputString}`);
+            }
+            const validDependents = await targetStorage.valid.get(input) ?? [];
+            if (!validDependents.some(dependent => nodeIdentifierToString(dependent) === identifierString)) {
+                throw new FinalMergeStateError(`up-to-date node ${identifierString} lacks validity for input ${inputString}`);
+            }
+        }
+    }
 }
 
 /**
- * Validate that every materialized node in storage has a corresponding entry
- * in the identifier lookup, and vice versa. Call this before building a merge
- * plan so corrupt snapshots are rejected before the planner can silently
- * ignore unreferenced materialized nodes.
+ * Validate pre-merge storage totality against identifiers_keys_map before
+ * planning compares materialized records.
  * @param {SchemaStorage} storage
  * @param {IdentifierLookup} lookup
  * @param {string} context
  * @returns {Promise<void>}
  */
 async function assertLookupCoversMaterializedNodes(storage, lookup, context) {
+    for (const idString of lookup.idToKey.keys()) {
+        const id = nodeIdentifierFromString(idString);
+        const freshness = await storage.freshness.get(id);
+        if (freshness === undefined) {
+            throw new IdentifierLookupConflictError(`${context}: materialized node ${idString} has no freshness entry`);
+        }
+        if (freshness !== 'missing' && freshness !== 'up-to-date' && freshness !== 'potentially-outdated') {
+            throw new IdentifierLookupConflictError(`${context}: materialized node ${idString} has invalid freshness ${String(freshness)}`);
+        }
+        if (await storage.timestamps.get(id) === undefined) {
+            throw new IdentifierLookupConflictError(`${context}: materialized node ${idString} has no timestamps entry`);
+        }
+    }
     for await (const id of storage.values.keys()) {
         if (!lookup.idToKey.has(nodeIdentifierToString(id))) {
-            throw new IdentifierLookupConflictError(
-                `${context}: cached node ${nodeIdentifierToString(id)} has no identifiers_keys_map entry`
-            );
+            throw new IdentifierLookupConflictError(`${context}: cached node ${nodeIdentifierToString(id)} has no identifiers_keys_map entry`);
         }
     }
     for await (const id of storage.freshness.keys()) {
         if (!lookup.idToKey.has(nodeIdentifierToString(id))) {
-            throw new IdentifierLookupConflictError(
-                `${context}: freshness entry ${nodeIdentifierToString(id)} has no identifiers_keys_map entry`
-            );
+            throw new IdentifierLookupConflictError(`${context}: freshness entry ${nodeIdentifierToString(id)} has no identifiers_keys_map entry`);
         }
     }
     for await (const id of storage.timestamps.keys()) {
         if (!lookup.idToKey.has(nodeIdentifierToString(id))) {
-            throw new IdentifierLookupConflictError(
-                `${context}: timestamp entry ${nodeIdentifierToString(id)} has no identifiers_keys_map entry`
-            );
+            throw new IdentifierLookupConflictError(`${context}: timestamp entry ${nodeIdentifierToString(id)} has no identifiers_keys_map entry`);
         }
     }
 }
 
 /**
- * Validate that every materialized node covered by the identifier lookup has
- * timestamps before sync merge planning compares freshness across replicas.
  * @param {SchemaStorage} storage
  * @param {IdentifierLookup} lookup
  * @param {string} context
  * @returns {Promise<void>}
  */
 async function assertMaterializedNodesHaveTimestamps(storage, lookup, context) {
-    for await (const id of storage.values.keys()) {
-        if (!lookup.idToKey.has(nodeIdentifierToString(id))) {
-            continue;
-        }
-        const timestamps = await storage.timestamps.get(id);
-        if (timestamps === undefined) {
-            throw new IdentifierLookupConflictError(
-                `${context}: cached node ${nodeIdentifierToString(id)} has no timestamps entry`
-            );
-        }
-    }
+    await assertLookupCoversMaterializedNodes(storage, lookup, context);
 }
 
 module.exports = {

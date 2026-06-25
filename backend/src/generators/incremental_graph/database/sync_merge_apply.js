@@ -21,6 +21,7 @@ const { ReplicaBatchWriter } = require('./sync_merge_validity');
  * @param {Set<NodeKeyString>} directlyReloweredNodes
  * @param {Set<NodeKeyString>} reloweringInvalidatedNodes
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
+ * @param {string} mergeTimestampIso
  * @returns {Promise<void>}
  */
 async function applyNodeDecisions(
@@ -33,7 +34,8 @@ async function applyNodeDecisions(
     hostOnlyNodesNeedingInvalidation,
     directlyReloweredNodes,
     reloweringInvalidatedNodes,
-    finalIdentifierForKey
+    finalIdentifierForKey,
+    mergeTimestampIso
 ) {
     const writer = new ReplicaBatchWriter(targetStorage);
 
@@ -52,6 +54,12 @@ async function applyNodeDecisions(
 
         const shouldCopy = decision !== 'keep' || sourceId !== destinationId ||
             directlyReloweredNodes.has(nodeKey);
+        const destinationTimestamp = await targetStorage.timestamps.get(destinationId);
+        const sourceTimestamp = await sourceStorage.timestamps.get(sourceId);
+        if (sourceTimestamp === undefined) {
+            throw new IdentifierLookupConflictError(`Source materialized node ${String(sourceId)} has no timestamps entry`);
+        }
+
         if (shouldCopy) {
             await writer.pushAll(await copyNodeOps({
                 targetStorage,
@@ -59,16 +67,18 @@ async function applyNodeDecisions(
                 sourceId,
                 destinationId,
             }));
+            await writer.push(targetStorage.timestamps.putOp(destinationId, {
+                createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
+                modifiedAt: mergeTimestampIso,
+            }));
         }
         if (directlyReloweredNodes.has(nodeKey)) {
             await writer.push(targetStorage.values.delOp(destinationId));
             await writer.push(targetStorage.freshness.putOp(destinationId, 'missing'));
             await writer.push(targetStorage.valid.delOp(destinationId));
-            const existingTimestamp = await targetStorage.timestamps.get(destinationId);
-            const nowIso = existingTimestamp?.modifiedAt ?? "1970-01-01T00:00:00.000Z";
             await writer.push(targetStorage.timestamps.putOp(destinationId, {
-                createdAt: existingTimestamp?.createdAt ?? nowIso,
-                modifiedAt: nowIso,
+                createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
+                modifiedAt: mergeTimestampIso,
             }));
         }
 
@@ -77,7 +87,14 @@ async function applyNodeDecisions(
             hostOnlyNodesNeedingInvalidation.has(nodeKey) ||
             reloweringInvalidatedNodes.has(nodeKey)
         ) {
+            const existingFreshness = await targetStorage.freshness.get(destinationId);
             await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
+            if (existingFreshness !== 'potentially-outdated') {
+                await writer.push(targetStorage.timestamps.putOp(destinationId, {
+                    createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
+                    modifiedAt: mergeTimestampIso,
+                }));
+            }
             if (initial === 'take') {
                 const hostTimestamps = await hostStorage.timestamps.get(sourceId);
                 const targetId = targetLookup.keyToId.get(String(nodeKey));
@@ -87,7 +104,7 @@ async function applyNodeDecisions(
                 if (hostTimestamps !== undefined) {
                     await writer.push(targetStorage.timestamps.putOp(destinationId, {
                         createdAt: targetTimestamps?.createdAt ?? hostTimestamps.createdAt,
-                        modifiedAt: hostTimestamps.modifiedAt,
+                        modifiedAt: mergeTimestampIso,
                     }));
                 }
             }
@@ -100,11 +117,8 @@ async function applyNodeDecisions(
             await writer.push(targetStorage.freshness.putOp(destinationId, 'missing'));
             await writer.push(targetStorage.valid.delOp(destinationId));
         }
-        if (await targetStorage.timestamps.get(destinationId) === undefined) {
-            await writer.push(targetStorage.timestamps.putOp(destinationId, {
-                createdAt: '1970-01-01T00:00:00.000Z',
-                modifiedAt: '1970-01-01T00:00:00.000Z',
-            }));
+        if (destinationTimestamp === undefined && !shouldCopy) {
+            throw new IdentifierLookupConflictError(`Destination materialized node ${String(destinationId)} has no timestamps entry`);
         }
     }
 

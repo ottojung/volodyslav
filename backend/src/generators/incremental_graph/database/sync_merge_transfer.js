@@ -65,11 +65,9 @@ async function copyNodeOps({
 
     const sourceTimestamps = await sourceStorage.timestamps.get(sourceId);
     if (sourceTimestamps === undefined) {
-        const nowIso = "1970-01-01T00:00:00.000Z";
-        ops.push(targetStorage.timestamps.putOp(destinationId, { createdAt: nowIso, modifiedAt: nowIso }));
-    } else {
-        ops.push(targetStorage.timestamps.putOp(destinationId, sourceTimestamps));
+        throw new Error(`Cannot copy materialized node ${String(sourceId)} without timestamps`);
     }
+    ops.push(targetStorage.timestamps.putOp(destinationId, sourceTimestamps));
     return ops;
 }
 

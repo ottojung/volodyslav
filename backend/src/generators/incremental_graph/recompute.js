@@ -85,15 +85,30 @@ function addValidityFlags(batch, nId, inputEdges) {
 }
 
 /**
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} nodeIdentifier
+ * @param {string} nowIso
+ * @returns {Promise<void>}
+ */
+async function touchTimestamp(batch, nodeIdentifier, nowIso) {
+    const existingTimestamp = await batch.timestamps.get(nodeIdentifier);
+    batch.timestamps.put(nodeIdentifier, {
+        createdAt: existingTimestamp === undefined ? nowIso : existingTimestamp.createdAt,
+        modifiedAt: nowIso,
+    });
+}
+
+/**
  * Propagate potentially-outdated freshness through validity sets.
  * Uses an iterative worklist to avoid stack overflow on deep chains.
  * @param {import('./graph_state').GraphStorage} storage
  * @param {BatchBuilder} batch
  * @param {NodeIdentifier} changedIdentifier
  * @param {NodeIdentifier[]} [initialDependents]
+ * @param {string | undefined} [nowIso]
  * @returns {Promise<void>}
  */
-async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialDependents = undefined) {
+async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialDependents = undefined, nowIso = undefined) {
     /** @type {Set<string>} */
     const visited = new Set();
     /** @type {NodeIdentifier[]} */
@@ -113,6 +128,9 @@ async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialD
             const freshness = await batch.freshness.get(dep);
             if (freshness === "up-to-date") {
                 batch.freshness.put(dep, "potentially-outdated");
+                if (nowIso !== undefined) {
+                    await touchTimestamp(batch, dep, nowIso);
+                }
             }
             worklist.push(dep);
         }
@@ -152,18 +170,20 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
     }
     const downstream = await getValidSet(batch, nodeIdentifier);
     batch.valid.clear(nodeIdentifier);
+    const datetime = incrementalGraph.datetime;
+    const nowIso = datetime.now().toISOString();
     for (const dependent of downstream) {
         const freshness = await batch.freshness.get(dependent);
         if (freshness === "up-to-date") {
             batch.freshness.put(dependent, "potentially-outdated");
+            await touchTimestamp(batch, dependent, nowIso);
         }
     }
-    await propagateOutdatedFrom(incrementalGraph.storage, batch, nodeIdentifier, downstream);
+    await propagateOutdatedFrom(incrementalGraph.storage, batch, nodeIdentifier, downstream, nowIso);
 
     batch.values.put(nodeIdentifier, newValue);
 
-    const datetime = incrementalGraph.datetime;
-    const nowIso = datetime.now().toISOString();
+
     const existingTimestamp = await batch.timestamps.get(nodeIdentifier);
     if (existingTimestamp === undefined) {
         batch.timestamps.put(nodeIdentifier, {
@@ -248,10 +268,8 @@ async function internalMaybeRecalculate(
         );
     }
 
-    // Mark all dependencies as up-to-date
-    for (const inputIdentifier of inputEdges) {
-        batch.freshness.put(inputIdentifier, "up-to-date");
-    }
+    // Dependencies were pulled before the computor runs; their own pull transactions
+    // establish up-to-date freshness and timestamps.
 
     if (isUnchanged(computedValue)) {
         await handleUnchanged(incrementalGraph, nodeIdentifier, inputEdges, batch);

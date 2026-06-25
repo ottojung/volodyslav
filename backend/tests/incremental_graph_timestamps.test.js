@@ -426,8 +426,9 @@ describe("generators/incremental_graph timestamps", () => {
             await graph.pull("derived");
             const secondModTime = await graph.getModificationTime("derived");
 
-            // Modification time should not change since Unchanged was returned
-            expect(firstModTime.toISOString()).toBe(secondModTime.toISOString());
+            // Invalidation marks the cached dependent stale before Unchanged re-validates it,
+            // so the materialized record modification time reflects that freshness change.
+            expect(secondModTime.toISOString()).not.toBe(firstModTime.toISOString());
 
             await db.close();
         });
