@@ -437,8 +437,8 @@ describe('mergeHostIntoReplica', () => {
 
             const targetParent = nodeIdentifierFromString('6-abcdefghi');
             const targetChild = nodeIdentifierFromString('7-abcdefghi');
-            const hostParent = nodeIdentifierFromString('8-abcdefghi');
-            const hostChild = nodeIdentifierFromString('9-abcdefghi');
+            const hostParent = nodeIdentifierFromString('8-hostfpbb');
+            const hostChild = nodeIdentifierFromString('9-hostfpbb');
             const parentKey = stringToNodeKeyString('{"head":"parent","args":[]}');
             const childKey = stringToNodeKeyString('{"head":"child","args":[]}');
             const L = db.schemaStorageForReplica('x');
@@ -1252,7 +1252,7 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(db.version);
             await db.setHostnameGlobal(hostname, 'version', db.version);
             const targetId = nodeIdentifierFromString('30-abcdefghi');
-            const hostId = nodeIdentifierFromString('31-abcdefghi');
+            const hostId = nodeIdentifierFromString('31-hostfpbb');
             const nodeKey = stringToNodeKeyString('{"head":"newer-host","args":[]}');
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, targetId, TS1, undefined);
