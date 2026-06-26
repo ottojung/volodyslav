@@ -138,6 +138,17 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
     }
 
+    // Final identifier selection: each semantic key gets one storage identifier.
+    // - 'keep' → target/local identifier (e.g. "5-LOCALFP").
+    // - 'take' → host identifier (e.g. "42-HOSTFP").
+    // - 'invalidate' → identifier from the initial decision side.
+    //
+    // Host identifiers carry a different fingerprint, so importing them does
+    // not advance the local last_node_index watermark. The local allocator
+    // only issues identifiers with the local fingerprint. This is safe because
+    // independently-writing hosts are expected to have distinct fingerprints.
+    // Same-fingerprint staged host snapshots (cross-host snapshot cloning or
+    // own-host snapshot paths) should not go through normal per-host merge.
     /** @type {Map<NodeKeyString, NodeIdentifier>} */
     const finalIdentifierForKey = new Map();
     /** @type {Array<[NodeIdentifier, NodeKeyString]>} */

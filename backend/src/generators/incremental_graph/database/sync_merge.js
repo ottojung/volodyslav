@@ -181,11 +181,22 @@ async function loadTargetLookup(targetStorage) {
 
 /**
  * Persist the final semantic-plan lookup and commit the inactive replica as active.
+ *
+ * `targetLastNodeIndex` is local allocation metadata for the local fingerprint
+ * namespace. Normal sync merge may import host identifiers (e.g. `42-HOSTFP`),
+ * but those carry a different fingerprint, so they do not advance the local
+ * allocator watermark for `LOCALFP`. The local allocator only issues identifiers
+ * with the local database fingerprint. Same-fingerprint staged host snapshots are
+ * not part of the normal supported sync-merge case — they would correspond to
+ * unsupported cross-host snapshot cloning, or to an own-host snapshot path that
+ * should not go through normal per-host merge. Therefore the target's
+ * `last_node_index` is intentionally preserved unchanged.
+ *
  * @param {RootDatabase} rootDatabase
  * @param {SchemaStorage} targetStorage
  * @param {ReplicaName} targetReplica
  * @param {IdentifierLookup} finalIdentifierLookup
- * @param {number} targetLastNodeIndex
+ * @param {number} targetLastNodeIndex - Preserved local allocation watermark.
  * @returns {Promise<void>}
  */
 async function commitChangedMerge(
@@ -197,6 +208,9 @@ async function commitChangedMerge(
         IDENTIFIERS_KEY,
         serializeIdentifierLookup(finalIdentifierLookup)
     ));
+    // Commit the unchanged local allocation watermark.
+    // Imported host identifiers use distinct fingerprints so they never consume
+    // local index space. See JSDoc above for the full invariant.
     await writer.push(targetStorage.global.putOp(LAST_NODE_INDEX_KEY, targetLastNodeIndex));
     await writer.flush();
     await rootDatabase.setCurrentReplicaPointer(targetReplica);
@@ -268,6 +282,10 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname, mergeTimesta
         `Cannot merge host '${hostname}': same version but different graph_scheme ` +
         `(exact string comparison failed)`);
 
+    // Capture the local allocation watermark before merge. This value is
+    // local fingerprint namespace metadata — host identifiers with different
+    // fingerprints do not advance it. It is committed unchanged in
+    // commitChangedMerge (see that function's JSDoc for the full invariant).
     const targetLastNodeIndex = rootDatabase.getLastNodeIndex();
 
     const {

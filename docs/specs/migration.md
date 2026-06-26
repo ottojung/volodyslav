@@ -85,7 +85,11 @@ Calling the same decision twice (except for `override` and `create`) is allowed 
 
 `keep` preserves the value, freshness, timestamps, and compatible validity.
 
-`override` is a representation rewrite of an existing cached value. It preserves the cache-state proof envelope: freshness, timestamps, and validity are inherited from the old record. It must only be used when the migration author asserts that the new value is semantically equivalent to the old cached value for cache-validity purposes.
+`override` is a **semantic-preserving representation rewrite**. It changes the stored representation (e.g. on-disk format) while preserving the semantic value as seen by dependents. Because the value is semantically unchanged, `override()` does not propagate invalidation — it inherits freshness, timestamps, and validity from the old record.
+
+`override()` MUST NOT be used when the migration changes the meaning or value of a node. If the value itself changes, use `invalidate()` instead, which triggers downstream recomputation so that dependents observe the new value.
+
+The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
 
 `invalidate` preserves the cached value if it exists, marks cached nodes as `"potentially-outdated"`, updates `modifiedAt`, and does not preserve incoming or outgoing valid flags for the invalidated node. This is a conservative/hard invalidation: the clean-cache claim for the node is withdrawn.
 

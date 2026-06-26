@@ -469,6 +469,13 @@ class RootDatabaseClass {
 
     /**
      * Get the committed last node index from in-memory computed state.
+     *
+     * This is local allocation metadata for the local fingerprint namespace.
+     * The local allocator (`generateNodeIdentifier`) issues identifiers with
+     * the local database fingerprint, consuming indices from this watermark.
+     * Imported host identifiers (with different fingerprints) do not advance
+     * it.
+     *
      * @returns {number}
      */
     getLastNodeIndex() {

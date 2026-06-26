@@ -176,7 +176,23 @@ class MigrationStorageClass {
     }
 
     /**
-     * Assign an OVERRIDE decision to a node with a new value.
+     * Assign an OVERRIDE decision to a node that rewrites its stored
+     * representation while preserving the semantic value.
+     *
+     * `override()` is a **semantic-preserving representation rewrite**:
+     * - It may change the on-disk storage shape (e.g. after a database version
+     *   change that alters the serialization format).
+     * - It MUST preserve the semantic value as seen by dependents — the
+     *   represented value is meaningfully the same as before.
+     * - Because the value is semantically unchanged, override() does NOT
+     *   propagate invalidation. Dependents that were valid against the old
+     *   representation remain valid against the new one.
+     *
+     * If the migration changes the meaning or value of a node (not just its
+     * storage representation), the migration must use `invalidate()` instead
+     * of `override()`. This triggers downstream recomputation so dependents
+     * observe the changed value.
+     *
      * @param {NodeIdentifier} nodeKey
      * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
      * @returns {Promise<void>}

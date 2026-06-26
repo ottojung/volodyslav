@@ -289,6 +289,12 @@ describe("MigrationStorage", () => {
             expect(isDecisionConflict(err)).toBe(true);
         });
 
+        // override() is a semantic-preserving representation rewrite: it changes
+        // the stored shape but must preserve the semantic value as seen by
+        // dependents. Because the value is unchanged, override does not propagate
+        // invalidation. If a migration changes the meaning/value of a node, it
+        // must use invalidate() instead. Missing invalidation in override() is
+        // correct by design, not a bug.
         test("keep(D) then override(A) does not propagate invalidation", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);

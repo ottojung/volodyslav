@@ -452,6 +452,9 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, hostChild, TS2, undefined);
             await writeIdentifierLookup(H, [[hostParent, parentKey], [hostChild, childKey]]);
 
+            // Capture the local allocation watermark before importing host identifiers.
+            const initialLastNodeIndex = db.getLastNodeIndex();
+
             expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
             const T = db.getSchemaStorage();
             expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([
@@ -465,6 +468,10 @@ describe('mergeHostIntoReplica', () => {
             expect(await T.values.get(hostChild)).toBeUndefined();
             expect(await T.values.get(targetChild)).toBeUndefined();
             expect(await T.values.get(hostParent)).toBeUndefined();
+
+            // Imported host identifiers (with different fingerprints) do not
+            // advance the local last_node_index watermark.
+            expect(db.getLastNodeIndex()).toBe(initialLastNodeIndex);
         } finally {
             if (db) await db.close();
         }
@@ -1255,6 +1262,9 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, hostId, TS3, undefined);
             await writeIdentifierLookup(H, [[hostId, nodeKey]]);
 
+            // Capture the local allocation watermark before merge.
+            const initialLastNodeIndex = db.getLastNodeIndex();
+
             expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
             const T = db.getSchemaStorage();
             expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([[hostId, nodeKey]]);
@@ -1262,6 +1272,11 @@ describe('mergeHostIntoReplica', () => {
             for (const sublevel of [T.values, T.freshness, T.timestamps]) {
                 expect(await sublevel.get(targetId)).toBeUndefined();
             }
+
+            // The local last_node_index watermark is allocation metadata for
+            // the local fingerprint namespace. Imported host identifiers (with
+            // different fingerprints) do not advance it.
+            expect(db.getLastNodeIndex()).toBe(initialLastNodeIndex);
         } finally {
             if (db) await db.close();
         }
