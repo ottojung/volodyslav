@@ -308,8 +308,39 @@ function isCreateExistingNode(object) {
     return object instanceof CreateExistingNode;
 }
 
+/**
+ * Thrown when a migration decision cannot preserve the proof claimed by its API.
+ */
+class InvalidMigrationDecision extends Error {
+    /**
+     * @param {string} message
+     */
+    constructor(message) {
+        super(message);
+        this.name = "InvalidMigrationDecisionError";
+    }
+}
+
+/**
+ * @param {string} message
+ * @returns {InvalidMigrationDecision}
+ */
+function makeInvalidMigrationDecisionError(message) {
+    return new InvalidMigrationDecision(message);
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidMigrationDecision}
+ */
+function isInvalidMigrationDecision(object) {
+    return object instanceof InvalidMigrationDecision;
+}
+
 module.exports = {
     makeDecisionConflictError,
+    makeInvalidMigrationDecisionError,
+    isInvalidMigrationDecision,
     isDecisionConflict,
     makeOverrideConflictError,
     isOverrideConflict,

@@ -23,7 +23,8 @@ const { makeSchemaCompatibilityError } = require("./migration_errors");
  * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} OverrideDecision
  * @typedef {{ kind: 'invalidate' }} InvalidateDecision
  * @typedef {{ kind: 'delete' }} DeleteDecision
- * @typedef {{ kind: 'create', nodeKeyString: string, value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} CreateDecision
+ * @typedef {"up-to-date" | "potentially-outdated"} CreatedFreshness
+ * @typedef {{ kind: 'create', nodeKeyString: string, value: (nodeKey: NodeIdentifier) => Promise<ComputedValue>, freshness: CreatedFreshness }} CreateDecision
  * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision | CreateDecision} Decision
  */
 

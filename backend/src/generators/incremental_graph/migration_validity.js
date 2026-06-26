@@ -96,6 +96,37 @@ function materializedDecisionStrings(decisions) {
 }
 
 /**
+ * @param {ReadableMigrationStorage} prevStorage
+ * @param {Map<NodeIdentifier, Decision>} decisions
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {Promise<boolean>}
+ */
+async function isFinalCached(prevStorage, decisions, nodeIdentifier) {
+    const decision = decisions.get(nodeIdentifier);
+    if (decision === undefined || decision.kind === "delete") return false;
+    if (decision.kind === "create" || decision.kind === "override") return true;
+    return await prevStorage.values.get(nodeIdentifier) !== undefined;
+}
+
+/**
+ * @param {ReadableMigrationStorage} prevStorage
+ * @param {Map<NodeIdentifier, Decision>} decisions
+ * @param {NodeIdentifier} nodeIdentifier
+ * @returns {Promise<import('./database/types').Freshness | undefined>}
+ */
+async function finalFreshness(prevStorage, decisions, nodeIdentifier) {
+    const decision = decisions.get(nodeIdentifier);
+    if (decision === undefined || decision.kind === "delete") return undefined;
+    if (decision.kind === "create") return decision.freshness;
+    if (decision.kind === "override") return await prevStorage.freshness.get(nodeIdentifier);
+    if (decision.kind === "invalidate") {
+        return await prevStorage.values.get(nodeIdentifier) === undefined ? "missing" : "potentially-outdated";
+    }
+    if (await prevStorage.values.get(nodeIdentifier) === undefined) return "missing";
+    return await prevStorage.freshness.get(nodeIdentifier) ?? "missing";
+}
+
+/**
  * Build validity sets from migration decisions and scheme-derived final edges.
  * @param {ReadableMigrationStorage} prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions
@@ -109,18 +140,11 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
     /** @type {Map<string, Set<NodeIdentifier>>} */
     const validSets = new Map();
     const materialized = materializedDecisionStrings(decisions);
-    const cached = new Set();
-    for (const [nodeIdentifier, decision] of decisions) {
-        if (decision.kind === 'delete') continue;
-        if (decision.kind === 'create' || decision.kind === 'override') {
-            cached.add(nodeIdentifierToString(nodeIdentifier));
-        } else if (await prevStorage.values.get(nodeIdentifier) !== undefined) {
-            cached.add(nodeIdentifierToString(nodeIdentifier));
-        }
-    }
 
     for (const [nodeIdentifier, decision] of decisions) {
         if (decision.kind === "delete" || decision.kind === "invalidate") continue;
+        if (!await isFinalCached(prevStorage, decisions, nodeIdentifier)) continue;
+
         const finalEdges = deriveInputEdges(newScheme, finalLookup, nodeIdentifier);
         for (const edge of finalEdges) {
             if (!materialized.has(nodeIdentifierToString(edge))) {
@@ -128,26 +152,37 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
             }
         }
 
-        if (!cached.has(nodeIdentifierToString(nodeIdentifier))) continue;
-
-        const finalFreshness = decision.kind === "keep"
-            ? await prevStorage.freshness.get(nodeIdentifier)
-            : "up-to-date";
-        if (finalFreshness === "up-to-date") {
+        const freshness = await finalFreshness(prevStorage, decisions, nodeIdentifier);
+        if (decision.kind === "create") {
+            if (decision.freshness === "potentially-outdated") continue;
             for (const input of finalEdges) {
-                if (cached.has(nodeIdentifierToString(input))) {
+                if (!await isFinalCached(prevStorage, decisions, input)) {
+                    throw new Error(`Cannot create ${nodeIdentifierToString(nodeIdentifier)} as up-to-date: input ${nodeIdentifierToString(input)} is not cached`);
+                }
+                const inputFreshness = await finalFreshness(prevStorage, decisions, input);
+                if (inputFreshness !== "up-to-date") {
+                    throw new Error(`Cannot create ${nodeIdentifierToString(nodeIdentifier)} as up-to-date: input ${nodeIdentifierToString(input)} is ${inputFreshness ?? "not materialized"}`);
+                }
+                addToValidSet(validSets, input, nodeIdentifier);
+            }
+            continue;
+        }
+
+        if (freshness === "up-to-date") {
+            for (const input of finalEdges) {
+                if (await isFinalCached(prevStorage, decisions, input)) {
                     addToValidSet(validSets, input, nodeIdentifier);
                 }
             }
             continue;
         }
 
-        if (decision.kind !== "keep" || finalFreshness !== "potentially-outdated") continue;
+        if ((decision.kind !== "keep" && decision.kind !== "override") || freshness !== "potentially-outdated") continue;
         const oldEdges = deriveInputEdges(oldScheme, oldLookup, nodeIdentifier);
         for (const input of finalEdges) {
             const inputDecision = decisions.get(input);
-            if (!inputDecision || inputDecision.kind !== "keep") continue;
-            if (!cached.has(nodeIdentifierToString(input))) continue;
+            if (!inputDecision || (inputDecision.kind !== "keep" && inputDecision.kind !== "override")) continue;
+            if (!await isFinalCached(prevStorage, decisions, input)) continue;
             if (!oldEdges.some(edge => nodeIdentifierToString(edge) === nodeIdentifierToString(input))) continue;
             const existingValidForD = await prevStorage.valid.get(input) ?? [];
             if (existingValidForD.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(nodeIdentifier))) {

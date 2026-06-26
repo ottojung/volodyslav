@@ -15,6 +15,7 @@ const {
     makeGetMissingValueError,
     makeUndecidedNodesError,
     makeCreateExistingNodeError,
+    makeInvalidMigrationDecisionError,
 } = require("./migration_errors");
 const {
     checkSchemaCompatibility,
@@ -39,7 +40,8 @@ const {
  * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} OverrideDecision
  * @typedef {{ kind: 'invalidate' }} InvalidateDecision
  * @typedef {{ kind: 'delete' }} DeleteDecision
- * @typedef {{ kind: 'create', nodeKeyString: string, value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} CreateDecision
+ * @typedef {"up-to-date" | "potentially-outdated"} CreatedFreshness
+ * @typedef {{ kind: 'create', nodeKeyString: string, value: (nodeKey: NodeIdentifier) => Promise<ComputedValue>, freshness: CreatedFreshness }} CreateDecision
  * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision | CreateDecision} Decision
  */
 
@@ -185,6 +187,22 @@ class MigrationStorageClass {
         }
         const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
+        await assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex, this.oldGraphScheme, this.newGraphScheme);
+        const oldValue = await this.prevStorage.values.get(nodeKey);
+        if (oldValue === undefined) {
+            throw makeInvalidMigrationDecisionError(`Cannot override node ${nodeKey}: materialized node is not cached`);
+        }
+        const oldFreshness = await this.prevStorage.freshness.get(nodeKey);
+        if (oldFreshness === undefined) {
+            throw makeInvalidMigrationDecisionError(`Cannot override node ${nodeKey}: previous freshness is missing`);
+        }
+        if (oldFreshness === "missing") {
+            throw makeInvalidMigrationDecisionError(`Cannot override node ${nodeKey}: previous freshness is missing-state`);
+        }
+        const oldTimestamps = await this.prevStorage.timestamps.get(nodeKey);
+        if (oldTimestamps === undefined) {
+            throw makeInvalidMigrationDecisionError(`Cannot override node ${nodeKey}: previous timestamps are missing`);
+        }
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "override") {
@@ -193,15 +211,6 @@ class MigrationStorageClass {
             throw makeDecisionConflictError(nodeKey, existing.kind, "override");
         }
         this.decisions.set(nodeKey, { kind: "override", value });
-        await propagateInvalidate({
-            nodeKey,
-            visited: new Set(),
-            prevStorage: this.prevStorage,
-            materializedNodes: this.materializedNodes,
-            decisions: this.decisions,
-            newHeadIndex: this.newHeadIndex,
-            getIdentifiersKeysIndex: () => this._getIdentifiersKeysIndex(),
-        });
     }
 
     /**
@@ -269,12 +278,16 @@ class MigrationStorageClass {
      * The node must exist in the new schema.
      * The identifier is auto-generated deterministically using the database
      * fingerprint and a monotonic index.
-     * The new node is created as up-to-date with dependencies derived from the new graph scheme.
+     * The caller chooses whether the created cached node is clean or stale.
      * @param {import('./database/types').NodeKeyString} nodeKeyString - The semantic key JSON string
      * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
+     * @param {CreatedFreshness} freshness
      * @returns {Promise<void>}
      */
-    async create(nodeKeyString, value) {
+    async create(nodeKeyString, value, freshness) {
+        if (freshness !== "up-to-date" && freshness !== "potentially-outdated") {
+            throw makeInvalidMigrationDecisionError(`Cannot create node ${nodeKeyString}: freshness must be "up-to-date" or "potentially-outdated"`);
+        }
         const keyStr = String(nodeKeyString);
 
         const existingEntries = await this.prevStorage.global.get(IDENTIFIERS_KEY);
@@ -293,7 +306,7 @@ class MigrationStorageClass {
         }
 
         const nodeKey = this._generateIdentifier();
-        this.decisions.set(nodeKey, { kind: "create", nodeKeyString: keyStr, value });
+        this.decisions.set(nodeKey, { kind: "create", nodeKeyString: keyStr, value, freshness });
         const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
         try { await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions); }
         catch (err) { this.decisions.delete(nodeKey); throw err; }
