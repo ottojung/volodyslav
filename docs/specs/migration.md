@@ -14,7 +14,7 @@ When the application version changes, any computed values stored in the previous
 * **decide** what happens to each previously-materialized node (keep, override, invalidate, or delete),
 * **traverse** the previous version's dependency graph.
 
-All writes are applied atomically.  If anything goes wrong during planning or validation, the new version's namespace remains unmodified.
+A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
 
 ---
 
@@ -159,4 +159,4 @@ If no previous version is found, the migration is a no-op.
 
 ## Atomicity guarantee
 
-Decisions are collected in memory during the callback.  The single write to the new version's storage happens only after all validation passes.  If any error is thrown before that write, the new version remains empty.
+Decisions are collected in memory during the callback.  The desired state is unified into the target replica's storage, then validated with `assertValidFinalMergeState` before the replica pointer is switched.  A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.

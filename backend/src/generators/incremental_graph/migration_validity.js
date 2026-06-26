@@ -8,6 +8,7 @@ const {
     parseIdentifierLookup,
     deriveInputEdges,
 } = require("./database");
+const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
@@ -148,7 +149,7 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
         const finalEdges = deriveInputEdges(newScheme, finalLookup, nodeIdentifier);
         for (const edge of finalEdges) {
             if (!materialized.has(nodeIdentifierToString(edge))) {
-                throw new Error(`Migration dependency ${nodeIdentifierToString(edge)} for ${nodeIdentifierToString(nodeIdentifier)} is not materialized in the target replica`);
+                throw makeInvalidMigrationDecisionError(`Migration dependency ${nodeIdentifierToString(edge)} for ${nodeIdentifierToString(nodeIdentifier)} is not materialized in the target replica`);
             }
         }
 
@@ -157,11 +158,11 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
             if (decision.freshness === "potentially-outdated") continue;
             for (const input of finalEdges) {
                 if (!await isFinalCached(prevStorage, decisions, input)) {
-                    throw new Error(`Cannot create ${nodeIdentifierToString(nodeIdentifier)} as up-to-date: input ${nodeIdentifierToString(input)} is not cached`);
+                    throw makeInvalidMigrationDecisionError(`Cannot create ${nodeIdentifierToString(nodeIdentifier)} as up-to-date: input ${nodeIdentifierToString(input)} is not cached`);
                 }
                 const inputFreshness = await finalFreshness(prevStorage, decisions, input);
                 if (inputFreshness !== "up-to-date") {
-                    throw new Error(`Cannot create ${nodeIdentifierToString(nodeIdentifier)} as up-to-date: input ${nodeIdentifierToString(input)} is ${inputFreshness ?? "not materialized"}`);
+                    throw makeInvalidMigrationDecisionError(`Cannot create ${nodeIdentifierToString(nodeIdentifier)} as up-to-date: input ${nodeIdentifierToString(input)} is ${inputFreshness ?? "not materialized"}`);
                 }
                 addToValidSet(validSets, input, nodeIdentifier);
             }
