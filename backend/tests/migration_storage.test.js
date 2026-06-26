@@ -225,7 +225,7 @@ describe("MigrationStorage", () => {
             await expect(ms.delete(A)).resolves.toBeUndefined();
         });
 
-        test("override(A, v) twice with same value fails", async () => {
+        test("override(A) twice fails with OverrideConflictError (non-idempotent)", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
@@ -236,12 +236,12 @@ describe("MigrationStorage", () => {
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
-            await ms.override(A, () => Promise.resolve(DUMMY_VALUE), "up-to-date");
-            const err = await ms.override(A, () => Promise.resolve(DUMMY_VALUE), "up-to-date").catch((e) => e);
+            await ms.override(A, () => Promise.resolve(DUMMY_VALUE));
+            const err = await ms.override(A, () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isOverrideConflict(err)).toBe(true);
         });
 
-        test("override(A, v1) then override(A, v2) throws OverrideConflictError", async () => {
+        test("override(A) twice throws OverrideConflictError regardless of value identity", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
@@ -252,8 +252,8 @@ describe("MigrationStorage", () => {
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
-            await ms.override(A, () => Promise.resolve(DUMMY_VALUE), "up-to-date");
-            const err = await ms.override(A, () => Promise.resolve(DUMMY_VALUE_2), "up-to-date").catch((e) => e);
+            await ms.override(A, () => Promise.resolve(DUMMY_VALUE));
+            const err = await ms.override(A, () => Promise.resolve(DUMMY_VALUE_2)).catch((e) => e);
             expect(isOverrideConflict(err)).toBe(true);
         });
 
@@ -353,7 +353,7 @@ describe("MigrationStorage", () => {
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
-            await ms.override(A, () => Promise.resolve(DUMMY_VALUE_2), "up-to-date");
+            await ms.override(A, () => Promise.resolve(DUMMY_VALUE_2));
             const result = await ms.get(A);
             expect(result).toEqual(DUMMY_VALUE); // still old value
         });
@@ -715,7 +715,7 @@ describe("MigrationStorage", () => {
             const headIndex = makeHeadIndex(["B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
-            const err = await ms.override(nk("A"), () => Promise.resolve(DUMMY_VALUE), "up-to-date").catch((e) => e);
+            const err = await ms.override(nk("A"), () => Promise.resolve(DUMMY_VALUE)).catch((e) => e);
             expect(isSchemaCompatibility(err)).toBe(true);
         });
 
@@ -931,7 +931,7 @@ describe("MigrationStorage", () => {
             const [, createDecision] = createDecisions[0];
             expect(createDecision?.kind).toBe("create");
             expect(createDecision?.nodeKeyString).toBe(nk("NEW"));
-            expect(createDecision?.value).toBe(valueFn, "up-to-date");
+            expect(createDecision?.value).toBe(valueFn);
         });
 
         test("create() stores the provided nodeKeyString in the decision", async () => {
@@ -1089,7 +1089,7 @@ describe("MigrationStorage", () => {
 
             // Pass a function that returns a promise that never resolves; override() should return immediately
             const neverResolves = () => new Promise(() => {});
-            await expect(ms.override(A, neverResolves, "up-to-date")).resolves.toBeUndefined();
+            await expect(ms.override(A, neverResolves)).resolves.toBeUndefined();
         });
 
         test("override() passes the nodeKey to the value function", async () => {

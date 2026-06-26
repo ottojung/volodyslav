@@ -87,9 +87,9 @@ Calling the same decision twice (except for `override` and `create`) is allowed 
 
 `override` is a representation rewrite of an existing cached value. It preserves the cache-state proof envelope: freshness, timestamps, and validity are inherited from the old record. It must only be used when the migration author asserts that the new value is semantically equivalent to the old cached value for cache-validity purposes.
 
-`invalidate` preserves the cached value, marks cached nodes as `"potentially-outdated"`, updates `modifiedAt`, and keeps only validity that remains meaningful for stale-cache reuse.
+`invalidate` preserves the cached value if it exists, marks cached nodes as `"potentially-outdated"`, updates `modifiedAt`, and does not preserve incoming or outgoing valid flags for the invalidated node. This is a conservative/hard invalidation: the clean-cache claim for the node is withdrawn.
 
-`create(..., "up-to-date")` is a clean-cache assertion and is validated immediately.
+`create(..., "up-to-date")` is a clean-cache assertion. The migration validates this assertion before writing the migrated state.
 `create(..., "potentially-outdated")` seeds a cached value without claiming it is clean.
 
 ### Propagation rules
@@ -114,7 +114,7 @@ This means that to delete a fan-in node `D = f(B, C)`, both `B` and `C` must be 
 | Error class | When thrown |
 |-------------|------------|
 | `DecisionConflictError` | Two different decisions assigned to the same node. |
-| `OverrideConflictError` | `override()` called twice with different values. |
+| `OverrideConflictError` | `override()` called more than once on the same node. |
 | `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
 | `PartialDeleteFanInError` | DELETE propagation reaches a fan-in node not all of whose inputs are deleted. |
