@@ -2,8 +2,9 @@
  * Tests that verify materialized-node timestamps during database migration.
  *
  * Migration produces total timestamp records over the materialized identifier
- * registry. Identity-preserving decisions keep `createdAt`; decisions that change
- * the materialized record update `modifiedAt` to migration time.
+ * registry. Identity-preserving decisions (keep, override) preserve both `createdAt`
+ * and `modifiedAt`; decisions that semantically change the cache-state
+ * (invalidate) or create new entries (create) update `modifiedAt` to migration time.
  */
 
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
@@ -262,7 +263,7 @@ describe("keep decision: timestamps copied to new storage", () => {
         expect(result.modifiedAt).toBe(OLD_TIMESTAMP.modifiedAt);
     });
 
-    test("node with no previous timestamp receives timestamp after keep", async () => {
+    test("node with no previous timestamp after keep fails final validation", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -274,11 +275,9 @@ describe("keep decision: timestamps copied to new storage", () => {
         });
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
-        await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
+        await expect(runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.keep(nodeKey);
-        });
-
-        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual({ createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
+        })).rejects.toThrow("has no timestamps entry");
     });
 
     test("multiple nodes: all timestamps copied correctly on keep", async () => {
@@ -310,11 +309,11 @@ describe("keep decision: timestamps copied to new storage", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// override decision updates timestamps
+// override decision preserves timestamps
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("override decision: timestamps update materialized record", () => {
-    test("createdAt is preserved and modifiedAt updates after override", async () => {
+describe("override decision: timestamps are preserved", () => {
+    test("createdAt and modifiedAt are preserved after override", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -330,10 +329,12 @@ describe("override decision: timestamps update materialized record", () => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
         });
 
-        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual({ createdAt: OLD_TIMESTAMP.createdAt, modifiedAt: "2024-01-01T00:00:00.000Z" });
+        const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
+        expect(result.createdAt).toBe(OLD_TIMESTAMP.createdAt);
+        expect(result.modifiedAt).toBe(OLD_TIMESTAMP.modifiedAt);
     });
 
-    test("override without previous timestamp receives timestamp", async () => {
+    test("override without previous timestamp is rejected", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -345,14 +346,12 @@ describe("override decision: timestamps update materialized record", () => {
         });
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
-        await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
+        await expect(runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
-        });
-
-        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual({ createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
+        })).rejects.toThrow("previous timestamps are missing");
     });
 
-    test("override createdAt survives when modifiedAt differs", async () => {
+    test("override preserves both createdAt and modifiedAt when they differ", async () => {
         const capabilities = await getTestCapabilities();
         const ts = { createdAt: "2023-05-01T00:00:00.000Z", modifiedAt: "2024-11-30T23:59:59.000Z" };
         const xStorage = makeSchemaStorage();
@@ -371,6 +370,7 @@ describe("override decision: timestamps update materialized record", () => {
 
         const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
         expect(result.createdAt).toBe(ts.createdAt);
+        expect(result.modifiedAt).toBe(ts.modifiedAt);
     });
 });
 
@@ -391,7 +391,7 @@ describe("create decision: timestamps written to new storage", () => {
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
-            await storage.create(nodeKey, async () => ({ type: "all_events", events: [] }));
+            await storage.create(nodeKey, async () => ({ type: "all_events", events: [] }), "up-to-date");
         });
 
         const allKeys = [];
@@ -418,7 +418,7 @@ describe("create decision: timestamps written to new storage", () => {
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
-            await storage.create(nodeKey, async () => ({ type: "all_events", events: [] }));
+            await storage.create(nodeKey, async () => ({ type: "all_events", events: [] }), "up-to-date");
         });
 
         const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
@@ -440,8 +440,8 @@ describe("create decision: timestamps written to new storage", () => {
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
         await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
-            await storage.create(nkA, async () => ({ type: "all_events", events: [] }));
-            await storage.create(nkB, async () => ({ type: "all_events", events: [] }));
+            await storage.create(nkA, async () => ({ type: "all_events", events: [] }), "up-to-date");
+            await storage.create(nkB, async () => ({ type: "all_events", events: [] }), "up-to-date");
         });
 
         const aResult = await yGet(yStorage.timestamps, yStorage, nkA);
@@ -477,7 +477,7 @@ describe("invalidate decision: timestamps update materialized record", () => {
         await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual({ createdAt: OLD_TIMESTAMP.createdAt, modifiedAt: "2024-01-01T00:00:00.000Z" });
     });
 
-    test("invalidate without previous timestamp receives timestamp", async () => {
+    test("invalidate without previous timestamp fails final validation", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -489,11 +489,9 @@ describe("invalidate decision: timestamps update materialized record", () => {
         });
 
         await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
-        await runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
+        await expect(runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.invalidate(nodeKey);
-        });
-
-        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual({ createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
+        })).rejects.toThrow("has no timestamps entry");
     });
 
     test("invalidate preserves createdAt even though value is stale", async () => {
@@ -640,7 +638,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual({ createdAt: NEW_TIMESTAMP.createdAt, modifiedAt: "2024-01-01T00:00:00.000Z" });
     });
 
-    test("keep A, override B: A timestamp preserved; B timestamp preserved (createdAt unchanged)", async () => {
+    test("keep A, override B: both timestamps preserved for both nodes", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -654,26 +652,20 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         });
 
         await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        const bResult = await yGet(yStorage.timestamps, yStorage, nkB);
-        expect(bResult.createdAt).toBe(NEW_TIMESTAMP.createdAt);
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 
-    test("override A, B auto-invalidated: createdAt preserved and modifiedAt updates", async () => {
+    test("override A requires an explicit decision for B", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
-        const { nkA, nkB } = await buildChain(xStorage);
+        const { nkA } = await buildChain(xStorage);
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
-        // Override A; B is automatically invalidated (it depends on A)
         await seedGraphScheme(xStorage, makeNodeDefs(["A", "B"]));
-        await runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
+        await expect(runMigration(capabilities, rootDatabase, makeNodeDefs(["A", "B"]), async (storage) => {
             await storage.override(nkA, async () => ({ type: "all_events", events: [] }));
-            // nkB is auto-invalidated by override(nkA)
-        });
-
-        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual({ createdAt: OLD_TIMESTAMP.createdAt, modifiedAt: "2024-01-01T00:00:00.000Z" });
-        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual({ createdAt: NEW_TIMESTAMP.createdAt, modifiedAt: "2024-01-01T00:00:00.000Z" });
+        })).rejects.toThrow("have no decision");
     });
 
     test("invalidate A, invalidate B: createdAt preserved and modifiedAt updates", async () => {

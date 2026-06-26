@@ -145,14 +145,12 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
             async get(key) {
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
-                const value = decision.kind === "create" || decision.kind === "override"
-                    ? await decision.value(key)
-                    : await prevStorage.values.get(key);
-                if (value === undefined) return "missing";
-                if (decision.kind === "create" || decision.kind === "override") return "up-to-date";
-                if (decision.kind === "invalidate") return "potentially-outdated";
-                const freshness = await prevStorage.freshness.get(key);
-                return freshness ?? "potentially-outdated";
+                if (decision.kind === "create") return decision.freshness;
+                if (decision.kind === "override") return await prevStorage.freshness.get(key);
+                const oldValue = await prevStorage.values.get(key);
+                if (decision.kind === "invalidate") return oldValue === undefined ? "missing" : "potentially-outdated";
+                if (oldValue === undefined) return "missing";
+                return await prevStorage.freshness.get(key) ?? "missing";
             },
         },
         valid: {
@@ -178,14 +176,15 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 if (!decision || decision.kind === "delete") return undefined;
                 const nowIso = datetime.now().toISOString();
                 const existing = await prevStorage.timestamps.get(key);
-                if (decision.kind === "create" || existing === undefined) {
+                if (decision.kind === "create") {
                     return { createdAt: nowIso, modifiedAt: nowIso };
                 }
-                if (decision.kind === "override" || decision.kind === "invalidate") {
-                    return { createdAt: existing.createdAt, modifiedAt: nowIso };
+                if (decision.kind === "override" || decision.kind === "keep") {
+                    return existing;
                 }
-                const value = await prevStorage.values.get(key);
-                if (value === undefined) {
+                if (decision.kind === "invalidate") {
+                    const value = await prevStorage.values.get(key);
+                    if (value === undefined || existing === undefined) return existing;
                     return { createdAt: existing.createdAt, modifiedAt: nowIso };
                 }
                 return existing;

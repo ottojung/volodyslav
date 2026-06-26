@@ -84,6 +84,17 @@ function makeSchemaStorage() {
     // Tests use simplified mocks where the "NodeIdentifier" string is the same
     // as the semantic node key JSON string. When identifiers_keys_map is not
     // explicitly seeded, fall back to an identity mapping derived from values.
+    const originalValuesPut = values.put.bind(values);
+    values.put = async (key, value) => {
+        await originalValuesPut(key, value);
+        if (await timestamps.get(key) === undefined) {
+            await timestamps.put(key, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
+        }
+        if (await freshness.get(key) === undefined) {
+            await freshness.put(key, "up-to-date");
+        }
+    };
+
     const originalGlobalGet = global.get.bind(global);
     global.get = async (key) => {
         if (key !== IDENTIFIERS_KEY) {
