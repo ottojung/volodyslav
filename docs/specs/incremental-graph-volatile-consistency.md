@@ -5,9 +5,9 @@
 The IncrementalGraph system stores its state in two layers:
 
 1. **Persisted layer** — a LevelDB database on disk. Survives process restarts. Stores node
-   values, freshness markers, input dependency records, reverse-dependency indices, monotonic
-   counters, creation/modification timestamps, and the *identifier lookup* (the bijection between
-   semantic node keys and deterministic fingerprint-index node identifiers).
+   values, freshness markers, validity sets,
+   creation/modification timestamps, and the *identifier lookup* (the bijection
+   between semantic node keys and deterministic fingerprint-index node identifiers).
 
 2. **Volatile layer** (`_computed`) — an in-memory mirror of the persisted layer. Lives inside
    `RootDatabase`. Provides fast in-process access to the current committed state.
@@ -41,9 +41,7 @@ Node data is stored in typed sublevels keyed by `NodeIdentifier`:
 |----------|-----|-------|
 | `values` | `NodeIdentifier` | computed node value |
 | `freshness` | `NodeIdentifier` | `'up-to-date'` or `'potentially-outdated'` |
-| `inputs` | `NodeIdentifier` | input identifier list and their counters |
-| `revdeps` | `NodeIdentifier` | reverse-dependency list |
-| `counters` | `NodeIdentifier` | monotonic integer counter |
+| `valid` | `NodeIdentifier` | validity set |
 | `timestamps` | `NodeIdentifier` | creation and modification timestamps |
 
 Metadata is stored separately in sublevels keyed by fixed string keys:
@@ -201,7 +199,7 @@ When the operation completes inside its concurrency scope:
 1. If any new identifier allocations were made during the transaction, append to the batch:
    - the updated `identifiers_keys_map` (the full working lookup);
    - the updated `last_node_index` (the committed allocation watermark).
-2. Append any node records (values, freshness, inputs, counters, timestamps) accumulated by the
+2. Append any node records (values, freshness, timestamps) accumulated by the
    transaction to the batch.
 3. Flush the batch to LevelDB atomically.
 4. **Only after a successful flush**:
@@ -306,13 +304,14 @@ pull.js           Pull algorithm: resolve node keys, check freshness, recompute
                   Depends on graph_state.js and database/.
 
 invalidate.js     Invalidation algorithm: mark nodes potentially-outdated and
-                  propagate through the reverse-dependency index.
+                  propagate through the validity index.
                   Same transaction-based structure as pull.js.
                   Depends on graph_state.js and database/.
 
 class.js          Public API surface. Creates transactions, acquires the mutex,
                   delegates to pull.js and invalidate.js, exposes the computor
-                  interface with an explicit pull callback.
+                  interface with a pull function for ad-hoc queries (not for
+                  structural dependency registration).
                   Depends on all of the above.
 ```
 
@@ -418,5 +417,4 @@ creates its own Transaction and submits its batch independently. Y's writes are 
 to disk before X's computor runs with Y's value.
 
 *Verification:* use a test graph where X depends on Y (both unseen); inline a spy in the
-LevelDB batch flush for the inner pull and assert that Y's data (identifier, value, counters,
-timestamps) is written in its own batch commit, separate from X's batch.
+LevelDB batch flush for the inner pull and assert that Y's data (identifier, value, timestamps) is written in its own batch commit, separate from X's batch.

@@ -15,6 +15,7 @@
  * @property {Map<import('./types').NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
+ * @property {import('../../datetime').Datetime} datetime
  */
 
 const { stringToNodeName, nodeIdentifierToString, serializeNodeKey } = require("./database");
@@ -27,49 +28,54 @@ const { lookupNodeIdentifier } = require("./graph_state");
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
  * @param {import('./database/types').NodeIdentifier} changedIdentifier
  * @param {BatchBuilder} batch
- * @param {Set<string>} [nodesBecomingOutdated]
+ * @param {string} nowIso
  * @returns {Promise<void>}
  */
 async function internalPropagateOutdated(
     incrementalGraph,
     changedIdentifier,
     batch,
-    nodesBecomingOutdated = new Set()
+    nowIso
 ) {
-    const dynamicDependents = await incrementalGraph.storage.listDependents(
-        changedIdentifier,
-        batch
-    );
-    for (const output of dynamicDependents) {
-        const outputIdentifierString = nodeIdentifierToString(output);
-        if (nodesBecomingOutdated.has(outputIdentifierString)) {
-            continue;
-        }
+    /** @type {Set<string>} */
+    const visited = new Set();
+    /** @type {import('./database/types').NodeIdentifier[]} */
+    const worklist = [changedIdentifier];
 
-        const currentFreshness = await batch.freshness.get(output);
-        if (currentFreshness === "up-to-date") {
-            batch.freshness.put(output, "potentially-outdated");
-            nodesBecomingOutdated.add(outputIdentifierString);
-            await internalPropagateOutdated(
-                incrementalGraph,
-                output,
-                batch,
-                nodesBecomingOutdated
-            );
-            continue;
-        }
-        if (
-            currentFreshness === undefined ||
-            currentFreshness === "potentially-outdated"
-        ) {
-            continue;
-        }
+    while (worklist.length > 0) {
+        const current = worklist.pop();
+        if (current === undefined) continue;
 
-        /** @type {never} */
-        const freshness = currentFreshness;
-        throw new Error(
-            `Unexpected freshness value ${freshness} for node ${outputIdentifierString}`
+        const dynamicDependents = await incrementalGraph.storage.getValid(
+            current,
+            batch
         );
+        for (const output of dynamicDependents) {
+            const outputStr = nodeIdentifierToString(output);
+            if (visited.has(outputStr)) continue;
+            visited.add(outputStr);
+
+            const currentFreshness = await batch.freshness.get(output);
+            if (currentFreshness === "up-to-date") {
+                batch.freshness.put(output, "potentially-outdated");
+                const existingTimestamp = await batch.timestamps.get(output);
+                batch.timestamps.put(output, {
+                    createdAt: existingTimestamp === undefined ? nowIso : existingTimestamp.createdAt,
+                    modifiedAt: nowIso,
+                });
+            } else if (
+                currentFreshness !== undefined &&
+                currentFreshness !== "potentially-outdated" &&
+                currentFreshness !== "missing"
+            ) {
+                /** @type {never} */
+                const freshness = currentFreshness;
+                throw new Error(
+                    `Unexpected freshness value ${freshness} for node ${outputStr}`
+                );
+            }
+            worklist.push(output);
+        }
     }
 }
 
@@ -99,18 +105,23 @@ async function internalUnsafeInvalidate(
     await incrementalGraph.storage.withTransaction(async (tx) => {
         const outputIdentifier = lookupNodeIdentifier(tx, concreteKey);
         if (outputIdentifier === undefined) {
-            return { value: undefined, revdepDiffs: [] };
+            return { value: undefined };
         }
 
-        const inputsRecord = await tx.batch.inputs.get(outputIdentifier);
-        if (inputsRecord === undefined) {
-            return { value: undefined, revdepDiffs: [] };
+        if (await tx.batch.values.get(outputIdentifier) === undefined) {
+            return { value: undefined };
         }
 
         tx.batch.freshness.put(outputIdentifier, "potentially-outdated");
-        await internalPropagateOutdated(incrementalGraph, outputIdentifier, tx.batch);
+        const nowIso = incrementalGraph.datetime.now().toISOString();
+        const existingTimestamp = await tx.batch.timestamps.get(outputIdentifier);
+        tx.batch.timestamps.put(outputIdentifier, {
+            createdAt: existingTimestamp === undefined ? nowIso : existingTimestamp.createdAt,
+            modifiedAt: nowIso,
+        });
+        await internalPropagateOutdated(incrementalGraph, outputIdentifier, tx.batch, nowIso);
 
-        return { value: undefined, revdepDiffs: [] };
+        return { value: undefined };
     });
 }
 

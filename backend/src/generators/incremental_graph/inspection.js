@@ -16,6 +16,7 @@
 
 const {
     nodeNameToString,
+    nodeIdentifierToString,
     stringToNodeName,
     versionToString,
 } = require("./database");
@@ -116,7 +117,7 @@ async function internalListMaterializedNodes(incrementalGraph) {
                 const nodeKey = incrementalGraph.rootDatabase.nodeIdToKey(nodeIdentifier);
                 if (nodeKey === undefined) {
                     throw new Error(
-                        `Missing semantic node key for materialized identifier ${String(nodeIdentifier)}: cannot list nodes`
+                        `Missing semantic node key for materialized identifier ${nodeIdentifierToString(nodeIdentifier)}: cannot list nodes`
                     );
                 }
                 const parsed = deserializeNodeKey(stringToNodeKeyString(String(nodeKey)));

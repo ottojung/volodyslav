@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
-const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
+const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
 
@@ -19,7 +19,7 @@ describe("incremental_graph atomicity without external batches", () => {
         let sourceComputations = 0;
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "source",
                 inputs: [],

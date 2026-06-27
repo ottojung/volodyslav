@@ -14,6 +14,7 @@ const {
     versionToString,
 } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
+const { GRAPH_SCHEME_KEY } = require('./graph_scheme');
 const {
     IDENTIFIERS_KEY,
     cloneIdentifierLookup,
@@ -51,7 +52,6 @@ const {
 /** @typedef {import('./types').SublevelFormat} SublevelFormat */
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
-/** @typedef {import('./types').Counter} Counter */
 /** @typedef {import('./types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
@@ -143,38 +143,18 @@ function assertNeverReplicaName(name) {
  */
 
 /**
- * A record storing the input dependencies of a node and their counters.
- * @typedef {object} InputsRecord
- * @property {string[]} inputs - Array of persisted input identifiers, kept in the original input order.
- * @property {number[]} inputCounters - Array of counter values for each input (required when inputs.length > 0)
- */
-
-/**
- * Database for storing node input dependencies.
- * Key: persisted node identifier
- * Value: inputs record with identifier-addressed dependencies
- * @typedef {GenericDatabase<InputsRecord, NodeIdentifier>} InputsDatabase
- */
-
-/**
- * Database for reverse dependency index.
- * Key: persisted input identifier
- * Value: array of dependent identifiers sorted lexicographically by identifier
- * @typedef {GenericDatabase<NodeIdentifier[], NodeIdentifier>} RevdepsDatabase
- */
-
-/**
- * Database for storing node counters.
- * Key: persisted node identifier
- * Value: counter (monotonic integer tracking value changes)
- * @typedef {GenericDatabase<Counter, NodeIdentifier>} CountersDatabase
- */
-
-/**
  * Database for storing node timestamps (creation and modification times).
  * Key: persisted node identifier
  * Value: timestamp record with createdAt and modifiedAt ISO strings
  * @typedef {GenericDatabase<TimestampRecord, NodeIdentifier>} TimestampsDatabase
+ */
+
+/**
+ * Database for storing inverse validity flags.
+ * Key: persisted dependency identifier
+ * Value: sorted array of dependent identifiers whose current values have been
+ *        validated with respect to this dependency's current value
+ * @typedef {GenericDatabase<NodeIdentifier[], NodeIdentifier>} ValidDatabase
  */
 
 /**
@@ -190,9 +170,7 @@ function assertNeverReplicaName(name) {
  * @typedef {object} SchemaStorage
  * @property {ValuesDatabase} values - Node output values
  * @property {FreshnessDatabase} freshness - Node freshness state
- * @property {InputsDatabase} inputs - Node inputs index
- * @property {RevdepsDatabase} revdeps - Reverse dependencies (input node -> array of dependents)
- * @property {CountersDatabase} counters - Node counters (monotonic integers)
+ * @property {ValidDatabase} valid - Inverse validity flags (dependency -> dependents validated against it)
  * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
  * @property {GlobalVersionDatabase} global - Replica-level global state (version + identifiers lookup metadata)
  * @property {(operations: DatabaseBatchOperation[]) => Promise<void>} batch - Batch operation interface for atomic writes
@@ -227,11 +205,12 @@ async function loadIdentifierLookupFromGlobal(globalSublevel, context) {
 /**
  * Build a SchemaStorage for one replica namespace.
  * The returned storage's `batch` function verifies the replica's global/version on
- * the first write (initialising it when absent, or throwing on mismatch), then
- * caches the result so subsequent batches pay no I/O overhead for the check.
+ * the first non-empty write when a version is already present, throwing on mismatch.
+ * Fresh replica initialization is explicit lifecycle work owned by graph preparation
+ * and migration paths, so ordinary batches never create global metadata by themselves.
  *
  * When the replica is cleared (`clearReplicaStorage`), a fresh SchemaStorage is
- * built by the owner so the version-initialisation cache is reset.
+ * built by the owner so the version-check cache is reset.
  *
  * @param {SchemaSublevelType} namespaceSublevel - The replica's top-level sublevel.
  * @param {GlobalSublevelType} globalSublevel - The replica's global sublevel (`<ns>/global`).
@@ -243,16 +222,12 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<InputsRecord, NodeIdentifier>} */
-    const inputsSublevel = namespaceSublevel.sublevel('inputs', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<NodeIdentifier[], NodeIdentifier>} */
-    const revdepsSublevel = namespaceSublevel.sublevel('revdeps', { valueEncoding: 'json' });
-    /** @type {SimpleSublevel<Counter, NodeIdentifier>} */
-    const countersSublevel = namespaceSublevel.sublevel('counters', { valueEncoding: 'json' });
+    const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
 
-    // True once this closure's first batch() verifies/writes global/version.
+    // True once this closure's first non-empty batch() verifies any existing global/version.
     // Prevents redundant DB reads on subsequent batch calls.
     // Reset to false by rebuilding this SchemaStorage inside clearReplicaStorage().
     let touchedSchema = false;
@@ -264,10 +239,7 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
         }
         if (!touchedSchema) {
             const existing = await globalSublevel.get('version');
-            if (existing === undefined) {
-                // New or freshly-cleared namespace: write version to global to initialise.
-                await globalSublevel.put('version', version);
-            } else if (typeof existing !== 'string' || existing !== versionToString(version)) {
+            if (existing !== undefined && (typeof existing !== 'string' || existing !== versionToString(version))) {
                 // Version mismatch indicates a logic error in migration or usage of staging namespace.
                 const foundVersion = typeof existing === 'string'
                     ? stringToVersion(existing)
@@ -283,9 +255,7 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
         batch,
         values: makeTypedDatabase(valuesSublevel),
         freshness: makeTypedDatabase(freshnessSublevel),
-        inputs: makeTypedDatabase(inputsSublevel),
-        revdeps: makeTypedDatabase(revdepsSublevel),
-        counters: makeTypedDatabase(countersSublevel),
+        valid: makeTypedDatabase(validSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
         global: makeTypedDatabase(globalSublevel),
     };
@@ -499,6 +469,13 @@ class RootDatabaseClass {
 
     /**
      * Get the committed last node index from in-memory computed state.
+     *
+     * This is local allocation metadata for the local fingerprint namespace.
+     * The local allocator (`generateNodeIdentifier`) issues identifiers with
+     * the local database fingerprint, consuming indices from this watermark.
+     * Imported host identifiers (with different fingerprints) do not advance
+     * it.
+     *
      * @returns {number}
      */
     getLastNodeIndex() {
@@ -1189,7 +1166,7 @@ function isRootDatabase(object) {
 
 /** @typedef {RootDatabaseClass} RootDatabase */
 
-module.exports = {
+module.exports = { GRAPH_SCHEME_KEY,
     makeRootDatabase,
     isRootDatabase,
     isInvalidReplicaPointerError,

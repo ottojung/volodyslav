@@ -17,6 +17,7 @@ const os = require('os');
 const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
+    GRAPH_SCHEME_KEY,
     getRootDatabase,
     renderToFilesystem,
     scanFromFilesystem,
@@ -32,6 +33,8 @@ const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
 
 jest.setTimeout(20000);
+
+const TEST_MERGE_TIMESTAMP = '2024-01-01T00:00:00.000Z';
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -413,12 +416,17 @@ describe('fingerprint design', () => {
             await hostGlobal.put('fingerprint', 'remotehostfingerprint');
             await hostGlobal.put(IDENTIFIERS_KEY, []);
             await hostGlobal.put(LAST_NODE_INDEX_KEY, 0);
+            await hostGlobal.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
+
+            // Local storage also needs graph_scheme for merge validation.
+            const localGlobal = db.getSchemaStorage().global;
+            await localGlobal.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
 
             const logger = makeLogger();
 
             // Merge: host has no nodes, so this is a no-op from a graph
             // perspective. But fingerprint should stay local.
-            const switched = await mergeHostIntoReplica(logger, db, hostname);
+            const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
             expect(switched).toBe(false);
             expect(db.currentReplicaName()).toBe('x');
             expect(db.getFingerprint()).toBe(localFingerprint);
@@ -444,19 +452,21 @@ describe('fingerprint design', () => {
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.inputs.put(HOST_NODE_A, { inputs: [], inputCounters: [] });
             await H.timestamps.put(HOST_NODE_A, { createdAt: TS1, modifiedAt: TS1 });
             await H.freshness.put(HOST_NODE_A, 'up-to-date');
             await H.values.put(HOST_NODE_A, { value: { id: 'a', type: 'test', description: 'a' }, isDirty: false });
             await H.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(makeIdentifierLookup([
-                [HOST_NODE_A, 'node-a'],
+                [HOST_NODE_A, '{"head":"event","args":[]}'],
             ])));
             await H.global.put(LAST_NODE_INDEX_KEY, 1);
-            // Host has a different fingerprint.
-            await H.global.put('fingerprint', 'remotehostfingerprint');
+            await H.global.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [{ head: 'event', arity: 0, inputTemplates: [] }] }));
+
+            // Local storage also needs graph_scheme for merge validation.
+            const localGlobal = db.getSchemaStorage().global;
+            await localGlobal.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [{ head: 'event', arity: 0, inputTemplates: [] }] }));
 
             const logger = makeLogger();
-            const switched = await mergeHostIntoReplica(logger, db, hostname);
+            const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
             expect(switched).toBe(true);
 
             // The host allocation watermark belongs to its fingerprint namespace.
@@ -499,6 +509,8 @@ describe('fingerprint design', () => {
             await H.global.put(IDENTIFIERS_KEY, []);
             await L.global.put(LAST_NODE_INDEX_KEY, 0);
             await H.global.put(LAST_NODE_INDEX_KEY, 5);
+            await L.global.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
+            await H.global.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
 
             // Local fingerprint.
             await L.global.put('fingerprint', localFingerprint);
@@ -506,7 +518,7 @@ describe('fingerprint design', () => {
             await H.global.put('fingerprint', 'remotehostfingerprint');
 
             const logger = makeLogger();
-            const switched = await mergeHostIntoReplica(logger, db, hostname);
+            const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
             expect(switched).toBe(false);
             expect(db.currentReplicaName()).toBe('x');
             expect(db.getFingerprint()).toBe(localFingerprint);

@@ -8,6 +8,14 @@ const {
 
 /**
  * Allocate a deterministic node identifier from a fingerprint and a local index.
+ *
+ * The identifier embeds the fingerprint, so indices from different databases
+ * (different host machines) produce non-colliding strings. This is why normal
+ * sync merge can import host identifiers without advancing the local
+ * last_node_index watermark — a host identifier like "42-HOSTFP" occupies
+ * index 42 only in the HOSTFP namespace, which is disjoint from the LOCALFP
+ * namespace used by the local allocator.
+ *
  * @param {string} fingerprint - The machine-local database fingerprint.
  * @param {number} index - The local node allocation index.
  * @returns {NodeIdentifier}

@@ -7,7 +7,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
-const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
+const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { makeSemanticStorage } = require("./test_database_helper");
 const { stubLogger, stubEnvironment } = require("./stubs");
@@ -48,7 +48,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
+                const graph = await createIncrementalGraph(capabilities, db, graphDef);
                 const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
@@ -80,7 +80,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
+                const graph = await createIncrementalGraph(capabilities, db, graphDef);
                 const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
@@ -116,7 +116,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
+                const graph = await createIncrementalGraph(capabilities, db, graphDef);
                 const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
@@ -156,7 +156,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
+                const graph = await createIncrementalGraph(capabilities, db, graphDef);
                 const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
@@ -185,7 +185,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
+                const graph = await createIncrementalGraph(capabilities, db, graphDef);
                 const storage = makeSemanticStorage(graph);
 
                 const testKey = '{"head":"source","args":[]}';
@@ -207,8 +207,8 @@ describe("incremental_graph batch consistency", () => {
             });
         });
 
-        describe("inputs sublevel", () => {
-            test("read-your-writes: get returns inputs written in same batch", async () => {
+        describe("valid sublevel", () => {
+            test("read-your-writes: get returns valid written in same batch", async () => {
                 const capabilities = getTestCapabilities();
                 const db = await getRootDatabase(capabilities);
 
@@ -229,46 +229,7 @@ describe("incremental_graph batch consistency", () => {
                     },
                 ];
 
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
-                const storage = makeSemanticStorage(graph);
-
-                const testKey = '{"head":"derived","args":[]}';
-                const testValue = { inputs: ['{"head":"source","args":[]}'] };
-
-                let readValue;
-                await storage.withBatch(async (batch) => {
-                    batch.inputs.put(testKey, testValue);
-                    readValue = await batch.inputs.get(testKey);
-                });
-
-                expect(readValue).toEqual(testValue);
-                await db.close();
-            });
-        });
-
-        describe("revdeps sublevel", () => {
-            test("read-your-writes: get returns revdeps written in same batch", async () => {
-                const capabilities = getTestCapabilities();
-                const db = await getRootDatabase(capabilities);
-
-                const graphDef = [
-                    {
-                        output: "derived",
-                        inputs: ["source"],
-                        computor: () => ({ type: "meta_events", meta_events: [] }),
-                        isDeterministic: true,
-                        hasSideEffects: false,
-                    },
-                    {
-                        output: "source",
-                        inputs: [],
-                        computor: () => ({ type: "all_events", events: [] }),
-                        isDeterministic: true,
-                        hasSideEffects: false,
-                    },
-                ];
-
-                const graph = makeIncrementalGraph(capabilities, db, graphDef);
+                const graph = await createIncrementalGraph(capabilities, db, graphDef);
                 const storage = makeSemanticStorage(graph);
 
                 const inputKey = '{"head":"source","args":[]}';
@@ -276,8 +237,8 @@ describe("incremental_graph batch consistency", () => {
 
                 let readValue;
                 await storage.withBatch(async (batch) => {
-                    batch.revdeps.put(inputKey, dependents);
-                    readValue = await batch.revdeps.get(inputKey);
+                    batch.valid.put(inputKey, dependents);
+                    readValue = await batch.valid.get(inputKey);
                 });
 
                 expect(readValue).toEqual(dependents);
@@ -287,7 +248,7 @@ describe("incremental_graph batch consistency", () => {
     });
 
     describe("Regression tests for lost updates", () => {
-        test("revdeps should not lose updates when two dependents added in same batch", async () => {
+        test("valid should not lose updates when two dependents added in same batch", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
 
@@ -315,23 +276,20 @@ describe("incremental_graph batch consistency", () => {
                 },
             ];
 
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
+            const graph = await createIncrementalGraph(capabilities, db, graphDef);
             const storage = makeSemanticStorage(graph);
 
             const inputKey = '{"head":"source","args":[]}';
             const dependentA = '{"head":"dependentA","args":["val1"]}';
             const dependentB = '{"head":"dependentB","args":["val2"]}';
 
-            // Add two dependents in the same batch
             await storage.withBatch(async (batch) => {
-                await storage.ensureReverseDepsIndexed(dependentA, [inputKey], batch);
-                await storage.ensureReverseDepsIndexed(dependentB, [inputKey], batch);
+                batch.valid.put(inputKey, [dependentA, dependentB]);
             });
 
-            // After commit, both should be present
             let dependents;
             await storage.withBatch(async (batch) => {
-                dependents = await storage.listDependents(inputKey, batch);
+                dependents = await storage.listValidDependents(inputKey, batch);
             });
             expect(dependents).toContain(dependentA);
             expect(dependents).toContain(dependentB);
@@ -340,52 +298,5 @@ describe("incremental_graph batch consistency", () => {
             await db.close();
         });
 
-        test("inputs should not be overwritten by stale reads in same batch", async () => {
-            const capabilities = getTestCapabilities();
-            const db = await getRootDatabase(capabilities);
-
-            const graphDef = [
-                {
-                    output: "source",
-                    inputs: [],
-                    computor: () => ({ type: "all_events", events: [] }),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-                {
-                    output: "derived",
-                    inputs: ["source"],
-                    computor: () => ({ type: "meta_events", meta_events: [] }),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-            ];
-
-            const graph = makeIncrementalGraph(capabilities, db, graphDef);
-            const storage = makeSemanticStorage(graph);
-
-            const nodeKey = '{"head":"derived","args":[]}';
-            const inputA = '{"head":"source","args":["A"]}';
-            const inputB = '{"head":"source","args":["B"]}';
-
-            await storage.withBatch(async (batch) => {
-                // First stage inputs with inputA
-                batch.inputs.put(nodeKey, { inputs: [inputA], inputCounters: [1] });
-
-                // Then call ensureMaterialized with inputB
-                // With the new implementation, this WILL overwrite (always writes)
-                await storage.ensureMaterialized(nodeKey, [inputB], [2], batch);
-            });
-
-            // After commit, should have inputB (the last write), not inputA
-            // This is different from the old behavior where it wouldn't overwrite
-            let inputs;
-            await storage.withBatch(async (batch) => {
-                inputs = await storage.getInputs(nodeKey, batch);
-            });
-            expect(inputs).toEqual([inputB]);
-
-            await db.close();
-        });
     });
 });

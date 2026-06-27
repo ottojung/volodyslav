@@ -11,7 +11,7 @@
 
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const { IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/database");
-const { makeIncrementalGraph } = require("../src/generators/incremental_graph");
+const { createIncrementalGraph } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
 
@@ -48,7 +48,7 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
     test("after pulling a node, its identifier is in cloneActiveIdentifierLookup()", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "source",
                 inputs: [],
@@ -70,7 +70,7 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
     test("reopening the database yields identical identifier lookup to volatile layer", async () => {
         const capabilities = getTestCapabilities();
         const db1 = await getRootDatabase(capabilities);
-        const graph = makeIncrementalGraph(capabilities, db1, [
+        const graph = await createIncrementalGraph(capabilities, db1, [
             {
                 output: "source",
                 inputs: [],
@@ -108,6 +108,19 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
     test("Property 6 — volatile lookup is unchanged while disk batch flush is in flight", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
+
+        // Construct graph first (writes initialization metadata via batch).
+        const graph = await createIncrementalGraph(capabilities, db, [
+            {
+                output: "node_paused",
+                inputs: [],
+                computor: async () => ({ value: 10 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        // Now mock schemaStorage.batch to intercept the pull's flush.
         const schemaStorage = db.getSchemaStorage();
         const originalBatch = schemaStorage.batch.bind(schemaStorage);
         const enteredBatch = makeDeferredPromise();
@@ -119,16 +132,6 @@ describe("Properties 1+5 — Exact isomorphism: volatile matches disk after comm
         };
 
         try {
-            const graph = makeIncrementalGraph(capabilities, db, [
-                {
-                    output: "node_paused",
-                    inputs: [],
-                    computor: async () => ({ value: 10 }),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-            ]);
-
             const pullPromise = graph.pull("node_paused");
             await enteredBatch.promise;
 
@@ -160,7 +163,7 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
 
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "source",
                 inputs: [],
@@ -195,7 +198,7 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
 
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "z",
                 inputs: [],
@@ -240,6 +243,19 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
     test("when batch flush fails, staged node data and identifier mapping are rolled back", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
+
+        // Construct graph first (this writes initialization metadata via batch).
+        const graph = await createIncrementalGraph(capabilities, db, [
+            {
+                output: "flush_fail_node",
+                inputs: [],
+                computor: async () => ({ value: "value" }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        // Now mock schemaStorage.batch to fail so the pull flush is rejected.
         const schemaStorage = db.getSchemaStorage();
         const originalBatch = schemaStorage.batch.bind(schemaStorage);
         schemaStorage.batch = async () => {
@@ -247,16 +263,6 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
         };
 
         try {
-            const graph = makeIncrementalGraph(capabilities, db, [
-                {
-                    output: "flush_fail_node",
-                    inputs: [],
-                    computor: async () => ({ value: "value" }),
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-            ]);
-
             await expect(graph.pull("flush_fail_node")).rejects.toThrow(
                 "batch-fails-intentionally"
             );
@@ -281,7 +287,7 @@ describe("Property 3 — Identifier stability across restarts", () => {
     test("node identifier is the same after database close and reopen", async () => {
         const capabilities = getTestCapabilities();
         const db1 = await getRootDatabase(capabilities);
-        const graph = makeIncrementalGraph(capabilities, db1, [
+        const graph = await createIncrementalGraph(capabilities, db1, [
             {
                 output: "stable",
                 inputs: [],
@@ -317,7 +323,7 @@ describe("Property 4 — Monotonicity: no identifier entries disappear", () => {
     test("earlier identifiers remain present after pulling additional nodes", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "a",
                 inputs: [],
@@ -358,7 +364,7 @@ describe("Property 6 — Disk-first ordering: no optimistic volatile writes", ()
     test("volatile lookup exactly matches disk after a successful pull (no ahead-of-disk state)", async () => {
         const capabilities = getTestCapabilities();
         const db1 = await getRootDatabase(capabilities);
-        const graph1 = makeIncrementalGraph(capabilities, db1, [
+        const graph1 = await createIncrementalGraph(capabilities, db1, [
             {
                 output: "node1",
                 inputs: [],
@@ -406,7 +412,7 @@ describe("Property 7 — Rollback on failed commit", () => {
     test("when outer computation fails, neither outer nor inner node data is committed", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "source",
                 inputs: [],
@@ -449,7 +455,7 @@ describe("Property 9 — Nested pull shares allocation context", () => {
         const db = await getRootDatabase(capabilities);
         let innerComputations = 0;
 
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "inner",
                 inputs: [],
@@ -504,7 +510,7 @@ describe("Property 9 — Nested pull shares allocation context", () => {
         };
 
         try {
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "inner_atomic",
                     inputs: [],
@@ -563,7 +569,7 @@ describe("Property 9 — Nested pull shares allocation context", () => {
                     }),
                 ])
             );
-            // outer's flush contains its own value, revdep edge, and identifier
+            // outer's flush contains its own value, valid edge, and identifier
             expect(outerFlush).toEqual(
                 expect.arrayContaining([
                     expect.objectContaining({
@@ -587,7 +593,7 @@ describe("Property 9 — Nested pull shares allocation context", () => {
         const db = await getRootDatabase(capabilities);
         let innerComputations = 0;
 
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "dep",
                 inputs: [],
@@ -630,7 +636,7 @@ describe("No-op pull optimization — skips persistent batch writes", () => {
     test("no-op pull skips persistent batch writes", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "stable",
                 inputs: [],
@@ -668,7 +674,7 @@ describe("Supplemental scenario — Read-only lookups do not interfere with allo
     test("getFreshness of existing nodes does not interfere with pulling new nodes", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "existing",
                 inputs: [],
@@ -721,7 +727,7 @@ describe("Invariant 3 — Independent pull concurrency", () => {
         const released = makeDeferredPromise();
         const started = [];
 
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "n1",
                 inputs: [],
@@ -775,7 +781,7 @@ describe("Dependency lock ordering", () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
 
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "a",
                 inputs: [],
@@ -824,7 +830,7 @@ describe("Dependency lock ordering", () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
 
-        const graph = makeIncrementalGraph(capabilities, db, [
+        const graph = await createIncrementalGraph(capabilities, db, [
             {
                 output: "a",
                 inputs: [],
