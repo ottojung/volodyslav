@@ -29,18 +29,12 @@
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 
 const {
-    compileNodeDef,
-    validateAcyclic,
-    validateInputArities,
-    validateNoOverlap,
-    validateSingleArityPerHead,
-} = require("./compiled_node");
+    compileValidatedGraphSchema,
+} = require("./graph_schema");
 const {
     GRAPH_SCHEME_KEY,
     GraphSchemeError,
     MissingGraphSchemeError,
-    buildGraphSchemeFromNodeDefs,
-    buildGraphSchemeStringFromNodeDefs,
     assertExactStoredGraphSchemeMatches,
     initializeReplicaGlobals,
 } = require("./database");
@@ -74,20 +68,8 @@ const {
  * @returns {Promise<PreparedGraphStorage>}
  */
 async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
-    const compiledNodes = nodeDefs.map(compileNodeDef);
-    validateNoOverlap(compiledNodes);
-    validateAcyclic(compiledNodes);
-    validateSingleArityPerHead(compiledNodes);
-    validateInputArities(compiledNodes);
-
-    const graphScheme = buildGraphSchemeFromNodeDefs(compiledNodes);
-    const graphSchemeString = buildGraphSchemeStringFromNodeDefs(compiledNodes);
-
-    /** @type {Map<import('./types').NodeName, CompiledNode>} */
-    const headIndex = new Map();
-    for (const compiledNode of compiledNodes) {
-        headIndex.set(compiledNode.head, compiledNode);
-    }
+    const prepared = compileValidatedGraphSchema(nodeDefs);
+    const { compiledNodes, graphScheme, graphSchemeString, headIndex } = prepared;
 
     const schemaStorage = rootDatabase.getSchemaStorage();
     const storedVersion = await schemaStorage.global.get('version');

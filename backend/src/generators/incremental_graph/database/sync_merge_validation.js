@@ -34,11 +34,9 @@ function isFinalMergeStateError(object) {
  * identified by values.keys().
  * @param {SchemaStorage} targetStorage
  * @param {IdentifierLookup} finalLookup
- * @param {{ requireUpToDateTimestamps?: boolean }} [options]
  * @returns {Promise<void>}
  */
-async function assertValidFinalMergeState(targetStorage, finalLookup, options = {}) {
-    void options;
+async function assertValidFinalMergeState(targetStorage, finalLookup) {
     const scheme = parseGraphScheme(await targetStorage.global.get(GRAPH_SCHEME_KEY));
     const materializedIdentifiers = new Set(finalLookup.idToKey.keys());
     const cachedIdentifiers = new Set();

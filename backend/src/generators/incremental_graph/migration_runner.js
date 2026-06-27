@@ -9,7 +9,7 @@
  * 4. Atomically switches the replica pointer from x to y.
  */
 
-const { compileNodeDef } = require("./compiled_node");
+const { compileValidatedGraphSchema } = require("./graph_schema");
 const {
     compareNodeIdentifier,
     IDENTIFIERS_KEY,
@@ -17,8 +17,6 @@ const {
     makeEmptyIdentifierLookup,
     parseIdentifierLookup,
     assertValidFinalMergeState,
-    buildGraphSchemeFromNodeDefs,
-    serializeGraphScheme,
     parseGraphScheme,
     GRAPH_SCHEME_KEY,
     GraphSchemeError,
@@ -105,7 +103,7 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
  * @param {import('./database/graph_scheme').GraphScheme} graphScheme
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersion, datetime, maxAllocatedIndex, fingerprint, graphScheme) {
+function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersion, datetime, maxAllocatedIndex, fingerprint, graphSchemeString) {
     const sortedDecisionOutputKeys = [...decisions.keys()]
         .sort(compareNodeIdentifier);
 
@@ -215,7 +213,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                     return fingerprint;
                 }
                 if (key === GRAPH_SCHEME_KEY) {
-                    return JSON.stringify(graphScheme);
+                    return graphSchemeString;
                 }
                 return await prevStorage.global.get(key);
             },
@@ -319,9 +317,10 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
 
             const prevStorage = rootDatabase.schemaStorageForReplica(fromReplica);
 
-            // Compile new schema and build head index for compatibility checks.
-            const compiledNodes = nodeDefs.map(compileNodeDef);
-            const newGraphScheme = serializeGraphScheme(buildGraphSchemeFromNodeDefs(compiledNodes));
+            // Compile and validate the new schema through the shared helper.
+            const validated = compileValidatedGraphSchema(nodeDefs);
+            const { headIndex: newHeadIndex, graphScheme: newGraphScheme, graphSchemeString } = validated;
+
             const storedOldScheme = await prevStorage.global.get(GRAPH_SCHEME_KEY);
             if (storedOldScheme === undefined) {
                 throw new MissingGraphSchemeError(
@@ -338,8 +337,6 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const oldLookup = rawOldIdentifiers === undefined
                 ? makeEmptyIdentifierLookup()
                 : parseIdentifierLookup(rawOldIdentifiers, 'migration source replica');
-            /** @type {Map<NodeName, CompiledNode>} */
-            const newHeadIndex = new Map(compiledNodes.map((n) => [n.head, n]));
 
             // Load previous-version materialized nodes.
             const materializedNodes = await loadMaterializedNodes(prevStorage);
@@ -389,7 +386,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 capabilities.datetime,
                 migrationStorage.getMaxAllocatedIndex(),
                 rootDatabase.getFingerprint(),
-                newGraphScheme
+                graphSchemeString
             );
 
             // Gently unify the desired state into the target replica.
@@ -409,7 +406,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const targetLookup = rawIdentifiers === undefined
                 ? makeEmptyIdentifierLookup()
                 : parseIdentifierLookup(rawIdentifiers, 'migration target replica');
-            await assertValidFinalMergeState(toStorage, targetLookup, { requireUpToDateTimestamps: false });
+            await assertValidFinalMergeState(toStorage, targetLookup);
 
             // Persist the new active replica pointer after all writes succeed.
             await rootDatabase.setCurrentReplicaPointer(toReplica);

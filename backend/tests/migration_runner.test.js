@@ -262,7 +262,7 @@ function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0
 
 beforeEach(() => {
     assertValidFinalMergeState.mockImplementation(
-        (storage, lookup, options) => validationActual.assertValidFinalMergeState(storage, lookup, options)
+        (storage, lookup) => validationActual.assertValidFinalMergeState(storage, lookup)
     );
 });
 
@@ -310,6 +310,56 @@ describe("runMigration", () => {
         expect(mock.setCurrentReplicaPointerCalledWith).toBeUndefined();
         expect(await yStorage.global.get("version")).toBeUndefined();
     });
+
+    test("cyclic schema is rejected before migration writes target state", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const aKey = toJsonKey("A");
+        const bKey = toJsonKey("B");
+
+        await xStorage.values.put(aKey, { type: "all_events", events: [] });
+        await xStorage.values.put(bKey, { type: "all_events", events: [] });
+        await xStorage.freshness.put(aKey, "up-to-date");
+        await xStorage.freshness.put(bKey, "up-to-date");
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, [[aKey, aKey], [bKey, bKey]]);
+
+        // seed a valid old graph scheme for the source replica
+        const validDefs = [
+            { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: false, hasSideEffects: false },
+            { output: "B", inputs: ["A"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: false, hasSideEffects: false },
+        ];
+        await seedGraphScheme(xStorage, validDefs);
+
+        // The new schema has a cycle (A -> B -> A)
+        const cyclicDefs = [
+            { output: "A", inputs: ["B(x)"], computor: async () => ({ value: "a" }), isDeterministic: false, hasSideEffects: false },
+            { output: "B", inputs: ["A(x)"], computor: async () => ({ value: "b" }), isDeterministic: false, hasSideEffects: false },
+        ];
+
+        const mock = makeRootDatabaseMock({
+            prevVersion: "1.0.0",
+            currentVersion: "2.0.0",
+            xStorage,
+            yStorage,
+        });
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, cyclicDefs, async (_storage) => {
+                throw new Error("migration callback should not be called");
+            });
+        } catch (error) {
+            caught = error;
+        }
+
+        expect(caught).toBeDefined();
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+        expect(await yStorage.global.get("version")).toBeUndefined();
+        expect(await yStorage.values.get(aKey)).toBeUndefined();
+    });
+
     test("invalidate preserves graph records from previous storage", async () => {
         const capabilities = await getTestCapabilities();
         const previousStorage = makeSchemaStorage();
@@ -1551,6 +1601,29 @@ describe("migration validation", () => {
         await expect(
             assertValidFinalMergeState(storage, lookup)
         ).resolves.toBeUndefined();
+    });
+
+    test("assertValidFinalMergeState rejects materialized node without timestamps", async () => {
+        const storage = makeSchemaStorage();
+        await storage.global.put('graph_scheme', JSON.stringify({
+            format: 1,
+            nodes: [
+                { head: "A", arity: 0, inputTemplates: [] },
+            ],
+        }));
+        const aKey = toJsonKey("A");
+
+        await storage.values.put(aKey, { type: "all_events", events: [] });
+        await storage.freshness.put(aKey, "up-to-date");
+        // Remove auto-added timestamp to test missing timestamp rejection
+        await storage.timestamps.del(aKey);
+
+        const identifiers = await storage.global.get(IDENTIFIERS_KEY);
+        const lookup = makeIdentifierLookup(identifiers);
+
+        await expect(
+            assertValidFinalMergeState(storage, lookup)
+        ).rejects.toThrow(FinalMergeStateError);
     });
 
     test("migration validates target and calls setCurrentReplicaPointer when validation passes", async () => {
