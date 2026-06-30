@@ -100,7 +100,7 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
  * @param {import('../../datetime').Datetime} datetime - Datetime capability for generating timestamps.
  * @param {number} maxAllocatedIndex - The max allocated local index during this migration.
  * @param {string} fingerprint - The database fingerprint to carry forward.
- * @param {import('./database/graph_scheme').GraphScheme} graphScheme
+ * @param {string} graphSchemeString
  * @returns {ReadableSchemaStorage}
  */
 function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersion, datetime, maxAllocatedIndex, fingerprint, graphSchemeString) {
