@@ -3,28 +3,24 @@ const { compareIsoTimestamps } = require('./sync_merge_timestamps');
 const { makeIdentifierLookup } = require('./identifier_lookup');
 const { IdentifierLookupConflictError } = require('./replica_errors');
 
+const { nodeIdentifierToString } = require('./types');
+const { GRAPH_SCHEME_KEY, parseGraphScheme, semanticInputKeys } = require('./graph_scheme');
+const { normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require('./input_edges');
+
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 
 /**
- * Resolve identifier-keyed inputs into semantic node keys.
- * @param {SchemaStorage} storage
+ * Resolve identifier-keyed nodes into semantic input keys using a parsed graph scheme.
+ * @param {ReturnType<typeof parseGraphScheme>} scheme
  * @param {IdentifierLookup} lookup
  * @param {NodeIdentifier} identifier
- * @returns {Promise<NodeKeyString[]>}
+ * @returns {NodeKeyString[]}
  */
-async function semanticInputs(storage, lookup, identifier) {
-    const record = await storage.inputs.get(identifier);
-    if (record === undefined) return [];
-    return record.inputs.map(input => {
-        const nodeKey = lookup.idToKey.get(String(input));
-        if (nodeKey === undefined) {
-            throw new IdentifierLookupConflictError(`Input identifier ${String(input)} is absent from identifiers_keys_map`);
-        }
-        return nodeKey;
-    });
+function semanticInputsFromScheme(scheme, lookup, identifier) {
+    return semanticInputKeys(scheme, lookup, identifier);
 }
 
 /**
@@ -47,6 +43,9 @@ async function semanticInputs(storage, lookup, identifier) {
  * }>} 
  */
 async function buildMergePlan(T, H, targetLookup, hostLookup) {
+    const targetScheme = parseGraphScheme(await T.global.get(GRAPH_SCHEME_KEY));
+    const hostScheme = parseGraphScheme(await H.global.get(GRAPH_SCHEME_KEY));
+
     /** @type {Map<NodeKeyString, 'keep' | 'take'>} */
     const initialDecisions = new Map();
     /** @type {Set<NodeKeyString>} */
@@ -96,12 +95,12 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     const initiallyChosenInputsMap = new Map();
     for (const [nodeKey, initial] of initialDecisions) {
         const lookup = initial === 'take' ? hostLookup : targetLookup;
-        const storage = initial === 'take' ? H : T;
+        const scheme = initial === 'take' ? hostScheme : targetScheme;
         const identifier = lookup.keyToId.get(String(nodeKey));
         if (identifier === undefined) {
             throw new IdentifierLookupConflictError(`Missing ${initial} identifier for semantic node ${String(nodeKey)}`);
         }
-        initiallyChosenInputsMap.set(nodeKey, await semanticInputs(storage, lookup, identifier));
+        initiallyChosenInputsMap.set(nodeKey, semanticInputsFromScheme(scheme, lookup, identifier));
     }
 
     const topoList = topologicalSortFromMap(initiallyChosenInputsMap);
@@ -139,6 +138,17 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
     }
 
+    // Final identifier selection: each semantic key gets one storage identifier.
+    // - 'keep' → target/local identifier (e.g. "5-LOCALFP").
+    // - 'take' → host identifier (e.g. "42-HOSTFP").
+    // - 'invalidate' → identifier from the initial decision side.
+    //
+    // Host identifiers carry a different fingerprint, so importing them does
+    // not advance the local last_node_index watermark. The local allocator
+    // only issues identifiers with the local fingerprint. This is safe because
+    // independently-writing hosts are expected to have distinct fingerprints.
+    // Same-fingerprint staged host snapshots (cross-host snapshot cloning or
+    // own-host snapshot paths) should not go through normal per-host merge.
     /** @type {Map<NodeKeyString, NodeIdentifier>} */
     const finalIdentifierForKey = new Map();
     /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
@@ -169,27 +179,42 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         const initial = initialDecisions.get(nodeKey);
         const structuralSide = decision === 'invalidate' ? initial : decision;
         const lookup = structuralSide === 'take' ? hostLookup : targetLookup;
-        const storage = structuralSide === 'take' ? H : T;
+        const scheme = structuralSide === 'take' ? hostScheme : targetScheme;
         const sourceId = lookup.keyToId.get(String(nodeKey));
         const finalId = finalIdentifierForKey.get(nodeKey);
         if (sourceId === undefined || finalId === undefined) {
             throw new IdentifierLookupConflictError(`Missing lowered identifier for ${String(nodeKey)}`);
         }
-        const sourceInputs = await storage.inputs.get(sourceId);
-        const inputKeys = await semanticInputs(storage, lookup, sourceId);
-        const finalInputIds = inputKeys.map(inputKey => {
-            const inputId = finalIdentifierForKey.get(inputKey);
-            if (inputId === undefined) throw new IdentifierLookupConflictError(`Missing lowered input identifier for ${String(inputKey)}`);
+        const inputKeys = semanticInputsFromScheme(scheme, lookup, sourceId);
+
+        const sourceInputIds = inputKeys.map((inputKey) => {
+            const inputId = lookup.keyToId.get(String(inputKey));
+            if (inputId === undefined) {
+                throw new IdentifierLookupConflictError(
+                    `Missing source input identifier for ${String(inputKey)}`
+                );
+            }
             return inputId;
         });
-        mergedInputsMap.set(finalId, finalInputIds);
-        const sourceInputIds = sourceInputs?.inputs ?? [];
-        if (
-            sourceInputIds.length !== finalInputIds.length ||
-            sourceInputIds.some((inputId, index) => String(inputId) !== String(finalInputIds[index]))
-        ) {
+
+        const finalInputIds = inputKeys.map((inputKey) => {
+            const inputId = finalIdentifierForKey.get(inputKey);
+            if (inputId === undefined) {
+                throw new IdentifierLookupConflictError(
+                    `Missing lowered input identifier for ${String(inputKey)}`
+                );
+            }
+            return inputId;
+        });
+
+        const sourceInputEdges = normalizeInputEdges(sourceInputIds);
+        const finalInputEdges = normalizeInputEdges(finalInputIds);
+
+        if (!arraysOfNodeIdentifiersEqual(sourceInputEdges, finalInputEdges)) {
             directlyReloweredNodes.add(nodeKey);
         }
+
+        mergedInputsMap.set(finalId, finalInputEdges);
     }
 
     /** @type {Set<NodeKeyString>} */
@@ -199,12 +224,12 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     );
     for (const identifier of topologicalSortFromMap(mergedInputsMap)) {
         const inputs = mergedInputsMap.get(identifier) ?? [];
-        if (inputs.some(input => invalidatedIdentifiers.has(String(input)))) {
-            invalidatedIdentifiers.add(String(identifier));
-            const nodeKey = finalIdentifierLookup.idToKey.get(String(identifier));
+        if (inputs.some(input => invalidatedIdentifiers.has(nodeIdentifierToString(input)))) {
+            invalidatedIdentifiers.add(nodeIdentifierToString(identifier));
+            const nodeKey = finalIdentifierLookup.idToKey.get(nodeIdentifierToString(identifier));
             if (nodeKey === undefined) {
                 throw new IdentifierLookupConflictError(
-                    `Missing semantic key for invalidated identifier ${String(identifier)}`
+                    `Missing semantic key for invalidated identifier ${nodeIdentifierToString(identifier)}`
                 );
             }
             reloweringInvalidatedNodes.add(nodeKey);

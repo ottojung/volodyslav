@@ -1,6 +1,6 @@
 /**
  * Persistence and restart tests for IncrementalGraph.
- * These tests verify that the persistent reverse-dependency index works correctly across restarts.
+ * These tests verify that the persistent validity index works correctly across restarts.
  */
 
 const path = require("path");
@@ -8,7 +8,7 @@ const fs = require("fs");
 const os = require("os");
 const { getRootDatabase, IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/database");
 const {
-    makeIncrementalGraph,
+    createIncrementalGraph,
     makeUnchanged,
 } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
@@ -78,7 +78,7 @@ describe("Incremental graph persistence and restart", () => {
                 },
             ];
 
-            const graph1 = makeIncrementalGraph(capabilities, db, schemas);
+            const graph1 = await createIncrementalGraph(capabilities, db, schemas);
 
             const testDb = makeTestDatabase(graph1);
 
@@ -98,7 +98,7 @@ describe("Incremental graph persistence and restart", () => {
 
             // *** RESTART ***
             computeCalls.length = 0;
-            const graph2 = makeIncrementalGraph(capabilities, db, schemas);
+            const graph2 = await createIncrementalGraph(capabilities, db, schemas);
 
             // Update A (which should invalidate B and C)
             cellA.value = { value: 20 };
@@ -128,17 +128,10 @@ describe("Incremental graph persistence and restart", () => {
 
             const cellA = { value: { value: 0 } };
 
-            const schemas1 = [
-                {
-                    output: "A",
-                    inputs: [],
-                    computor: () => cellA.value,
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                },
-            ];
-
-            const schemas2 = [
+            // Both graphs must use the same full schema because
+            // global/graph_scheme is immutable initialization metadata.
+            // graph1 just happens to only pull A.
+            const fullSchemas = [
                 {
                     output: "A",
                     inputs: [],
@@ -157,28 +150,29 @@ describe("Incremental graph persistence and restart", () => {
                 },
             ];
 
-            // Create graph with schema1
-            const graph1 = makeIncrementalGraph(capabilities, db, schemas1);
+            // Create graph with the full schema
+            const graph1 = await createIncrementalGraph(capabilities, db, fullSchemas);
             const version1 = graph1.getDbVersion();
 
             cellA.value = { value: 10 };
             await graph1.invalidate("A");
 
-            // Create graph with schema2 (different schema)
-            const graph2 = makeIncrementalGraph(capabilities, db, schemas2);
+            // Create another graph with the same full schema.
+            // The stored graph_scheme matches exactly, so this succeeds.
+            const graph2 = await createIncrementalGraph(capabilities, db, fullSchemas);
             const version2 = graph2.getDbVersion();
 
             // Both graphs use the same dbVersion since they share the same database
             expect(version1).toBe(version2);
 
-            // Pull B with schema2
+            // Pull B with graph2
             await graph2.pull("B");
 
             // Verify that schema2 can list dependents properly
             const storage2 = makeSemanticStorage(graph2);
             let dependents2;
             await storage2.withBatch(async (batch) => {
-                dependents2 = await storage2.listDependents(toJsonKey("A"), batch);
+                dependents2 = await storage2.listValidDependents(toJsonKey("A"), batch);
             });
             expect(dependents2).toContain(toJsonKey("B"));
 
@@ -199,7 +193,7 @@ describe("Incremental graph persistence and restart", () => {
                     hasSideEffects: false,
                 },
             ];
-            const graph1 = makeIncrementalGraph(capabilities, db1, schemas);
+            const graph1 = await createIncrementalGraph(capabilities, db1, schemas);
 
             const before = await getPersistedIdentifiersKeysMap(graph1);
 
@@ -212,7 +206,7 @@ describe("Incremental graph persistence and restart", () => {
             await db1.close();
 
             const db2 = await getRootDatabase(capabilities);
-            const graph2 = makeIncrementalGraph(capabilities, db2, schemas);
+            const graph2 = await createIncrementalGraph(capabilities, db2, schemas);
 
             expect(await graph2.getFreshness("source")).toBe("missing");
             expect(await graph2.listMaterializedNodes()).toEqual([]);
@@ -224,7 +218,7 @@ describe("Incremental graph persistence and restart", () => {
         test("invalidate on a never-materialized dependent does not materialize its inputs", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "source",
                     inputs: [],
@@ -253,7 +247,7 @@ describe("Incremental graph persistence and restart", () => {
         test("invalidate on a materialized source preserves materialization and propagates freshness", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
-            const graph = makeIncrementalGraph(capabilities, db, [
+            const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: "source",
                     inputs: [],

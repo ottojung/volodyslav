@@ -7,7 +7,7 @@ const fs = require("fs");
 const os = require("os");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const {
-    makeIncrementalGraph,
+    createIncrementalGraph,
     isUnchanged,
 } = require("../src/generators/incremental_graph");
 const {
@@ -116,7 +116,7 @@ describe("IncrementalGraph integration with meta_events", () => {
             },
         ];
 
-        const graph = makeIncrementalGraph(capabilities, db, graphDefinition);
+        const graph = await createIncrementalGraph(capabilities, db, graphDefinition);
 
         // Invalidate all_events to trigger computation
         await graph.invalidate("all_events");

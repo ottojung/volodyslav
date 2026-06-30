@@ -345,35 +345,17 @@ describe('generators/database', () => {
             }
         });
 
-        test('inputs storage works independently', async () => {
-            const capabilities = getTestCapabilities();
-            try {
-                const db = await getRootDatabase(capabilities);
-                const storage = db.getSchemaStorage();
-                
-                await storage.inputs.put('node1', { inputs: ['dep1', 'dep2'] });
-                
-                const inputs = await storage.inputs.get('node1');
-                
-                expect(inputs).toEqual({ inputs: ['dep1', 'dep2'] });
-                
-                await db.close();
-            } finally {
-                cleanup(capabilities.tmpDir);
-            }
-        });
-
-        test('revdeps storage works independently', async () => {
+        test('valid storage works independently', async () => {
             const capabilities = getTestCapabilities();
             try {
                 const db = await getRootDatabase(capabilities);
                 const storage = db.getSchemaStorage();
                 
                 // Store dependents as arrays
-                await storage.revdeps.put('dep1', ['node1', 'node2']);
+                await storage.valid.put('dep1', ['node1', 'node2']);
                 
                 // Retrieve dependents array
-                const dependents = await storage.revdeps.get('dep1');
+                const dependents = await storage.valid.get('dep1');
                 
                 expect(dependents).toEqual(['node1', 'node2']);
                 
@@ -804,6 +786,7 @@ describe('generators/database', () => {
                 // Populate y with a version but a malformed identifiers_keys_map.
                 const yStorage = db.schemaStorageForReplica('y');
                 await yStorage.batch([
+                    yStorage.global.putOp('version', db.version),
                     yStorage.values.putOp('node', { val: 1 }),
                 ]);
                 await yStorage.global.put(IDENTIFIERS_KEY, 12345);

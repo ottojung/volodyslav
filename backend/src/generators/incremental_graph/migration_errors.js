@@ -45,7 +45,12 @@ function isDecisionConflict(object) {
 }
 
 /**
- * Thrown when override() is called twice with different values on the same node.
+ * Thrown when override() is called more than once on the same node.
+ *
+ * Each node may receive at most one semantic-preserving representation rewrite
+ * during migration. Duplicate override calls are ambiguous about which rewrite
+ * should be applied, so they are rejected. Use keep() instead for nodes that
+ * need no further change after the first override.
  */
 class OverrideConflict extends Error {
     /**
@@ -53,7 +58,7 @@ class OverrideConflict extends Error {
      */
     constructor(nodeKey) {
         super(
-            `Override conflict for node ${nodeKey}: override() called with a different value`
+            `Override conflict for node ${nodeKey}: override() called more than once`
         );
         this.name = "OverrideConflictError";
         this.nodeKey = nodeKey;
@@ -308,8 +313,39 @@ function isCreateExistingNode(object) {
     return object instanceof CreateExistingNode;
 }
 
+/**
+ * Thrown when a migration decision cannot preserve the proof claimed by its API.
+ */
+class InvalidMigrationDecision extends Error {
+    /**
+     * @param {string} message
+     */
+    constructor(message) {
+        super(message);
+        this.name = "InvalidMigrationDecisionError";
+    }
+}
+
+/**
+ * @param {string} message
+ * @returns {InvalidMigrationDecision}
+ */
+function makeInvalidMigrationDecisionError(message) {
+    return new InvalidMigrationDecision(message);
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidMigrationDecision}
+ */
+function isInvalidMigrationDecision(object) {
+    return object instanceof InvalidMigrationDecision;
+}
+
 module.exports = {
     makeDecisionConflictError,
+    makeInvalidMigrationDecisionError,
+    isInvalidMigrationDecision,
     isDecisionConflict,
     makeOverrideConflictError,
     isOverrideConflict,

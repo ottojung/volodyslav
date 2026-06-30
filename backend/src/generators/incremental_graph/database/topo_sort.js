@@ -12,10 +12,12 @@
  * if the graph contains a cycle (which is treated as data corruption).
  */
 
-const { stringToNodeIdentifier } = require('./types');
+
 
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
+const { IDENTIFIERS_KEY, makeIdentifierLookup } = require('./identifier_lookup');
+const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges } = require('./graph_scheme');
 const CYCLE_MESSAGE_SAMPLE_LIMIT = 20;
 
 /**
@@ -160,16 +162,14 @@ function isTopologicalSortCycleError(object) {
 }
 
 /**
- * Collect all materialized node keys from a schema storage (iterates inputs
- * sublevel as the canonical materialized-node registry).
- *
+ * Collect all materialized node keys from values.
  * @param {SchemaStorage} storage
  * @returns {Promise<NodeIdentifier[]>}
  */
 async function collectAllNodes(storage) {
     /** @type {NodeIdentifier[]} */
     const nodes = [];
-    for await (const key of storage.inputs.keys()) {
+    for await (const key of storage.values.keys()) {
         nodes.push(key);
     }
     return nodes;
@@ -279,7 +279,7 @@ function topologicalSortFromMap(inputsMap) {
  * B in the result.  Within the same topological depth, nodes are sorted
  * ascending by their NodeIdentifier representation.
  *
- * @param {SchemaStorage} storage - Schema storage whose inputs/revdeps graph to sort.
+ * @param {SchemaStorage} storage - Schema storage whose scheme-derived graph to sort.
  * @returns {Promise<NodeIdentifier[]>}
  * @throws {TopologicalSortCycleError} If the graph contains a cycle.
  */
@@ -290,16 +290,25 @@ async function topologicalSort(storage) {
         return [];
     }
 
+    const rawScheme = await storage.global.get(GRAPH_SCHEME_KEY);
+    if (rawScheme === undefined) {
+        throw new Error(
+            'Missing global/graph_scheme for topological sort: ' +
+            'cannot derive dependencies without a stored graph_scheme'
+        );
+    }
+    const rawLookup = await storage.global.get(IDENTIFIERS_KEY);
+    if (!Array.isArray(rawLookup)) {
+        throw new Error('Missing identifiers_keys_map for topological sort');
+    }
+    const scheme = parseGraphScheme(rawScheme);
+    const lookup = makeIdentifierLookup(rawLookup);
+
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const inputsMap = new Map();
     for (const node of allNodes) {
-        const record = await storage.inputs.get(node);
-        const inputs = record
-            ? record.inputs.map(s => stringToNodeIdentifier(s))
-            : [];
-        inputsMap.set(node, inputs);
+        inputsMap.set(node, deriveInputEdges(scheme, lookup, node));
     }
-
     return topologicalSortFromMap(inputsMap);
 }
 

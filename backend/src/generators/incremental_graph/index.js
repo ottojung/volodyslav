@@ -3,7 +3,7 @@
  * Provides an abstraction over the database for managing event dependencies.
  */
 
-const { makeIncrementalGraph, isIncrementalGraph } = require('./class');
+const { createIncrementalGraph, isIncrementalGraph } = require('./class');
 const { makeUnchanged, isUnchanged } = require('./unchanged');
 const { 
     makeInvalidNodeError, 
@@ -57,6 +57,7 @@ const {
 } = require('./migration_errors');
 const { migrationCallback } = require('./migration');
 const { synchronizeNoLock } = require('./database');
+const { prepareIncrementalGraphStorage } = require('./prepare_graph_storage');
 
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
 /** @typedef {import('./class').IncrementalGraph} IncrementalGraph */
@@ -67,7 +68,7 @@ module.exports = {
     getRootDatabase,
     LIVE_DATABASE_WORKING_PATH,
     CHECKPOINT_WORKING_PATH,
-    makeIncrementalGraph,
+    createIncrementalGraph,
     isIncrementalGraph,
     makeUnchanged,
     isUnchanged,
@@ -121,4 +122,5 @@ module.exports = {
     holidayActivity,
     migrationCallback,
     synchronizeNoLock,
+    prepareIncrementalGraphStorage,
 };

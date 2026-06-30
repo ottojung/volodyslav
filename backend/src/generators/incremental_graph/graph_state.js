@@ -15,7 +15,7 @@
  * - commitTransaction(tx) flushes batch then updates _computed.identifierLookup
  *
  * Transaction is minimal — only batch and identifierLookup.
- * Each pull call creates its own Transaction; revdep diffs and reserved
+ * Each pull call creates its own Transaction; validity writes and reserved
  * identifiers are managed by the caller (pullNode, invalidate), not by the
  * Transaction itself.
  */
@@ -23,15 +23,15 @@
 const {
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
+    compareNodeIdentifier,
+    nodeIdentifierFromString,
     nodeIdentifierToString,
-    stringToNodeIdentifier,
     makeTransactionIdentifierLookup,
     txAllocateNodeIdentifier,
     txNodeIdToKey,
     txNodeKeyToId,
     serializeTransactionLookup,
     commitTransactionLookup,
-    compareNodeIdentifier,
 } = require('./database');
 const {
     darkroomActivity,
@@ -41,28 +41,67 @@ const {
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./database/root_database').ValuesDatabase} ValuesDatabase */
 /** @typedef {import('./database/root_database').FreshnessDatabase} FreshnessDatabase */
-/** @typedef {import('./database/root_database').InputsDatabase} InputsDatabase */
-/** @typedef {import('./database/root_database').RevdepsDatabase} RevdepsDatabase */
-/** @typedef {import('./database/root_database').CountersDatabase} CountersDatabase */
+/** @typedef {import('./database/root_database').ValidDatabase} ValidDatabase */
 /** @typedef {import('./database/root_database').TimestampsDatabase} TimestampsDatabase */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
-/** @typedef {import('./database/types').Counter} Counter */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
-/** @typedef {import('./database/types').InputsRecord} InputsRecord */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database/identifier_lookup').TransactionIdentifierLookup} TransactionIdentifierLookup */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 
 /**
- * A revdep diff records the old and new dependencies of a dependant node,
- * so the darkroom finalization phase can compute the add/remove delta.
- * @typedef {object} RevdepDiff
- * @property {NodeIdentifier} dependant - The node whose dependencies changed.
- * @property {NodeIdentifier[]} oldDependencies - Previously materialized dependency identifiers.
- * @property {NodeIdentifier[]} newDependencies - Current dependency identifiers.
+ * A validity mutation recorded by a graph transaction.
+ * Mutations are resolved against the latest committed state at commit time
+ * to prevent lost updates when concurrent transactions modify validity sets.
+ *
+ * @typedef {object} ValidMutation
+ * @property {"add" | "remove"} kind
+ * @property {NodeIdentifier} dependent
+ *
+ * @typedef {object} ValidClearMutation
+ * @property {"clear"} kind
  */
+
+/**
+ * Apply recorded validity mutations to the latest committed state and push
+ * the resulting put/del operations into the shared operations array.
+ * Used by both withTransaction() and withBatch().
+ *
+ * @param {SchemaStorage} activeSchemaStorage
+ * @param {Array<*>} operations
+ * @param {Map<string, Array<ValidMutation | ValidClearMutation>>} validMutations
+ * @returns {Promise<void>}
+ */
+async function appendValidMutationOps(activeSchemaStorage, operations, validMutations) {
+    if (validMutations.size === 0) {
+        return;
+    }
+    for (const [depIdStr, mutations] of validMutations.entries()) {
+        const depId = nodeIdentifierFromString(depIdStr);
+        let validSet = await activeSchemaStorage.valid.get(depId) ?? [];
+        for (const m of mutations) {
+            if (m.kind === "clear") {
+                validSet = [];
+            } else if (m.kind === "add") {
+                const depStr = nodeIdentifierToString(m.dependent);
+                if (!validSet.some(id => nodeIdentifierToString(id) === depStr)) {
+                    validSet.push(m.dependent);
+                }
+            } else if (m.kind === "remove") {
+                const depStr = nodeIdentifierToString(m.dependent);
+                validSet = validSet.filter(id => nodeIdentifierToString(id) !== depStr);
+            }
+        }
+        validSet.sort(compareNodeIdentifier);
+        if (validSet.length === 0) {
+            operations.push(activeSchemaStorage.valid.delOp(depId));
+        } else {
+            operations.push(activeSchemaStorage.valid.putOp(depId, validSet));
+        }
+    }
+}
 
 /**
  * @template TValue
@@ -73,19 +112,27 @@ const {
  */
 
 /**
+ * @typedef {object} ValidBatchOps
+ * @property {(depId: NodeIdentifier, dependentId: NodeIdentifier) => void} add - Record an add-dependency mutation.
+ * @property {(depId: NodeIdentifier, dependentId: NodeIdentifier) => void} remove - Record a remove-dependency mutation.
+ * @property {(depId: NodeIdentifier) => void} clear - Record a clear mutation.
+ * @property {(depId: NodeIdentifier) => Promise<NodeIdentifier[]>} get - Read database value merged with pending transaction-local mutations.
+ * @property {(depId: NodeIdentifier, value: NodeIdentifier[]) => void} put - Convenience: clear followed by add for each element.
+ * @property {(depId: NodeIdentifier) => void} del - Convenience: same as clear.
+ */
+
+/**
  * @typedef {object} BatchBuilder
  * @property {BatchDatabaseOps<ComputedValue>} values - Node value storage.
  * @property {BatchDatabaseOps<Freshness>} freshness - Freshness storage.
- * @property {BatchDatabaseOps<InputsRecord>} inputs - Dependency metadata storage.
- * @property {BatchDatabaseOps<NodeIdentifier[]>} revdeps - Reverse dependency index.
- * @property {BatchDatabaseOps<Counter>} counters - Change counters.
+ * @property {ValidBatchOps} valid - Validity flags with mutation tracking for concurrent safety.
  * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Creation/modification timestamps.
  */
 
 /**
  * A Transaction groups reads and writes for one graph operation.
  * It is deliberately minimal — each pull call creates its own Transaction.
- * Revdep diffs, reserved identifiers, and other per-pull state are managed
+ * Reserved identifiers and other per-pull state are managed
  * by the caller (pullNode / invalidate), not by the Transaction.
  *
  * - batch: LevelDB batch accumulator with read-your-writes overlay.
@@ -103,48 +150,15 @@ const {
  * @typedef {object} GraphStorage
  * @property {ValuesDatabase} values - Identifier-keyed value storage.
  * @property {FreshnessDatabase} freshness - Identifier-keyed freshness storage.
- * @property {InputsDatabase} inputs - Identifier-keyed input metadata storage.
- * @property {RevdepsDatabase} revdeps - Identifier-keyed reverse dependency index.
- * @property {CountersDatabase} counters - Identifier-keyed counters.
+ * @property {ValidDatabase} valid - Identifier-keyed inverse validity flags.
  * @property {TimestampsDatabase} timestamps - Identifier-keyed timestamps.
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
- * @property {<T>(fn: (tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<RevdepDiff>}>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
- * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], inputCounters: number[], batch: BatchBuilder) => Promise<void>} ensureMaterialized - Persist the current inputs record for a node.
- * @property {(node: NodeIdentifier, inputs: NodeIdentifier[], batch: BatchBuilder) => Promise<void>} ensureReverseDepsIndexed - Add a node to each input's reverse-dependency list.
- * @property {(input: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} listDependents - Read a node's dependents inside the current batch.
- * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[] | null>} getInputs - Read a node's inputs inside the current batch.
- * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List all materialized node identifiers.
+ * @property {<T>(fn: (tx: Transaction) => Promise<{value: T}>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
+ * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} getValid - Read a node's valid set inside the current batch.
+ * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List materialized node identifiers from the identity registry.
+ * @property {() => Promise<NodeIdentifier[]>} listCachedNodes - List cached node identifiers from value storage.
  * @property {<T>(procedure: () => Promise<T>) => Promise<T>} withCommitSnapshot - Run a read while darkroom publication is paused.
  */
-
-/**
- * Find the insertion point for an identifier inside an already-sorted identifier array.
- * @param {NodeIdentifier[]} sortedArray
- * @param {NodeIdentifier} nodeIdentifier
- * @returns {{ index: number, found: boolean }}
- */
-function findInsertionIndex(sortedArray, nodeIdentifier) {
-    const needle = nodeIdentifierToString(nodeIdentifier);
-    let lo = 0;
-    let hi = sortedArray.length;
-    while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        const current = sortedArray[mid];
-        if (current === undefined) {
-            throw new Error(`findInsertionIndex: missing identifier at index ${String(mid)}`);
-        }
-        const currentString = nodeIdentifierToString(current);
-        if (currentString === needle) {
-            return { index: mid, found: true };
-        }
-        if (currentString < needle) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-    return { index: lo, found: false };
-}
 
 /**
  * Create a read-your-writes batch wrapper for a single typed sublevel.
@@ -191,23 +205,96 @@ function makeSublevelBatch(db, operations) {
 }
 
 /**
- * Create the batch builder and its shared operations array.
+ * Create transaction-local validity batch operations that record mutations
+ * instead of doing read-modify-write on whole arrays.  Mutations are resolved
+ * against the latest committed state under the darkroom lock at commit time
+ * to prevent lost updates from concurrent graph transactions.
+ *
+ * @param {{ get: (key: NodeIdentifier) => Promise<NodeIdentifier[] | undefined>, putOp: (key: NodeIdentifier, value: NodeIdentifier[]) => object, delOp: (key: NodeIdentifier) => object }} db
+ * @param {Map<string, Array<ValidMutation | ValidClearMutation>>} validMutations
+ * @returns {ValidBatchOps}
+ */
+function makeValidBatchOps(db, validMutations) {
+    return {
+        add(depId, dependentId) {
+            const k = nodeIdentifierToString(depId);
+            let muts = validMutations.get(k);
+            if (!muts) {
+                muts = [];
+                validMutations.set(k, muts);
+            }
+            muts.push({ kind: "add", dependent: dependentId });
+        },
+        remove(depId, dependentId) {
+            const k = nodeIdentifierToString(depId);
+            let muts = validMutations.get(k);
+            if (!muts) {
+                muts = [];
+                validMutations.set(k, muts);
+            }
+            muts.push({ kind: "remove", dependent: dependentId });
+        },
+        clear(depId) {
+            const k = nodeIdentifierToString(depId);
+            validMutations.set(k, [{ kind: "clear" }]);
+        },
+        async get(depId) {
+            const k = nodeIdentifierToString(depId);
+            const muts = validMutations.get(k);
+            let result = await db.get(depId) ?? [];
+            if (muts) {
+                for (const m of muts) {
+                    if (m.kind === "clear") {
+                        result = [];
+                    } else if (m.kind === "add") {
+                        const depStr = nodeIdentifierToString(m.dependent);
+                        if (!result.some(id => nodeIdentifierToString(id) === depStr)) {
+                            result.push(m.dependent);
+                        }
+                    } else if (m.kind === "remove") {
+                        const depStr = nodeIdentifierToString(m.dependent);
+                        result = result.filter(id => nodeIdentifierToString(id) !== depStr);
+                    }
+                }
+                result.sort(compareNodeIdentifier);
+            }
+            return result;
+        },
+        put(depId, value) {
+            this.clear(depId);
+            for (const dep of value) {
+                this.add(depId, dep);
+            }
+        },
+        del(depId) {
+            this.clear(depId);
+        },
+    };
+}
+
+/**
+ * Create the batch builder, its shared operations array, and a validity
+ * mutation log.  The mutation log allows concurrent graph transactions to
+ * record add/remove/clear operations that are merged at commit time instead
+ * of doing read-modify-write on whole `valid[D]` arrays outside the
+ * serialised commit section.
+ *
  * @param {SchemaStorage} schemaStorage
- * @returns {{ batch: BatchBuilder, operations: Array<*> }}
+ * @returns {{ batch: BatchBuilder, operations: Array<*>, validMutations: Map<string, Array<ValidMutation | ValidClearMutation>> }}
  */
 function createBatch(schemaStorage) {
     /** @type {Array<*>} */
     const operations = [];
+    /** @type {Map<string, Array<ValidMutation | ValidClearMutation>>} */
+    const validMutations = new Map();
     /** @type {BatchBuilder} */
     const batch = {
         values: makeSublevelBatch(schemaStorage.values, operations),
         freshness: makeSublevelBatch(schemaStorage.freshness, operations),
-        inputs: makeSublevelBatch(schemaStorage.inputs, operations),
-        revdeps: makeSublevelBatch(schemaStorage.revdeps, operations),
-        counters: makeSublevelBatch(schemaStorage.counters, operations),
+        valid: makeValidBatchOps(schemaStorage.valid, validMutations),
         timestamps: makeSublevelBatch(schemaStorage.timestamps, operations),
     };
-    return { batch, operations };
+    return { batch, operations, validMutations };
 }
 
 /**
@@ -218,94 +305,42 @@ function createBatch(schemaStorage) {
  */
 function makeGraphStorage(rootDatabase, sleeper) {
     /**
-     * @param {NodeIdentifier} node
-     * @param {NodeIdentifier[]} inputs
-     * @param {number[]} inputCounters
-     * @param {BatchBuilder} batch
-     * @returns {Promise<void>}
-     */
-    async function ensureMaterialized(node, inputs, inputCounters, batch) {
-        if (inputs.length !== inputCounters.length) {
-            throw new Error(
-                `ensureMaterialized: inputs length (${inputs.length}) must match inputCounters length (${inputCounters.length}) for node ${nodeIdentifierToString(node)}`
-            );
-        }
-        batch.inputs.put(node, {
-            inputs: inputs.map(nodeIdentifierToString),
-            inputCounters,
-        });
-    }
-
-    /**
-     * @param {NodeIdentifier} node
-     * @param {NodeIdentifier[]} inputs
-     * @param {BatchBuilder} batch
-     * @returns {Promise<void>}
-     */
-    async function ensureReverseDepsIndexed(node, inputs, batch) {
-        for (const input of inputs) {
-            const existingDependents = await batch.revdeps.get(input);
-            if (existingDependents === undefined) {
-                batch.revdeps.put(input, [node]);
-                continue;
-            }
-            const { index, found } = findInsertionIndex(existingDependents, node);
-            if (found) {
-                continue;
-            }
-            batch.revdeps.put(input, [
-                ...existingDependents.slice(0, index),
-                node,
-                ...existingDependents.slice(index),
-            ]);
-        }
-    }
-
-    /**
-     * @param {NodeIdentifier} input
-     * @param {BatchBuilder} batch
-     * @returns {Promise<NodeIdentifier[]>}
-     */
-    async function listDependents(input, batch) {
-        return (await batch.revdeps.get(input)) ?? [];
-    }
-
-    /**
-     * @param {NodeIdentifier} node
-     * @param {BatchBuilder} batch
-     * @returns {Promise<NodeIdentifier[] | null>}
-     */
-    async function getInputs(node, batch) {
-        const record = await batch.inputs.get(node);
-        if (record === undefined) {
-            return null;
-        }
-        return record.inputs.map((input) => stringToNodeIdentifier(input));
-    }
-
-    /**
      * @returns {Promise<NodeIdentifier[]>}
      */
     async function listMaterializedNodes() {
+        return [...rootDatabase.getActiveIdentifierLookup().idToKey.keys()]
+            .map(nodeIdentifierFromString)
+            .sort(compareNodeIdentifier);
+    }
+
+    /**
+     * @returns {Promise<NodeIdentifier[]>}
+     */
+    async function listCachedNodes() {
         const nodes = [];
-        for await (const key of rootDatabase.getSchemaStorage().inputs.keys()) {
+        for await (const key of rootDatabase.getSchemaStorage().values.keys()) {
             nodes.push(key);
         }
-        return nodes;
+        return nodes.sort(compareNodeIdentifier);
     }
 
     return {
         get values() { return rootDatabase.getSchemaStorage().values; },
         get freshness() { return rootDatabase.getSchemaStorage().freshness; },
-        get inputs() { return rootDatabase.getSchemaStorage().inputs; },
-        get revdeps() { return rootDatabase.getSchemaStorage().revdeps; },
-        get counters() { return rootDatabase.getSchemaStorage().counters; },
+        get valid() { return rootDatabase.getSchemaStorage().valid; },
         get timestamps() { return rootDatabase.getSchemaStorage().timestamps; },
         async withBatch(fn) {
             const activeSchemaStorage = rootDatabase.getSchemaStorage();
-            const { batch, operations } = createBatch(activeSchemaStorage);
+            const { batch, operations, validMutations } = createBatch(activeSchemaStorage);
             const result = await fn(batch);
-            await activeSchemaStorage.batch(operations);
+
+            await darkroomActivity(sleeper, rootDatabase.currentReplicaName(), async () => {
+                await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
+                if (operations.length > 0) {
+                    await activeSchemaStorage.batch(operations);
+                }
+            });
+
             return result;
         },
         /**
@@ -317,9 +352,7 @@ function makeGraphStorage(rootDatabase, sleeper) {
          *   (non-cloned) reference to the committed lookup, then creates a fresh
          *   batch accumulator. No full-copy clone is performed.
           * - The operation callback runs WITHOUT the darkroom lock.
-          * - The callback must return an object with optional `value` and `revdepDiffs`
-          *   fields. revdepDiffs are applied under the darkroom lock where no per-input
-          *   lock is needed.
+          * - The callback returns the value published by the transaction.
          * - At commit time batch is flushed to disk, then the identifier overlay is
          *   applied to the base in-place (disk-first ordering).
          *
@@ -353,13 +386,13 @@ function makeGraphStorage(rootDatabase, sleeper) {
          * acquires the per-replica darkroom lock internally.
          *
          * @template T
-         * @param {(tx: Transaction) => Promise<{value: T, revdepDiffs?: Array<RevdepDiff>}>} fn
+         * @param {(tx: Transaction) => Promise<{value: T}>} fn
          * @returns {Promise<T>}
          */
         async withTransaction(fn) {
             const activeSchemaStorage = rootDatabase.getSchemaStorage();
             const txLookup = makeTransactionIdentifierLookup(rootDatabase.getActiveIdentifierLookup());
-            const { batch, operations } = createBatch(activeSchemaStorage);
+            const { batch, operations, validMutations } = createBatch(activeSchemaStorage);
 
             /** @type {Transaction} */
             const tx = { batch, identifierLookup: txLookup };
@@ -367,39 +400,9 @@ function makeGraphStorage(rootDatabase, sleeper) {
             try {
                 const result = await fn(tx);
                 const value = result.value;
-                const revdepDiffs = result.revdepDiffs ?? [];
 
                 await darkroomActivity(sleeper, rootDatabase.currentReplicaName(), async () => {
-                    for (const diff of revdepDiffs) {
-                        const { dependant, oldDependencies, newDependencies } = diff;
-                        const oldSet = new Set(oldDependencies.map(nodeIdentifierToString));
-                        const newSet = new Set(newDependencies.map(nodeIdentifierToString));
-
-                        for (const removed of oldDependencies) {
-                            const idStr = nodeIdentifierToString(removed);
-                            if (newSet.has(idStr)) continue;
-                            const committed = (await batch.revdeps.get(removed)) ?? [];
-                            const filtered = committed.filter(
-                                id => nodeIdentifierToString(id) !== nodeIdentifierToString(dependant)
-                            );
-                            if (filtered.length === 0) {
-                                batch.revdeps.del(removed);
-                            } else if (filtered.length < committed.length) {
-                                batch.revdeps.put(removed, filtered);
-                            }
-                        }
-
-                        for (const added of newDependencies) {
-                            const idStr = nodeIdentifierToString(added);
-                            if (oldSet.has(idStr)) continue;
-                            const committed = (await batch.revdeps.get(added)) ?? [];
-                            if (!committed.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(dependant))) {
-                                committed.push(dependant);
-                                committed.sort(compareNodeIdentifier);
-                                batch.revdeps.put(added, committed);
-                            }
-                        }
-                    }
+                    await appendValidMutationOps(activeSchemaStorage, operations, validMutations);
 
                     const hasPendingOperations = operations.length > 0;
                     const hasPendingAllocations = tx.identifierLookup.keyToId.size > 0;
@@ -441,11 +444,16 @@ function makeGraphStorage(rootDatabase, sleeper) {
                 rootDatabase.releaseIdentifierReservations(txLookup.ownedKeys);
             }
         },
-        ensureMaterialized,
-        ensureReverseDepsIndexed,
-        listDependents,
-        getInputs,
+        /**
+         * @param {NodeIdentifier} node
+         * @param {BatchBuilder} batch
+         * @returns {Promise<NodeIdentifier[]>}
+         */
+        async getValid(node, batch) {
+            return (await batch.valid.get(node)) ?? [];
+        },
         listMaterializedNodes,
+        listCachedNodes,
         withCommitSnapshot(procedure) {
             return darkroomActivity(sleeper, rootDatabase.currentReplicaName(), procedure);
         },
@@ -453,7 +461,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
 }
 
 /**
- * Look up an existing identifier for a node key in the transaction's lookup.
  * Checks the overlay first, then falls through to the committed base.
  * Returns undefined if the node key is not found in either.
  * @param {Transaction} tx

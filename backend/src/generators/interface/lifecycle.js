@@ -20,12 +20,12 @@
 
 const path = require('path');
 const {
-    makeIncrementalGraph,
     getRootDatabase,
     runMigrationUnsafe,
     synchronizeNoLock,
     holidayActivity,
     migrationCallback,
+    createIncrementalGraph,
     LIVE_DATABASE_WORKING_PATH,
     CHECKPOINT_WORKING_PATH,
 } = require("../incremental_graph");
@@ -235,7 +235,7 @@ async function internalEnsureInitializedWithMigration(
             migrationCallback(capabilities),
         );
         capabilities.logger.logDebug({}, 'Initialization: migration gate completed, constructing incremental graph');
-        const incrementalGraph = makeIncrementalGraph(
+        const incrementalGraph = await createIncrementalGraph(
             capabilities,
             database,
             nodeDefs
