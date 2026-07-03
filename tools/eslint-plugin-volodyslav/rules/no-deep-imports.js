@@ -29,7 +29,7 @@ module.exports = {
     const ignorePatterns = options.ignorePatterns || [];
     
     // Get the filename relative to the project root
-    const filename = context.getFilename();
+    const filename = context.filename;
     
     // Check if the file should be ignored using simple glob patterns
     function shouldIgnoreFile() {

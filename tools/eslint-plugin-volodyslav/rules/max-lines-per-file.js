@@ -22,7 +22,7 @@ module.exports = {
     create(context) {
         return {
             Program(node) {
-                const sourceCode = context.getSourceCode();
+                const sourceCode = context.sourceCode;
 
                 // getTokens() returns all code tokens (not comments, not whitespace).
                 // Each token's loc.start.line tells us which line has actual code.

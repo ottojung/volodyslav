@@ -3,7 +3,7 @@ const { RuleTester } = require("eslint");
 const rule = require("../rules/no-non-toplevel-imports");
 
 const tester = new RuleTester({
-    parserOptions: { ecmaVersion: "latest", sourceType: "module" },
+    languageOptions: { ecmaVersion: "latest", sourceType: "module" },
 });
 
 tester.run("no-non-toplevel-imports", rule, {
