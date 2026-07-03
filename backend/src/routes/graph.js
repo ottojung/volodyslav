@@ -69,7 +69,8 @@ async function handleGetSchemas(capabilities, _req, res) {
 async function handleGetSchemaByHead(capabilities, req, res) {
     await capabilities.interface.ensureInitialized();
 
-    const { head } = req.params;
+    const headParam = req.params['head'];
+    const head = typeof headParam === 'string' ? headParam : undefined;
     if (head === undefined) {
         res.status(400).json({ error: "Missing head parameter" });
         return;
@@ -115,7 +116,8 @@ async function handleGetNodes(capabilities, _req, res) {
 async function handleGetNodesByHead(capabilities, req, res) {
     await capabilities.interface.ensureInitialized();
 
-    const { head } = req.params;
+    const headParam = req.params['head'];
+    const head = typeof headParam === 'string' ? headParam : undefined;
     if (head === undefined) {
         res.status(400).json({ error: "Missing head parameter" });
         return;
@@ -163,7 +165,8 @@ async function handleGetNodesByHead(capabilities, req, res) {
 async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
     await capabilities.interface.ensureInitialized();
 
-    const { head } = req.params;
+    const headParam = req.params['head'];
+    const head = typeof headParam === 'string' ? headParam : undefined;
     if (head === undefined) {
         res.status(400).json({ error: "Missing head parameter" });
         return;
@@ -207,7 +210,8 @@ async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
  */
 async function handlePullNodeByHead(capabilities, req, res) {
     await capabilities.interface.ensureInitialized();
-    const { head } = req.params;
+    const headParam = req.params['head'];
+    const head = typeof headParam === 'string' ? headParam : undefined;
     if (head === undefined) {
         res.status(400).json({ error: "Missing head parameter" });
         return;
@@ -231,7 +235,8 @@ async function handlePullNodeByHead(capabilities, req, res) {
  */
 async function handlePullNodeByHeadAndArgs(capabilities, req, res) {
     await capabilities.interface.ensureInitialized();
-    const { head } = req.params;
+    const headParam = req.params['head'];
+    const head = typeof headParam === 'string' ? headParam : undefined;
     if (head === undefined) {
         res.status(400).json({ error: "Missing head parameter" });
         return;
@@ -260,7 +265,8 @@ async function handlePullNodeByHeadAndArgs(capabilities, req, res) {
  */
 async function handleInvalidateNodeByHead(capabilities, req, res) {
     await capabilities.interface.ensureInitialized();
-    const { head } = req.params;
+    const headParam = req.params['head'];
+    const head = typeof headParam === 'string' ? headParam : undefined;
     if (head === undefined) {
         res.status(400).json({ error: "Missing head parameter" });
         return;
@@ -285,7 +291,8 @@ async function handleInvalidateNodeByHead(capabilities, req, res) {
  */
 async function handleInvalidateNodeByHeadAndArgs(capabilities, req, res) {
     await capabilities.interface.ensureInitialized();
-    const { head } = req.params;
+    const headParam = req.params['head'];
+    const head = typeof headParam === 'string' ? headParam : undefined;
     if (head === undefined) {
         res.status(400).json({ error: "Missing head parameter" });
         return;
@@ -329,15 +336,15 @@ function makeRouter(capabilities) {
     });
 
     // Must be defined before /graph/nodes/:head to ensure wildcard paths are handled correctly
-    router.get("/graph/nodes/:head/*", async (req, res) => {
+    router.get("/graph/nodes/:head/*rest", async (req, res) => {
         await handleGetNodeByHeadAndArgs(capabilities, req, res);
     });
 
-    router.post("/graph/nodes/:head/*", async (req, res) => {
+    router.post("/graph/nodes/:head/*rest", async (req, res) => {
         await handlePullNodeByHeadAndArgs(capabilities, req, res);
     });
 
-    router.delete("/graph/nodes/:head/*", async (req, res) => {
+    router.delete("/graph/nodes/:head/*rest", async (req, res) => {
         await handleInvalidateNodeByHeadAndArgs(capabilities, req, res);
     });
 
