@@ -25,7 +25,7 @@ function makeRouter(capabilities) {
     const router = express.Router();
 
     router.use(express.static(staticPath));
-    router.get("*path", (req, res) => handleStaticFallback(capabilities, req, res));
+    router.get("/{*path}", (req, res) => handleStaticFallback(capabilities, req, res));
 
     return router;
 }
