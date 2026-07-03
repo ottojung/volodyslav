@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document specifies when journal entries are created — the rules for `add`, `edit`, and `delete` emissions triggered by IncrementalGraph operations, synchronization, and migration.
+This document specifies when journal entries are created — the rules for `add`, `edit`, `delete`, and `invalidate` emissions triggered by IncrementalGraph operations, synchronization, and migration.
 
 Journal emission is always coordinated with the graph storage mutation that caused it: a journal entry MUST NOT be durably committed unless the corresponding graph change is also durably committed.
 
@@ -35,9 +35,17 @@ REQ-JE-05: If a recomputation returns a value that is `isEqual` to the existing 
 
 REQ-JE-06: If a `pull` encounters an up-to-date node and returns its stored value without invoking the computor, the system MUST NOT emit a journal entry.
 
-#### Invalidation
+### Freshness transition: `invalidate`
 
-REQ-JE-07: An `invalidate` call that does not produce a new value (i.e., standalone invalidation without an immediate recomputation) MUST NOT emit a journal entry. Journal entries reflect value changes and materialization, not freshness transitions.
+REQ-JE-07: When a node's freshness changes from `up-to-date` to `potentially-outdated`, the system MUST emit a journal entry with `action: "invalidate"`. This transition may occur through:
+
+- An explicit `invalidate(nodeName, bindings)` call.
+- Cascading invalidation from an invalidated dependency.
+- Any other system path that transitions a node's freshness from `up-to-date` to `potentially-outdated`.
+
+REQ-JE-07a: The `invalidate` entry MUST be emitted in the same durable transaction as the freshness state change.
+
+REQ-JE-07b: An `invalidate` entry is NOT a value change — it signals that the node's freshness has been downgraded. The node's stored value and `NodeIdentifier` are unchanged by this entry alone.
 
 ### Deletion: `delete`
 
@@ -49,7 +57,7 @@ REQ-JE-08: A `delete` journal entry represents the removal or supersession of a 
 
 REQ-JE-09: Ordinary graph operations (`pull`, `invalidate`, recomputation) MUST NOT emit `delete` entries unless and until the IncrementalGraph system implements a general node deletion API. This specification does not assume such an API exists.
 
-REQ-JE-10: Migration `storage.delete` does NOT automatically mean an emitted `delete` journal entry. See `incremental-graph-journal-migrations.md` for the migration-specific rules.
+REQ-JE-10: Migration `storage.delete` MUST emit a `delete` journal entry for the deleted node. See `incremental-graph-journal-migrations.md` for the migration-specific rules.
 
 ### Migration actions
 
@@ -58,8 +66,8 @@ Migration actions have their own journal-emission rules, specified fully in `inc
 - `storage.create` produces an `add` journal entry.
 - `storage.keep` produces no journal entry.
 - `storage.override` produces no journal entry.
-- `storage.delete` removes journal information for the deleted node; it does not automatically emit a user-visible `delete` event.
-- `storage.invalidate` produces no journal entry (same reasoning as runtime invalidation).
+- `storage.delete` emits a `delete` journal entry for the deleted node.
+- `storage.invalidate` produces no journal entry (migration-level operation, not a runtime freshness transition).
 
 ---
 
@@ -103,9 +111,9 @@ Pulling a node whose computor returns `Unchanged` or a deeply-equal value produc
 
 Pulling an up-to-date node (cache hit) produces no new journal entry.
 
-### P5 — No entry on standalone invalidate
+### P5 — Entry on freshness transition
 
-Calling `invalidate` without a subsequent `pull` produces no new journal entry.
+Transitioning a node's freshness from `up-to-date` to `potentially-outdated` produces a journal entry with `action: "invalidate"`.
 
 ### P6 — Atomic journal+graph write
 

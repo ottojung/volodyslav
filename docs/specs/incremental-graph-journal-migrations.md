@@ -44,12 +44,12 @@ REQ-JM-05: The `add` entry for a `storage.create` operation MUST be emitted in t
 
 Removes a node from the new version entirely.
 
-REQ-JM-06: `storage.delete` MUST remove or purge journal information associated with the deleted node. Specifically:
+REQ-JM-06: `storage.delete` MUST emit a `delete` journal entry for the deleted node. The entry's `action` is `"delete"`, and its `time` and `creator` are set to the current migration time and local host respectively.
 
-- All journal entries for the deleted node's `NodeIdentifier` (in any journal sublevel) MAY be removed.
+REQ-JM-07: After emitting the `delete` entry, `storage.delete` MUST also remove or purge other journal information associated with the deleted node's `NodeIdentifier`. Specifically:
+
+- All journal entries for the deleted node's `NodeIdentifier` (in any journal sublevel) MAY be removed, **except** the `delete` entry itself which must survive.
 - Any pending or in-progress journal metadata referencing the node's `NodeIdentifier` MUST be cleaned up.
-
-REQ-JM-07: `storage.delete` MUST NOT automatically emit a user-visible `delete` journal entry (with `action: "delete"`). Migration deletion is schema-level housekeeping, not a graph change that journal consumers need to observe.
 
 ---
 
@@ -61,12 +61,12 @@ The journal distinguishes migration-originated state from ordinary graph changes
 |-----------|---------------|--------|
 | `pull` (first materialization) | `add` entry | New graph node |
 | `pull` (value change) | `edit` entry | Graph recomputation changed value |
-| `invalidate` (standalone) | no entry | Freshness change only |
+| `invalidate` (standalone) | `invalidate` entry | Freshness transition |
 | `storage.keep` | no entry | Identity-preserving copy |
 | `storage.override` | no entry | Migration-level rewriting |
 | `storage.invalidate` | no entry | Freshness change only |
 | `storage.create` | `add` entry | Intentional new node creation |
-| `storage.delete` | purge journal data | Schema-level removal |
+| `storage.delete` | `delete` entry | Node deleted by migration |
 | Sync conflict resolution | `delete` / `edit` entries | Cross-host reconciliation |
 
 ---
@@ -75,7 +75,7 @@ The journal distinguishes migration-originated state from ordinary graph changes
 
 REQ-JM-08: Migration journal operations MUST be part of the migration's atomic batch. If the migration batch fails, no journal entries from migration actions (including `storage.create` `add` entries) must be visible in the journal.
 
-REQ-JM-09: Migration journal purges (`storage.delete` removing journal records) MUST also be part of the same atomic batch. Partial purge (some journal records removed, others left) in the event of a failure must not be observable.
+REQ-JM-09: The `delete` journal entry emitted by `storage.delete`, along with any removal of other journal records for the deleted node, MUST be part of the same atomic migration batch. Partial emission (entry written but other records not removed, or vice versa) in the event of a failure must not be observable.
 
 ---
 

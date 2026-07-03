@@ -69,7 +69,7 @@ docs/specs/incremental-graph-node-filter.md
 
 The journal stores graph changes in a structured form. Public consumers observe those changes through `PossibleNodeChange`.
 
-The journal change model covers additions, edits, deletions, and changes produced by synchronization or migration. The exact representation of journal entries, timestamps, node keys, node identifiers, host information, and index/cursor behavior is specified in:
+The journal change model covers additions, edits, deletions, freshness invalidations, and changes produced by synchronization or migration. The exact representation of journal entries, timestamps, node keys, node identifiers, host information, and index/cursor behavior is specified in:
 
 ```text
 docs/specs/incremental-graph-journal-types.md

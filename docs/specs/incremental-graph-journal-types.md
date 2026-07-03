@@ -36,13 +36,14 @@ A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChan
 ```js
 /**
  * The kind of change recorded in a journal entry.
- * @typedef {'add' | 'edit' | 'delete'} JournalAction
+ * @typedef {'add' | 'edit' | 'delete' | 'invalidate'} JournalAction
  */
 ```
 
 - `'add'` — a node became materialized for the first time.
 - `'edit'` — a node's stored value materially changed.
-- `'delete'` — a node was removed or superseded (by synchronization or conflict resolution).
+- `'delete'` — a node was removed or superseded (by synchronization, conflict resolution, or migration deletion).
+- `'invalidate'` — a node's freshness changed from `up-to-date` to `potentially-outdated`.
 
 ---
 
