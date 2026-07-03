@@ -171,6 +171,7 @@ describe("synchronizeNoLock", () => {
         ]);
 
         const db = await getRootDatabase(capabilities);
+        const capturedFingerprint = db.getFingerprint();
         try {
             await db._rawPut('!x!!values!{"head":"event","args":["local-only"]}', { source: "local" });
         } finally {
@@ -186,6 +187,9 @@ describe("synchronizeNoLock", () => {
             const activeRemoteKey = remoteKey.replace('!x!!', `!${activeReplica}!!`);
             expect(entries.get(activeRemoteKey)).toEqual({ source: "remote" });
             expect(entries.get(`!${activeReplica}!!global!version`)).toBe("remote-version");
+            const reopenedFingerprint = reopened.getFingerprint();
+            expect(reopenedFingerprint).not.toBe("testfingerprnt");
+            expect(reopenedFingerprint).toBe(capturedFingerprint);
         } finally {
             await reopened.close();
         }
@@ -378,6 +382,31 @@ describe("synchronizeNoLock", () => {
         await expect(
             synchronizeNoLock(capabilities, { resetToHostname: "test-host" })
         ).resolves.toBeUndefined();
+    });
+
+    test("reset preserves local fingerprint when database exists", async () => {
+        const capabilities = getTestCapabilities();
+        const snapshotKey = '!x!!values!{"head":"event","args":["reset"]}';
+        await seedHostnameBranchWithRenderedFiles(capabilities, [
+            { path: renderedKeyPath(snapshotKey), content: JSON.stringify("after-reset") },
+            { path: 'r/global/version', content: JSON.stringify('snapshot-version') },
+            { path: 'r/global/identifiers_keys_map', content: JSON.stringify([]) },
+            { path: 'r/global/last_node_index', content: JSON.stringify(0) },
+            { path: 'r/global/fingerprint', content: JSON.stringify('snapshotfingerprint') },
+        ]);
+
+        const db = await getRootDatabase(capabilities);
+        const localFingerprint = db.getFingerprint();
+        await db.close();
+
+        await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
+
+        const reopened = await getRootDatabase(capabilities);
+        try {
+            expect(reopened.getFingerprint()).toBe(localFingerprint);
+        } finally {
+            await reopened.close();
+        }
     });
 });
 
