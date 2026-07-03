@@ -13,13 +13,12 @@ const { makeDbToDbAdapter, unifyStores } = require('./unification');
 async function copyReplicaGently(rootDatabase, from, to) {
     const src = rootDatabase.schemaStorageForReplica(from);
     const dst = rootDatabase.schemaStorageForReplica(to);
-    await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
+    await unifyStores(makeDbToDbAdapter(src, dst));
     await rootDatabase._rawSync();
 }
 
 /**
  * Build operations that remove every primary record for a discarded identifier.
- * Reverse dependencies are rebuilt from the final lowered graph.
  * @param {SchemaStorage} targetStorage
  * @param {NodeIdentifier} identifier
  * @returns {Array<*>}
@@ -28,28 +27,21 @@ function buildDeleteNodeOps(targetStorage, identifier) {
     return [
         targetStorage.values.delOp(identifier),
         targetStorage.freshness.delOp(identifier),
-        targetStorage.inputs.delOp(identifier),
-        targetStorage.counters.delOp(identifier),
+        targetStorage.valid.delOp(identifier),
         targetStorage.timestamps.delOp(identifier),
     ];
 }
 
 /**
  * Build operations that copy a node between potentially different identifiers.
- * Inputs are supplied by the semantic planner after lowering to final identifiers.
- *
- * `inputCounters` describe the source computation and are copied only as
- * historical dependency metadata. If lowering changes any input identifier,
- * the caller must delete the copied value and mark the node outdated so these
- * counters can never authorize reuse of a value computed against another
- * storage identity.
+ * Validity is not copied here — it is rebuilt by the caller from scheme-derived
+ * edges by provenance-aware validity reconstruction.
  *
  * @param {object} options
  * @param {SchemaStorage} options.targetStorage
  * @param {SchemaStorage} options.sourceStorage
  * @param {NodeIdentifier} options.sourceId
  * @param {NodeIdentifier} options.destinationId
- * @param {NodeIdentifier[]} options.finalInputsForDestination
  * @returns {Promise<Array<*>>}
  */
 async function copyNodeOps({
@@ -57,7 +49,6 @@ async function copyNodeOps({
     sourceStorage,
     sourceId,
     destinationId,
-    finalInputsForDestination,
 }) {
     /** @type {Array<*>} */
     const ops = [];
@@ -69,26 +60,14 @@ async function copyNodeOps({
     const sourceFreshness = await sourceStorage.freshness.get(sourceId);
     ops.push(targetStorage.freshness.putOp(
         destinationId,
-        sourceFreshness ?? 'potentially-outdated'
+        sourceValue === undefined ? 'missing' : (sourceFreshness ?? 'potentially-outdated')
     ));
 
     const sourceTimestamps = await sourceStorage.timestamps.get(sourceId);
-    ops.push(sourceTimestamps === undefined
-        ? targetStorage.timestamps.delOp(destinationId)
-        : targetStorage.timestamps.putOp(destinationId, sourceTimestamps));
-
-    const sourceInputs = await sourceStorage.inputs.get(sourceId);
-    ops.push(sourceInputs === undefined
-        ? targetStorage.inputs.delOp(destinationId)
-        : targetStorage.inputs.putOp(destinationId, {
-            inputs: finalInputsForDestination.map(input => String(input)),
-            inputCounters: sourceInputs.inputCounters,
-        }));
-
-    const sourceCounter = await sourceStorage.counters.get(sourceId);
-    ops.push(sourceCounter === undefined
-        ? targetStorage.counters.delOp(destinationId)
-        : targetStorage.counters.putOp(destinationId, sourceCounter));
+    if (sourceTimestamps === undefined) {
+        throw new Error(`Cannot copy materialized node ${String(sourceId)} without timestamps`);
+    }
+    ops.push(targetStorage.timestamps.putOp(destinationId, sourceTimestamps));
     return ops;
 }
 

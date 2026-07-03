@@ -74,7 +74,7 @@ function makeTransaction(initialLookupEntries) {
         batch: {},
         identifierLookup: makeTransactionIdentifierLookup(baseLookup),
         reservedIdentifiers: new Set(),
-        revdepDiffs: [],
+        validDiffs: [],
         pendingLockReleases: [],
         inFlight: new Map(),
     };

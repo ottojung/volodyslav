@@ -8,6 +8,15 @@
  * - Explicit over ambient: Transaction context is passed as a direct function argument
  * - No global state, no async_hooks
  * - Disk before memory: in-memory state is updated only after LevelDB batch flushes
+ *
+ * Lifecycle:
+ *   IncrementalGraphClass construction is a pure object construction step with
+ *   respect to storage lifecycle. The constructor receives already-prepared graph
+ *   schema state, builds the runtime storage facade, and attaches capabilities.
+ *   It does NOT compile node definitions, validate persistent metadata, or perform
+ *   async storage reads/writes. prepareIncrementalGraphStorage() owns schema
+ *   compilation, pure validation, durable metadata initialization, and durable
+ *   metadata validation before graph construction.
  */
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
@@ -20,6 +29,7 @@
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */
+/** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./graph_state').GraphStorage} GraphStorage */
 /** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
 /** @typedef {import('./graph_state').Transaction} Transaction */
@@ -28,17 +38,15 @@
 /** @typedef {import('../../datetime').Datetime} Datetime */
 /** @typedef {import('../../sleeper').SleepCapability} SleepCapability */
 /** @typedef {import('./types').IncrementalGraphCapabilities} IncrementalGraphCapabilities */
+/** @typedef {import('./database/graph_scheme').GraphScheme} GraphScheme */
+/** @typedef {import('./prepare_graph_storage').PreparedGraphStorage} PreparedGraphStorage */
 
-const {
-    compileNodeDef,
-    validateAcyclic,
-    validateInputArities,
-    validateNoOverlap,
-    validateSingleArityPerHead,
-} = require("./compiled_node");
 const {
     makeGraphStorage,
 } = require("./graph_state");
+const {
+    prepareIncrementalGraphStorage,
+} = require("./prepare_graph_storage");
 const {
     internalGetDbVersion,
     internalGetFreshness,
@@ -58,7 +66,7 @@ const {
 } = require("./pull");
 
 class IncrementalGraphClass {
-    /** @type {Map<import('./types').NodeName, CompiledNode>} */
+    /** @type {Map<NodeName, CompiledNode>} */
     headIndex;
 
     /** @type {ConcreteNodeCache} */
@@ -79,26 +87,20 @@ class IncrementalGraphClass {
     /** @type {RootDatabase} */
     rootDatabase;
 
+    /** @type {GraphScheme} */
+    graphScheme;
+
     /**
      * @param {IncrementalGraphCapabilities} capabilities
      * @param {RootDatabase} rootDatabase
-     * @param {Array<NodeDef>} nodeDefs
+     * @param {PreparedGraphStorage} prepared
      */
-    constructor(capabilities, rootDatabase, nodeDefs) {
-        const compiledNodes = nodeDefs.map(compileNodeDef);
-        validateNoOverlap(compiledNodes);
-        validateAcyclic(compiledNodes);
-        validateSingleArityPerHead(compiledNodes);
-        validateInputArities(compiledNodes);
-
+    constructor(capabilities, rootDatabase, prepared) {
+        this.graphScheme = prepared.graphScheme;
+        this.headIndex = prepared.headIndex;
         this.storage = makeGraphStorage(rootDatabase, capabilities.sleeper);
         this.rootDatabase = rootDatabase;
         this.dbVersion = rootDatabase.getVersion();
-        this.headIndex = new Map();
-        for (const compiledNode of compiledNodes) {
-            this.headIndex.set(compiledNode.head, compiledNode);
-        }
-
         this.concreteInstantiations = makeConcreteNodeCache();
         this.sleeper = capabilities.sleeper;
         this.datetime = capabilities.datetime;
@@ -182,14 +184,52 @@ class IncrementalGraphClass {
     }
 }
 
+
+
 /**
+ * Construct an incremental graph from already-prepared storage state.
+ * The caller must have called `prepareIncrementalGraphStorage` first.
  * @param {IncrementalGraphCapabilities} capabilities
  * @param {RootDatabase} rootDatabase
- * @param {Array<NodeDef>} nodeDefs
+ * @param {PreparedGraphStorage} prepared
  * @returns {IncrementalGraphClass}
  */
-function makeIncrementalGraph(capabilities, rootDatabase, nodeDefs) {
-    return new IncrementalGraphClass(capabilities, rootDatabase, nodeDefs);
+function makePreparedIncrementalGraph(capabilities, rootDatabase, prepared) {
+    if (
+        prepared === null
+        || typeof prepared !== "object"
+        || prepared.graphScheme === undefined
+        || !(prepared.headIndex instanceof Map)
+        || prepared.rootDatabase === undefined
+        || prepared.schemaStorage === undefined
+        || !Array.isArray(prepared.compiledNodes)
+    ) {
+        throw new Error(
+            "makePreparedIncrementalGraph requires prepared graph storage. " +
+            "Use createIncrementalGraph(...) or call prepareIncrementalGraphStorage(...) first."
+        );
+    }
+    if (prepared.rootDatabase !== rootDatabase) {
+        throw new Error(
+            "makePreparedIncrementalGraph requires prepared storage for the same root database. " +
+            "Use createIncrementalGraph(...) or call prepareIncrementalGraphStorage(...) for this root database first."
+        );
+    }
+    return new IncrementalGraphClass(capabilities, rootDatabase, prepared);
+}
+
+/**
+ * Async convenience factory: prepares storage and constructs the graph.
+ * This is the typical entry point for callers that do not need explicit
+ * lifecycle control between preparation and construction.
+ * @param {IncrementalGraphCapabilities} capabilities
+ * @param {RootDatabase} rootDatabase
+ * @param {import('./types').NodeDef[]} nodeDefs
+ * @returns {Promise<IncrementalGraphClass>}
+ */
+async function createIncrementalGraph(capabilities, rootDatabase, nodeDefs) {
+    const prepared = await prepareIncrementalGraphStorage(rootDatabase, nodeDefs);
+    return makePreparedIncrementalGraph(capabilities, rootDatabase, prepared);
 }
 
 /**
@@ -203,6 +243,7 @@ function isIncrementalGraph(object) {
 /** @typedef {IncrementalGraphClass} IncrementalGraph */
 
 module.exports = {
-    makeIncrementalGraph,
+    makePreparedIncrementalGraph,
+    createIncrementalGraph,
     isIncrementalGraph,
 };

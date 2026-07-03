@@ -396,7 +396,8 @@ pull(nodeName, bindings):
   return r
 ```
 
-**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits many essential details.
+**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits many essential details. The concrete implementation uses the [flag-based inverse validity algorithm](incremental-graph-flag-based-inverse-validity.md) for cache validation, `Unchanged` propagation,
+and incremental recomputation.
 
 **REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
@@ -437,6 +438,8 @@ Implementations MAY use any strategy to achieve property PROP-03 (e.g., memoizat
 1. Node's value MUST NOT be updated (keeps old value)
 2. Node MUST be marked `up-to-date`
 3. The stored value must remain a valid `ComputedValue` (never the sentinel itself)
+4. The implementation MUST add validity flags (`valid[D].add(N)`) for every schema-derived
+   dependency edge `D`, without clearing `valid[N]`.
 
 **REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing **if and only if** it can prove D's value would be unchanged given current input values.
 
@@ -497,9 +500,9 @@ interface IncrementalGraph {
 
 **REQ-IFACE-05 (Timestamp API):** Implementations MUST record timestamps for each node instance when its value is first set or changed.
 
-**REQ-IFACE-06 (getCreationTime):** `getCreationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance was first given a value (i.e. when its value counter was initialized to 1). MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
+**REQ-IFACE-06 (getCreationTime):** `getCreationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance was first given a value. MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
 
-**REQ-IFACE-07 (getModificationTime):** `getModificationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance's value last changed (i.e. the last time its computor returned a new value, incrementing the counter). MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
+**REQ-IFACE-07 (getModificationTime):** `getModificationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance's value last changed. MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
 
 **REQ-IFACE-08 (Timestamp Invariants):**
 * `getCreationTime(N, B) <= getModificationTime(N, B)` for any materialized node instance `N@B`.
@@ -528,7 +531,7 @@ interface GenericDatabase<TValue> {
 
 **REQ-DB-02:** The type parameter `TValue` is consistently used throughout all method signatures to ensure type safety.
 
-**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and reverse dependencies are stored) is implementation-defined and not exposed in the public interface. Implementations MAY choose any internal representation for storing values as long as REQ-DB-01 (deep equality preservation) is satisfied.
+**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and validity sets are stored) is implementation-defined and not exposed in the public interface. Implementations MAY choose any internal representation for storing values as long as REQ-DB-01 (deep equality preservation) is satisfied.
 
 #### RootDatabase
 
@@ -605,6 +608,10 @@ Formally: For any sequence of operations `Op₁, Op₂, ..., Opₙ` where each `
 * All `invalidate()` calls have the same effect on subsequent operations
 
 **REQ-PERSIST-02:** Implementations MAY use any persistence strategy (storing values, freshness markers, dependency graphs, etc.) as long as REQ-PERSIST-01 is satisfied. The specific mechanism is implementation-defined.
+
+**REQ-PERSIST-SYNC-REF-01 (Synchronization):** Synchronization of persisted
+graph state across host branches is specified in a separate document:
+[Specification for Incremental Graph Synchronization](incremental-graph-synchronization.md).
 
 ### 4.2 Invariants
 
@@ -685,12 +692,19 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 
 ---
 
-### Dynamic dependencies
+### Computors and graph access
 
 Computors MAY invoke the `pull` method, or any other methods of the `IncrementalGraph` interface.
-Nodes `pull`ed in this way (dynamically) are not considered dependencies of the calling Computor's node.
-Therefore, the implementation MUST NOT treat them as inputs. This includes:
-- not propagating freshness updates during `invalidate`ion.
+Nodes `pull`ed in this way are **not** schema-derived dependencies of the calling computor's node.
+The implementation MUST NOT treat them as inputs for freshness propagation or validity
+indexing. This means:
+
+- freshness updates during `invalidate()` are not propagated through dynamically-pulled nodes,
+- dynamically-pulled nodes do not appear in `inputEdges(N)` or `valid`,
+- the cache predicate does not consider dynamically-pulled nodes.
+
+Dynamically-pulled nodes are not part of the flag-based validity algorithm. They are ad-hoc queries
+performed during a computor's execution and do not affect the structural dependency graph.
 
 ---
 

@@ -226,27 +226,40 @@ describe("synchronizeNoLock", () => {
         }
     });
 
+    async function writeLocalGraphScheme(capabilities) {
+        const db = await getRootDatabase(capabilities);
+        try {
+            const scheme = { format: 1, nodes: [{ head: "event", arity: 1, inputTemplates: [] }] };
+            await db._rawPut('!x!!global!graph_scheme', JSON.stringify(scheme));
+        } finally {
+            await db.close();
+        }
+    }
+
     test("merges rendered data from other hostname branches into the live database", async () => {
         const capabilities = getTestCapabilities();
         const aliceNodeArgs = '{"head":"event","args":["alice"]}';
         const aliceNodeIdentifier = 'aliceaaaa';
-        const aliceInputsKey = `!x!!inputs!${aliceNodeIdentifier}`;
         const aliceTimestampsKey = `!x!!timestamps!${aliceNodeIdentifier}`;
+        const aliceGraphScheme = JSON.stringify({ format: 1, nodes: [{ head: "event", arity: 1, inputTemplates: [] }] });
+        await writeLocalGraphScheme(capabilities);
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
                 hostname: "test-host",
                 entries: [
                     ["!_meta!current_replica", "x"],
                     ["!x!!global!identifiers_keys_map", []],
+                    ["!x!!global!graph_scheme", aliceGraphScheme],
                 ],
             },
             {
                 hostname: "alice",
                 entries: [
                     [`!x!!values!${aliceNodeIdentifier}`, { source: "alice" }],
-                    [aliceInputsKey, { inputs: [], inputCounters: [] }],
                     [aliceTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+                    [`!x!!freshness!${aliceNodeIdentifier}`, "up-to-date"],
                     ["!x!!global!identifiers_keys_map", [[aliceNodeIdentifier, aliceNodeArgs]]],
+                    ["!x!!global!graph_scheme", aliceGraphScheme],
                 ],
             },
         ]);
@@ -270,33 +283,35 @@ describe("synchronizeNoLock", () => {
         const capabilities = getTestCapabilities();
         const bobNodeArgs = '{"head":"event","args":["bob"]}';
         const bobNodeIdentifier = 'bobbbbbbb';
-        const bobInputsKey = `!x!!inputs!${bobNodeIdentifier}`;
         const bobTimestampsKey = `!x!!timestamps!${bobNodeIdentifier}`;
-
+        const graphSchemeJson = JSON.stringify({ format: 1, nodes: [{ head: "event", arity: 1, inputTemplates: [] }] });
+        await writeLocalGraphScheme(capabilities);
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
                 hostname: "test-host",
                 entries: [
                     ["!_meta!current_replica", "x"],
                     ["!x!!global!identifiers_keys_map", []],
+                    ["!x!!global!graph_scheme", graphSchemeJson],
                 ],
             },
             {
                 hostname: "bob",
                 entries: [
                     [`!x!!values!${bobNodeIdentifier}`, { source: "bob" }],
-                    [bobInputsKey, { inputs: [], inputCounters: [] }],
                     [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
+                    [`!x!!freshness!${bobNodeIdentifier}`, "up-to-date"],
                     ["!x!!global!identifiers_keys_map", [[bobNodeIdentifier, bobNodeArgs]]],
+                    ["!x!!global!graph_scheme", graphSchemeJson],
                 ],
             },
             {
                 hostname: "zed",
                 entries: [
-                                        ['!x!!global!version', "incompatible-version"],
+                    ['!x!!global!version', "incompatible-version"],
                     ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
-                    ['!x!!inputs!{"head":"event","args":["zed"]}', { inputs: [], inputCounters: [] }],
-                                        ['!x!!global!identifiers_keys_map', [['z-abcdefghi', '{"head":"event","args":["zed"]}']]],
+                    ['!x!!global!identifiers_keys_map', [['z-abcdefghi', '{"head":"event","args":["zed"]}']]],
+                    ['!x!!global!graph_scheme', graphSchemeJson],
                 ],
             },
         ]);

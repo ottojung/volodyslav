@@ -29,7 +29,7 @@
 
 /**
  * Generic typed database interface.
- * All databases (values, freshness, inputs, revdeps) implement this interface.
+ * All databases (values, freshness, valid) implement this interface.
  * @template TValue - The value type
  * @template TKey - The key type
  * @typedef {object} GenericDatabase

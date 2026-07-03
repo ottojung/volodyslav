@@ -407,22 +407,17 @@ function versionToString(Version) {
  */
 
 /**
- * Freshness state for a database value
- * @typedef {'up-to-date' | 'potentially-outdated'} Freshness
- */
-
-/**
- * Counter for tracking node value changes.
- * A monotonic integer that increments when the persisted value changes.
- * @typedef {number} Counter
+ * Freshness state for a materialized node record.
+ * Missing means the materialized node has no cached value.
+ * @typedef {'missing' | 'up-to-date' | 'potentially-outdated'} Freshness
  */
 
 /**
  * Record storing the creation and last-modification timestamps of a node.
  * Both timestamps are ISO 8601 strings (e.g. "2026-03-07T10:18:20.735Z").
  * @typedef {object} TimestampRecord
- * @property {string} createdAt - ISO string of when the node was first given a value
- * @property {string} modifiedAt - ISO string of when the node's value last changed
+ * @property {string} createdAt - ISO string of when the materialized node identity was first created
+ * @property {string} modifiedAt - ISO string of when the materialized node record last changed
  */
 
 /**
@@ -430,7 +425,7 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {ComputedValue | Freshness | InputsRecord | NodeIdentifier[] | Counter | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
+ * @typedef {ComputedValue | Freshness | NodeIdentifier[] | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
  */
 
 /**
@@ -457,14 +452,7 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<InputsRecord> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<Counter> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<InputsRecord> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<Counter> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
- */
-
-/**
- * A record storing the input dependencies of a node and their counters.
- * @typedef {object} InputsRecord
- * @property {string[]} inputs - Array of materialized input identifiers
- * @property {number[]} inputCounters - Array of counter values for each input (required when inputs.length > 0)
+ * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
  */
 
 class SchemaPatternClass {
