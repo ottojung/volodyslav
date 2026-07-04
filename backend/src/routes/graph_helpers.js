@@ -105,13 +105,15 @@ function getRawPathname(req) {
  * @returns {Array<ConstValue> | null}
  */
 function getArgsFromRequest(req) {
-    const argsStr = req.params[0];
-    if (argsStr === undefined) {
+    const rawRest = req.params['rest'];
+    if (rawRest === undefined) {
         return null;
     }
-    const { head } = req.params;
+    const restParts = Array.isArray(rawRest) ? rawRest : [];
+    const headParam = req.params['head'];
+    const head = typeof headParam === 'string' ? headParam : undefined;
     if (head === undefined) {
-        return argsStr.split("/").filter((s) => s.length > 0).map(decodeUrlArg);
+        return restParts.filter((s) => s.length > 0).map(decodeUrlArg);
     }
 
     // Route params are already decoded by Express. Re-encode the decoded head so the
@@ -121,7 +123,7 @@ function getArgsFromRequest(req) {
     const rawPathname = getRawPathname(req);
     const markerIndex = rawPathname.indexOf(marker);
     if (markerIndex === -1) {
-        return argsStr.split("/").filter((s) => s.length > 0).map(decodeUrlArg);
+        return restParts.filter((s) => s.length > 0).map(decodeUrlArg);
     }
     return rawPathname
         .slice(markerIndex + marker.length)

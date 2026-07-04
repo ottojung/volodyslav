@@ -96,7 +96,7 @@ describe("Static file serving", () => {
         const app = await makeApp(capabilities);
         const res = await request(app).get("/test.js");
         expect(res.statusCode).toBe(200);
-        expect(res.headers["content-type"]).toMatch(/application\/javascript/);
+        expect(res.headers["content-type"]).toMatch(/text\/javascript/);
 
         // Clean up
         fs.unlinkSync(path.join(staticPath, "test.js"));
