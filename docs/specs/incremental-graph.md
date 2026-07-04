@@ -696,7 +696,7 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 | `listMaterializedNodes()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
 | `getCreationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
 | `getModificationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `possibleMaybeChanges()` | darkroom (per-replica, for journal snapshot) | Daytime and nighttime methods (does not acquire `GRAPH_ACTIVITY_KEY`); serialized with journal-writing operations via darkroom |
+| `possibleMaybeChanges()` | replica lifecycle lock (brief, for selection) + darkroom (per-replica) | Daytime and nighttime methods (does not acquire `GRAPH_ACTIVITY_KEY`); serialized with journal-writing operations via darkroom; replica cutover serialized via lifecycle lock |
 | `getSchemas()` | none (in-memory read) | Everything |
 | `getSchemaByHead()` | none (in-memory read) | Everything |
 | `getDbVersion()` | none (in-memory read) | Everything |

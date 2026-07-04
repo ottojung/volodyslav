@@ -127,13 +127,15 @@ docs/specs/incremental-graph-journal-compaction.md
 
 ## Concurrency
 
-`possibleMaybeChanges` must observe a single consistent journal snapshot for one stable replica. The returned array reflects this snapshot: all surviving matching journal entries strictly after `since`, ordered by ascending `JournalIndex`, projected to `PossibleNodeChange`.
+`possibleMaybeChanges({ since, to })` MUST observe one consistent journal state for one stable replica. The returned array reflects that journal state: all surviving matching journal entries strictly after `since`, ordered by ascending `JournalIndex`, projected to `PossibleNodeChange`.
 
-A conforming implementation may satisfy this by holding the active replica's darkroom lock for the duration of the journal scan, or by acquiring a storage-level snapshot under the same serialization discipline. The darkroom lock serializes all durable journal-writing operations (pull commits, invalidate commits, migration actions, sync actions, compaction).
+This is achieved through serialization with durable journal mutations and replica cutover. `possibleMaybeChanges` acquires the active replica's darkroom lock while reading journal state. The darkroom lock serializes the journal read with all durable journal-writing operations (append, delete, compact, poison, reappend, watermark update, migration journal mutation, and sync journal mutation).
+
+Replica cutover is serialized with journal-state acquisition: `possibleMaybeChanges` acquires the replica lifecycle lock while selecting the active replica and acquiring that replica's darkroom lock; replica cutover acquires the same lifecycle lock while switching active replicas.
 
 `possibleMaybeChanges` does not block ordinary daytime/nighttime graph activity globally — only durable journal-writing sections are serialized with the journal scan.
 
-The full concurrency specification, including snapshot coverage and stable replica requirements, is in `docs/specs/incremental-graph-journal-api.md`.
+The full concurrency specification is in `docs/specs/incremental-graph-journal-api.md`.
 
 ## Related specifications
 

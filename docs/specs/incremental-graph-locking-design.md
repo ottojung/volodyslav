@@ -22,8 +22,8 @@ The target behavior is:
 7. Transaction commits for the same replica are serialized (the commit
    mutex is per-replica, not global, so commits to different replicas
    proceed concurrently).
-8. Journal queries observe a consistent journal snapshot for one stable
-   replica, serialized with all journal-writing operations.
+8. Journal queries observe one consistent journal state for one stable
+   replica, serialized with all durable journal-writing operations.
 
 ## Sleeper Primitives
 
@@ -125,29 +125,19 @@ whether top-level or nested.
 
 ### `possibleMaybeChanges({ since, to })`
 
-The correctness requirement is that `possibleMaybeChanges` must observe a single consistent journal snapshot for one stable replica (see `docs/specs/incremental-graph-journal-api.md` REQ-JA-CONC-01). This specification describes two valid implementation strategies.
+The correctness requirement is that `possibleMaybeChanges` must observe one consistent journal state for one stable replica (see `docs/specs/incremental-graph-journal-api.md` REQ-JA-CONC-01). This is achieved through serialization with durable journal mutations and replica cutover.
 
-#### Strategy A: darkroom-lock-held-for-full-scan
+**Protocol:**
 
-1. Acquire the darkroom lock for the active replica.
-2. Scan the journal storage, collecting matching `PossibleNodeChange` values into an array.
-3. Release the darkroom lock and return the array.
+1. Acquire the replica lifecycle lock (`holidayActivity`).
+2. Select the active replica and acquire its darkroom lock.
+3. Release the replica lifecycle lock (the darkroom lock remains held).
+4. Scan the journal storage under the darkroom lock, collecting matching `PossibleNodeChange` values into an array.
+5. Release the darkroom lock and return the array.
 
 Every journal-writing operation (pull commits, invalidate commits, migration actions, sync actions, compaction) acquires the darkroom lock for its durable batch write. Holding the darkroom lock for the full scan therefore serializes the scan with all durable journal mutations, satisfying REQ-JA-CONC-01.
 
-#### Strategy B: storage-snapshot-under-serialization
-
-1. Acquire the relevant serialization lock (e.g., darkroom lock for the active replica).
-2. Capture a stable storage snapshot plus the current `last_journal_index`.
-3. Release the serialization lock.
-4. Scan the storage snapshot, collecting matching `PossibleNodeChange` values into an array.
-5. Return the array.
-
-This strategy is valid provided the storage layer supports consistent snapshots and the snapshot is captured under the same serialization discipline used for all journal structural mutations (REQ-JA-CONC-04).
-
-#### Common constraints
-
-Both strategies must ensure stable replica selection: replica cutover must either be excluded while the journal snapshot is acquired or must provide a stable snapshot/handle for the selected replica (REQ-JA-CONC-05).
+Replica cutover acquires the replica lifecycle lock (`holidayActivity`) while switching active replicas. Because `possibleMaybeChanges` acquires the same lifecycle lock during steps 1–2 (replica selection and darkroom acquisition), replica cutover cannot replace the active replica between selection and darkroom acquisition. This satisfies REQ-JA-CONC-03.
 
 `possibleMaybeChanges` does not acquire the `GRAPH_ACTIVITY_KEY` mode lock. Ordinary daytime and nighttime graph operations are not globally blocked by journal queries — only their durable darkroom transaction/write section is serialized with the journal scan.
 
@@ -192,9 +182,9 @@ keys, so they may proceed concurrently.
 
 ### Journal queries
 
-`possibleMaybeChanges` must observe a single consistent journal snapshot for one stable replica (REQ-JA-CONC-01). It does not acquire the `GRAPH_ACTIVITY_KEY` mode lock, so it does not interfere with ordinary daytime or nighttime graph activity (reads, invalidations, or pulls on different nodes).
+`possibleMaybeChanges` must observe one consistent journal state for one stable replica (REQ-JA-CONC-01). It does not acquire the `GRAPH_ACTIVITY_KEY` mode lock, so it does not interfere with ordinary daytime or nighttime graph activity (reads, invalidations, or pulls on different nodes).
 
-A conforming implementation may satisfy this requirement by holding the active replica's darkroom lock for the full journal scan, or by acquiring a storage-level snapshot under the same serialization discipline (see `docs/specs/incremental-graph-journal-api.md` for the full concurrency specification). All journal-writing operations — pull commits, invalidate commits, migration actions, sync actions, and compaction — commit through the darkroom lock, which provides the serialization boundary.
+`possibleMaybeChanges` acquires the replica lifecycle lock while selecting the active replica, acquires that replica's darkroom lock, releases the lifecycle lock, and scans the journal under the darkroom lock. All journal-writing operations — pull commits, invalidate commits, migration actions, sync actions, and compaction — commit through the darkroom lock, which provides the serialization boundary. Replica cutover acquires the same lifecycle lock, serializing it with journal-state acquisition.
 
 ## Deadlock Discipline
 
@@ -204,7 +194,7 @@ The implementation MUST keep this acquisition discipline:
 2. acquire any per-node pull mutexes after that;
 3. never acquire `"daytime"` while holding a per-node pull mutex.
 
-Inspection reads, invalidates, and journal queries only take the global mode lock or the darkroom lock, so they cannot participate in a node-level cycle.
+Inspection reads and invalidates do not take per-node pull mutexes. Journal queries also do not take per-node pull mutexes; they only participate in replica-lifecycle selection and darkroom journal-state serialization. Therefore they cannot participate in a node-level pull-lock cycle.
 
 Pulls may recursively pull dependencies while already holding pull locks. The
 incremental graph is a DAG, so any wait edge from node `A` to node `B` implies

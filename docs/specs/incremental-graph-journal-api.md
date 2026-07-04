@@ -112,9 +112,9 @@ REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to
 
 ### Correctness requirement
 
-REQ-JA-CONC-01: `possibleMaybeChanges({ since, to })` MUST observe a single consistent journal snapshot for one stable replica. There must exist a linearization point during the call such that the returned array is exactly:
+REQ-JA-CONC-01: `possibleMaybeChanges({ since, to })` MUST observe one consistent journal state for one stable replica. There must exist a linearization point during the call such that the returned array is exactly:
 
-- all surviving journal entries in that snapshot;
+- all surviving journal entries in that journal state;
 - whose journal index is strictly greater than the position referenced by `since`;
 - whose node key matches `to`;
 - ordered by ascending `JournalIndex`;
@@ -122,26 +122,36 @@ REQ-JA-CONC-01: `possibleMaybeChanges({ since, to })` MUST observe a single cons
 
 No surviving journal index in the observed span is returned more than once, and no surviving matching journal index in the observed span is skipped.
 
-### Sufficient implementation strategies
+### Darkroom serialization
 
-REQ-JA-CONC-02: A conforming implementation MAY satisfy REQ-JA-CONC-01 by holding the active replica's darkroom lock for the duration of the journal scan. This serializes the scan with all durable journal mutations, since every journal-writing operation commits through the darkroom lock.
+REQ-JA-CONC-02: `possibleMaybeChanges` acquires the active replica's darkroom lock while reading journal state. The darkroom lock serializes the journal read with all durable journal mutations, including:
 
-REQ-JA-CONC-03: Alternatively, a conforming implementation MAY acquire a storage-level snapshot under the same serialization discipline and scan that snapshot without holding the darkroom lock for the full scan. The implementation may briefly acquire the relevant lock, capture a stable storage snapshot plus `last_journal_index`, release the lock, and scan the storage snapshot, provided the storage layer supports this correctly.
+- append journal entry;
+- delete journal entry;
+- compact journal entry;
+- poison journal index;
+- reappend journal entry;
+- update `last_journal_index`;
+- migration journal mutation;
+- sync journal mutation.
 
-### Serialization discipline
+This serialization ensures that the journal state observed by `possibleMaybeChanges` is consistent: no journal mutation can be partially applied while the scan is in progress.
 
-REQ-JA-CONC-04: All journal structural mutations — append, delete, compact, poison, reappend, watermark update, migration journal mutation, and sync journal mutation — MUST be serialized with the journal snapshot mechanism used by `possibleMaybeChanges`.
+### Replica cutover serialization
 
-REQ-JA-CONC-05: `possibleMaybeChanges` MUST read from a stable replica. Replica cutover MUST either be excluded while the journal snapshot is acquired or must provide a stable snapshot/handle for the selected replica.
+REQ-JA-CONC-03: Replica cutover MUST be serialized with journal-state acquisition for `possibleMaybeChanges`. `possibleMaybeChanges` acquires the replica lifecycle lock while selecting the active replica and acquiring that replica's darkroom lock. Replica cutover acquires the same lifecycle lock while switching active replicas. This ensures that `possibleMaybeChanges` reads from one stable replica — the active replica is not replaced between selection and darkroom acquisition.
 
-### Snapshot coverage
+### What is not blocked
 
-The journal snapshot covers journal-relevant state only:
+REQ-JA-CONC-04: `possibleMaybeChanges` does not acquire the graph activity mode lock and does not globally block ordinary daytime or nighttime graph activity. The darkroom lock serializes only the journal scan with durable journal-writing sections; it does not prevent concurrent graph reads, invalidations, or pulls on different replicas.
 
-- active replica identity, or a stable handle to the chosen replica;
+### Journal state coverage
+
+The consistent journal state covers journal-relevant state only:
+
+- active replica identity;
 - `last_journal_index`;
-- `rendered/r/journal/<index>` entries and absences;
-- any volatile journal index/cache state used by the scan.
+- `rendered/r/journal/<index>` entries and absences.
 
 It does not need to cover:
 
@@ -152,4 +162,4 @@ It does not need to cover:
 - per-node pull locks;
 - ordinary inspection reads.
 
-Journal entries are committed atomically with their associated graph-state mutations, so the journal query only needs a consistent journal snapshot — not a snapshot of the entire graph database.
+Journal entries are committed atomically with their associated graph-state mutations, so the journal query only needs a consistent journal state — not a consistent state of the entire graph database.
