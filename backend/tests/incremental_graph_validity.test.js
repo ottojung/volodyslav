@@ -19,12 +19,21 @@ const {
     nodeIdentifierToString,
 } = require("../src/generators/incremental_graph/database");
 const { getMockedRootCapabilities } = require("./spies");
-const { stubEnvironment } = require("./stubs");
+const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const { prepareIncrementalGraphStorage } = require("../src/generators/incremental_graph/prepare_graph_storage");
 const internalGraphClassModule = require("../src/generators/incremental_graph/" + "class");
 
-const testCapabilities = getMockedRootCapabilities();
+function getTestCapabilities() {
+    const capabilities = getMockedRootCapabilities();
+    stubEnvironment(capabilities);
+    stubLogger(capabilities);
+    stubDatetime(capabilities);
+    stubSleeper(capabilities);
+    stubScheduler(capabilities);
+    stubRuntimeStateStorage(capabilities);
+    return capabilities;
+}
 
 function deepClone(x) {
     return JSON.parse(JSON.stringify(x));
@@ -305,6 +314,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
             const midKey = makeNodeStorageKey("middle", binding);
@@ -358,6 +368,7 @@ describe("Incremental graph validity", () => {
                 },
             ];
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
 
             // First pull
@@ -387,6 +398,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
             const srcKey = makeNodeStorageKey("source");
@@ -439,6 +451,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
             const midKey = makeNodeStorageKey("middle", binding);
@@ -488,6 +501,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
             const srcKey = makeNodeStorageKey("source");
@@ -532,6 +546,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
 
@@ -575,6 +590,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
             const srcKey = makeNodeStorageKey("source");
@@ -623,6 +639,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
 
@@ -663,6 +680,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
             const midKey = makeNodeStorageKey("middle", binding);
@@ -702,6 +720,7 @@ describe("Incremental graph validity", () => {
                 },
             ];
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             await expect(graph.pull("source")).rejects.toThrow();
         });
@@ -732,6 +751,7 @@ describe("Incremental graph validity", () => {
                 },
             ];
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
 
@@ -791,6 +811,7 @@ describe("Incremental graph validity", () => {
                 },
             ];
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
             const bKey = makeNodeStorageKey("B", binding);
@@ -838,6 +859,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
 
@@ -867,6 +889,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
             const midKey = makeNodeStorageKey("middle", binding);
@@ -916,6 +939,7 @@ describe("Incremental graph validity", () => {
                 },
             ];
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
 
             await graph.pull("source");
@@ -943,6 +967,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
             const depKey = makeNodeStorageKey("dependent", binding);
@@ -985,6 +1010,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
 
+            const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
             const depKey = makeNodeStorageKey("dependent", binding);
@@ -1015,6 +1041,7 @@ describe("Incremental graph validity", () => {
             );
 
             const freshDb = new InMemoryDatabase();
+            const testCapabilities = getTestCapabilities();
             await createIncrementalGraph(testCapabilities, freshDb, nodeDefs);
 
             const schemaStorage = freshDb.getSchemaStorage();
@@ -1029,9 +1056,8 @@ describe("Incremental graph validity", () => {
 
 
         it("direct fresh schema batch does not initialize version without graph_scheme", async () => {
-            const capabilities = getMockedRootCapabilities();
-            stubEnvironment(capabilities);
-            const db = await getRootDatabase(capabilities);
+            const testCapabilities = getTestCapabilities();
+            const db = await getRootDatabase(testCapabilities);
             try {
                 const storage = db.getSchemaStorage();
                 await storage.batch([
@@ -1121,6 +1147,7 @@ describe("Incremental graph validity", () => {
             );
             const db = new InMemoryDatabase();
             const prepared = await prepareIncrementalGraphStorage(db, nodeDefs);
+            const testCapabilities = getTestCapabilities();
             const graph = internalGraphClassModule.makePreparedIncrementalGraph(testCapabilities, db, prepared);
             expect(graph.getSchemaByHead("source")).not.toBeNull();
         });
@@ -1135,6 +1162,7 @@ describe("Incremental graph validity", () => {
             const targetDb = new InMemoryDatabase();
             const prepared = await prepareIncrementalGraphStorage(sourceDb, nodeDefs);
 
+            const testCapabilities = getTestCapabilities();
             expect(() => internalGraphClassModule.makePreparedIncrementalGraph(testCapabilities, targetDb, prepared)).toThrow(/same root database/);
         });
 
@@ -1145,6 +1173,7 @@ describe("Incremental graph validity", () => {
                 () => ({ v: "dep" })
             );
             const db = new InMemoryDatabase();
+            const testCapabilities = getTestCapabilities();
             expect(() => internalGraphClassModule.makePreparedIncrementalGraph(testCapabilities, db, nodeDefs)).toThrow(/prepareIncrementalGraphStorage/);
         });
 
@@ -1172,6 +1201,7 @@ describe("Incremental graph validity", () => {
             await storage.global.put("version", "test-version");
 
             // Create graph — should NOT throw because schemes match
+            const testCapabilities = getTestCapabilities();
             const g = await createIncrementalGraph(testCapabilities, existingDb, nodeDefs);
 
             // Verify graph_scheme was NOT overwritten
@@ -1208,6 +1238,7 @@ describe("Incremental graph validity", () => {
             await storage.global.put("version", "test-version");
 
             // Validation fails immediately during construction, not on pull
+            const testCapabilities = getTestCapabilities();
             await expect(
                 createIncrementalGraph(testCapabilities, existingDb, nodeDefs)
             ).rejects.toThrow(/graph_scheme/);
@@ -1226,6 +1257,7 @@ describe("Incremental graph validity", () => {
             await storage.global.put("version", "test-version");
 
             // Error is thrown immediately during construction
+            const testCapabilities = getTestCapabilities();
             await expect(
                 createIncrementalGraph(testCapabilities, existingDb, nodeDefs)
             ).rejects.toThrow(/global\/graph_scheme/);
