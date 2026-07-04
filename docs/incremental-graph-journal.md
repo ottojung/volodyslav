@@ -127,9 +127,13 @@ docs/specs/incremental-graph-journal-compaction.md
 
 ## Concurrency
 
-`possibleMaybeChanges` runs under the existing darkroom lock for the active replica while scanning journal storage. The darkroom lock is sufficient because journal reads must be serialized with journal writes at the durable storage / transaction boundary. Every journal-writing operation (pull commits, invalidate commits, migration actions, sync actions, compaction) acquires the darkroom lock for its durable batch write.
+`possibleMaybeChanges` must observe a single consistent journal snapshot for one stable replica. The returned array reflects this snapshot: all surviving matching journal entries strictly after `since`, ordered by ascending `JournalIndex`, projected to `PossibleNodeChange`.
 
-Ordinary graph reads, invalidates, and pulls on different nodes are not globally blocked by journal queries except through their durable darkroom transaction/write section.
+A conforming implementation may satisfy this by holding the active replica's darkroom lock for the duration of the journal scan, or by acquiring a storage-level snapshot under the same serialization discipline. The darkroom lock serializes all durable journal-writing operations (pull commits, invalidate commits, migration actions, sync actions, compaction).
+
+`possibleMaybeChanges` does not block ordinary daytime/nighttime graph activity globally — only durable journal-writing sections are serialized with the journal scan.
+
+The full concurrency specification, including snapshot coverage and stable replica requirements, is in `docs/specs/incremental-graph-journal-api.md`.
 
 ## Related specifications
 

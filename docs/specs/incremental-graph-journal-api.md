@@ -110,16 +110,46 @@ REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to
 
 ## Concurrency
 
-REQ-JA-09: `IncrementalGraph.prototype.possibleMaybeChanges` runs under the existing darkroom lock for the active replica while scanning journal storage. The darkroom lock serializes the journal scan with durable journal mutations, including:
+### Correctness requirement
 
-- journal entries appended by `pull`;
-- journal entries appended by `invalidate`;
-- journal entries appended or removed by migration;
-- journal entries appended, poisoned, deleted, or compacted by sync;
-- explicit journal compaction or journal maintenance.
+REQ-JA-CONC-01: `possibleMaybeChanges({ since, to })` MUST observe a single consistent journal snapshot for one stable replica. There must exist a linearization point during the call such that the returned array is exactly:
 
-The darkroom lock is sufficient because every journal-writing operation acquires the darkroom lock for its durable batch write.
+- all surviving journal entries in that snapshot;
+- whose journal index is strictly greater than the position referenced by `since`;
+- whose node key matches `to`;
+- ordered by ascending `JournalIndex`;
+- projected to `PossibleNodeChange`.
 
-REQ-JA-10: Because `possibleMaybeChanges` acquires the darkroom lock before scanning journal storage (REQ-JA-09), the observed journal span is an effective snapshot of journal storage at the point of acquisition. The returned array reflects this snapshot: no surviving journal index in the observed span is returned more than once, and the array is ordered by ascending journal index.
+No surviving journal index in the observed span is returned more than once, and no surviving matching journal index in the observed span is skipped.
 
-The darkroom lock also means that ordinary `daytime` and `nighttime` graph operations (reads, invalidations, pulls on different nodes) are not globally blocked by journal queries — only their durable darkroom transaction/write section is serialized with the journal scan.
+### Sufficient implementation strategies
+
+REQ-JA-CONC-02: A conforming implementation MAY satisfy REQ-JA-CONC-01 by holding the active replica's darkroom lock for the duration of the journal scan. This serializes the scan with all durable journal mutations, since every journal-writing operation commits through the darkroom lock.
+
+REQ-JA-CONC-03: Alternatively, a conforming implementation MAY acquire a storage-level snapshot under the same serialization discipline and scan that snapshot without holding the darkroom lock for the full scan. The implementation may briefly acquire the relevant lock, capture a stable storage snapshot plus `last_journal_index`, release the lock, and scan the storage snapshot, provided the storage layer supports this correctly.
+
+### Serialization discipline
+
+REQ-JA-CONC-04: All journal structural mutations — append, delete, compact, poison, reappend, watermark update, migration journal mutation, and sync journal mutation — MUST be serialized with the journal snapshot mechanism used by `possibleMaybeChanges`.
+
+REQ-JA-CONC-05: `possibleMaybeChanges` MUST read from a stable replica. Replica cutover MUST either be excluded while the journal snapshot is acquired or must provide a stable snapshot/handle for the selected replica.
+
+### Snapshot coverage
+
+The journal snapshot covers journal-relevant state only:
+
+- active replica identity, or a stable handle to the chosen replica;
+- `last_journal_index`;
+- `rendered/r/journal/<index>` entries and absences;
+- any volatile journal index/cache state used by the scan.
+
+It does not need to cover:
+
+- current graph values;
+- freshness records except as already reflected by committed journal entries;
+- revdeps;
+- computor state;
+- per-node pull locks;
+- ordinary inspection reads.
+
+Journal entries are committed atomically with their associated graph-state mutations, so the journal query only needs a consistent journal snapshot — not a snapshot of the entire graph database.
