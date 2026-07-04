@@ -28,9 +28,9 @@ Rationale: `override` rewrites storage during a namespace transition. The old ve
 
 ### `storage.invalidate`
 
-Marks a node for recomputation in the new version.
+Marks a node for recomputation in the new version by setting its freshness to `potentially-outdated`.
 
-REQ-JM-03: `storage.invalidate` MUST NOT create a journal entry. As with runtime `invalidate`, freshness transitions are not journaled events.
+REQ-JM-03: `storage.invalidate` MUST emit an `invalidate` journal entry when it causes a node in the target migrated state to transition from `up-to-date` to `potentially-outdated`. This mirrors REQ-JE-07 and REQ-JE-07b for runtime freshness transitions. If the node was already `potentially-outdated`, no journal entry is emitted (mirroring the same rule for runtime cascading invalidation).
 
 ### `storage.create`
 
@@ -55,7 +55,7 @@ REQ-JM-07: After emitting the `delete` entry, `storage.delete` MUST also remove 
 
 ## Distinction from other change sources
 
-The journal distinguishes migration-originated state from ordinary graph changes by keeping migration actions out of the normal emission path except for `storage.create`:
+The journal distinguishes migration-originated state from ordinary graph changes. Migration actions that change graph-observable state (`storage.create`, `storage.delete`, `storage.invalidate`) emit journal entries; identity-preserving operations (`storage.keep`, `storage.override`) do not:
 
 | Operation | Journal effect | Reason |
 |-----------|---------------|--------|
@@ -64,7 +64,7 @@ The journal distinguishes migration-originated state from ordinary graph changes
 | `invalidate` (standalone) | `invalidate` entry | Freshness transition |
 | `storage.keep` | no entry | Identity-preserving copy |
 | `storage.override` | no entry | Migration-level rewriting |
-| `storage.invalidate` | no entry | Freshness change only |
+| `storage.invalidate` | `invalidate` entry | Freshness transition to `potentially-outdated` |
 | `storage.create` | `add` entry | Intentional new node creation |
 | `storage.delete` | `delete` entry | Node deleted by migration |
 | Sync conflict resolution | `delete` / `edit` entries | Cross-host reconciliation |

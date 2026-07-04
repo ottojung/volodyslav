@@ -79,7 +79,7 @@ docs/specs/incremental-graph-journal-types.md
 
 Journal entries are produced by graph operations that change the observable graph state.
 
-The journal emission rules define which IncrementalGraph operations create journal changes and how those changes are coordinated with graph storage updates. These rules cover recomputation, unchanged results, invalidation, creation, deletion, migration actions, and synchronization-generated changes.
+The journal emission rules define which IncrementalGraph operations create journal changes and how those changes are coordinated with graph storage updates. These rules cover recomputation, unchanged results, freshness invalidation (emits `invalidate` entries), creation, deletion, migration actions, and synchronization-generated changes.
 
 The detailed emission behavior is specified in:
 

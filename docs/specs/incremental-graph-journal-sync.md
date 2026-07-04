@@ -139,10 +139,8 @@ The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalInde
 
 ## Interaction with compaction
 
-Sync operates on the journal storage that exists at sync time. Compaction may have removed entries before sync. This is safe because:
+Sync operates on the journal storage that exists at sync time. Compaction may have removed entries before sync.
 
-1. Compaction may remove journal entries at any time. Absent entries are simply skipped by `possibleMaybeChanges` and sync falls back to node metadata for conflict resolution. Compaction does not need to preserve entries for future sync correctness (see `incremental-graph-journal-compaction.md`).
-2. Conflict resolution uses timestamps from surviving journal entries or from node metadata (the `timestamps` sublevel records creation and modification times per node identifier).
-3. If a node's journal entry has been compacted away, the node's modification timestamp from the `timestamps` sublevel is used as the authoritative comparison value.
+REQ-JS-19: Sync uses only surviving journal entries for conflict comparison. Absent journal entries are treated as "no journal evidence" — sync MUST NOT fall back to the `timestamps` sublevel as a replacement for missing journal entries. If no journal entry exists for a node key, sync uses its remaining available evidence (e.g., the fact of materialization and the node's identifier allocation) for conflict-resolution decisions according to the rules in this document.
 
-REQ-JS-19: During conflict resolution, if a node's journal entry no longer exists, sync MUST use the node's modification timestamp from the `timestamps` sublevel. If neither exists (should not happen for a materialized node with identifier-lookup integrity), sync MUST treat the node's timestamp as `0` (earliest possible) for conflict comparison purposes.
+REQ-JS-20: Compaction MUST NOT remove the only surviving `add` or `edit` entry for a materialized node (see REQ-JC-07). This ensures sync always has at least one journal-backed timestamp per materialized node for conflict comparison. If compaction adheres to this rule, the "no journal evidence" case in REQ-JS-19 can only occur for nodes that were deleted or dematerialized on all synchronized hosts before compaction.

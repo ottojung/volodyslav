@@ -110,6 +110,14 @@ REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to
 
 ## Concurrency
 
-REQ-JA-09: `IncrementalGraph.prototype.possibleMaybeChanges` operates under the graph instance's `daytimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "daytime", ...)`). It may run concurrently with other daytime activities as allowed by the locking spec. It MUST NOT overlap with nighttime pull activity except as allowed by that spec. See `docs/specs/incremental-graph-locking-design.md`.
+REQ-JA-09: `IncrementalGraph.prototype.possibleMaybeChanges` runs under a locking mode that is exclusive with all journal-writing activity. Journal writers include at least:
 
-REQ-JA-10: Because `possibleMaybeChanges` runs under `daytimeActivity` (REQ-JA-09), no other activity that can write journal entries runs concurrently during its execution. The observed journal span is therefore an effective snapshot of journal storage. The implementation MUST guarantee that within one iterator over one observed span, the same surviving journal index MUST NOT be yielded twice, and no surviving journal index in the observed span may be skipped.
+- `pull` paths that emit `add` or `edit` journal entries (nighttime activity);
+- runtime `invalidate` paths that emit `invalidate` journal entries (daytime activity);
+- migration actions that emit journal entries or purge journal state;
+- sync actions that append, delete, poison, or compact journal entries;
+- explicit journal compaction or maintenance.
+
+The locking mode is specified in `docs/specs/incremental-graph-locking-design.md`.
+
+REQ-JA-10: Because `possibleMaybeChanges` runs under a mode exclusive with all journal writers (REQ-JA-09), the observed journal span is an effective snapshot of journal storage. The implementation MUST guarantee that within one iterator over one observed span, the same surviving journal index MUST NOT be yielded twice, and no surviving journal index in the observed span may be skipped.

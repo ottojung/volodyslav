@@ -471,6 +471,12 @@ interface IncrementalGraph {
   getCreationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
   getModificationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
 
+  // Journal API (read-only)
+  possibleMaybeChanges({ since, to }: {
+    since: PossibleNodeChange | BaselinePossibleNodeChange,
+    to: NodeFilter,
+  }): AsyncIterableIterator<PossibleNodeChange>;
+
   // Inspection API (read-only)
   getFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
   getValue(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue | undefined>;
@@ -589,6 +595,28 @@ type Computor = (
 
 ---
 
+### 3.6 Journal API
+
+The IncrementalGraph journal records graph changes to support incremental graph maintenance, synchronization, and migration. The public journal API consists of:
+
+- `graph.possibleMaybeChanges({ since, to })` — Queries possible node changes since a previously observed position, restricted to nodes matching the given filter. Returns `AsyncIterableIterator<PossibleNodeChange>`. The `since` parameter accepts `PossibleNodeChange | BaselinePossibleNodeChange`; the `to` parameter is a `NodeFilter`. See `docs/specs/incremental-graph-journal-api.md` for the full specification.
+
+- `baselinePossibleNodeChange()` — Returns a `BaselinePossibleNodeChange` sentinel (a position less than any real journal index). When passed as `since` to `graph.possibleMaybeChanges`, scanning starts from the first journal entry. This is a standalone function, not an `IncrementalGraph` method.
+
+The journal type system, emission rules, synchronization model, migration interaction, and compaction rules are specified in the dedicated journal specification documents:
+
+```text
+docs/specs/incremental-graph-journal-types.md
+docs/specs/incremental-graph-journal-api.md
+docs/specs/incremental-graph-journal-emission.md
+docs/specs/incremental-graph-journal-sync.md
+docs/specs/incremental-graph-journal-migrations.md
+docs/specs/incremental-graph-journal-compaction.md
+docs/specs/incremental-graph-node-filter.md
+```
+
+---
+
 ## 4. Persistence (Normative)
 
 ### 4.1 Behavioral Equivalence Across Restarts
@@ -653,6 +681,7 @@ Three modes are defined:
 |------|-------------|
 | `daytime` | Non-`pull` graph operations (inspection reads plus `invalidate`). Multiple `daytime`-mode callers may execute concurrently. |
 | `nighttime` | Recomputation operations. Multiple `nighttime`-mode callers may execute concurrently at the graph level (but are serialized per-node). |
+| `journalQuery` | Journal query operations (`possibleMaybeChanges`). Exclusive with `daytime` and `nighttime` (and therefore with all journal-writing activity). |
 | `holiday` | Lifecycle operations (database opens, schema migrations). Blocks all other modes. |
 
 Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to prevent two concurrent pulls from recomputing the same node simultaneously.
@@ -668,6 +697,7 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 | `listMaterializedNodes()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
 | `getCreationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
 | `getModificationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
+| `possibleMaybeChanges()` | `journalQuery` | **NOT** with `daytime`-mode methods; **NOT** with `nighttime`-mode methods |
 | `getSchemas()` | none (in-memory read) | Everything |
 | `getSchemaByHead()` | none (in-memory read) | Everything |
 | `getDbVersion()` | none (in-memory read) | Everything |

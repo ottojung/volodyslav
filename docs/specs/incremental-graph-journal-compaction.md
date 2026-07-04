@@ -44,9 +44,9 @@ This specification does not mandate a specific quota policy. Any policy is valid
 
 ### Redundant entries for the same node
 
-REQ-JC-06: Compaction MAY remove older journal entries when a newer entry exists for the same node key. This is one allowed case; compaction MAY also remove entries in other cases (see REQ-JC-07).
+REQ-JC-06: Compaction MAY remove older journal entries when a newer entry exists for the same node key.
 
-REQ-JC-07: Compaction MAY remove any journal entry, including the only surviving `add` or `edit` entry for a materialized node. Under the weak semantics of `possibleMaybeChanges`, compacted entries are gone and are NOT reconstructed. Removing entries does not invalidate `PossibleNodeChange` tokens that reference compacted-away positions; the token remains valid as a `since` argument, and `possibleMaybeChanges` yields only the surviving journal entries after the widened private index.
+REQ-JC-07: Compaction MUST NOT remove the only surviving `add` or `edit` entry for a materialized node. At least one `add` or `edit` entry must survive for each materialized node key so that journal evidence remains for sync correctness and journal-query safety. Compaction MAY remove older or redundant entries for the same node when a newer `add`, `edit`, or `invalidate` entry survives, provided the resulting surviving entries preserve enough journal evidence for sync convergence.
 
 ### Entries for deleted nodes
 
@@ -54,9 +54,9 @@ REQ-JC-08: Compaction MAY remove all journal entries for a node that has been de
 
 ### Interaction with synchronization
 
-REQ-JC-09: Compaction MAY remove journal entries even when synchronization is pending. Sync uses the `timestamps` sublevel as a fallback when journal entries are absent (see REQ-JS-19). Compaction of journal entries is therefore safe for synchronization correctness — removed entries do not block or break sync.
+REQ-JC-09: Compaction MAY remove journal entries even when synchronization is pending. Sync does not use `timestamps` sublevel records as a replacement for missing journal entries. Instead, sync uses only surviving journal entries for conflict comparison. Absent journal entries are treated as "no journal evidence" rather than falling back to node timestamps. See `incremental-graph-journal-sync.md` for the sync conflict-resolution rules.
 
-REQ-JC-10: If a node's journal entry has been compacted away before sync, sync uses the node's `timestamps` sublevel record for conflict comparison (see REQ-JS-19). This fallback means compaction of journal entries is safe for sync correctness.
+REQ-JC-10: Compaction is safe for synchronization correctness as long as the surviving journal entries (if any) plus the sync conflict rules produce correct convergence. Sync does not require journal entries that do not exist.
 
 ---
 

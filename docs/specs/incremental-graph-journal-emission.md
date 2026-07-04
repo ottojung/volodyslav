@@ -67,7 +67,7 @@ Migration actions have their own journal-emission rules, specified fully in `inc
 - `storage.keep` produces no journal entry.
 - `storage.override` produces no journal entry.
 - `storage.delete` emits a `delete` journal entry for the deleted node.
-- `storage.invalidate` produces no journal entry (migration-level operation, not a runtime freshness transition).
+- `storage.invalidate` produces an `invalidate` journal entry when it causes the target node's freshness to transition from `up-to-date` to `potentially-outdated`.
 
 ---
 
