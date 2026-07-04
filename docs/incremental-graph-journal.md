@@ -10,10 +10,10 @@ The journal is primarily exposed through a change-query operation:
 graph.possibleMaybeChanges({
     since,
     to,
-}): AsyncIterableIterator<PossibleNodeChange>
+}): Promise<Array<PossibleNodeChange>>
 ```
 
-A caller provides a `PossibleNodeChange | BaselinePossibleNodeChange` as a cursor-like reference point and a `NodeFilter` describing the portion of the graph it cares about. The result is a stream of later possible changes relevant to that filter.
+A caller provides a `PossibleNodeChange | BaselinePossibleNodeChange` as a cursor-like reference point and a `NodeFilter` describing the portion of the graph it cares about. The result is a finite array of later possible changes relevant to that filter, ordered by ascending journal index.
 
 The method takes its arguments as a single object parameter with `since` and `to` fields.
 
@@ -27,7 +27,7 @@ The journal is a graph-level change record. It lets code ask questions of the fo
 
 The answer is expressed as `PossibleNodeChange` values. A `PossibleNodeChange` is the public unit of journal observation and can be passed as `since` to a later `graph.possibleMaybeChanges` call in the same API context.
 
-**This PR specifies only same-process, in-memory journal token usage.** A `PossibleNodeChange` yielded during a process session is valid as `since` for subsequent calls within that same session. Persistence of these tokens across process restarts, synchronization boundaries, or migration boundaries, and the corresponding long-lived validity guarantees, are out of scope for this PR and deferred to a future computor/cursor-persistence specification.
+**This PR specifies only same-process, in-memory journal token usage.** A `PossibleNodeChange` returned during a process session is valid as `since` for subsequent calls within that same session. Persistence of these tokens across process restarts, synchronization boundaries, or migration boundaries, and the corresponding long-lived validity guarantees, are out of scope for this PR and deferred to a future computor/cursor-persistence specification.
 
 The journal is designed for incremental graph maintenance. A caller can pass a previously observed `PossibleNodeChange` as the `since` argument, or use `baselinePossibleNodeChange()` (a position less than any real journal index) to start from the beginning of the journal.
 
@@ -42,12 +42,12 @@ docs/specs/incremental-graph-journal-api.md
 The main query interface is:
 
 ```js
-graph.possibleMaybeChanges({ since, to }): AsyncIterableIterator<PossibleNodeChange>
+graph.possibleMaybeChanges({ since, to }): Promise<Array<PossibleNodeChange>>
 ```
 
-The operation starts from the supplied `since` value and returns later possible changes matching the `to` filter. The `since` argument accepts `PossibleNodeChange | BaselinePossibleNodeChange`; `baselinePossibleNodeChange()` yields a position less than any real journal index.
+The operation scans journal storage starting from the supplied `since` value and returns later possible changes matching the `to` filter as a finite array. The `since` argument accepts `PossibleNodeChange | BaselinePossibleNodeChange`; `baselinePossibleNodeChange()` returns a position less than any real journal index.
 
-The detailed scan order, initial value behavior, cursor advancement, filtering behavior, and result semantics are specified in:
+The detailed scan order, initial value behavior, filtering behavior, and result semantics are specified in:
 
 ```text
 docs/specs/incremental-graph-journal-api.md
@@ -124,6 +124,12 @@ The rules for compaction, retained information, deleted entries, and maintenance
 ```text
 docs/specs/incremental-graph-journal-compaction.md
 ```
+
+## Concurrency
+
+`possibleMaybeChanges` runs under the existing darkroom lock for the active replica while scanning journal storage. The darkroom lock is sufficient because journal reads must be serialized with journal writes at the durable storage / transaction boundary. Every journal-writing operation (pull commits, invalidate commits, migration actions, sync actions, compaction) acquires the darkroom lock for its durable batch write.
+
+Ordinary graph reads, invalidates, and pulls on different nodes are not globally blocked by journal queries except through their durable darkroom transaction/write section.
 
 ## Related specifications
 

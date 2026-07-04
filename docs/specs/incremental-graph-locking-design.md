@@ -17,10 +17,8 @@ The target behavior is:
 4. Observations of the same concrete node must not coexist (telescope
    mutex).
 5. Observations of different concrete nodes may coexist.
-6. Journal queries (`possibleMaybeChanges`) are exclusive with all
-   journal-writing graph activity (daytime, nighttime).
-7. Migration and replica cutover suspend all graph activity (daytime,
-   nighttime, journalQuery, and other exclusive work).
+6. Migration and replica cutover suspend all graph activity (daytime,
+   nighttime, and other exclusive work).
 8. Transaction commits for the same replica are serialized (the commit
    mutex is per-replica, not global, so commits to different replicas
    proceed concurrently).
@@ -63,18 +61,14 @@ There is exactly one global key:
 
 This key is acquired through `withModeMutex`.
 
-Three modes are defined:
+Two modes are defined:
 
 - `"daytime"` for `invalidate()` and inspection reads;
-- `"nighttime"` for all pull activity;
-- `"journalQuery"` for `possibleMaybeChanges()`.
+- `"nighttime"` for all pull activity.
 
 Because same-mode holders are compatible, many invalidates may overlap, and many
 pulls may overlap. Because different modes are incompatible, no pull may overlap
-any invalidate or inspection read. The `"journalQuery"` mode conflicts with both
-`"daytime"` and `"nighttime"`, ensuring `possibleMaybeChanges` is exclusive with
-all journal-writing graph activity (including `invalidate`, which emits `invalidate`
-journal entries).
+any invalidate or inspection read.
 
 ### 2. Per-node pull key
 
@@ -128,11 +122,11 @@ whether top-level or nested.
 
 ### `possibleMaybeChanges({ since, to })`
 
-1. Acquire `journalQueryActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "journalQuery", ...)`).
-2. Scan the journal storage, yielding matching `PossibleNodeChange` values.
-3. Release the mode lock.
+1. Acquire the darkroom lock for the active replica.
+2. Scan the journal storage, collecting matching `PossibleNodeChange` values into an array.
+3. Release the darkroom lock and return the array.
 
-No per-node mutex is needed.
+The darkroom lock is sufficient because journal reads must be serialized with journal writes at the durable storage / transaction boundary. Every journal-writing operation (pull commits, invalidate commits, migration actions, sync actions, compaction) acquires the darkroom lock for its durable batch write. By acquiring the darkroom lock, `possibleMaybeChanges` is serialized with all durable journal mutations without introducing a new graph-activity mode.
 
 ### `migration / replica cutover`
 
@@ -173,14 +167,17 @@ They contend on the same `PULL_NODE_KEY(nodeKeyString)`, so they serialize.
 They share the compatible global `"nighttime"` mode and use different per-node mutex
 keys, so they may proceed concurrently.
 
-### Journal queries with journal writers
+### Journal queries
 
-`possibleMaybeChanges` uses `journalQueryActivity(...)` with mode `"journalQuery"`. This mode
-conflicts with `"daytime"` (which includes `invalidate`, now a journal writer) and with
-`"nighttime"` (which includes `pull`, also a journal writer). Therefore no journal-writing
-graph activity can overlap a journal query. Migration, sync, and compaction operations
-are also excluded from overlapping `possibleMaybeChanges` — migration runs under holiday
-(which blocks all modes), and sync/compaction acquire modes that conflict with `"journalQuery"`.
+`possibleMaybeChanges` acquires the darkroom lock for the active replica while scanning journal storage. The darkroom lock serializes all durable writes to the replica, including:
+
+- journal entries appended by `pull`;
+- journal entries appended by `invalidate`;
+- journal entries appended or removed by migration;
+- journal entries appended, poisoned, deleted, or compacted by sync;
+- explicit journal compaction or journal maintenance.
+
+Because every journal-writing operation commits through the darkroom lock, `possibleMaybeChanges` observes a consistent snapshot of journal storage without interfering with ordinary daytime or nighttime graph activity (reads, invalidations, or pulls on different nodes).
 
 ## Deadlock Discipline
 
@@ -188,10 +185,9 @@ The implementation MUST keep this acquisition discipline:
 
 1. acquire the graph activity mode lock first;
 2. acquire any per-node pull mutexes after that;
-3. never acquire `"daytime"` or `"journalQuery"` while holding a per-node pull mutex.
+3. never acquire `"daytime"` while holding a per-node pull mutex.
 
-Inspection reads, invalidates, and journal queries only take the global mode lock, so
-they cannot participate in a node-level cycle.
+Inspection reads, invalidates, and journal queries only take the global mode lock or the darkroom lock, so they cannot participate in a node-level cycle.
 
 Pulls may recursively pull dependencies while already holding pull locks. The
 incremental graph is a DAG, so any wait edge from node `A` to node `B` implies

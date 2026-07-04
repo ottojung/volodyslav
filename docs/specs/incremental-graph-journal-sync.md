@@ -73,10 +73,11 @@ The winning identifier's value produces an `edit` entry per REQ-JS-06.
 
 ### Remote deletion
 
-REQ-JS-09: If the remote host has deleted a node that the local host has materialized:
+REQ-JS-09: If the remote host has a surviving `delete` journal entry for a node key that the local host has materialized:
 
-- If the remote deletion timestamp is later than the local node's last-change timestamp, the deletion wins. The local node is removed, and a `delete` journal entry is emitted.
-- If the local node's last-change timestamp is later, the local node is preserved. No `delete` is emitted locally; the remote host will handle its side on its next sync.
+- Compare the remote `delete` entry's `time` against the local node's latest surviving `add` or `edit` journal entry time.
+- If the remote `delete` time is later, the deletion wins. The local node is removed, and a `delete` journal entry is emitted.
+- If the local node's latest `add` or `edit` entry time is later, the local node is preserved. No `delete` is emitted locally; the remote host handles its side on its next sync.
 
 ---
 
@@ -125,7 +126,7 @@ REQ-JS-17: After all hosts have completed synchronization and no further graph m
 
 1. **Graph state converges**: For every node key, all hosts agree on the node's value (or absence).
 2. **Physical journal converges**: Per REQ-JS-12, all hosts agree on each index's state (same entry or absent).
-3. **Journal queries are consistent with physical convergence**: After physical convergence, every host that has not independently compacted entries yields the same set of possible changes for a given query. Hosts that have independently compacted entries may yield a subset (because `possibleMaybeChanges` yields only surviving entries), but no host yields a `PossibleNodeChange` at a given index that contradicts the converged journal entry for that index.
+3. **Journal queries are consistent with physical convergence**: After physical convergence, every host that has not independently compacted entries returns the same set of possible changes for a given query. Hosts that have independently compacted entries may return a subset (because `possibleMaybeChanges` returns only surviving entries), but no host returns a `PossibleNodeChange` at a given index that contradicts the converged journal entry for that index.
 
 ---
 

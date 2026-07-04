@@ -2,13 +2,13 @@
 
 ## Purpose
 
-This document specifies how journal storage may be compacted — which entries may be removed, what invariants must be preserved, and how compaction interacts with the `graph.possibleMaybeChanges` API.
+This document specifies how journal storage may be compacted — which entries may be removed, what invariants must be preserved, and how compaction interacts with the `graph.possibleMaybeChanges` API and synchronization.
 
 Compaction is a maintenance operation. It reduces journal storage size by removing journal entries. Under the weak semantics of `possibleMaybeChanges`, removed entries are simply absent from future scans; their removal does not invalidate `PossibleNodeChange` tokens that reference compacted-away positions. Compaction may remove journal entries while preserving index/watermark invariants. Journal queries tolerate sparse storage by skipping absent entries and never reconstructing deleted entries.
 
 **Compaction scope and stored-cursor safety.** This PR specifies only same-process, in-memory journal tokens (see `incremental-graph-journal-types.md`). Since tokens are not persisted across process restarts, compaction does not need to guarantee long-lived cursor validity. A future spec may define checkpoint/lease-based compaction safety for persistent stored cursors; this PR does not specify such a mechanism.
 
-**Baseline scans and compaction.** A baseline scan starts from the first journal entry, so it yields only surviving journal entries. This is the natural consequence of the baseline being less than any real journal index combined with sparse journal storage after compaction.
+**Baseline scans and compaction.** A baseline scan starts from the first journal entry, so it returns only surviving journal entries. This is the natural consequence of the baseline being less than any real journal index combined with sparse journal storage after compaction.
 
 ---
 
@@ -46,7 +46,7 @@ This specification does not mandate a specific quota policy. Any policy is valid
 
 REQ-JC-06: Compaction MAY remove older journal entries when a newer entry exists for the same node key.
 
-REQ-JC-07: Compaction MUST NOT remove the only surviving `add` or `edit` entry for a materialized node. At least one `add` or `edit` entry must survive for each materialized node key so that journal evidence remains for sync correctness and journal-query safety. Compaction MAY remove older or redundant entries for the same node when a newer `add`, `edit`, or `invalidate` entry survives, provided the resulting surviving entries preserve enough journal evidence for sync convergence.
+REQ-JC-07: **Materialized-node evidence preservation.** For every currently materialized node key, compaction MUST preserve at least one surviving `add` or `edit` journal entry. A surviving `invalidate` entry does NOT satisfy this requirement, because `invalidate` is not a value change and does not provide value-update evidence for sync conflict comparison. Compaction MAY remove older or redundant entries for the same node when a newer `add`, `edit`, or `invalidate` entry survives, provided the resulting surviving entries still include at least one `add` or `edit` for the materialized node key.
 
 ### Entries for deleted nodes
 
@@ -62,7 +62,7 @@ REQ-JC-10: Compaction is safe for synchronization correctness as long as the sur
 
 ## `graph.possibleMaybeChanges` behavior after compaction
 
-REQ-JC-11: `graph.possibleMaybeChanges` skips absent entries. If an entry's payload was deleted by compaction, it is gone and MUST NOT be reconstructed or re-yielded. The iterator silently advances past absent positions.
+REQ-JC-11: `graph.possibleMaybeChanges` skips absent entries. If an entry's payload was deleted by compaction, it is gone and MUST NOT be reconstructed or included in the returned array. The method silently advances past absent positions.
 
 REQ-JC-12: `graph.possibleMaybeChanges` NEVER reconstructs deleted entries.
 
@@ -84,11 +84,15 @@ REQ-JC-17: Compaction MUST NOT change the `action` field of surviving journal en
 
 REQ-JC-18: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
 
+REQ-JC-19: Compaction MUST NOT compact a materialized node key into a state where the only surviving journal entries for that key are `invalidate` entries. For every materialized node, at least one `add` or `edit` entry must remain (see REQ-JC-07).
+
 ---
 
 ## Out of scope
 
 A future spec may define checkpoint/lease-based compaction safety for long-lived stored cursors. This PR does not specify such a mechanism.
+
+The precise deletion/tombstone retention policy for deleted nodes (when is a node sufficiently old to compact all its journal entries?) is deferred to a future specification.
 
 ---
 
@@ -100,6 +104,7 @@ A suggested compaction approach:
 
 1. Maintain a per-node-key "latest journal index" mapping (volatile or checkpointed).
 2. During compaction, iterate all journal entries. For each node key, keep only the latest entry plus, optionally, the earliest `add` entry if it differs from the latest.
-3. Remove all other entries for that node key.
-4. For deleted nodes, remove all entries if the deletion is older than the retention window.
-5. Update no metadata except the journal storage itself.
+3. For materialized nodes, ensure at least one `add` or `edit` survives (not just an `invalidate`).
+4. Remove all other entries for that node key.
+5. For deleted nodes, remove all entries if the deletion is older than the retention window.
+6. Update no metadata except the journal storage itself.
