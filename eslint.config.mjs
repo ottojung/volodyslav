@@ -29,6 +29,10 @@ export default [
     ...volodyslavPlugin.configs.recommended,
   },
 
+  // Import plugin configs (before local rule block so local overrides take precedence)
+  importX.flatConfigs.recommended,
+  importX.flatConfigs.typescript,
+
   // Base project config
   {
     name: "volodyslav/base",
@@ -75,6 +79,7 @@ export default [
       "preserve-caught-error": "off",
       "@typescript-eslint/no-require-imports": "off",
       "@typescript-eslint/no-unused-vars": "off",
+      "import-x/no-named-as-default-member": "off",
       "import-x/no-unresolved": [
         "error",
         {
@@ -112,10 +117,6 @@ export default [
       ],
     },
   },
-
-  // Import plugin configs
-  importX.flatConfigs.recommended,
-  importX.flatConfigs.typescript,
 
   // Source files with TypeScript parser and project config
   {
