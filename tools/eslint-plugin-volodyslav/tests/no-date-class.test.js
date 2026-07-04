@@ -4,7 +4,7 @@ const { RuleTester } = require("eslint");
 const rule = require("../rules/no-date-class");
 
 const tester = new RuleTester({
-  parserOptions: {
+  languageOptions: {
     ecmaVersion: "latest",
     sourceType: "module",
   },

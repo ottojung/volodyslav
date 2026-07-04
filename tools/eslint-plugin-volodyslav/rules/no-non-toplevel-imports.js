@@ -52,7 +52,7 @@ module.exports = {
         const options = context.options[0] || {};
         const ignorePatterns = options.ignorePatterns || [];
 
-        const filename = context.getFilename();
+        const filename = context.filename;
 
         function shouldIgnoreFile() {
             for (const pattern of ignorePatterns) {
