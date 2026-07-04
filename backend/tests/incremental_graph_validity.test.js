@@ -22,7 +22,7 @@ const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubLogger, stubDatetime, stubSleeper, getDatetimeControl, stubScheduler, getSchedulerControl, stubRuntimeStateStorage } = require("./stubs");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const { prepareIncrementalGraphStorage } = require("../src/generators/incremental_graph/prepare_graph_storage");
-const internalGraphClassModule = require("../src/generators/incremental_graph/" + "class");
+const internalGraphClassModule = require("../src/generators/incremental_graph/class");
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
