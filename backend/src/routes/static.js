@@ -25,7 +25,15 @@ function makeRouter(capabilities) {
     const router = express.Router();
 
     router.use(express.static(staticPath));
-    router.get("/{*path}", (req, res) => handleStaticFallback(capabilities, req, res));
+
+    router.use((req, res, next) => {
+        if (req.method !== "GET") {
+            next();
+            return;
+        }
+
+        handleStaticFallback(capabilities, req, res);
+    });
 
     return router;
 }
