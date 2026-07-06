@@ -75,6 +75,32 @@ describe("Static file serving", () => {
         expect(res.headers["content-type"]).toMatch(/text\/html/);
     });
 
+    it("serves index.html for SPA route /describe", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+        const res = await request(app).get("/describe");
+        expect(res.statusCode).toBe(200);
+        expect(res.text).toContain("<html>");
+        expect(res.headers["content-type"]).toMatch(/text\/html/);
+    });
+
+    it("serves index.html for nested SPA route", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+        const res = await request(app).get("/some/nested/client/route");
+        expect(res.statusCode).toBe(200);
+        expect(res.text).toContain("<html>");
+        expect(res.headers["content-type"]).toMatch(/text\/html/);
+    });
+
+    it("does not serve SPA HTML for non-GET requests to unknown routes", async () => {
+        const capabilities = getTestCapabilities();
+        const app = await makeApp(capabilities);
+        const res = await request(app).post("/unknown-route");
+        expect(res.statusCode).toBe(404);
+        expect(res.text).not.toContain("<html>");
+    });
+
     it("serves static files correctly", async () => {
         const capabilities = getTestCapabilities();
         const app = await makeApp(capabilities);
