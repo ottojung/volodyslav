@@ -102,3 +102,99 @@ describe("Static file serving", () => {
         fs.unlinkSync(path.join(staticPath, "test.js"));
     });
 });
+
+describe("SPA fallback with dot-directory static root", () => {
+    const dotDirPath = path.join(
+        __dirname,
+        "..",
+        "tmp",
+        ".local",
+        "share",
+        "volodyslav",
+        "frontend",
+        "dist"
+    );
+
+    beforeAll(() => {
+        fs.mkdirSync(dotDirPath, { recursive: true });
+        fs.writeFileSync(
+            path.join(dotDirPath, "index.html"),
+            "<html><body>DotDir</body></html>"
+        );
+        fs.writeFileSync(path.join(dotDirPath, "asset.txt"), "asset content");
+    });
+
+    afterAll(() => {
+        fs.rmSync(path.join(__dirname, "..", "tmp"), {
+            recursive: true,
+            force: true,
+        });
+    });
+
+    it("serves index.html for root path", async () => {
+        const capabilities = getTestCapabilities();
+        const expressApp = require("../src/express_app");
+        const { makeRouter } = require("../src/routes/static");
+
+        const app = expressApp.make();
+        app.use("/", makeRouter(capabilities, dotDirPath));
+
+        const res = await request(app).get("/");
+        expect(res.statusCode).toBe(200);
+        expect(res.text).toContain("<html>");
+        expect(res.headers["content-type"]).toMatch(/text\/html/);
+    });
+
+    it("serves index.html for unknown routes (SPA fallback)", async () => {
+        const capabilities = getTestCapabilities();
+        const expressApp = require("../src/express_app");
+        const { makeRouter } = require("../src/routes/static");
+
+        const app = expressApp.make();
+        app.use("/", makeRouter(capabilities, dotDirPath));
+
+        const res = await request(app).get("/describe");
+        expect(res.statusCode).toBe(200);
+        expect(res.text).toContain("DotDir");
+        expect(res.headers["content-type"]).toMatch(/text\/html/);
+    });
+
+    it("serves index.html for another unknown route", async () => {
+        const capabilities = getTestCapabilities();
+        const expressApp = require("../src/express_app");
+        const { makeRouter } = require("../src/routes/static");
+
+        const app = expressApp.make();
+        app.use("/", makeRouter(capabilities, dotDirPath));
+
+        const res = await request(app).get("/unknown-route");
+        expect(res.statusCode).toBe(200);
+        expect(res.text).toContain("DotDir");
+        expect(res.headers["content-type"]).toMatch(/text\/html/);
+    });
+
+    it("serves static asset file inside dot-directory path", async () => {
+        const capabilities = getTestCapabilities();
+        const expressApp = require("../src/express_app");
+        const { makeRouter } = require("../src/routes/static");
+
+        const app = expressApp.make();
+        app.use("/", makeRouter(capabilities, dotDirPath));
+
+        const res = await request(app).get("/asset.txt");
+        expect(res.statusCode).toBe(200);
+        expect(res.text).toBe("asset content");
+    });
+
+    it("does not serve index.html for non-GET requests", async () => {
+        const capabilities = getTestCapabilities();
+        const expressApp = require("../src/express_app");
+        const { makeRouter } = require("../src/routes/static");
+
+        const app = expressApp.make();
+        app.use("/", makeRouter(capabilities, dotDirPath));
+
+        const res = await request(app).post("/describe");
+        expect(res.statusCode).toBe(404);
+    });
+});
