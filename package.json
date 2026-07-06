@@ -22,6 +22,9 @@
     "rules:new": "node scripts/new-rule.mjs",
     "backend:migration-fixture:update": "node scripts/update-migration-fixture-populated-remote.js"
   },
+  "overrides": {
+    "@babel/core": "$@babel/core"
+  },
   "devDependencies": {
     "@babel/core": "^8.0.1",
     "@babel/preset-env": "^8.0.1",
