@@ -2783,6 +2783,58 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
+    test('keeps local node when local timestamp is chronologically newer but lexicographically smaller (mixed-offset regression)', async () => {
+        // Regression test for issue #1474:
+        // Local modifiedAt: "2026-07-05T22:17:49.554-07:00" → 2026-07-06T05:17:49.554Z
+        // Host modifiedAt:  "2026-07-06T02:00:11.707Z"
+        // Lexicographically: local < host  (would incorrectly take)
+        // Chronologically:   local > host  (must keep local)
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const localValue = { value: { id: 'local', type: 'test', description: 'local value' }, isDirty: false };
+            const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
+
+            // Local has mixed-offset timestamp that is CHRONOLOGICALLY newer
+            // but LEXICOGRAPHICALLY smaller than host's UTC timestamp.
+            const LOCAL_MIXED_TS = '2026-07-05T22:17:49.554-07:00';
+            const HOST_UTC_TS = '2026-07-06T02:00:11.707Z';
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, LOCAL_MIXED_TS, localValue);
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, HOST_UTC_TS, remoteValue);
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            // Before the fix, compareIsoTimestamps would report local < host,
+            // causing the merge to take (overwrite with stale remote).
+            // After the fix, local > host chronologically, so merge keeps local.
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
+
+            const newActive = db.currentReplicaName();
+            // Local is chronologically newer → keep → no switch
+            expect(newActive).toBe('x');
+
+            const T = db.schemaStorageForReplica(newActive);
+            const merged = await T.values.get(nodeA);
+            expect(merged).toEqual(localValue);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     test('throws IdentifierLookupConflictError when same identifier maps to different semantic keys', async () => {
         const capabilities = getTestCapabilities();
         let db;
