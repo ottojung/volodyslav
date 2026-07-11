@@ -3825,4 +3825,60 @@ describe('mergeHostIntoReplica', () => {
             if (db) await db.close();
         }
     });
+
+    test('freshness-only repair switches replica when validity does not change', async () => {
+        // A → B chain. Both snapshots have identical timestamps and identifiers.
+        // A is potentially-outdated, B is incorrectly up-to-date with valid[A]=[B].
+        // No merge decisions change, no identifier reconciliation occurs.
+        // rebuildMergedValidity must repair B's freshness and the freshness
+        // change alone must trigger a replica cutover.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = nodeIdentifierFromString('340-abcdefghi');
+            const nodeB = nodeIdentifierFromString('341-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            // A is stale, B is incorrectly up-to-date with valid[A]=[B]
+            await writeNode(L, nodeA, TS1, { value: 'A' });
+            await L.freshness.put(nodeA, 'potentially-outdated');
+            await writeNode(L, nodeB, TS1, { value: 'B' });
+            await L.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            // Host has the same state (identical snapshots)
+            await writeNode(H, nodeA, TS1, { value: 'A' });
+            await H.freshness.put(nodeA, 'potentially-outdated');
+            await writeNode(H, nodeB, TS1, { value: 'B' });
+            await H.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
+
+            // Merge: all decisions are 'keep', no identifier reconciliation,
+            // no equal-version disagreement. But rebuildMergedValidity should
+            // repair B's freshness and report a change.
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+            expect((await T.timestamps.get(nodeA))?.modifiedAt).toBe(TS1);
+            expect((await T.timestamps.get(nodeB))?.modifiedAt).toBe(TS1);
+            expect(await T.values.get(nodeA)).toEqual({ value: 'A' });
+            expect(await T.values.get(nodeB)).toEqual({ value: 'B' });
+        } finally {
+            if (db) await db.close();
+        }
+    });
 });

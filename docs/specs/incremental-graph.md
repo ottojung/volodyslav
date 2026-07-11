@@ -521,6 +521,8 @@ interface IncrementalGraph {
   * a cached value is deleted because the old value is not valid for the final dependency structure;
   * freshness changes between `up-to-date`, `potentially-outdated`, and `missing`.
 
+*Exception:* Schema migration (`migration.md`) has its own timestamp contract. The migration runner's `invalidate` decision intentionally writes the migration wall-clock time as `modifiedAt` to force downstream recomputation after a format or schema change. This exception is limited to migration and does not apply to runtime invalidation or synchronization.
+
 **REQ-IFACE-09 (MissingTimestampError):** Implementations MUST expose `makeMissingTimestampError(nodeKey)` factory and `isMissingTimestamp(value)` type guard. `MissingTimestampError` MUST have a stable `.name` property of `"MissingTimestampError"` and a `nodeKey: string` field identifying the node for which timestamps are missing.
 
 ### 3.3 Database Interfaces

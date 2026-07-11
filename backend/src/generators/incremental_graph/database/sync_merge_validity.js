@@ -342,6 +342,7 @@ async function rebuildMergedValidity({
     }
 
     const writer = new ReplicaBatchWriter(targetStorage);
+    let freshnessChanged = false;
 
     // Traverse in topological order (inputs before dependents) so that
     // freshness downgrades are visible when their dependents are processed.
@@ -367,6 +368,7 @@ async function rebuildMergedValidity({
         if (!clean) {
             await writer.push(targetStorage.freshness.putOp(nodeIdentifier, 'potentially-outdated'));
             finalFreshness.set(nodeIdStr, 'potentially-outdated');
+            freshnessChanged = true;
             continue;
         }
         for (const depId of cleanInputs) {
@@ -389,7 +391,8 @@ async function rebuildMergedValidity({
         }
     }
     await writer.flush();
-    return !canonicalValidMapsEqual(oldCanonicalValidMap, canonicalizeValidMap(validMap));
+    const validityChanged = !canonicalValidMapsEqual(oldCanonicalValidMap, canonicalizeValidMap(validMap));
+    return freshnessChanged || validityChanged;
 }
 
 module.exports = {
