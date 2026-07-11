@@ -23,7 +23,7 @@ Within each namespace there are further typed sublevels:
 | `values`    | The computed output value for each graph node             |
 | `freshness` | Total materialized-node freshness table: `missing`, `potentially-outdated`, or `up-to-date` |
 | `valid`     | Inverse validity relation for cached values (input → validated cached consumers) |
-| `timestamps`| Total materialized-node timestamp table (`createdAt` identity creation, `modifiedAt` record change) |
+| `timestamps`| Total materialized-node timestamp table (`createdAt` identity creation, `modifiedAt` value version) |
 | `global`    | Namespace metadata (version, identifiers_keys_map materialized-node registry, last_node_index, fingerprint, graph_scheme) |
 
 Structural dependency edges (`inputEdges(N)`) are not persisted per node. They are derived from

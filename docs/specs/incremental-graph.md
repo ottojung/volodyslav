@@ -508,7 +508,8 @@ interface IncrementalGraph {
 * `getCreationTime(N, B) <= getModificationTime(N, B)` for any materialized node instance `N@B`.
 * `getCreationTime(N, B)` MUST NOT change once set.
 * `getModificationTime(N, B)` is a version timestamp for the stored semantic value.
-* A **new timestamp value is minted** only when a computor produces a changed value that replaces the previous stored value. `modifiedAt` MUST NOT be minted in any other circumstance.
+* A **new timestamp record** is created when a semantic value is first stored for a node (including migration `create` and the node's initial computation). `createdAt` and `modifiedAt` are both set to the current time at this point.
+* An existing `modifiedAt` **advances** only when a computor produces a changed value that replaces the previous stored value. `modifiedAt` MUST NOT advance in any other circumstance.
 * Synchronization may replace a local node value and timestamp with another replica's existing value-version pair (the `take` decision). This copies the existing timestamp; it does not mint a new one. Synchronization MUST NOT replace a timestamp with the merge execution time or any other manufactured value.
 * `modifiedAt` MUST NOT change when:
   * a node becomes `potentially-outdated` (invalidation);

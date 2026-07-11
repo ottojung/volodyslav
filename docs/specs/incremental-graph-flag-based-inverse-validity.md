@@ -33,7 +33,7 @@ valid                : Map<NodeIdentifier, Array<NodeIdentifier>>
 - `identifiers_keys_map` is the materialized node registry. A materialized node is an identity-level database record.
 - `values` is cached value storage. `values.keys()` is the cached-node set, not the materialized-node set.
 - `freshness` is the total materialized-node freshness table.
-- `timestamps` is the total materialized-node timestamp table. `createdAt` is when the materialized node identity was first created; `modifiedAt` is when the materialized node record last changed.
+- `timestamps` is the total materialized-node timestamp table. `createdAt` is when the materialized node identity was first created; `modifiedAt` is a version timestamp for the stored semantic value (it advances only when the semantic value changes, not when freshness, validity, or other record metadata changes).
 - `valid` is the inverse validity relation for cached values. `valid[D]` contains dependents `N` whose cached value is known to be valid with respect to `D`'s current cached value.
 
 Terminology:
