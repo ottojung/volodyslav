@@ -426,9 +426,9 @@ describe("generators/incremental_graph timestamps", () => {
             await graph.pull("derived");
             const secondModTime = await graph.getModificationTime("derived");
 
-            // Invalidation marks the cached dependent stale before Unchanged re-validates it,
-            // so the materialized record modification time reflects that freshness change.
-            expect(secondModTime.toISOString()).not.toBe(firstModTime.toISOString());
+            // Invalidation marks the cached dependent stale but does NOT change
+            // modifiedAt. When Unchanged re-validates it, the timestamp is preserved.
+            expect(secondModTime.toISOString()).toBe(firstModTime.toISOString());
 
             await db.close();
         });
@@ -585,5 +585,173 @@ describe("generators/incremental_graph timestamps", () => {
 
             await db.close();
         });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: invalidation preserves timestamps
+// ---------------------------------------------------------------------------
+
+describe("invalidation preserves timestamps", () => {
+    test("explicit invalidation does not change modifiedAt of root or dependents", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+
+        const graph = await createIncrementalGraph(capabilities, db, [
+            {
+                output: "root",
+                inputs: [],
+                computor: async () => ({ value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "mid",
+                inputs: ["root"],
+                computor: async ([r]) => ({ value: r.value + 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "leaf",
+                inputs: ["mid"],
+                computor: async ([m]) => ({ value: m.value + 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        // Materialize all nodes
+        await graph.pull("leaf");
+
+        const rootTs = await graph.getModificationTime("root");
+        const midTs = await graph.getModificationTime("mid");
+        const leafTs = await graph.getModificationTime("leaf");
+
+        const rootIso = rootTs.toISOString();
+        const midIso = midTs.toISOString();
+        const leafIso = leafTs.toISOString();
+
+        // Advance clock by waiting, then invalidate
+        await new Promise((resolve) => setTimeout(resolve, 5));
+
+        await graph.invalidate("root");
+
+        // All nodes should still have the same timestamps
+        expect((await graph.getModificationTime("root")).toISOString()).toBe(rootIso);
+        expect((await graph.getModificationTime("mid")).toISOString()).toBe(midIso);
+        expect((await graph.getModificationTime("leaf")).toISOString()).toBe(leafIso);
+
+        // Freshness should reflect invalidation
+        expect(await graph.getFreshness("root")).toBe("potentially-outdated");
+        expect(await graph.getFreshness("mid")).toBe("potentially-outdated");
+        expect(await graph.getFreshness("leaf")).toBe("potentially-outdated");
+
+        await db.close();
+    });
+
+    test("changed computation updates own timestamp but not dependents", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+
+        const graph = await createIncrementalGraph(capabilities, db, [
+            {
+                output: "src",
+                inputs: [],
+                computor: async () => ({ value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "dep",
+                inputs: ["src"],
+                computor: async ([s]) => ({ value: s.value + 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "leaf",
+                inputs: ["dep"],
+                computor: async ([d]) => ({ value: d.value + 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        // Materialize all
+        await graph.pull("leaf");
+
+        const srcTs = await graph.getModificationTime("src");
+        const depTs = await graph.getModificationTime("dep");
+        const leafTs = await graph.getModificationTime("leaf");
+
+        const srcIso = srcTs.toISOString();
+        const depIso = depTs.toISOString();
+        const leafIso = leafTs.toISOString();
+
+        await new Promise((resolve) => setTimeout(resolve, 5));
+
+        // Invalidate and recompute with a changed value
+        await graph.invalidate("src");
+        await graph.pull("src");
+
+        // src's own timestamp must advance (value changed)
+        const srcTs2 = await graph.getModificationTime("src");
+        expect(srcTs2.isAfterOrEqual(srcTs)).toBe(true);
+        expect(srcTs2.toISOString()).not.toBe(srcIso);
+
+        // dep and leaf timestamps must NOT advance (they were only invalidated)
+        expect((await graph.getModificationTime("dep")).toISOString()).toBe(depIso);
+        expect((await graph.getModificationTime("leaf")).toISOString()).toBe(leafIso);
+
+        // dep and leaf must be potentially-outdated (not yet recomputed)
+        expect(await graph.getFreshness("dep")).toBe("potentially-outdated");
+        expect(await graph.getFreshness("leaf")).toBe("potentially-outdated");
+
+        await db.close();
+    });
+
+    test("invalidation propagation through an already-stale cycle preserves timestamps", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+
+        const graph = await createIncrementalGraph(capabilities, db, [
+            {
+                output: "a",
+                inputs: [],
+                computor: async () => ({ value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "b",
+                inputs: ["a"],
+                computor: async ([a]) => ({ value: a.value + 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await graph.pull("b");
+        const bIso = (await graph.getModificationTime("b")).toISOString();
+
+        await new Promise((resolve) => setTimeout(resolve, 5));
+
+        // First invalidation
+        await graph.invalidate("a");
+        expect(await graph.getFreshness("b")).toBe("potentially-outdated");
+        // Timestamp must be unchanged after first invalidation
+        expect((await graph.getModificationTime("b")).toISOString()).toBe(bIso);
+
+        await new Promise((resolve) => setTimeout(resolve, 5));
+
+        // Second invalidation (b is already stale)
+        await graph.invalidate("a");
+        // b remains potentially-outdated
+        expect(await graph.getFreshness("b")).toBe("potentially-outdated");
+        // Timestamp must still be unchanged
+        expect((await graph.getModificationTime("b")).toISOString()).toBe(bIso);
+
+        await db.close();
     });
 });

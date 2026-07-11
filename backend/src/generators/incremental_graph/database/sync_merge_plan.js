@@ -37,6 +37,7 @@ function semanticInputsFromScheme(scheme, lookup, identifier) {
  *   hOnlyNeedsInvalidate: Set<NodeKeyString>,
  *   directlyReloweredNodes: Set<NodeKeyString>,
  *   reloweringInvalidatedNodes: Set<NodeKeyString>,
+ *   equalVersionNeedsInvalidation: Set<NodeKeyString>,
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
  *   hasIdentifierReconciliation: boolean
@@ -62,6 +63,8 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     const targetOnlyNodes = new Set();
     /** @type {Set<NodeKeyString>} */
     const hOnlyNodes = new Set();
+    /** @type {Set<NodeKeyString>} */
+    const equalVersionNeedsInvalidation = new Set();
     for (const nodeKey of allNodeKeys) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
@@ -88,6 +91,20 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         } else {
             initialDecisions.set(nodeKey, 'take');
             forceTakeRoots.add(nodeKey);
+        }
+
+        // Equal timestamps: if the selected side is up-to-date but the other
+        // side is not up-to-date, the final node must not remain up-to-date.
+        // If the selected side is already not up-to-date, no change is needed.
+        if (cmp === 0) {
+            const targetFreshness = await T.freshness.get(targetId);
+            const hostFreshness = await H.freshness.get(hostId);
+            const selectedIsTarget = initialDecisions.get(nodeKey) === 'keep';
+            const selectedFreshness = selectedIsTarget ? targetFreshness : hostFreshness;
+            const otherFreshness = selectedIsTarget ? hostFreshness : targetFreshness;
+            if (selectedFreshness === 'up-to-date' && otherFreshness !== 'up-to-date') {
+                equalVersionNeedsInvalidation.add(nodeKey);
+            }
         }
     }
 
@@ -243,6 +260,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         hOnlyNeedsInvalidate,
         directlyReloweredNodes,
         reloweringInvalidatedNodes,
+        equalVersionNeedsInvalidation,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,

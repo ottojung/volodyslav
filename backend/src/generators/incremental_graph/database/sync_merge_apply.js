@@ -20,6 +20,7 @@ const { ReplicaBatchWriter } = require('./sync_merge_validity');
  * @param {Set<NodeKeyString>} hostOnlyNodesNeedingInvalidation
  * @param {Set<NodeKeyString>} directlyReloweredNodes
  * @param {Set<NodeKeyString>} reloweringInvalidatedNodes
+ * @param {Set<NodeKeyString>} equalVersionNeedsInvalidation
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
  * @returns {Promise<void>}
  */
@@ -33,6 +34,7 @@ async function applyNodeDecisions(
     hostOnlyNodesNeedingInvalidation,
     directlyReloweredNodes,
     reloweringInvalidatedNodes,
+    equalVersionNeedsInvalidation,
     finalIdentifierForKey
 ) {
     const writer = new ReplicaBatchWriter(targetStorage);
@@ -123,6 +125,23 @@ async function applyNodeDecisions(
             await writer.pushAll(buildDeleteNodeOps(targetStorage, targetId));
         }
     }
+
+    // Equal-version freshness: when both sides have the same modifiedAt but
+    // either side is not up-to-date, the merged node must not be up-to-date.
+    // Set freshness to potentially-outdated without changing the timestamp.
+    for (const nodeKey of equalVersionNeedsInvalidation) {
+        const finalId = finalIdentifierForKey.get(nodeKey);
+        if (finalId !== undefined) {
+            const hasValue = await targetStorage.values.get(finalId);
+            if (hasValue !== undefined) {
+                const currentFreshness = await targetStorage.freshness.get(finalId);
+                if (currentFreshness === 'up-to-date') {
+                    await writer.push(targetStorage.freshness.putOp(finalId, 'potentially-outdated'));
+                }
+            }
+        }
+    }
+
     await writer.flush();
 }
 
