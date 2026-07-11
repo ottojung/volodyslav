@@ -11,6 +11,7 @@
 const { compareNodeIdentifier } = require('./node_identifier');
 const { nodeIdentifierToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
+const { topologicalSortFromMap } = require('./topo_sort');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -342,8 +343,12 @@ async function rebuildMergedValidity({
 
     const writer = new ReplicaBatchWriter(targetStorage);
 
-    for await (const nodeIdentifier of targetStorage.values.keys()) {
+    // Traverse in topological order (inputs before dependents) so that
+    // freshness downgrades are visible when their dependents are processed.
+    // Only process identifiers that have a cached value in the target.
+    for (const nodeIdentifier of topologicalSortFromMap(mergedInputsMap)) {
         const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+        if (!cachedIds.has(nodeIdStr)) continue;
         const freshness = finalFreshness.get(nodeIdStr);
         if (freshness !== 'up-to-date') continue;
 

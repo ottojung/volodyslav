@@ -3770,4 +3770,59 @@ describe('mergeHostIntoReplica', () => {
             if (db) await db.close();
         }
     });
+
+    test('equal-version staleness propagates transitively with reverse identifier order C→B→A', async () => {
+        // Same A→B→C chain as the forward test, but identifiers are assigned
+        // in reverse dependency order (C < B < A) so raw key iteration would
+        // process C first and miss B's pending downgrade. Topological iteration
+        // must still propagate freshness correctly.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            // Reverse identifiers: C=330 < B=331 < A=332 (lexicographic)
+            const nodeC = nodeIdentifierFromString('330-abcdefghi');
+            const nodeB = nodeIdentifierFromString('331-abcdefghi');
+            const nodeA = nodeIdentifierFromString('332-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
+            const keyC = stringToNodeKeyString('{"head":"host_stale_C","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, { value: 'A' });
+            await writeNode(L, nodeB, TS1, { value: 'B' });
+            await writeNode(L, nodeC, TS1, { value: 'C' });
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, { value: 'A host' });
+            await H.freshness.put(nodeA, 'potentially-outdated');
+            await writeNode(H, nodeB, TS1, { value: 'B host' });
+            await writeNode(H, nodeC, TS1, { value: 'C host' });
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeC)).toBe('potentially-outdated');
+            expect((await T.timestamps.get(nodeA))?.modifiedAt).toBe(TS1);
+            expect((await T.timestamps.get(nodeB))?.modifiedAt).toBe(TS1);
+            expect((await T.timestamps.get(nodeC))?.modifiedAt).toBe(TS1);
+            expect(await T.values.get(nodeA)).toEqual({ value: 'A' });
+            expect(await T.values.get(nodeB)).toEqual({ value: 'B' });
+            expect(await T.values.get(nodeC)).toEqual({ value: 'C' });
+        } finally {
+            if (db) await db.close();
+        }
+    });
 });
