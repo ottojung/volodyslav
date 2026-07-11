@@ -91,7 +91,7 @@ Calling the same decision twice (except for `override` and `create`) is allowed 
 
 The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
 
-`invalidate` preserves the cached value if it exists, marks cached nodes as `"potentially-outdated"`, updates `modifiedAt`, and does not preserve incoming or outgoing valid flags for the invalidated node. This is a conservative/hard invalidation: the clean-cache claim for the node is withdrawn.
+`invalidate` preserves the cached value if it exists, marks cached nodes as `"potentially-outdated"`, preserves `modifiedAt`, and does not preserve incoming or outgoing valid flags for the invalidated node. This is a conservative/hard invalidation: the clean-cache claim for the node is withdrawn.
 
 `create(..., "up-to-date")` is a clean-cache assertion. The migration validates this assertion before writing the migrated state.
 `create(..., "potentially-outdated")` seeds a cached value without claiming it is clean.

@@ -2,9 +2,8 @@
  * Tests that verify materialized-node timestamps during database migration.
  *
  * Migration produces total timestamp records over the materialized identifier
- * registry. Identity-preserving decisions (keep, override) preserve both `createdAt`
- * and `modifiedAt`; decisions that semantically change the cache-state
- * (invalidate) or create new entries (create) update `modifiedAt` to migration time.
+ * registry. Identity-preserving decisions (keep, override, invalidate) preserve both `createdAt`
+ * and `modifiedAt`; only decisions that create new entries (create) mint new timestamps.
  */
 
 const { runMigration } = require("../src/generators/incremental_graph/migration_runner");
@@ -454,11 +453,11 @@ describe("create decision: timestamps written to new storage", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// invalidate decision updates timestamps
+// invalidate decision preserves timestamps
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("invalidate decision: timestamps update materialized record", () => {
-    test("createdAt is preserved and modifiedAt updates after invalidate", async () => {
+describe("invalidate decision: timestamps preserved", () => {
+    test("invalidation preserves both createdAt and modifiedAt", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -474,7 +473,7 @@ describe("invalidate decision: timestamps update materialized record", () => {
             await storage.invalidate(nodeKey);
         });
 
-        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual({ createdAt: OLD_TIMESTAMP.createdAt, modifiedAt: "2024-01-01T00:00:00.000Z" });
+        await expect(yGet(yStorage.timestamps, yStorage, nodeKey)).resolves.toEqual(OLD_TIMESTAMP);
     });
 
     test("invalidate without previous timestamp fails final validation", async () => {
@@ -494,7 +493,7 @@ describe("invalidate decision: timestamps update materialized record", () => {
         })).rejects.toThrow("has no timestamps entry");
     });
 
-    test("invalidate preserves createdAt even though value is stale", async () => {
+    test("invalidation preserves both createdAt and modifiedAt when value is stale", async () => {
         const capabilities = await getTestCapabilities();
         const ts = { createdAt: "2022-01-01T00:00:00.000Z", modifiedAt: "2022-01-01T00:00:00.000Z" };
         const xStorage = makeSchemaStorage();
@@ -513,6 +512,7 @@ describe("invalidate decision: timestamps update materialized record", () => {
 
         const result = await yGet(yStorage.timestamps, yStorage, nodeKey);
         expect(result.createdAt).toBe(ts.createdAt);
+        expect(result.modifiedAt).toBe(ts.modifiedAt);
     });
 });
 
@@ -621,7 +621,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 
-    test("keep A, invalidate B: A timestamp preserved and B modifiedAt updates", async () => {
+    test("keep A, invalidate B: both timestamps preserved", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -635,7 +635,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         });
 
         await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
-        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual({ createdAt: NEW_TIMESTAMP.createdAt, modifiedAt: "2024-01-01T00:00:00.000Z" });
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 
     test("keep A, override B: both timestamps preserved for both nodes", async () => {
@@ -668,7 +668,7 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
         })).rejects.toThrow("have no decision");
     });
 
-    test("invalidate A, invalidate B: createdAt preserved and modifiedAt updates", async () => {
+    test("invalidate A, invalidate B: both timestamps preserved", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -681,8 +681,8 @@ describe("two-node chain: mixed decision timestamp behaviour", () => {
             await storage.invalidate(nkB);
         });
 
-        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual({ createdAt: OLD_TIMESTAMP.createdAt, modifiedAt: "2024-01-01T00:00:00.000Z" });
-        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual({ createdAt: NEW_TIMESTAMP.createdAt, modifiedAt: "2024-01-01T00:00:00.000Z" });
+        await expect(yGet(yStorage.timestamps, yStorage, nkA)).resolves.toEqual(OLD_TIMESTAMP);
+        await expect(yGet(yStorage.timestamps, yStorage, nkB)).resolves.toEqual(NEW_TIMESTAMP);
     });
 });
 
