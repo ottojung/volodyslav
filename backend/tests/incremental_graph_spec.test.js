@@ -2036,8 +2036,8 @@ describe("12. (Optional) Concurrent pulls of the same node", () => {
             expect(result1).toEqual({ n: 11 });
             expect(result2).toEqual({ n: 11 });
 
-            // PULL_NODE_KEY serializes same-node pulls: only the first pull
-            // computes; the second pulls sees "up-to-date" and hits the cache.
+            // The telescope mutex serializes same-node pulls: only the first pull
+            // computes; the second pull sees "up-to-date" and hits the cache.
             expect(counter.calls).toBe(1);
         });
 });
