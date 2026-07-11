@@ -328,10 +328,23 @@ async function rebuildMergedValidity({
         cachedIds.add(nodeIdentifierToString(cachedId));
     }
 
+    // In-memory freshness map that tracks both committed state and pending
+    // downgrades. When the loop queues a freshness downgrade, we update
+    // this map immediately so subsequent iterations see the new state.
+    /** @type {Map<string, string>} */
+    const finalFreshness = new Map();
+    for await (const nodeId of targetStorage.freshness.keys()) {
+        const f = await targetStorage.freshness.get(nodeId);
+        if (f !== undefined) {
+            finalFreshness.set(nodeIdentifierToString(nodeId), f);
+        }
+    }
+
     const writer = new ReplicaBatchWriter(targetStorage);
 
     for await (const nodeIdentifier of targetStorage.values.keys()) {
-        const freshness = await targetStorage.freshness.get(nodeIdentifier);
+        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+        const freshness = finalFreshness.get(nodeIdStr);
         if (freshness !== 'up-to-date') continue;
 
         const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
@@ -339,7 +352,8 @@ async function rebuildMergedValidity({
         let clean = true;
         for (const depId of requiredInputs) {
             const depIdStr = nodeIdentifierToString(depId);
-            if (!cachedIds.has(depIdStr) || await targetStorage.freshness.get(depId) !== 'up-to-date') {
+            const depFreshness = finalFreshness.get(depIdStr);
+            if (!cachedIds.has(depIdStr) || depFreshness !== 'up-to-date') {
                 clean = false;
                 break;
             }
@@ -347,10 +361,9 @@ async function rebuildMergedValidity({
         }
         if (!clean) {
             await writer.push(targetStorage.freshness.putOp(nodeIdentifier, 'potentially-outdated'));
+            finalFreshness.set(nodeIdStr, 'potentially-outdated');
             continue;
         }
-
-        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
         for (const depId of cleanInputs) {
             const depIdStr = nodeIdentifierToString(depId);
             depIdCache.set(depIdStr, depId);

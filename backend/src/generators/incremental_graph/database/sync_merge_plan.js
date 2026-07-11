@@ -64,7 +64,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     /** @type {Set<NodeKeyString>} */
     const hOnlyNodes = new Set();
     /** @type {Set<NodeKeyString>} */
-    const equalVersionNeedsInvalidation = new Set();
+    const equalTimestamps = new Set();
     for (const nodeKey of allNodeKeys) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
@@ -93,18 +93,8 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             forceTakeRoots.add(nodeKey);
         }
 
-        // Equal timestamps: if the selected side is up-to-date but the other
-        // side is not up-to-date, the final node must not remain up-to-date.
-        // If the selected side is already not up-to-date, no change is needed.
         if (cmp === 0) {
-            const targetFreshness = await T.freshness.get(targetId);
-            const hostFreshness = await H.freshness.get(hostId);
-            const selectedIsTarget = initialDecisions.get(nodeKey) === 'keep';
-            const selectedFreshness = selectedIsTarget ? targetFreshness : hostFreshness;
-            const otherFreshness = selectedIsTarget ? hostFreshness : targetFreshness;
-            if (selectedFreshness === 'up-to-date' && otherFreshness !== 'up-to-date') {
-                equalVersionNeedsInvalidation.add(nodeKey);
-            }
+            equalTimestamps.add(nodeKey);
         }
     }
 
@@ -187,6 +177,31 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
     }
     const finalIdentifierLookup = makeIdentifierLookup(finalEntries);
+
+    // Equal-version staleness: determined after final decisions are known,
+    // because taint propagation can change which side ultimately wins.
+    /** @type {Set<NodeKeyString>} */
+    const equalVersionNeedsInvalidation = new Set();
+    for (const nodeKey of equalTimestamps) {
+        const targetId = targetLookup.keyToId.get(String(nodeKey));
+        const hostId = hostLookup.keyToId.get(String(nodeKey));
+        if (targetId === undefined || hostId === undefined) continue;
+        const initial = initialDecisions.get(nodeKey);
+        if (initial === undefined) continue;
+        const decision = decisions.get(nodeKey);
+        if (decision === undefined) continue;
+        const finalSide = decision === 'invalidate' ? initial : decision;
+        const finalIsTake = finalSide === 'take';
+        const finalId = finalIsTake ? hostId : targetId;
+        const otherId = finalIsTake ? targetId : hostId;
+        const finalStorage = finalIsTake ? H : T;
+        const otherStorage = finalIsTake ? T : H;
+        const finalFreshness = await finalStorage.freshness.get(finalId);
+        const otherFreshness = await otherStorage.freshness.get(otherId);
+        if (finalFreshness === 'up-to-date' && otherFreshness !== 'up-to-date') {
+            equalVersionNeedsInvalidation.add(nodeKey);
+        }
+    }
 
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const mergedInputsMap = new Map();

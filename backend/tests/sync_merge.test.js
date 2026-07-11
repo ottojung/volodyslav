@@ -3646,4 +3646,128 @@ describe('mergeHostIntoReplica', () => {
             if (db) await db.close();
         }
     });
+
+    test('equal-version staleness propagates transitively through chain A→B→C', async () => {
+        // A → B → C chain. All have equal TS1 on both sides.
+        // Local all up-to-date, host A is potentially-outdated.
+        // After merge, all three must be potentially-outdated and
+        // validity must be internally consistent.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = nodeIdentifierFromString('310-abcdefghi');
+            const nodeB = nodeIdentifierFromString('311-abcdefghi');
+            const nodeC = nodeIdentifierFromString('312-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
+            const keyC = stringToNodeKeyString('{"head":"host_stale_C","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, { value: 'A' });
+            await writeNode(L, nodeB, TS1, { value: 'B' });
+            await writeNode(L, nodeC, TS1, { value: 'C' });
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, { value: 'A host' });
+            await H.freshness.put(nodeA, 'potentially-outdated');
+            await writeNode(H, nodeB, TS1, { value: 'B host' });
+            await writeNode(H, nodeC, TS1, { value: 'C host' });
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // All three must be potentially-outdated
+            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeC)).toBe('potentially-outdated');
+            // Timestamps preserved
+            expect((await T.timestamps.get(nodeA))?.modifiedAt).toBe(TS1);
+            expect((await T.timestamps.get(nodeB))?.modifiedAt).toBe(TS1);
+            expect((await T.timestamps.get(nodeC))?.modifiedAt).toBe(TS1);
+            // Values preserved (keep decision, equal timestamps)
+            expect(await T.values.get(nodeA)).toEqual({ value: 'A' });
+            expect(await T.values.get(nodeB)).toEqual({ value: 'B' });
+            expect(await T.values.get(nodeC)).toEqual({ value: 'C' });
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('equal-version staleness respects final decision when taint changes the winner', async () => {
+        // X → N. X is force-taken (host TS2 > target TS1).
+        // N has equal TS1, target stale (potentially-outdated), host up-to-date.
+        // N's initial decision is 'keep', but take-taint from X changes it to 'take'.
+        // The stale evidence from local must be preserved: final N must be
+        // potentially-outdated (host provenance with downgraded freshness).
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const customScheme = {
+                format: 1,
+                nodes: [
+                    { head: "sourceX", arity: 0, inputTemplates: [] },
+                    { head: "derivedN", arity: 0, inputTemplates: [{ head: "sourceX", args: [] }] },
+                ],
+            };
+            const schemeStr = JSON.stringify(customScheme);
+
+            const xTarget = nodeIdentifierFromString('320-abcdefghi');
+            const nTarget = nodeIdentifierFromString('321-abcdefghi');
+            const xHost = nodeIdentifierFromString('322-hostfpbb');
+            const nHost = nodeIdentifierFromString('323-hostfpbb');
+
+            const keyX = stringToNodeKeyString('{"head":"sourceX","args":[]}');
+            const keyN = stringToNodeKeyString('{"head":"derivedN","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await L.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            // X at TS1, N at TS1 stale
+            await writeNode(L, xTarget, TS1, { value: 'X local' });
+            await writeNode(L, nTarget, TS1, { value: 'N local' });
+            await L.freshness.put(nTarget, 'potentially-outdated');
+            await writeIdentifierLookup(L, [[xTarget, keyX], [nTarget, keyN]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            // X at TS2 (force-take), N at TS1 up-to-date
+            await writeNode(H, xHost, TS2, { value: 'X host' });
+            await writeNode(H, nHost, TS1, { value: 'N host' });
+            await H.valid.put(xHost, [nHost]);
+            await writeIdentifierLookup(H, [[xHost, keyX], [nHost, keyN]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // X is force-taken (host TS2 > target TS1)
+            expect(await T.values.get(xHost)).toEqual({ value: 'X host' });
+            expect(await T.freshness.get(xHost)).toBe('up-to-date');
+            // N is taken (taint changed from keep to take). Host N was up-to-date,
+            // but local N was stale at the same version. The stale evidence must
+            // be preserved: N must be potentially-outdated.
+            expect(await T.values.get(nHost)).toEqual({ value: 'N host' });
+            expect(await T.freshness.get(nHost)).toBe('potentially-outdated');
+            const nTs = await T.timestamps.get(nHost);
+            expect(nTs?.modifiedAt).toBe(TS1);
+        } finally {
+            if (db) await db.close();
+        }
+    });
 });
