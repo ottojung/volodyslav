@@ -255,7 +255,6 @@ function canonicalValidMapsEqual(left, right) {
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
  * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
- * @param {string} options.mergeTimestampIso
  * @returns {Promise<boolean>} Whether the canonical valid relation changed.
  */
 async function rebuildMergedValidity({
@@ -267,7 +266,6 @@ async function rebuildMergedValidity({
     finalIdentifierForKey: finalIdForKey,
     mergedInputsMap,
     valueOriginByKey,
-    mergeTimestampIso,
 }) {
     const oldCanonicalValidMap = await readCanonicalValidMap(targetStorage);
 
@@ -349,13 +347,6 @@ async function rebuildMergedValidity({
         }
         if (!clean) {
             await writer.push(targetStorage.freshness.putOp(nodeIdentifier, 'potentially-outdated'));
-            const timestamps = await targetStorage.timestamps.get(nodeIdentifier);
-            if (timestamps !== undefined && mergeTimestampIso !== undefined) {
-                await writer.push(targetStorage.timestamps.putOp(nodeIdentifier, {
-                    createdAt: timestamps.createdAt,
-                    modifiedAt: mergeTimestampIso,
-                }));
-            }
             continue;
         }
 

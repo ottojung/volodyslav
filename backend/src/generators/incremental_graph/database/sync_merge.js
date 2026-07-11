@@ -238,12 +238,11 @@ async function commitChangedMerge(
  * @param {Logger} logger
  * @param {RootDatabase} rootDatabase
  * @param {string} hostname
- * @param {string} mergeTimestampIso
  * @returns {Promise<boolean>} Whether the active replica pointer changed.
  * @throws {HostVersionMismatchError} If the remote schema version differs from local.
  * @throws {import('./topo_sort').TopologicalSortCycleError} If the merged graph has a cycle.
  */
-async function mergeHostIntoReplica(logger, rootDatabase, hostname, mergeTimestampIso) {
+async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     await assertHostVersionMatches(rootDatabase, hostname);
 
     // Fail-fast: validate host metadata before expensive copy.
@@ -315,8 +314,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname, mergeTimesta
         hOnlyNeedsInvalidate,
         directlyReloweredNodes,
         reloweringInvalidatedNodes,
-        finalIdentifierForKey,
-        mergeTimestampIso
+        finalIdentifierForKey
     );
 
     const summary = summarizeDecisions(decisions.values());
@@ -343,7 +341,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname, mergeTimesta
         finalIdentifierForKey,
         mergedInputsMap,
         valueOriginByKey,
-        mergeTimestampIso,
     });
     const hasChanges = hasSemanticChanges || validityChanged;
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);

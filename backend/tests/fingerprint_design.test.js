@@ -34,7 +34,7 @@ const { stubLogger, stubEnvironment } = require('./stubs');
 
 jest.setTimeout(20000);
 
-const TEST_MERGE_TIMESTAMP = '2024-01-01T00:00:00.000Z';
+
 
 function getTestCapabilities() {
     const capabilities = getMockedRootCapabilities();
@@ -426,7 +426,7 @@ describe('fingerprint design', () => {
 
             // Merge: host has no nodes, so this is a no-op from a graph
             // perspective. But fingerprint should stay local.
-            const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
             expect(switched).toBe(false);
             expect(db.currentReplicaName()).toBe('x');
             expect(db.getFingerprint()).toBe(localFingerprint);
@@ -466,7 +466,7 @@ describe('fingerprint design', () => {
             await localGlobal.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [{ head: 'event', arity: 0, inputTemplates: [] }] }));
 
             const logger = makeLogger();
-            const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
             expect(switched).toBe(true);
 
             // The host allocation watermark belongs to its fingerprint namespace.
@@ -518,7 +518,7 @@ describe('fingerprint design', () => {
             await H.global.put('fingerprint', 'remotehostfingerprint');
 
             const logger = makeLogger();
-            const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
             expect(switched).toBe(false);
             expect(db.currentReplicaName()).toBe('x');
             expect(db.getFingerprint()).toBe(localFingerprint);

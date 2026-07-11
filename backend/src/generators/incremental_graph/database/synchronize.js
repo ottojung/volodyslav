@@ -135,8 +135,7 @@ async function mergeRemoteHostBranches(capabilities, state) {
             const switchedReplica = await mergeHostIntoReplica(
                 capabilities.logger,
                 state.rootDatabase,
-                hostname,
-                capabilities.datetime.now().toISOString()
+                hostname
             );
             if (switchedReplica) {
                 await state.rootDatabase.close();

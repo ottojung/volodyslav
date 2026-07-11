@@ -21,7 +21,6 @@ const { ReplicaBatchWriter } = require('./sync_merge_validity');
  * @param {Set<NodeKeyString>} directlyReloweredNodes
  * @param {Set<NodeKeyString>} reloweringInvalidatedNodes
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
- * @param {string} mergeTimestampIso
  * @returns {Promise<void>}
  */
 async function applyNodeDecisions(
@@ -34,8 +33,7 @@ async function applyNodeDecisions(
     hostOnlyNodesNeedingInvalidation,
     directlyReloweredNodes,
     reloweringInvalidatedNodes,
-    finalIdentifierForKey,
-    mergeTimestampIso
+    finalIdentifierForKey
 ) {
     const writer = new ReplicaBatchWriter(targetStorage);
 
@@ -69,7 +67,7 @@ async function applyNodeDecisions(
             }));
             await writer.push(targetStorage.timestamps.putOp(destinationId, {
                 createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
-                modifiedAt: mergeTimestampIso,
+                modifiedAt: sourceTimestamp.modifiedAt,
             }));
         }
         if (directlyReloweredNodes.has(nodeKey)) {
@@ -78,7 +76,7 @@ async function applyNodeDecisions(
             await writer.push(targetStorage.valid.delOp(destinationId));
             await writer.push(targetStorage.timestamps.putOp(destinationId, {
                 createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
-                modifiedAt: mergeTimestampIso,
+                modifiedAt: sourceTimestamp.modifiedAt,
             }));
         }
 
@@ -87,14 +85,7 @@ async function applyNodeDecisions(
             hostOnlyNodesNeedingInvalidation.has(nodeKey) ||
             reloweringInvalidatedNodes.has(nodeKey)
         ) {
-            const existingFreshness = await targetStorage.freshness.get(destinationId);
             await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
-            if (existingFreshness !== 'potentially-outdated') {
-                await writer.push(targetStorage.timestamps.putOp(destinationId, {
-                    createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
-                    modifiedAt: mergeTimestampIso,
-                }));
-            }
             if (initial === 'take') {
                 const hostTimestamps = await hostStorage.timestamps.get(sourceId);
                 const targetId = targetLookup.keyToId.get(String(nodeKey));
@@ -104,7 +95,7 @@ async function applyNodeDecisions(
                 if (hostTimestamps !== undefined) {
                     await writer.push(targetStorage.timestamps.putOp(destinationId, {
                         createdAt: targetTimestamps?.createdAt ?? hostTimestamps.createdAt,
-                        modifiedAt: mergeTimestampIso,
+                        modifiedAt: hostTimestamps.modifiedAt,
                     }));
                 }
             }
