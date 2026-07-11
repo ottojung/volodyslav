@@ -11,6 +11,7 @@
 const { compareNodeIdentifier } = require('./node_identifier');
 const { nodeIdentifierToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
+const { topologicalSortFromMap } = require('./topo_sort');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -255,7 +256,6 @@ function canonicalValidMapsEqual(left, right) {
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
  * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
- * @param {string} options.mergeTimestampIso
  * @returns {Promise<boolean>} Whether the canonical valid relation changed.
  */
 async function rebuildMergedValidity({
@@ -267,7 +267,6 @@ async function rebuildMergedValidity({
     finalIdentifierForKey: finalIdForKey,
     mergedInputsMap,
     valueOriginByKey,
-    mergeTimestampIso,
 }) {
     const oldCanonicalValidMap = await readCanonicalValidMap(targetStorage);
 
@@ -330,10 +329,28 @@ async function rebuildMergedValidity({
         cachedIds.add(nodeIdentifierToString(cachedId));
     }
 
-    const writer = new ReplicaBatchWriter(targetStorage);
+    // In-memory freshness map that tracks both committed state and pending
+    // downgrades. When the loop queues a freshness downgrade, we update
+    // this map immediately so subsequent iterations see the new state.
+    /** @type {Map<string, string>} */
+    const finalFreshness = new Map();
+    for await (const nodeId of targetStorage.freshness.keys()) {
+        const f = await targetStorage.freshness.get(nodeId);
+        if (f !== undefined) {
+            finalFreshness.set(nodeIdentifierToString(nodeId), f);
+        }
+    }
 
-    for await (const nodeIdentifier of targetStorage.values.keys()) {
-        const freshness = await targetStorage.freshness.get(nodeIdentifier);
+    const writer = new ReplicaBatchWriter(targetStorage);
+    let freshnessChanged = false;
+
+    // Traverse in topological order (inputs before dependents) so that
+    // freshness downgrades are visible when their dependents are processed.
+    // Only process identifiers that have a cached value in the target.
+    for (const nodeIdentifier of topologicalSortFromMap(mergedInputsMap)) {
+        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+        if (!cachedIds.has(nodeIdStr)) continue;
+        const freshness = finalFreshness.get(nodeIdStr);
         if (freshness !== 'up-to-date') continue;
 
         const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
@@ -341,7 +358,8 @@ async function rebuildMergedValidity({
         let clean = true;
         for (const depId of requiredInputs) {
             const depIdStr = nodeIdentifierToString(depId);
-            if (!cachedIds.has(depIdStr) || await targetStorage.freshness.get(depId) !== 'up-to-date') {
+            const depFreshness = finalFreshness.get(depIdStr);
+            if (!cachedIds.has(depIdStr) || depFreshness !== 'up-to-date') {
                 clean = false;
                 break;
             }
@@ -349,17 +367,10 @@ async function rebuildMergedValidity({
         }
         if (!clean) {
             await writer.push(targetStorage.freshness.putOp(nodeIdentifier, 'potentially-outdated'));
-            const timestamps = await targetStorage.timestamps.get(nodeIdentifier);
-            if (timestamps !== undefined && mergeTimestampIso !== undefined) {
-                await writer.push(targetStorage.timestamps.putOp(nodeIdentifier, {
-                    createdAt: timestamps.createdAt,
-                    modifiedAt: mergeTimestampIso,
-                }));
-            }
+            finalFreshness.set(nodeIdStr, 'potentially-outdated');
+            freshnessChanged = true;
             continue;
         }
-
-        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
         for (const depId of cleanInputs) {
             const depIdStr = nodeIdentifierToString(depId);
             depIdCache.set(depIdStr, depId);
@@ -380,7 +391,8 @@ async function rebuildMergedValidity({
         }
     }
     await writer.flush();
-    return !canonicalValidMapsEqual(oldCanonicalValidMap, canonicalizeValidMap(validMap));
+    const validityChanged = !canonicalValidMapsEqual(oldCanonicalValidMap, canonicalizeValidMap(validMap));
+    return freshnessChanged || validityChanged;
 }
 
 module.exports = {

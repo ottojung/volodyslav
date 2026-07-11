@@ -85,30 +85,15 @@ function addValidityFlags(batch, nId, inputEdges) {
 }
 
 /**
- * @param {BatchBuilder} batch
- * @param {NodeIdentifier} nodeIdentifier
- * @param {string} nowIso
- * @returns {Promise<void>}
- */
-async function touchTimestamp(batch, nodeIdentifier, nowIso) {
-    const existingTimestamp = await batch.timestamps.get(nodeIdentifier);
-    batch.timestamps.put(nodeIdentifier, {
-        createdAt: existingTimestamp === undefined ? nowIso : existingTimestamp.createdAt,
-        modifiedAt: nowIso,
-    });
-}
-
-/**
  * Propagate potentially-outdated freshness through validity sets.
  * Uses an iterative worklist to avoid stack overflow on deep chains.
  * @param {import('./graph_state').GraphStorage} storage
  * @param {BatchBuilder} batch
  * @param {NodeIdentifier} changedIdentifier
  * @param {NodeIdentifier[]} [initialDependents]
- * @param {string | undefined} [nowIso]
  * @returns {Promise<void>}
  */
-async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialDependents = undefined, nowIso = undefined) {
+async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialDependents = undefined) {
     /** @type {Set<string>} */
     const visited = new Set();
     /** @type {NodeIdentifier[]} */
@@ -128,9 +113,6 @@ async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialD
             const freshness = await batch.freshness.get(dep);
             if (freshness === "up-to-date") {
                 batch.freshness.put(dep, "potentially-outdated");
-                if (nowIso !== undefined) {
-                    await touchTimestamp(batch, dep, nowIso);
-                }
             }
             worklist.push(dep);
         }
@@ -176,10 +158,9 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
         const freshness = await batch.freshness.get(dependent);
         if (freshness === "up-to-date") {
             batch.freshness.put(dependent, "potentially-outdated");
-            await touchTimestamp(batch, dependent, nowIso);
         }
     }
-    await propagateOutdatedFrom(incrementalGraph.storage, batch, nodeIdentifier, downstream, nowIso);
+    await propagateOutdatedFrom(incrementalGraph.storage, batch, nodeIdentifier, downstream);
 
     batch.values.put(nodeIdentifier, newValue);
 

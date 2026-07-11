@@ -20,8 +20,8 @@ const { ReplicaBatchWriter } = require('./sync_merge_validity');
  * @param {Set<NodeKeyString>} hostOnlyNodesNeedingInvalidation
  * @param {Set<NodeKeyString>} directlyReloweredNodes
  * @param {Set<NodeKeyString>} reloweringInvalidatedNodes
+ * @param {Set<NodeKeyString>} equalVersionNeedsInvalidation
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
- * @param {string} mergeTimestampIso
  * @returns {Promise<void>}
  */
 async function applyNodeDecisions(
@@ -34,8 +34,8 @@ async function applyNodeDecisions(
     hostOnlyNodesNeedingInvalidation,
     directlyReloweredNodes,
     reloweringInvalidatedNodes,
-    finalIdentifierForKey,
-    mergeTimestampIso
+    equalVersionNeedsInvalidation,
+    finalIdentifierForKey
 ) {
     const writer = new ReplicaBatchWriter(targetStorage);
 
@@ -69,7 +69,7 @@ async function applyNodeDecisions(
             }));
             await writer.push(targetStorage.timestamps.putOp(destinationId, {
                 createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
-                modifiedAt: mergeTimestampIso,
+                modifiedAt: sourceTimestamp.modifiedAt,
             }));
         }
         if (directlyReloweredNodes.has(nodeKey)) {
@@ -78,7 +78,7 @@ async function applyNodeDecisions(
             await writer.push(targetStorage.valid.delOp(destinationId));
             await writer.push(targetStorage.timestamps.putOp(destinationId, {
                 createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
-                modifiedAt: mergeTimestampIso,
+                modifiedAt: sourceTimestamp.modifiedAt,
             }));
         }
 
@@ -87,14 +87,7 @@ async function applyNodeDecisions(
             hostOnlyNodesNeedingInvalidation.has(nodeKey) ||
             reloweringInvalidatedNodes.has(nodeKey)
         ) {
-            const existingFreshness = await targetStorage.freshness.get(destinationId);
             await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
-            if (existingFreshness !== 'potentially-outdated') {
-                await writer.push(targetStorage.timestamps.putOp(destinationId, {
-                    createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
-                    modifiedAt: mergeTimestampIso,
-                }));
-            }
             if (initial === 'take') {
                 const hostTimestamps = await hostStorage.timestamps.get(sourceId);
                 const targetId = targetLookup.keyToId.get(String(nodeKey));
@@ -104,7 +97,7 @@ async function applyNodeDecisions(
                 if (hostTimestamps !== undefined) {
                     await writer.push(targetStorage.timestamps.putOp(destinationId, {
                         createdAt: targetTimestamps?.createdAt ?? hostTimestamps.createdAt,
-                        modifiedAt: mergeTimestampIso,
+                        modifiedAt: hostTimestamps.modifiedAt,
                     }));
                 }
             }
@@ -117,6 +110,16 @@ async function applyNodeDecisions(
             await writer.push(targetStorage.freshness.putOp(destinationId, 'missing'));
             await writer.push(targetStorage.valid.delOp(destinationId));
         }
+
+        // Equal-version freshness: when both sides have the same modifiedAt but
+        // the selected side is up-to-date and the other is not, the merged node
+        // must not remain up-to-date. This check uses destinationHasCachedValue
+        // which is computed from the correct source (before any flush) so it
+        // correctly handles nodes whose value was deleted by relowering.
+        if (destinationHasCachedValue && equalVersionNeedsInvalidation.has(nodeKey)) {
+            await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
+        }
+
         if (destinationTimestamp === undefined && !shouldCopy) {
             throw new IdentifierLookupConflictError(`Destination materialized node ${String(destinationId)} has no timestamps entry`);
         }
@@ -132,6 +135,7 @@ async function applyNodeDecisions(
             await writer.pushAll(buildDeleteNodeOps(targetStorage, targetId));
         }
     }
+
     await writer.flush();
 }
 

@@ -227,6 +227,41 @@ candidate stored values. They do not by themselves prove that a value is
 correct with respect to final merged inputs. Timestamp order is not a semantic
 proof of freshness.
 
+**REQ-SYNC-08a (modifiedAt is a value version, not a merge timestamp):**
+`modifiedAt` records the time at which a node's stored semantic value last
+changed as a result of a computor producing a changed value. Merge decisions
+and metadata transformations produce no new semantic versions.
+
+- Taking a value copies its exact existing `modifiedAt` from the host side.
+- Keeping a value preserves its exact existing `modifiedAt`.
+- Invalidating freshness or rebuilding validity does not change `modifiedAt`.
+- Identifier reconciliation, input-edge relowering, and freshness changes do
+  not change `modifiedAt`.
+- Synchronization MUST NOT manufacture a new `modifiedAt` during merge.
+  Every final `modifiedAt` must be one of the timestamps already present in
+  the merge inputs (L or H).
+- Consequently, merging two fixed database snapshots is independent of
+  merge execution time. The result would be identical if the merge ran at
+  any future or past time.
+
+**REQ-SYNC-08b (No mergedAt field):** Synchronization MUST NOT introduce a
+persistent `mergedAt` field. Sync timing is available through logs and Git
+commits.
+
+**REQ-SYNC-08c (Equal-version stale freshness):** When both replicas have
+identical `modifiedAt` for a semantic key, the timestamp alone cannot
+distinguish which side has fresher metadata. The merge MUST be conservative:
+
+* If the selected side's value is `up-to-date` and the non-selected side's
+  freshness is not `up-to-date`, the final node MUST NOT remain `up-to-date`.
+  Set it to `potentially-outdated` without changing `modifiedAt`.
+* If the selected side is already not `up-to-date`, no adjustment is needed.
+* The stale metadata belonging to an older value version (`modifiedAt`)
+  MUST NOT taint a strictly newer value version. If one side has a newer
+  `modifiedAt`, the value selection based on timestamps is authoritative
+  and the stale metadata from the older version does not affect the
+  newer version's freshness.
+
 ---
 
 ## 7. Conflict Propagation and Merge Decisions

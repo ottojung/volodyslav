@@ -238,12 +238,11 @@ async function commitChangedMerge(
  * @param {Logger} logger
  * @param {RootDatabase} rootDatabase
  * @param {string} hostname
- * @param {string} mergeTimestampIso
  * @returns {Promise<boolean>} Whether the active replica pointer changed.
  * @throws {HostVersionMismatchError} If the remote schema version differs from local.
  * @throws {import('./topo_sort').TopologicalSortCycleError} If the merged graph has a cycle.
  */
-async function mergeHostIntoReplica(logger, rootDatabase, hostname, mergeTimestampIso) {
+async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     await assertHostVersionMatches(rootDatabase, hostname);
 
     // Fail-fast: validate host metadata before expensive copy.
@@ -295,6 +294,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname, mergeTimesta
         hOnlyNeedsInvalidate,
         directlyReloweredNodes,
         reloweringInvalidatedNodes,
+        equalVersionNeedsInvalidation,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
@@ -315,12 +315,12 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname, mergeTimesta
         hOnlyNeedsInvalidate,
         directlyReloweredNodes,
         reloweringInvalidatedNodes,
-        finalIdentifierForKey,
-        mergeTimestampIso
+        equalVersionNeedsInvalidation,
+        finalIdentifierForKey
     );
 
     const summary = summarizeDecisions(decisions.values());
-    const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation;
+    const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation || equalVersionNeedsInvalidation.size > 0;
     const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
     const valueOriginByKey = await buildValueOriginByKey(
         initialDecisions,
@@ -343,7 +343,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname, mergeTimesta
         finalIdentifierForKey,
         mergedInputsMap,
         valueOriginByKey,
-        mergeTimestampIso,
     });
     const hasChanges = hasSemanticChanges || validityChanged;
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);

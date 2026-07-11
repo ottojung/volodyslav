@@ -37,6 +37,7 @@ function semanticInputsFromScheme(scheme, lookup, identifier) {
  *   hOnlyNeedsInvalidate: Set<NodeKeyString>,
  *   directlyReloweredNodes: Set<NodeKeyString>,
  *   reloweringInvalidatedNodes: Set<NodeKeyString>,
+ *   equalVersionNeedsInvalidation: Set<NodeKeyString>,
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
  *   hasIdentifierReconciliation: boolean
@@ -62,6 +63,8 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     const targetOnlyNodes = new Set();
     /** @type {Set<NodeKeyString>} */
     const hOnlyNodes = new Set();
+    /** @type {Set<NodeKeyString>} */
+    const equalTimestamps = new Set();
     for (const nodeKey of allNodeKeys) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
@@ -88,6 +91,10 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         } else {
             initialDecisions.set(nodeKey, 'take');
             forceTakeRoots.add(nodeKey);
+        }
+
+        if (cmp === 0) {
+            equalTimestamps.add(nodeKey);
         }
     }
 
@@ -171,6 +178,31 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     }
     const finalIdentifierLookup = makeIdentifierLookup(finalEntries);
 
+    // Equal-version staleness: determined after final decisions are known,
+    // because taint propagation can change which side ultimately wins.
+    /** @type {Set<NodeKeyString>} */
+    const equalVersionNeedsInvalidation = new Set();
+    for (const nodeKey of equalTimestamps) {
+        const targetId = targetLookup.keyToId.get(String(nodeKey));
+        const hostId = hostLookup.keyToId.get(String(nodeKey));
+        if (targetId === undefined || hostId === undefined) continue;
+        const initial = initialDecisions.get(nodeKey);
+        if (initial === undefined) continue;
+        const decision = decisions.get(nodeKey);
+        if (decision === undefined) continue;
+        const finalSide = decision === 'invalidate' ? initial : decision;
+        const finalIsTake = finalSide === 'take';
+        const finalId = finalIsTake ? hostId : targetId;
+        const otherId = finalIsTake ? targetId : hostId;
+        const finalStorage = finalIsTake ? H : T;
+        const otherStorage = finalIsTake ? T : H;
+        const finalFreshness = await finalStorage.freshness.get(finalId);
+        const otherFreshness = await otherStorage.freshness.get(otherId);
+        if (finalFreshness === 'up-to-date' && otherFreshness !== 'up-to-date') {
+            equalVersionNeedsInvalidation.add(nodeKey);
+        }
+    }
+
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const mergedInputsMap = new Map();
     /** @type {Set<NodeKeyString>} */
@@ -243,6 +275,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         hOnlyNeedsInvalidate,
         directlyReloweredNodes,
         reloweringInvalidatedNodes,
+        equalVersionNeedsInvalidation,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,

@@ -15,7 +15,6 @@
  * @property {Map<import('./types').NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
- * @property {import('../../datetime').Datetime} datetime
  */
 
 const { stringToNodeName, nodeIdentifierToString, serializeNodeKey } = require("./database");
@@ -28,14 +27,12 @@ const { lookupNodeIdentifier } = require("./graph_state");
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
  * @param {import('./database/types').NodeIdentifier} changedIdentifier
  * @param {BatchBuilder} batch
- * @param {string} nowIso
  * @returns {Promise<void>}
  */
 async function internalPropagateOutdated(
     incrementalGraph,
     changedIdentifier,
-    batch,
-    nowIso
+    batch
 ) {
     /** @type {Set<string>} */
     const visited = new Set();
@@ -58,11 +55,6 @@ async function internalPropagateOutdated(
             const currentFreshness = await batch.freshness.get(output);
             if (currentFreshness === "up-to-date") {
                 batch.freshness.put(output, "potentially-outdated");
-                const existingTimestamp = await batch.timestamps.get(output);
-                batch.timestamps.put(output, {
-                    createdAt: existingTimestamp === undefined ? nowIso : existingTimestamp.createdAt,
-                    modifiedAt: nowIso,
-                });
             } else if (
                 currentFreshness !== undefined &&
                 currentFreshness !== "potentially-outdated" &&
@@ -113,13 +105,7 @@ async function internalUnsafeInvalidate(
         }
 
         tx.batch.freshness.put(outputIdentifier, "potentially-outdated");
-        const nowIso = incrementalGraph.datetime.now().toISOString();
-        const existingTimestamp = await tx.batch.timestamps.get(outputIdentifier);
-        tx.batch.timestamps.put(outputIdentifier, {
-            createdAt: existingTimestamp === undefined ? nowIso : existingTimestamp.createdAt,
-            modifiedAt: nowIso,
-        });
-        await internalPropagateOutdated(incrementalGraph, outputIdentifier, tx.batch, nowIso);
+        await internalPropagateOutdated(incrementalGraph, outputIdentifier, tx.batch);
 
         return { value: undefined };
     });

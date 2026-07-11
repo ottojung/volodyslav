@@ -75,7 +75,7 @@ const NODE_H = nodeIdentifierFromString('5-abcdefghi');
 const TS1 = '2024-01-01T00:00:01.000Z';
 const TS2 = '2024-01-01T00:00:05.000Z';
 const TS3 = '2024-01-01T00:00:09.000Z';
-const TEST_MERGE_TIMESTAMP = '2024-01-01T00:00:00.000Z';
+
 
 /**
  * Write a node into storage with a modifiedAt timestamp.
@@ -182,7 +182,7 @@ async function writeGraphScheme(storage) {
  * @returns {Promise<import('../src/generators/incremental_graph/database/root_database').RootDatabase>}
  */
 async function mergeAndReopenIfSwitched(capabilities, logger, db, hostname) {
-    const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+    const switched = await mergeHostIntoReplica(logger, db, hostname);
     if (!switched) {
         return db;
     }
@@ -203,7 +203,7 @@ describe('mergeHostIntoReplica', () => {
             await db.setHostnameGlobal('remote-host', 'version', 'incompatible-version');
 
             await expect(
-                mergeHostIntoReplica(logger, db, 'remote-host', TEST_MERGE_TIMESTAMP)
+                mergeHostIntoReplica(logger, db, 'remote-host')
             ).rejects.toBeInstanceOf(HostVersionMismatchError);
         } finally {
             if (db) await db.close();
@@ -243,7 +243,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(H, []);
 
             await expect(
-                mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)
+                mergeHostIntoReplica(logger, db, hostname)
             ).rejects.toThrow(/different graph_scheme/);
         } finally {
             if (db) await db.close();
@@ -280,7 +280,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(H, []);
 
             // Merge succeeds because no host node data exists.
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(false);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
         } finally {
             if (db) await db.close();
         }
@@ -455,7 +455,7 @@ describe('mergeHostIntoReplica', () => {
             // Capture the local allocation watermark before importing host identifiers.
             const initialLastNodeIndex = db.getLastNodeIndex();
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
             const T = db.getSchemaStorage();
             expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([
                 [targetParent, parentKey],
@@ -587,7 +587,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, []);
             await writeIdentifierLookup(H, entriesForSameStringNodeKeys([hOnlyNode]));
 
-            await expect(mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).rejects.toThrow(IdentifierLookupConflictError);
+            await expect(mergeHostIntoReplica(logger, db, hostname)).rejects.toThrow(IdentifierLookupConflictError);
             expect(db.currentReplicaName()).toBe('x');
         } finally {
             if (db) await db.close();
@@ -676,11 +676,11 @@ describe('mergeHostIntoReplica', () => {
             const bValue = await T.values.get(nodeB);
             expect(bValue).toEqual(remoteValueB);
 
-            // B's modifiedAt should be advanced to H's value (TS2) so that on
+            // B's modifiedAt should be the host's value (TS2) so that on
             // the next sync, compareIsoTimestamps(T.B, H.B) == 0 → 'keep', breaking
             // the repeated-invalidation cycle.
             const bTimestamps = await T.timestamps.get(nodeB);
-            expect(bTimestamps?.modifiedAt).toBe('2024-01-01T00:00:00.000Z');
+            expect(bTimestamps?.modifiedAt).toBe(TS2);
             // createdAt should be preserved from T (not overwritten from H).
             expect(bTimestamps?.createdAt).toBe(TS1); // T wrote createdAt = TS1
         } finally {
@@ -721,7 +721,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeB, TS2, remoteValueB);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
-            // First merge: B is 'invalidate', modifiedAt advanced to TS2.
+            // First merge: B is 'invalidate', modifiedAt set to host's TS2.
             db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             // Restore the same H staging data for the second merge
@@ -735,20 +735,20 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H2, nodeB, TS2, remoteValueB);
             await writeIdentifierLookup(H2, [[nodeA, keyA], [nodeB, keyB]]);
 
-            // Second merge: T.B.modifiedAt remains at the first merge timestamp → B is 'keep'.
+            // Second merge: T.B.modifiedAt equals H.B.modifiedAt (both TS2) → B is 'keep'.
             db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             const newActive = db.currentReplicaName();
             const T = db.schemaStorageForReplica(newActive);
 
-            // After timestamp advancement, T.B.modifiedAt remains at the first merge timestamp.
+            // Because modifiedAt was preserved from the host (TS2), it equals H's TS2.
             // On the second sync, compareIsoTimestamps returns 0 so B gets merge
             // decision 'keep' (no taint); freshness is unchanged from the first merge.
             const bFreshness = await T.freshness.get(nodeB);
             expect(bFreshness).toBe('potentially-outdated');
             const bTimestamps = await T.timestamps.get(nodeB);
-            // modifiedAt remains at the first merge timestamp — not re-advanced (it was already equal to H's).
-            expect(bTimestamps?.modifiedAt).toBe('2024-01-01T00:00:00.000Z');
+            // modifiedAt remains at TS2 (the host source value) — not re-advanced (it was already equal to H's).
+            expect(bTimestamps?.modifiedAt).toBe(TS2);
         } finally {
             if (db) await db.close();
         }
@@ -779,7 +779,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(H1, []);
 
             // Merge first host (empty local replica → no graph changes).
-            await mergeHostIntoReplica(logger, db, hostname1, TEST_MERGE_TIMESTAMP);
+            await mergeHostIntoReplica(logger, db, hostname1);
             // No-op merge keeps the current replica pointer.
             expect(db.currentReplicaName()).toBe('x');
 
@@ -796,7 +796,7 @@ describe('mergeHostIntoReplica', () => {
             // Should NOT throw HostVersionMismatchError even though the first
             // merge left an empty 'y' replica with no version before this fix.
             await expect(
-                mergeHostIntoReplica(logger, db, hostname2, TEST_MERGE_TIMESTAMP)
+                mergeHostIntoReplica(logger, db, hostname2)
             ).resolves.toBe(true);
         } finally {
             if (db) await db.close();
@@ -836,7 +836,7 @@ describe('mergeHostIntoReplica', () => {
             expect(db.currentReplicaName()).toBe('x');
 
             // Call mergeHostIntoReplica directly — do NOT reopen the DB.
-            const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
 
             // The merge must have triggered a cutover.
             expect(switched).toBe(true);
@@ -873,7 +873,7 @@ describe('mergeHostIntoReplica', () => {
             await writeGraphScheme(H);
             await writeIdentifierLookup(L, []);
             await writeIdentifierLookup(H, []);
-            const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
             expect(switched).toBe(false);
             expect(db.currentReplicaName()).toBe('x');
         } finally {
@@ -914,7 +914,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
             expect(db.currentReplicaName()).toBe('x');
-            const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
 
             expect(switched).toBe(true);
             expect(db.currentReplicaName()).toBe('y');
@@ -962,7 +962,7 @@ describe('mergeHostIntoReplica', () => {
             await H.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(false);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
             expect(db.currentReplicaName()).toBe('x');
             const validA = await db.getSchemaStorage().valid.get(nodeA) ?? [];
             expect(validA.some(dependent => String(dependent) === String(nodeB))).toBe(false);
@@ -1004,7 +1004,7 @@ describe('mergeHostIntoReplica', () => {
             await H.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
-            const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
             expect(switched).toBe(false);
             expect(db.currentReplicaName()).toBe('x');
         } finally {
@@ -1042,7 +1042,7 @@ describe('mergeHostIntoReplica', () => {
             await H.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
-            const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
             expect(switched).toBe(false);
             const validA = await db.getSchemaStorage().valid.get(nodeA) ?? [];
             expect(validA.some(dependent => String(dependent) === String(nodeB))).toBe(false);
@@ -1081,7 +1081,7 @@ describe('mergeHostIntoReplica', () => {
             await H.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
-            const switched = await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+            const switched = await mergeHostIntoReplica(logger, db, hostname);
             expect(switched).toBe(false);
             const validA = await db.getSchemaStorage().valid.get(nodeA) ?? [];
             expect(validA.some(dependent => String(dependent) === String(nodeB))).toBe(false);
@@ -1113,7 +1113,7 @@ describe('mergeHostIntoReplica', () => {
 
             let error;
             try {
-                await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+                await mergeHostIntoReplica(logger, db, hostname);
             } catch (caught) {
                 error = caught;
             }
@@ -1147,7 +1147,7 @@ describe('mergeHostIntoReplica', () => {
 
             let error;
             try {
-                await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+                await mergeHostIntoReplica(logger, db, hostname);
             } catch (caught) {
                 error = caught;
             }
@@ -1195,7 +1195,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, dependentId, TS2, undefined);
             await writeIdentifierLookup(H, [[hostId, sharedKey], [dependentId, dependentKey]]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
             const T = db.getSchemaStorage();
             expect(await T.values.get(targetId)).toEqual(localValue);
             for (const sublevel of [T.values, T.freshness, T.timestamps]) {
@@ -1231,7 +1231,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, hostId, TS1, undefined);
             await writeIdentifierLookup(H, [[hostId, nodeKey]]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
             const T = db.getSchemaStorage();
             expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([[targetId, nodeKey]]);
             expect(await T.values.get(targetId)).toBeDefined();
@@ -1265,7 +1265,7 @@ describe('mergeHostIntoReplica', () => {
             // Capture the local allocation watermark before merge.
             const initialLastNodeIndex = db.getLastNodeIndex();
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
             const T = db.getSchemaStorage();
             expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([[hostId, nodeKey]]);
             expect(await T.freshness.get(hostId)).toBeDefined();
@@ -1310,7 +1310,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, hostAId, TS2, undefined);
             await writeIdentifierLookup(H, [[bId, keyB], [hostCId, keyC], [hostAId, keyA]]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
             const T = db.getSchemaStorage();
             expect(await T.freshness.get(hostAId)).toBe('missing');
             expect(await T.valid.get(targetCId)).toBeUndefined();
@@ -1349,7 +1349,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, hostAId, TS1, staleAValue);
             await writeIdentifierLookup(H, [[hostCId, keyC], [hostAId, keyA]]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             // The directly relowered node should be stale because its structural
             // dependency changed from hostCId to targetCId.
@@ -1425,7 +1425,7 @@ describe('mergeHostIntoReplica', () => {
                 [hostDId, keyD],
             ]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             // Directly relowered node and its transitive dependent are both stale.
             const T = db.getSchemaStorage();
@@ -1512,7 +1512,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, hostCId, TS3, undefined);
             await writeIdentifierLookup(H, [[hostCId, keyC]]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
             const T = db.getSchemaStorage();
             expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([
                 [hostCId, keyC],
@@ -1562,7 +1562,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeXId, TS2, remoteXValue);
             await writeIdentifierLookup(H, [[nodeXId, keyX]]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             const T = db.getSchemaStorage();
             expect(await T.freshness.get(nodeBId)).toBe('up-to-date');
@@ -1639,7 +1639,7 @@ describe('mergeHostIntoReplica', () => {
                 [nodeCId, keyC], [nodeDId, keyD],
             ]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             const T = db.getSchemaStorage();
 
@@ -1707,7 +1707,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeBId, TS1, { source: 'B remote' });
             await writeIdentifierLookup(H, [[nodeAId, keyA], [nodeBId, keyB]]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             const T = db.getSchemaStorage();
 
@@ -2022,7 +2022,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeXId, TS2, { source: 'remote X' });
             await writeIdentifierLookup(H, [[nodeXId, keyX]]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             const T = db.getSchemaStorage();
             expect(await T.freshness.get(nodeBId)).toBe('potentially-outdated');
@@ -2067,7 +2067,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeBId, TS1, { source: 'B old' });
             await writeIdentifierLookup(H, [[nodeAId, keyA], [nodeBId, keyB]]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).toBe(true);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             const T = db.getSchemaStorage();
             // A is taken from host, B is now tainted → invalidate
@@ -2676,7 +2676,7 @@ describe('mergeHostIntoReplica', () => {
             await H.freshness.put(nodeA, 'up-to-date');
             await writeIdentifierLookup(H, [[nodeA, keyA]]);
 
-            await expect(mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).rejects.toThrow(IdentifierLookupConflictError);
+            await expect(mergeHostIntoReplica(logger, db, hostname)).rejects.toThrow(IdentifierLookupConflictError);
             expect(db.currentReplicaName()).toBe('x');
         } finally {
             if (db) await db.close();
@@ -2705,7 +2705,7 @@ describe('mergeHostIntoReplica', () => {
             await writeGraphScheme(H);
             await writeIdentifierLookup(H, []);
 
-            await expect(mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP)).rejects.toThrow(IdentifierLookupConflictError);
+            await expect(mergeHostIntoReplica(logger, db, hostname)).rejects.toThrow(IdentifierLookupConflictError);
             expect(db.currentReplicaName()).toBe('x');
         } finally {
             if (db) await db.close();
@@ -2868,7 +2868,7 @@ describe('mergeHostIntoReplica', () => {
 
             let error;
             try {
-                await mergeHostIntoReplica(logger, db, hostname, TEST_MERGE_TIMESTAMP);
+                await mergeHostIntoReplica(logger, db, hostname);
             } catch (caught) {
                 error = caught;
             }
@@ -2879,6 +2879,1004 @@ describe('mergeHostIntoReplica', () => {
             expect(String(error?.message)).toContain('Volodyslav will not resolve this automatically');
             expect(String(error?.message)).toContain('manually fix the identifiers_keys_map records');
             expect(db.currentReplicaName()).toBe('x');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    // ── Regression: timestamps are preserved, not manufactured ─────────
+
+    test('pure keep preserves target modifiedAt unchanged', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS2, { value: 'local' });
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, { value: 'remote' });
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+
+            const T = db.getSchemaStorage();
+            const ts = await T.timestamps.get(nodeA);
+            expect(ts?.modifiedAt).toBe(TS2);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('pure take preserves host modifiedAt unchanged', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, { value: 'local' });
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS2, { value: 'remote' });
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            const ts = await T.timestamps.get(nodeA);
+            expect(ts?.modifiedAt).toBe(TS2);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('host-only node retains host modifiedAt', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, { value: 'host-only' });
+            const L = db.schemaStorageForReplica('x');
+            await writeIdentifierLookup(L, []);
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
+
+            const T = db.getSchemaStorage();
+            const ts = await T.timestamps.get(nodeA);
+            expect(ts?.modifiedAt).toBe(TS1);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('target-only node retains target modifiedAt', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS2, { value: 'target-only' });
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeIdentifierLookup(H, []);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+
+            const T = db.getSchemaStorage();
+            const ts = await T.timestamps.get(nodeA);
+            expect(ts?.modifiedAt).toBe(TS2);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('mixed-ancestry invalidation preserves value-side modifiedAt', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            // host_stale_A → host_stale_B chain.
+            // A: target TS2 > host TS1 → keep (target value)
+            // B: target TS1 < host TS2 → take (host value initially)
+            // B depends on A, A is force-kept → B is keep-tainted via A AND
+            // take-tainted via self → invalidate.
+            const nodeA = nodeIdentifierFromString('201-abcdefghi');
+            const nodeB = nodeIdentifierFromString('202-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS2, { value: 'target A' });
+            await writeNode(L, nodeB, TS1, { value: 'target B' });
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, { value: 'host A' });
+            await writeNode(H, nodeB, TS2, { value: 'host B' });
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
+
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
+
+            const T = db.getSchemaStorage();
+            // A is kept (target-newer) → modifiedAt = TS2
+            const tsA = await T.timestamps.get(nodeA);
+            expect(tsA?.modifiedAt).toBe(TS2);
+            // B is invalidated, initial=take → value from host, host's modifiedAt = TS2
+            const tsB = await T.timestamps.get(nodeB);
+            expect(tsB?.modifiedAt).toBe(TS2);
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('direct relowering preserves source modifiedAt', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            // a_counter_collision depends on c_counter_collision.
+            // Target has c_counter_collision Cₜ at TS3, no a_counter_collision.
+            // Host has c_counter_collision Cₕ at TS1 and a_counter_collision A at TS2.
+            // C is kept (target TS3 > host TS1), so A's source input (Cₕ) differs
+            // from final input (Cₜ) → directly relowered.
+            const targetC = nodeIdentifierFromString('203-abcdefghi');
+            const hostC = nodeIdentifierFromString('204-hostfpbb');
+            const hostA = nodeIdentifierFromString('205-hostfpbb');
+            const keyC = stringToNodeKeyString('{"head":"c_counter_collision","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"a_counter_collision","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, targetC, TS3, { value: 'target C' });
+            await writeIdentifierLookup(L, [[targetC, keyC]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, hostC, TS1, { value: 'host C' });
+            await writeNode(H, hostA, TS2, { value: 'host A' });
+            await writeIdentifierLookup(H, [[hostC, keyC], [hostA, keyA]]);
+
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
+
+            const T = db.getSchemaStorage();
+            // A is directly relowered and its value deleted → modifiedAt still from
+            // source (host A = TS2), freshness 'missing'.
+            const tsA = await T.timestamps.get(hostA);
+            expect(tsA?.modifiedAt).toBe(TS2);
+            expect(await T.freshness.get(hostA)).toBe('missing');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('validity-driven freshness downgrade does not change modifiedAt', async () => {
+        // Directly test rebuildMergedValidity's freshness-downgrade path:
+        // an up-to-date node whose dependency is not up-to-date gets downgraded.
+        // modifiedAt must remain unchanged during the downgrade.
+        const { rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+
+            const nodeA = nodeIdentifierFromString('206-abcdefghi');
+            const nodeB = nodeIdentifierFromString('207-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
+
+            // Target storage: nodeA is potentially-outdated, nodeB is up-to-date
+            // but depends on nodeA via mergedInputsMap.
+            const targetStorage = db.schemaStorageForReplica('y');
+            await writeGraphScheme(targetStorage);
+            await targetStorage.values.put(nodeA, { value: 'A stale' });
+            await targetStorage.freshness.put(nodeA, 'potentially-outdated');
+            await targetStorage.timestamps.put(nodeA, { createdAt: TS1, modifiedAt: TS1 });
+            await targetStorage.values.put(nodeB, { value: 'B' });
+            await targetStorage.freshness.put(nodeB, 'up-to-date');
+            await targetStorage.timestamps.put(nodeB, { createdAt: TS2, modifiedAt: TS2 });
+
+            // Source storages (targetSource, hostSource) are empty — no validity transport.
+            const targetSourceStorage = db.schemaStorageForReplica('x');
+            const hostSourceStorage = db.hostnameSchemaStorage('peer');
+
+            const targetLookup = makeIdentifierLookup([[nodeA, keyA], [nodeB, keyB]]);
+            const hostLookup = makeIdentifierLookup([]);
+
+            const finalIdentifierForKey = new Map([[keyA, nodeA], [keyB, nodeB]]);
+            const mergedInputsMap = new Map([[nodeB, [nodeA]]]);
+            const valueOriginByKey = new Map([
+                [keyA, { kind: 'none' }],
+                [keyB, { kind: 'none' }],
+            ]);
+
+            // Record modifiedAt before the call.
+            const tsBefore = await targetStorage.timestamps.get(nodeB);
+
+            await rebuildMergedValidity({
+                targetStorage,
+                targetSourceStorage,
+                hostSourceStorage,
+                targetLookup,
+                hostLookup,
+                finalIdentifierForKey,
+                mergedInputsMap,
+                valueOriginByKey,
+            });
+
+            const freshnessB = await targetStorage.freshness.get(nodeB);
+            expect(freshnessB).toBe('potentially-outdated');
+
+            const tsAfter = await targetStorage.timestamps.get(nodeB);
+            // modifiedAt must remain unchanged — the downgrade must not manufacture a new timestamp.
+            expect(tsAfter?.modifiedAt).toBe(tsBefore?.modifiedAt);
+            expect(tsAfter?.modifiedAt).toBe(TS2);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('repeated merge with same host does not advance timestamps', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, { value: 'stable' });
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, { value: 'stable' });
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            // First merge: no-op (equal timestamps)
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+
+            const tsBefore = await db.getSchemaStorage().timestamps.get(nodeA);
+
+            // Second merge with same data: must remain no-op
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+
+            const tsAfter = await db.getSchemaStorage().timestamps.get(nodeA);
+            expect(tsAfter?.modifiedAt).toBe(tsBefore?.modifiedAt);
+            expect(tsAfter?.modifiedAt).toBe(TS1);
+            expect(db.currentReplicaName()).toBe('x');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('periodic-sync regression: stale import cannot defeat real application write', async () => {
+        // Causal sequence from the spec:
+        // 1. Importing host has A₀ at T0.
+        // 2. Remote source has A₀ at T1 (T1 > T0).
+        // 3. First merge takes host value → imported copy has T1, not a later time.
+        // 4. Another host creates A₁ at T2 (T2 > T1).
+        // 5. Reintroducing A₀@T1 must not defeat A₁@T2.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const a0Value = { value: 'A₀' };
+            const a1Value = { value: 'A₁' };
+
+            // Step 1: Local host has A₀ at TS1.
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, a0Value);
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            // Step 2: Remote source has newer A₀ at TS2 (> TS1).
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS2, a0Value);
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            // Step 3: Merge takes the host value (TS2 > TS1).
+            // The imported copy must have modifiedAt = TS2 (host's timestamp),
+            // not some manufactured merge time.
+            // After merge, active replica switches to 'y'.
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            const tsAfterImport = await T.timestamps.get(nodeA);
+            expect(tsAfterImport?.modifiedAt).toBe(TS2);
+            expect(await T.freshness.get(nodeA)).toBe('up-to-date');
+            expect(await T.values.get(nodeA)).toEqual(a0Value);
+
+            // Close and reopen to simulate a fresh process.
+            await db.close();
+            db = await getRootDatabase(capabilities);
+
+            // Step 4: Write A₁ at TS3 (> TS2) into the active replica
+            // (simulating a genuine application write).
+            const activeReplica = db.currentReplicaName();
+            await writeGraphScheme(db.schemaStorageForReplica(activeReplica));
+            const activeStorage = db.getSchemaStorage();
+            await activeStorage.timestamps.put(nodeA, { createdAt: TS1, modifiedAt: TS3 });
+            await activeStorage.values.put(nodeA, a1Value);
+            await activeStorage.freshness.put(nodeA, 'up-to-date');
+
+            // Step 5: Reintroduce the old stale snapshot (A₀@TS2).
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+            const H2 = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H2);
+            await writeNode(H2, nodeA, TS2, a0Value);
+            await writeIdentifierLookup(H2, entriesForSameStringNodeKeys([nodeA]));
+
+            // This merge must NOT let stale A₀@TS2 win: local A₁@TS3 is newer → keep.
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+
+            const finalValue = await db.getSchemaStorage().values.get(nodeA);
+            expect(finalValue).toEqual(a1Value);
+            const tsFinal = await db.getSchemaStorage().timestamps.get(nodeA);
+            expect(tsFinal?.modifiedAt).toBe(TS3);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    // ── Equal-version freshness handling ───────────────────────────
+
+    test('equal-version: local up-to-date, host stale produces potentially-outdated', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+
+            const L = db.schemaStorageForReplica('x');
+            // Local: up-to-date at TS1
+            await writeNode(L, nodeA, TS1, { value: 'v' });
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            // Host: same value version TS1, but stale
+            await writeNode(H, nodeA, TS1, { value: 'v' });
+            await H.freshness.put(nodeA, 'potentially-outdated');
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            // Merge: equal timestamps → keep local. Both sides TS1, host is stale.
+            // equalVersionNeedsInvalidation should trigger.
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            const ts = await T.timestamps.get(nodeA);
+            // modifiedAt must stay TS1 (no merge-time manufactured timestamp)
+            expect(ts?.modifiedAt).toBe(TS1);
+            // Freshness must be potentially-outdated (host had stale version)
+            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
+            expect(await T.values.get(nodeA)).toEqual({ value: 'v' });
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('equal-version: local stale, host up-to-date produces potentially-outdated', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const L = db.schemaStorageForReplica('x');
+            // Local: stale at TS1
+            await writeNode(L, nodeA, TS1, { value: 'v' });
+            await L.freshness.put(nodeA, 'potentially-outdated');
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            // Host: up-to-date at TS1 (same version)
+            await writeNode(H, nodeA, TS1, { value: 'v host' });
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            // Merge: equal timestamps, both sides TS1. Host is up-to-date,
+            // local is stale. Since local is stale, the version has staleness
+            // evidence → final must be potentially-outdated. Local is already
+            // potentially-outdated, so no actual change and no switch.
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+
+            const T = db.getSchemaStorage();
+            // Decision is 'keep' (initial = keep since cmp >= 0), so local value wins.
+            expect(await T.values.get(nodeA)).toEqual({ value: 'v' });
+            const ts = await T.timestamps.get(nodeA);
+            expect(ts?.modifiedAt).toBe(TS1);
+            // Final freshness must be potentially-outdated (local was already stale).
+            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('older stale version does not taint newer winning value', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+
+            const L = db.schemaStorageForReplica('x');
+            // Local has v1@TS2, up-to-date (newer value)
+            await writeNode(L, nodeA, TS2, { value: 'v1' });
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            // Host has v0@TS1, stale (older value)
+            await writeNode(H, nodeA, TS1, { value: 'v0' });
+            await H.freshness.put(nodeA, 'potentially-outdated');
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            // Merge: local TS2 > host TS1 → keep. Host's stale metadata must
+            // NOT taint the local newer value.
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+
+            const T = db.getSchemaStorage();
+            expect(await T.values.get(nodeA)).toEqual({ value: 'v1' });
+            expect(await T.freshness.get(nodeA)).toBe('up-to-date');
+            const ts = await T.timestamps.get(nodeA);
+            expect(ts?.modifiedAt).toBe(TS2);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('older stale version does not taint newer winning value (reversed)', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+
+            const L = db.schemaStorageForReplica('x');
+            // Local has v0@TS1, stale (older value)
+            await writeNode(L, nodeA, TS1, { value: 'v0' });
+            await L.freshness.put(nodeA, 'potentially-outdated');
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            // Host has v1@TS2, up-to-date (newer value)
+            await writeNode(H, nodeA, TS2, { value: 'v1' });
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            // Merge: host TS2 > local TS1 → take. Host's newer value wins.
+            // Local's stale metadata must NOT taint the host value.
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            expect(await T.values.get(nodeA)).toEqual({ value: 'v1' });
+            expect(await T.freshness.get(nodeA)).toBe('up-to-date');
+            const ts = await T.timestamps.get(nodeA);
+            expect(ts?.modifiedAt).toBe(TS2);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    // ── End-to-end stale-invalidation conflict regression ──────────
+
+    test('end-to-end: stale invalidation cannot outrank a genuinely newer value', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+
+            // Step 1: Host A has N=v0 at T0.
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, { value: 'v0' });
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            // Step 2: Host B snapshot has N=v1 at TS2 (newer).
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS2, { value: 'v1' });
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            // Step 3: Simulate invalidation on Host A. Even though a later
+            // wall-clock time passes, invalidate does NOT change modifiedAt.
+            // The stored value is still v0@TS1.
+            await L.freshness.put(nodeA, 'potentially-outdated');
+            // (No timestamp write — this is what the fix ensures)
+
+            // Verify: Host A still has v0@TS1
+            const localTs = await L.timestamps.get(nodeA);
+            expect(localTs?.modifiedAt).toBe(TS1);
+            expect(await L.values.get(nodeA)).toEqual({ value: 'v0' });
+
+            // Step 4: Merge Host A's snapshot (v0@TS1, stale) with Host B's v1@TS2.
+            // v1@TS2 is newer → take.
+            // Rebuild H since we modified L in place (but H is separate storage)
+            const H2 = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H2);
+            await writeNode(H2, nodeA, TS2, { value: 'v1' });
+            await writeIdentifierLookup(H2, entriesForSameStringNodeKeys([nodeA]));
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // v1 must win (newer timestamp beats stale metadata)
+            expect(await T.values.get(nodeA)).toEqual({ value: 'v1' });
+            expect(await T.freshness.get(nodeA)).toBe('up-to-date');
+            const mergedTs = await T.timestamps.get(nodeA);
+            expect(mergedTs?.modifiedAt).toBe(TS2);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('equal-version merge does not change timestamps on repeated merge', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const L = db.schemaStorageForReplica('x');
+            // Local: up-to-date at TS1
+            await writeNode(L, nodeA, TS1, { value: 'v' });
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            // Host: stale at TS1 (same version)
+            await writeNode(H, nodeA, TS1, { value: 'v' });
+            await H.freshness.put(nodeA, 'potentially-outdated');
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            // First merge
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+            const ts1 = await db.getSchemaStorage().timestamps.get(nodeA);
+
+            // Second merge with same data
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+            const H2 = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H2);
+            await writeNode(H2, nodeA, TS1, { value: 'v' });
+            await H2.freshness.put(nodeA, 'potentially-outdated');
+            await writeIdentifierLookup(H2, entriesForSameStringNodeKeys([nodeA]));
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+            const ts2 = await db.getSchemaStorage().timestamps.get(nodeA);
+
+            // Timestamps must be identical (no advancement from either merge)
+            expect(ts2?.modifiedAt).toBe(ts1?.modifiedAt);
+            expect(ts2?.modifiedAt).toBe(TS1);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('equal-version with directly relowered node: value deleted, freshness missing, merge succeeds', async () => {
+        // Regression: the equal-version pass must not read stale committed state
+        // when a node's value was already queued for deletion by relowering.
+        // Layout: A depends on B and C.
+        // B: target TS3 > host TS1 → force-keep (uses target identifier)
+        // C: host TS2 > target TS1 → force-take (uses host identifier)
+        // A: equal TS1, target up-to-date, host potentially-outdated
+        // A inherits both keep-taint (via B) and take-taint (via C) → invalidate
+        // A's source input identifiers differ from final → directly relowered
+        // After the main loop A has queued value del + freshness=missing.
+        // The equal-version post-loop must not read the old committed value.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const customScheme = {
+                format: 1,
+                nodes: [
+                    { head: "depB", arity: 0, inputTemplates: [] },
+                    { head: "depC", arity: 0, inputTemplates: [] },
+                    { head: "combined", arity: 0, inputTemplates: [{ head: "depB", args: [] }, { head: "depC", args: [] }] },
+                ],
+            };
+            const schemeStr = JSON.stringify(customScheme);
+
+            const bTarget = nodeIdentifierFromString('301-abcdefghi');
+            const cTarget = nodeIdentifierFromString('302-abcdefghi');
+            const aTarget = nodeIdentifierFromString('303-abcdefghi');
+            const bHost = nodeIdentifierFromString('304-hostfpbb');
+            const cHost = nodeIdentifierFromString('305-hostfpbb');
+            const aHost = nodeIdentifierFromString('306-hostfpbb');
+
+            const keyB = stringToNodeKeyString('{"head":"depB","args":[]}');
+            const keyC = stringToNodeKeyString('{"head":"depC","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"combined","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await L.global.put(GRAPH_SCHEME_KEY, schemeStr);
+
+            // Target: B at TS3 (force-keep), C at TS1, A at TS1 up-to-date
+            await writeNode(L, bTarget, TS3, { value: 'B' });
+            await writeNode(L, cTarget, TS1, { value: 'C target' });
+            await writeNode(L, aTarget, TS1, { value: 'A' });
+            await writeIdentifierLookup(L, [
+                [bTarget, keyB], [cTarget, keyC], [aTarget, keyA],
+            ]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
+
+            // Host: B at TS1, C at TS2 (force-take), A at TS1 potentially-outdated
+            await writeNode(H, bHost, TS1, { value: 'B' });
+            await writeNode(H, cHost, TS2, { value: 'C host' });
+            await writeNode(H, aHost, TS1, { value: 'A' });
+            await H.freshness.put(aHost, 'potentially-outdated');
+            await writeIdentifierLookup(H, [
+                [bHost, keyB], [cHost, keyC], [aHost, keyA],
+            ]);
+
+            // Merge must succeed
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // A is directly relowered → value deleted, freshness missing
+            expect(await T.values.get(aTarget)).toBeUndefined();
+            expect(await T.freshness.get(aTarget)).toBe('missing');
+            const aTs = await T.timestamps.get(aTarget);
+            expect(aTs?.modifiedAt).toBe(TS1);
+            expect(aTs?.createdAt).toBe(TS1);
+
+            // B is force-kept (target TS3 > host TS1)
+            expect(await T.values.get(bTarget)).toEqual({ value: 'B' });
+            // C is force-taken (host TS2 > target TS1)
+            expect(await T.values.get(cHost)).toEqual({ value: 'C host' });
+            expect(await T.values.get(cTarget)).toBeUndefined();
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('equal-version staleness propagates transitively through chain A→B→C', async () => {
+        // A → B → C chain. All have equal TS1 on both sides.
+        // Local all up-to-date, host A is potentially-outdated.
+        // After merge, all three must be potentially-outdated and
+        // validity must be internally consistent.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = nodeIdentifierFromString('310-abcdefghi');
+            const nodeB = nodeIdentifierFromString('311-abcdefghi');
+            const nodeC = nodeIdentifierFromString('312-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
+            const keyC = stringToNodeKeyString('{"head":"host_stale_C","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, { value: 'A' });
+            await writeNode(L, nodeB, TS1, { value: 'B' });
+            await writeNode(L, nodeC, TS1, { value: 'C' });
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, { value: 'A host' });
+            await H.freshness.put(nodeA, 'potentially-outdated');
+            await writeNode(H, nodeB, TS1, { value: 'B host' });
+            await writeNode(H, nodeC, TS1, { value: 'C host' });
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // All three must be potentially-outdated
+            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeC)).toBe('potentially-outdated');
+            // Timestamps preserved
+            expect((await T.timestamps.get(nodeA))?.modifiedAt).toBe(TS1);
+            expect((await T.timestamps.get(nodeB))?.modifiedAt).toBe(TS1);
+            expect((await T.timestamps.get(nodeC))?.modifiedAt).toBe(TS1);
+            // Values preserved (keep decision, equal timestamps)
+            expect(await T.values.get(nodeA)).toEqual({ value: 'A' });
+            expect(await T.values.get(nodeB)).toEqual({ value: 'B' });
+            expect(await T.values.get(nodeC)).toEqual({ value: 'C' });
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('equal-version staleness respects final decision when taint changes the winner', async () => {
+        // X → N. X is force-taken (host TS2 > target TS1).
+        // N has equal TS1, target stale (potentially-outdated), host up-to-date.
+        // N's initial decision is 'keep', but take-taint from X changes it to 'take'.
+        // The stale evidence from local must be preserved: final N must be
+        // potentially-outdated (host provenance with downgraded freshness).
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const customScheme = {
+                format: 1,
+                nodes: [
+                    { head: "sourceX", arity: 0, inputTemplates: [] },
+                    { head: "derivedN", arity: 0, inputTemplates: [{ head: "sourceX", args: [] }] },
+                ],
+            };
+            const schemeStr = JSON.stringify(customScheme);
+
+            const xTarget = nodeIdentifierFromString('320-abcdefghi');
+            const nTarget = nodeIdentifierFromString('321-abcdefghi');
+            const xHost = nodeIdentifierFromString('322-hostfpbb');
+            const nHost = nodeIdentifierFromString('323-hostfpbb');
+
+            const keyX = stringToNodeKeyString('{"head":"sourceX","args":[]}');
+            const keyN = stringToNodeKeyString('{"head":"derivedN","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await L.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            // X at TS1, N at TS1 stale
+            await writeNode(L, xTarget, TS1, { value: 'X local' });
+            await writeNode(L, nTarget, TS1, { value: 'N local' });
+            await L.freshness.put(nTarget, 'potentially-outdated');
+            await writeIdentifierLookup(L, [[xTarget, keyX], [nTarget, keyN]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            // X at TS2 (force-take), N at TS1 up-to-date
+            await writeNode(H, xHost, TS2, { value: 'X host' });
+            await writeNode(H, nHost, TS1, { value: 'N host' });
+            await H.valid.put(xHost, [nHost]);
+            await writeIdentifierLookup(H, [[xHost, keyX], [nHost, keyN]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // X is force-taken (host TS2 > target TS1)
+            expect(await T.values.get(xHost)).toEqual({ value: 'X host' });
+            expect(await T.freshness.get(xHost)).toBe('up-to-date');
+            // N is taken (taint changed from keep to take). Host N was up-to-date,
+            // but local N was stale at the same version. The stale evidence must
+            // be preserved: N must be potentially-outdated.
+            expect(await T.values.get(nHost)).toEqual({ value: 'N host' });
+            expect(await T.freshness.get(nHost)).toBe('potentially-outdated');
+            const nTs = await T.timestamps.get(nHost);
+            expect(nTs?.modifiedAt).toBe(TS1);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('equal-version staleness propagates transitively with reverse identifier order C→B→A', async () => {
+        // Same A→B→C chain as the forward test, but identifiers are assigned
+        // in reverse dependency order (C < B < A) so raw key iteration would
+        // process C first and miss B's pending downgrade. Topological iteration
+        // must still propagate freshness correctly.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            // Reverse identifiers: C=330 < B=331 < A=332 (lexicographic)
+            const nodeC = nodeIdentifierFromString('330-abcdefghi');
+            const nodeB = nodeIdentifierFromString('331-abcdefghi');
+            const nodeA = nodeIdentifierFromString('332-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
+            const keyC = stringToNodeKeyString('{"head":"host_stale_C","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS1, { value: 'A' });
+            await writeNode(L, nodeB, TS1, { value: 'B' });
+            await writeNode(L, nodeC, TS1, { value: 'C' });
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, { value: 'A host' });
+            await H.freshness.put(nodeA, 'potentially-outdated');
+            await writeNode(H, nodeB, TS1, { value: 'B host' });
+            await writeNode(H, nodeC, TS1, { value: 'C host' });
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeC)).toBe('potentially-outdated');
+            expect((await T.timestamps.get(nodeA))?.modifiedAt).toBe(TS1);
+            expect((await T.timestamps.get(nodeB))?.modifiedAt).toBe(TS1);
+            expect((await T.timestamps.get(nodeC))?.modifiedAt).toBe(TS1);
+            expect(await T.values.get(nodeA)).toEqual({ value: 'A' });
+            expect(await T.values.get(nodeB)).toEqual({ value: 'B' });
+            expect(await T.values.get(nodeC)).toEqual({ value: 'C' });
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('freshness-only repair switches replica when validity does not change', async () => {
+        // A → B chain. Both snapshots have identical timestamps and identifiers.
+        // A is potentially-outdated, B is incorrectly up-to-date with valid[A]=[B].
+        // No merge decisions change, no identifier reconciliation occurs.
+        // rebuildMergedValidity must repair B's freshness and the freshness
+        // change alone must trigger a replica cutover.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = nodeIdentifierFromString('340-abcdefghi');
+            const nodeB = nodeIdentifierFromString('341-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            // A is stale, B is incorrectly up-to-date with valid[A]=[B]
+            await writeNode(L, nodeA, TS1, { value: 'A' });
+            await L.freshness.put(nodeA, 'potentially-outdated');
+            await writeNode(L, nodeB, TS1, { value: 'B' });
+            await L.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            // Host has the same state (identical snapshots)
+            await writeNode(H, nodeA, TS1, { value: 'A' });
+            await H.freshness.put(nodeA, 'potentially-outdated');
+            await writeNode(H, nodeB, TS1, { value: 'B' });
+            await H.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
+
+            // Merge: all decisions are 'keep', no identifier reconciliation,
+            // no equal-version disagreement. But rebuildMergedValidity should
+            // repair B's freshness and report a change.
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+            expect((await T.timestamps.get(nodeA))?.modifiedAt).toBe(TS1);
+            expect((await T.timestamps.get(nodeB))?.modifiedAt).toBe(TS1);
+            expect(await T.values.get(nodeA)).toEqual({ value: 'A' });
+            expect(await T.values.get(nodeB)).toEqual({ value: 'B' });
         } finally {
             if (db) await db.close();
         }
