@@ -405,10 +405,10 @@ describe("Property 6 — Disk-first ordering: no optimistic volatile writes", ()
 });
 
 // ---------------------------------------------------------------------------
-// Property 7 — Failed parent does not undo committed dependency
+// Failed parent does not undo committed dependency
 // ---------------------------------------------------------------------------
 
-describe("Property 7 — Failed parent does not undo committed dependency", () => {
+describe("Failed parent does not undo committed dependency", () => {
     test("when outer computation fails, dependency data remains committed", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
@@ -446,10 +446,10 @@ describe("Property 7 — Failed parent does not undo committed dependency", () =
 });
 
 // ---------------------------------------------------------------------------
-// Property 9 — Independent dependency commits
+// Property 11 — Nested pulls submit independent batches
 // ---------------------------------------------------------------------------
 
-describe("Property 9 — Independent dependency commits", () => {
+describe("Property 11 — Nested pulls submit independent batches", () => {
     test("dependency and parent are both materialized after successful pull", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);

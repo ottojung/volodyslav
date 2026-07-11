@@ -145,15 +145,15 @@ lookup while no darkroom finalization is in progress.
    - flush the durable batch (LevelDB `batch` write);
    - publish the identifier overlay to the volatile committed lookup **only
      after** the disk flush succeeds.
-6. In the cleanup path, release any identifier reservations that were not
-   committed.
+6. In the cleanup path, release all identifier reservations owned by the
+   transaction, whether the transaction committed or failed.
 7. Release the per-node telescope mutex.
 8. Release the dome nighttime lock.
 
 The darkroom lock is per-replica, so commits to different replicas never
 contend. If a parent computor fails, successfully committed dependency pulls
-remain committed — their darkroom finalizations already completed before the
-parent's transaction body was entered.
+remain committed — their darkroom finalizations complete before the parent
+computor is invoked and before the parent transaction finalizes.
 
 Nested pulls (dependencies) share the same dome nighttime activity but acquire
 their own telescope mutex per concrete node and create their own Transaction
