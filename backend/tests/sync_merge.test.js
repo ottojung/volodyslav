@@ -3560,4 +3560,90 @@ describe('mergeHostIntoReplica', () => {
             if (db) await db.close();
         }
     });
+
+    test('equal-version with directly relowered node: value deleted, freshness missing, merge succeeds', async () => {
+        // Regression: the equal-version pass must not read stale committed state
+        // when a node's value was already queued for deletion by relowering.
+        // Layout: A depends on B and C.
+        // B: target TS3 > host TS1 → force-keep (uses target identifier)
+        // C: host TS2 > target TS1 → force-take (uses host identifier)
+        // A: equal TS1, target up-to-date, host potentially-outdated
+        // A inherits both keep-taint (via B) and take-taint (via C) → invalidate
+        // A's source input identifiers differ from final → directly relowered
+        // After the main loop A has queued value del + freshness=missing.
+        // The equal-version post-loop must not read the old committed value.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const customScheme = {
+                format: 1,
+                nodes: [
+                    { head: "depB", arity: 0, inputTemplates: [] },
+                    { head: "depC", arity: 0, inputTemplates: [] },
+                    { head: "combined", arity: 0, inputTemplates: [{ head: "depB", args: [] }, { head: "depC", args: [] }] },
+                ],
+            };
+            const schemeStr = JSON.stringify(customScheme);
+
+            const bTarget = nodeIdentifierFromString('301-abcdefghi');
+            const cTarget = nodeIdentifierFromString('302-abcdefghi');
+            const aTarget = nodeIdentifierFromString('303-abcdefghi');
+            const bHost = nodeIdentifierFromString('304-hostfpbb');
+            const cHost = nodeIdentifierFromString('305-hostfpbb');
+            const aHost = nodeIdentifierFromString('306-hostfpbb');
+
+            const keyB = stringToNodeKeyString('{"head":"depB","args":[]}');
+            const keyC = stringToNodeKeyString('{"head":"depC","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"combined","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await L.global.put(GRAPH_SCHEME_KEY, schemeStr);
+
+            // Target: B at TS3 (force-keep), C at TS1, A at TS1 up-to-date
+            await writeNode(L, bTarget, TS3, { value: 'B' });
+            await writeNode(L, cTarget, TS1, { value: 'C target' });
+            await writeNode(L, aTarget, TS1, { value: 'A' });
+            await writeIdentifierLookup(L, [
+                [bTarget, keyB], [cTarget, keyC], [aTarget, keyA],
+            ]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
+
+            // Host: B at TS1, C at TS2 (force-take), A at TS1 potentially-outdated
+            await writeNode(H, bHost, TS1, { value: 'B' });
+            await writeNode(H, cHost, TS2, { value: 'C host' });
+            await writeNode(H, aHost, TS1, { value: 'A' });
+            await H.freshness.put(aHost, 'potentially-outdated');
+            await writeIdentifierLookup(H, [
+                [bHost, keyB], [cHost, keyC], [aHost, keyA],
+            ]);
+
+            // Merge must succeed
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // A is directly relowered → value deleted, freshness missing
+            expect(await T.values.get(aTarget)).toBeUndefined();
+            expect(await T.freshness.get(aTarget)).toBe('missing');
+            const aTs = await T.timestamps.get(aTarget);
+            expect(aTs?.modifiedAt).toBe(TS1);
+            expect(aTs?.createdAt).toBe(TS1);
+
+            // B is force-kept (target TS3 > host TS1)
+            expect(await T.values.get(bTarget)).toEqual({ value: 'B' });
+            // C is force-taken (host TS2 > target TS1)
+            expect(await T.values.get(cHost)).toEqual({ value: 'C host' });
+            expect(await T.values.get(cTarget)).toBeUndefined();
+        } finally {
+            if (db) await db.close();
+        }
+    });
 });
