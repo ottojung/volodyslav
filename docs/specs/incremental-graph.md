@@ -502,12 +502,21 @@ interface IncrementalGraph {
 
 **REQ-IFACE-06 (getCreationTime):** `getCreationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance was first given a value. MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
 
-**REQ-IFACE-07 (getModificationTime):** `getModificationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance's value last changed. MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
+**REQ-IFACE-07 (getModificationTime):** `getModificationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance's stored semantic value last changed. MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
 
 **REQ-IFACE-08 (Timestamp Invariants):**
 * `getCreationTime(N, B) <= getModificationTime(N, B)` for any materialized node instance `N@B`.
 * `getCreationTime(N, B)` MUST NOT change once set.
-* `getModificationTime(N, B)` MUST only update when the computor returns a new value (not when it returns `Unchanged`).
+* `getModificationTime(N, B)` is a version timestamp for the stored semantic value. It changes only when the computor returns a new (changed) value. It MUST NOT change when:
+  * a node becomes `potentially-outdated` (invalidation);
+  * invalidation propagates to dependent nodes;
+  * validity flags are added, removed, transported, or rebuilt;
+  * a computor returns `Unchanged`;
+  * synchronization keeps or copies an existing value;
+  * identifier reconciliation occurs;
+  * dependency identifiers are relowered;
+  * a cached value is deleted because the old value is not valid for the final dependency structure;
+  * freshness changes between `up-to-date`, `potentially-outdated`, and `missing`.
 
 **REQ-IFACE-09 (MissingTimestampError):** Implementations MUST expose `makeMissingTimestampError(nodeKey)` factory and `isMissingTimestamp(value)` type guard. `MissingTimestampError` MUST have a stable `.name` property of `"MissingTimestampError"` and a `nodeKey: string` field identifying the node for which timestamps are missing.
 
