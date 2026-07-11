@@ -57,7 +57,7 @@ The implementation derives keys from functor-based factories.
 
 There is exactly one dome key:
 
-- `DOME_ACTIVITY_KEY` — a `makeUniqueFunctor` instance.
+- `DOME_ACTIVITY_KEY` — a zero-argument term key instantiated from `makeUniqueFunctor`.
 
 This key is acquired through `withModeMutex`. Three conditions are defined:
 
@@ -106,7 +106,7 @@ to observe state between commit finalizations.
 3. Run the invalidation logic inside the transaction body — this runs outside the
    darkroom lock, so concurrent invalidations can make progress.
 4. Acquire the per-replica darkroom lock only for transaction finalization:
-   flush the batch and publish identifier state.
+   finalize and flush any pending writes.
 5. Release the darkroom.
 6. Release the dome daytime lock.
 

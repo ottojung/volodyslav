@@ -99,6 +99,8 @@ which resource is involved.  Instantiate the term once, also at module scope.
 // backend/src/generators/incremental_graph/lock.js
 const { makeUniqueFunctor } = require("../../unique_functor");
 
+const DOME_ACTIVITY_KEY =
+    makeUniqueFunctor("incremental-graph-dome-activity").instantiate([]);
 const HOLIDAY_GATE_KEY = makeUniqueFunctor("incremental-graph-holiday-gate").instantiate([]);
 
 function holidayActivity(sleeper, procedure) {
