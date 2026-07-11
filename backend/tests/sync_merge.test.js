@@ -3023,14 +3023,15 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(appVersionStr);
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
+            // host_stale_A → host_stale_B chain.
             // A: target TS2 > host TS1 → keep (target value)
-            // B: target TS1 < host TS2 → take (host value)
-            // But B depends on A, and A is force-kept → B is both take-tainted and
-            // keep-tainted → invalidate. B's value comes from host (take).
+            // B: target TS1 < host TS2 → take (host value initially)
+            // B depends on A, A is force-kept → B is keep-tainted via A AND
+            // take-tainted via self → invalidate.
             const nodeA = nodeIdentifierFromString('201-abcdefghi');
             const nodeB = nodeIdentifierFromString('202-abcdefghi');
-            const keyA = stringToNodeKeyString('{"head":"A_unrelated","args":[]}');
-            const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
 
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, nodeA, TS2, { value: 'target A' });
@@ -3049,7 +3050,7 @@ describe('mergeHostIntoReplica', () => {
             // A is kept (target-newer) → modifiedAt = TS2
             const tsA = await T.timestamps.get(nodeA);
             expect(tsA?.modifiedAt).toBe(TS2);
-            // B is invalidated, initial=take → value from host, modifiedAt = TS2 (host B's)
+            // B is invalidated, initial=take → value from host, host's modifiedAt = TS2
             const tsB = await T.timestamps.get(nodeB);
             expect(tsB?.modifiedAt).toBe(TS2);
             expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
@@ -3070,31 +3071,35 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(appVersionStr);
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
-            // A is keep (target TS3 > host TS1), B is take (host TS2 > target absent).
-            // B's inputs use hostA, final uses targetA → directly relowered.
-            const targetA = nodeIdentifierFromString('203-abcdefghi');
-            const hostA = nodeIdentifierFromString('204-hostfpbb');
-            const hostB = nodeIdentifierFromString('205-hostfpbb');
-            const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
-            const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+            // a_counter_collision depends on c_counter_collision.
+            // Target has c_counter_collision Cₜ at TS3, no a_counter_collision.
+            // Host has c_counter_collision Cₕ at TS1 and a_counter_collision A at TS2.
+            // C is kept (target TS3 > host TS1), so A's source input (Cₕ) differs
+            // from final input (Cₜ) → directly relowered.
+            const targetC = nodeIdentifierFromString('203-abcdefghi');
+            const hostC = nodeIdentifierFromString('204-hostfpbb');
+            const hostA = nodeIdentifierFromString('205-hostfpbb');
+            const keyC = stringToNodeKeyString('{"head":"c_counter_collision","args":[]}');
+            const keyA = stringToNodeKeyString('{"head":"a_counter_collision","args":[]}');
 
             const L = db.schemaStorageForReplica('x');
-            await writeNode(L, targetA, TS3, { value: 'local A' });
-            await writeIdentifierLookup(L, [[targetA, keyA]]);
+            await writeNode(L, targetC, TS3, { value: 'target C' });
+            await writeIdentifierLookup(L, [[targetC, keyC]]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeGraphScheme(H);
-            await writeNode(H, hostA, TS1, { value: 'host A' });
-            await writeNode(H, hostB, TS2, { value: 'host B' });
-            await writeIdentifierLookup(H, [[hostA, keyA], [hostB, keyB]]);
+            await writeNode(H, hostC, TS1, { value: 'host C' });
+            await writeNode(H, hostA, TS2, { value: 'host A' });
+            await writeIdentifierLookup(H, [[hostC, keyC], [hostA, keyA]]);
 
             db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             const T = db.getSchemaStorage();
-            // B is directly relowered and deleted → modifiedAt still from source (host B = TS2)
-            const tsB = await T.timestamps.get(hostB);
-            expect(tsB?.modifiedAt).toBe(TS2);
-            expect(await T.freshness.get(hostB)).toBe('missing');
+            // A is directly relowered and its value deleted → modifiedAt still from
+            // source (host A = TS2), freshness 'missing'.
+            const tsA = await T.timestamps.get(hostA);
+            expect(tsA?.modifiedAt).toBe(TS2);
+            expect(await T.freshness.get(hostA)).toBe('missing');
         } finally {
             if (db) await db.close();
         }
@@ -3105,47 +3110,62 @@ describe('mergeHostIntoReplica', () => {
         let db;
         try {
             db = await getRootDatabase(capabilities);
-            await writeGraphScheme(db.schemaStorageForReplica('x'));
             const logger = makeLogger();
             const hostname = 'peer';
             const appVersionStr = db.version;
             await db.setGlobalVersion(appVersionStr);
             await db.setHostnameGlobal(hostname, 'version', appVersionStr);
 
-            // A → B chain. Both have TS1 in target.
-            // Host has X at TS2 (new), causing a merge with changes.
-            // B becomes potentially-outdated because its input A is not up-to-date
-            // (no validity proof transported, and inputs are not clean).
-            const nodeA = nodeIdentifierFromString('206-abcdefghi');
-            const nodeB = nodeIdentifierFromString('207-abcdefghi');
-            const nodeX = nodeIdentifierFromString('208-abcdefghi');
-            const keyA = stringToNodeKeyString('{"head":"A_precise","args":[]}');
-            const keyB = stringToNodeKeyString('{"head":"B_precise","args":[]}');
-            const keyX = stringToNodeKeyString('{"head":"X_unrelated","args":[]}');
+            // Custom scheme: root_A (no inputs) → mid_B (depends on root_A) → leaf_C (depends on mid_B)
+            const customScheme = {
+                format: 1,
+                nodes: [
+                    { head: "root_A", arity: 0, inputTemplates: [] },
+                    { head: "mid_B", arity: 0, inputTemplates: [{ head: "root_A", args: [] }] },
+                    { head: "leaf_C", arity: 0, inputTemplates: [{ head: "mid_B", args: [] }] },
+                ],
+            };
+            const schemeStr = JSON.stringify(customScheme);
 
             const L = db.schemaStorageForReplica('x');
-            await writeNode(L, nodeA, TS1, { value: 'A' });
-            await writeNode(L, nodeB, TS1, { value: 'B' });
-            await L.valid.put(nodeA, [nodeB]);
-            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+            await L.global.put(GRAPH_SCHEME_KEY, schemeStr);
+
+            const nodeA = nodeIdentifierFromString('206-abcdefghi');
+            const nodeB = nodeIdentifierFromString('207-abcdefghi');
+            const nodeC = nodeIdentifierFromString('208-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"root_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"mid_B","args":[]}');
+            const keyC = stringToNodeKeyString('{"head":"leaf_C","args":[]}');
+
+            // A: target TS3 > host TS1 → force-keep
+            await writeNode(L, nodeA, TS3, { value: 'A' });
+            // B: target TS1 < host TS2 → force-take. B depends on A (force-kept)
+            // → B is both keep-tainted via A and take-tainted via self → invalidate
+            await writeNode(L, nodeB, TS1, { value: 'B target' });
+            // C: depends on B. After applyNodeDecisions, B is potentially-outdated.
+            // C starts up-to-date but in validity reconstruction its input B
+            // is not up-to-date → C gets downgraded to potentially-outdated.
+            // During this downgrade, modifiedAt must not be rewritten.
+            await writeNode(L, nodeC, TS1, { value: 'C' });
+            await L.valid.put(nodeA, [nodeC]);
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await writeGraphScheme(H);
+            await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             await writeNode(H, nodeA, TS1, { value: 'A host' });
-            await writeNode(H, nodeB, TS1, { value: 'B host' });
-            await writeNode(H, nodeX, TS2, { value: 'X' });
-            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB], [nodeX, keyX]]);
+            await writeNode(H, nodeB, TS2, { value: 'B host' });
+            await writeNode(H, nodeC, TS1, { value: 'C host' });
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
 
             db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             const T = db.getSchemaStorage();
-            const tsB = await T.timestamps.get(nodeB);
+            const tsC = await T.timestamps.get(nodeC);
             // modifiedAt must remain TS1, not advanced to some merge time
-            expect(tsB?.modifiedAt).toBe(TS1);
-            // B might be potentially-outdated after validity rebuild
-            // (because no validity transport and inputs not provably up-to-date)
-            const freshnessB = await T.freshness.get(nodeB);
-            expect(freshnessB).toBe('potentially-outdated');
+            expect(tsC?.modifiedAt).toBe(TS1);
+            // C is potentially-outdated because its input B is not up-to-date
+            const freshnessC = await T.freshness.get(nodeC);
+            expect(freshnessC).toBe('potentially-outdated');
         } finally {
             if (db) await db.close();
         }
