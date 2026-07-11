@@ -341,7 +341,7 @@ describe("IncrementalGraph concurrency", () => {
                 expect(result.value).toBe(10);
             }
 
-            // PULL_NODE_KEY serializes same-node pulls: only the first computes,
+            // The telescope mutex serializes same-node pulls: only the first computes,
             // subsequent ones hit the cache.
             expect(computeCount).toBe(1);
         });
@@ -804,7 +804,7 @@ describe("IncrementalGraph concurrency", () => {
                 graph.pull("source"),
             ]);
 
-            // PULL_NODE_KEY serializes same-node pulls: only one computation
+            // The telescope mutex serializes same-node pulls: only one computation
             // runs at a time; subsequent pulls hit the cache.
             expect(maxActiveComputations).toBe(1);
         });
@@ -852,7 +852,7 @@ describe("IncrementalGraph concurrency", () => {
             await Promise.all([pull1, pull2]);
         });
 
-        test("fire-and-forget callback pull reacquires computed-state mutex", async () => {
+        test("fire-and-forget callback pull still respects telescope mutex", async () => {
             const capabilities = getMockedRootCapabilities();
             const db = new InMemoryDatabase();
             const releaseSlow = makeDeferred();
@@ -896,7 +896,7 @@ describe("IncrementalGraph concurrency", () => {
             const slowPull = graph.pull("slow");
 
             await new Promise((resolve) => setTimeout(resolve, 30));
-            // PULL_NODE_KEY serializes same-node pulls: only the first caller
+            // The telescope mutex serializes same-node pulls: only the first caller
             // computes "slow"; subsequent callers hit the cache.
             expect(maxActiveSlowComputations).toBe(1);
 

@@ -900,7 +900,7 @@ describe('generators/database', () => {
                 await heldSectionEnteredPromise;
 
                 // Trigger replica switch under holidayActivity — blocked by
-                // held nighttimeActivity (same GRAPH_ACTIVITY_KEY).
+                // held nighttimeActivity (same DOME_ACTIVITY_KEY).
                 let switchCompleted = false;
                 const switchPromise = holidayActivity(
                     capabilities.sleeper,

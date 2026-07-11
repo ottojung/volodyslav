@@ -9,11 +9,11 @@
  *  4. `commitTransactionLookup` correctly merges overlay into base, and a
  *     subsequent transaction built on the updated base sees all prior entries.
  *
- * The mutex serialization guarantee (all writes happen inside
- * `withComputedStateMutex`) is documented in graph_state.js and is
- * structurally enforced — it is not re-tested here because it requires
- * an integration harness.  The unit tests below verify the algebraic
- * properties that make the serialization correct regardless of scheduling.
+ * The darkroom serialization guarantee (all finalization steps run inside
+ * `darkroomActivity`) is structurally enforced in graph_state.js — it is
+ * not re-tested here because it requires an integration harness. The unit
+ * tests below verify the algebraic properties that make the serialization
+ * correct regardless of scheduling.
  */
 
 const {

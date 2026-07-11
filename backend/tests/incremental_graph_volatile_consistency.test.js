@@ -405,11 +405,11 @@ describe("Property 6 — Disk-first ordering: no optimistic volatile writes", ()
 });
 
 // ---------------------------------------------------------------------------
-// Property 7 — Rollback on failed commit (all-or-nothing atomicity)
+// Failed parent does not undo committed dependency
 // ---------------------------------------------------------------------------
 
-describe("Property 7 — Rollback on failed commit", () => {
-    test("when outer computation fails, neither outer nor inner node data is committed", async () => {
+describe("Failed parent does not undo committed dependency", () => {
+    test("when outer computation fails, dependency data remains committed", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         const graph = await createIncrementalGraph(capabilities, db, [
@@ -446,11 +446,11 @@ describe("Property 7 — Rollback on failed commit", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Property 9 — Nested pull shares allocation context (all-or-nothing atomicity)
+// Property 11 — Nested pulls submit independent batches
 // ---------------------------------------------------------------------------
 
-describe("Property 9 — Nested pull shares allocation context", () => {
-    test("inner dependency data is committed atomically with outer node data", async () => {
+describe("Property 11 — Nested pulls submit independent batches", () => {
+    test("dependency and parent are both materialized after successful pull", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         let innerComputations = 0;
@@ -484,14 +484,15 @@ describe("Property 9 — Nested pull shares allocation context", () => {
         expect(await graph.getFreshness("inner")).toBe("up-to-date");
         expect(await graph.getFreshness("outer")).toBe("up-to-date");
 
-        // Pulling outer again does not recompute inner (both cached in same committed batch).
+        // Pulling outer again does not recompute inner (both are already up-to-date;
+        // each was committed in its own separate batch).
         await graph.pull("outer");
         expect(innerComputations).toBe(1);
 
         await db.close();
     });
 
-    test("inner and outer writes plus identifiers update are flushed in one batch", async () => {
+    test("dependency and parent writes are flushed in separate batches", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         const schemaStorage = db.getSchemaStorage();
@@ -588,7 +589,7 @@ describe("Property 9 — Nested pull shares allocation context", () => {
         }
     });
 
-    test("when outer pull fails, inner dependency data is also rolled back", async () => {
+    test("when outer pull fails, dependency data remains committed", async () => {
         const capabilities = getTestCapabilities();
         const db = await getRootDatabase(capabilities);
         let innerComputations = 0;

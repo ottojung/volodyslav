@@ -99,10 +99,18 @@ which resource is involved.  Instantiate the term once, also at module scope.
 // backend/src/generators/incremental_graph/lock.js
 const { makeUniqueFunctor } = require("../../unique_functor");
 
-const MUTEX_KEY = makeUniqueFunctor("incremental-graph-operations").instantiate([]);
+const DOME_ACTIVITY_KEY =
+    makeUniqueFunctor("incremental-graph-dome-activity").instantiate([]);
+const HOLIDAY_GATE_KEY = makeUniqueFunctor("incremental-graph-holiday-gate").instantiate([]);
 
-function withMutex(sleeper, procedure) {
-    return sleeper.withMutex(MUTEX_KEY, procedure);
+function holidayActivity(sleeper, procedure) {
+    return sleeper.withMutex(HOLIDAY_GATE_KEY, () =>
+        sleeper.withModeMutex(
+            DOME_ACTIVITY_KEY,
+            "holiday",
+            procedure
+        )
+    );
 }
 ```
 
@@ -124,28 +132,28 @@ The incremental-graph subsystem uses two cooperating primitives to implement
 three access levels:
 
 ```
-withHolidayMode (database open / migration / synchronize / DB reset)
-  ├─ acquires MUTEX_KEY       → serialises concurrent exclusive operations
-  └─ acquires GRAPH_ACTIVITY_KEY("holiday") → blocks nighttime and daytime
+holidayActivity (database open / migration / synchronize / DB reset)
+  ├─ acquires HOLIDAY_GATE_KEY → serialises concurrent exclusive operations
+  └─ acquires DOME_ACTIVITY_KEY("holiday") → blocks nighttime and daytime
 
-withNighttimeMode (pull)
-  └─ acquires GRAPH_ACTIVITY_KEY("nighttime") → concurrent nighttime allowed;
+nighttimeActivity (pull)
+  └─ acquires DOME_ACTIVITY_KEY("nighttime") → concurrent nighttime allowed;
                                                blocks daytime and holiday
 
-withDaytimeMode (invalidate / inspection read)
-  └─ acquires GRAPH_ACTIVITY_KEY("daytime") → concurrent daytime allowed;
-                                               blocks nighttime and holiday
+daytimeActivity (invalidate / inspection read)
+  └─ acquires DOME_ACTIVITY_KEY("daytime") → concurrent daytime allowed;
+                                              blocks nighttime and holiday
 ```
 
-**Acquisition order:** `MUTEX_KEY` is always acquired before
-`GRAPH_ACTIVITY_KEY`.  Nighttime and daytime operations never acquire `MUTEX_KEY`,
+**Acquisition order:** `HOLIDAY_GATE_KEY` is always acquired before
+`DOME_ACTIVITY_KEY`.  Nighttime and daytime operations never acquire `HOLIDAY_GATE_KEY`,
 so the ordering is acyclic and deadlock-free.
 
 **Exclusion matrix:**
 
 | | holiday | nighttime | daytime |
 |---|---|---|---|
-| **holiday** | serialised (via MUTEX_KEY) | ✗ exclusive | ✗ exclusive |
+| **holiday** | serialised (via HOLIDAY_GATE_KEY) | ✗ exclusive | ✗ exclusive |
 | **nighttime** | ✗ exclusive | ✓ concurrent | ✗ exclusive |
 | **daytime** | ✗ exclusive | ✗ exclusive | ✓ concurrent |
 
