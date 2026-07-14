@@ -79,6 +79,18 @@ REQ-JM-09: The `delete` journal entry emitted by `storage.delete`, along with an
 
 ---
 
+## Garden concurrency for migration and cutover
+
+Migration and replica cutover require exclusive access to both graph activity and the garden.
+
+REQ-JM-10: Migration and replica cutover MUST acquire `holidayActivity` (graph activity exclusion) first, then `closeGarden` (garden exclusion), before performing any durable mutations. This follows the lock-ordering rule: acquire graph activity before garden access.
+
+REQ-JM-11: For durable replica mutations during migration or cutover, the operation acquires darkroom inside the `closeGarden` scope, after both holiday and garden access have been acquired.
+
+REQ-JM-12: Because `possibleMaybeChanges` holds `enterGarden` across replica selection and traversal, cutover waits for existing journal readers to leave. Once `closeGarden` is queued, no new reader can select the old replica during cutover.
+
+---
+
 ## Out of scope
 
 The interaction of stored journal tokens with schema-boundary invalidation is deferred to a future specification. This PR does not specify token validity across migration boundaries.

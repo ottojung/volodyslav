@@ -202,6 +202,40 @@ REQ-JT-11: `last_journal_index` MUST NOT decrease. A fresh replica starts with `
 
 REQ-JT-12: After synchronization, `last_journal_index` MUST be at least the greatest index that is present or known-absent due to synchronized journal state. A known-absent index still contributes to the watermark so that future local allocations do not reuse or overwrite an index that another synchronized host has already allocated, compacted, or poisoned.
 
+### Published-prefix invariant
+
+The garden design works only if ordinary appends obey a strong finalized-prefix invariant.
+
+REQ-JT-13: For a replica whose committed watermark is `last_journal_index = H`, all positions at or below `H` are finalized with respect to ordinary append-only operations.
+
+For every `i ≤ H`, the position is one of:
+
+- a committed journal entry whose contents ordinary appenders will never change; or
+- an established absent gap that ordinary appenders will never fill.
+
+REQ-JT-14: Ordinary append-only operations MUST NOT:
+
+- insert at an index `≤ H`;
+- fill an old gap at an index `≤ H`;
+- replace an entry at an index `≤ H`;
+- delete an entry at an index `≤ H`;
+- change the contents of an entry at an index `≤ H`.
+
+Ordinary appends may only allocate fresh indices strictly greater than the previously committed watermark.
+
+REQ-JT-15: Structural operations (compaction, structural sync, migration journal mutation) MAY change established positions, but only while holding `closeGarden`.
+
+### Atomic publication
+
+REQ-JT-16: The new journal entry and the advancement of `last_journal_index` MUST be committed in the same atomic durable batch. Therefore a reader of `last_journal_index` observes either:
+
+- the state before the append; or
+- the state after both the entry and its watermark have committed.
+
+It must never observe a watermark that exposes a not-yet-committed ordinary append.
+
+REQ-JT-17: Gaps caused by failed allocations remain allowed, but once a later watermark publishes a prefix containing such a gap, ordinary appenders MUST NEVER fill that gap later.
+
 ---
 
 ## PrivatePossibleNodeChange (internal)
@@ -331,9 +365,9 @@ class PossibleNodeChangeClass {
  */
 ```
 
-REQ-JT-13: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. Private journal fields (`id`, `key`, `creator`, `index`) are not part of the public nominal type. Callers MUST NOT depend on fields beyond those listed in the public `PossibleNodeChange` type.
+REQ-JT-18: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. Private journal fields (`id`, `key`, `creator`, `index`) are not part of the public nominal type. Callers MUST NOT depend on fields beyond those listed in the public `PossibleNodeChange` type.
 
-REQ-JT-14: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
+REQ-JT-19: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
 
 ---
 

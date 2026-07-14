@@ -112,7 +112,7 @@ REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to
 
 ### Correctness requirement
 
-REQ-JA-CONC-01: `possibleMaybeChanges({ since, to })` MUST observe one consistent journal state for one stable replica. There must exist a linearization point during the call such that the returned array is exactly:
+REQ-JA-CONC-01: `possibleMaybeChanges({ since, to })` MUST observe a consistent journal state through shared garden access. There must exist a linearization point during the call such that the returned array is exactly:
 
 - all surviving journal entries in that journal state;
 - whose journal index is strictly greater than the position referenced by `since`;
@@ -122,34 +122,21 @@ REQ-JA-CONC-01: `possibleMaybeChanges({ since, to })` MUST observe one consisten
 
 No surviving journal index in the observed span is returned more than once, and no surviving matching journal index in the observed span is skipped.
 
-### Darkroom serialization
+### Shared garden access
 
-REQ-JA-CONC-02: `possibleMaybeChanges` acquires the active replica's darkroom lock while reading journal state. The darkroom lock serializes the journal read with all durable journal mutations, including:
+REQ-JA-CONC-02: `possibleMaybeChanges` MUST call `enterGarden` to acquire shared garden access before selecting the active replica. The query holds `enterGarden` for the entire scan.
 
-- append journal entry;
-- delete journal entry;
-- compact journal entry;
-- poison journal index;
-- reappend journal entry;
-- update `last_journal_index`;
-- migration journal mutation;
-- sync journal mutation.
+REQ-JA-CONC-03: The linearization point is the read of `last_journal_index = H` after entering the garden. At that point:
 
-This serialization ensures that the journal state observed by `possibleMaybeChanges` is consistent: no journal mutation can be partially applied while the scan is in progress.
-
-### Replica cutover serialization
-
-REQ-JA-CONC-03: Replica cutover MUST be serialized with journal-state acquisition for `possibleMaybeChanges`. `possibleMaybeChanges` acquires the replica lifecycle lock while selecting the active replica and acquiring that replica's darkroom lock. Replica cutover acquires the same lifecycle lock while switching active replicas. This ensures that `possibleMaybeChanges` reads from one stable replica — the active replica is not replaced between selection and darkroom acquisition.
-
-### What is not blocked
-
-REQ-JA-CONC-04: `possibleMaybeChanges` does not acquire the graph activity mode lock and does not globally block ordinary daytime or nighttime graph activity. The darkroom lock serializes only the journal scan with durable journal-writing sections; it does not prevent concurrent graph reads, invalidations, or pulls on different replicas.
+- Structural changes (compaction, structural sync, migration journal mutation) are excluded by shared garden access.
+- Every position at or below `H` is finalized with respect to ordinary append-only operations (see the published-prefix invariant in `incremental-graph-journal-types.md`).
+- Later ordinary appends receive indices greater than `H` and are outside this query.
 
 ### Journal state coverage
 
 The consistent journal state covers journal-relevant state only:
 
-- active replica identity;
+- active replica identity (stable because garden access excludes replica cutover);
 - `last_journal_index`;
 - `rendered/r/journal/<index>` entries and absences.
 
@@ -163,3 +150,11 @@ It does not need to cover:
 - ordinary inspection reads.
 
 Journal entries are committed atomically with their associated graph-state mutations, so the journal query only needs a consistent journal state — not a consistent state of the entire graph database.
+
+### What is not blocked
+
+REQ-JA-CONC-04: `possibleMaybeChanges` does not acquire the graph activity mode lock or the darkroom lock. Ordinary daytime and nighttime graph operations, including ordinary append-only journal growth, may overlap with journal queries.
+
+### Replica cutover serialization
+
+REQ-JA-CONC-05: Replica cutover is serialized with journal queries through the garden. Replica cutover acquires `holidayActivity` and then `closeGarden`. Because `possibleMaybeChanges` holds `enterGarden` across replica selection and traversal, cutover waits for existing journal readers to leave. Once `closeGarden` is queued, new readers do not overtake it. No new reader can select the old replica during cutover.

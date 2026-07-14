@@ -125,17 +125,36 @@ The rules for compaction, retained information, deleted entries, and maintenance
 docs/specs/incremental-graph-journal-compaction.md
 ```
 
-## Concurrency
+## Garden concurrency domain
 
-`possibleMaybeChanges({ since, to })` MUST observe one consistent journal state for one stable replica. The returned array reflects that journal state: all surviving matching journal entries strictly after `since`, ordered by ascending `JournalIndex`, projected to `PossibleNodeChange`.
+`possibleMaybeChanges` operates under a separate shared/exclusive **garden** concurrency domain, not the graph activity mode lock or the darkroom lock.
 
-This is achieved through serialization with durable journal mutations and replica cutover. `possibleMaybeChanges` acquires the active replica's darkroom lock while reading journal state. The darkroom lock serializes the journal read with all durable journal-writing operations (append, delete, compact, poison, reappend, watermark update, migration journal mutation, and sync journal mutation).
+The journal is a garden separate from the main dome. Many visitors may enter the garden concurrently. Ordinary append-only journal growth may continue while visitors are present. Structural work that removes, fills, replaces, poisons, or reorganizes established journal positions requires closing the garden. A holiday closes both the dome and the garden.
 
-Replica cutover is serialized with journal-state acquisition: `possibleMaybeChanges` acquires the replica lifecycle lock while selecting the active replica and acquiring that replica's darkroom lock; replica cutover acquires the same lifecycle lock while switching active replicas.
+Two scoped helpers are defined:
 
-`possibleMaybeChanges` does not block ordinary daytime/nighttime graph activity globally — only durable journal-writing sections are serialized with the journal scan.
+```
+enterGarden(procedure)   — shared access for journal readers
+closeGarden(procedure)   — exclusive access for structural maintenance
+```
 
-The full concurrency specification is in `docs/specs/incremental-graph-journal-api.md`.
+### `possibleMaybeChanges`
+
+`possibleMaybeChanges({ since, to })` MUST call `enterGarden` to acquire shared garden access before selecting the active replica. The linearization point is the read of `last_journal_index = H` after entering the garden. At that point, structural changes are excluded by shared garden access, and every position at or below `H` is finalized with respect to ordinary append-only operations. The returned array reflects that fixed upper bound: all surviving matching journal entries strictly after `since` and no greater than `H`, ordered by ascending `JournalIndex`, projected to `PossibleNodeChange`.
+
+### Structural operations
+
+Compaction, structural synchronization, and migration journal mutation MUST call `closeGarden` to acquire exclusive garden access. These operations hold `closeGarden` for their complete analysis and durable mutation, acquiring darkroom only for the final atomic batch commit inside the garden closure.
+
+### Replica cutover
+
+A holiday closes both the dome and the garden. Replica cutover acquires `holidayActivity` (graph activity exclusion) and then `closeGarden` (garden exclusion) before performing the cutover. This prevents any new journal reader from selecting the old replica.
+
+### Compatibility
+
+`possibleMaybeChanges` does not block ordinary daytime/nighttime graph activity globally. Journal readers coexist with daytime activity, nighttime activity, and ordinary append-only journal growth.
+
+The full concurrency specification is in `docs/specs/incremental-graph-journal-api.md` and `docs/specs/incremental-graph-locking-design.md`.
 
 ## Related specifications
 
@@ -151,6 +170,7 @@ docs/specs/incremental-graph-journal-emission.md
 docs/specs/incremental-graph-journal-sync.md
 docs/specs/incremental-graph-journal-migrations.md
 docs/specs/incremental-graph-journal-compaction.md
+docs/specs/incremental-graph-locking-design.md
 ```
 
 Together, these documents define the role of the journal, its public API, its storage behavior, and its interactions with the rest of IncrementalGraph.

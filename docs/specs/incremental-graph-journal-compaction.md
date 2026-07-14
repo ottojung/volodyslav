@@ -12,6 +12,28 @@ Compaction is a maintenance operation. It reduces journal storage size by removi
 
 ---
 
+## Concurrency: garden and darkroom coordination
+
+Compaction structurally mutates established journal positions. It must close the garden, acquire a fixed compaction bound, perform analysis and deletion determination under exclusive garden access, and acquire darkroom only for the atomic durable batch.
+
+### Protocol
+
+REQ-JC-CONC-01: Compaction MUST call `closeGarden` before selecting the active replica. `closeGarden` is held for the entire analysis and durable mutation, not just the final commit.
+
+REQ-JC-CONC-02: After acquiring `closeGarden`, compaction reads `last_journal_index = H` from the selected replica, establishing a fixed compaction bound.
+
+REQ-JC-CONC-03: Compaction determines deletions only among positions `≤ H`. It MUST NOT modify entries appended after `H`.
+
+REQ-JC-CONC-04: For the atomic durable deletion batch, compaction acquires darkroom inside `closeGarden`.
+
+REQ-JC-CONC-05: Compaction MUST NOT decrease or overwrite a concurrently advanced `last_journal_index`.
+
+REQ-JC-CONC-06: Ordinary append-only journal growth MAY continue while the garden is closed. Those appends use indices greater than `H` and are outside the compacted prefix.
+
+REQ-JC-CONC-07: After the durable batch commits and darkroom is released, compaction reopens the garden.
+
+---
+
 ## Compaction rules
 
 ### Index preservation

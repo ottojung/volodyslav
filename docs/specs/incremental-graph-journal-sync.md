@@ -110,19 +110,34 @@ This rule avoids the risk that choosing one authoritative entry to remain at the
 
 REQ-JS-14: Gaps produced by poisoned indices follow REQ-JC-04 (sparse storage is tolerated).
 
+### Garden concurrency for structural sync
+
+REQ-JS-15: Sync operations that make structural changes to established journal positions MUST call `closeGarden`. Structural changes include:
+
+- poisoning an existing index;
+- deleting either conflicting entry at an existing index;
+- filling a previously absent established index;
+- replacing or rewriting an established entry;
+- applying a remote compaction set locally;
+- performing any other established-position reconciliation.
+
+The structural sync phase MUST hold `closeGarden` through its analysis and atomic durable mutation. The durable batch still uses darkroom inside the garden closure.
+
+REQ-JS-16: A purely append-only sync action that writes only fresh local indices MAY proceed without garden access. Fresh reappended entries MUST be allocated from the then-current watermark under the normal durable commit serialization. Do not assume that a previously captured `H + 1` remains available while ordinary appenders continue.
+
 ### Sync order
 
-REQ-JS-15: Sync SHOULD process remote journal entries in ascending `JournalIndex` order for deterministic traversal. `JournalIndex` order is not a global causal order across hosts. Divergent same-index entries are handled by the poisoned-index rule (REQ-JS-13).
+REQ-JS-17: Sync SHOULD process remote journal entries in ascending `JournalIndex` order for deterministic traversal. `JournalIndex` order is not a global causal order across hosts. Divergent same-index entries are handled by the poisoned-index rule (REQ-JS-13).
 
 ### Remote compaction
 
-REQ-JS-16: During sync, a host MAY transmit the set of `JournalIndex` values it has compacted away. The receiving host MAY then compact the corresponding entries from its own journal storage, provided doing so satisfies the compaction rules in `incremental-graph-journal-compaction.md`.
+REQ-JS-18: During sync, a host MAY transmit the set of `JournalIndex` values it has compacted away. The receiving host MAY then compact the corresponding entries from its own journal storage, provided doing so satisfies the compaction rules in `incremental-graph-journal-compaction.md`.
 
 ---
 
 ## Eventual consistency
 
-REQ-JS-17: After all hosts have completed synchronization and no further graph mutations occur, the following must hold:
+REQ-JS-19: After all hosts have completed synchronization and no further graph mutations occur, the following must hold:
 
 1. **Graph state converges**: For every node key, all hosts agree on the node's value (or absence).
 2. **Physical journal converges**: Per REQ-JS-12, all hosts agree on each index's state (same entry or absent).
@@ -132,7 +147,7 @@ REQ-JS-17: After all hosts have completed synchronization and no further graph m
 
 ## Host identity and journal consumers
 
-REQ-JS-18: Callers of `graph.possibleMaybeChanges` MUST NOT be required to understand or inspect host identities (`Hostname` values) or raw journal indices (`JournalIndex` values). Host identity is a journal-internal concern used only during synchronization.
+REQ-JS-20: Callers of `graph.possibleMaybeChanges` MUST NOT be required to understand or inspect host identities (`Hostname` values) or raw journal indices (`JournalIndex` values). Host identity is a journal-internal concern used only during synchronization.
 
 The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalIndex` from its public fields. Consumers see only `nodeName`, `bindings`, `action`, and `time`.
 
@@ -142,6 +157,6 @@ The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalInde
 
 Sync operates on the journal storage that exists at sync time. Compaction may have removed entries before sync.
 
-REQ-JS-19: Sync uses only surviving journal entries for conflict comparison. Absent journal entries are treated as "no journal evidence" — sync MUST NOT fall back to the `timestamps` sublevel as a replacement for missing journal entries. If no journal entry exists for a node key, sync uses its remaining available evidence (e.g., the fact of materialization and the node's identifier allocation) for conflict-resolution decisions according to the rules in this document.
+REQ-JS-21: Sync uses only surviving journal entries for conflict comparison. Absent journal entries are treated as "no journal evidence" — sync MUST NOT fall back to the `timestamps` sublevel as a replacement for missing journal entries. If no journal entry exists for a node key, sync uses its remaining available evidence (e.g., the fact of materialization and the node's identifier allocation) for conflict-resolution decisions according to the rules in this document.
 
-REQ-JS-20: Compaction MUST NOT remove the only surviving `add` or `edit` entry for a materialized node (see REQ-JC-07). This ensures sync always has at least one journal-backed timestamp per materialized node for conflict comparison. If compaction adheres to this rule, the "no journal evidence" case in REQ-JS-19 can only occur for nodes that were deleted or dematerialized on all synchronized hosts before compaction.
+REQ-JS-22: Compaction MUST NOT remove the only surviving `add` or `edit` entry for a materialized node (see REQ-JC-07). This ensures sync always has at least one journal-backed timestamp per materialized node for conflict comparison. If compaction adheres to this rule, the "no journal evidence" case in REQ-JS-21 can only occur for nodes that were deleted or dematerialized on all synchronized hosts before compaction.
