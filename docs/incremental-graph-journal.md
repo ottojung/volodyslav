@@ -105,7 +105,7 @@ docs/specs/incremental-graph-journal-sync.md
 
 Migrations can transform graph storage in ways that affect journal state.
 
-Some migration actions may preserve journal history. Some may create new journal changes. Others may remove or rewrite journal information associated with deleted or transformed nodes.
+Some migration actions may preserve journal history. Some may create new journal changes. Others may delete journal information associated with deleted or transformed nodes.
 
 The interaction between migration storage actions and journal state is specified in:
 

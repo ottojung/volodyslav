@@ -225,7 +225,15 @@ REQ-JT-14: Ordinary append-only operations MUST NOT:
 
 Ordinary appends may only allocate fresh indices strictly greater than the previously committed watermark.
 
-REQ-JT-15: Structural operations (compaction, structural sync, migration journal mutation) MAY change established positions, but only while holding `closeGarden`.
+REQ-JT-15: Structural operations (compaction, structural sync, migration journal mutation) MAY change established positions, but only while holding `closeGarden`. The allowed changes are:
+- transition an established entry to absence (delete or poison).
+
+The following changes are prohibited even under `closeGarden`:
+- fill an established absence (change absent → present);
+- replace an established entry with a different entry (change one entry → another);
+- rewrite or reinterpret an established entry's content.
+
+All new journal evidence MUST be appended at fresh indices strictly greater than the current committed watermark. This guarantees that cursors that have already scanned past an index never later discover a change behind them.
 
 ### Atomic publication
 
