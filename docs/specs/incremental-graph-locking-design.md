@@ -174,20 +174,24 @@ No per-node mutex is needed.
 1. Acquire `nighttimeActivity(...)` (internally `withModeMutex(GRAPH_ACTIVITY_KEY, "nighttime", ...)`).
 2. Acquire `telescopeActivity(nodeKeyString, ...)` (internally
    `withMutex(PULL_NODE_KEY(nodeKeyString), ...)`).
-3. Open a transaction (acquires `darkroomActivity` for the active replica).
-4. Pull dependencies and compute/write back the node value while holding
-    the graph-activity mode lock, the per-node mutex, and the darkroom lock.
-5. Flush the batch and release the darkroom lock.
-6. Release the per-node mutex.
-7. Release the graph-activity mode lock.
+3. Open/build the transaction without darkroom. Prepare unindexed journal entries.
+4. Pull dependencies and compute the pending graph changes (values, freshness,
+   journal entries) without holding the darkroom lock. The graph-activity mode
+   lock and per-node mutex remain held throughout.
+5. Acquire `darkroomActivity` for the active replica.
+6. Allocate journal indices from the committed watermark, add the indexed
+   entries and new watermark to the batch, and flush atomically.
+7. Publish volatile committed state and release darkroom.
+8. Release the per-node mutex.
+9. Release the graph-activity mode lock.
 
 The darkroom lock is per-replica, so commits to different replicas never
 contend. Nested pulls (dependencies) reuse the same graph-activity mode
 ("nighttime") but acquire their own per-node mutex for each dependency node.
 Each nested pull creates its own Transaction (acquiring its own darkroom
-lock) and submits its batch independently. This matches the volatile-
-consistency spec: every call to pullNode is structurally identical,
-whether top-level or nested.
+lock only during finalization) and submits its batch independently. This
+matches the volatile-consistency spec: every call to pullNode is structurally
+identical, whether top-level or nested.
 
 ### `possibleMaybeChanges({ since, to })`
 

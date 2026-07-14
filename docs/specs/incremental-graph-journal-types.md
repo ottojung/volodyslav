@@ -190,15 +190,17 @@ function unsafeNumberToJournalIndex(value)
 function journalIndexToNumber(index)
 ```
 
-### Journal index storage
+### Journal index allocation and storage
 
-The next journal index to allocate is maintained in volatile state (analogous to the `_nextNodeIndex` pattern in identifier allocation). The last committed journal index watermark is stored in global metadata:
+JournalIndex allocation happens during darkroom finalization, atomically with the durable commit. A transaction prepares unindexed journal entries during its unlocked body. When it enters darkroom, it allocates a fresh contiguous range strictly above the current committed watermark, adds those indexed entries and the new watermark to the same batch, and commits them atomically.
+
+The last committed journal index watermark is stored in global metadata:
 
 ```
 rendered/r/global/last_journal_index
 ```
 
-REQ-JT-11: `last_journal_index` MUST NOT decrease. A fresh replica starts with `last_journal_index = 0`. The first committed journal entry uses index `1`, mirroring the `last_node_index` convention.
+REQ-JT-11: `last_journal_index` MUST NOT decrease. A fresh replica starts with `last_journal_index = 0`. The first committed journal entry uses index `1`, mirroring the `last_node_index` convention. The volatile next-index counter is updated only after a successful durable flush, never speculatively.
 
 REQ-JT-12: After synchronization, `last_journal_index` MUST be at least the greatest index that is present or known-absent due to synchronized journal state. A known-absent index still contributes to the watermark so that future local allocations do not reuse or overwrite an index that another synchronized host has already allocated, compacted, or poisoned.
 
@@ -234,7 +236,7 @@ REQ-JT-16: The new journal entry and the advancement of `last_journal_index` MUS
 
 It must never observe a watermark that exposes a not-yet-committed ordinary append.
 
-REQ-JT-17: Gaps caused by failed allocations remain allowed, but once a later watermark publishes a prefix containing such a gap, ordinary appenders MUST NEVER fill that gap later.
+REQ-JT-17: Gaps in the journal index sequence are allowed. They may be caused by compaction, sync poisoning, or structural maintenance. Gaps caused by failed transactions are NOT possible under the commit-time allocation model, because index allocation occurs only during the durable commit, which either succeeds or fails atomically. Once a later watermark publishes a prefix containing a gap, ordinary appenders MUST NEVER fill that gap.
 
 ---
 

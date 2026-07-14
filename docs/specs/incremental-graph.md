@@ -673,7 +673,7 @@ Formally: For any concurrent execution with operations `{Op₁, Op₂, ..., Op�
 
 ### 5.1 Locking Model
 
-The implementation uses a two-level locking scheme based on *mode mutexes*. A mode mutex allows multiple callers in the **same mode** to proceed concurrently, while callers in **different modes** are mutually exclusive.
+The implementation uses graph phase exclusion, additional scoped lock domains, and a separate shared/exclusive garden domain. Graph phase exclusion is based on *mode mutexes*: a mode mutex allows multiple callers in the **same mode** to proceed concurrently, while callers in **different modes** are mutually exclusive. Additional domains provide per-node telescope, per-replica darkroom, and shared/exclusive garden semantics.
 
 Three modes are defined:
 

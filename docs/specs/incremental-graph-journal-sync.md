@@ -108,7 +108,13 @@ If both conflicting entries describe changes to the same node key, the re-append
 
 This rule avoids the risk that choosing one authoritative entry to remain at the poisoned index would make a caller using a previous `since` value skip a change it has not observed.
 
-REQ-JS-14: Gaps produced by poisoned indices follow REQ-JC-04 (sparse storage is tolerated).
+### Present-versus-absent conflict
+
+REQ-JS-14: If one synchronized host has an established journal entry at index `i` and another host has an established absence at the same index `i`, absence wins at index `i`. The present entry MUST be removed from index `i` on every host that has it. Absence at an established index may be caused by compaction, poisoning, propagated remote compaction, or any other structural deletion.
+
+If the removed entry still carries relevant journal evidence (i.e., it is the only surviving `add` or `edit` for a materialized node key), that evidence MUST be reappended at a fresh local index before or atomically with removing the established entry. This ensures that compaction evidence rules (REQ-JC-07) and materialized-node visibility are preserved.
+
+The same materialized-node evidence rule applies: sync MUST NOT propagate absence in a way that removes the only surviving `add` or `edit` for a materialized node unless equivalent evidence is reappended first.
 
 ### Garden concurrency for structural sync
 
@@ -142,8 +148,8 @@ REQ-JS-18: During sync, a host MAY transmit the set of `JournalIndex` values it 
 REQ-JS-19: After all hosts have completed synchronization and no further graph mutations occur, the following must hold:
 
 1. **Graph state converges**: For every node key, all hosts agree on the node's value (or absence).
-2. **Physical journal converges**: Per REQ-JS-12, all hosts agree on each index's state (same entry or absent).
-3. **Journal queries are consistent with physical convergence**: After physical convergence, every host that has not independently compacted entries returns the same set of possible changes for a given query. Hosts that have independently compacted entries may return a subset (because `possibleMaybeChanges` returns only surviving entries), but no host returns a `PossibleNodeChange` at a given index that contradicts the converged journal entry for that index.
+2. **Physical journal converges**: Per REQ-JS-12, all hosts agree on each index's state (same entry or absent). Any pre-existing compaction absence propagates to all hosts during convergence via the present-versus-absent rule (REQ-JS-14). After convergence, no disagreement about individual journal positions remains.
+3. **Journal queries are consistent with physical convergence**: After convergence, hosts that compact the same set of indices return the same set of possible changes. Hosts that independently compact different subsets after convergence may return different subsets, but no host returns a `PossibleNodeChange` at a given index that contradicts the converged journal entry for that index.
 
 ---
 

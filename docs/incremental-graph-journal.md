@@ -129,7 +129,7 @@ docs/specs/incremental-graph-journal-compaction.md
 
 `possibleMaybeChanges` operates under a separate shared/exclusive **garden** concurrency domain, not the graph activity mode lock or the darkroom lock.
 
-The journal is a garden separate from the main dome. Many visitors may enter the garden concurrently. Ordinary append-only journal growth may continue while visitors are present. Structural work that removes, fills, replaces, poisons, or reorganizes established journal positions requires closing the garden. A holiday closes both the dome and the garden.
+The journal is a garden separate from the main dome. Many visitors may enter the garden concurrently. Ordinary append-only journal growth may continue while visitors are present. Structural work that removes, poisons, compacts, or otherwise deletes established journal positions requires closing the garden. New evidence is always appended at fresh positions.
 
 Two scoped helpers are defined:
 
