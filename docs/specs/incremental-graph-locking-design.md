@@ -103,7 +103,7 @@ uses darkroom as specified. Journal queries use garden, not darkroom.
 
 ## Lock Keys
 
-The implementation SHOULD derive two families of keys.
+The implementation SHOULD derive three lock domains.
 
 ### 1. Graph activity key
 
@@ -134,6 +134,22 @@ This key is acquired through `withMutex`.
 It is used only by pull operations, and only for the concrete node currently
 being pulled. This is what serializes same-node pulls without blocking pulls on
 different nodes.
+
+### 3. Garden access (shared/exclusive lock domain)
+
+The garden is a separate shared/exclusive lock domain. It is NOT a
+`GRAPH_ACTIVITY_KEY` mode and must not be modeled as one. See §Garden
+domain for the full specification.
+
+- Shared access: `enterGarden` — used by `possibleMaybeChanges`. Multiple
+  callers may hold shared garden access concurrently.
+- Exclusive access: `closeGarden` — used by compaction, structural sync,
+  and migration journal mutation. Exclusive access conflicts with shared
+  access (and with another exclusive holder).
+
+The garden has no Sleeper key. It is a distinct primitive with its own
+fairness guarantee: once `closeGarden` is queued, later `enterGarden`
+calls MUST NOT overtake it.
 
 ## Operation Protocol
 

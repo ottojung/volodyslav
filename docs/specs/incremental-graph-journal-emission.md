@@ -77,17 +77,26 @@ REQ-JE-11: A journal entry MUST be written to durable storage in the same LevelD
 
 REQ-JE-12: A successful batch flush MUST result in the journal entry being durably committed and the `last_journal_index` watermark being advanced (if the entry received a new index).
 
-REQ-JE-13: The volatile journal state (in-memory next-index counter, in-memory index-to-position mapping) MUST be updated only after the durable batch flush succeeds. This follows the established "disk before memory" invariant (see `docs/specs/incremental-graph-volatile-consistency.md`).
+REQ-JE-13: The volatile journal state (in-memory next-index counter) MUST be updated only after the durable batch flush succeeds. This follows the established "disk before memory" invariant (see `docs/specs/incremental-graph-volatile-consistency.md`).
 
 ---
 
 ## Journal index allocation
 
-REQ-JE-14: Each emitted journal entry MUST be assigned a unique, monotonically increasing `JournalIndex` at allocation time. The index is allocated from the volatile next-index counter, following the same pattern as `NodeIdentifier` allocation (see `docs/specs/incremental-graph-last-node-index.md`).
+JournalIndex allocation MUST happen during darkroom finalization, atomically with the durable batch commit. This ensures the published-prefix invariant (REQ-JT-13 through REQ-JT-15): once `last_journal_index = H` is published, no later ordinary append can ever fill, replace, or change a position at or below `H`.
 
-REQ-JE-15: Gaps in the journal index sequence are acceptable (caused by failed transactions that consumed an index but did not commit).
+REQ-JE-14: Each emitted journal entry MUST be assigned a unique, monotonically increasing `JournalIndex` during darkroom finalization, as part of the atomic durable batch that commits both the entry and the watermark. The index MUST be allocated strictly above the previously committed watermark. This mirrors the `NodeIdentifier` allocation pattern (see `docs/specs/incremental-graph-last-node-index.md`), with the critical difference that allocation is deferred until the commit point rather than being consumed at transaction start.
 
-REQ-JE-16: The `last_journal_index` stored in `rendered/r/global/last_journal_index` is updated to the committed journal entry's index as part of the durable batch.
+REQ-JE-15: A transaction MUST prepare unindexed journal entries during its unlocked body. Only once the transaction enters darkroom does it allocate a fresh contiguous range strictly above the current committed watermark, add those indexed entries and the new watermark to the same batch, and commit them atomically. This prevents the trace where one transaction allocates an index, a later transaction commits at a higher index and publishes the watermark, and the original transaction later fills a gap below the published watermark.
+
+REQ-JE-16: Gaps in the journal index sequence are acceptable. They may be caused by:
+- Compaction removing entries.
+- Sync poisoning of divergent indices.
+- Structural maintenance (poisoning or deleting entries while holding `closeGarden`).
+
+Gaps caused by failed transactions are NOT possible under this allocation model, because index allocation occurs only during the durable commit, which either succeeds or fails atomically.
+
+REQ-JE-17: The `last_journal_index` stored in `rendered/r/global/last_journal_index` is updated to the committed journal entry's index as part of the same atomic durable batch.
 
 ---
 

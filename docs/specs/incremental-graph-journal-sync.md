@@ -112,14 +112,16 @@ REQ-JS-14: Gaps produced by poisoned indices follow REQ-JC-04 (sparse storage is
 
 ### Garden concurrency for structural sync
 
-REQ-JS-15: Sync operations that make structural changes to established journal positions MUST call `closeGarden`. Structural changes include:
+Sync MUST NOT fill, replace, or rewrite entries at established journal positions (at or below the committed watermark). After publication, an established position may remain unchanged or become absent, but it must never change from absent to present and must never change from one entry value to another. This guarantees that a cursor that has already scanned past position `i` cannot later discover a new entry behind it.
 
-- poisoning an existing index;
+REQ-JS-15: Sync operations that make structural changes to established journal positions MUST call `closeGarden`. Structural changes are limited to:
+
+- poisoning an existing index (making it absent);
 - deleting either conflicting entry at an existing index;
-- filling a previously absent established index;
-- replacing or rewriting an established entry;
 - applying a remote compaction set locally;
-- performing any other established-position reconciliation.
+- performing any other established-position deletion or poisoning.
+
+Structural sync MUST NOT fill a previously absent established index, replace an established entry, or rewrite an entry's content. All new journal evidence MUST be appended at fresh indices strictly greater than the current committed watermark.
 
 The structural sync phase MUST hold `closeGarden` through its analysis and atomic durable mutation. The durable batch still uses darkroom inside the garden closure.
 

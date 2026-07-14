@@ -675,7 +675,7 @@ Formally: For any concurrent execution with operations `{Op₁, Op₂, ..., Op�
 
 The implementation uses a two-level locking scheme based on *mode mutexes*. A mode mutex allows multiple callers in the **same mode** to proceed concurrently, while callers in **different modes** are mutually exclusive.
 
-Two modes are defined:
+Three modes are defined:
 
 | Mode | Description |
 |------|-------------|
@@ -706,7 +706,7 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 | Category | Methods |
 |----------|---------|
 | **Read-write** (modify graph state) | `pull()`, `invalidate()` |
-| **Read-only** (observe graph state) | `getFreshness()`, `getValue()`, `listMaterializedNodes()`, `getCreationTime()`, `getModificationTime()`, `getSchemas()`, `getSchemaByHead()`, `getDbVersion()` |
+| **Read-only** (observe graph state) | `possibleMaybeChanges()`, `getFreshness()`, `getValue()`, `listMaterializedNodes()`, `getCreationTime()`, `getModificationTime()`, `getSchemas()`, `getSchemaByHead()`, `getDbVersion()` |
 
 **REQ-CONCUR-03 (Read-only Safety):** All read-only methods MUST NOT modify any stored graph state (values, freshness, timestamps, materialization records).
 
