@@ -102,7 +102,17 @@ What is NOT allowed is host A having one `JournalEntry` at index `i` while host 
 
 ### Resolving divergent indices
 
-REQ-JS-13: If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, that index is poisoned. Both conflicting entries MUST be deleted from index `i`. Any still-relevant changes described by the conflicting entries MUST be appended at fresh `JournalIndex` values greater than `max(local.last_journal_index, remote.last_journal_index)` computed before allocating the re-appended entries.
+REQ-JS-13: If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, that index is poisoned. Both conflicting entries MUST be deleted from index `i`. Any still-relevant changes described by the conflicting entries MUST be appended at fresh `JournalIndex` values determined by the allocation base `B`:
+
+```
+B = max(
+    current local last_journal_index,
+    remote last_journal_index,
+    greatest fixed position retained by the reconciliation
+)
+```
+
+All newly generated and reappended entries MUST receive indices strictly greater than `B`. This ensures that reappended entries do not collide with the remote suffix or with any position that the reconciliation intends to preserve.
 
 If both conflicting entries describe changes to the same node key, the re-appended entries are distinct `PossibleNodeChange` values for that key at different journal indices. This is a direct consequence of the poisoning rule: each conflicting entry that carried a still-relevant change produces its own re-appended entry.
 
@@ -145,16 +155,74 @@ REQ-JS-14d: In the concurrent case, because `closeGarden` does not exclude ordin
 2. Perform reconciliation analysis while holding `closeGarden` — read remote journal entries, identify conflict positions, determine reconciliation needs.
 3. Prepare logical journal effects without assigning fresh local indices.
 4. Acquire darkroom.
-5. Re-read the current committed local `last_journal_index = H`.
-6. Re-read every local journal position that the prepared reconciliation intended to delete, poison, or otherwise reason about.
-7. Rebase the reconciliation against append-only commits that completed during the analysis phase:
-   - If a newly committed local entry creates a same-index conflict, apply the normal poisoning rule (REQ-JS-13): the established position becomes absent and all still-relevant evidence is prepared for fresh append.
-   - If an ordinary append has advanced `H`, allocate all new and reappended journal entries from the then-current committed local watermark (not from a stale pre-analysis value).
-8. Install structural deletions/poisoning, fresh appended entries, graph reconciliation state, and the final watermark in one atomic durable batch.
-9. Release darkroom.
-10. Release `closeGarden` (reopen the garden).
+5. **Revalidate all semantic evidence** used by the prepared reconciliation plan for every affected node key:
 
-Under this protocol, all journal-index allocation and established-position mutation happen under darkroom, serialized with ordinary durable commits. The shorter-darkroom model is preferred because it preserves the stated goal that darkroom covers finalization rather than long analysis.
+   - current materialization and graph state (whether the node is materialized, its identifier, its value);
+   - latest surviving local `add` or `edit` journal entry (to confirm the intended conflict-winner timestamp is still valid);
+   - any appended entries since the initially captured watermark that concern affected keys.
+
+   If any semantic evidence changed in a way that would alter a conflict-resolution decision, sync MUST either recompute the affected resolution under darkroom or discard the entire stale plan and retry from step 2. Revalidating only physical journal positions is insufficient.
+
+   Journal positions alone do not capture late-arriving materialization facts: a node that was absent during analysis may have been materialized by a concurrent append, or a node whose latest `add`/`edit` entry sync intended to use as conflict evidence may have been superseded by a newer entry committed during analysis. These semantic facts can change the outcome of per-node conflict resolution and MUST be rechecked.
+
+6. Re-read the current committed local `last_journal_index = H`.
+7. Re-read every local journal position that the prepared reconciliation intended to delete, poison, or otherwise reason about.
+8. **Determine the allocation base `B`**:
+
+   ```
+   B = max(
+       H,
+       remote.last_journal_index,
+       greatest fixed position retained by the reconciliation
+   )
+   ```
+
+   The "greatest fixed position retained by the reconciliation" includes every established position that the reconciliation will preserve unchanged at its numeric index plus any remote suffix positions that will be installed at their original numeric indices. All newly generated and reappended entries MUST receive indices strictly greater than `B`.
+
+9. **Establish all absences and poisoning through `B`.** Any positions that the reconciliation intends to delete or poison at or below `B` are written as structural deletions. No entry occupies or claims a position at or below `B` that is not already part of the finalized established state.
+
+10. **Canonically order** the queued fresh evidence (imported remote entries, reappended conflict-losing evidence, reappended shifted entries) according to the canonical ordering policy (see "Canonical ordering for reappended evidence").
+
+11. **Allocate** the fresh evidence at positions `B + 1` through `B + n` where `n` is the number of entries in the ordered list.
+
+12. Install structural deletions/poisoning, fresh appended entries, graph reconciliation state, and the final watermark in one atomic durable batch.
+13. Release darkroom.
+14. Release `closeGarden` (reopen the garden).
+
+Under this protocol, all journal-index allocation and established-position mutation happen under darkroom, serialized with ordinary durable commits. The darkroom is held only for finalization, not for the earlier analysis phase (steps 2-3). The protocol revalidates both semantic and physical evidence during finalization, preventing stale conflict-resolution decisions from being applied after concurrent appends have changed the relevant state.
+
+### Canonical ordering for reappended evidence
+
+When synchronization produces multiple entries queued for fresh reappend (divergent entries, present-versus-absence-shifted entries, remote suffix entries that cannot occupy their original indices), those entries MUST be assigned to fresh positions `B+1 .. B+n` in a canonical total order. The canonical order ensures that two hosts synchronizing the same set of remote evidence independently arrive at the same physical placement, preventing further same-index conflicts.
+
+REQ-JS-14e: The canonical ordering for reappended journal evidence is defined as:
+
+1. **By `time` ascending** — entries with an earlier recorded timestamp are placed first.
+2. **By node key** (lexicographic `NodeKeyString` order) — entries with the same timestamp are ordered by their node key.
+3. **By `creator` hostname** — entries with the same timestamp and node key are ordered by their `Hostname` value.
+4. **By `action`** — entries with identical timestamp, node key, and creator are ordered as: `add` < `edit` < `delete` < `invalidate`.
+5. **By `NodeIdentifier`** — entries that are still identical after all prior criteria are ordered by their `NodeIdentifier` value.
+
+This total order is deterministic across all synchronized hosts because the comparison keys (timestamp, node key string, hostname, action, identifier) are all well-defined, comparable values that are invariant across synchronized hosts.
+
+### Still-relevant evidence for divergent entries
+
+When a journal entry is removed from an established position (by poisoning, absence propagation, or compaction), some entries may need to survive through fresh reappend while others are genuinely obsolete.
+
+REQ-JS-14f: The following kinds of evidence are "still relevant" and MUST be reappended when removed from an established position:
+
+- The only surviving `add` or `edit` entry for a currently materialized node key (mandatory under REQ-JC-07).
+- A `delete` entry that carries the most recent timestamp for a node key that was present on another host (needed for sync conflict convergence).
+- An `invalidate` entry that is the only surviving journal record of a freshness downgrade for a materialized node whose `add`/`edit` evidence is still needed but whose value MACHT have changed.
+
+The following kinds of evidence are NOT "still relevant" and MAY be dropped:
+
+- Redundant `edit` entries for a node key that has a later surviving `edit` or `delete` entry.
+- `invalidate` entries for a node that has a later surviving `add`, `edit`, or `delete` entry that supersedes the invalidation.
+- Journal entries for a node key that has been deleted on all synchronized hosts and whose deletion has been acknowledged by all hosts.
+- Any entry older than a retained entry for the same node key that carries equivalent or stronger evidence.
+
+"Still relevant" is evaluated per removed entry at the time of removal. If the entry being removed is not the only surviving source of its kind of evidence for its node key, it may be dropped without reappend.
 
 ### Garden concurrency for structural sync
 
