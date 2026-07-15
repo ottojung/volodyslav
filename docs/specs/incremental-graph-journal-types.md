@@ -204,18 +204,51 @@ REQ-JT-11: `last_journal_index` MUST NOT decrease. A fresh replica starts with `
 
 REQ-JT-12: After synchronization, `last_journal_index` MUST be at least the greatest index that is present or known-absent due to synchronized journal state. A known-absent index still contributes to the watermark so that future local allocations do not reuse or overwrite an index that another synchronized host has already allocated, compacted, or poisoned.
 
+### Global established-position invariant
+
+Once a journal position is established by a committed watermark `last_journal_index = H`, its state is governed by the following rules. These rules apply globally to all operations — ordinary appends, migration, sync, and compaction.
+
+REQ-JT-13: An established journal position MUST remain unchanged or become absent.
+
+REQ-JT-14: An established absence MUST remain absent.
+
+REQ-JT-15: No operation may replace or rewrite an established `JournalEntry`.
+
+REQ-JT-16: All new journal evidence MUST be appended at fresh indices strictly greater than the current committed watermark.
+
+The only permitted state transition for an established position is:
+
+```
+present entry → absent
+```
+
+This transition is allowed only for these specifically authorized structural operations:
+- **Compaction**: may delete entries while holding `closeGarden` (see `incremental-graph-journal-compaction.md`).
+- **Synchronization poisoning**: may delete divergent entries while holding `closeGarden` (see `incremental-graph-journal-sync.md`).
+- **Synchronization absence propagation**: may remove an entry when a synchronized host has established absence at the same index (see `incremental-graph-journal-sync.md`).
+
+The following transitions are forbidden globally, even under `closeGarden`:
+
+```
+absent → present                  (fill an established absence)
+entry A → entry B                 (replace an established entry)
+entry → modified version of entry (rewrite or reinterpret content)
+```
+
+**Migration** MUST preserve all established journal positions exactly. Migration may only preserve existing entries and absences and append fresh entries. It MUST NOT delete, fill, replace, rewrite, poison, or reinterpret any established position. See `incremental-graph-journal-migrations.md`.
+
 ### Published-prefix invariant
 
 The garden design works only if ordinary appends obey a strong finalized-prefix invariant.
 
-REQ-JT-13: For a replica whose committed watermark is `last_journal_index = H`, all positions at or below `H` are finalized with respect to ordinary append-only operations.
+REQ-JT-17: For a replica whose committed watermark is `last_journal_index = H`, all positions at or below `H` are finalized with respect to ordinary append-only operations.
 
 For every `i ≤ H`, the position is one of:
 
 - a committed journal entry whose contents ordinary appenders will never change; or
 - an established absent gap that ordinary appenders will never fill.
 
-REQ-JT-14: Ordinary append-only operations MUST NOT:
+REQ-JT-18: Ordinary append-only operations (including `pull` and `invalidate` entry commits) MUST NOT:
 
 - insert at an index `≤ H`;
 - fill an old gap at an index `≤ H`;
@@ -225,28 +258,16 @@ REQ-JT-14: Ordinary append-only operations MUST NOT:
 
 Ordinary appends may only allocate fresh indices strictly greater than the previously committed watermark.
 
-REQ-JT-15: Compaction and structural synchronization MAY change established positions, but only while holding `closeGarden`. The allowed changes are:
-- transition an established entry to absence (delete or poison).
-
-The following changes are prohibited even under `closeGarden`:
-- fill an established absence (change absent → present);
-- replace an established entry with a different entry (change one entry → another);
-- rewrite or reinterpret an established entry's content.
-
-Migration MUST NOT change any established position. Migration MUST preserve all existing entries and absences exactly and may only append fresh entries. See `incremental-graph-journal-migrations.md`.
-
-All new journal evidence MUST be appended at fresh indices strictly greater than the current committed watermark. This guarantees that cursors that have already scanned past an index never later discover a change behind them.
-
 ### Atomic publication
 
-REQ-JT-16: The new journal entry and the advancement of `last_journal_index` MUST be committed in the same atomic durable batch. Therefore a reader of `last_journal_index` observes either:
+REQ-JT-19: The new journal entry and the advancement of `last_journal_index` MUST be committed in the same atomic durable batch. Therefore a reader of `last_journal_index` observes either:
 
 - the state before the append; or
 - the state after both the entry and its watermark have committed.
 
 It must never observe a watermark that exposes a not-yet-committed ordinary append.
 
-REQ-JT-17: Gaps in the journal index sequence are allowed. They may be caused by compaction, sync poisoning, or structural maintenance. Gaps caused by failed transactions are NOT possible under the commit-time allocation model, because index allocation occurs only during the durable commit, which either succeeds or fails atomically. Once a later watermark publishes a prefix containing a gap, ordinary appenders MUST NEVER fill that gap.
+REQ-JT-20: Gaps in the journal index sequence are allowed. They may be caused by compaction, sync poisoning, or structural maintenance. Gaps caused by failed transactions are NOT possible under the commit-time allocation model, because index allocation occurs only during the durable commit, which either succeeds or fails atomically. Once a later watermark publishes a prefix containing a gap, ordinary appenders MUST NEVER fill that gap.
 
 ---
 
@@ -377,9 +398,9 @@ class PossibleNodeChangeClass {
  */
 ```
 
-REQ-JT-18: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. Private journal fields (`id`, `key`, `creator`, `index`) are not part of the public nominal type. Callers MUST NOT depend on fields beyond those listed in the public `PossibleNodeChange` type.
+REQ-JT-21: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. Private journal fields (`id`, `key`, `creator`, `index`) are not part of the public nominal type. Callers MUST NOT depend on fields beyond those listed in the public `PossibleNodeChange` type.
 
-REQ-JT-19: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
+REQ-JT-22: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
 
 ---
 

@@ -83,7 +83,7 @@ REQ-JE-13: The volatile journal state (in-memory next-index counter) MUST be upd
 
 ## Journal index allocation
 
-JournalIndex allocation MUST happen during darkroom finalization, atomically with the durable batch commit. This ensures the published-prefix invariant (REQ-JT-13 through REQ-JT-15): once `last_journal_index = H` is published, no later ordinary append can ever fill, replace, or change a position at or below `H`.
+JournalIndex allocation MUST happen during darkroom finalization, atomically with the durable batch commit. This ensures the published-prefix invariant (REQ-JT-17 through REQ-JT-18): once `last_journal_index = H` is published, no later ordinary append can ever fill, replace, or change a position at or below `H`.
 
 REQ-JE-14: Each emitted journal entry MUST be assigned a unique, monotonically increasing `JournalIndex` during darkroom finalization, as part of the atomic durable batch that commits both the entry and the watermark. The index MUST be allocated strictly above the previously committed watermark. This mirrors the `NodeIdentifier` allocation pattern (see `docs/specs/incremental-graph-last-node-index.md`), with the critical difference that allocation is deferred until the commit point rather than being consumed at transaction start.
 
