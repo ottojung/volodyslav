@@ -208,3 +208,49 @@ Sync operates on the journal storage that exists at sync time. Compaction may ha
 REQ-JS-21: Sync uses only surviving journal entries for conflict comparison. Absent journal entries are treated as "no journal evidence" — sync MUST NOT fall back to the `timestamps` sublevel as a replacement for missing journal entries. If no journal entry exists for a node key, sync uses its remaining available evidence (e.g., the fact of materialization and the node's identifier allocation) for conflict-resolution decisions according to the rules in this document.
 
 REQ-JS-22: Compaction MUST NOT remove the only surviving `add` or `edit` entry for a materialized node (see REQ-JC-07). This ensures sync always has at least one journal-backed timestamp per materialized node for conflict comparison. If compaction adheres to this rule, the "no journal evidence" case in REQ-JS-21 can only occur for nodes that were deleted or dematerialized on all synchronized hosts before compaction.
+
+---
+
+## Testable scenarios
+
+### T1 — Sync remote suffix races with ordinary append
+
+```
+local H = 5
+remote has evidence at indices 6 (E)
+
+sync closes the garden and analyzes remote position 6
+
+ordinary append commits at local index 6 (F)
+
+sync re-reads H = 6 during darkroom finalization
+sync detects that index 6 is now occupied by F
+sync treats index 6 as a same-index conflict (absent → F vs remote E)
+sync poisons index 6 (established entry F → absent)
+sync reappends F at index 7 and E at index 8
+sync commits H = 8
+```
+
+The final result must:
+- not overwrite index 6 (F is preserved at a new index 7);
+- not fill an established absence (index 6 becomes absent via poisoning);
+- preserve both relevant local and remote evidence (F and E both reappended);
+- allocate all imported/reappended evidence from the then-current watermark.
+
+### T2 — Same-index conflict during finalization
+
+If sync's earlier analysis expected a position to be absent (index `i` was present on neither host), but an ordinary append establishes it before sync enters darkroom, sync revalidates (REQ-JS-14d steps 5-8) and applies poisoning/fresh-reappend semantics rather than using the stale plan.
+
+### T3 — Present-versus-absent propagation
+
+```
+Host A: index 5 = E (established entry)
+Host B: index 5 = absent (compacted/deleted)
+
+Sync converges:
+  index 5 becomes absent on A (absence wins)
+  E is reappended at index 6 on A (if E is still relevant evidence)
+  H advances to 6 on A
+```
+
+Absence propagates to all hosts. Relevant evidence is reappended freshly before or atomically with deletion. After convergence, every host agrees on each established position.

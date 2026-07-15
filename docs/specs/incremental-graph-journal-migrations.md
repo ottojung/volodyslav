@@ -93,7 +93,48 @@ REQ-JM-09: The `delete` journal entry emitted by `storage.delete` MUST be part o
 
 ---
 
-## Garden concurrency for migration and cutover
+## Testable scenarios
+
+### S1 — Migration preserves journal history
+
+```
+Before migration:
+  index 1 = add A    (last_journal_index = 1)
+
+Migration performs storage.delete(A).
+
+After migration:
+  index 1 = same add A   (unchanged, byte-for-byte)
+  index 2 = fresh delete A
+  H = 2
+```
+
+No established position changes. The old `add` entry at index 1 is preserved exactly. Migration only appends the `delete` entry.
+
+### S2 — Migration create and invalidate
+
+```
+Before migration:
+  H = 3
+
+Migration performs storage.create(B) and storage.invalidate(C).
+
+After migration:
+  index 4 = add B         (fresh entry, no gap between 3 and 4)
+  index 5 = invalidate C  (fresh entry, only if C was up-to-date
+                           and transitions to potentially-outdated)
+  H = 5
+```
+
+Fresh migration-generated entries receive new commit-time indices above the inherited watermark.
+
+### S3 — Migration cutover with reader
+
+1. An existing `possibleMaybeChanges` reader completes on the old active replica before cutover.
+2. Once `closeGarden` is queued, no new reader selects the old replica.
+3. After cutover, new readers see the preserved journal prefix plus fresh migration entries.
+
+The reader that started before cutover observes a consistent snapshot of the old replica's journal state. New readers observe the new replica's journal state (preserved prefix + migration appends).
 
 Migration and replica cutover require exclusive access to both graph activity and the garden.
 

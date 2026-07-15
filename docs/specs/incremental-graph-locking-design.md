@@ -325,6 +325,36 @@ incremental graph is a DAG, so any wait edge from node `A` to node `B` implies
 that `A` depends on `B`. A deadlock cycle would therefore imply a dependency
 cycle, which the graph constructor already rejects.
 
+## Testable concurrency scenarios
+
+### C1 — Concurrent readers
+
+Two `possibleMaybeChanges` calls may execute simultaneously. Both return results according to their independently captured upper watermarks. Because each reader enters the garden (shared access), they coexist freely.
+
+### C2 — Reader overlapping append
+
+If an append commits before the reader captures `H`, the new entry may be included in the returned array. If the append commits after `H` is captured, its index is greater than `H` and it is excluded from the returned array. The reader never observes a torn entry/watermark publication because every journal entry and its watermark advance are committed atomically (REQ-JT-19).
+
+### C3 — Reader overlapping compaction
+
+Compaction calls `closeGarden` (exclusive), which cannot proceed while a reader holds `enterGarden` (shared). The compaction waits for active readers to leave. Once closure is queued, new readers do not overtake it. No reader observes a mixture of pre-compaction and post-compaction established positions.
+
+### C4 — Concurrent compactions
+
+Two compaction operations cannot overlap because each calls `closeGarden`, which is exclusive with itself.
+
+### C5 — Reader overlapping cutover
+
+Cutover acquires `holidayActivity` then `closeGarden`. Because `possibleMaybeChanges` holds `enterGarden` across replica selection and traversal, cutover waits for active readers. No reader changes replicas during traversal. New readers wait once garden closure is pending.
+
+### C6 — Reader overlapping structural sync
+
+Structural sync calls `closeGarden`, which waits for readers and prevents new readers until established-position reconciliation completes. Existing readers complete on their captured snapshot.
+
+### C7 — Compaction overlapping append
+
+New append-only entries may commit while compaction is analyzing the prefix. Compaction touches only positions through its captured `H`. It does not modify entries appended after `H`. It does not overwrite the newer watermark.
+
 ## Why `withoutMutex` Must Not Return
 
 `withoutMutex` encoded a very different strategy: temporarily leave the critical

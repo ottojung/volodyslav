@@ -131,3 +131,13 @@ If a journal entry is visible (via `graph.possibleMaybeChanges`), the correspond
 ### P7 — Monotonic last_journal_index
 
 After a sequence of journal-emitting operations, `last_journal_index` must be non-decreasing and must accurately reflect the greatest committed journal index.
+
+### P8 — Failed transaction creates no gap
+
+A failed journal-emitting transaction:
+- publishes no entry;
+- advances no watermark;
+- consumes no journal index;
+- creates no gap.
+
+If a transaction prepares an unindexed entry, but then fails during darkroom finalization (or before), no trace of the failed entry remains in the journal index sequence.
