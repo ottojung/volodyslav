@@ -111,7 +111,7 @@ async function handleTranscribeRequest(capabilities, req, res) {
                 {
                     request_identifier: reqId.identifier,
                     error:
-                        error instanceof Object && "message" in error
+                        typeof error === 'object' && error !== null && "message" in error
                             ? String(error.message)
                             : String(error),
                     error_name: error instanceof Error ? error.name : "Unknown",

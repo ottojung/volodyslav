@@ -12,11 +12,12 @@
  * if the graph contains a cycle (which is treated as data corruption).
  */
 
-const { compareNodeIdentifier } = require('./node_identifier');
-const { stringToNodeIdentifier } = require('./types');
+
 
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
+const { IDENTIFIERS_KEY, makeIdentifierLookup } = require('./identifier_lookup');
+const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges } = require('./graph_scheme');
 const CYCLE_MESSAGE_SAMPLE_LIMIT = 20;
 
 /**
@@ -132,10 +133,11 @@ class MinHeap {
  * Thrown when the node graph contains a cycle, which violates the DAG
  * invariant required by the incremental-graph model.  A cycle indicates data
  * corruption and the merge should abort for the affected host.
+ * @template T
  */
 class TopologicalSortCycleError extends Error {
     /**
-     * @param {NodeIdentifier[]} cycle - A representative subset of nodes involved in the cycle.
+     * @param {T[]} cycle - A representative subset of nodes involved in the cycle.
      */
     constructor(cycle) {
         const sample = cycle.slice(0, CYCLE_MESSAGE_SAMPLE_LIMIT);
@@ -160,16 +162,14 @@ function isTopologicalSortCycleError(object) {
 }
 
 /**
- * Collect all materialized node keys from a schema storage (iterates inputs
- * sublevel as the canonical materialized-node registry).
- *
+ * Collect all materialized node keys from values.
  * @param {SchemaStorage} storage
  * @returns {Promise<NodeIdentifier[]>}
  */
 async function collectAllNodes(storage) {
     /** @type {NodeIdentifier[]} */
     const nodes = [];
-    for await (const key of storage.inputs.keys()) {
+    for await (const key of storage.values.keys()) {
         nodes.push(key);
     }
     return nodes;
@@ -185,9 +185,10 @@ async function collectAllNodes(storage) {
  * `topologicalSort` (reads from SchemaStorage) and `topologicalSortFromMap`
  * (operates directly on an already-built map).
  *
- * @param {Map<NodeIdentifier, NodeIdentifier[]>} inputsMap
+ * @template T
+ * @param {Map<T, T[]>} inputsMap
  *   A map from each node to the list of its input nodes.
- * @returns {NodeIdentifier[]}
+ * @returns {T[]}
  * @throws {TopologicalSortCycleError} If the graph contains a cycle.
  */
 function topologicalSortFromMap(inputsMap) {
@@ -198,9 +199,9 @@ function topologicalSortFromMap(inputsMap) {
     }
 
     // Build: inDegree map and adjacency list (node → list of dependents).
-    /** @type {Map<NodeIdentifier, number>} */
+    /** @type {Map<T, number>} */
     const inDegree = new Map();
-    /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
+    /** @type {Map<T, T[]>} */
     const dependents = new Map();
 
     for (const node of allNodes) {
@@ -227,16 +228,22 @@ function topologicalSortFromMap(inputsMap) {
     }
 
     // Initialize priority queue with all nodes having in-degree 0.
-    const heap = new MinHeap(compareNodeIdentifier);
+    const heap = new MinHeap((a, b) => {
+        const aString = String(a);
+        const bString = String(b);
+        if (aString < bString) return -1;
+        if (aString > bString) return 1;
+        return 0;
+    });
     for (const [node, degree] of inDegree) {
         if (degree === 0) {
             heap.push(node);
         }
     }
 
-    /** @type {NodeIdentifier[]} */
+    /** @type {T[]} */
     const sorted = [];
-    /** @type {Map<NodeIdentifier, number>} */
+    /** @type {Map<T, number>} */
     const remaining = new Map(inDegree);
 
     while (heap.size > 0) {
@@ -272,7 +279,7 @@ function topologicalSortFromMap(inputsMap) {
  * B in the result.  Within the same topological depth, nodes are sorted
  * ascending by their NodeIdentifier representation.
  *
- * @param {SchemaStorage} storage - Schema storage whose inputs/revdeps graph to sort.
+ * @param {SchemaStorage} storage - Schema storage whose scheme-derived graph to sort.
  * @returns {Promise<NodeIdentifier[]>}
  * @throws {TopologicalSortCycleError} If the graph contains a cycle.
  */
@@ -283,16 +290,25 @@ async function topologicalSort(storage) {
         return [];
     }
 
+    const rawScheme = await storage.global.get(GRAPH_SCHEME_KEY);
+    if (rawScheme === undefined) {
+        throw new Error(
+            'Missing global/graph_scheme for topological sort: ' +
+            'cannot derive dependencies without a stored graph_scheme'
+        );
+    }
+    const rawLookup = await storage.global.get(IDENTIFIERS_KEY);
+    if (!Array.isArray(rawLookup)) {
+        throw new Error('Missing identifiers_keys_map for topological sort');
+    }
+    const scheme = parseGraphScheme(rawScheme);
+    const lookup = makeIdentifierLookup(rawLookup);
+
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const inputsMap = new Map();
     for (const node of allNodes) {
-        const record = await storage.inputs.get(node);
-        const inputs = record
-            ? record.inputs.map(s => stringToNodeIdentifier(s))
-            : [];
-        inputsMap.set(node, inputs);
+        inputsMap.set(node, deriveInputEdges(scheme, lookup, node));
     }
-
     return topologicalSortFromMap(inputsMap);
 }
 

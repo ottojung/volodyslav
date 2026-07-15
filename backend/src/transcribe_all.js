@@ -105,7 +105,7 @@ async function transcribeAllGeneric(capabilities, inputDir, targetFun) {
             successes.push({ source, target });
         } catch (/** @type {unknown} */ err) {
             const internalMessage =
-                err instanceof Object && err !== null && "message" in err
+                typeof err === 'object' && err !== null && "message" in err
                     ? String(err.message)
                     : String(err);
 

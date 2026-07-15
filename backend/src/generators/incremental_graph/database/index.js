@@ -84,6 +84,37 @@ const {
     makeInMemorySchemaStorage,
 } = require('./unification');
 
+const {
+    normalizeInputEdges,
+    arraysOfNodeIdentifiersEqual,
+} = require('./input_edges');
+const {
+    GRAPH_SCHEME_KEY,
+    GraphSchemeError,
+    MissingGraphSchemeError,
+    isGraphSchemeError,
+    isMissingGraphSchemeError,
+    buildGraphSchemeFromNodeDefs,
+    buildGraphSchemeStringFromNodeDefs,
+    serializeGraphScheme,
+    parseGraphScheme,
+    deriveInputPositions,
+    deriveInputEdges,
+    semanticInputKeys,
+    assertExactStoredGraphSchemeMatches,
+    initializeReplicaGlobals,
+} = require('./graph_scheme');
+
+const {
+    assertValidFinalMergeState,
+    FinalMergeStateError,
+    isFinalMergeStateError,
+} = require('./sync_merge_validation');
+
+const {
+    parseIdentifierLookup,
+} = require('./sync_merge_identifier_lookup');
+
 module.exports = {
     getRootDatabase,
     makeRootDatabase,
@@ -158,4 +189,24 @@ module.exports = {
     unifyStores,
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
+    GRAPH_SCHEME_KEY,
+    GraphSchemeError,
+    MissingGraphSchemeError,
+    isGraphSchemeError,
+    isMissingGraphSchemeError,
+    buildGraphSchemeFromNodeDefs,
+    buildGraphSchemeStringFromNodeDefs,
+    serializeGraphScheme,
+    parseGraphScheme,
+    deriveInputPositions,
+    deriveInputEdges,
+    semanticInputKeys,
+    normalizeInputEdges,
+    arraysOfNodeIdentifiersEqual,
+    assertExactStoredGraphSchemeMatches,
+    initializeReplicaGlobals,
+    assertValidFinalMergeState,
+    FinalMergeStateError,
+    isFinalMergeStateError,
+    parseIdentifierLookup,
 };

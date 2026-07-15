@@ -80,7 +80,7 @@ module.exports = {
     const includeNonNull = opts.includeNonNull !== false;
     const includeSatisfies = opts.includeSatisfies !== false;
 
-    const services = context.parserServices;
+    const services = context.sourceCode.parserServices;
 
     // We *must* have a TS Program to get a real TS SourceFile and its nodes.
     if (!services || !services.program || !services.esTreeNodeToTSNodeMap) {

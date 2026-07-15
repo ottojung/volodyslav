@@ -87,7 +87,7 @@ module.exports = {
   },
 
   create(context) {
-    const services = context.parserServices;
+    const services = context.sourceCode.parserServices;
 
     // We need parser services for TypeScript API access
     if (!services || !services.program || !services.esTreeNodeToTSNodeMap) {

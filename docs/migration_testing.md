@@ -21,7 +21,7 @@ If versions differ, migration runs in a staged replica and then swaps the active
 Conceptually, migration must preserve these invariants:
 
 - **No partial cutover**: users either stay on old state or atomically switch to fully migrated state.
-- **Deterministic graph structure**: especially revdeps ordering and topology-sensitive structures.
+- **Deterministic graph structure**: especially valid ordering and topology-sensitive structures.
 - **Decision completeness**: every materialized old node must receive exactly one migration decision.
 - **Failure isolation**: failed attempts must not corrupt the active replica.
 
@@ -35,7 +35,7 @@ The core engine is tested directly via `runMigration`, plus supporting storage l
 
 ### What these tests are trying to prove
 
-The tests in `backend/tests/migration_runner.test.js`, `backend/tests/migration_storage.test.js`, and related focused files (`migration_runner_timestamps`, `migration_revdeps_ordering`) collectively validate:
+The tests in `backend/tests/migration_runner.test.js`, `backend/tests/migration_storage.test.js`, and the focused `migration_runner_timestamps` tests collectively validate:
 
 - migration gate behavior (fresh DB, already-current DB, version mismatch),
 - checkpoint boundaries (pre/post migration commits),
@@ -43,7 +43,7 @@ The tests in `backend/tests/migration_runner.test.js`, `backend/tests/migration_
 - replica-switch ordering guarantees,
 - x-replica preservation on failure,
 - metadata/version write rules,
-- deterministic revdeps output,
+- deterministic valid output,
 - timestamp copy semantics.
 
 This layer is intentionally close to internals. It catches protocol regressions fast, before full end-to-end smoke signals.
@@ -130,7 +130,7 @@ This design optimizes for:
 
 When changing migration logic, prefer this workflow:
 
-1. Run focused migration protocol tests first (`migration_runner`, `migration_storage`, revdeps/timestamps).
+1. Run focused migration protocol tests first (`migration_runner`, `migration_storage`, valid/timestamps).
 2. Run fixture migration equivalence test.
 3. Run populated remote smoke test.
 4. Only then run broader test suites.

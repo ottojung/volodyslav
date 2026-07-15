@@ -4,7 +4,7 @@ const { RuleTester } = require("eslint");
 const rule = require("../rules/max-lines-per-file");
 
 const tester = new RuleTester({
-  parserOptions: {
+  languageOptions: {
     ecmaVersion: "latest",
     sourceType: "module",
   },

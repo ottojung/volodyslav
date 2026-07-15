@@ -13,69 +13,62 @@ const { makeDbToDbAdapter, unifyStores } = require('./unification');
 async function copyReplicaGently(rootDatabase, from, to) {
     const src = rootDatabase.schemaStorageForReplica(from);
     const dst = rootDatabase.schemaStorageForReplica(to);
-
-    // Exclude revdeps: they will be recomputed from mergedInputsMap by
-    // unifyRevdeps() after the merge.  Copying them here wastes I/O.
-    await unifyStores(makeDbToDbAdapter(src, dst, { excludeSublevels: ['revdeps'] }));
-
-    // One final fsync: all unification writes use sync:false for performance;
-    // _rawSync() issues an empty batch with sync:true to durably flush the
-    // WAL/database state without mutating any keys.
+    await unifyStores(makeDbToDbAdapter(src, dst));
     await rootDatabase._rawSync();
 }
 
 /**
- * Build "take" batch operations that copy a node's full data from H into T.
- * Copies value, freshness, timestamps, inputs, and counters.
- * revdeps are NOT copied here; they are rebuilt from scratch at the end.
+ * Build operations that remove every primary record for a discarded identifier.
+ * @param {SchemaStorage} targetStorage
+ * @param {NodeIdentifier} identifier
+ * @returns {Array<*>}
+ */
+function buildDeleteNodeOps(targetStorage, identifier) {
+    return [
+        targetStorage.values.delOp(identifier),
+        targetStorage.freshness.delOp(identifier),
+        targetStorage.valid.delOp(identifier),
+        targetStorage.timestamps.delOp(identifier),
+    ];
+}
+
+/**
+ * Build operations that copy a node between potentially different identifiers.
+ * Validity is not copied here — it is rebuilt by the caller from scheme-derived
+ * edges by provenance-aware validity reconstruction.
  *
- * @param {SchemaStorage} T - Target (inactive) replica storage.
- * @param {SchemaStorage} H - Hostname staging storage.
- * @param {NodeIdentifier} key - Identifier to copy.
+ * @param {object} options
+ * @param {SchemaStorage} options.targetStorage
+ * @param {SchemaStorage} options.sourceStorage
+ * @param {NodeIdentifier} options.sourceId
+ * @param {NodeIdentifier} options.destinationId
  * @returns {Promise<Array<*>>}
  */
-async function buildTakeOps(T, H, key) {
+async function copyNodeOps({
+    targetStorage,
+    sourceStorage,
+    sourceId,
+    destinationId,
+}) {
     /** @type {Array<*>} */
     const ops = [];
+    const sourceValue = await sourceStorage.values.get(sourceId);
+    ops.push(sourceValue === undefined
+        ? targetStorage.values.delOp(destinationId)
+        : targetStorage.values.putOp(destinationId, sourceValue));
 
-    const hValue = await H.values.get(key);
-    if (hValue !== undefined) {
-        ops.push(T.values.putOp(key, hValue));
-    } else {
-        ops.push(T.values.delOp(key));
+    const sourceFreshness = await sourceStorage.freshness.get(sourceId);
+    ops.push(targetStorage.freshness.putOp(
+        destinationId,
+        sourceValue === undefined ? 'missing' : (sourceFreshness ?? 'potentially-outdated')
+    ));
+
+    const sourceTimestamps = await sourceStorage.timestamps.get(sourceId);
+    if (sourceTimestamps === undefined) {
+        throw new Error(`Cannot copy materialized node ${String(sourceId)} without timestamps`);
     }
-
-    const hFreshness = await H.freshness.get(key);
-    ops.push(T.freshness.putOp(key, hFreshness !== undefined ? hFreshness : 'potentially-outdated'));
-
-    const hTimestamps = await H.timestamps.get(key);
-    if (hTimestamps !== undefined) {
-        ops.push(T.timestamps.putOp(key, hTimestamps));
-    } else {
-        ops.push(T.timestamps.delOp(key));
-    }
-
-    const hInputs = await H.inputs.get(key);
-    if (hInputs !== undefined) {
-        ops.push(T.inputs.putOp(key, {
-            inputs: hInputs.inputs,
-            inputCounters: hInputs.inputCounters,
-        }));
-    } else {
-        ops.push(T.inputs.delOp(key));
-    }
-
-    const hCounter = await H.counters.get(key);
-    if (hCounter !== undefined) {
-        ops.push(T.counters.putOp(key, hCounter));
-    } else {
-        ops.push(T.counters.delOp(key));
-    }
-
+    ops.push(targetStorage.timestamps.putOp(destinationId, sourceTimestamps));
     return ops;
 }
 
-module.exports = {
-    buildTakeOps,
-    copyReplicaGently,
-};
+module.exports = { buildDeleteNodeOps, copyNodeOps, copyReplicaGently };

@@ -1,5 +1,5 @@
 /**
- * Recalculation helpers for IncrementalGraph.
+ * Recalculation helpers for IncrementalGraph validity tracking.
  *
  * Transaction context is passed explicitly - no async_hooks or push/pop context.
  *
@@ -33,80 +33,36 @@ const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = requi
 const { isUnchanged } = require("./unchanged");
 const {
     nodeIdentifierToString,
-    nodeIdentifierFromString,
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
+const { normalizeInputEdges } = require("./database");
 
 /**
- * Create a dependency accumulator for the materialized dependency record.
- * Static inputs are added before computation. Dynamic pulls append only newly
- * observed identifiers, so duplicate pulls of the same dependency keep one
- * counter entry and preserve the first-observed order.
- * @param {NodeIdentifier[]} inputIdentifiers
- * @param {number[]} inputCounters
- * @returns {{ identifiers: NodeIdentifier[], counters: number[], add: (identifier: NodeIdentifier, counter: number) => void }}
+ * Read the current valid set for a dependency from the mutation-aware batch.
+ * Returns the database value merged with pending transaction-local mutations.
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} depId
+ * @returns {Promise<NodeIdentifier[]>}
  */
-function makeMaterializedDependencyAccumulator(inputIdentifiers, inputCounters) {
-    /** @type {NodeIdentifier[]} */
-    const identifiers = [];
-    /** @type {number[]} */
-    const counters = [];
-    /** @type {Set<string>} */
-    const seen = new Set();
-
-    /**
-     * @param {NodeIdentifier} identifier
-     * @param {number} counter
-     * @returns {void}
-     */
-    function add(identifier, counter) {
-        const identifierString = nodeIdentifierToString(identifier);
-        if (seen.has(identifierString)) {
-            return;
-        }
-        seen.add(identifierString);
-        identifiers.push(identifier);
-        counters.push(counter);
-    }
-
-    for (let index = 0; index < inputIdentifiers.length; index++) {
-        const inputIdentifier = inputIdentifiers[index];
-        const inputCounter = inputCounters[index];
-        if (inputIdentifier === undefined || inputCounter === undefined) {
-            throw new Error(`Missing static dependency metadata at index ${String(index)}`);
-        }
-        add(inputIdentifier, inputCounter);
-    }
-
-    return { identifiers, counters, add };
+async function getValidSet(batch, depId) {
+    return await batch.valid.get(depId);
 }
 
 /**
- * Return true when an existing materialized inputs record exactly matches the
- * dependencies and counters observed for this recomputation.
- * @param {import('./database/types').InputsRecord} inputsRecord
- * @param {NodeIdentifier[]} currentInputIdentifiers
- * @param {number[]} currentInputCounters
- * @returns {boolean}
+ * Returns true when every dependency in inputEdges has a validity flag for N.
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} nId
+ * @param {NodeIdentifier[]} inputEdges
+ * @returns {Promise<boolean>}
  */
-function materializedInputsMatch(inputsRecord, currentInputIdentifiers, currentInputCounters) {
-    if (!inputsRecord.inputCounters) {
-        throw new Error("Missing inputCounters in InputsRecord");
-    }
-    if (inputsRecord.inputCounters.length !== currentInputCounters.length) {
+async function allValidityFlagsPresent(batch, nId, inputEdges) {
+    if (inputEdges.length === 0) {
         return false;
     }
-
-    const storedInputs = inputsRecord.inputs;
-    const currentInputs = currentInputIdentifiers.map(nodeIdentifierToString);
-    if (storedInputs.length !== currentInputs.length) {
-        return false;
-    }
-    for (let index = 0; index < storedInputs.length; index++) {
-        if (storedInputs[index] !== currentInputs[index]) {
-            return false;
-        }
-        if (inputsRecord.inputCounters[index] !== currentInputCounters[index]) {
+    const nIdStr = nodeIdentifierToString(nId);
+    for (const depId of inputEdges) {
+        const validSet = await getValidSet(batch, depId);
+        if (!validSet.some(id => nodeIdentifierToString(id) === nIdStr)) {
             return false;
         }
     }
@@ -114,19 +70,130 @@ function materializedInputsMatch(inputsRecord, currentInputIdentifiers, currentI
 }
 
 /**
+ * Add N to valid[D] for each dependency D in inputEdges.
+ * Records add mutations that are resolved against the latest committed
+ * state at commit time under the darkroom lock to prevent lost updates.
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} nId
+ * @param {NodeIdentifier[]} inputEdges
+ * @returns {void}
+ */
+function addValidityFlags(batch, nId, inputEdges) {
+    for (const depId of inputEdges) {
+        batch.valid.add(depId, nId);
+    }
+}
+
+/**
+ * Propagate potentially-outdated freshness through validity sets.
+ * Uses an iterative worklist to avoid stack overflow on deep chains.
+ * @param {import('./graph_state').GraphStorage} storage
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} changedIdentifier
+ * @param {NodeIdentifier[]} [initialDependents]
+ * @returns {Promise<void>}
+ */
+async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialDependents = undefined) {
+    /** @type {Set<string>} */
+    const visited = new Set();
+    /** @type {NodeIdentifier[]} */
+    const worklist = initialDependents === undefined ? [changedIdentifier] : [...initialDependents];
+
+    while (worklist.length > 0) {
+        const current = worklist.pop();
+        if (current === undefined) continue;
+        const currentStr = nodeIdentifierToString(current);
+        if (visited.has(currentStr)) continue;
+        visited.add(currentStr);
+
+        const dependents = await storage.getValid(current, batch);
+        for (const dep of dependents) {
+            const depStr = nodeIdentifierToString(dep);
+            if (visited.has(depStr)) continue;
+            const freshness = await batch.freshness.get(dep);
+            if (freshness === "up-to-date") {
+                batch.freshness.put(dep, "potentially-outdated");
+            }
+            worklist.push(dep);
+        }
+    }
+}
+
+/**
+ * Handle Unchanged computor result: add validity flags and preserve valid[N].
+ * @param {IncrementalGraphRecomputeAccess} _incrementalGraph
+ * @param {NodeIdentifier} nodeIdentifier
+ * @param {NodeIdentifier[]} inputEdges
+ * @param {BatchBuilder} batch
+ * @returns {Promise<void>}
+ */
+async function handleUnchanged(_incrementalGraph, nodeIdentifier, inputEdges, batch) {
+    addValidityFlags(batch, nodeIdentifier, inputEdges);
+    batch.freshness.put(nodeIdentifier, "up-to-date");
+}
+
+/**
+ * Handle changed value computor result: clear old validity, write new value, record new flags.
+ *
+ * Validity removals and clears are recorded as mutations and resolved
+ * against the latest committed state at commit time to prevent lost
+ * updates when concurrent transactions modify overlapping validity sets.
+ *
+ * @param {IncrementalGraphRecomputeAccess} incrementalGraph
+ * @param {NodeIdentifier} nodeIdentifier
+ * @param {NodeIdentifier[]} inputEdges
+ * @param {ComputedValue} newValue
+ * @param {BatchBuilder} batch
+ * @returns {Promise<void>}
+ */
+async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, batch) {
+    for (const edge of inputEdges) {
+        batch.valid.remove(edge, nodeIdentifier);
+    }
+    const downstream = await getValidSet(batch, nodeIdentifier);
+    batch.valid.clear(nodeIdentifier);
+    const datetime = incrementalGraph.datetime;
+    const nowIso = datetime.now().toISOString();
+    for (const dependent of downstream) {
+        const freshness = await batch.freshness.get(dependent);
+        if (freshness === "up-to-date") {
+            batch.freshness.put(dependent, "potentially-outdated");
+        }
+    }
+    await propagateOutdatedFrom(incrementalGraph.storage, batch, nodeIdentifier, downstream);
+
+    batch.values.put(nodeIdentifier, newValue);
+
+
+    const existingTimestamp = await batch.timestamps.get(nodeIdentifier);
+    if (existingTimestamp === undefined) {
+        batch.timestamps.put(nodeIdentifier, {
+            createdAt: nowIso,
+            modifiedAt: nowIso,
+        });
+    } else {
+        batch.timestamps.put(nodeIdentifier, {
+            createdAt: existingTimestamp.createdAt,
+            modifiedAt: nowIso,
+        });
+    }
+
+    addValidityFlags(batch, nodeIdentifier, inputEdges);
+    batch.freshness.put(nodeIdentifier, "up-to-date");
+}
+
+/**
  * @param {IncrementalGraphRecomputeAccess} incrementalGraph
  * @param {(nodeKeyStr: NodeKeyString) => Promise<ComputedValue>} pullDependency
  * @param {ResolvedConcreteNode} nodeDefinition
  * @param {Transaction} tx
- * @param {(diff: import('./graph_state').RevdepDiff) => void} reportRevdepDiff
  * @returns {Promise<RecomputeResult>}
  */
 async function internalMaybeRecalculate(
     incrementalGraph,
     pullDependency,
     nodeDefinition,
-    tx,
-    reportRevdepDiff
+    tx
 ) {
     const batch = tx.batch;
     const nodeIdentifier = nodeDefinition.outputIdentifier;
@@ -134,8 +201,6 @@ async function internalMaybeRecalculate(
 
     /** @type {Array<ComputedValue>} */
     const inputValues = [];
-    /** @type {number[]} */
-    const currentInputCounters = [];
     /** @type {NodeIdentifier[]} */
     const inputIdentifiers = [];
 
@@ -144,8 +209,7 @@ async function internalMaybeRecalculate(
         if (inputKey === undefined) {
             throw new Error(`Missing input key for node ${nodeDefinition.outputKey}`);
         }
-        const inputValue =
-            await pullDependency(inputKey);
+        const inputValue = await pullDependency(inputKey);
         inputValues.push(inputValue);
 
         const inputIdentifier = lookupNodeIdentifier(tx, inputKey);
@@ -155,34 +219,18 @@ async function internalMaybeRecalculate(
             );
         }
         inputIdentifiers.push(inputIdentifier);
-
-        const inputCounter = await batch.counters.get(inputIdentifier);
-        if (inputCounter === undefined) {
-            throw new Error(
-                `Missing counter for input ${nodeIdentifierToString(inputIdentifier)} after pull`
-            );
-        }
-        currentInputCounters.push(inputCounter);
     }
 
-    const materializedDependencies = makeMaterializedDependencyAccumulator(
-        inputIdentifiers,
-        currentInputCounters
-    );
+    // inputIdentifiers are inputPositions (preserving duplicates for computor args).
+    // inputEdges are the normalized structural dependency-edge list.
+    const inputEdges = normalizeInputEdges(inputIdentifiers);
 
-    if (materializedDependencies.identifiers.length > 0 && oldValue !== undefined) {
-        const inputsRecord = await batch.inputs.get(nodeIdentifier);
-        if (inputsRecord && materializedInputsMatch(
-            inputsRecord,
-            materializedDependencies.identifiers,
-            materializedDependencies.counters
-        )) {
-            await incrementalGraph.storage.ensureMaterialized(
-                nodeIdentifier,
-                materializedDependencies.identifiers,
-                materializedDependencies.counters,
-                batch
-            );
+    // Cache predicate: reuse cached value iff:
+    // 1. cached value exists,
+    // 2. inputEdges is non-empty,
+    // 3. valid[D].has(N) for every D in inputEdges.
+    if (oldValue !== undefined && inputEdges.length > 0) {
+        if (await allValidityFlagsPresent(batch, nodeIdentifier, inputEdges)) {
             batch.freshness.put(nodeIdentifier, "up-to-date");
             return { value: oldValue, status: "cached" };
         }
@@ -201,32 +249,11 @@ async function internalMaybeRecalculate(
         );
     }
 
-    // Collect revdep diff — applied during darkroom finalization (per-replica)
-    const oldInputsRecord = await batch.inputs.get(nodeIdentifier);
-    const oldDependencies = (oldInputsRecord?.inputs ?? []).map(nodeIdentifierFromString);
-    reportRevdepDiff({
-        dependant: nodeIdentifier,
-        oldDependencies,
-        newDependencies: materializedDependencies.identifiers,
-    });
-
-    for (const inputIdentifier of materializedDependencies.identifiers) {
-        batch.freshness.put(inputIdentifier, "up-to-date");
-    }
+    // Dependencies were pulled before the computor runs; their own pull transactions
+    // establish up-to-date freshness and timestamps.
 
     if (isUnchanged(computedValue)) {
-        const oldCounter = await batch.counters.get(nodeIdentifier);
-        if (oldCounter === undefined) {
-            batch.counters.put(nodeIdentifier, 1);
-        }
-
-        await incrementalGraph.storage.ensureMaterialized(
-            nodeIdentifier,
-            materializedDependencies.identifiers,
-            materializedDependencies.counters,
-            batch
-        );
-        batch.freshness.put(nodeIdentifier, "up-to-date");
+        await handleUnchanged(incrementalGraph, nodeIdentifier, inputEdges, batch);
 
         const result = await batch.values.get(nodeIdentifier);
         if (result === undefined) {
@@ -235,33 +262,7 @@ async function internalMaybeRecalculate(
         return { value: result, status: "unchanged" };
     }
 
-    const oldCounter = await batch.counters.get(nodeIdentifier);
-    const newCounter = oldCounter !== undefined ? oldCounter + 1 : 1;
-    batch.counters.put(nodeIdentifier, newCounter);
-
-    const nowIso = incrementalGraph.datetime.now().toISOString();
-    if (oldCounter === undefined) {
-        batch.timestamps.put(nodeIdentifier, {
-            createdAt: nowIso,
-            modifiedAt: nowIso,
-        });
-    } else {
-        const existingTimestamp = await batch.timestamps.get(nodeIdentifier);
-        const createdAt =
-            existingTimestamp !== undefined
-                ? existingTimestamp.createdAt
-                : nowIso;
-        batch.timestamps.put(nodeIdentifier, { createdAt, modifiedAt: nowIso });
-    }
-
-    batch.values.put(nodeIdentifier, computedValue);
-    await incrementalGraph.storage.ensureMaterialized(
-        nodeIdentifier,
-        materializedDependencies.identifiers,
-        materializedDependencies.counters,
-        batch
-    );
-    batch.freshness.put(nodeIdentifier, "up-to-date");
+    await handleChanged(incrementalGraph, nodeIdentifier, inputEdges, computedValue, batch);
     return { value: computedValue, status: "changed" };
 }
 

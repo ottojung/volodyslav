@@ -501,9 +501,15 @@ function isPathLike(object) {
 
 ## How to run tests
 
+- **Static checks**: `npm run static-analysis`
 - **Specific tests**: `npx jest --testNamePattern="test name"`
-- **Full test suite**: `npm test`
+- **Full test suite**: `npx jest --silent`
 - **Build verification**: `npm run build`
+
+Run static checks often, make sure they're passing continuously.
+Tests are slow. Prefer focused tests when working on a particular feature.
+Don't need to run `npx jest` if not changing any javascript code.
+Do not limit or filter the output of `npx jest`.
 
 ## Test Conventions
 
@@ -535,11 +541,82 @@ The client (frontend) is assumed to be **non-adversarial** — it is the same de
 - **No authorization**: Session IDs will not be forged. Authentication and authorization checks on API endpoints are unnecessary.
 - **Shape validation is still required**: Even with a trusted client, client and server may drift (e.g., during development or after a schema change). All incoming data **must** be validated against the expected shape (correct types, expected field names, valid enum values) and rejected with a clear error if it does not match. This is about correctness, not security.
 
+## Don't speak of the dead
+
+Comments, JSDoc, tests, and documentation must describe the codebase as it exists.
+
+Do not bring the conversation, prompt, development process, previous implementation, or discarded design into the source tree. The reader should not need to know what the agent was asked, what the agent changed, what used to be here, or why the new version is “better”. That belongs in the issue, pull request, commit message, or changelog.
+
+Only the current codebase exists. Everything outside it is a postapocalyptic no-man's land: old code, abandoned plans, prompt context, temporary reasoning, and implementation attempts. Nothing living can survive there. Do not smuggle it back into the repository.
+
+Bad:
+
+```js
+// Previously this accepted raw strings, but now it uses EventId.
+```
+
+Bad:
+
+```js
+// This improved version avoids the old race condition.
+```
+
+Bad:
+
+```js
+// The user asked for this to be stricter.
+```
+
+Bad:
+
+```js
+// Refactored during the AGENTS.md cleanup.
+```
+
+Good:
+
+```js
+// EventId prevents persisted event identifiers from being confused with arbitrary strings.
+```
+
+Good:
+
+```js
+// Writes are serialized through the repository lock so concurrent callers cannot commit conflicting updates.
+```
+
+Good:
+
+```js
+// The parser rejects unknown fields because client and server schemas may drift during development.
+```
+
+The rule is:
+
+> Replace history with invariants. Replace process narration with current design. Replace comparison against dead code with explanation of living code.
+
+Historical context is allowed only when the history is itself part of the live external contract: migrations, persisted file formats, compatibility boundaries, or public APIs.
+
+Good:
+
+```js
+// Version 1 records do not contain `createdAt`, so the migration derives it from file metadata.
+```
+
+Bad:
+
+```js
+// Before this change, records did not contain `createdAt`.
+```
+
+Git remembers the dead. Source comments serve the living.
+
 ## Git is good
 
 If you have access to `git`, then:
 - commit frequently,
-- and write helpful commit messages.
+- commit small, conceptual changes,
+- and write helpful multiline commit messages.
 
 It is always safe to commit, do it even if you weren't explicitly told to.
 
@@ -547,6 +624,14 @@ It is always safe to commit, do it even if you weren't explicitly told to.
 
 When posting a comment on github, include `@ottojung` substring at the end.
 Github posts must use humor and metaphors.
+
+## Static analysis
+
+The project has very precise and valuable rules for the codebase, and enforces them via `npm run static-analysis`.
+Important:
+- linter configs must not be changed unless explicitly asked to by the user.
+- type checker configs must not be changed unless explicitly asked to by the user.
+- static analysis rules must not be ignored or disabled.
 
 ## Additional Guidelines
 

@@ -32,7 +32,7 @@ This changes the release model: the system is allowed to evolve its storage form
 
 Volodyslav tries to avoid exposing half-applied durable state.
 
-Many operations update several records that only make sense together. In the incremental graph, for example, values, freshness, inputs, reverse dependencies, counters, timestamps, and semantic-key-to-identifier mappings together describe one logical graph state. Publishing only some of those records can create a database that is syntactically readable but semantically inconsistent.
+Many operations update several records that only make sense together. In the incremental graph, for example, values, freshness, validity sets, timestamps, and semantic-key-to-identifier mappings together describe one logical graph state. Publishing only some of those records can create a database that is syntactically readable but semantically inconsistent.
 
 Release-safe persistence code should therefore preserve atomicity at the level of the logical operation, not merely at the level of an individual key-value write.
 
@@ -63,7 +63,7 @@ Some unsafe states are useful to keep in the repository temporarily while a larg
 A release-blocker marker is a unique string placed next to a known unresolved release-safety issue:
 
 ```text
-THIS-MARKER-BLOCKS-VOLODYSLAV-RELEASE-63461325
+THIS-MARKER-BLOCKS-VOLODYSLAV-RELEASE-XXXXX
 ```
 
 The `link-targeted` step in the install path scans tracked files for this marker.

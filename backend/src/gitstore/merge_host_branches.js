@@ -53,7 +53,7 @@ async function listRemoteBranches(capabilities, workDirectory) {
         "safe.directory=*",
         "for-each-ref",
         "--format=%(refname:short)",
-        "refs/remotes/origin"
+        "refs/remotes/origin/*-main"
     );
     return result.stdout
         .split("\n")
@@ -102,6 +102,7 @@ async function mergeRemoteHostBranches(capabilities, workDirectory) {
         "-c",
         "user.email=volodyslav",
         "fetch",
+        "--quiet",
         "origin"
     );
     await capabilities.git.call(
@@ -110,6 +111,7 @@ async function mergeRemoteHostBranches(capabilities, workDirectory) {
         "-c",
         "safe.directory=*",
         "reset",
+        "--quiet",
         "--hard",
     );
     await capabilities.git.call(
@@ -118,7 +120,7 @@ async function mergeRemoteHostBranches(capabilities, workDirectory) {
         "-c",
         "safe.directory=*",
         "clean",
-        "-fd",
+        "-fdq",
     );
 
     for (const remoteBranch of await listRemoteBranches(capabilities, workDirectory)) {
@@ -138,6 +140,7 @@ async function mergeRemoteHostBranches(capabilities, workDirectory) {
                 "-c",
                 "user.email=volodyslav",
                 "merge",
+                "--quiet",
                 "--no-edit",
                 "--allow-unrelated-histories",
                 remoteBranch

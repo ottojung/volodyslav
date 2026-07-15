@@ -14,7 +14,7 @@ When the application version changes, any computed values stored in the previous
 * **decide** what happens to each previously-materialized node (keep, override, invalidate, or delete),
 * **traverse** the previous version's dependency graph.
 
-All writes are applied atomically.  If anything goes wrong during planning or validation, the new version's namespace remains unmodified.
+A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
 
 ---
 
@@ -22,18 +22,18 @@ All writes are applied atomically.  If anything goes wrong during planning or va
 
 ### Migration scope `S`
 
-`S` is the set of all nodes materialized in the previous version.  A node is materialized if it has an entry in the `inputs` database (even if no computed value was stored).
+`S` is the set of all nodes materialized in the previous version. A node is materialized if its identifier exists in `identifiers_keys_map`. A cached node is a materialized node with an entry in `values`; a missing node is a materialized node with freshness `"missing"` and no value; a fresh node has freshness `"up-to-date"`; a stale node has freshness `"potentially-outdated"`.
 
 After the user-supplied migration callback returns, **every node in `S` must have exactly one decision**.  Missing decisions cause `UndecidedNodesError`.
 
 ### Previous-version graph edges
 
-Traversal helpers expose the **persisted** dependency metadata:
+Traversal helpers expose dependency metadata derived from durable graph metadata:
 
-* `getInputs(N)` — the inputs `N` last depended on.
-* `getDependents(N)` — reverse edges: nodes that depended on `N`.
+* Dependencies are derived from the stored graph scheme and identifiers lookup.
+* `listValidDependents(N)` — nodes in `valid[N]` (outgoing validity frontier).
 
-Traversal never re-executes computors; it only reads stored metadata.
+Traversal never re-executes computors; it derives dependency edges from `global/graph_scheme` and `identifiers_keys_map`.
 
 ---
 
@@ -45,21 +45,22 @@ All methods are `async`.
 
 | Method | Description |
 |--------|-------------|
-| `get(nodeKey)` | Return the previous-version value. |
-| `keep(nodeKey)` | Preserve node as-is in the new version. |
-| `override(nodeKey, value)` | Replace the node's value with the result of `value(nodeKey)` (a `NodeKey => Promise<ComputedValue>`). |
-| `invalidate(nodeKey)` | Mark the node for recomputation. |
-| `delete(nodeKey)` | Remove the node from the new version entirely. |
-| `create(nodeKey, value)` | Create a new node (not in the previous version) in the new schema with the result of `value(nodeKey)` (a `NodeKey => Promise<ComputedValue>`) as its initial value. |
+| `get(nodeIdentifier)` | Return the previous-version value. |
+| `keep(nodeIdentifier)` | Preserve node as-is in the new version. |
+| `override(nodeIdentifier, value)` | Rewrite an existing cached value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`), while preserving its cache-state proof envelope. |
+| `invalidate(nodeIdentifier)` | Mark the node for recomputation. |
+| `delete(nodeIdentifier)` | Remove the node from the new version entirely. |
+| `create(nodeKeyString, value, freshness)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `freshness` must be `"up-to-date"` or `"potentially-outdated"`. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
 
 ### Traversal methods
 
 | Method | Description |
 |--------|-------------|
-| `has(nodeKey)` | `true` if `nodeKey ∈ S`. |
-| `listMaterializedNodes()` | `AsyncIterable<NodeKeyString>` of all nodes in `S`. |
-| `getInputs(nodeKey)` | Previous-version inputs list. |
-| `getDependents(nodeKey)` | Previous-version dependents list. |
+| `has(nodeIdentifier)` | `true` if `nodeIdentifier ∈ S`. |
+| `listMaterializedNodes()` | `AsyncIterable<NodeIdentifier>` of all nodes in `S`. |
+| Dependency inspection | Derived from the stored graph scheme and identifiers lookup. |
+| `listValidDependents(nodeIdentifier)` | Previous-version validity frontier (returns `NodeIdentifier[]`). |
+| `resolveNodeKey(nodeIdentifier)` | Resolve a `NodeIdentifier` to the parsed semantic `NodeKey` used by the previous replica, if available. |
 
 ---
 
@@ -80,11 +81,26 @@ Calling the same decision twice (except for `override` and `create`) is allowed 
 
 `keep`, `override`, `invalidate`, and `create` check that the node's functor and arity exist in the new schema.  Incompatible nodes must be explicitly `delete`d.  Violation throws `SchemaCompatibilityError`.
 
+### Operation semantics
+
+`keep` preserves the value, freshness, timestamps, and compatible validity.
+
+`override` is a **semantic-preserving representation rewrite**. It changes the stored representation (e.g. on-disk format) while preserving the semantic value as seen by dependents. Because the value is semantically unchanged, `override()` does not propagate invalidation — it inherits freshness, timestamps, and validity from the old record.
+
+`override()` MUST NOT be used when the migration changes the meaning or value of a node. If the value itself changes, use `invalidate()` instead, which triggers downstream recomputation so that dependents observe the new value.
+
+The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
+
+`invalidate` preserves the cached value if it exists, marks cached nodes as `"potentially-outdated"`, preserves `modifiedAt`, and does not preserve incoming or outgoing valid flags for the invalidated node. This is a conservative/hard invalidation: the clean-cache claim for the node is withdrawn.
+
+`create(..., "up-to-date")` is a clean-cache assertion. The migration validates this assertion before writing the migrated state.
+`create(..., "potentially-outdated")` seeds a cached value without claiming it is clean.
+
 ### Propagation rules
 
-#### OVERRIDE / INVALIDATE → propagate INVALIDATE downstream
+#### INVALIDATE → propagate INVALIDATE downstream
 
-When a node is overridden or invalidated, all its dependents are automatically marked `INVALIDATE` (recursively), unless they are already `DELETE`d.  If a dependent already has a `KEEP` or `OVERRIDE` decision, `DecisionConflictError` is thrown immediately.
+When a node is invalidated, all its dependents are automatically marked `INVALIDATE` (recursively), unless they are already `DELETE`d.  If a dependent already has a `KEEP` or `OVERRIDE` decision, `DecisionConflictError` is thrown immediately.
 
 #### DELETE → propagate DELETE downstream (deferred, fan-in strict)
 
@@ -102,14 +118,15 @@ This means that to delete a fan-in node `D = f(B, C)`, both `B` and `C` must be 
 | Error class | When thrown |
 |-------------|------------|
 | `DecisionConflictError` | Two different decisions assigned to the same node. |
-| `OverrideConflictError` | `override()` called twice with different values. |
+| `OverrideConflictError` | `override()` called more than once on the same node. |
 | `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
 | `PartialDeleteFanInError` | DELETE propagation reaches a fan-in node not all of whose inputs are deleted. |
 | `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
+| `InvalidMigrationDecisionError` | `override` or `create` called without the cache-state proof required by its API. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `GetMissingValueError` | `get()` called for a node in `S` with no computed value. |
-| `MissingDependencyMetadataError` | A materialized node has missing or corrupted inputs metadata. |
+| `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 
 ---
 
@@ -121,12 +138,12 @@ Use `runMigration()` from the `incremental_graph` module:
 const { runMigration } = require('./generators/incremental_graph');
 
 await runMigration(rootDatabase, newVersionNodeDefs, async (storage) => {
-    for await (const nodeKey of storage.listMaterializedNodes()) {
+    for await (const nodeIdentifier of storage.listMaterializedNodes()) {
         // Decide what to do with each node
-        if (shouldKeep(nodeKey)) {
-            await storage.keep(nodeKey);
+        if (shouldKeep(nodeIdentifier)) {
+            await storage.keep(nodeIdentifier);
         } else {
-            await storage.delete(nodeKey);
+            await storage.delete(nodeIdentifier);
         }
     }
 });
@@ -146,4 +163,4 @@ If no previous version is found, the migration is a no-op.
 
 ## Atomicity guarantee
 
-Decisions are collected in memory during the callback.  The single write to the new version's storage happens only after all validation passes.  If any error is thrown before that write, the new version remains empty.
+Decisions are collected in memory during the callback.  The desired state is unified into the target replica's storage, then validated with `assertValidFinalMergeState` before the replica pointer is switched.  A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
