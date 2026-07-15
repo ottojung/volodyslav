@@ -132,22 +132,24 @@ When the remote host has journal entries at indices beyond the local watermark (
 
 The remote numeric `JournalIndex` participates in conflict detection and physical-position convergence for already-shared established positions, but new evidence imported from a remote-only suffix is appended at fresh local indices. A remote numeric index is not a claim on the same numeric local position.
 
-REQ-JS-14a: Remote suffix entries MUST NOT be installed at their original remote indices on the local host unless the local host has never allocated those indices and no concurrent ordinary append has filled them. Instead, remote suffix entries are appended at fresh local indices during the structural sync finalization protocol (REQ-JS-14d).
+REQ-JS-14a: Remote suffix entries MUST NOT be installed at their original remote indices on the local host under any circumstances. Instead, remote suffix entries are appended at fresh local indices during the structural sync finalization protocol (REQ-JS-14d). A remote numeric index is never a claim on the same numeric local position.
 
 REQ-JS-14b: The local `last_journal_index` MUST advance to cover the maximum of the remote watermark and any freshly allocated local indices. After sync completes, the local host's watermark is at least as large as the remote watermark.
 
 REQ-JS-14c: In the basic remote-suffix case (no concurrent ordinary appends and no pre-existing local state at the relevant indices), the procedure is:
 
 1. Acquire `closeGarden` before examining established journal structure.
-2. Perform reconciliation analysis while holding `closeGarden` — read remote journal entries and determine which entries need local installation.
-3. Prepare logical journal effects without assigning fresh local indices.
-4. Acquire darkroom.
-5. Read `last_journal_index = H` and verify no concurrent append has filled indices at the planned installation positions. In the basic case, no appender has raced, so the remote entries at indices `H+1 .. remoteH` are available.
-6. Install each remote suffix entry at the same index it held on the remote host (since those indices are unallocated locally).
-7. Advance `last_journal_index` to `remoteH`.
-8. Commit the batch atomically (entries, watermark, and graph reconciliation state in one atomic durable batch).
+2. Perform reconciliation analysis while holding `closeGarden` — read remote journal entries, determine reconciliation needs, and prepare logical journal effects.
+3. Acquire darkroom.
+4. Read `last_journal_index = H`.
+5. Canonically order the remote suffix entries according to the canonical ordering policy (REQ-JS-14e).
+6. Allocate the ordered entries at `H + 1 .. H + n` where `n` is the count of remote suffix entries.
+7. Advance `last_journal_index` to `H + n`.
+8. Commit the batch atomically (fresh entries, watermark, and graph reconciliation state in one atomic durable batch).
 9. Release darkroom.
 10. Release `closeGarden`.
+
+The basic case uses fresh local allocation for all remote suffix entries, just as the concurrent case does. This avoids the race where a concurrent ordinary append claims an index that the basic-case plan expected to be free. Even when no concurrent appender has raced, remote suffix entries are appended at fresh indices, because a remote numeric index is not a claim on the same numeric local position.
 
 REQ-JS-14d: In the concurrent case, because `closeGarden` does not exclude ordinary append-only journal growth (see the compatibility table in `docs/specs/incremental-graph-locking-design.md`), ordinary appends may commit while structural sync is analyzing. The following normative finalization protocol prevents races. Hold darkroom only during finalization, not during analysis:
 
@@ -177,7 +179,7 @@ REQ-JS-14d: In the concurrent case, because `closeGarden` does not exclude ordin
    )
    ```
 
-   The "greatest fixed position retained by the reconciliation" includes every established position that the reconciliation will preserve unchanged at its numeric index plus any remote suffix positions that will be installed at their original numeric indices. All newly generated and reappended entries MUST receive indices strictly greater than `B`.
+   The "greatest fixed position retained by the reconciliation" is the highest established position at or below `max(H, remote.last_journal_index)` that the reconciliation will preserve unchanged at its numeric index. Remote suffix entries are NOT installed at their original remote indices (see REQ-JS-14c) and therefore do not contribute to the retained-position base. All newly generated and reappended entries MUST receive indices strictly greater than `B`.
 
 9. **Establish all absences and poisoning through `B`.** Any positions that the reconciliation intends to delete or poison at or below `B` are written as structural deletions. No entry occupies or claims a position at or below `B` that is not already part of the finalized established state.
 
