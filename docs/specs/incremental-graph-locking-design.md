@@ -218,6 +218,49 @@ lock only during finalization) and submits its batch independently. This
 matches the volatile-consistency spec: every call to pullNode is structurally
 identical, whether top-level or nested.
 
+### `possibleMaybeChanges({ since, to })`
+
+`possibleMaybeChanges` must observe a consistent journal state through shared garden access. The published-prefix invariant guarantees that ordinary appends do not modify established positions, so the query need only exclude structural changes and read a fixed upper bound.
+
+**Protocol:**
+
+1. Call `enterGarden` to acquire shared garden access.
+2. Select the active replica (while holding `enterGarden`).
+3. Read `last_journal_index = H` from the selected replica, establishing a fixed upper bound.
+4. Scan indices strictly after `since` and no greater than `H`, collecting matching `PossibleNodeChange` values into an array.
+5. Leave the garden and return the array.
+
+The linearization point is the read of `last_journal_index = H` after entering the garden. At that point:
+
+- Structural changes are excluded by shared garden access.
+- Every position at or below `H` is finalized with respect to ordinary append-only operations (see published-prefix invariant in `incremental-graph-journal-types.md`).
+- Later ordinary appends receive indices greater than `H` and are outside this query.
+
+`possibleMaybeChanges` does not acquire the `GRAPH_ACTIVITY_KEY` mode lock or the darkroom lock. Ordinary daytime and nighttime graph operations, including ordinary append-only journal growth, may overlap with journal queries.
+
+### compaction
+
+Compaction structurally mutates established journal positions and must close the garden.
+
+**Protocol:**
+
+1. Call `closeGarden` to acquire exclusive garden access.
+2. Select the active replica.
+3. Read `last_journal_index = H` from the selected replica, establishing a fixed bound for compaction.
+4. Determine deletions only among positions `≤ H`.
+5. Acquire darkroom for the atomic durable deletion batch.
+6. Commit the compaction batch.
+7. Release darkroom.
+8. Reopen the garden.
+
+The important requirements are:
+
+- CloseGarden is held for the entire analysis and durable mutation, not just the final commit.
+- Compaction touches only positions through its captured `H`.
+- It must not modify entries appended after `H`.
+- It must not decrease or overwrite a concurrently advanced `last_journal_index`.
+- Ordinary append-only journal growth may continue while the garden is closed; those appends use indices greater than `H` and are outside the compacted prefix.
+
 ### `migration / replica cutover`
 
 A holiday closes both the dome and the garden. Migration and replica cutover
