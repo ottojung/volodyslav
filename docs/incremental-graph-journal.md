@@ -129,7 +129,7 @@ docs/specs/incremental-graph-journal-compaction.md
 
 `possibleMaybeChanges` operates under a separate shared/exclusive **garden** concurrency domain, not the graph activity mode lock or the darkroom lock.
 
-The journal is a garden separate from the main dome. Many visitors may enter the garden concurrently. Ordinary append-only journal growth may continue while visitors are present. Structural work that removes, poisons, compacts, or otherwise deletes established journal positions requires closing the garden. New evidence is always appended at fresh positions.
+The journal is a garden separate from the main dome. Many visitors may enter the garden concurrently. Ordinary append-only journal growth may continue while visitors are present. Structural work that removes, poisons, or compacts established journal positions requires closing the garden. New evidence is always appended at fresh positions.
 
 Two scoped helpers are defined:
 
@@ -142,9 +142,13 @@ closeGarden(procedure)   — exclusive access for structural maintenance
 
 `possibleMaybeChanges({ since, to })` MUST call `enterGarden` to acquire shared garden access before selecting the active replica. The linearization point is the read of `last_journal_index = H` after entering the garden. At that point, structural changes are excluded by shared garden access, and every position at or below `H` is finalized with respect to ordinary append-only operations. The returned array reflects that fixed upper bound: all surviving matching journal entries strictly after `since` and no greater than `H`, ordered by ascending `JournalIndex`, projected to `PossibleNodeChange`.
 
-### Structural operations
+### Structural journal operations
 
-Compaction, structural synchronization, and migration journal mutation MUST call `closeGarden` to acquire exclusive garden access. These operations hold `closeGarden` for their complete analysis and durable mutation, acquiring darkroom only for the final atomic batch commit inside the garden closure.
+Compaction and structural synchronization MUST call `closeGarden` to acquire exclusive garden access. These operations hold `closeGarden` for their complete analysis and durable mutation, acquiring darkroom only for the final atomic batch commit inside the garden closure.
+
+### Lifecycle exclusion
+
+Migration and replica cutover close the garden because of replica lifecycle safety, not because migration structurally mutates journal history. Migration is append-only: it preserves all established journal entries and absences exactly and may only append fresh entries. It must not delete, fill, replace, or rewrite an already established journal position. Migration closes the garden so that `possibleMaybeChanges` does not traverse a replica while it is being replaced, and so that migration-generated graph changes and fresh journal entries are committed atomically.
 
 ### Replica cutover
 

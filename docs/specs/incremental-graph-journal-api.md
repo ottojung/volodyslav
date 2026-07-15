@@ -128,7 +128,7 @@ REQ-JA-CONC-02: `possibleMaybeChanges` MUST call `enterGarden` to acquire shared
 
 REQ-JA-CONC-03: The linearization point is the read of `last_journal_index = H` after entering the garden. At that point:
 
-- Structural changes (compaction, structural sync, migration journal mutation) are excluded by shared garden access.
+- Structural changes (compaction, structural sync) are excluded by shared garden access. Migration and replica cutover are also excluded (they close the garden for lifecycle safety, preventing readers from traversing a replica while it is being replaced).
 - Every position at or below `H` is finalized with respect to ordinary append-only operations (see the published-prefix invariant in `incremental-graph-journal-types.md`).
 - Later ordinary appends receive indices greater than `H` and are outside this query.
 

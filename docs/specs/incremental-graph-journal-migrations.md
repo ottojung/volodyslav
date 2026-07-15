@@ -134,7 +134,7 @@ Fresh migration-generated entries receive new commit-time indices above the inhe
 2. Once `closeGarden` is queued, no new reader selects the old replica.
 3. After cutover, new readers see the preserved journal prefix plus fresh migration entries.
 
-The reader that started before cutover observes a consistent snapshot of the old replica's journal state. New readers observe the new replica's journal state (preserved prefix + migration appends).
+The reader that started before cutover observes a consistent journal state of the old replica's journal. New readers observe the new replica's journal state (preserved prefix + migration appends).
 
 Migration and replica cutover require exclusive access to both graph activity and the garden.
 

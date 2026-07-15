@@ -103,7 +103,7 @@ uses darkroom as specified. Journal queries use garden, not darkroom.
 
 ## Lock Keys
 
-The implementation SHOULD derive three lock domains from functor-based factories.
+The implementation SHOULD derive four lock domains from functor-based factories.
 
 ### 1. Dome activity key
 
@@ -113,7 +113,7 @@ There is exactly one dome key:
 
 This key is acquired through `withModeMutex`.
 
-Three modes are defined on `GRAPH_ACTIVITY_KEY`:
+Three modes are defined on `DOME_ACTIVITY_KEY`:
 
 - `"daytime"` for `invalidate()` and inspection reads;
 - `"nighttime"` for all pull activity;
@@ -142,14 +142,16 @@ different nodes.
 ### 3. Garden access (shared/exclusive lock domain)
 
 The garden is a separate shared/exclusive lock domain. It is NOT a
-`GRAPH_ACTIVITY_KEY` mode and must not be modeled as one. See §Garden
+`DOME_ACTIVITY_KEY` mode and must not be modeled as one. See §Garden
 domain for the full specification.
 
 - Shared access: `enterGarden` — used by `possibleMaybeChanges`. Multiple
   callers may hold shared garden access concurrently.
-- Exclusive access: `closeGarden` — used by compaction, structural sync,
-  and migration journal mutation. Exclusive access conflicts with shared
-  access (and with another exclusive holder).
+- Exclusive access: `closeGarden` — used by compaction and structural sync
+  (which structurally mutate established journal positions), and by
+  migration/replica cutover (which close the garden for replica lifecycle
+  safety rather than for journal mutation). Exclusive access conflicts with
+  shared access (and with another exclusive holder).
 
 The garden has no Sleeper key. It is a distinct primitive with its own
 fairness guarantee: once `closeGarden` is queued, later `enterGarden`
@@ -236,7 +238,7 @@ The linearization point is the read of `last_journal_index = H` after entering t
 - Every position at or below `H` is finalized with respect to ordinary append-only operations (see published-prefix invariant in `incremental-graph-journal-types.md`).
 - Later ordinary appends receive indices greater than `H` and are outside this query.
 
-`possibleMaybeChanges` does not acquire the `GRAPH_ACTIVITY_KEY` mode lock or the darkroom lock. Ordinary daytime and nighttime graph operations, including ordinary append-only journal growth, may overlap with journal queries.
+`possibleMaybeChanges` does not acquire the `DOME_ACTIVITY_KEY` mode lock or the darkroom lock. Ordinary daytime and nighttime graph operations, including ordinary append-only journal growth, may overlap with journal queries.
 
 ### compaction
 
@@ -315,11 +317,11 @@ keys, so they may proceed concurrently.
 
 ### Journal queries
 
-`possibleMaybeChanges` uses shared garden access (`enterGarden`). It does not acquire the `GRAPH_ACTIVITY_KEY` mode lock or the darkroom lock, so it does not interfere with ordinary daytime or nighttime graph activity (reads, invalidations, pulls on different nodes, or ordinary append-only journal growth).
+`possibleMaybeChanges` uses shared garden access (`enterGarden`). It does not acquire the `DOME_ACTIVITY_KEY` mode lock or the darkroom lock, so it does not interfere with ordinary daytime or nighttime graph activity (reads, invalidations, pulls on different nodes, or ordinary append-only journal growth).
 
 Journal queries coexist with daytime activity, nighttime activity, and ordinary append-only journal growth. The published-prefix invariant guarantees that ordinary appends do not modify established positions, so queries need only exclude structural changes (via garden) and read a fixed upper bound.
 
-Structural journal maintenance (compaction, structural sync, migration journal mutation) acquires exclusive garden access (`closeGarden`). Replica cutover acquires both `holidayActivity` and `closeGarden`, preventing any new journal reader from selecting the old replica.
+Structural journal maintenance (compaction, structural sync) acquires exclusive garden access (`closeGarden`) for operations that mutate established journal positions. Replica cutover and migration also acquire `closeGarden`, but for lifecycle safety (preventing `possibleMaybeChanges` from traversing a replica while it is being replaced) rather than for journal mutation. Migration is append-only and does not structurally mutate established journal history.
 
 ## Lock ordering and deadlock discipline
 
