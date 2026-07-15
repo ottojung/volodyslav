@@ -103,11 +103,7 @@ uses darkroom as specified. Journal queries use garden, not darkroom.
 
 ## Lock Keys
 
-<<<<<<< HEAD
-The implementation SHOULD derive three lock domains.
-=======
-The implementation derives keys from functor-based factories.
->>>>>>> origin/master
+The implementation SHOULD derive three lock domains from functor-based factories.
 
 ### 1. Dome activity key
 
@@ -115,7 +111,6 @@ There is exactly one dome key:
 
 - `DOME_ACTIVITY_KEY` — a zero-argument term key instantiated from `makeUniqueFunctor`.
 
-<<<<<<< HEAD
 This key is acquired through `withModeMutex`.
 
 Three modes are defined on `GRAPH_ACTIVITY_KEY`:
@@ -127,18 +122,6 @@ Three modes are defined on `GRAPH_ACTIVITY_KEY`:
 Because same-mode holders are compatible, many invalidates may overlap, and many
 pulls may overlap. Because different modes are incompatible, no pull may overlap
 any invalidate or inspection read. `"holiday"` is exclusive with every other mode.
-=======
-This key is acquired through `withModeMutex`. Three conditions are defined:
-
-- `"daytime"` for `invalidate()` and inspection reads;
-- `"nighttime"` for all pull activity;
-- `"holiday"` for migration and replica cutover.
-
-Because same-mode holders are compatible, many invalidates may overlap, many
-pulls may overlap, and many holiday operations are serialized via the holiday
-gate. Because different modes are incompatible, no pull may overlap any
-invalidate, inspection read, or holiday operation.
->>>>>>> origin/master
 
 Before acquiring the holiday dome condition, a small `HOLIDAY_GATE_KEY` mutex
 serializes concurrent holiday callers with each other.
@@ -156,7 +139,6 @@ It is used only by pull operations, and only for the concrete node currently
 being pulled. This is what serializes same-node pulls without blocking pulls on
 different nodes.
 
-<<<<<<< HEAD
 ### 3. Garden access (shared/exclusive lock domain)
 
 The garden is a separate shared/exclusive lock domain. It is NOT a
@@ -172,8 +154,8 @@ domain for the full specification.
 The garden has no Sleeper key. It is a distinct primitive with its own
 fairness guarantee: once `closeGarden` is queued, later `enterGarden`
 calls MUST NOT overtake it.
-=======
-### 3. Darkroom key (per-replica finalization)
+
+### 4. Darkroom key (per-replica finalization)
 
 There is one exclusive mutex per replica, created through the `DARKROOM_FUNCTOR`:
 
@@ -183,7 +165,6 @@ It serializes the short finalization step where a finished transaction's batch
 and identifier allocations become part of that replica's settled record.
 Commit-snapshot reads (`listMaterializedNodes()`) also acquire the darkroom
 to observe state between commit finalizations.
->>>>>>> origin/master
 
 ## Operation Protocol
 
@@ -217,7 +198,6 @@ lookup while no darkroom finalization is in progress.
 1. Acquire `nighttimeActivity(...)` (internally
    `withModeMutex(DOME_ACTIVITY_KEY, "nighttime", ...)`).
 2. Acquire `telescopeActivity(nodeKeyString, ...)` (internally
-<<<<<<< HEAD
    `withMutex(PULL_NODE_KEY(nodeKeyString), ...)`).
 3. Open/build the transaction without darkroom. Prepare unindexed journal entries.
 4. Pull dependencies and compute the pending graph changes (values, freshness,
@@ -238,88 +218,11 @@ lock only during finalization) and submits its batch independently. This
 matches the volatile-consistency spec: every call to pullNode is structurally
 identical, whether top-level or nested.
 
-### `possibleMaybeChanges({ since, to })`
-
-`possibleMaybeChanges` must observe a consistent journal state through shared garden access. The published-prefix invariant guarantees that ordinary appends do not modify established positions, so the query need only exclude structural changes and read a fixed upper bound.
-
-**Protocol:**
-
-1. Call `enterGarden` to acquire shared garden access.
-2. Select the active replica (while holding `enterGarden`).
-3. Read `last_journal_index = H` from the selected replica, establishing a fixed upper bound.
-4. Scan indices strictly after `since` and no greater than `H`, collecting matching `PossibleNodeChange` values into an array.
-5. Leave the garden and return the array.
-
-The linearization point is the read of `last_journal_index = H` after entering the garden. At that point:
-
-- Structural changes are excluded by shared garden access.
-- Every position at or below `H` is finalized with respect to ordinary append-only operations (see published-prefix invariant in `incremental-graph-journal-types.md`).
-- Later ordinary appends receive indices greater than `H` and are outside this query.
-
-`possibleMaybeChanges` does not acquire the `GRAPH_ACTIVITY_KEY` mode lock or the darkroom lock. Ordinary daytime and nighttime graph operations, including ordinary append-only journal growth, may overlap with journal queries.
-
-### compaction
-
-Compaction structurally mutates established journal positions and must close the garden.
-
-**Protocol:**
-
-1. Call `closeGarden` to acquire exclusive garden access.
-2. Select the active replica.
-3. Read `last_journal_index = H` from the selected replica, establishing a fixed bound for compaction.
-4. Determine deletions only among positions `≤ H`.
-5. Acquire darkroom for the atomic durable deletion batch.
-6. Commit the compaction batch.
-7. Release darkroom.
-8. Reopen the garden.
-
-The important requirements are:
-
-- CloseGarden is held for the entire analysis and durable mutation, not just the final commit.
-- Compaction touches only positions through its captured `H`.
-- It must not modify entries appended after `H`.
-- It must not decrease or overwrite a concurrently advanced `last_journal_index`.
-- Ordinary append-only journal growth may continue while the garden is closed; those appends use indices greater than `H` and are outside the compacted prefix.
-=======
-   `withMutex(TELESCOPE_FUNCTOR.instantiate([nodeKeyString]), ...)`).
-3. Inside the telescope, open a transaction — the darkroom is NOT acquired at
-   this point. The transaction body (dependency pulls and computor execution)
-   runs outside the per-replica darkroom lock.
-4. Run dependency pulls and the computor. Each dependency pull is a recursive
-   call to `pullNode` — it acquires its own telescope mutex, creates its own
-   transaction, commits independently under its own darkroom (step 5), and
-   returns the computed value. Dependencies commit before the parent computor
-   runs.
-5. After the transaction body returns, acquire the per-replica darkroom lock
-   **only for the short finalization phase**:
-   - reconcile validity mutations against the current committed state;
-   - prepare identifier-map and allocation-watermark writes;
-   - flush the durable batch (LevelDB `batch` write);
-   - publish the identifier overlay to the volatile committed lookup **only
-     after** the disk flush succeeds.
-6. In the cleanup path, release all identifier reservations owned by the
-   transaction, whether the transaction committed or failed.
-7. Release the per-node telescope mutex.
-8. Release the dome nighttime lock.
-
-The darkroom lock is per-replica, so commits to different replicas never
-contend. If a parent computor fails, successfully committed dependency pulls
-remain committed — their darkroom finalizations complete before the parent
-computor is invoked and before the parent transaction finalizes.
-
-Nested pulls (dependencies) share the same dome nighttime activity but acquire
-their own telescope mutex per concrete node and create their own Transaction
-(each with its own darkroom finalization). This matches the volatile-consistency
-spec: every call to pullNode is structurally identical, whether top-level or
-nested.
->>>>>>> origin/master
-
 ### `migration / replica cutover`
 
 A holiday closes both the dome and the garden. Migration and replica cutover
 follow this protocol:
 
-<<<<<<< HEAD
 1. Acquire `holidayActivity(...)` (graph activity mode lock, exclusive with
    all other graph activity).
 2. Call `closeGarden` (exclusive garden access).
@@ -341,16 +244,6 @@ and traversal:
 The two-step acquisition (`holidayActivity` → `closeGarden`) is deadlock-free
 because garden is never acquired while holding darkroom, and holiday is never
 acquired while holding garden.
-=======
-The two-step acquisition (`HOLIDAY_GATE_KEY` → `DOME_ACTIVITY_KEY("holiday")`)
-is deadlock-free because nighttime and daytime operations only ever acquire
-`DOME_ACTIVITY_KEY`.
-
-The computor runs inside the telescope critical section but outside the
-darkroom. This is safe because the critical section is no longer graph-global:
-other pulls may still proceed on other nodes, while invalidates and inspection
-reads are excluded.
->>>>>>> origin/master
 
 ## Why This Matches the Requested Semantics
 
@@ -389,19 +282,13 @@ Structural journal maintenance (compaction, structural sync, migration journal m
 
 The implementation keeps this acquisition discipline:
 
-<<<<<<< HEAD
 1. When an operation needs graph activity and garden access, acquire graph
    activity first.
 2. When an operation needs garden access and darkroom, acquire garden access
    first.
 3. Never call `enterGarden` or `closeGarden` while holding darkroom.
-4. acquire the graph activity mode lock before any per-node pull mutexes;
-5. never acquire `"daytime"` while holding a per-node pull mutex.
-=======
-1. acquire the dome mode lock first;
-2. acquire any per-node telescope mutexes after that;
-3. never acquire `"daytime"` while holding a telescope mutex.
->>>>>>> origin/master
+4. Acquire the graph activity mode lock before any per-node pull mutexes.
+5. Never acquire `"daytime"` while holding a per-node pull mutex.
 
 There is no cycle because:
 
