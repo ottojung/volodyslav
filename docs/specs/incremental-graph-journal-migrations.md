@@ -2,9 +2,26 @@
 
 ## Purpose
 
-This document specifies how migration actions (as defined in `docs/specs/migration.md`) interact with the journal system — which actions create, preserve, or remove journal information.
+This document specifies how migration actions (as defined in `docs/specs/migration.md`) interact with the journal system — which actions create journal entries and which preserve existing journal state.
 
 Migration operations are distinguished from ordinary graph changes and from synchronization conflict resolution. Migration acts at the storage level, rewriting graph state between schema versions. The journal must reflect intentional creation of new nodes but must not confuse storage-level rewriting with user-visible change events.
+
+## Append-only rule
+
+Migration MUST NOT delete, fill, replace, rewrite, poison, reinterpret, renumber, or otherwise modify an already established journal position.
+
+Migration may only:
+
+- preserve existing journal entries (byte-for-byte);
+- preserve existing journal absences (presence-for-presence);
+- append fresh journal entries at indices above the current committed watermark;
+- advance `last_journal_index` atomically with those fresh entries.
+
+This applies to every migration action, including `storage.delete`.
+
+When migration builds a new replica, copying the old journal into the new replica is preservation, not a logical journal mutation. The new replica must contain the same established journal prefix as the old replica, followed by any freshly appended migration-generated entries.
+
+Compaction, not migration, is responsible for later removal of redundant historical entries.
 
 ---
 
@@ -46,10 +63,7 @@ Removes a node from the new version entirely.
 
 REQ-JM-06: `storage.delete` MUST emit a `delete` journal entry for the deleted node. The entry's `action` is `"delete"`, and its `time` and `creator` are set to the current migration time and local host respectively.
 
-REQ-JM-07: After emitting the `delete` entry, `storage.delete` MUST also remove or purge other journal information associated with the deleted node's `NodeIdentifier`. Specifically:
-
-- All journal entries for the deleted node's `NodeIdentifier` (in any journal sublevel) MAY be removed, **except** the `delete` entry itself which must survive.
-- Any pending or in-progress journal metadata referencing the node's `NodeIdentifier` MUST be cleaned up.
+REQ-JM-07: `storage.delete` MUST NOT remove, purge, or otherwise modify any established journal entry for the deleted node (including older `add`, `edit`, or `invalidate` entries). The append-only rule applies: the `delete` entry is appended at a fresh index above the current watermark. Older journal entries for the deleted node remain until journal compaction removes them according to the compaction specification.
 
 ---
 
@@ -75,7 +89,7 @@ The journal distinguishes migration-originated state from ordinary graph changes
 
 REQ-JM-08: Migration journal operations MUST be part of the migration's atomic batch. If the migration batch fails, no journal entries from migration actions (including `storage.create` `add` entries) must be visible in the journal.
 
-REQ-JM-09: The `delete` journal entry emitted by `storage.delete`, along with any removal of other journal records for the deleted node, MUST be part of the same atomic migration batch. Partial emission (entry written but other records not removed, or vice versa) in the event of a failure must not be observable.
+REQ-JM-09: The `delete` journal entry emitted by `storage.delete` MUST be part of the same atomic migration batch. If the migration batch fails, the `delete` entry MUST NOT be visible in the journal.
 
 ---
 

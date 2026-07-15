@@ -105,7 +105,7 @@ docs/specs/incremental-graph-journal-sync.md
 
 Migrations can transform graph storage in ways that affect journal state.
 
-Some migration actions may preserve journal history. Some may create new journal changes. Others may delete journal information associated with deleted or transformed nodes.
+Migration is append-only: it preserves all established journal entries and absences exactly. Migration may create new journal changes through fresh append entries. It must not delete, fill, replace, rewrite, or otherwise modify an already established journal position.
 
 The interaction between migration storage actions and journal state is specified in:
 
