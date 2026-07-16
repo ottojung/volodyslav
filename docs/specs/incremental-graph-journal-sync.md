@@ -411,6 +411,32 @@ sync commits H = 6
 
 The remote entry is preserved at its original numeric position because it was unestablished locally.
 
+### T1a — Same event through two paths (deduplication)
+
+```
+Host A:
+  index 1 = absent
+  index 2 = event E with eventId X
+
+Host B:
+  index 1 = event E with eventId X
+```
+
+Reconciliation:
+- absence wins at index 1 (event E is queued for possible reappend);
+- index 2 preserves event E on A;
+- the displaced copy of E (from index 1) is deduplicated by eventId X against the surviving copy at index 2;
+- final journal contains exactly one surviving copy of event E.
+
+### T1b — Identical payload, distinct event IDs
+
+```
+E1: action="edit", key="a", time=100, eventId={ creator: A, originIndex: 5 }
+E2: action="edit", key="a", time=100, eventId={ creator: A, originIndex: 10 }
+```
+
+Reconciliation MUST preserve E1 and E2 as two distinct events. Structural payload equality must not collapse them despite identical action, key, time, and creator.
+
 ### T2 — Sync remote suffix races with ordinary append
 
 ```
@@ -448,3 +474,47 @@ Sync converges:
 ```
 
 Absence propagates to all hosts. Relevant evidence is reappended freshly before or atomically with deletion. After convergence, every host agrees on each established position.
+
+### T4 — Sparse remote suffix preserves remote physical positions
+
+```
+Local:
+  H = 5
+
+Remote:
+  H = 100
+  indices 6 .. 99 are absent
+  index 100 = E
+```
+
+After reconciliation, before fresh displaced or generated events:
+
+```
+Local and remote canonical prefix:
+  indices 6 .. 99 = established absence
+  index 100 = E
+  H = 100
+```
+
+The event remains at replicated physical position 100. It must not be moved to index 6. Any fresh sync-generated events are allocated above 100.
+
+### T5 — Concurrent append claims a remote suffix position
+
+```
+local H = 5
+remote[6] = E, remoteH = 6
+
+before sync finalization:
+  ordinary local append commits F at index 6
+  localH becomes 6
+
+at finalization:
+  local[6] = F, remote[6] = E
+  entries differ → target[6] = absent
+  both F and E queued for fresh placement
+  B = max(6, 6) = 6
+  canonically ordered F and E at indices 7 and 8
+  H = 8
+```
+
+The original established position becomes absent, and the displaced events survive at fresh positions. The remote suffix entry at 6 was not unconditionally reallocated — it retained its numeric position until a concurrent append made that position established locally.
