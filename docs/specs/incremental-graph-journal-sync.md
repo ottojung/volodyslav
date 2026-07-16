@@ -244,9 +244,20 @@ REQ-JS-14e: In the concurrent case, because `closeGarden` does not exclude ordin
    - latest surviving local `add` or `edit` journal entry (to confirm the intended conflict-winner timestamp is still valid);
    - any appended entries since the initially captured watermark that concern affected keys.
 
-   If any semantic evidence changed in a way that would alter a conflict-resolution decision, sync MUST either recompute the affected resolution under darkroom or discard the entire stale plan and retry. Revalidating only physical journal positions is insufficient.
+   If any semantic evidence changed in a way that would alter a conflict-resolution decision, sync MUST handle the retry as follows:
 
-   Journal positions alone do not capture late-arriving materialization facts: a node that was absent during analysis may have been materialized by a concurrent append, or a node whose latest `add`/`edit` entry sync intended to use as conflict evidence may have been superseded by a newer entry committed during analysis. These semantic facts can change the outcome of per-node conflict resolution and MUST be rechecked.
+   **Option A (fallback):** If the changed evidence can be immediately recomputed from already available local and remote data without external I/O, sync recomputes the affected resolution while continuing to hold darkroom. Because darkroom serializes journal mutations but does not block per-node pull mutexes or daytime activity, the recomputation must be restricted to the data already in hand.
+
+   **Option B (retry):** Otherwise, sync releases darkroom (but retains `closeGarden`), returns to reconciliation analysis (step 2 of this protocol), builds a new unindexed canonical plan, reacquires darkroom, and revalidates again.
+
+   In either option, sync NEVER returns to analysis while still holding darkroom. Sync NEVER releases `closeGarden` during a retry — new readers must not enter while structural sync is pending.
+
+   Revalidating only physical journal positions is insufficient. Journal positions alone do not capture late-arriving materialization facts: a node that was absent during analysis may have been materialized by a concurrent append, or a node whose latest `add`/`edit` entry sync intended to use as conflict evidence may have been superseded by a newer entry committed during analysis. These semantic facts can change the outcome of per-node conflict resolution and MUST be rechecked.
+
+   To prevent indefinite starvation from continuous ordinary appends, use a bounded optimistic retry:
+
+   - After one failed optimistic revalidation (Option A falls through to Option B), the next attempt recomputes the complete affected reconciliation while holding darkroom through analysis and finalization (Option A with full recomputation under darkroom).
+   - This is the fallback path. It sacrifices short darkroom duration only when necessary to guarantee progress.
 
 6. Re-read the current committed local `last_journal_index = H`.
 7. Re-read every local journal position that the prepared reconciliation intended to delete, poison, or otherwise reason about.
