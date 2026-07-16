@@ -171,7 +171,7 @@ REQ-JS-14d: In the basic remote-suffix case (no concurrent ordinary appends and 
    - Treat as fresh evidence. Queue the remote entry for allocation above `B`.
 
 7. **Establish all absences and poisoning through `max(H, localH)`.** Known-absent remote suffix positions (indices where the remote host has no entry) establish local absence at those positions, advancing the watermark to cover them.
-8. **Canonically order** the queued fresh evidence (remote entries that could not retain their positions, reappended conflict-losing entries) according to the canonical ordering policy (see "Canonical ordering for reappended evidence").
+8. **Canonically order** the queued fresh evidence (remote entries that could not retain their positions, reappended conflict-losing entries) according to the canonical ordering policy (REQ-JS-14i).
 9. **Allocate** the fresh evidence at positions `B + 1` through `B + n` where `n` is the number of entries in the ordered list.
 10. Install replicated entries, established absences, fresh entries, and the final watermark (now at least `max(B + n, remoteH)`) in one atomic durable batch.
 11. Release darkroom.
@@ -208,7 +208,7 @@ REQ-JS-14e: In the concurrent case, because `closeGarden` does not exclude ordin
    The "greatest fixed position retained by the reconciliation" is the highest established position at or below `max(H, remote.last_journal_index)` that the reconciliation will preserve unchanged at its numeric index. All newly generated and reappended entries MUST receive indices strictly greater than `B`.
 
 9. **Establish all absences and poisoning through `B`.** Any positions that the reconciliation intends to delete or poison at or below `B` are written as structural deletions. No entry occupies or claims a position at or below `B` that is not already part of the finalized established state.
-10. **Canonically order** the queued fresh evidence (remote entries that could not retain their numeric positions because a concurrent append claimed them, reappended conflict-losing evidence) according to the canonical ordering policy (see "Canonical ordering for reappended evidence").
+10. **Canonically order** the queued fresh evidence (remote entries that could not retain their numeric positions because a concurrent append claimed them, reappended conflict-losing evidence) according to the canonical ordering policy (REQ-JS-14i).
 11. **Allocate** the fresh evidence at positions `B + 1` through `B + n` where `n` is the number of entries in the ordered list.
 12. Install structural deletions/poisoning, fresh appended entries, replicated remote suffix entries (at positions that remained unestablished), graph reconciliation state, and the final watermark in one atomic durable batch.
 13. Release darkroom.
@@ -216,25 +216,47 @@ REQ-JS-14e: In the concurrent case, because `closeGarden` does not exclude ordin
 
 Under this protocol, all journal-index allocation and established-position mutation happen under darkroom, serialized with ordinary durable commits. The darkroom is held only for finalization, not for the earlier analysis phase (steps 2-3). The protocol revalidates both semantic and physical evidence during finalization, preventing stale conflict-resolution decisions from being applied after concurrent appends have changed the relevant state.
 
+### Evidence collection and deduplication
+
+Before canonical ordering, synchronization MUST build one explicit collection of fresh events. Use event identity (`JournalEventId`), not payload equality, for deduplication.
+
+REQ-JS-14f: The queued collection consists of:
+
+1. Every distinct event displaced by an entry-versus-entry poisoned position.
+2. Every event displaced by entry-versus-absence reconciliation that must survive under the evidence-preservation policy (REQ-JS-14h).
+3. Every newly generated journal event required to expose graph-state changes produced by this synchronization.
+4. Any other event that the canonical target requires but that cannot remain at its original position.
+
+REQ-JS-14g: After collecting, normalize the collection:
+
+1. Remove any event whose `eventId` is already present in a retained established target position.
+2. Deduplicate queued copies by `eventId` — the same logical event must not appear more than once in the collection.
+3. Preserve multiplicity between different `eventId` values, even when the entries are otherwise byte-for-byte identical. Structural payload equality MUST NOT collapse distinct events with different `eventId` values.
+4. Apply the sync-induced-removal evidence policy (REQ-JS-14h — "still relevant" rules).
+5. Canonically order the remaining events.
+6. Allocate them at `B + 1 ... B + n`.
+
 ### Canonical ordering for reappended evidence
 
 When synchronization produces multiple entries queued for fresh reappend (divergent entries, present-versus-absence-shifted entries, remote suffix entries that a concurrent append displaced), those entries MUST be assigned to fresh positions `B+1 .. B+n` in a canonical total order. The canonical order ensures that two hosts synchronizing the same set of remote evidence independently arrive at the same physical placement, preventing further same-index conflicts.
 
-REQ-JS-14f: The canonical ordering for reappended journal evidence is defined as:
+REQ-JS-14i: The canonical ordering for reappended journal evidence is defined as:
 
 1. **By `time` ascending** — entries with an earlier recorded timestamp are placed first.
 2. **By node key** (lexicographic `NodeKeyString` order) — entries with the same timestamp are ordered by their node key.
 3. **By `creator` hostname** — entries with the same timestamp and node key are ordered by their `Hostname` value.
 4. **By `action`** — entries with identical timestamp, node key, and creator are ordered as: `add` < `edit` < `delete` < `invalidate`.
 5. **By `NodeIdentifier`** — entries that are still identical after all prior criteria are ordered by their `NodeIdentifier` value.
+6. **By `eventId.creator`** ascending — entries identical by all prior criteria are ordered by their event creator.
+7. **By `eventId.originIndex`** ascending — entries with the same event creator are ordered by their origin index.
 
-This total order is deterministic across all synchronized hosts because the comparison keys (timestamp, node key string, hostname, action, identifier) are all well-defined, comparable values that are invariant across synchronized hosts.
+Because `eventId` is globally unique, this is a true total order. All prior keys (time, node key, hostname, action, identifier) are deterministic across synchronized hosts. The `eventId` fields are immutable and survive copy and reappend. Two hosts synchronizing the same set of reappended evidence therefore arrive at the exact same physical placement.
 
 ### Still-relevant evidence for sync-induced removal
 
 When a journal entry is removed from an established position by sync (by poisoning or absence propagation), some entries may need to survive through fresh reappend while others are genuinely obsolete. This section applies only to sync-induced removal. Compaction follows its own retention rules (see `incremental-graph-journal-compaction.md`) and never reappends removed entries.
 
-REQ-JS-14g: The following kinds of evidence are "still relevant" and MUST be reappended when removed from an established position by sync:
+REQ-JS-14h: The following kinds of evidence are "still relevant" and MUST be reappended when removed from an established position by sync:
 
 - The only surviving `add` or `edit` entry for a currently materialized node key (mandatory under REQ-JC-07).
 - A `delete` entry that carries the most recent timestamp for a node key that was present on another host (needed for sync conflict convergence).

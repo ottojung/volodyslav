@@ -8,6 +8,42 @@ All journal types follow the existing nominal/opaque typing discipline used by `
 
 ---
 
+## JournalEventId (internal)
+
+### Purpose
+
+`JournalEventId` provides stable, immutable identity for one logical journal event. Structural payload equality is insufficient to distinguish events because two truly distinct events may have identical action, node identifier, key, timestamp, and creator — for example, two edits to the same node within the same millisecond. Event identity is needed for deterministic deduplication during synchronization.
+
+```js
+/**
+ * Stable identity of one logical journal event.
+ *
+ * creator identifies the host that first emitted the event.
+ * originIndex is the physical JournalIndex assigned when the event was
+ * first committed by its creator.
+ *
+ * The pair remains unchanged when the entry is copied or reappended.
+ * It is globally unique because creator identities are unique across
+ * hosts and one creator cannot initially commit two events at the
+ * same index.
+ *
+ * @typedef {object} JournalEventId
+ * @property {Hostname} creator
+ * @property {JournalIndex} originIndex
+ */
+```
+
+Semantics:
+
+- When a host first creates a journal event, the event's initial physical index becomes `eventId.originIndex`.
+- `eventId.creator` is the host that created the event.
+- Copying an entry to another replica preserves `eventId`.
+- Reappending a displaced entry preserves `eventId`.
+- A newly generated sync notification is a new event and receives a new `eventId` at its first commit.
+- Two entries with identical payloads but different `eventId` values are distinct events and both MUST remain representable.
+
+---
+
 ## JournalEntry (internal)
 
 ### Shape
@@ -24,6 +60,7 @@ All journal types follow the existing nominal/opaque typing discipline used by `
  * @property {NodeKey} key - The semantic node key at the time of the change.
  * @property {UnixTimestamp} time - When the change was recorded.
  * @property {Hostname} creator - The host that recorded the change.
+ * @property {JournalEventId} eventId - Stable identity of this event.
  */
 ```
 
@@ -299,13 +336,14 @@ The journal implementation internally needs a wider representation that pairs a 
  * @property {NodeKey} key
  * @property {UnixTimestamp} time
  * @property {Hostname} creator
+ * @property {JournalEventId} eventId
  * @property {JournalIndex} index
  * @property {NodeName} nodeName
  * @property {Array<ConstValue>} bindings
  */
 ```
 
-`PrivatePossibleNodeChange` extends `JournalEntry` with the `index`, `nodeName`, and `bindings` fields. The `nodeName` and `bindings` are the public projection fields derived from `JournalEntry.key`; they are stored on the same runtime value so that `privatePossibleNodeChangeToPossibleNodeChange` is a non-lossy nominal narrowing — NOT a fresh projection or a field-subsetting operation.
+`PrivatePossibleNodeChange` extends `JournalEntry` (including `eventId`) with the `index`, `nodeName`, and `bindings` fields. The `nodeName` and `bindings` are the public projection fields derived from `JournalEntry.key`; they are stored on the same runtime value so that `privatePossibleNodeChangeToPossibleNodeChange` is a non-lossy nominal narrowing — NOT a fresh projection or a field-subsetting operation.
 
 ### Conversion functions (journal modules only)
 
@@ -316,7 +354,7 @@ The journal implementation internally needs a wider representation that pairs a 
  *
  * This is a nominal narrowing of the SAME runtime value. It MUST NOT
  * construct a new object, pick a subset of fields, or discard the
- * private fields (`id`, `key`, `creator`, `index`). The returned
+ * private fields (`id`, `key`, `creator`, `eventId`, `index`). The returned
  * `PossibleNodeChange` retains all private journal-module fields at
  * runtime even though the public type only exposes `nodeName`,
  * `bindings`, `action`, and `time`.
