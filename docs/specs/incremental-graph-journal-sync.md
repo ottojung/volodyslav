@@ -130,28 +130,54 @@ The same materialized-node evidence rule applies: sync MUST NOT propagate absenc
 
 When the remote host has journal entries at indices beyond the local watermark (`remoteH > localH`), those entries belong to the **remote suffix** — positions that do not yet exist in the local journal namespace.
 
-The remote numeric `JournalIndex` participates in conflict detection and physical-position convergence for already-shared established positions, but new evidence imported from a remote-only suffix is appended at fresh local indices. A remote numeric index is not a claim on the same numeric local position.
+A remote journal position may be copied into the same numeric local position while that local position is still unestablished. A local position `i` is unestablished exactly when:
 
-REQ-JS-14a: Remote suffix entries MUST NOT be installed at their original remote indices on the local host under any circumstances. Instead, remote suffix entries are appended at fresh local indices during the structural sync finalization protocol (REQ-JS-14d). A remote numeric index is never a claim on the same numeric local position.
+```
+i > current local last_journal_index
+```
 
-REQ-JS-14b: The local `last_journal_index` MUST advance to cover the maximum of the remote watermark and any freshly allocated local indices. After sync completes, the local host's watermark is at least as large as the remote watermark.
+An unestablished position is not an established absence. Installing remote state into an unestablished position therefore does not violate the prohibition against filling established gaps.
 
-REQ-JS-14c: In the basic remote-suffix case (no concurrent ordinary appends and no pre-existing local state at the relevant indices), the procedure is:
+If the position became established locally before sync finalization (a concurrent append claimed it), sync MUST reconcile the local and remote states at `i` using the normal same-index convergence rules.
+
+REQ-JS-14a: A remote suffix position `i` MAY be replicated at local position `i` when `i` is greater than the current committed local `last_journal_index` at darkroom finalization. Replication into an unestablished position is preservation of an existing replicated physical position, not creation of a new journal event.
+
+REQ-JS-14b: A remote suffix position MUST NOT overwrite, fill, replace, or rewrite a position that is already established locally. If position `i` became established locally before sync finalization, sync MUST reconcile the local and remote states at `i` using the same-index convergence rules (poisoning and fresh reappend, per REQ-JS-13 and REQ-JS-14).
+
+REQ-JS-14c: The local `last_journal_index` MUST advance to cover the maximum of the remote watermark and any freshly allocated local indices. After sync completes, the local host's watermark is at least as large as the remote watermark.
+
+REQ-JS-14d: In the basic remote-suffix case (no concurrent ordinary appends and no pre-existing local state at the relevant indices), the procedure is:
 
 1. Acquire `closeGarden` before examining established journal structure.
-2. Perform reconciliation analysis while holding `closeGarden` — read remote journal entries, determine reconciliation needs, and prepare logical journal effects.
+2. Perform reconciliation analysis while holding `closeGarden` — read remote journal entries, determine reconciliation needs, and prepare logical journal effects without assigning final local indices.
 3. Acquire darkroom.
 4. Read `last_journal_index = H`.
-5. Canonically order the remote suffix entries according to the canonical ordering policy (REQ-JS-14e).
-6. Allocate the ordered entries at `H + 1 .. H + n` where `n` is the count of remote suffix entries.
-7. Advance `last_journal_index` to `H + n`.
-8. Commit the batch atomically (fresh entries, watermark, and graph reconciliation state in one atomic durable batch).
-9. Release darkroom.
-10. Release `closeGarden`.
+5. **Determine the allocation base `B`**:
 
-The basic case uses fresh local allocation for all remote suffix entries, just as the concurrent case does. This avoids the race where a concurrent ordinary append claims an index that the basic-case plan expected to be free. Even when no concurrent appender has raced, remote suffix entries are appended at fresh indices, because a remote numeric index is not a claim on the same numeric local position.
+   ```
+   B = max(
+       H,
+       remote.last_journal_index,
+       greatest fixed position retained by the reconciliation
+   )
+   ```
 
-REQ-JS-14d: In the concurrent case, because `closeGarden` does not exclude ordinary append-only journal growth (see the compatibility table in `docs/specs/incremental-graph-locking-design.md`), ordinary appends may commit while structural sync is analyzing. The following normative finalization protocol prevents races. Hold darkroom only during finalization, not during analysis:
+6. For each remote suffix position `i` such that `H < i ≤ remoteH`:
+
+   If `i ≤ B` and position `i` is still unestablished locally (i.e., no concurrent append committed at `i` before darkroom):
+   - Replicate the remote entry at local position `i`.
+
+   If `i > B` or if position `i` became established locally (a concurrent append committed there):
+   - Treat as fresh evidence. Queue the remote entry for allocation above `B`.
+
+7. **Establish all absences and poisoning through `max(H, localH)`.** Known-absent remote suffix positions (indices where the remote host has no entry) establish local absence at those positions, advancing the watermark to cover them.
+8. **Canonically order** the queued fresh evidence (remote entries that could not retain their positions, reappended conflict-losing entries) according to the canonical ordering policy (see "Canonical ordering for reappended evidence").
+9. **Allocate** the fresh evidence at positions `B + 1` through `B + n` where `n` is the number of entries in the ordered list.
+10. Install replicated entries, established absences, fresh entries, and the final watermark (now at least `max(B + n, remoteH)`) in one atomic durable batch.
+11. Release darkroom.
+12. Release `closeGarden`.
+
+REQ-JS-14e: In the concurrent case, because `closeGarden` does not exclude ordinary append-only journal growth (see the compatibility table in `docs/specs/incremental-graph-locking-design.md`), ordinary appends may commit while structural sync is analyzing. The following normative finalization protocol prevents races. Hold darkroom only during finalization, not during analysis:
 
 1. Acquire `closeGarden` before selecting the active replica or examining established journal structure.
 2. Perform reconciliation analysis while holding `closeGarden` — read remote journal entries, identify conflict positions, determine reconciliation needs.
@@ -163,7 +189,7 @@ REQ-JS-14d: In the concurrent case, because `closeGarden` does not exclude ordin
    - latest surviving local `add` or `edit` journal entry (to confirm the intended conflict-winner timestamp is still valid);
    - any appended entries since the initially captured watermark that concern affected keys.
 
-   If any semantic evidence changed in a way that would alter a conflict-resolution decision, sync MUST either recompute the affected resolution under darkroom or discard the entire stale plan and retry from step 2. Revalidating only physical journal positions is insufficient.
+   If any semantic evidence changed in a way that would alter a conflict-resolution decision, sync MUST either recompute the affected resolution under darkroom or discard the entire stale plan and retry. Revalidating only physical journal positions is insufficient.
 
    Journal positions alone do not capture late-arriving materialization facts: a node that was absent during analysis may have been materialized by a concurrent append, or a node whose latest `add`/`edit` entry sync intended to use as conflict evidence may have been superseded by a newer entry committed during analysis. These semantic facts can change the outcome of per-node conflict resolution and MUST be rechecked.
 
@@ -179,15 +205,12 @@ REQ-JS-14d: In the concurrent case, because `closeGarden` does not exclude ordin
    )
    ```
 
-   The "greatest fixed position retained by the reconciliation" is the highest established position at or below `max(H, remote.last_journal_index)` that the reconciliation will preserve unchanged at its numeric index. Remote suffix entries are NOT installed at their original remote indices (see REQ-JS-14c) and therefore do not contribute to the retained-position base. All newly generated and reappended entries MUST receive indices strictly greater than `B`.
+   The "greatest fixed position retained by the reconciliation" is the highest established position at or below `max(H, remote.last_journal_index)` that the reconciliation will preserve unchanged at its numeric index. All newly generated and reappended entries MUST receive indices strictly greater than `B`.
 
 9. **Establish all absences and poisoning through `B`.** Any positions that the reconciliation intends to delete or poison at or below `B` are written as structural deletions. No entry occupies or claims a position at or below `B` that is not already part of the finalized established state.
-
-10. **Canonically order** the queued fresh evidence (imported remote entries, reappended conflict-losing evidence, reappended shifted entries) according to the canonical ordering policy (see "Canonical ordering for reappended evidence").
-
+10. **Canonically order** the queued fresh evidence (remote entries that could not retain their numeric positions because a concurrent append claimed them, reappended conflict-losing evidence) according to the canonical ordering policy (see "Canonical ordering for reappended evidence").
 11. **Allocate** the fresh evidence at positions `B + 1` through `B + n` where `n` is the number of entries in the ordered list.
-
-12. Install structural deletions/poisoning, fresh appended entries, graph reconciliation state, and the final watermark in one atomic durable batch.
+12. Install structural deletions/poisoning, fresh appended entries, replicated remote suffix entries (at positions that remained unestablished), graph reconciliation state, and the final watermark in one atomic durable batch.
 13. Release darkroom.
 14. Release `closeGarden` (reopen the garden).
 
@@ -195,9 +218,9 @@ Under this protocol, all journal-index allocation and established-position mutat
 
 ### Canonical ordering for reappended evidence
 
-When synchronization produces multiple entries queued for fresh reappend (divergent entries, present-versus-absence-shifted entries, remote suffix entries that cannot occupy their original indices), those entries MUST be assigned to fresh positions `B+1 .. B+n` in a canonical total order. The canonical order ensures that two hosts synchronizing the same set of remote evidence independently arrive at the same physical placement, preventing further same-index conflicts.
+When synchronization produces multiple entries queued for fresh reappend (divergent entries, present-versus-absence-shifted entries, remote suffix entries that a concurrent append displaced), those entries MUST be assigned to fresh positions `B+1 .. B+n` in a canonical total order. The canonical order ensures that two hosts synchronizing the same set of remote evidence independently arrive at the same physical placement, preventing further same-index conflicts.
 
-REQ-JS-14e: The canonical ordering for reappended journal evidence is defined as:
+REQ-JS-14f: The canonical ordering for reappended journal evidence is defined as:
 
 1. **By `time` ascending** — entries with an earlier recorded timestamp are placed first.
 2. **By node key** (lexicographic `NodeKeyString` order) — entries with the same timestamp are ordered by their node key.
@@ -207,15 +230,15 @@ REQ-JS-14e: The canonical ordering for reappended journal evidence is defined as
 
 This total order is deterministic across all synchronized hosts because the comparison keys (timestamp, node key string, hostname, action, identifier) are all well-defined, comparable values that are invariant across synchronized hosts.
 
-### Still-relevant evidence for divergent entries
+### Still-relevant evidence for sync-induced removal
 
-When a journal entry is removed from an established position (by poisoning, absence propagation, or compaction), some entries may need to survive through fresh reappend while others are genuinely obsolete.
+When a journal entry is removed from an established position by sync (by poisoning or absence propagation), some entries may need to survive through fresh reappend while others are genuinely obsolete. This section applies only to sync-induced removal. Compaction follows its own retention rules (see `incremental-graph-journal-compaction.md`) and never reappends removed entries.
 
-REQ-JS-14f: The following kinds of evidence are "still relevant" and MUST be reappended when removed from an established position:
+REQ-JS-14g: The following kinds of evidence are "still relevant" and MUST be reappended when removed from an established position by sync:
 
 - The only surviving `add` or `edit` entry for a currently materialized node key (mandatory under REQ-JC-07).
 - A `delete` entry that carries the most recent timestamp for a node key that was present on another host (needed for sync conflict convergence).
-- An `invalidate` entry that is the only surviving journal record of a freshness downgrade for a materialized node whose `add`/`edit` evidence is still needed but whose value MACHT have changed.
+- An `invalidate` entry that is the only surviving journal record of a freshness downgrade for a materialized node whose `add`/`edit` evidence is still needed but whose value might have changed.
 
 The following kinds of evidence are NOT "still relevant" and MAY be dropped:
 
@@ -239,9 +262,9 @@ REQ-JS-15: Sync operations that make structural changes to established journal p
 
 Structural sync MUST NOT fill a previously absent established index, replace an established entry, or rewrite an entry's content. All new journal evidence MUST be appended at fresh indices strictly greater than the current committed watermark.
 
-The structural sync phase MUST hold `closeGarden` through its analysis and atomic durable mutation, following the normative finalization protocol in REQ-JS-14d. The durable batch uses darkroom inside the garden closure.
+The structural sync phase MUST hold `closeGarden` through its analysis and atomic durable mutation, following the normative finalization protocol in REQ-JS-14e. The durable batch uses darkroom inside the garden closure.
 
-REQ-JS-16: A purely append-only sync action that writes only fresh local indices MAY proceed without garden access. Fresh reappended entries MUST be allocated from the then-current watermark under the normal durable commit serialization. Do not assume that a previously captured `H + 1` remains available while ordinary appenders continue.
+REQ-JS-16: A purely append-only sync action that writes only fresh local indices MAY proceed without garden access. Fresh reappended entries MUST be allocated from the then-current watermark under the normal durable commit serialization. Do not assume that a previously captured position remains available while ordinary appenders continue; the allocation base `B = max(local H, remote H, greatest fixed position retained)` is determined during darkroom finalization.
 
 ### Sync order
 
@@ -283,33 +306,44 @@ REQ-JS-22: Compaction MUST NOT remove the only surviving `add` or `edit` entry f
 
 ## Testable scenarios
 
-### T1 — Sync remote suffix races with ordinary append
+### T1 — Sync remote suffix preserved at same index (no race)
 
 ```
 local H = 5
-remote has evidence at indices 6 (E)
+remote H = 6, remote[6] = E
 
-sync closes the garden and analyzes remote position 6
+sync enters darkroom
+sync reads H = 5 (no concurrent append has committed)
+index 6 is unestablished locally (6 > 5)
+sync replicates E at local index 6
+sync commits H = 6
+```
 
-ordinary append commits at local index 6 (F)
+The remote entry is preserved at its original numeric position because it was unestablished locally.
 
-sync re-reads H = 6 during darkroom finalization
-sync detects that index 6 is now occupied by F
-sync treats index 6 as a same-index conflict (absent → F vs remote E)
-sync poisons index 6 (established entry F → absent)
+### T2 — Sync remote suffix races with ordinary append
+
+```
+local H = 5
+remote H = 6, remote[6] = E
+
+sync closes the garden and analyzes
+
+ordinary append commits F at local index 6, H becomes 6
+
+sync enters darkroom, re-reads H = 6
+sync detects that index 6 is now established locally with F
+sync treats index 6 as a same-index conflict (F vs E)
+sync establishes absence at 6 (poisoning F from index 6)
+sync determines allocation base B = max(6, 6, 0) = 6
 sync reappends F at index 7 and E at index 8
 sync commits H = 8
 ```
 
 The final result must:
-- not overwrite index 6 (F is preserved at a new index 7);
-- not fill an established absence (index 6 becomes absent via poisoning);
-- preserve both relevant local and remote evidence (F and E both reappended);
-- allocate all imported/reappended evidence from the then-current watermark.
-
-### T2 — Same-index conflict during finalization
-
-If sync's earlier analysis expected a position to be absent (index `i` was present on neither host), but an ordinary append establishes it before sync enters darkroom, sync revalidates (REQ-JS-14d steps 5-8) and applies poisoning/fresh-reappend semantics rather than using the stale plan.
+- not overwrite index 6 (F is removed, not replaced);
+- preserve both relevant local and remote evidence (F and E both reappended at fresh indices);
+- allocate all reappended evidence from the then-current allocation base.
 
 ### T3 — Present-versus-absent propagation
 
