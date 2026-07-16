@@ -98,7 +98,7 @@ REQ-JS-12: After synchronization completes, for every `JournalIndex` `i`, all sy
 - the **same** `JournalEntry` value (byte-for-byte identical), or
 - **absent** (compacted or deleted on that host).
 
-What is NOT allowed is host A having one `JournalEntry` at index `i` while host B has a different `JournalEntry` at the same index `i`.
+What is NOT allowed is host A having one `JournalEntry` at index `i` while host B has a different `JournalEntry` at the same index `i`. The unified merge algorithm (above) computes the canonical target state that resolves all conflicts deterministically.
 
 ### Resolving divergent indices
 
@@ -125,6 +125,61 @@ REQ-JS-14: If one synchronized host has an established journal entry at index `i
 If the removed entry still carries relevant journal evidence (i.e., it is the only surviving `add` or `edit` for a materialized node key), that evidence MUST be reappended at a fresh local index before or atomically with removing the established entry. This ensures that compaction evidence rules (REQ-JC-07) and materialized-node visibility are preserved.
 
 The same materialized-node evidence rule applies: sync MUST NOT propagate absence in a way that removes the only surviving `add` or `edit` for a materialized node unless equivalent evidence is reappended first.
+
+### Unified physical merge algorithm
+
+The rules above (divergent indices, present-versus-absent, remote suffix) are all special cases of one unified algorithm. This section defines that algorithm explicitly, making the model coherent and implementable.
+
+The algorithm computes one canonical target journal state from the two participating replica states. The merge function is deterministic, symmetric, commutative, and idempotent for unchanged inputs.
+
+**Inputs:**
+
+```
+localH  = current local last_journal_index at finalization
+remoteH = synchronized remote last_journal_index
+P       = max(localH, remoteH)
+```
+
+**Prefix merge:** For every index `i` from `1` through `P`, derive the target state:
+
+1. **Both replicas have established state at `i`** (i ≤ localH and i ≤ remoteH):
+
+   | local[ i ] | remote[ i ] | target[ i ] |
+   |------------|-------------|-------------|
+   | entry E    | entry E     | preserve E at i |
+   | absent     | absent      | preserve absence at i |
+   | entry E    | absent      | absence at i (see below for evidence preservation) |
+   | absent     | entry E     | absence at i (see below for evidence preservation) |
+   | entry E    | entry F (E ≠ F) | poison: absence at i; queue E and F for fresh reappend |
+
+   If the present entry was removed by absence, queue it for fresh reappend only when required by the evidence-preservation policy (REQ-JS-14h). If two different entries are poisoned, queue both for fresh reappend.
+
+2. **Only local has established state at `i`** (i ≤ localH, i > remoteH):
+
+   Preserve the local state at `i` (entry or absence). Replicate it to the remote.
+
+3. **Only remote has established state at `i`** (i > localH, i ≤ remoteH):
+
+   The position is unestablished locally. Replicate the remote state at `i` (copy a remote entry into local position `i`, or establish local absence at `i` when the remote position is absent).
+
+**Fresh allocation base:**
+
+After the prefix merge, every position `1 .. P` has one canonical target state. Freshly generated or displaced events are allocated strictly after `P`:
+
+```
+B = max(
+    revalidated local last_journal_index,
+    remote last_journal_index
+)
+```
+
+If both replicas are mutable during the same session, use the maximum revalidated watermark across all participating replicas.
+
+Fresh events receive indices `B + 1 .. B + n`. The final watermark is `B + n`.
+
+**A synchronization convergence point** is reached only when every participating replica has applied the same canonical target state. An implementation may physically apply the plan to replicas sequentially, but the logical target must already be fixed. A partially applied plan is an incomplete synchronization, not a successful convergence point. Retrying must apply or recompute the canonical target rather than inventing a different host-relative layout.
+
+---
 
 ### Remote suffix reconciliation
 
@@ -303,8 +358,10 @@ REQ-JS-18: During sync, a host MAY transmit the set of `JournalIndex` values it 
 REQ-JS-19: After all hosts have completed synchronization and no further graph mutations occur, the following must hold:
 
 1. **Graph state converges**: For every node key, all hosts agree on the node's value (or absence).
-2. **Physical journal converges**: Per REQ-JS-12, all hosts agree on each index's state (same entry or absent). Any pre-existing compaction absence propagates to all hosts during convergence via the present-versus-absent rule (REQ-JS-14). After convergence, no disagreement about individual journal positions remains.
+2. **Physical journal converges**: Per REQ-JS-12 and the unified merge algorithm, all hosts agree on each index's state (same entry or absent). Any pre-existing compaction absence propagates to all hosts during convergence via the unified rule (absence wins at any established index). After convergence, no disagreement about individual journal positions remains.
 3. **Journal queries are consistent with physical convergence**: After convergence, hosts that compact the same set of indices return the same set of possible changes. Hosts that independently compact different subsets after convergence may return different subsets, but no host returns a `PossibleNodeChange` at a given index that contradicts the converged journal entry for that index.
+
+A pairwise journal reconciliation computes one canonical target journal state from the two participating replica states. The merge function is deterministic, symmetric, commutative, and idempotent for unchanged inputs. A synchronization convergence point is reached only when every participating replica has applied the same canonical target state. An implementation may physically apply the plan to replicas sequentially, but the logical target must already be fixed; the session is not converged until all participants expose that target.
 
 ---
 
