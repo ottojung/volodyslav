@@ -437,9 +437,78 @@ If exactly one occurrence survives, retain it. If none survives, queue that same
 event for fresh placement. Thus a positioned canonical event is never queued,
 and every queued event is canonical and has no surviving positioned copy.
 
+### Stage 7a — Notification coverage
+
+A same-process caller may hold a `PossibleNodeChange` cursor from before
+synchronization. If synchronization changes the logical journal winner or the
+graph-observable state for a semantic key, the caller must receive a retained
+canonical event strictly after its old source watermark, so it is prompted to
+re-read the graph state. Synchronization satisfies this by repositioning an
+existing canonical event. It still creates no logical event.
+
+#### Notification bound computation
+
+For every canonical state or freshness event E, compute the set of sources that
+require E as notification. A source requires notification via E when any of
+these differs between the source and the final destination for the affected
+semantic key:
+
+- The canonical state event (different `eventId`);
+- Materialized versus nonmaterialized;
+- Current `NodeIdentifier`;
+- Cached versus missing;
+- Cached semantic value (when both are cached, `isEqual` comparison);
+- Final graph state changed conservatively because of relowering or provenance;
+- The source latest freshness event differs from the canonical freshness event
+  (one absent and the other exists, or both exist with different `eventId`).
+
+Let:
+
+```
+notificationBound(E) = max(sourceH of every source requiring notification via E)
+```
+
+If no source requires notification via E, E has no notification bound.
+
+#### Notification-aware normalization
+
+During canonical-occurrence normalization, after gathering surviving positions
+of E:
+
+1. Keep only the greatest surviving position as the initial candidate.
+2. If E has no notification bound:
+   - retain that candidate;
+   - if no occurrence survived, queue E for fresh placement.
+3. If E has a notification bound T:
+   - if the greatest surviving position is strictly greater than T, retain it;
+   - otherwise make every old occurrence absent and queue E for fresh placement.
+4. Fresh placement occurs above P (see Stage 8).
+
+This ensures the canonical event ends up at a position strictly greater than
+the watermark of every source that needed notification, prompting callers
+whose cursor was before that watermark to re-read the graph.
+
+#### Determinism and idempotence
+
+The notification rule is symmetric. It depends only on:
+
+- both source watermarks;
+- both source logical views;
+- both source graph states;
+- the deterministic final graph and journal state.
+
+It does not depend on which source is called local.
+
+After the first synchronization, the repositioned canonical event is above the
+watermark of every source that needed notification. When the merged result is
+synchronized again with one of those original sources, the already positioned
+canonical event satisfies that source's notification bound; no further append
+is needed.
+
 ### Stage 8 — Fresh placement
 
-Canonical events that have no surviving positioned occurrence are allocated at:
+Canonical events that have no surviving positioned occurrence (including those
+queued by notification-aware normalization) are allocated at:
 
 ```
 P + 1 .. P + n
@@ -922,3 +991,69 @@ The same rule applies to canonical `invalidate`.
 A completed destination is synchronized again with either original source. The
 same canonical state and freshness events remain. Positioned canonical events
 survive normalization, so no additional copies are appended.
+
+### T26 — Synchronization notification: canonical event repositioned
+
+```
+Source A: H = 5, state event E at index 5
+Source B: H = 8, state event F at index 8
+
+E wins (earlier time, but canonical).
+```
+
+E at index 5 is not after B's watermark (8). The notification bound for E is
+max(5, 8) = 8. The greatest surviving position of E is 5, which is not strictly
+greater than 8. E is queued for fresh placement:
+
+```
+Destination:
+  index 5 = absent
+  index 8 = absent (F loses, omitted)
+  index 9 = E (preserving original eventId)
+  H = 9
+```
+
+A caller on B's source with `since = F@8` now receives `E@9` and re-reads the
+graph.
+
+### T27 — Repeated sync notification idempotence
+
+Synchronize the destination from T26 with Source B again:
+
+```
+Merged: H = 9, E at 9
+Source B: H = 8, F at 8
+```
+
+E at 9 is already strictly after Source B's watermark (8). The notification
+bound for E is satisfied. The destination retains E at 9. It does not append E
+again. No new logical event is created.
+
+### T28 — Conservative missing-state notification
+
+Both sources contain the same canonical state event E at index 5 and cached
+graph values. Graph synchronization determines that dependency relowering makes
+the final cached value unsafe and removes it:
+
+```
+Final:
+  materialized identifier preserved
+  value absent
+  freshness = missing
+```
+
+The final graph state differs from both source graph states. E at index 5 is
+not after either source watermark. Notification bound for E is
+max(localH, remoteH). Move the same event:
+
+```
+Destination:
+  index 5 = absent
+  index 6 = E (preserving original eventId)
+  H = 6
+```
+
+No new logical event is created. A later query after either source's old cursor
+receives E@6 and re-reads the now-missing node. On repeated synchronization
+with an original source whose H is 5, E@6 already provides notification and is
+not moved again.
