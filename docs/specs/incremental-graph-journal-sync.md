@@ -57,6 +57,12 @@ resolution.
 
 ### Stage 3 — Select canonical state
 
+The canonical state event selects the identifier/value provenance. Graph-level
+decisions about whether the candidate value may remain cached, must become
+missing, or must be downgraded to potentially-outdated are governed by the
+graph synchronization specification (`docs/specs/incremental-graph-synchronization.md`),
+not by the journal synchronization specification.
+
 For each semantic key:
 
 - if neither source has a state entry, the destination has none;
@@ -68,6 +74,11 @@ For each semantic key:
 The winning existing event is canonical. `add` or `edit` materializes the key
 using that event's `NodeIdentifier` and associated source graph value. `delete`
 leaves it nonmaterialized. Synchronization creates no event.
+
+The canonical state event does not override a graph-synchronization requirement
+to delete the candidate cached value, make the node missing, or downgrade it to
+potentially-outdated. Those outcomes are determined by the graph synchronization
+rules (value provenance, dependency relowering, conservative freshness).
 
 ### Stage 4 — Validate source graph and freshness consistency
 
