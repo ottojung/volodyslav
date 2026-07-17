@@ -205,36 +205,49 @@ replicas. Leave the active replica unchanged. Do not repair the source silently.
 Do not choose graph storage over journal evidence. Do not choose journal
 evidence over graph storage.
 
-### Graph-value consistency for canonical add and edit events
+### Candidate value origins
 
-`JournalEventId` identifies an immutable journal payload, but the journal
-payload does not contain the stored graph value. Synchronization nevertheless
-uses the graph value associated with an `add` or `edit` state event.
+For a canonical `add` or `edit` event E for key K, the internal proof set
+`candidateValueOrigins(K)` contains one origin for each source where:
 
-After validating each source's state entry against its graph materialization,
-for every canonical `add` or `edit` event:
+- that source's latest state event (from its `logicalJournalView`) is E;
+- its current materialized identifier is `E.id`;
+- it currently has a cached value.
 
-1. Find every source whose latest state entry has that canonical `eventId`.
-2. Read the stored graph value associated with the node in each such source.
-3. Require all those values to be `isEqual`.
-4. Use that common semantic value as the canonical graph value for the
-   materialized node.
-5. Fail with an integrity error if the values differ.
+A missing source (no cached value) contributes no cached-value origin.
 
-A `delete` event has no associated materialized value. The graph-value
-comparison applies only to canonical `add` and `edit` events.
+#### Cached-value integrity for multiple origins
 
-When only one source contains the canonical state event, use that source's
-associated stored graph value without cross-source comparison.
+When two sources contribute cached-value origins for the same canonical event:
 
-This check is separate from the immutable journal-payload validation performed
-in Stage 1. The journal event remains evidence pointing to the associated graph
-state; synchronization verifies that identical evidence does not point to
-contradictory graph values.
+- their cached values must be `isEqual`;
+- differing values are an integrity error;
+- equal values denote the same candidate semantic value.
 
-#### Integrity error on divergent values
+When one source is cached and the other is missing:
 
-If the stored graph values are not `isEqual`:
+- do not compare the cached value with absence;
+- do not treat absence as corruption;
+- the cached source contributes one candidate origin;
+- the graph provenance and relowering rules decide whether that value may
+  survive.
+
+When all canonical-event sources are missing:
+
+- the final node is materialized but missing;
+- no cached value is invented.
+
+#### Value provenance
+
+Value origin is determined by the graph synchronization specification
+(`docs/specs/incremental-graph-synchronization.md` §9). A surviving cached
+value may be preserved with its source-side origin, downgraded to potentially
+outdated, or removed entirely — but the canonical `eventId` and `NodeIdentifier`
+are never replaced by the losing source's identifier or value.
+
+#### Integrity error on divergent cached values
+
+If the cached values are not `isEqual`:
 
 - fail synchronization with an integrity error;
 - do not choose the local value;
