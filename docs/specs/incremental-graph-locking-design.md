@@ -280,9 +280,14 @@ synchronization, and replica cutover follow this protocol:
    all other graph activity).
 2. Call `closeGarden` (exclusive garden access).
 3. Perform migration, or build the inactive synchronization destination, while
-   both locks are held.
-4. Acquire the destination darkroom inside those scopes for final durable
-   metadata and cutover.
+   both locks are held. The destination may be written through multiple
+   durable batches. Each standard transaction finalization acquires the
+   destination darkroom. The darkroom may be acquired and released per durable
+   batch; it is not held for the entire potentially long-running construction.
+4. After all destination records are durable and internally consistent, acquire
+   the finalization darkroom for the remaining durable metadata and active-replica
+   cutover. Volatile active-replica state is published only after the durable
+   cutover succeeds.
 5. Release darkroom.
 6. Reopen the garden.
 7. Release the holiday lock.

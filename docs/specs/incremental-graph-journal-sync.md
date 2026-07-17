@@ -143,20 +143,19 @@ signal. The system trusts hosts and does not rely on an external time authority.
 
 Synchronization uses the existing replica-switching architecture. It does not introduce any database-state abstraction beyond the replicas that already exist in the IncrementalGraph design.
 
+The outer lock scope is:
+
 ```
 holidayActivity
 → closeGarden
 → construct merged inactive replica
-→ darkroom
-→ finish durable metadata and switch active replica
-→ release darkroom
-→ release closeGarden
-→ release holidayActivity
+→ final cutover
+→ release in reverse order (closeGarden, then holidayActivity)
 ```
 
 ### Protocol steps
 
-1. **Acquire `holidayActivity`.** This excludes daytime activity, nighttime activity, pulls, invalidations, and ordinary journal appends.
+1. **Acquire `holidayActivity`.** This excludes daytime activity, nighttime activity, pulls, invalidations, and ordinary journal appends for the complete synchronization.
 
 2. **Acquire `closeGarden`.** This excludes journal queries, compaction, structural synchronization, migration cutover, and other replica lifecycle operations.
 
@@ -167,15 +166,15 @@ holidayActivity
 
 4. **Clear or recreate the inactive destination** according to the existing replica-management design.
 
-5. **Construct the complete merged graph and journal in that inactive destination.** This step builds the merged journal prefix and appends any displaced evidence. See §Journal merge rules.
+5. **Construct the complete merged graph and journal in that inactive destination.** See §Journal merge rules. The inactive destination may be written through multiple durable batches. Each batch that commits journal entries and associated graph records must keep them atomic with one another. Each standard transaction finalization acquires the destination darkroom. The darkroom may be acquired and released per durable batch; it is not held for the entire potentially long-running destination construction.
 
 6. **Do not mutate the active local replica** while constructing the destination.
 
-7. **After the destination is complete, acquire the destination/finalization darkroom.**
+7. **After all destination records are durable and internally consistent, acquire the destination/finalization darkroom.**
 
-8. **Finish any required durable metadata and atomically switch the active-replica pointer** to the completed destination.
+8. **Finish any required final destination metadata and atomically switch the active-replica pointer** to the completed destination. Publish volatile active-replica state only after the durable cutover succeeds.
 
-9. **Release locks in reverse order:** darkroom → closeGarden → holidayActivity.
+9. **Release locks in reverse order.**
 
 If synchronization fails before cutover:
 - the old active replica remains active and unchanged;
