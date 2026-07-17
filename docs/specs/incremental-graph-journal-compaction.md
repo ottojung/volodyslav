@@ -230,3 +230,104 @@ A suggested compaction approach:
 3. For a materialized node, its latest state entry is its `add` or `edit` — this satisfies value-evidence retention automatically.
 4. For a deleted node, its latest state entry is its `delete` — this remains in the logical view.
 5. A quota policy may decide whether to remove all or some of the currently physically removable entries, or to skip a compaction run entirely. It must not remove logically required entries.
+
+---
+
+## Testable scenarios
+
+### C1 — Physical compaction is invisible
+
+Before compaction:
+
+```
+index 1 = add X
+index 4 = edit X
+index 6 = invalidate X
+index 9 = validate X
+```
+
+Baseline query returns:
+
+```
+index 4 = edit X
+index 9 = validate X
+```
+
+Physical compaction deletes indices 1 and 6. The same baseline query still returns exactly:
+
+```
+index 4 = edit X
+index 9 = validate X
+```
+
+### C2 — Redundant entries hidden before compaction
+
+Using the same physical journal as C1, with no compaction run ever executed, the baseline query still returns only indices 4 and 9. Logical compaction suppresses the older entries even when physical compaction has not deleted them.
+
+### C3 — State and freshness are independent
+
+```
+index 1 = add X
+index 3 = invalidate X
+index 5 = edit X
+index 7 = validate X
+```
+
+Baseline query returns:
+
+```
+index 5 = edit X
+index 7 = validate X
+```
+
+The later state event does not suppress the freshness event. The later freshness event does not suppress the state event.
+
+### C4 — Cursor after superseded state
+
+```
+index 2 = add X
+index 5 = edit X
+index 8 = edit X
+```
+
+Baseline query through `H = 8` returns `index 8 = edit X`.
+
+With `since = index 5`, `H = 8`, returns `index 8 = edit X`.
+
+With `since = index 8`, `H = 8`, returns nothing for X.
+
+### C5 — Cursor entry physically removed
+
+```
+index 1 = add X
+index 5 = edit X
+index 8 = edit X
+```
+
+A query through `H = 5` returns index 5 as a `PossibleNodeChange`. Later, index 8 is appended. Physical compaction deletes indices 1 and 5. A subsequent query with `since = token for index 5` (whose backing entry was physically deleted) and `H = 8` returns `index 8 = edit X`. The cursor remains usable even though its backing entry is physically absent.
+
+### C6 — Compaction lag
+
+Compaction captures `H = 5` and preserves `edit X` at index 5.
+
+A later ordinary append commits `edit X` at index 7. The physical journal temporarily contains both indices 5 and 7.
+
+A query through `H = 7` returns only index 7 (the later state entry). A later compaction deletes index 5. The query result before and after deleting index 5 is identical.
+
+### C7 — Deleted key
+
+```
+index 2  = add X
+index 4  = invalidate X
+index 6  = validate X
+index 9  = delete X
+```
+
+Baseline query returns:
+
+```
+index 6  = validate X
+index 9  = delete X
+```
+
+Physical compaction may remove indices 2 and 4 but MUST preserve indices 6 and 9. The latest freshness and latest state entries for the deleted key remain in the logical view.

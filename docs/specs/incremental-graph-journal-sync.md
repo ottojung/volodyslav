@@ -465,3 +465,15 @@ After the inactive destination is complete:
 - `closeGarden` prevents readers from selecting a replica during cutover;
 - the active pointer switches;
 - later readers select only the new replica.
+
+### T12 — Synchronization canonical state
+
+One source's latest state entry is `edit E`; the other's is `edit F`. The conflict winner is E (later time, or tie-breaker). If F remains at a physically greater index in the merged prefix, synchronization reappends E above `P`. The destination logical view returns E, not F.
+
+### T13 — Canonical freshness displaced by absence
+
+The winning `validate` event is physically displaced during reconciliation (the source that provides it has established absence at that index on the other side). The destination reappends that same event above `P`, preserving its `eventId`.
+
+### T14 — No obsolete reappend
+
+An older noncanonical `edit` event for a key is displaced during physical reconciliation (e.g., its position is poisoned). It is NOT reappended merely because it existed. Only canonical state and canonical freshness events are preserved.
