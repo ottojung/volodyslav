@@ -13,21 +13,29 @@ Synchronization does **not** create new logical journal events. It works only wi
 Synchronization applies these stages in order. Physical source redundancy never
 participates in conflict selection.
 
-### Stage 1 — Validate event identity within the committed prefix
+### Stage 1 — Validate event identity across both committed prefixes
 
-For each source, validate every physically present occurrence at indices `1 ..
-sourceH` where `sourceH = source last_journal_index`. For every such occurrence,
-the same `eventId` MUST identify the same immutable payload. Copies may occupy
-different physical positions.
+Event-ID integrity is checked over the union of established occurrences from
+both sources:
 
-Positions greater than `sourceH` are not established journal history. They MUST
-NOT participate in identity validation, logical-view construction, conflict
-resolution, or physical reconciliation. If the storage design guarantees that
-positions above `sourceH` cannot exist, that is an invariant rather than an
-open-ended validation boundary — state it explicitly rather than ambiguously
-validating an unbounded journal.
+```
+local  positions 1 .. localH
+union
+remote positions 1 .. remoteH
+```
 
-A payload disagreement for one `eventId` within the validated prefix is a
+If one `eventId` appears once locally and once remotely, those two occurrences
+MUST have identical immutable journal payloads. The same `eventId` MUST identify
+the same immutable payload regardless of which source an occurrence resides in.
+Copies may occupy different physical positions.
+
+This is not two isolated per-source checks that might fail to compare an ID
+appearing once in each source. Positions greater than a source's `last_journal_index`
+are not established journal history and MUST NOT participate in identity
+validation, logical-view construction, conflict resolution, or physical
+reconciliation.
+
+A payload disagreement for one `eventId` within the validated union is a
 journal-integrity error: synchronization aborts, does not switch replicas,
 leaves the old active replica unchanged, and neither poisons the occurrences nor
 chooses a payload.
@@ -122,6 +130,47 @@ Abort synchronization without applying the prepared target. Do not switch
 replicas. Leave the active replica unchanged. Do not repair the source silently.
 Do not choose graph storage over journal evidence. Do not choose journal
 evidence over graph storage.
+
+### Graph-value consistency for canonical add and edit events
+
+`JournalEventId` identifies an immutable journal payload, but the journal
+payload does not contain the stored graph value. Synchronization nevertheless
+uses the graph value associated with an `add` or `edit` state event.
+
+After validating each source's state entry against its graph materialization,
+for every canonical `add` or `edit` event:
+
+1. Find every source whose latest state entry has that canonical `eventId`.
+2. Read the stored graph value associated with the node in each such source.
+3. Require all those values to be `isEqual`.
+4. Use that common semantic value as the canonical graph value for the
+   materialized node.
+5. Fail with an integrity error if the values differ.
+
+A `delete` event has no associated materialized value. The graph-value
+comparison applies only to canonical `add` and `edit` events.
+
+When only one source contains the canonical state event, use that source's
+associated stored graph value without cross-source comparison.
+
+This check is separate from the immutable journal-payload validation performed
+in Stage 1. The journal event remains evidence pointing to the associated graph
+state; synchronization verifies that identical evidence does not point to
+contradictory graph values.
+
+#### Integrity error on divergent values
+
+If the stored graph values are not `isEqual`:
+
+- fail synchronization with an integrity error;
+- do not choose the local value;
+- do not choose the remote value;
+- do not switch replicas;
+- leave the current active replica unchanged;
+- do not poison the event's positions merely because the graph values disagree.
+
+The graph value is not part of `JournalEntry`, `JournalEventId`, or the
+immutable journal-payload serialization.
 
 ### Stage 5 — Select canonical freshness
 
@@ -541,6 +590,51 @@ direction-dependent choice.
 
 Both sources contain the same `add` event with no matching freshness event.
 Both store `W` as `up-to-date`. Synchronization succeeds; `W` is up to date.
+
+### T5e — Same event, divergent graph values
+
+```
+Source A:
+  state event E: action = edit, eventId = X
+  stored graph value for node: value A
+
+Source B:
+  state event E: action = edit, eventId = X (same eventId, same immutable payload)
+  stored graph value for node: value B
+
+isEqual(value A, value B) === false
+```
+
+Synchronization fails with an integrity error. The active replica remains
+unchanged. The event occurrences are not poisoned or arbitrarily assigned a
+value. The journal payload is identical — the divergence is in the associated
+graph value, which is not part of the immutable journal payload.
+
+### T5f — Same event, equal graph values
+
+```
+Source A:
+  state event E: action = add, eventId = X
+  stored graph value for node: value A
+
+Source B:
+  state event E: action = add, eventId = X (same eventId, same immutable payload)
+  stored graph value for node: value B
+
+isEqual(value A, value B) === true
+```
+
+Synchronization succeeds and produces the same canonical graph value regardless
+of which source is described first. The canonical event is unambiguous; the
+canonical graph value is that common semantic value.
+
+### T5g — Same event, conflicting initial freshness (independent of graph-value check)
+
+Both sources contain the same `add` event (same `eventId`, same payload).
+Graph values are `isEqual`. However, source A stores `up-to-date` and source B
+stores `potentially-outdated` as the initial freshness. Synchronization fails.
+Graph-value equality and initial-freshness equality are independent integrity
+checks.
 
 ### T6 — Self-synchronization stability
 
