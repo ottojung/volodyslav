@@ -187,39 +187,47 @@ Synchronization must never use graph timestamp storage as replacement journal ev
 
 Synchronization does not create freshness events. It reconciles existing `validate` and `invalidate` events.
 
-For each semantic node key:
+Freshness belongs to a node incarnation identified by `NodeIdentifier`, not merely to a semantic key. After the canonical graph winner is determined (resolving value conflicts via the existing timestamp and `NodeIdentifier` rules), only freshness events matching the winning `NodeIdentifier` may determine the canonical node's freshness.
 
-1. Find the latest surviving freshness event from each source replica.
+For each semantic node key whose canonical graph winner has `NodeIdentifier = W`:
 
-2. If only one source has freshness evidence, use it.
+1. For each source replica, among surviving `validate` and `invalidate` events whose `id` equals `W`, select the one with the greatest `JournalIndex`. If the source has no such event, use the selected graph state's existing freshness (first materialization without a freshness event means up-to-date).
 
-3. If both sources have freshness evidence, compare:
+2. If only one source has a candidate event for `W`, use it.
+
+3. If both sources have candidate events for `W`, compare:
    1. `time`;
-   2. `NodeIdentifier`.
+   2. `eventId` (lexicographic string comparison).
 
-   Later time wins. If times tie, the lexicographically greater globally unique `NodeIdentifier` wins.
+   Later time wins. If times tie, lexicographically greater `eventId` wins. `NodeIdentifier` is not used as a freshness tie-breaker here because both candidates are already restricted to `W`, making the identifiers equal.
 
 4. The canonical graph freshness follows the winning event:
    - winning `invalidate`: `potentially-outdated`
    - winning `validate`: `up-to-date`
 
-5. In the merged journal destination, preserve exactly one surviving freshness event for that semantic key: the winner.
+5. In the merged journal destination, preserve exactly one surviving freshness event for `W`: the winner.
 
-6. Make every other surviving `validate` or `invalidate` entry for that key absent.
+6. Make every other surviving `validate` or `invalidate` entry for `W` absent.
 
-7. If the winner cannot remain at its old numeric position because of physical-position reconciliation, reappend the same existing event at a fresh index.
+7. Remove freshness events for losing node identifiers as obsolete (unless another explicit retention rule requires them — no such rule is currently specified).
 
-8. Preserve its `eventId`.
+8. If the winner cannot remain at its old numeric position because of physical-position reconciliation, reappend the same existing event at a fresh index.
+
+9. Preserve its `eventId`.
+
+### Deleted canonical key
+
+When the canonical graph has no materialized node for the key, no freshness event sets graph state (there is no materialized graph freshness to set). The journal may retain the latest freshness event required by the journal retention rule, but that retained history does not make the deleted node up-to-date or potentially-outdated.
 
 This guarantees that:
 - the merged graph freshness matches the journal;
 - compaction has one required freshness event to retain;
 - `possibleMaybeChanges` returns the canonical freshness transition;
-- a losing later-position freshness event cannot incorrectly override the winner merely because of physical index order.
+- freshness events belonging to losing or obsolete node identifiers cannot affect the winning node's freshness.
 
 ### Interaction with physical merge
 
-Run physical position reconciliation first, then normalize freshness events per semantic key. The final destination must satisfy both per-position convergence rules and exactly one surviving canonical `validate` or `invalidate` event per key when freshness evidence exists.
+Run physical position reconciliation first. Then scope freshness normalization to the winning `NodeIdentifier`. The final destination must satisfy both per-position convergence rules and exactly one surviving canonical `validate` or `invalidate` event per winning-identifier incarnation when freshness evidence exists.
 
 ---
 
@@ -376,16 +384,26 @@ Synchronization fails with integrity error. No journal or graph mutation is comm
 
 A remote edit wins graph conflict. The destination preserves or reappends the original remote edit event. The number of logical events does not increase merely because synchronization occurred.
 
-### T9 — Sync freshness conflict
+### T9 — Sync freshness conflict (winning identifier)
 
 ```
-Host A latest freshness: invalidate X, time 100, id A1
-Host B latest freshness: validate X, time 200, id B1
+Host A:
+  canonical value candidate id = A1
+  validate A1, time 100
+
+Host B:
+  winning value candidate id = B1
+  invalidate A1 (losing identifier), time 150
+  validate B1, time 200
+
+Graph winner: B1
 ```
 
-Merged inactive destination:
-- X is up to date;
-- only the `validate` event survives as freshness evidence;
+Only freshness evidence for B1 participates. The `invalidate` for A1
+cannot make B1 stale. Merged inactive destination:
+- X is up to date (validate B1);
+- only the `validate` event for B1 survives as freshness evidence;
+- the `invalidate` for A1 is removed as obsolete;
 - no new event is created.
 
 ### T10 — Replica-switch failure
