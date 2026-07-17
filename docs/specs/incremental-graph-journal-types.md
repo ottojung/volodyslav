@@ -123,6 +123,85 @@ A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChan
 
 ---
 
+## Logical journal view
+
+### Purpose
+
+The logical journal view provides one normative semantic operation shared by `possibleMaybeChanges`, physical compaction, and synchronization evidence selection. It describes which journal entries are logically significant through a fixed watermark, independent of whether redundant physical entries still exist.
+
+This is a semantic definition only: the logical journal view does not create another database, replica, or persisted structure. It is the projection of journal storage through a fixed bound `H`.
+
+### Definition
+
+```
+logicalJournalView(journal, H)
+```
+
+For a journal whose committed watermark is `last_journal_index = H`, inspect every physically present journal entry at indices `1 .. H`. Ignore absent positions.
+
+For each semantic `NodeKey`, divide surviving entries into exactly two independent categories.
+
+#### State/lifecycle category
+
+```
+add
+edit
+delete
+```
+
+Retain only the entry with the greatest `JournalIndex` among these actions for the semantic key.
+
+Call this the key's **latest state entry**.
+
+#### Freshness category
+
+```
+invalidate
+validate
+```
+
+Retain only the entry with the greatest `JournalIndex` among these actions for the semantic key.
+
+Call this the key's **latest freshness entry**.
+
+### Result
+
+The logical journal view is the union, over every semantic node key, of:
+
+- its latest state entry, when one exists;
+- its latest freshness entry, when one exists.
+
+It contains at most two entries per semantic node key.
+
+The two categories are independent:
+
+- a state entry (`add`, `edit`, `delete`) never suppresses a freshness entry;
+- a freshness entry (`invalidate`, `validate`) never suppresses a state entry;
+- `validate` and `invalidate` are not value or lifecycle evidence;
+- `add`, `edit`, and `delete` are not freshness evidence.
+
+### Invariants
+
+REQ-JT-23: `logicalJournalView` MUST NOT consult current graph state. It depends only on:
+
+- the journal entries and absences;
+- the fixed bound `H`;
+- semantic `NodeKey`;
+- physical `JournalIndex`.
+
+REQ-JT-24: Two entries with equal timestamps and otherwise identical public payload fields may both be retained in the logical view, because they may belong to different categories (one state, one freshness) or different semantic keys.
+
+### Implementation equivalence
+
+An implementation does not need to materialize a second journal or physically run compaction. It may compute the equivalent result by retaining, for each semantic key and category:
+
+- greatest-index `add | edit | delete`;
+- greatest-index `invalidate | validate`.
+
+The normative meaning remains logical compaction through `H` — retaining only the semantically relevant entries per key and category.
+
+---
+
 ## UnixTimestamp
 
 `UnixTimestamp` is an integer count of milliseconds since the Unix epoch (January 1, 1970, 00:00:00 UTC). This is consistent with JavaScript's `Date.now()` and `Date.prototype.getTime()`.
