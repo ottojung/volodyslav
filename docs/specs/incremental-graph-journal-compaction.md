@@ -68,7 +68,20 @@ This specification does not mandate a specific quota policy. Any policy is valid
 
 REQ-JC-06: Compaction MAY remove older journal entries when a newer entry exists for the same node key.
 
-REQ-JC-07: **Materialized-node evidence preservation.** For every currently materialized node key, compaction MUST preserve at least one surviving `add` or `edit` journal entry. A surviving `invalidate` entry does NOT satisfy this requirement, because `invalidate` is not a value change and does not provide value-update evidence for sync conflict comparison. Compaction MAY remove older or redundant entries for the same node when a newer `add`, `edit`, or `invalidate` entry survives, provided the resulting surviving entries still include at least one `add` or `edit` for the materialized node key.
+REQ-JC-07: **Materialized-node evidence preservation.** For every currently materialized node key, compaction MUST preserve at least one surviving `add` or `edit` journal entry. A surviving `invalidate` or `validate` entry does NOT satisfy this requirement, because neither is a value change and neither provides value-update evidence for sync conflict comparison. Compaction MAY remove older or redundant entries for the same node when a newer `add`, `edit`, `invalidate`, or `validate` entry survives, provided the resulting surviving entries still include at least one `add` or `edit` for the materialized node key.
+
+### Freshness event preservation
+
+REQ-JC-07a: For every semantic node key that has at least one surviving `validate` or `invalidate` event, compaction MUST preserve the event with the greatest `JournalIndex` among those two actions. This rule applies whether the node is materialized, potentially outdated, up to date, or deleted.
+
+REQ-JC-07b: Compaction MAY remove every older `validate` and `invalidate` event for that key.
+
+REQ-JC-07c: Neither `invalidate` nor `validate` satisfies value-evidence preservation (REQ-JC-07). A simple valid retention policy is:
+1. Preserve the latest required value evidence: latest `add` or `edit` for a materialized node.
+2. Preserve the greatest-index freshness event among `validate` and `invalidate`, if one exists.
+3. Remove older redundant entries according to quota policy.
+
+REQ-JC-07d: A newer `validate` or `invalidate` does NOT allow compaction to remove the only surviving `add` or `edit`.
 
 ### Entries for deleted nodes
 
@@ -106,7 +119,7 @@ REQ-JC-17: Compaction MUST NOT change the `action` field of surviving journal en
 
 REQ-JC-18: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
 
-REQ-JC-19: Compaction MUST NOT compact a materialized node key into a state where the only surviving journal entries for that key are `invalidate` entries. For every materialized node, at least one `add` or `edit` entry must remain (see REQ-JC-07).
+REQ-JC-19: Compaction MUST NOT compact a materialized node key into a state where the only surviving journal entries for that key are `invalidate` or `validate` entries. For every materialized node, at least one `add` or `edit` entry must remain (see REQ-JC-07).
 
 ---
 
@@ -126,7 +139,7 @@ A suggested compaction approach:
 
 1. Maintain a per-node-key "latest journal index" mapping (volatile or checkpointed).
 2. During compaction, iterate all journal entries. For each node key, keep only the latest entry plus, optionally, the earliest `add` entry if it differs from the latest.
-3. For materialized nodes, ensure at least one `add` or `edit` survives (not just an `invalidate`).
+3. For materialized nodes, ensure at least one `add` or `edit` survives (not just an `invalidate` or `validate`).
 4. Remove all other entries for that node key.
 5. For deleted nodes, remove all entries if the deletion is older than the retention window.
 6. Update no metadata except the journal storage itself.

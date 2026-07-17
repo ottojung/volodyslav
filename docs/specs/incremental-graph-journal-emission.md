@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document specifies when journal entries are created — the rules for `add`, `edit`, `delete`, and `invalidate` emissions triggered by IncrementalGraph operations, synchronization, and migration.
+This document specifies when journal entries are created — the rules for `add`, `edit`, `delete`, `invalidate`, and `validate` emissions triggered by IncrementalGraph operations, synchronization, and migration.
 
 Journal emission is always coordinated with the graph storage mutation that caused it: a journal entry MUST NOT be durably committed unless the corresponding graph change is also durably committed.
 
@@ -46,6 +46,37 @@ REQ-JE-07: When a node's freshness changes from `up-to-date` to `potentially-out
 REQ-JE-07a: The `invalidate` entry MUST be emitted in the same durable transaction as the freshness state change.
 
 REQ-JE-07b: An `invalidate` entry is NOT a value change — it signals that the node's freshness has been downgraded. The node's stored value and `NodeIdentifier` are unchanged by this entry alone.
+
+### Freshness transition: `validate`
+
+REQ-JE-07c: When a node's freshness changes from `potentially-outdated` to `up-to-date`, the system MUST emit a journal entry with `action: "validate"`. This transition may occur through:
+
+- A `pull(nodeName, bindings)` that recomputes a node and returns an unchanged value (recalculating does not change the value, but the freshness transition from `potentially-outdated` to `up-to-date` is a real event).
+- A `pull(nodeName, bindings)` that recomputes a node and returns a changed value: this emits both an `edit` and a `validate` (see below for the ordering).
+- Explicit validation paths that transition a node from `potentially-outdated` to `up-to-date` outside the ordinary pull path.
+
+REQ-JE-07d: A `validate` entry is NOT a value change — it signals that the node's freshness has been restored. The node's stored value and `NodeIdentifier` are unchanged by this entry alone.
+
+REQ-JE-07e: The `validate` entry MUST be emitted in the same durable transaction as the freshness state change.
+
+REQ-JE-07f: When a recomputation changes a node's value, the system emits, in this order:
+
+```
+edit
+validate
+```
+
+Both entries are committed in the same durable transaction as the new value, counter updates, and the freshness transition. Their indices are contiguous, with `edit` receiving the lower index and `validate` the higher index.
+
+REQ-JE-07g: When a recomputation returns an unchanged value but the node was `potentially-outdated`, the system emits only `validate`. No `edit` is emitted.
+
+REQ-JE-07h: When a `pull` encounters an up-to-date node (cache hit), the system MUST NOT emit `validate`. No freshness transition occurred.
+
+REQ-JE-07i: When a node is materialized for the first time, the system emits only `add`. No `validate` is emitted because first materialization is not a transition from `potentially-outdated` to `up-to-date`.
+
+REQ-JE-07j: Repeating an operation that leaves freshness unchanged emits nothing:
+- `potentially-outdated → potentially-outdated`: emit nothing
+- `up-to-date → up-to-date`: emit nothing
 
 ### Deletion: `delete`
 
@@ -134,9 +165,17 @@ Pulling a node whose computor returns `Unchanged` or a deeply-equal value produc
 
 Pulling an up-to-date node (cache hit) produces no new journal entry.
 
-### P5 — Entry on freshness transition
+### P5 — Entry on freshness transition (invalidate)
 
 Transitioning a node's freshness from `up-to-date` to `potentially-outdated` produces a journal entry with `action: "invalidate"`.
+
+### P5a — Entry on freshness transition (validate)
+
+Transitioning a node's freshness from `potentially-outdated` to `up-to-date` produces a journal entry with `action: "validate"`. This occurs when:
+- An unchanged recomputation returns the existing value (only `validate` emitted).
+- A changed recomputation emits `edit` and `validate` in that order (contiguous indices).
+- A cache hit emits nothing (no freshness transition occurred).
+- First materialization emits only `add` (first materialization is not a transition from `potentially-outdated`).
 
 ### P6 — Atomic journal+graph write
 

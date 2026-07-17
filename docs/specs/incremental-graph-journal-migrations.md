@@ -74,8 +74,9 @@ The journal distinguishes migration-originated state from ordinary graph changes
 | Operation | Journal effect | Reason |
 |-----------|---------------|--------|
 | `pull` (first materialization) | `add` entry | New graph node |
-| `pull` (value change) | `edit` entry | Graph recomputation changed value |
-| `invalidate` (standalone) | `invalidate` entry | Freshness transition |
+| `pull` (value change) | `edit` + `validate` entries | Graph recomputation changed value + freshness restored |
+| `pull` (unchanged recomputation) | `validate` entry | Freshness restored, value unchanged |
+| `invalidate` (standalone) | `invalidate` entry | Freshness downgrade |
 | `storage.keep` | no entry | Identity-preserving copy |
 | `storage.override` | no entry | Migration-level rewriting |
 | `storage.invalidate` | `invalidate` entry | Freshness transition to `potentially-outdated` |
