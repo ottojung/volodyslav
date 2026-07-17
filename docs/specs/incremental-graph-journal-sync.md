@@ -87,12 +87,21 @@ F.action === "validate"   → graph freshness === "up-to-date"
 Any disagreement is a journal-integrity error.
 
 **No matching freshness event.** If F does not exist or F.id !== W, the
-current node incarnation has no recorded freshness transition. Its stored
-freshness MUST therefore be `up-to-date`. This covers first materialization,
-which emits `add` but not `validate`, and rematerialization with a new
-identifier where an older incarnation's retained freshness history does not
-apply to `W`. A `potentially-outdated` materialized node without a matching
-`invalidate` is inconsistent and synchronization must fail.
+current node incarnation has no recorded freshness transition. The validity
+depends on S.action:
+
+- If S.action is `add`, the stored freshness may be either `up-to-date` or
+  `potentially-outdated` — it is the node incarnation's initial freshness
+  inherited from its first materialization. Examples include ordinary first
+  materialization (normally up to date), `storage.create(..., "up-to-date")`,
+  and `storage.create(..., "potentially-outdated")`. No synthetic freshness
+  event is required.
+
+- If S.action is `edit`, the source is inconsistent. Every conforming
+  value-changing recomputation emits both `edit` and `validate`. A
+  materialized node whose latest state entry is `edit` but lacks matching
+  freshness evidence cannot establish its stored freshness under this
+  specification. Synchronization must fail.
 
 #### Nonmaterialized source key
 
@@ -122,8 +131,18 @@ another identifier. Compare candidates by later `time`, then lexicographically
 greater `eventId` on a tie. The winner is the canonical freshness event:
 `invalidate` makes the graph `potentially-outdated`, while `validate` makes it
 `up-to-date`. If neither source supplies freshness evidence for `W`, use the
-winning source graph state's stored freshness. First materialization without
-freshness evidence is up to date.
+winning source graph state's stored freshness. An `add` without matching
+freshness evidence uses its associated stored initial freshness, which may
+be either `up-to-date` or `potentially-outdated`.
+
+When both sources contain the same canonical state event (same `eventId`,
+same immutable payload) and neither source has an applicable freshness event
+for `W`, both sources' stored freshness values MUST agree. If one source
+stores `W` as `up-to-date` and the other as `potentially-outdated`,
+synchronization fails with an integrity error. The same state `eventId`
+associated with different stored initial freshness values is not a
+direction-dependent choice — the result must be the same regardless of which
+replica is described first.
 
 For a canonically deleted key, freshness never sets graph state. Preserve no
 freshness event when neither source has one; preserve the sole entry when only
@@ -421,7 +440,7 @@ journal logical view: state = edit W, freshness = validate W
 
 Synchronization fails.
 
-### T3 — Missing invalidate
+### T3 — Stale migration creation
 
 Source:
 ```
@@ -429,8 +448,31 @@ state: materialized W, stored freshness = potentially-outdated
 journal logical view: state = add W, no matching freshness event
 ```
 
-Synchronization fails: a potentially-outdated node must have a matching
-invalidate.
+This is valid. The `add` without matching freshness evidence uses its
+associated stored initial freshness, which is `potentially-outdated`.
+Synchronization preserves this freshness.
+
+### T3a — Missing freshness after edit
+
+Source:
+```
+state: materialized W, stored freshness = potentially-outdated (or up-to-date)
+journal logical view: state = edit W, no matching freshness event
+```
+
+Synchronization fails. A conforming edit must have matching `validate`
+evidence. An `edit` incarnation without freshness evidence cannot establish
+its stored freshness.
+
+### T3b — Fresh creation
+
+Source:
+```
+state: materialized W, stored freshness = up-to-date
+journal logical view: state = add W, no matching freshness event
+```
+
+This is valid. Freshness is `up-to-date`.
 
 ### T4 — First materialization
 
@@ -440,7 +482,9 @@ state: materialized W, stored freshness = up-to-date
 journal logical view: state = add W, no matching freshness event
 ```
 
-This is valid. First materialization emits `add` but not `validate`.
+This is valid. The `add` supplies the node incarnation's initial freshness
+(up-to-date in this case). First materialization emits `add` but not
+`validate`.
 
 ### T5 — Old-incarnation freshness
 
@@ -452,6 +496,51 @@ journal logical view: state = add W2, freshness = invalidate W1
 
 This is valid source history. The `invalidate W1` belongs to an older
 incarnation and does not make `W2` stale.
+
+### T5a — Override preserves fresh state
+
+```
+Before override:
+    W is up-to-date
+    latest freshness event = validate W
+
+After storage.override:
+    W is up-to-date (freshness inherited)
+    existing validate W remains latest freshness evidence
+    no new journal event emitted
+```
+
+Override preserves freshness unchanged and emits no journal entry.
+
+### T5b — Override preserves stale state
+
+```
+Before override:
+    W is potentially-outdated
+    latest freshness event = invalidate W
+
+After storage.override:
+    W remains potentially-outdated (freshness inherited)
+    existing invalidate W remains latest freshness evidence
+    no new journal event emitted
+```
+
+Override preserves freshness unchanged and emits no journal entry.
+
+### T5c — Identical event with conflicting initial freshness
+
+Both sources contain the same `add` event (same `eventId`, same immutable
+payload) and no matching freshness event. One source stores `W` as
+`up-to-date` and the other as `potentially-outdated`.
+
+Synchronization fails with an integrity error. The same state `eventId`
+associated with different stored initial freshness values is not a
+direction-dependent choice.
+
+### T5d — Identical state event, consistent freshness
+
+Both sources contain the same `add` event with no matching freshness event.
+Both store `W` as `up-to-date`. Synchronization succeeds; `W` is up to date.
 
 ### T6 — Self-synchronization stability
 
