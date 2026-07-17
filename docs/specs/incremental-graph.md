@@ -28,7 +28,20 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-09 (NodeValue):** Computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
 
-**TERM-10 (Freshness):** Conceptual state: `"up-to-date" | "potentially-outdated"`.
+**TERM-10 (Freshness):** Conceptual state: `"up-to-date" | "potentially-outdated" | "missing"`.
+The storage invariant is: `freshness[id] === "missing"` iff `values[id]`
+is absent for the same `NodeIdentifier`. A `"missing"` node is materialized
+(its identifier exists in the identifier lookup) but has no cached value.
+
+**TERM-10a (Materialized node):** A node instance whose storage identifier
+exists in the identifier lookup (`identifiers_keys_map`). A materialized node
+may be **cached** (has a stored value) or **missing** (has no stored value).
+
+**TERM-10b (Cached node):** A materialized node with a stored value. A cached
+node's freshness is `"up-to-date"` or `"potentially-outdated"`.
+
+**TERM-10c (Missing node):** A materialized node with no stored value. Its
+freshness is `"missing"`.
 
 **TERM-11 (Computor):** Async function: `(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>`.
 

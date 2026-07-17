@@ -88,6 +88,32 @@ Both entries are committed in the same durable transaction as the new value, cou
 
 REQ-JE-07g: When a recomputation returns an unchanged value but the node was `potentially-outdated`, the system emits only `validate`. No `edit` is emitted.
 
+### Missing-node recomputation
+
+REQ-JE-07k: When a `pull` successfully computes a value for a **missing** node
+(a materialized node with no cached value), the system emits, in this order:
+
+```
+edit
+validate
+```
+
+Both entries are committed in the same durable transaction as the new cached
+value, the freshness transition to `up-to-date`, counter updates, and timestamps.
+Their indices are contiguous, with `edit` receiving the lower index and
+`validate` the higher index.
+
+A missing node cannot validly return `Unchanged`, because it has no old cached
+value against which to compare. If it does, `pull` MAY throw an error.
+
+REQ-JE-07l: Operations that preserve missingness — invalidating an already
+missing node, or migration `storage.invalidate` on a missing node — MUST NOT
+emit a freshness event. Missing nodes are not `up-to-date` and cannot transition
+to `potentially-outdated`.
+
+REQ-JE-07m: `storage.override` on a missing node is not defined. A missing node
+has no old value representation to override.
+
 REQ-JE-07h: When a `pull` encounters an up-to-date node (cache hit), the system MUST NOT emit `validate`. No freshness transition occurred.
 
 REQ-JE-07i: When a node is materialized for the first time, the system emits only `add`. No `validate` is emitted because first materialization is not a transition from `potentially-outdated` to `up-to-date`.
@@ -199,6 +225,15 @@ Transitioning a node's freshness from `potentially-outdated` to `up-to-date` pro
 - A changed recomputation emits `edit` and `validate` in that order (contiguous indices).
 - A cache hit emits nothing (no freshness transition occurred).
 - First materialization emits only `add` (first materialization is not a transition from `potentially-outdated`).
+
+### P5b — Missing-node recomputation
+
+Pulling a missing node that successfully computes a value produces `edit` and
+`validate` in that order (contiguous indices). The entries are committed in the
+same transaction as the new cached value and freshness transition.
+
+Pulling a missing node that fails or is not pulled emits no journal entry.
+The node remains missing.
 
 ### P6 — Atomic journal+graph write
 

@@ -87,15 +87,21 @@ entry from `logicalJournalView(sourceJournal, sourceH)`.
 
 #### Materialized source node
 
-Suppose a source has a materialized node with identifier `W`. Require:
+Suppose a source has a materialized node with identifier `W`. The node may be
+**cached** (has a stored value, freshness is `up-to-date` or
+`potentially-outdated`) or **missing** (has no stored value, freshness is
+`"missing"`). Require:
 
 1. S exists.
 2. S.action is `add` or `edit`.
 3. S.id === W.
 
-Then validate freshness.
+Then validate state and freshness.
 
-**Matching freshness event.** If F exists and F.id === W, the source graph's
+**Cached source node.** When a source has a cached value for `W`, the
+following consistency checks apply.
+
+_Matching freshness event._ If F exists and F.id === W, the source graph's
 stored freshness MUST agree with F.action:
 
 ```
@@ -105,7 +111,7 @@ F.action === "validate"   → graph freshness === "up-to-date"
 
 Any disagreement is a journal-integrity error.
 
-**No matching freshness event.** If F does not exist or F.id !== W, the
+_No matching freshness event._ If F does not exist or F.id !== W, the
 current node incarnation has no recorded freshness transition. The validity
 depends on S.action:
 
@@ -121,6 +127,19 @@ depends on S.action:
   materialized node whose latest state entry is `edit` but lacks matching
   freshness evidence cannot establish its stored freshness under this
   specification. Synchronization must fail.
+
+**Missing source node.** When a source has a missing node for `W`
+(freshness `"missing"`, no value), the source is consistent only if:
+
+1. S exists and S.action is `add` or `edit`.
+2. S.id === W.
+3. The missing state arose from a prior conservative synchronization or
+   other valid structural removal — not from event evidence.
+
+A missing source node with freshness `"missing"` is valid. F is historical
+only and does not assign current freshness. A matching `validate` or
+`invalidate` may remain from before the cached value was removed; that is
+permitted journal history.
 
 #### Nonmaterialized source key
 
@@ -183,17 +202,22 @@ If the stored graph values are not `isEqual`:
 The graph value is not part of `JournalEntry`, `JournalEventId`, or the
 immutable journal-payload serialization.
 
-### Stage 5 — Select canonical freshness
+### Stage 5 — Select canonical freshness history
+
+This stage selects the canonical freshness event retained in the destination
+journal. The final graph freshness is determined by the graph synchronization
+rules (see `docs/specs/incremental-graph-synchronization.md` §9). The canonical
+freshness history event does not by itself force the graph freshness.
 
 For a canonically materialized key, let the winning identifier be `W`. Consider
 each source freshness entry only when `entry.id === W`; ignore freshness for
 another identifier. Compare candidates by later `time`, then lexicographically
-greater `eventId` on a tie. The winner is the canonical freshness event:
-`invalidate` makes the graph `potentially-outdated`, while `validate` makes it
-`up-to-date`. If neither source supplies freshness evidence for `W`, use the
-winning source graph state's stored freshness. An `add` without matching
-freshness evidence uses its associated stored initial freshness, which may
-be either `up-to-date` or `potentially-outdated`.
+greater `eventId` on a tie. The winner is the canonical freshness history event.
+
+If neither source supplies freshness evidence for `W`, use the winning source
+graph state's stored freshness as the basis for final freshness. An `add`
+without matching freshness evidence uses its associated stored initial
+freshness, which may be either `up-to-date` or `potentially-outdated`.
 
 When both sources contain the same canonical state event (same `eventId`,
 same immutable payload) and neither source has an applicable freshness event
@@ -210,6 +234,24 @@ one source has one; and when both have entries preserve the winner by later
 `time`, then lexicographically greater `eventId`. That winner is canonical
 journal history only: it neither rematerializes the key nor assigns graph
 freshness.
+
+### Final graph freshness
+
+The retained canonical freshness event does not force the final graph freshness.
+The graph synchronization rules determine:
+
+- If the retained event is `validate`, the graph may still be
+  `potentially-outdated` or `missing` if relowering, provenance requirements,
+  or conservative freshness rules require it.
+- If the retained event is `invalidate`, the graph must not be `up-to-date`
+  unless a later canonical `validate` exists.
+- If the destination must produce a missing node (materialized identifier,
+  no cached value), the canonical freshness event is retained as journal
+  history only; it does not assign graph freshness.
+
+Graph-level decisions about cached-value removal, freshness downgrade, and
+missing-state production are governed by the graph synchronization
+specification (`docs/specs/incremental-graph-synchronization.md`).
 
 ### Wall-clock resolution
 
