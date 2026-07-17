@@ -245,7 +245,7 @@ P = max(
 
 If both replicas are mutable during the same session, use the maximum revalidated watermark across all participating replicas.
 
-Fresh events receive indices `P + 1 .. P + n`. The final watermark is `P + n`. The term `greatest fixed position retained by the reconciliation` is not needed because every numeric position through `P` is already resolved by the prefix merge; no position above `P` is retained by the reconciliation, and no position at or below `P` is available for fresh allocation.
+Fresh events receive indices `P + 1 .. P + n`. The final watermark is `P + n`.
 
 **A synchronization convergence point** is reached only when every participating replica has applied the same canonical target state. An implementation may physically apply the plan to replicas sequentially, but the logical target must already be fixed. A partially applied plan is an incomplete synchronization, not a successful convergence point. Retrying must apply or recompute the canonical target rather than inventing a different host-relative layout.
 
@@ -271,39 +271,9 @@ REQ-JS-16b: A remote suffix position MUST NOT overwrite, fill, replace, or rewri
 
 REQ-JS-16c: The local `last_journal_index` MUST advance to cover the maximum of the remote watermark and any freshly allocated local indices. After sync completes, the local host's watermark is at least as large as the remote watermark.
 
-REQ-JS-16d: In the basic remote-suffix case (no concurrent ordinary appends and no pre-existing local state at the relevant indices), the procedure is:
+REQ-JS-16d: The no-race remote-suffix case (no concurrent ordinary appends) is a testable scenario of the unified algorithm, not a separate normative algorithm. See test scenario T1 (line 441) for an example. The unified algorithm already handles this case: when `closeGarden` is acquired and the remote suffix is analyzed, darkroom finalization rereads `H` and replicates unestablished remote positions according to the prefix merge rules. If a concurrent append has claimed a suffix position, the unified poisoning rules apply.
 
-1. Acquire `closeGarden` before examining established journal structure.
-2. Perform reconciliation analysis while holding `closeGarden` — read remote journal entries, determine reconciliation needs, and prepare logical journal effects without assigning final local indices.
-3. Acquire darkroom.
-4. Read `last_journal_index = H`.
-5. **Compute the unified merge frontier `P`**:
-
-   ```
-   P = max(
-       H,
-       remote.last_journal_index
-   )
-   ```
-
-   Every numeric position through `P` is resolved by the prefix merge. No separate "greatest fixed position retained" is needed.
-
-6. For each remote suffix position `i` such that `H < i ≤ remoteH`:
-
-   If `i` is still unestablished locally at finalization (i.e., no concurrent append committed at `i` before darkroom):
-   - Replicate the remote entry at local position `i`.
-
-   If position `i` became established locally (a concurrent append committed there):
-   - Treat as fresh evidence. Queue the remote entry for fresh allocation above `P`.
-
-7. **Establish all absences through `P`.** Known-absent remote suffix positions (indices where the remote host has no entry) establish local absence at those positions, advancing the watermark.
-8. **Canonically order** the queued fresh evidence (remote entries that could not retain their positions, reappended conflict-losing entries) according to the canonical ordering policy (REQ-JS-16i).
-9. **Allocate** the fresh evidence at positions `P + 1` through `P + n` where `n` is the number of entries in the ordered list.
-10. Install replicated entries, established absences, fresh entries, and the final watermark (now at least `max(P + n, remoteH)`) in one atomic durable batch.
-11. Release darkroom.
-12. Release `closeGarden`.
-
-REQ-JS-16e: In the concurrent case, because `closeGarden` does not exclude ordinary append-only journal growth (see the compatibility table in `docs/specs/incremental-graph-locking-design.md`), ordinary appends may commit while structural sync is analyzing. The following normative finalization protocol prevents races. Hold darkroom only during finalization, not during analysis:
+REQ-JS-16e: The concurrent-append case is an example of revalidation changing `localH` during finalization, not a second algorithm. See test scenario T2 (line 484) for an example. The concurrent finalization protocol is:
 
 1. Acquire `closeGarden` before selecting the active replica or examining established journal structure.
 2. Perform reconciliation analysis while holding `closeGarden` — read remote journal entries, identify conflict positions, determine reconciliation needs.
@@ -346,7 +316,7 @@ REQ-JS-16e: In the concurrent case, because `closeGarden` does not exclude ordin
    )
    ```
 
-   Every numeric position through `P` is resolved by the prefix merge. No separate "greatest fixed position retained" is needed. All newly generated and reappended entries receive indices strictly greater than `P`.
+   Every numeric position through `P` is resolved by the prefix merge. All newly generated and reappended entries receive indices strictly greater than `P`.
 
 9. **Establish all absences and poisoning through `P`.** Any positions that the reconciliation intends to delete or poison at or below `P` are written as structural deletions. No entry occupies or claims a position at or below `P` that is not already part of the finalized established state.
 10. **Canonically order** the queued fresh evidence (remote entries that could not retain their numeric positions because a concurrent append claimed them, reappended conflict-losing evidence) according to the canonical ordering policy (REQ-JS-16i).
@@ -615,3 +585,24 @@ index 8 = event X
 ```
 
 The greatest position survives. The lower duplicate at index 3 becomes established absence. No fresh copy of X is queued because a later surviving copy already exists at index 8.
+
+### T7 — Caller-direction symmetry
+
+```
+canonicalMerge(A, B) = canonicalMerge(B, A)
+```
+
+Run the same fixed inputs as both `canonicalMerge(A, B)` and `canonicalMerge(B, A)`. The complete canonical target (graph target, journal prefix, fresh event list, final watermark) MUST be byte-for-byte identical regardless of which replica is designated as "first" argument.
+
+### T8 — Repeated merge idempotence
+
+```
+canonicalMerge(T, T) = T
+```
+
+Merging an already converged target `T` with itself creates:
+- no new sync event;
+- no new journal index;
+- no watermark change.
+
+The result is identical to the input target `T`.
