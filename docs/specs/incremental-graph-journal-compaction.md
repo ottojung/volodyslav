@@ -197,10 +197,6 @@ REQ-JC-18: Compaction MUST NOT change the `action` field of surviving journal en
 
 REQ-JC-19: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
 
-REQ-JC-20: Compaction MUST preserve the greatest-index state/lifecycle entry
-
-REQ-JC-19: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
-
 ---
 
 ## Out of scope
