@@ -93,16 +93,6 @@ REQ-JC-09: Compaction MAY remove journal entries even when synchronization is pe
 
 REQ-JC-10: Compaction is safe for synchronization correctness as long as the surviving journal entries (if any) plus the sync conflict rules produce correct convergence. Sync does not require journal entries that do not exist.
 
-### Entries for deleted nodes
-
-REQ-JC-08: Compaction MAY remove all journal entries for a node that has been deleted (whose `NodeIdentifier` no longer exists in the graph state) once the deletion is sufficiently old or once all hosts in the sync mesh are known to have processed the deletion. The exact policy for determining "sufficiently old" is implementation-defined.
-
-### Interaction with synchronization
-
-REQ-JC-09: Compaction MAY remove journal entries even when synchronization is pending. Sync does not use `timestamps` sublevel records as a replacement for missing journal entries. Instead, sync uses only surviving journal entries for conflict comparison. Absent journal entries are treated as "no journal evidence" rather than falling back to node timestamps. See `incremental-graph-journal-sync.md` for the sync conflict-resolution rules.
-
-REQ-JC-10: Compaction is safe for synchronization correctness as long as the surviving journal entries (if any) plus the sync conflict rules produce correct convergence. Sync does not require journal entries that do not exist.
-
 ---
 
 ## `graph.possibleMaybeChanges` behavior after compaction

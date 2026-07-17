@@ -98,7 +98,7 @@ The existing conflicting events already indicate that the semantic key may have 
 
 ### Published-prefix invariant
 
-The merge operates on two replica revisions. For the local replica, the established prefix through its committed watermark is finalized. For the remote replica, its established prefix through its committed watermark is finalized.
+The merge operates on two source replicas. For the local replica, the established prefix through its committed watermark is finalized. For the remote replica, its established prefix through its committed watermark is finalized.
 
 **Inputs:**
 ```
