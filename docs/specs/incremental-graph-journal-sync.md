@@ -698,12 +698,16 @@ Absence wins at index 5. If E is canonical and has no other surviving position, 
 
 ### T10 — Sparse remote suffix
 
+Assuming E is canonical:
+
 ```
 Local H = 5
 Remote H = 100, indices 6..99 absent, index 100 = E
 ```
 
 Canonical prefix: indices 6..99 = absence, index 100 = E, H = 100.
+
+If E is noncanonical, index 100 is absent in the physically canonical destination.
 
 ### T11 — Fresh entry ordering
 

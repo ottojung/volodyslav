@@ -53,10 +53,41 @@ node's existing freshness unchanged.
 | `potentially-outdated` | `potentially-outdated` | no entry |
 
 The migration-supplied value replaces the stored representation but preserves the
-semantic value. The node's freshness is inherited from the old record. Pulls
-after migration may emit `validate` (for unchanged recomputation) or `edit`
-followed by `validate` (for changed) as regular graph journal events; these are
-ordinary graph operations, not migration emissions.
+semantic value. The node's freshness is inherited from the old record.
+
+### Pull behavior after override depends on inherited freshness
+
+A subsequent pull is an ordinary graph operation, not a migration emission.
+
+#### Override inherited up-to-date
+
+```
+before override: up-to-date
+after override:  up-to-date
+```
+
+A subsequent pull is a cache hit:
+
+- no recomputation;
+- no `edit`;
+- no `validate`;
+- no journal entry.
+
+#### Override inherited potentially outdated
+
+```
+before override: potentially-outdated
+after override:  potentially-outdated
+```
+
+A subsequent pull recomputes normally:
+
+- unchanged result → `validate`;
+- changed result → `edit`, then `validate`;
+- failed recomputation → no committed freshness restoration.
+
+These later events are ordinary graph-operation events. Override itself emits
+nothing in either case.
 
 ### `storage.invalidate`
 
@@ -96,7 +127,7 @@ The journal distinguishes migration-originated state from ordinary graph changes
 | `invalidate` (standalone) | `invalidate` entry | Freshness downgrade |
 | `storage.keep` | no entry | Identity-preserving copy |
 | `storage.override` | no entry | Semantic-preserving representation rewrite; preserves freshness and does not emit a journal entry |
-| `storage.invalidate` | `invalidate` entry | Freshness transition to `potentially-outdated` |
+| `storage.invalidate` | conditional `invalidate` entry | Emitted only when freshness changes from `up-to-date` to `potentially-outdated`. An already potentially outdated node emits nothing. |
 | `storage.create` | `add` entry | Intentional new node creation |
 | `storage.delete` | `delete` entry | Node deleted by migration |
 | Synchronization | existing events copied/reappended | Cross-host reconciliation (no new events created) |

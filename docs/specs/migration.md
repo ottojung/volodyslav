@@ -154,8 +154,12 @@ await runMigration(rootDatabase, newVersionNodeDefs, async (storage) => {
 1. Detect the previous version by examining stored schema namespaces.
 2. Create a `MigrationStorage` backed by the previous version's data.
 3. Execute the callback.
-4. Call `finalize()` internally (propagate deletes, check completeness).
-5. Collect and validate decisions.
+4. Finalize decisions:
+   - propagate deletes;
+   - check fan-in;
+   - check completeness;
+   - return the finalized decision set.
+5. Derive and validate the desired target state from the finalized decisions.
 6. Gently unify the desired state into the inactive replica.
 7. Durably flush and validate the inactive replica.
 8. Switch the active-replica pointer.
