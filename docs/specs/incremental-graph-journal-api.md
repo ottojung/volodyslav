@@ -149,7 +149,7 @@ function baselinePossibleNodeChange()
 
 REQ-JA-07: `baselinePossibleNodeChange()` MUST be callable at any time. It MUST NOT require a prior call to `graph.possibleMaybeChanges`.
 
-REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` MUST return all currently available surviving journal-backed `PossibleNodeChange` values matching `to`. This returns a `PossibleNodeChange` for every surviving journal entry whose node key matches the filter.
+REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` MUST return all currently available surviving journal-backed `PossibleNodeChange` values matching `to`. This returns a `PossibleNodeChange` for every surviving journal entry whose node key matches the filter, subject to freshness suppression (§Freshness suppression).
 
 ---
 
@@ -159,13 +159,14 @@ REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to
 
 REQ-JA-CONC-01: `possibleMaybeChanges({ since, to })` MUST observe a consistent journal state through shared garden access. There must exist a linearization point during the call such that the returned array is exactly:
 
-- all surviving journal entries in that journal state;
+- all surviving ordinary entries (`add`, `edit`, `delete`) in that journal state;
+- only the greatest-index surviving freshness entry (`invalidate`, `validate`) per semantic node key;
 - whose journal index is strictly greater than the position referenced by `since`;
 - whose node key matches `to`;
 - ordered by ascending `JournalIndex`;
 - projected to `PossibleNodeChange`.
 
-No surviving journal index in the observed span is returned more than once, and no surviving matching journal index in the observed span is skipped.
+No ordinary matching entry is skipped. A freshness entry is omitted only when a later matching `validate` or `invalidate` for the same semantic node key exists in the observed span.
 
 ### Shared garden access
 
