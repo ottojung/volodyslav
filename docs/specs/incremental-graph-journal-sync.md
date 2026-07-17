@@ -125,8 +125,52 @@ depends on S.action:
 - If S.action is `edit`, the source is inconsistent. Every conforming
   value-changing recomputation emits both `edit` and `validate`. A
   materialized node whose latest state entry is `edit` but lacks matching
-  freshness evidence cannot establish its stored freshness under this
-  specification. Synchronization must fail.
+   freshness evidence cannot establish its stored freshness under this
+   specification. Synchronization must fail.
+
+### Source consistency matrix
+
+For each source semantic key, let:
+
+```
+S = source latest state entry
+F = source latest freshness entry
+W = source materialized NodeIdentifier (from graph storage)
+```
+
+The following table defines whether a source is internally consistent for a
+given combination of state action, cached-value presence, and graph freshness.
+
+| State action | Cached? | Graph freshness | F exists? | F.id? | Valid? |
+|---|---|---|---|---|---|
+| `add`/`edit` | yes | `up-to-date` | yes | == W | valid (F must be `validate`) |
+| `add`/`edit` | yes | `up-to-date` | no | — | valid (S must be `add`) |
+| `add`/`edit` | yes | `up-to-date` | yes | != W | valid (older-incarnation history) |
+| `add`/`edit` | yes | `potentially-outdated` | yes | == W | valid (any F action) |
+| `add`/`edit` | yes | `potentially-outdated` | no | — | valid (S must be `add`) |
+| `add`/`edit` | yes | `potentially-outdated` | yes | != W | valid (older-incarnation history) |
+| `edit` | yes | `up-to-date` | no | — | **INVALID** |
+| `add`/`edit` | no | `missing` | any | any | valid (F is historical) |
+| `delete` | no | n/a | any | any | valid (F is historical) |
+| none | — | n/a | yes | any | **INVALID** (orphan) |
+
+Additional rules:
+
+- When a cached node's graph freshness is `up-to-date` and a matching `F`
+  exists and `F.id === W`, `F.action` MUST be `validate`. A matching
+  latest `invalidate` with current graph state `up-to-date` is an integrity
+  error.
+- When a cached node's graph freshness is `potentially-outdated` and a
+  matching `F` exists and `F.id === W`, `F.action` may be `invalidate` or
+  `validate` (the latter followed by a conservative graph-freshness
+  downgrade).
+- When graph freshness is `missing`, F is historical only and does not assign
+  current freshness. A matching `validate` or `invalidate` may remain from
+  before synchronization removed the cached value.
+- When `F.id !== W`, F is history for an older incarnation and does not
+  describe W.
+- A freshness event with no state event for the semantic key (orphan
+  freshness) remains invalid.
 
 **Missing source node.** When a source has a missing node for `W`
 (freshness `"missing"`, no value), the source is consistent only if:
