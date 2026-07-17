@@ -10,11 +10,42 @@ Synchronization does **not** create new logical journal events. It works only wi
 
 ## Core conflict resolution
 
-When synchronizing two hosts, for each node key that appears in both replicas' graph state:
+Physical compaction may already have removed every event outside the logical journal view. Therefore synchronization MUST NOT depend on raw physical entries that logical compaction would reject.
 
-REQ-JS-01: The host whose journal entry has the later `time` field wins the conflict. The winning host's value is retained; the losing identifier and associated records are removed.
+For each source replica and semantic node key, synchronization uses only the source's entries from `logicalJournalView(journal, last_journal_index)`:
 
-REQ-JS-02: If both hosts have the same `time` for the conflicting node, tie-breaking is decided via lexicographic comparison of `NodeIdentifier` (converted to string). `NodeIdentifier` values are globally unique across hosts, making this a total deterministic tie-breaker.
+- the source's latest state entry (`add`, `edit`, or `delete`) — the greatest-index entry in the state/lifecycle category;
+- the source's latest freshness entry (`invalidate` or `validate`) — the greatest-index entry in the freshness category.
+
+Older physically present entries are redundant and must not affect graph conflict resolution, deletion conflict resolution, freshness conflict resolution, evidence preservation, or fresh reappend decisions.
+
+### Source consistency
+
+REQ-JS-00: For a materialized source node with identifier `W`, the source's latest state entry MUST be `add` or `edit`, and its `id` MUST equal `W`.
+
+For a deleted source key with retained journal history, the latest state entry MUST be `delete`.
+
+If graph state and latest state evidence contradict one another, synchronization fails with a journal-integrity error and leaves the active replica unchanged.
+
+Synchronization MUST NOT substitute graph timestamp records for missing or contradictory journal evidence.
+
+### State conflict comparison
+
+Compare the two source latest-state entries:
+
+1. later `time` wins;
+2. if identifiers differ and times tie, lexicographically greater `NodeIdentifier` wins;
+3. if identifiers are equal and times tie, lexicographically greater `eventId` (string comparison) wins.
+
+The winner determines:
+- materialized value/incarnation (the winning `add` or `edit`); or
+- deletion (the winning `delete`).
+
+Synchronization creates no new event. It preserves or reappends the existing winning event.
+
+REQ-JS-01: When synchronizing two hosts, for each node key that appears in both replicas' graph state, the host whose latest state entry has the later `time` field wins the conflict. The winning host's value is retained; the losing identifier and associated records are removed.
+
+REQ-JS-02: If both hosts have the same `time` for the conflicting latest state entry, tie-breaking is decided via lexicographic comparison of `NodeIdentifier` (converted to string) when identifiers differ. `NodeIdentifier` values are globally unique across hosts, making this a total deterministic tie-breaker. When identifiers are equal, lexicographically greater `eventId` wins.
 
 ### Wall-clock resolution
 
@@ -162,22 +193,34 @@ An unpositioned event queued for fresh placement does not participate in the "gr
 
 If the same event already survives at a positioned target entry, remove its queued fresh copy.
 
+### Destination logical view canonicalization
+
+REQ-JS-07: After physical index reconciliation, the destination's `logicalJournalView(journal, P + n)` must contain exactly:
+
+- the canonical state event for each key;
+- the canonical freshness event for each key, when one exists.
+
+The canonical event may already occupy the greatest surviving index in its category. If it does not — for example, an obsolete event for the same key and category survives at a greater physical index in the merged prefix — reappend the canonical existing event at a fresh index above `P` (see fresh entry allocation). Preserve its exact action, key, identifier, time, creator, and `eventId`. This makes the canonical event the greatest-index event in its category.
+
+Older redundant entries may remain physically present until separate compaction. They are invisible through `possibleMaybeChanges`.
+
+Synchronization still does not create any logical event.
+
+#### Required displaced evidence
+
+REQ-JS-08: If physical reconciliation displaces a canonical event because of same-index poisoning or entry-versus-established-absence, reappend it freshly. This applies to canonical state evidence and canonical freshness evidence.
+
+Do not reappend obsolete noncanonical events.
+
 ---
 
 ## Value evidence
 
-For conflicting materialized values:
-1. Compare the latest relevant `add` or `edit` entry time.
-2. If tied, compare `NodeIdentifier`.
-3. Use the winning graph state.
-4. Preserve or reappend the existing causal events as required.
-5. Do not generate an additional event.
+REQ-JS-09: For conflicting materialized values, compare the two source latest-state entries (from `logicalJournalView` for each source) using the state conflict comparison rules defined in §State conflict comparison. Use the winning graph state. Preserve or reappend the existing causal events as required. Do not generate an additional event.
 
 For deletion conflict:
-1. Compare the surviving `delete` event against the latest surviving `add` or `edit`.
-2. Use time, then `NodeIdentifier`.
-3. Preserve the winning existing evidence.
-4. Do not generate an additional event.
+
+REQ-JS-10: Compare the surviving `delete` event against the latest surviving `add` or `edit` using the state conflict comparison rules. Preserve the winning existing evidence. Do not generate an additional event.
 
 Synchronization must never use graph timestamp storage as replacement journal evidence.
 
@@ -185,13 +228,13 @@ Synchronization must never use graph timestamp storage as replacement journal ev
 
 ## Freshness evidence reconciliation
 
-Synchronization does not create freshness events. It reconciles existing `validate` and `invalidate` events.
+Synchronization does not create freshness events. It reconciles existing `validate` and `invalidate` events using the same `logicalJournalView` per source replica.
 
-Freshness belongs to a node incarnation identified by `NodeIdentifier`, not merely to a semantic key. After the canonical graph winner is determined (resolving value conflicts via the existing timestamp and `NodeIdentifier` rules), only freshness events matching the winning `NodeIdentifier` may determine the canonical node's freshness.
+Freshness belongs to a node incarnation identified by `NodeIdentifier`, not merely to a semantic key. After the canonical graph winner is determined (resolving value conflicts via the state conflict comparison rules), only freshness events matching the winning `NodeIdentifier` may determine the canonical node's freshness.
 
 For each semantic node key whose canonical graph winner has `NodeIdentifier = W`:
 
-1. For each source replica, among surviving `validate` and `invalidate` events whose `id` equals `W`, select the one with the greatest `JournalIndex`. If the source has no such event, use the selected graph state's existing freshness (first materialization without a freshness event means up-to-date).
+1. For each source replica, the source's latest freshness entry for `W` is the greatest-index `validate` or `invalidate` with `id === W` from that source's `logicalJournalView`. If the source has no such event, use the selected graph state's existing freshness (first materialization without a freshness event means up-to-date).
 
 2. If only one source has a candidate event for `W`, use it.
 
@@ -217,7 +260,7 @@ For each semantic node key whose canonical graph winner has `NodeIdentifier = W`
 
 ### Deleted canonical key
 
-When the canonical graph has no materialized node for the key, no freshness event sets graph state (there is no materialized graph freshness to set). The journal may retain the latest freshness event required by the journal retention rule, but that retained history does not make the deleted node up-to-date or potentially-outdated.
+When the canonical graph has no materialized node for the key, no freshness event sets graph state (there is no materialized graph freshness to set). The journal retains the latest freshness entry from `logicalJournalView` when one exists. The retained history does not make the deleted node up-to-date or potentially-outdated.
 
 This guarantees that:
 - the merged graph freshness matches the journal;
