@@ -233,25 +233,31 @@ Run physical position reconciliation first. Then scope freshness normalization t
 
 ## Physical journal convergence
 
-After synchronization completes, for every `JournalIndex` `i`, all synchronized hosts MUST agree that `rendered/r/journal/i` is either:
-- the **same** `JournalEntry` value (byte-for-byte identical), or
-- **absent** (compacted or deleted on that host).
+One synchronization invocation modifies only the local inactive destination and then switches the local active pointer. It does not modify the fetched remote host.
 
-What is NOT allowed is host A having one `JournalEntry` at index `i` while host B has a different `JournalEntry` at the same index `i`.
+Given the same two stable source replicas, the merge rules produce the same complete destination journal regardless of which source is described first. This deterministic pairwise merge guarantees:
+
+- the same graph winner;
+- the same state for every physical journal position;
+- the same freshness winner;
+- the same fresh-entry ordering;
+- the same final watermark.
+
+A one-sided synchronization run produces that deterministic destination locally. The remote host converges only after it separately obtains and installs equivalent merged data through the broader synchronization mechanism.
 
 ### Resolving divergent indices
 
-If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, that index is poisoned. Both conflicting entries MUST be deleted from index `i`. Any still-relevant changes described by the conflicting entries MUST be appended at fresh `JournalIndex` values above `P`.
+If the two source replicas have different `JournalEntry` values at the same `JournalIndex` `i`, the destination poisons that index. Both conflicting entries are deleted from index `i` in the destination. Any still-relevant changes described by the conflicting entries are appended at fresh `JournalIndex` values above `P`.
 
-### Present-versus-absent conflict
+### Present-versus-absence conflict
 
-If one synchronized host has an established journal entry at index `i` and another host has an established absence at the same index `i`, absence wins at index `i`. The present entry MUST be removed from index `i` on every host that has it.
+If one source replica has an established journal entry at index `i` and the other has an established absence at the same index `i`, the destination establishes absence at index `i`. The present entry is removed in the destination.
 
-If the removed entry still carries relevant journal evidence (it is the only surviving `add` or `edit` for a materialized node), that evidence MUST be reappended at a fresh index before or atomically with removing the established entry.
+If the removed entry still carries relevant journal evidence (it is the only surviving `add` or `edit` for a materialized node), that evidence is reappended at a fresh index before or atomically with removing the established entry from the destination.
 
 ### Remote suffix
 
-A remote suffix position `i` (where `localH < i ≤ remoteH`) MAY be replicated at local position `i` while `i` is unestablished locally. If the position became established locally before sync finalization, sync MUST reconcile the local and remote states at `i` using the same-index convergence rules.
+A remote suffix position `i` (where `localH < i ≤ remoteH`) MAY be replicated at local position `i` in the destination while `i` is unestablished locally. If the position became established locally before sync finalization, sync reconciles the local and remote states at `i` using the same-index convergence rules.
 
 ---
 
