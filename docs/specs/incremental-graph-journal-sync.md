@@ -72,8 +72,10 @@ For each semantic key:
   identifiers and times tie) lexicographically greater `eventId`.
 
 The winning existing event is canonical. `add` or `edit` materializes the key
-using that event's `NodeIdentifier` and associated source graph value. `delete`
-leaves it nonmaterialized. Synchronization creates no event.
+using that event's `NodeIdentifier`. The associated graph value is the cached
+value from whichever source supplies the event as its latest state event; if
+that source has no cached value (missing), the destination is materialized but
+missing. `delete` leaves it nonmaterialized. Synchronization creates no event.
 
 The canonical state event does not override a graph-synchronization requirement
 to delete the candidate cached value, make the node missing, or downgrade it to
@@ -464,21 +466,49 @@ canonical event strictly after its old source watermark, so it is prompted to
 re-read the graph state. Synchronization satisfies this by repositioning an
 existing canonical event. It still creates no logical event.
 
-#### Notification bound computation
+Two separate notification carrier sets are defined per semantic key:
+**state-notification sources** and **freshness-notification sources**. A source
+may appear in neither, one, or both sets depending on how its state and final
+destination diverge.
 
-For every canonical state or freshness event E, compute the set of sources that
-require E as notification. A source requires notification via E when any of
+#### State-notification sources
+
+A source requires state notification via the canonical state event when any of
 these differs between the source and the final destination for the affected
 semantic key:
 
-- The canonical state event (different `eventId`);
+- Canonical state event (`eventId`);
 - Materialized versus nonmaterialized;
 - Current `NodeIdentifier`;
 - Cached versus missing;
 - Cached semantic value (when both are cached, `isEqual` comparison);
-- Final graph state changed conservatively because of relowering or provenance;
-- The source latest freshness event differs from the canonical freshness event
-  (one absent and the other exists, or both exist with different `eventId`).
+- Final graph state changed conservatively because of relowering or provenance
+  (even when the canonical state event itself is unchanged).
+
+#### Freshness-notification sources
+
+A source requires freshness notification via the canonical freshness event when
+its latest freshness event differs from the final canonical freshness-history
+event:
+
+- One absent and the other exists;
+- Both exist with different `eventId`.
+
+When graph freshness changes from up-to-date to stale or missing but the
+canonical freshness event itself is unchanged (e.g., conservative downgrade
+after a retained `validate`), use the canonical state event as the notification
+carrier. Do not reposition a `validate` or `invalidate` merely because a value
+or cached/missing state changed.
+
+#### Notification bound computation
+
+For a canonical event E, compute the set of sources that require E as
+notification:
+
+- If E is a state event (`add`, `edit`, `delete`): use the state-notification
+  sources for E's semantic key.
+- If E is a freshness event (`invalidate`, `validate`): use the
+  freshness-notification sources for E's semantic key.
 
 Let:
 
