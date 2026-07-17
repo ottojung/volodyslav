@@ -37,7 +37,7 @@ REQ-JM-01: `storage.keep` MUST NOT create a journal entry. It preserves existing
 
 Replaces a node's value with a migration-supplied value. Override leaves the node potentially-outdated so it will be recomputed on first pull in the new namespace. Because override intentionally does not restore freshness, it never performs a freshness transition from `potentially-outdated` to `up-to-date`.
 
-REQ-JM-02: `storage.override` MUST NOT create a journal entry. The value change is a migration artifact, not a graph computation. The node will be recomputed on first `pull` in the new namespace, producing an `edit` (and `validate` if freshness transitions) as a regular graph journal entry at that time.
+REQ-JM-02: `storage.override` MUST NOT create a journal entry. The value change is a migration artifact, not a graph computation. The node will be recomputed on first `pull` in the new namespace. If recomputation returns an unchanged value (the migration-supplied value matches what recomputation produces), the pull emits only a `validate` entry for the freshness transition. If recomputation changes the value, the pull emits `edit` followed by `validate` as a regular graph journal event at that time.
 
 ### `storage.invalidate`
 
@@ -59,7 +59,7 @@ Removes a node from the new version entirely.
 
 REQ-JM-06: `storage.delete` MUST emit a `delete` journal entry for the deleted node. The entry's `action` is `"delete"`, and its `time` and `creator` are set to the current migration time and local host respectively.
 
-REQ-JM-07: `storage.delete` MUST NOT remove, purge, or otherwise modify any established journal entry for the deleted node (including older `add`, `edit`, or `invalidate` entries). The append-only rule applies: the `delete` entry is appended at a fresh index above the current watermark. Older journal entries for the deleted node remain until journal compaction removes them according to the compaction specification.
+REQ-JM-07: `storage.delete` MUST NOT remove, purge, or otherwise modify any established journal entry for the deleted node (including older `add`, `edit`, `invalidate`, or `validate` entries). The append-only rule applies: the `delete` entry is appended at a fresh index above the current watermark. Older journal entries for the deleted node remain until journal compaction removes them according to the compaction specification.
 
 ---
 
@@ -82,11 +82,19 @@ The journal distinguishes migration-originated state from ordinary graph changes
 
 ---
 
-## Atomicity
+## Durable coordination
 
-REQ-JM-08: Migration journal operations MUST be part of the migration's atomic batch. If the migration batch fails, no journal entries from migration actions (including `storage.create` `add` entries) must be visible in the journal.
+Migration constructs an inactive replica. The entire migration is not required to be one enormous database batch.
 
-REQ-JM-09: The `delete` journal entry emitted by `storage.delete` MUST be part of the same atomic migration batch. If the migration batch fails, the `delete` entry MUST NOT be visible in the journal.
+REQ-JM-08: Each emitted journal event MUST be durably coordinated with its associated destination graph records. The journal entry and its corresponding graph-state writes must commit in the same atomic durable batch, so that no reader can observe one without the other.
+
+REQ-JM-09: Journal indices and the destination watermark MUST remain internally consistent at every intermediate state. `last_journal_index` must accurately reflect every committed journal entry.
+
+REQ-JM-10: All inactive-destination records — graph state, journal entries, metadata, and watermark — MUST be durable before cutover.
+
+REQ-JM-11: No reader MUST observe the destination replica before cutover. The inactive replica is not visible.
+
+REQ-JM-12: If migration fails before cutover, the old active replica MUST remain selected and unchanged. The incomplete inactive replica may be discarded or rebuilt.
 
 ---
 
@@ -135,11 +143,11 @@ The reader that started before cutover observes a consistent journal state of th
 
 Migration and replica cutover require exclusive access to both graph activity and the garden.
 
-REQ-JM-10: Migration and replica cutover MUST acquire `holidayActivity` (graph activity exclusion) first, then `closeGarden` (garden exclusion), before performing any durable mutations. This follows the lock-ordering rule: acquire graph activity before garden access.
+REQ-JM-13: Migration and replica cutover MUST acquire `holidayActivity` (graph activity exclusion) first, then `closeGarden` (garden exclusion), before performing any durable mutations. This follows the lock-ordering rule: acquire graph activity before garden access.
 
-REQ-JM-11: For durable replica mutations during migration or cutover, the operation acquires darkroom inside the `closeGarden` scope, after both holiday and garden access have been acquired.
+REQ-JM-14: For durable replica mutations during migration or cutover, the operation acquires darkroom inside the `closeGarden` scope, after both holiday and garden access have been acquired.
 
-REQ-JM-12: Because `possibleMaybeChanges` holds `enterGarden` across replica selection and traversal, cutover waits for existing journal readers to leave. Once `closeGarden` is queued, no new reader can select the old replica during cutover.
+REQ-JM-15: Because `possibleMaybeChanges` holds `enterGarden` across replica selection and traversal, cutover waits for existing journal readers to leave. Once `closeGarden` is queued, no new reader can select the old replica during cutover.
 
 ---
 
