@@ -144,6 +144,13 @@ The normative meaning remains logical compaction through `H`, followed by cursor
 
 The logical winner is selected through the complete fixed prefix ending at `H`. It is returned only when its retained index is greater than `since`.
 
+**Note on freshness events and graph state:** A returned `validate` entry means
+a freshness transition to `up-to-date` was recorded in the journal. However,
+the current graph state may differ from what the journal entry records — a
+later synchronization or invalidation may have changed the graph freshness
+after the event was emitted. Consumers MUST re-read the current graph state
+rather than assuming the journal event describes current freshness.
+
 Example:
 
 ```

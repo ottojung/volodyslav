@@ -182,6 +182,15 @@ The two categories are independent:
 - `validate` and `invalidate` are not value or lifecycle evidence;
 - `add`, `edit`, and `delete` are not freshness evidence.
 
+**Freshness events are journal history, not current graph state.** A retained
+`validate` or `invalidate` entry records a freshness transition that occurred
+at the time of emission. The current graph freshness may differ — a later
+synchronization, invalidation, or recomputation may have changed it. Consumers
+MUST re-read the current graph state (via `getFreshness`) rather than treating
+journal freshness events as authoritative current-state indicators. The
+canonical freshness history selected by synchronization is journal history; the
+graph synchronization rules determine final graph freshness.
+
 ### Invariants
 
 REQ-JT-23: `logicalJournalView` MUST NOT consult current graph state. It depends only on:
