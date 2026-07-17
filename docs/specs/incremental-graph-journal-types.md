@@ -451,7 +451,7 @@ The journal implementation internally needs a wider representation that pairs a 
  * Contains both:
  *   - public projection fields (nodeName, bindings, action, time)
  *     that are exposed through PossibleNodeChange,
- *   - private journal fields (id, key, creator, index) that
+ *   - private journal fields (id, key, creator, eventId, index) that
  *     are hidden from public callers.
  *
  * nodeName and bindings are derived from `key` when the entry

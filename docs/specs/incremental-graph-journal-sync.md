@@ -201,17 +201,6 @@ invalid. Every legitimate freshness event originates from an existing node
 incarnation, and `logicalJournalView` never removes that incarnation's latest
 state entry.
 
-#### Identical-state conflicting-initial-freshness integrity check
-
-When both sources contain the same canonical state event (same `eventId`,
-same immutable payload) and neither source has an applicable freshness event
-for the winning identifier `W`, both sources' stored initial freshness values
-for `W` MUST agree. If one source stores `W` as `up-to-date` and the other as
-`potentially-outdated`, synchronization fails with an integrity error. The same
-state `eventId` associated with different stored initial freshness values is
-not a direction-dependent choice — the result must be the same regardless of
-which replica is described first.
-
 #### On any consistency failure
 
 Abort synchronization without applying the prepared target. Do not switch
@@ -693,7 +682,7 @@ journal logical view: state = edit W, freshness = invalidate W
 Synchronization fails with an integrity error. It must not silently make the
 node stale or ignore the event.
 
-### T2 — Stored freshness contradicts validate
+### T2 — Validate history with conservative downgrade
 
 Source:
 ```
@@ -701,7 +690,12 @@ state: materialized W, stored freshness = potentially-outdated
 journal logical view: state = edit W, freshness = validate W
 ```
 
-Synchronization fails.
+This is a valid conservative-downgrade scenario. The retained `validate`
+permits up-to-date but does not force it. Graph synchronization may
+conservatively produce `potentially-outdated` when relowering or provenance
+rules require it. The canonical freshness history (validate W) is retained
+in the journal; the graph freshness is potentially-outdated.
+
 
 ### T3 — Stale migration creation
 
@@ -790,15 +784,19 @@ After storage.override:
 
 Override preserves freshness unchanged and emits no journal entry.
 
-### T5c — Identical event with conflicting initial freshness
+### T5c — Same add event, different initial freshness (valid)
 
 Both sources contain the same `add` event (same `eventId`, same immutable
-payload) and no matching freshness event. One source stores `W` as
-`up-to-date` and the other as `potentially-outdated`.
+payload, same cached value) and no matching freshness event. Source A stores
+`W` as `up-to-date`. Source B stores `W` as `potentially-outdated` after a
+prior conservative synchronization.
 
-Synchronization fails with an integrity error. The same state `eventId`
-associated with different stored initial freshness values is not a
-direction-dependent choice.
+This is valid. Cross-source current-freshness equality is not an integrity
+rule — two conforming sources may contain the same `add` event with no
+matching freshness event while one is up to date and the other is potentially
+outdated. The canonical freshness history is absent; final graph freshness
+follows the winning source's stored initial freshness (determined by the
+graph synchronization rules).
 
 ### T5d — Identical state event, consistent freshness
 
@@ -842,13 +840,33 @@ Synchronization succeeds and produces the same canonical graph value regardless
 of which source is described first. The canonical event is unambiguous; the
 canonical graph value is that common semantic value.
 
-### T5g — Same event, conflicting initial freshness (independent of graph-value check)
+### T5g — Same event, equal values, different initial freshness (valid)
 
 Both sources contain the same `add` event (same `eventId`, same payload).
-Graph values are `isEqual`. However, source A stores `up-to-date` and source B
-stores `potentially-outdated` as the initial freshness. Synchronization fails.
-Graph-value equality and initial-freshness equality are independent integrity
-checks.
+Graph values are `isEqual`. Source A stores `up-to-date` and source B stores
+`potentially-outdated` as the initial freshness (after conservative
+downgrade). This is not corruption. Graph-value equality and initial-freshness
+agreement are independent concerns — the journal does not enforce cross-source
+freshness equality. Final graph freshness follows the winning source's stored
+initial freshness as determined by the graph synchronization rules.
+
+### T5h — Missing and cached copies of the same event
+
+```
+Source A:
+  latest state = E (add W)
+  cached value V
+
+Source B:
+  latest state = E (add W)
+  missing (no cached value)
+```
+
+No value-integrity failure occurs. Only source A contributes a cached-value
+origin to `candidateValueOrigins(W)`. The cached source's value is the
+candidate; absence is not compared. Graph provenance and relowering rules
+decide whether V survives in the destination. If no cached origin survives,
+the final node is materialized but missing.
 
 ### T6 — Self-synchronization stability
 
@@ -970,7 +988,12 @@ Graph winner: B1
 
 Only freshness evidence for B1 participates. The `invalidate` for A1
 cannot make B1 stale. Merged inactive destination:
-- X is up to date (validate B1);
+- B1 enters the destination journal with `validate B1` as its canonical
+  freshness history. Assuming all graph-level provenance, relowering,
+  dependency, and validity eligibility requirements are satisfied (see
+  `docs/specs/incremental-graph-synchronization.md` §8), B1's final
+  graph freshness is up to date. Otherwise `validate B1` remains canonical
+  journal history while the final graph state may be stale or missing.
 - only the `validate` event for B1 survives as freshness evidence;
 - the `invalidate` for A1 is removed as obsolete;
 - no new event is created.
@@ -985,16 +1008,6 @@ After the inactive destination is complete:
 - `closeGarden` prevents readers from selecting a replica during cutover;
 - the active pointer switches;
 - later readers select only the new replica.
-
-### T18 — Canonical lower, obsolete higher
-
-```
-index 5 = canonical edit E
-index 8 = obsolete edit F
-```
-
-The destination retains E at index 5, makes index 8 absent, and does not append
-another E.
 
 ### T19 — Canonical freshness displaced by absence
 
@@ -1043,10 +1056,10 @@ survive normalization, so no additional copies are appended.
 ### T26 — Synchronization notification: canonical event repositioned
 
 ```
-Source A: H = 5, state event E at index 5
-Source B: H = 8, state event F at index 8
+Source A: H = 5, state event E at index 5, E.time = 200
+Source B: H = 8, state event F at index 8, F.time = 100
 
-E wins (earlier time, but canonical).
+E wins under Stage 3 (later time).
 ```
 
 E at index 5 is not after B's watermark (8). The notification bound for E is
@@ -1079,6 +1092,11 @@ again. No new logical event is created.
 
 ### T28 — Conservative missing-state notification
 
+```
+Source A: H = 5, E at index 5
+Source B: H = 5, E at index 5 (same canonical event)
+```
+
 Both sources contain the same canonical state event E at index 5 and cached
 graph values. Graph synchronization determines that dependency relowering makes
 the final cached value unsafe and removes it:
@@ -1091,8 +1109,10 @@ Final:
 ```
 
 The final graph state differs from both source graph states. E at index 5 is
-not after either source watermark. Notification bound for E is
-max(localH, remoteH). Move the same event:
+not after either source watermark (5). Notification bound for E is
+max(5, 5) = 5. E's greatest surviving position (5) is not strictly greater
+than 5. E is queued for fresh placement. P = max(5, 5) = 5, so the fresh
+position is P + 1 = 6:
 
 ```
 Destination:
