@@ -307,20 +307,30 @@ sync commits H = 6
 
 The remote entry is preserved at its original numeric position because it was unestablished locally.
 
-### T2 — Remote suffix and concurrent append
+### T2 — Pre-sync append (before holidayActivity)
 
 ```
 local H = 5
+
+An ordinary append commits F at index 6:
+    local H = 6
+
+Sync then acquires holidayActivity and selects the source:
+    local[6] = F
+    local H = 6
+
 remote H = 6, remote[6] = E
 
-ordinary append commits F at local index 6, H becomes 6
-
-sync detects index 6 is now established locally with F
-sync treats index 6 as a same-index conflict (F vs E)
-target[6] = absent (poisoned)
-sync reappends F at index 7 and E at index 8
-H = 8
+Sync constructs the inactive destination:
+    index 6 is a same-index conflict (F vs E)
+    target[6] = absent (poisoned)
+    F and E are reappended at indices 7 and 8
+    H = 8
 ```
+
+This is a pre-synchronization append, not an operation overlapping
+synchronization. After holidayActivity is held, no further ordinary
+appends can occur until synchronization completes.
 
 ### T3 — Present-versus-absent propagation
 
