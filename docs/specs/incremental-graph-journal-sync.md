@@ -13,21 +13,35 @@ Synchronization does **not** create new logical journal events. It works only wi
 Synchronization applies these stages in order. Physical source redundancy never
 participates in conflict selection.
 
-### Stage 1 — Validate event identity
+### Stage 1 — Validate event identity within the committed prefix
 
-For every occurrence in both source journals, the same `eventId` MUST identify
-the same immutable payload. Copies may occupy different physical positions. A
-payload disagreement for one `eventId` is a journal-integrity error:
-synchronization aborts, does not switch replicas, leaves the old active replica
-unchanged, and neither poisons the occurrences nor chooses a payload.
+For each source, validate every physically present occurrence at indices `1 ..
+sourceH` where `sourceH = source last_journal_index`. For every such occurrence,
+the same `eventId` MUST identify the same immutable payload. Copies may occupy
+different physical positions.
 
-### Stage 2 — Compute each source logical view
+Positions greater than `sourceH` are not established journal history. They MUST
+NOT participate in identity validation, logical-view construction, conflict
+resolution, or physical reconciliation. If the storage design guarantees that
+positions above `sourceH` cannot exist, that is an invariant rather than an
+open-ended validation boundary — state it explicitly rather than ambiguously
+validating an unbounded journal.
+
+A payload disagreement for one `eventId` within the validated prefix is a
+journal-integrity error: synchronization aborts, does not switch replicas,
+leaves the old active replica unchanged, and neither poisons the occurrences nor
+chooses a payload.
+
+### Stage 2 — Compute each source logical view from its committed prefix
 
 For each source, compute:
 
 ```
 logicalJournalView(sourceJournal, sourceH)
 ```
+
+where `sourceH = source last_journal_index`. Storage above `sourceH` is outside
+the committed prefix and is excluded from the logical view.
 
 For each semantic key this produces at most its source state entry and source
 freshness entry. No physically redundant source event may affect conflict
