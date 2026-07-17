@@ -222,24 +222,11 @@ node keys, not raw storage identifiers. Let:
 
 - `Keys = keys(L.lookup) ∪ keys(H.lookup)`
 
-Each key in Keys is considered exactly once. For each key, the merge chooses a
-structural source side (target/local or host), selects a final storage
-identifier, derives final dependency edges from the graph scheme, and applies
-the result to T.
-
-**DEF-SYNC-03 (Initial decision):**
-
-- `initialDecision(key) ∈ { keep, take }`
-- `keep` means the initial candidate is the local/target source.
-- `take` means the initial candidate is the host source.
-
-**DEF-SYNC-04 (Decision):**
-
-- `decision(key) ∈ { keep, take, invalidate }`
-- `keep` means preserve or copy from the local target source.
-- `take` means copy from the host source.
-- `invalidate` means the node is marked potentially-outdated regardless of
-  which side provides its structural data.
+Each key in Keys is considered exactly once. For each key, the canonical state
+event (selected by the journal synchronization specification per §6) determines
+the final storage identifier and whether the key is materialized or
+nonmaterialized. Final dependency edges are derived from the graph scheme and
+applied to T.
 
 **TERM-SYNC-15 (finalIdentifierForKey):** The map from each semantic node key
 to its final storage identifier in the merged replica.
@@ -287,7 +274,7 @@ value, make the node missing, or downgrade it to potentially-outdated.
 
 **REQ-SYNC-08 (State selection is not freshness):** The canonical state event
 selects a candidate stored value and identifier. It does not by itself determine
-final freshness. Freshness is governed by §9 (Freshness Merge Policy) and the
+final freshness. Freshness is governed by §8 (Freshness Merge Policy) and the
 canonical freshness-history selection in the journal sync spec.
 
 **REQ-SYNC-08a (modifiedAt preservation):** `modifiedAt` records the time at
@@ -304,51 +291,16 @@ same canonical event.
 
 ---
 
-## 7. Conflict Propagation and Merge Decisions
-
-**DEF-SYNC-05 (Force roots):**
-
-- `forceKeepRoot`: a key where both replicas have the key and local
-  `modifiedAt` is strictly newer.
-- `forceTakeRoot`: a key where both replicas have the key and host `modifiedAt`
-  is strictly newer.
-
-**DEF-SYNC-06 (Taint propagation):**
-
-- Keep-taint propagates forward from every `forceKeepRoot` along the initially
-  chosen semantic dependency graph (the graph defined by
-  `initialDecision`-selected source side and its graph scheme).
-- Take-taint propagates forward from every `forceTakeRoot` along the initially
-  chosen semantic dependency graph.
-
-**DEF-SYNC-07 (Decision rules):**
-
-- If a key is target-only:
-  - `keep`, unless it is take-tainted, in which case `invalidate`.
-- If a key is host-only:
-  - `take`.
-  - If it is keep-tainted, its final freshness must be `potentially-outdated`.
-- If a key exists on both sides:
-  - If both keep-tainted and take-tainted: `invalidate`.
-  - Else if keep-tainted: `keep`.
-  - Else if take-tainted: `take`.
-  - Else: use `initialDecision`.
-
-**Rationale:** A node downstream of conflicting timestamp choices cannot simply
-inherit freshness from one side, because its stored value may have been
-computed from inputs not chosen in the final graph. Invalidation is a
-conservative way to preserve correctness without recomputing during sync.
-
----
-
-## 8. Identifier Reconciliation and Edge Lowering
+## 7. Identifier Reconciliation and Edge Lowering
 
 **REQ-SYNC-09 (Final identifier selection):** The final identifier for a
-semantic key is selected from the chosen structural source side:
+semantic key is determined by the canonical state event selected by the journal
+synchronization specification:
 
-- `keep` → local source identifier.
-- `take` → host source identifier.
-- `invalidate` → identifier from `initialDecision`.
+- If the canonical state event is `add` or `edit`, its `NodeIdentifier` is the
+  final materialized identifier for the key.
+- If the canonical state event is `delete`, the semantic key is nonmaterialized
+  and has no final identifier.
 
 The final identifier lookup maps final storage identifiers to semantic keys.
 It must be bijective.
@@ -375,7 +327,7 @@ merged graph.
 
 ---
 
-## 9. Freshness Merge Policy
+## 8. Freshness Merge Policy
 
 The canonical freshness-history event is selected by the journal
 synchronization specification (Stage 5 in
@@ -415,7 +367,7 @@ If any of these do not hold, the node MUST be `potentially-outdated`,
 not mean the stored value is wrong. It means the system does not currently have
 enough proof to return the stored value without recomputation. A
 potentially-outdated node may still carry useful validity proofs about parts of
-its dependency relation, subject to the validity proof transport rules of §11.
+its dependency relation, subject to the validity proof transport rules of §10.
 
 **REQ-SYNC-12a (Missing state after sync):** Synchronization may produce a
 `missing` node — a materialized identifier with no cached value. This occurs
@@ -438,23 +390,33 @@ event.
 
 ---
 
-## 10. Value Origin and Provenance
+## 9. Value Origin and Provenance
 
-**DEF-SYNC-09 (Final value origin rules):** For each final semantic key:
+**DEF-SYNC-09 (Final value origin rules):** For each final semantic key whose
+canonical state event is `add` or `edit`:
 
 - Origin is `{ kind: "source", side: "target", sourceId }` only if:
   - the final stored value exists;
-  - it was copied or preserved from the local source replica L;
-  - `sourceId` is the local source identifier for the same semantic key;
+  - the canonical state event's `NodeIdentifier` maps to the local source
+    identifier for the same semantic key;
+  - the local source provided the cached value (its latest state event is
+    the canonical event);
   - the node is not directly relowered in a way that deletes or invalidates
     its value provenance.
 - Origin is `{ kind: "source", side: "host", sourceId }` only if:
   - the final stored value exists;
-  - it was copied or preserved from host source replica H;
-  - `sourceId` is the host source identifier for the same semantic key;
+  - the canonical state event's `NodeIdentifier` maps to the host source
+    identifier for the same semantic key;
+  - the host source provided the cached value (its latest state event is
+    the canonical event);
   - the node is not directly relowered in a way that deletes or invalidates
     its value provenance.
 - Origin is `{ kind: "none" }` otherwise.
+
+When both sources supply the canonical event as their latest state event
+and both have cached values, those values must be `isEqual` (see
+`incremental-graph-journal-sync.md` §Graph-value consistency). If they differ
+the merge must fail as an integrity error.
 
 **REQ-SYNC-13 (Equality does not create origin):**
 
@@ -473,7 +435,7 @@ the computation histories are interchangeable.
 
 ---
 
-## 11. Validity Proof Transport
+## 10. Validity Proof Transport
 
 **DEF-SYNC-10 (Source validity proof):** A source-side relation entry
 `valid[D].has(N)` means that, in that source replica, N's stored value was
@@ -536,7 +498,7 @@ conditions above; no bulk textual merge of validity storage is permitted.
 
 ---
 
-## 12. Final-State Invariants
+## 11. Final-State Invariants
 
 **REQ-SYNC-18 (Pre-switch validation):** After building the final merged state
 in T but before switching the active replica pointer, the implementation MUST
@@ -568,7 +530,7 @@ remain unchanged.
 
 ---
 
-## 13. Commit and Active Replica Switching
+## 12. Commit and Active Replica Switching
 
 **REQ-SYNC-20 (Write target isolation):** Per-host merge writes into inactive
 replica T. The active replica pointer switches only after the final state is
@@ -583,7 +545,7 @@ built, validated, and committed.
 - A "metadata-only" change, such as importing a valid provenance-backed
   validity proof, is sufficient to switch replicas, because it affects future
   recomputation behavior. Metadata-only changes must obey the provenance rules
-  of §11.
+  of §10.
 
 **REQ-SYNC-22 (Partial failure safety):** The currently active local source
 replica must not be partially mutated by a failed host merge. Failure before
@@ -591,7 +553,7 @@ commit must not leave callers reading from an invalid partial merge target.
 
 ---
 
-## 14. Multi-Host Synchronization
+## 13. Multi-Host Synchronization
 
 **REQ-SYNC-23 (Sequential per-host merge):** Normal synchronization may merge
 multiple host branches sequentially. Each per-host merge observes the result of
@@ -600,7 +562,7 @@ replica and advance its state).
 
 **REQ-SYNC-24 (Per-host validation after success):** The implementation MUST
 validate the graph state after every successful per-host merge against the
-invariants in §12 before proceeding to the next host.
+invariants in §11 before proceeding to the next host.
 
 **REQ-SYNC-25 (Host failure isolation):** If one host's merge fails,
 synchronization may continue with remaining hosts and aggregate all failures
@@ -610,7 +572,7 @@ into a single composite error.
 guarantee host-order independence unless a future document proves and requires
 it. Correctness is not CRDT-like convergence or commutative merge semantics.
 The correctness obligation for multi-host synchronization is that each
-individual per-host merge satisfies the invariants of §12 at the moment it
+individual per-host merge satisfies the invariants of §11 at the moment it
 completes, and that the final state after all host merges (successful or
 skipped) is a valid IncrementalGraph state from which all future public
 operations produce results consistent with the main IncrementalGraph spec.
@@ -618,7 +580,7 @@ This is a safety property, not a convergence property.
 
 ---
 
-## 15. Proof Obligations and Specification Labels
+## 14. Proof Obligations and Specification Labels
 
 **TERM-SYNC-17 (Normative labels):** The following label prefixes are used
 throughout this specification:
@@ -638,7 +600,7 @@ the main IncrementalGraph specification given the same schema and the merged
 state.
 
 **PROP-SYNC-02 (Conservative freshness):** Synchronization never marks a node
-`up-to-date` unless the rules in §9 and §11 are satisfied. It may mark nodes
+`up-to-date` unless the rules in §8 and §10 are satisfied. It may mark nodes
 `potentially-outdated` even when a more sophisticated proof might have
 preserved them.
 

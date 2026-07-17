@@ -250,7 +250,7 @@ immutable journal-payload serialization.
 
 This stage selects the canonical freshness event retained in the destination
 journal. The final graph freshness is determined by the graph synchronization
-rules (see `docs/specs/incremental-graph-synchronization.md` §9). The canonical
+rules (see `docs/specs/incremental-graph-synchronization.md` §8). The canonical
 freshness history event does not by itself force the graph freshness.
 
 For a canonically materialized key, let the winning identifier be `W`. Consider
