@@ -155,12 +155,33 @@ await runMigration(rootDatabase, newVersionNodeDefs, async (storage) => {
 2. Create a `MigrationStorage` backed by the previous version's data.
 3. Execute the callback.
 4. Call `finalize()` internally (propagate deletes, check completeness).
-5. Apply all decisions **atomically** to the new version's storage.
+5. Collect and validate decisions.
+6. Gently unify the desired state into the inactive replica.
+7. Durably flush and validate the inactive replica.
+8. Switch the active-replica pointer.
 
 If no previous version is found, the migration is a no-op.
 
 ---
 
-## Atomicity guarantee
+## Atomicity and durability
 
-Decisions are collected in memory during the callback.  The desired state is unified into the target replica's storage, then validated with `assertValidFinalMergeState` before the replica pointer is switched.  A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
+Decisions are collected in memory during the callback. The desired state is
+unified into the target replica's storage through multiple durable writes, then
+validated with `assertValidFinalMergeState` before the replica pointer is
+switched. A failed migration never activates the target replica. Failures before
+unification leave the target replica untouched. Failures after unification may
+leave the inactive replica written, but the active replica remains unchanged.
+
+Two distinct guarantees apply:
+
+1. **Related-record atomicity:** Related records that form one journal-emitting
+   graph mutation (e.g., the journal entry, the node's value, and the freshness
+   state for one `storage.create`) must be durably coordinated as required by
+   the journal specification — each such set commits in one darkroom batch.
+
+2. **Cutover visibility:** The complete migrated state becomes visible atomically
+   through replica-pointer cutover. The inactive replica may contain partial
+   migration writes before cutover; readers cannot observe it. Only after every
+   required record is durable and the replica is valid does the active pointer
+   switch.
