@@ -77,7 +77,12 @@ REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When s
 
 `graph.possibleMaybeChanges` returns at most two `PossibleNodeChange` values per matching semantic node key: one state/lifecycle entry (`add`, `edit`, or `delete`) and one freshness entry (`invalidate` or `validate`). Older entries for the same key and category are logically suppressed even when still physically present.
 
-REQ-JA-05: A returned `edit` entry describes a graph change or sync reconciliation that produced a journal entry. The entry's presence does not guarantee that the node's value materially changed from the consumer's perspective. Consumers SHOULD re-check the current node value rather than assuming the entry describes a visible state transition.
+REQ-JA-05: A returned `edit` is an existing journal event originally emitted by
+a graph operation or migration and possibly copied or repositioned by
+synchronization. Synchronization never produces an event. The entry's presence
+does not guarantee that the node's value materially changed from the consumer's
+perspective. Consumers SHOULD re-check the current node value rather than
+assuming the entry describes a visible state transition.
 
 ---
 

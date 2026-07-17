@@ -83,7 +83,11 @@ docs/specs/incremental-graph-journal-types.md
 
 Journal entries are produced by graph operations that change the observable graph state.
 
-The journal emission rules define which IncrementalGraph operations create journal changes and how those changes are coordinated with graph storage updates. These rules cover recomputation, unchanged results, freshness invalidation (emits `invalidate` entries), creation, deletion, and migration actions.
+The journal emission rules define which IncrementalGraph operations create
+journal changes and how those changes are coordinated with graph storage
+updates. These rules cover recomputation, unchanged results, freshness
+invalidation (`invalidate`), freshness restoration (`validate`), creation,
+deletion, and migration actions.
 
 The detailed emission behavior is specified in:
 
@@ -97,7 +101,10 @@ Synchronization works by reading the current active local replica and the fetche
 
 Journal events are only the events that were already emitted by ordinary graph operations, migration operations, explicit freshness transitions, and actual node deletion operations. Synchronization does not invent new logical journal events. Existing events may be copied into the inactive destination, retained at their existing numeric position, made absent by poisoning or absence propagation, moved to a fresh position when their original position cannot survive, deduplicated when the same logical event already survives elsewhere, or removed when superseded according to the settled compaction or freshness rules.
 
-The journal synchronization model defines how journal histories are compared, merged, appended, deleted, or compacted during sync. It also defines how timestamps and host identities participate in conflict resolution.
+The journal synchronization model defines how existing journal histories are
+compared, copied, repositioned, omitted, and physically compacted during sync.
+It also defines how timestamps and host identities participate in conflict
+resolution.
 
 The detailed synchronization behavior is specified in:
 
@@ -152,7 +159,11 @@ The returned array reflects the logically compacted journal through `H`: for eac
 
 ### Structural journal operations
 
-Compaction and structural synchronization MUST call `closeGarden` to acquire exclusive garden access. These operations hold `closeGarden` for their complete analysis and durable mutation, acquiring darkroom only for the final atomic batch commit inside the garden closure.
+Compaction and structural synchronization MUST call `closeGarden` to acquire
+exclusive garden access. Compaction may overlap ordinary appends. Structural
+synchronization is a holiday operation: it first acquires `holidayActivity`,
+then `closeGarden`, builds the inactive destination, and acquires the destination
+darkroom for final metadata and cutover before releasing locks in reverse order.
 
 ### Lifecycle exclusion
 
@@ -160,7 +171,11 @@ Migration and replica cutover close the garden because of replica lifecycle safe
 
 ### Replica cutover
 
-A holiday closes both the dome and the garden. Replica cutover acquires `holidayActivity` (graph activity exclusion) and then `closeGarden` (garden exclusion) before performing the cutover. This prevents any new journal reader from selecting the old replica.
+A holiday closes both the dome and the garden. Migration, structural
+synchronization, and replica cutover acquire `holidayActivity` (graph activity
+exclusion) and then `closeGarden` (garden exclusion). This prevents ordinary
+appends from overlapping these operations and prevents new journal readers from
+selecting the old replica during cutover.
 
 ### Compatibility
 

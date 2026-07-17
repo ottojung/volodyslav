@@ -8,48 +8,80 @@ Synchronization does **not** create new logical journal events. It works only wi
 
 ---
 
-## Core conflict resolution
+## Normative synchronization pipeline
 
-Physical compaction may already have removed every event outside the logical journal view. Therefore synchronization MUST NOT depend on raw physical entries that logical compaction would reject.
+Synchronization applies these stages in order. Physical source redundancy never
+participates in conflict selection.
 
-For each source replica and semantic node key, synchronization uses only the source's entries from `logicalJournalView(journal, last_journal_index)`:
+### Stage 1 — Validate event identity
 
-- the source's latest state entry (`add`, `edit`, or `delete`) — the greatest-index entry in the state/lifecycle category;
-- the source's latest freshness entry (`invalidate` or `validate`) — the greatest-index entry in the freshness category.
+For every occurrence in both source journals, the same `eventId` MUST identify
+the same immutable payload. Copies may occupy different physical positions. A
+payload disagreement for one `eventId` is a journal-integrity error:
+synchronization aborts, does not switch replicas, leaves the old active replica
+unchanged, and neither poisons the occurrences nor chooses a payload.
 
-Older physically present entries are redundant and must not affect graph conflict resolution, deletion conflict resolution, freshness conflict resolution, evidence preservation, or fresh reappend decisions.
+### Stage 2 — Compute each source logical view
 
-### Source consistency
+For each source, compute:
 
-REQ-JS-00: For a materialized source node with identifier `W`, the source's latest state entry MUST be `add` or `edit`, and its `id` MUST equal `W`.
+```
+logicalJournalView(sourceJournal, sourceH)
+```
 
-For a deleted source key with retained journal history, the latest state entry MUST be `delete`.
+For each semantic key this produces at most its source state entry and source
+freshness entry. No physically redundant source event may affect conflict
+resolution.
 
-If graph state and latest state evidence contradict one another, synchronization fails with a journal-integrity error and leaves the active replica unchanged.
+### Stage 3 — Select canonical state
 
-Synchronization MUST NOT substitute graph timestamp records for missing or contradictory journal evidence.
+For each semantic key:
 
-### State conflict comparison
+- if neither source has a state entry, the destination has none;
+- if only one source has a state entry, that existing event is canonical;
+- if both have state entries, compare later `time`, then (when identifiers
+  differ and times tie) lexicographically greater `NodeIdentifier`, then (when
+  identifiers and times tie) lexicographically greater `eventId`.
 
-Compare the two source latest-state entries:
+The winning existing event is canonical. `add` or `edit` materializes the key
+using that event's `NodeIdentifier` and associated source graph value. `delete`
+leaves it nonmaterialized. Synchronization creates no event.
 
-1. later `time` wins;
-2. if identifiers differ and times tie, lexicographically greater `NodeIdentifier` wins;
-3. if identifiers are equal and times tie, lexicographically greater `eventId` (string comparison) wins.
+### Stage 4 — Validate source graph consistency
 
-The winner determines:
-- materialized value/incarnation (the winning `add` or `edit`); or
-- deletion (the winning `delete`).
+For each source key:
 
-Synchronization creates no new event. It preserves or reappends the existing winning event.
+- a materialized node with identifier `W` requires a source state entry of
+  `add` or `edit` whose `id === W`;
+- a nonmaterialized key with a source state entry requires `delete`;
+- a key absent from both graph and journal may have no state entry.
 
-REQ-JS-01: When synchronizing two hosts, for each node key that appears in both replicas' graph state, the host whose latest state entry has the later `time` field wins the conflict. The winning host's value is retained; the losing identifier and associated records are removed.
+If one state `eventId` is associated with different stored graph values, or if
+graph state contradicts source state evidence, synchronization fails. Graph
+timestamp records MUST NOT replace journal evidence.
 
-REQ-JS-02: If both hosts have the same `time` for the conflicting latest state entry, tie-breaking is decided via lexicographic comparison of `NodeIdentifier` (converted to string) when identifiers differ. `NodeIdentifier` values are globally unique across hosts, making this a total deterministic tie-breaker. When identifiers are equal, lexicographically greater `eventId` wins.
+### Stage 5 — Select canonical freshness
+
+For a canonically materialized key, let the winning identifier be `W`. Consider
+each source freshness entry only when `entry.id === W`; ignore freshness for
+another identifier. Compare candidates by later `time`, then lexicographically
+greater `eventId` on a tie. The winner is the canonical freshness event:
+`invalidate` makes the graph `potentially-outdated`, while `validate` makes it
+`up-to-date`. If neither source supplies freshness evidence for `W`, use the
+winning source graph state's stored freshness. First materialization without
+freshness evidence is up to date.
+
+For a canonically deleted key, freshness never sets graph state. Preserve no
+freshness event when neither source has one; preserve the sole entry when only
+one source has one; and when both have entries preserve the winner by later
+`time`, then lexicographically greater `eventId`. That winner is canonical
+journal history only: it neither rematerializes the key nor assigns graph
+freshness.
 
 ### Wall-clock resolution
 
-A particular host's wall clock may be incorrect, but this is the best available signal for conflict ordering — the system trusts hosts and does not rely on external time authorities.
+A host's wall clock may be incorrect, but it is the available conflict-ordering
+signal. The system trusts hosts and does not rely on an external time authority.
 
 ---
 
@@ -127,7 +159,20 @@ The existing conflicting events already indicate that the semantic key may have 
 
 ## Journal merge rules
 
-### Published-prefix invariant
+### Physically canonical destination
+
+The completed inactive destination physically contains exactly its logical
+journal view. For each semantic node key it contains at most one state event
+(`add`, `edit`, or `delete`) and at most one freshness event (`invalidate` or
+`validate`). Every noncanonical event is absent. This construction is the
+equivalent of physical compaction and cannot change `possibleMaybeChanges`,
+because noncanonical events are already excluded by `logicalJournalView`.
+
+Synchronization does not preserve obsolete entries merely as physical history,
+and it never reappends a canonical event merely to outrank an obsolete event at
+a greater index. It omits the obsolete event instead.
+
+### Stage 6 — Reconcile physical positions
 
 The merge operates on two source replicas. For the local replica, the established prefix through its committed watermark is finalized. For the remote replica, its established prefix through its committed watermark is finalized.
 
@@ -144,23 +189,37 @@ P       = max(localH, remoteH)
 
    | local[ i ] | remote[ i ] | target[ i ] |
    |---|---|---|
-   | entry E | entry E | preserve E at i |
+   | entry E | entry E | preserve E at i only when E is canonical |
    | absent | absent | preserve absence at i |
    | entry E | absent | absence at i (see evidence preservation) |
    | absent | entry E | absence at i (see evidence preservation) |
-   | entry E | entry F (E ≠ F) | poison: absence at i; queue E and F for fresh reappend |
+   | entry E | entry F (E ≠ F) | poison: absence at i |
 
 2. **Only local has established state at `i`** (i ≤ localH, i > remoteH):
-   Preserve the local state (entry or absence) at `i` in the destination.
+   Preserve a local entry only when it is canonical; otherwise establish
+   absence. Preserve local absence.
 
 3. **Only remote has established state at `i`** (i > localH, i ≤ remoteH):
-   The position is unestablished locally. Replicate the remote state at `i` (copy the remote entry, or establish absence when the remote position is absent).
+   The position is unestablished locally. Preserve a remote entry only when it
+   is canonical; otherwise establish absence. Preserve remote absence.
 
 The entire prefix state through `P` is resolved before fresh entries are allocated.
 
-### Fresh entry allocation
+### Stage 7 — Normalize canonical occurrences
 
-Displaced entries (from poisoning or absence propagation) and evidence that cannot retain its original position are allocated at:
+For every canonical event, gather its surviving destination positions. If the
+same `eventId` survives at several physical positions:
+- retain the occurrence with the greatest `JournalIndex`;
+- make all lower occurrences absent;
+- do not create another fresh copy.
+
+If exactly one occurrence survives, retain it. If none survives, queue that same
+event for fresh placement. Thus a positioned canonical event is never queued,
+and every queued event is canonical and has no surviving positioned copy.
+
+### Stage 8 — Fresh placement
+
+Canonical events that have no surviving positioned occurrence are allocated at:
 
 ```
 P + 1 .. P + n
@@ -168,7 +227,7 @@ P + 1 .. P + n
 
 The final watermark is `P + n`.
 
-### Fresh entry ordering
+#### Fresh-entry ordering
 
 Fresh entries are ordered by:
 
@@ -182,95 +241,31 @@ Fresh entries are ordered by:
 
 Allocate the ordered entries contiguously at `P + 1 .. P + n`.
 
-### Deduplication
-
-If the same `eventId` survives at several physical positions in the merged destination:
-- retain the occurrence with the greatest `JournalIndex`;
-- make all lower occurrences absent;
-- do not create another fresh copy.
-
-An unpositioned event queued for fresh placement does not participate in the "greatest position" comparison.
-
-If the same event already survives at a positioned target entry, remove its queued fresh copy.
-
 ### Destination logical view canonicalization
 
-REQ-JS-07: After physical index reconciliation, the destination's `logicalJournalView(journal, P + n)` must contain exactly:
+REQ-JS-07: After physical index reconciliation, the destination physically
+contains exactly:
 
 - the canonical state event for each key;
 - the canonical freshness event for each key, when one exists.
 
-The canonical event may already occupy the greatest surviving index in its category. If it does not — for example, an obsolete event for the same key and category survives at a greater physical index in the merged prefix — reappend the canonical existing event at a fresh index above `P` (see fresh entry allocation). Preserve its exact action, key, identifier, time, creator, and `eventId`. This makes the canonical event the greatest-index event in its category.
-
-Older redundant entries may remain physically present until separate compaction. They are invisible through `possibleMaybeChanges`.
+Every obsolete or duplicate occurrence is absent. Fresh placement preserves the
+queued event's exact action, identifier, key, time, creator, and `eventId`.
+After allocating `n` queued events contiguously at `P + 1 .. P + n`, set
+`last_journal_index = P + n`. The completed destination therefore has at most
+one physical occurrence of each `eventId` and physically equals
+`logicalJournalView(journal, P + n)`.
 
 Synchronization still does not create any logical event.
 
 #### Required displaced evidence
 
-REQ-JS-08: If physical reconciliation displaces a canonical event because of same-index poisoning or entry-versus-established-absence, reappend it freshly. This applies to canonical state evidence and canonical freshness evidence.
-
-Do not reappend obsolete noncanonical events.
-
----
-
-## Value evidence
-
-REQ-JS-09: For conflicting materialized values, compare the two source latest-state entries (from `logicalJournalView` for each source) using the state conflict comparison rules defined in §State conflict comparison. Use the winning graph state. Preserve or reappend the existing causal events as required. Do not generate an additional event.
-
-For deletion conflict:
-
-REQ-JS-10: Compare the surviving `delete` event against the latest surviving `add` or `edit` using the state conflict comparison rules. Preserve the winning existing evidence. Do not generate an additional event.
-
-Synchronization must never use graph timestamp storage as replacement journal evidence.
-
----
-
-## Freshness evidence reconciliation
-
-Synchronization does not create freshness events. It reconciles existing `validate` and `invalidate` events using the same `logicalJournalView` per source replica.
-
-Freshness belongs to a node incarnation identified by `NodeIdentifier`, not merely to a semantic key. After the canonical graph winner is determined (resolving value conflicts via the state conflict comparison rules), only freshness events matching the winning `NodeIdentifier` may determine the canonical node's freshness.
-
-For each semantic node key whose canonical graph winner has `NodeIdentifier = W`:
-
-1. For each source replica, the source's latest freshness entry for `W` is the greatest-index `validate` or `invalidate` with `id === W` from that source's `logicalJournalView`. If the source has no such event, use the selected graph state's existing freshness (first materialization without a freshness event means up-to-date).
-
-2. If only one source has a candidate event for `W`, use it.
-
-3. If both sources have candidate events for `W`, compare:
-   1. `time`;
-   2. `eventId` (lexicographic string comparison).
-
-   Later time wins. If times tie, lexicographically greater `eventId` wins. `NodeIdentifier` is not used as a freshness tie-breaker here because both candidates are already restricted to `W`, making the identifiers equal.
-
-4. The canonical graph freshness follows the winning event:
-   - winning `invalidate`: `potentially-outdated`
-   - winning `validate`: `up-to-date`
-
-5. In the merged journal destination, preserve exactly one surviving freshness event for `W`: the winner.
-
-6. Make every other surviving `validate` or `invalidate` entry for `W` absent.
-
-7. Remove freshness events for losing node identifiers as obsolete (unless another explicit retention rule requires them — no such rule is currently specified).
-
-8. If the winner cannot remain at its old numeric position because of physical-position reconciliation, reappend the same existing event at a fresh index.
-
-9. Preserve its `eventId`.
-
-### Deleted canonical key
-
-When the canonical graph has no materialized node for the key, no freshness event sets graph state (there is no materialized graph freshness to set). The journal retains the latest freshness entry from `logicalJournalView` when one exists. The retained history does not make the deleted node up-to-date or potentially-outdated.
-
-This guarantees that:
-- the merged graph freshness matches the journal;
-- compaction has one required freshness event to retain;
-- `possibleMaybeChanges` returns the canonical freshness transition;
-- freshness events belonging to losing or obsolete node identifiers cannot affect the winning node's freshness.
-
-### Interaction with physical merge
-
-Run physical position reconciliation first. Then scope freshness normalization to the winning `NodeIdentifier`. The final destination must satisfy both per-position convergence rules and exactly one surviving canonical `validate` or `invalidate` event per winning-identifier incarnation when freshness evidence exists.
+REQ-JS-08: Entry-versus-established-absence reconciliation and same-index
+poisoning use one rule. The destination position is absent. If the removed event
+is canonical and has no other surviving position, queue that same event for
+fresh placement. Otherwise do not queue it. This rule covers canonical `add`,
+`edit`, `delete`, `invalidate`, and `validate` events and excludes every obsolete
+event.
 
 ---
 
@@ -290,17 +285,17 @@ A one-sided synchronization run produces that deterministic destination locally.
 
 ### Resolving divergent indices
 
-If the two source replicas have different `JournalEntry` values at the same `JournalIndex` `i`, the destination poisons that index. Both conflicting entries are deleted from index `i` in the destination. Any still-relevant changes described by the conflicting entries are appended at fresh `JournalIndex` values above `P`.
+If the two source replicas have different `JournalEntry` values at the same `JournalIndex` `i`, the destination poisons that index. Both conflicting entries are deleted from index `i` in the destination. A conflicting event is queued above `P` only when it is canonical and has no other surviving position.
 
 ### Present-versus-absence conflict
 
 If one source replica has an established journal entry at index `i` and the other has an established absence at the same index `i`, the destination establishes absence at index `i`. The present entry is removed in the destination.
 
-If the removed entry still carries relevant journal evidence (it is the only surviving `add` or `edit` for a materialized node), that evidence is reappended at a fresh index before or atomically with removing the established entry from the destination.
+If the removed event is canonical and has no other surviving position, queue the same event for fresh placement. Otherwise do not reappend it. This is the same rule used for same-index poisoning.
 
 ### Remote suffix
 
-A remote suffix position `i` (where `localH < i ≤ remoteH`) MAY be replicated at local position `i` in the destination while `i` is unestablished locally. If the position became established locally before sync finalization, sync reconciles the local and remote states at `i` using the same-index convergence rules.
+For `localH < i ≤ remoteH`, the local source has no established state at `i`. A canonical remote event at `i` may remain at `i` in the destination. A noncanonical remote event is omitted. Because synchronization holds `holidayActivity`, there is no concurrent ordinary append that can claim the position.
 
 ---
 
@@ -326,11 +321,11 @@ A future specification may address general multi-host convergence.
 
 ## Interaction with compaction
 
-Sync operates on the journal storage that exists at sync time. Compaction may have removed entries before sync.
-
-Sync uses only surviving journal entries for conflict comparison. Absent journal entries are treated as "no journal evidence" — sync MUST NOT fall back to graph `timestamps` sublevel as a replacement for missing journal entries.
-
-Compaction MUST NOT remove the only surviving `add` or `edit` entry for a materialized node (see REQ-JC-07). This ensures sync always has at least one journal-backed timestamp per materialized node for conflict comparison.
+Sync operates on each source's `logicalJournalView` at sync time. A conforming
+physical compaction may have removed entries outside that view, but it preserves
+every entry inside it, so source conflict selection is identical before and
+after compaction. Synchronization MUST NOT fall back to graph `timestamps`
+sublevel records as replacement journal evidence.
 
 ---
 
@@ -364,30 +359,24 @@ sync commits H = 6
 
 The remote entry is preserved at its original numeric position because it was unestablished locally.
 
-### T2 — Pre-sync append (before holidayActivity)
+### T2 — Pre-sync same-index conflict
 
-```
-local H = 5
+An ordinary append commits `F` at local index 6 before synchronization acquires
+`holidayActivity`; the remote source has `E` at index 6. Synchronization poisons
+index 6. No ordinary append overlaps synchronization after the holiday begins.
 
-An ordinary append commits F at index 6:
-    local H = 6
+#### Same semantic key and category
 
-Sync then acquires holidayActivity and selects the source:
-    local[6] = F
-    local H = 6
+When `E` and `F` are state events for the same semantic key, only the Stage 3
+winner is canonical. Only that winner is freshly placed above `P`, preserving
+its `eventId`; the loser is omitted.
 
-remote H = 6, remote[6] = E
+#### Different semantic keys or categories
 
-Sync constructs the inactive destination:
-    index 6 is a same-index conflict (F vs E)
-    target[6] = absent (poisoned)
-    F and E are reappended at indices 7 and 8
-    H = 8
-```
-
-This is a pre-synchronization append, not an operation overlapping
-synchronization. After holidayActivity is held, no further ordinary
-appends can occur until synchronization completes.
+When `E` and `F` belong to different semantic keys, or are canonical entries in
+different categories, both may be canonical. Both are freshly placed above `P`
+in the Stage 8 canonical ordering. Their exact positions cannot be stated unless
+all ordering fields are supplied.
 
 ### T3 — Present-versus-absent propagation
 
@@ -396,7 +385,7 @@ Host A: index 5 = E
 Host B: index 5 = absent (compacted)
 ```
 
-Absence wins at index 5. E is reappended at index 6 if still relevant evidence.
+Absence wins at index 5. If E is canonical and has no other surviving position, exactly one copy is freshly placed at index 6. Otherwise E is omitted.
 
 ### T4 — Sparse remote suffix
 
@@ -466,9 +455,15 @@ After the inactive destination is complete:
 - the active pointer switches;
 - later readers select only the new replica.
 
-### T12 — Synchronization canonical state
+### T12 — Canonical lower, obsolete higher
 
-One source's latest state entry is `edit E`; the other's is `edit F`. The conflict winner is E (later time, or tie-breaker). If F remains at a physically greater index in the merged prefix, synchronization reappends E above `P`. The destination logical view returns E, not F.
+```
+index 5 = canonical edit E
+index 8 = obsolete edit F
+```
+
+The destination retains E at index 5, makes index 8 absent, and does not append
+another E.
 
 ### T13 — Canonical freshness displaced by absence
 
@@ -477,3 +472,39 @@ The winning `validate` event is physically displaced during reconciliation (the 
 ### T14 — No obsolete reappend
 
 An older noncanonical `edit` event for a key is displaced during physical reconciliation (e.g., its position is poisoned). It is NOT reappended merely because it existed. Only canonical state and canonical freshness events are preserved.
+
+
+### T15 — One-sided state
+
+Source A has `add X`. Source B has no state event and no graph record for X. The
+existing `add` is canonical and materializes X.
+
+### T16 — Deleted freshness comparison
+
+Source A's latest freshness is `invalidate X` at time 100. Source B's is
+`validate X` at time 200, and canonical graph state is deleted. The destination
+preserves only `validate X` as canonical journal history. It does not
+rematerialize X or assign graph freshness.
+
+### T17 — Canonical duplicate
+
+```
+index 5 = canonical event E
+index 9 = same eventId E
+```
+
+The destination preserves E at index 9, makes index 5 absent, and does not append
+a third copy.
+
+### T18 — Canonical event physically displaced
+
+A canonical `validate`, `delete`, `add`, or `edit` loses every old position
+through established absence or same-index poisoning. Synchronization places
+exactly one fresh copy above `P`, preserving its `eventId` and complete payload.
+The same rule applies to canonical `invalidate`.
+
+### T19 — Repeated synchronization
+
+A completed destination is synchronized again with either original source. The
+same canonical state and freshness events remain. Positioned canonical events
+survive normalization, so no additional copies are appended.

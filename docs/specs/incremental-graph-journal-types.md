@@ -97,7 +97,7 @@ If the same event already survives at a positioned target entry, remove its queu
  * @property {NodeIdentifier} id - The node identifier of the affected node.
  * @property {NodeKey} key - The semantic node key at the time of the change.
  * @property {UnixTimestamp} time - When the change was recorded.
- * @property {Hostname} creator - The host that recorded the change.
+ * @property {Hostname} creator - The host that originally emitted the logical event.
  * @property {JournalEventId} eventId - Stable identity of this event.
  */
 ```
@@ -117,7 +117,9 @@ A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChan
 
 - `'add'` — a node became materialized for the first time.
 - `'edit'` — a node's stored value materially changed.
-- `'delete'` — a node was removed or superseded (by synchronization, conflict resolution, or migration deletion).
+- `'delete'` — a node deletion event originally emitted by `storage.delete` or
+  another actual deletion operation. Synchronization may copy or reposition an
+  existing delete.
 - `'invalidate'` — a node's freshness changed from `up-to-date` to `potentially-outdated`.
 - `'validate'` — a node's freshness changed from `potentially-outdated` to `up-to-date`.
 

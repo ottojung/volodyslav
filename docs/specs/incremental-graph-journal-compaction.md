@@ -12,7 +12,9 @@ Compaction relies on the `logicalJournalView(journal, H)` defined in `incrementa
 
 **Compaction scope and stored-cursor safety.** This PR specifies only same-process, in-memory journal tokens (see `incremental-graph-journal-types.md`). Since tokens are not persisted across process restarts, compaction does not need to guarantee long-lived cursor validity. A future spec may define checkpoint/lease-based compaction safety for persistent stored cursors; this PR does not specify such a mechanism.
 
-**Baseline scans and compaction.** A baseline scan starts from the first journal entry, so it returns only surviving journal entries. This is the natural consequence of the baseline being less than any real journal index combined with sparse journal storage after compaction.
+**Baseline scans and compaction.** A baseline scan returns the logical journal
+view through its fixed bound `H`. Entries outside that view are not returned,
+whether or not physical compaction has removed them.
 
 ---
 
@@ -60,7 +62,7 @@ Implementations MAY apply a quota or retention window to limit journal growth, f
 
 - Retain only entries newer than a configurable age threshold.
 - Retain at most `M` entries per node key, keeping only the most recent.
-- Retain at least one entry per still-materialized node to support sync conflict resolution.
+- Retain the entries selected by the two-category logical journal view.
 
 This specification does not mandate a specific quota policy. Any policy is valid as long as it satisfies the requirements in this document.
 
@@ -88,7 +90,9 @@ The logical retention rules replace the older collection of separate retention p
 
 2. **Freshness category** (`invalidate`, `validate`): preserve only the greatest-index entry through `H` (when one exists). Physical compaction may remove older freshness entries.
 
-These categories are independent: a newer state entry does not allow removal of the latest freshness entry; a newer freshness entry does not allow removal of the latest state entry. Neither `invalidate` nor `validate` satisfies the requirement that a materialized node retain `add` or `edit` evidence — those are independent categories.
+These categories are independent: a newer state entry does not allow removal of
+the latest freshness entry; a newer freshness entry does not allow removal of
+the latest state entry.
 
 ### Quotas
 
@@ -120,9 +124,14 @@ Retaining `validate X` does not rematerialize X or assign graph freshness to a d
 
 ### Interaction with synchronization
 
-REQ-JC-09: Compaction MAY remove journal entries even when synchronization is pending. Sync does not use `timestamps` sublevel records as a replacement for missing journal entries. Instead, sync uses only surviving journal entries for conflict comparison. Absent journal entries are treated as "no journal evidence" rather than falling back to node timestamps. See `incremental-graph-journal-sync.md` for the sync conflict-resolution rules.
+REQ-JC-09: Compaction MAY remove entries outside `logicalJournalView(journal,
+H)` even when synchronization is pending. Synchronization selects evidence from
+the source logical view and does not use `timestamps` sublevel records as a
+replacement for journal evidence. See `incremental-graph-journal-sync.md`.
 
-REQ-JC-10: Compaction is safe for synchronization correctness as long as the surviving journal entries (if any) plus the sync conflict rules produce correct convergence. Sync does not require journal entries that do not exist.
+REQ-JC-10: Compaction is safe for synchronization because it preserves every
+entry in the logical journal view used for conflict selection. Synchronization
+does not require entries outside that view.
 
 ---
 
@@ -169,7 +178,10 @@ This is the main reason `possibleMaybeChanges` must perform logical compaction i
 
 ## `graph.possibleMaybeChanges` behavior after compaction
 
-REQ-JC-12: `graph.possibleMaybeChanges` skips absent entries. If an entry's payload was deleted by compaction, it is gone and MUST NOT be reconstructed or included in the returned array.
+REQ-JC-12: `graph.possibleMaybeChanges` skips absent entries. An entry physically
+deleted by conforming compaction was already outside the logical journal view,
+was not returned before deletion, and is not reconstructed after deletion.
+Therefore its removal does not change the returned array.
 
 REQ-JC-13: `graph.possibleMaybeChanges` NEVER reconstructs deleted entries.
 
@@ -189,7 +201,10 @@ index 8 = edit X
 
 A query through `H = 5` may return index 5 as a `PossibleNodeChange`. Later index 8 is appended, and physical compaction may delete indices 1 and 5. A subsequent query with `since = token pointing to index 5` and `H = 8` returns `index 8 = edit X`. The cursor remains usable even though its backing entry is physically absent. Payload reconstruction is not required.
 
-REQ-JC-15: When a `BaselinePossibleNodeChange` is supplied as `since`, scanning starts from the first journal entry. Compaction affects the result only by determining which entries still exist.
+REQ-JC-15: When a `BaselinePossibleNodeChange` is supplied as `since`, the query
+returns the logical journal view through `H`. An entry removed by conforming
+compaction was excluded from that view before deletion and remains absent rather
+than being reconstructed, so physical removal does not change the result.
 
 ---
 
@@ -203,7 +218,9 @@ REQ-JC-18: Compaction MUST NOT change the `action` field of surviving journal en
 
 REQ-JC-19: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
 
-REQ-JC-20: Compaction MUST NOT compact a materialized node key into a state where the only surviving journal entries for that key are `invalidate` or `validate` entries. For every materialized node, at least one `add` or `edit` entry must remain. This is guaranteed by the state/lifecycle category of `logicalJournalView`: a materialized node's latest state entry through `H` is its `add` or `edit`; compaction must preserve it.
+REQ-JC-20: Compaction MUST preserve the greatest-index state/lifecycle entry
+through `H` for every semantic key. This follows solely from the captured journal
+prefix; mutable graph state is not an input to compaction analysis.
 
 REQ-JC-21: Compaction MUST NOT delete all surviving entries for a deleted key. The latest state entry (which may be `delete`) and latest freshness entry (when one exists) are logically required and must be preserved through the logical journal view.
 
@@ -213,7 +230,10 @@ REQ-JC-21: Compaction MUST NOT delete all surviving entries for a deleted key. T
 
 A future spec may define checkpoint/lease-based compaction safety for long-lived stored cursors. This PR does not specify such a mechanism.
 
-The precise deletion/tombstone retention policy for deleted nodes (when is a node sufficiently old to compact all its journal entries?) is deferred to a future specification.
+A conforming compaction cannot remove a deleted key's latest state entry or its
+latest freshness entry when one exists, because either removal would change
+`possibleMaybeChanges`. Only an incompatible future API revision could redefine
+that logical view.
 
 ---
 
@@ -227,9 +247,9 @@ A suggested compaction approach:
    - the greatest-index state/lifecycle entry (`add`, `edit`, or `delete`);
    - the greatest-index freshness entry (`invalidate` or `validate`), when one exists.
 2. Preserve every entry in that logical view. Remove all other physically present entries through `H`.
-3. For a materialized node, its latest state entry is its `add` or `edit` — this satisfies value-evidence retention automatically.
-4. For a deleted node, its latest state entry is its `delete` — this remains in the logical view.
-5. A quota policy may decide whether to remove all or some of the currently physically removable entries, or to skip a compaction run entirely. It must not remove logically required entries.
+3. A quota policy may decide whether to remove all or some of the currently
+   physically removable entries, or to skip a compaction run entirely. It must
+   not remove logically required entries.
 
 ---
 
@@ -331,3 +351,17 @@ index 9  = delete X
 ```
 
 Physical compaction may remove indices 2 and 4 but MUST preserve indices 6 and 9. The latest freshness and latest state entries for the deleted key remain in the logical view.
+
+### C8 — Captured prefix is independent of current graph state
+
+```
+H = 5
+index 5 = delete X
+
+later:
+index 6 = add X
+```
+
+A compaction that captured `H = 5` preserves index 5 because it is the latest
+state entry through that bound. It does not consult or reinterpret the prefix
+using the now-materialized graph state after index 6 commits.
