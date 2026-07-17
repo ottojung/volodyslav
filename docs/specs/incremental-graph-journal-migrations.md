@@ -35,9 +35,29 @@ REQ-JM-01: `storage.keep` MUST NOT create a journal entry. It preserves existing
 
 ### `storage.override`
 
-Replaces a node's value with a migration-supplied value. Override leaves the node potentially-outdated so it will be recomputed on first pull in the new namespace. Because override intentionally does not restore freshness, it never performs a freshness transition from `potentially-outdated` to `up-to-date`.
+Replaces a node's value with a migration-supplied value. Override leaves the node
+`potentially-outdated` so it will be recomputed on first pull in the new namespace.
+Override changes a node's stored value as a migration artifact and therefore does not
+emit `add`, `edit`, or `validate` — the value change is not a graph computation.
+It still follows the universal freshness-transition rule.
 
-REQ-JM-02: `storage.override` MUST NOT create a journal entry. The value change is a migration artifact, not a graph computation. The node will be recomputed on first `pull` in the new namespace. If recomputation returns an unchanged value (the migration-supplied value matches what recomputation produces), the pull emits only a `validate` entry for the freshness transition. If recomputation changes the value, the pull emits `edit` followed by `validate` as a regular graph journal event at that time.
+REQ-JM-02: `storage.override` MUST NOT emit `add`, `edit`, or `validate`.
+It MUST emit an `invalidate` journal entry exactly when it changes the target
+node from `up-to-date` to `potentially-outdated`. If the target was already
+`potentially-outdated`, override emits no freshness event.
+
+| Prior freshness | Result freshness | Journal effect |
+|---|---|---|
+| `up-to-date` | `potentially-outdated` | `invalidate` |
+| `potentially-outdated` | `potentially-outdated` | no entry |
+
+The override-supplied value remains a migration artifact, so no `edit` is
+emitted. The conditional `invalidate` must be durably coordinated with the
+overridden destination value, the destination freshness record, the journal
+index, and the destination watermark. The node will be recomputed on first
+`pull` in the new namespace, which may emit `validate` (for unchanged
+recomputation) or `edit` followed by `validate` (for changed) as regular
+graph journal events at that time.
 
 ### `storage.invalidate`
 
@@ -74,7 +94,7 @@ The journal distinguishes migration-originated state from ordinary graph changes
 | `pull` (unchanged recomputation) | `validate` entry | Freshness restored, value unchanged |
 | `invalidate` (standalone) | `invalidate` entry | Freshness downgrade |
 | `storage.keep` | no entry | Identity-preserving copy |
-| `storage.override` | no entry | Migration-level rewriting |
+| `storage.override` | conditional `invalidate` | Migration-level value rewriting; freshness transition when changed from up-to-date to potentially-outdated |
 | `storage.invalidate` | `invalidate` entry | Freshness transition to `potentially-outdated` |
 | `storage.create` | `add` entry | Intentional new node creation |
 | `storage.delete` | `delete` entry | Node deleted by migration |

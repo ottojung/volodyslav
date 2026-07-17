@@ -116,7 +116,7 @@ docs/specs/incremental-graph-journal-sync.md
 
 Migrations can transform graph storage in ways that affect journal state.
 
-Migration is append-only: it preserves all established journal entries and absences exactly. Migration may create new journal changes through fresh append entries. It must not delete, fill, replace, rewrite, or otherwise modify an already established journal position.
+Migration is append-only: it preserves all established journal entries and absences exactly. Migration may create new journal changes through fresh append entries (including `add`, `delete`, `invalidate`, and `validate` for real transitions). It must not delete, fill, replace, rewrite, or otherwise modify an already established journal position.
 
 The interaction between migration storage actions and journal state is specified in:
 

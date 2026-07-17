@@ -11,6 +11,21 @@ Journal emission is always coordinated with the graph storage mutation that caus
 
 ---
 
+## Universal freshness-transition invariant
+
+Every actual transition from `up-to-date` to `potentially-outdated` emits an
+`invalidate` journal entry. Every actual transition from `potentially-outdated`
+to `up-to-date` emits a `validate` journal entry. Operations that leave
+freshness unchanged emit nothing.
+
+This invariant applies to every system path that performs one of these
+transitions: ordinary invalidation, cascading invalidation, migration
+`storage.invalidate`, migration `storage.override`, pull recomputation, and
+any other future path. The source journal is therefore authoritative evidence
+of every freshness transition for the current node incarnation.
+
+---
+
 ## Emission triggers
 
 ### First materialization: `add`
@@ -102,7 +117,7 @@ Migration actions have their own journal-emission rules, specified fully in `inc
 
 - `storage.create` produces an `add` journal entry.
 - `storage.keep` produces no journal entry.
-- `storage.override` produces no journal entry.
+- `storage.override` produces an `invalidate` journal entry when it changes the target node from `up-to-date` to `potentially-outdated` (but never `add`, `edit`, or `validate`). See `incremental-graph-journal-migrations.md` for the full table.
 - `storage.delete` emits a `delete` journal entry for the deleted node (but does not remove older journal entries—see `incremental-graph-journal-migrations.md`).
 - `storage.invalidate` produces an `invalidate` journal entry when it causes the target node's freshness to transition from `up-to-date` to `potentially-outdated`.
 
