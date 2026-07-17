@@ -29,7 +29,7 @@ REQ-JE-04: The `edit` entry MUST be emitted in the same durable transaction as t
 
 #### Unchanged recomputation
 
-REQ-JE-05: If a recomputation returns a value that is `isEqual` to the existing stored value, the system MUST NOT emit a journal entry. This includes cases where the computor explicitly returns the `Unchanged` sentinel and cases where the computor returns a value that happens to be deeply equal to the old value.
+REQ-JE-05: If a recomputation returns a value that is `isEqual` to the existing stored value, the system MUST NOT emit an `edit` entry. This includes cases where the computor explicitly returns the `Unchanged` sentinel and cases where the computor returns a value that happens to be deeply equal to the old value. However, if the node was `potentially-outdated` and transitions to `up-to-date`, the system MUST emit a `validate` entry.
 
 #### Cache hit
 
@@ -157,9 +157,9 @@ Pulling a previously unmaterialized node produces a journal entry with `action: 
 
 Pulling a previously materialized node whose computor returns a different value (not `isEqual` to the old value) produces a journal entry with `action: "edit"`.
 
-### P3 — No entry on unchanged
+### P3 — No edit on unchanged; validate emitted when freshness transitions
 
-Pulling a node whose computor returns `Unchanged` or a deeply-equal value produces no new journal entry.
+Pulling a node whose computor returns `Unchanged` or a deeply-equal value produces no `edit` entry. If the node was `potentially-outdated` before recomputation and becomes `up-to-date`, the system emits a `validate` entry for the freshness transition.
 
 ### P4 — No entry on cache hit
 
