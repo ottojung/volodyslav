@@ -60,6 +60,21 @@ Because event identity depends on `Hostname`, duplicate host identity is invalid
 
 REQ-JT-25: Synchronization MUST reject a mesh containing two distinct hosts with the same `Hostname`. The earlier fallback that accidental duplicate hostnames could fall through to another tie-breaker is removed: duplicate host identities make event identity ambiguous.
 
+### One surviving position per event ID
+
+A converged journal contains at most one surviving entry for each `JournalEventId`. This is a global canonical invariant.
+
+REQ-JT-26: After the prefix merge and before fresh allocation, synchronization MUST:
+
+1. Gather every target position (both retained and newly queued) containing each `eventId`.
+2. Verify that every occurrence has the same immutable payload (action, id, key, time, creator). If not, this is an integrity violation per REQ-JT-24.
+3. If an event occurs at exactly one position, preserve it.
+4. If it occurs at multiple positions, retain the occurrence with the greatest `JournalIndex`.
+5. Change every lower duplicate occurrence to established absence.
+6. Do not queue another fresh copy because a later surviving copy already exists.
+
+The greatest position survives, not the smallest, because retaining the later occurrence best preserves visibility for cursors that have already advanced past an earlier duplicate. This generalizes the deduplication of "same event through two paths" and also covers the case where both replicas already contain the same event ID at two different positions.
+
 ---
 
 ## PendingSyncEventKey (internal, pre-indexing)

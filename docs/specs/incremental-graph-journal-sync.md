@@ -319,12 +319,16 @@ REQ-JS-16f: The queued collection consists of:
 
 REQ-JS-16g: After collecting, normalize the collection:
 
-1. Remove any event whose `eventId` is already present in a retained established target position.
-2. Deduplicate queued copies by `eventId` — the same logical event must not appear more than once in the collection.
-3. Preserve multiplicity between different `eventId` values, even when the entries are otherwise byte-for-byte identical. Structural payload equality MUST NOT collapse distinct events with different `eventId` values.
-4. Apply the sync-induced-removal evidence policy (REQ-JS-16h — "still relevant" rules).
-5. Canonically order the remaining events.
-6. Allocate them at `B + 1 ... B + n`.
+1. Gather every target position (both retained established positions and newly queued entries) containing each `eventId`.
+2. Verify all occurrences have the same immutable payload per REQ-JT-24. If not, this is an integrity violation.
+3. If an event occurs at exactly one position, preserve it.
+4. If it occurs at multiple positions, retain the occurrence with the greatest `JournalIndex`. Change every lower duplicate occurrence to established absence.
+5. Remove any event whose `eventId` is already present in a surviving retained target position after the greatest-position resolution.
+6. Deduplicate queued copies by `eventId` — the same logical event must not appear more than once in the fresh collection.
+7. Preserve multiplicity between different `eventId` values, even when the entries are otherwise byte-for-byte identical. Structural payload equality MUST NOT collapse distinct events with different `eventId` values.
+8. Apply the sync-induced-removal evidence policy (REQ-JS-16h — "still relevant" rules).
+9. Canonically order the remaining events.
+10. Allocate them at `P + 1 ... P + n`.
 
 ### Canonical ordering for reappended evidence
 
@@ -542,3 +546,19 @@ at finalization:
 ```
 
 The original established position becomes absent, and the displaced events survive at fresh positions. The remote suffix entry at 6 was not unconditionally reallocated — it retained its numeric position until a concurrent append made that position established locally.
+
+### T6 — Duplicate event at several retained positions
+
+```
+index 3 = event X (eventId = { creator: A, originIndex: 3 })
+index 8 = event X (eventId = { creator: A, originIndex: 3 })
+```
+
+Expected canonical result after reconciliation:
+
+```
+index 3 = absent
+index 8 = event X
+```
+
+The greatest position survives. The lower duplicate at index 3 becomes established absence. No fresh copy of X is queued because a later surviving copy already exists at index 8.
