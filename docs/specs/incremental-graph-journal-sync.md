@@ -552,13 +552,17 @@ A remote edit wins graph conflict. The destination preserves or reappends the or
 
 ```
 Host A:
+  index 2 = add A1
+  index 5 = validate A1, time 100
   canonical value candidate id = A1
-  validate A1, time 100
+  logical-view freshness entry for A1 = index 5 (validate)
 
 Host B:
+  index 3 = add B1
+  index 4 = invalidate A1 (losing identifier), time 150
+  index 6 = validate B1, time 200
   winning value candidate id = B1
-  invalidate A1 (losing identifier), time 150
-  validate B1, time 200
+  logical-view freshness entry for B1 = index 6 (validate)
 
 Graph winner: B1
 ```

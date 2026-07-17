@@ -69,7 +69,7 @@ REQ-JA-03: If multiple returned entries have equal timestamps, their relative or
 
 Journal storage may contain gaps because of compaction, reconciliation, or other structural deletion. These gaps manifest as missing journal entries at certain `JournalIndex` values.
 
-REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When scanning forward from `since`, missing indices MUST NOT cause errors or aborted iteration. The method silently advances past absent entries and includes the next surviving entry, if any, in the returned array. Compacted-away entries MUST NOT be reconstructed or included.
+REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When scanning forward from `since`, missing indices MUST NOT cause errors or aborted iteration. Missing positions are skipped. The next surviving entry is considered for logical-view selection; it is returned only if it is the retained state or freshness entry for its semantic key and category.
 
 ---
 

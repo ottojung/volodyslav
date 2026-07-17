@@ -58,13 +58,9 @@ REQ-JC-05: After compaction, scanning the journal index sequence MUST NOT fail o
 
 ### Quota-based compaction
 
-Implementations MAY apply a quota or retention window to limit journal growth, for example:
+Implementations MAY apply a quota to limit journal growth. A quota controls when compaction runs and whether all or only some currently removable entries are deleted. A quota never changes which entries are logically required.
 
-- Retain only entries newer than a configurable age threshold.
-- Retain at most `M` entries per node key, keeping only the most recent.
-- Retain the entries selected by the two-category logical journal view.
-
-This specification does not mandate a specific quota policy. Any policy is valid as long as it satisfies the requirements in this document.
+Any quota policy is valid as long as it satisfies the requirements in this document. Quota policies that constrain by age (e.g., "retain only entries newer than 24 hours") must explicitly exempt logically required entries.
 
 ---
 
@@ -100,27 +96,10 @@ REQ-JC-08: A quota or retention policy may decide how aggressively physically re
 
 ### Deleted keys
 
-Deleted keys follow exactly the same two-category rule.
-
-Example:
-
-```
-index 2  = add X
-index 5  = invalidate X
-index 8  = validate X
-index 11 = delete X
-```
-
-The logical view retains:
-
-```
-index 8  = validate X
-index 11 = delete X
-```
-
-Physical compaction may remove indices 2 and 5 but MUST preserve indices 8 and 11.
-
-Retaining `validate X` does not rematerialize X or assign graph freshness to a deleted node. It is retained journal history. An older `add` or `edit` entry for a deleted key may be removed when a later `delete` entry supersedes it; the `delete` is the logically required state entry.
+A journal-deleted key is a semantic key whose latest state entry through `H` has
+action `delete`. Deleted keys follow the same two-category logical retention
+rule: the latest state entry (the `delete`) and latest freshness entry (when
+one exists) are logically required. See the deleted-key example in C7.
 
 ### Interaction with synchronization
 
@@ -219,10 +198,8 @@ REQ-JC-18: Compaction MUST NOT change the `action` field of surviving journal en
 REQ-JC-19: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
 
 REQ-JC-20: Compaction MUST preserve the greatest-index state/lifecycle entry
-through `H` for every semantic key. This follows solely from the captured journal
-prefix; mutable graph state is not an input to compaction analysis.
 
-REQ-JC-21: Compaction MUST NOT delete all surviving entries for a deleted key. The latest state entry (which may be `delete`) and latest freshness entry (when one exists) are logically required and must be preserved through the logical journal view.
+REQ-JC-19: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
 
 ---
 

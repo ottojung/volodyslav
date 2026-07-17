@@ -180,7 +180,25 @@ After migration:
 
 Fresh migration-generated entries receive new commit-time indices above the inherited watermark.
 
-### S3 — Migration cutover with reader
+### S3 — Override invalidation
+
+```
+Before migration:
+  node W is up-to-date
+  H = 2
+
+Migration performs storage.override(W):
+  W transitions from up-to-date to potentially-outdated.
+
+After migration:
+  index 3 = invalidate W  (fresh entry emitted for the transition)
+  W is potentially-outdated
+  H = 3
+```
+
+A repeated override while W is already potentially-outdated emits no entry.
+
+### S4 — Migration cutover with reader
 
 1. An existing `possibleMaybeChanges` reader completes on the old active replica before cutover.
 2. Once `closeGarden` is queued, no new reader selects the old replica.
