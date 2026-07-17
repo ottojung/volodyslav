@@ -35,29 +35,28 @@ REQ-JM-01: `storage.keep` MUST NOT create a journal entry. It preserves existing
 
 ### `storage.override`
 
-Replaces a node's value with a migration-supplied value. Override leaves the node
-`potentially-outdated` so it will be recomputed on first pull in the new namespace.
-Override changes a node's stored value as a migration artifact and therefore does not
-emit `add`, `edit`, or `validate` — the value change is not a graph computation.
-It still follows the universal freshness-transition rule.
+`storage.override` is a semantic-preserving representation rewrite. It may
+change the stored representation (e.g., on-disk format) while preserving the
+semantic value observed by dependents. It preserves freshness, timestamps, and
+compatible validity from the old record and does not propagate invalidation.
 
-REQ-JM-02: `storage.override` MUST NOT emit `add`, `edit`, or `validate`.
-It MUST emit an `invalidate` journal entry exactly when it changes the target
-node from `up-to-date` to `potentially-outdated`. If the target was already
-`potentially-outdated`, override emits no freshness event.
+Override is not a value change and not a freshness transition. It emits no
+journal entry of any kind: not `add`, `edit`, `delete`, `invalidate`, or
+`validate`.
+
+REQ-JM-02: `storage.override` MUST NOT emit any journal entry. It preserves the
+node's existing freshness unchanged.
 
 | Prior freshness | Result freshness | Journal effect |
 |---|---|---|
-| `up-to-date` | `potentially-outdated` | `invalidate` |
+| `up-to-date` | `up-to-date` | no entry |
 | `potentially-outdated` | `potentially-outdated` | no entry |
 
-The override-supplied value remains a migration artifact, so no `edit` is
-emitted. The conditional `invalidate` must be durably coordinated with the
-overridden destination value, the destination freshness record, the journal
-index, and the destination watermark. The node will be recomputed on first
-`pull` in the new namespace, which may emit `validate` (for unchanged
-recomputation) or `edit` followed by `validate` (for changed) as regular
-graph journal events at that time.
+The migration-supplied value replaces the stored representation but preserves the
+semantic value. The node's freshness is inherited from the old record. Pulls
+after migration may emit `validate` (for unchanged recomputation) or `edit`
+followed by `validate` (for changed) as regular graph journal events; these are
+ordinary graph operations, not migration emissions.
 
 ### `storage.invalidate`
 
@@ -85,7 +84,7 @@ REQ-JM-07: `storage.delete` MUST NOT remove, purge, or otherwise modify any esta
 
 ## Distinction from other change sources
 
-The journal distinguishes migration-originated state from ordinary graph changes. Migration actions that change graph-observable state (`storage.create`, `storage.delete`, `storage.invalidate`) emit journal entries; identity-preserving operations (`storage.keep`, `storage.override`) never emit journal entries:
+The journal distinguishes migration-originated state from ordinary graph changes. Migration actions that change graph-observable state (`storage.create`, `storage.delete`, `storage.invalidate`) emit journal entries; identity-preserving and semantic-preserving operations (`storage.keep`, `storage.override`) never emit journal entries:
 
 | Operation | Journal effect | Reason |
 |-----------|---------------|--------|
@@ -94,7 +93,7 @@ The journal distinguishes migration-originated state from ordinary graph changes
 | `pull` (unchanged recomputation) | `validate` entry | Freshness restored, value unchanged |
 | `invalidate` (standalone) | `invalidate` entry | Freshness downgrade |
 | `storage.keep` | no entry | Identity-preserving copy |
-| `storage.override` | conditional `invalidate` | Migration-level value rewriting; freshness transition when changed from up-to-date to potentially-outdated |
+| `storage.override` | no entry | Semantic-preserving representation rewrite; preserves freshness and does not emit a journal entry |
 | `storage.invalidate` | `invalidate` entry | Freshness transition to `potentially-outdated` |
 | `storage.create` | `add` entry | Intentional new node creation |
 | `storage.delete` | `delete` entry | Node deleted by migration |
@@ -180,7 +179,7 @@ After migration:
 
 Fresh migration-generated entries receive new commit-time indices above the inherited watermark.
 
-### S3 — Override invalidation
+### S3 — Override preserves freshness
 
 ```
 Before migration:
@@ -188,15 +187,17 @@ Before migration:
   H = 2
 
 Migration performs storage.override(W):
-  W transitions from up-to-date to potentially-outdated.
+  W's stored representation changes but semantic value and freshness are preserved.
 
 After migration:
-  index 3 = invalidate W  (fresh entry emitted for the transition)
-  W is potentially-outdated
-  H = 3
+  W is up-to-date (freshness inherited from old record)
+  H = 2 (no journal entry emitted)
 ```
 
-A repeated override while W is already potentially-outdated emits no entry.
+Override emits no journal entry regardless of the prior freshness. The node retains
+its inherited freshness — up-to-date before override stays up-to-date after,
+potentially-outdated before stays potentially-outdated after. The later pull in the
+new namespace is an ordinary graph operation, not a migration emission.
 
 ### S4 — Migration cutover with reader
 
