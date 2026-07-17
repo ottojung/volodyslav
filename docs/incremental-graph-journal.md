@@ -167,7 +167,7 @@ darkroom for final metadata and cutover before releasing locks in reverse order.
 
 ### Lifecycle exclusion
 
-Migration and replica cutover close the garden because of replica lifecycle safety, not because migration structurally mutates journal history. Migration is append-only: it preserves all established journal entries and absences exactly and may only append fresh entries. It must not delete, fill, replace, or rewrite an already established journal position. Migration closes the garden so that `possibleMaybeChanges` does not traverse a replica while it is being replaced, and so that migration-generated graph changes and fresh journal entries are committed atomically.
+Migration and replica cutover close the garden because of replica lifecycle safety, not because migration structurally mutates journal history. Migration is append-only: it preserves all established journal entries and absences exactly and may only append fresh entries. It must not delete, fill, replace, or rewrite an already established journal position. Migration closes the garden so that `possibleMaybeChanges` does not traverse a replica while it is being replaced. Two guarantees apply: every emitted journal event is atomic with the graph and freshness mutation that caused it, and the complete inactive destination remains invisible until durable cutover.
 
 ### Replica cutover
 
