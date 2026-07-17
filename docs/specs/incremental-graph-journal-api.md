@@ -57,7 +57,7 @@ Restricts the returned possible changes to nodes whose keys match the filter. Se
 2. matches `to` according to `DEF-NF-MATCH-01`;
 3. has meaningful public fields (`nodeName`, `bindings`, `action`, `time`) that describe the change.
 
-REQ-JA-01: The returned array is finite. It contains one value per surviving matching journal entry in the scanned span. Compacted-away entries are not reconstructed.
+REQ-JA-01: The returned array is finite. It contains one value per surviving matching journal entry in the scanned span, subject to freshness suppression (§Freshness suppression). Compacted-away entries are not reconstructed.
 
 ---
 
@@ -79,9 +79,54 @@ REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When s
 
 ## Multiple entries for the same node
 
-`graph.possibleMaybeChanges` returns one `PossibleNodeChange` per surviving journal entry that matches the filter. A single node key may appear in multiple journal entries — for example, the node's initial `add`, a later `edit` from recomputation, and an additional `edit` from sync reconciliation. Each journal entry produces its own `PossibleNodeChange`.
+`graph.possibleMaybeChanges` returns one `PossibleNodeChange` per surviving journal entry that matches the filter, subject to freshness suppression rules below. A single node key may appear in multiple journal entries — for example, the node's initial `add`, a later `edit` from recomputation, and additional entries from sync reconciliation.
 
 REQ-JA-05: A returned `edit` entry describes a graph change or sync reconciliation that produced a journal entry. The entry's presence does not guarantee that the node's value materially changed from the consumer's perspective. Consumers SHOULD re-check the current node value rather than assuming the entry describes a visible state transition.
+
+---
+
+## Freshness suppression
+
+For the fixed scan interval `(since, H]` and after applying `NodeFilter`, the following rules apply:
+
+### Ordinary actions
+
+Return every surviving matching entry whose action is `add`, `edit`, or `delete`.
+
+### Freshness actions
+
+For each semantic `NodeKey`, consider every surviving matching entry in the scan interval whose action is `invalidate` or `validate`.
+
+Return only the one with the greatest `JournalIndex`.
+
+Therefore the result contains at most one freshness entry per node key.
+
+The selected entry reports the latest freshness transition within the scanned interval:
+- latest is `invalidate`: return that `invalidate`;
+- latest is `validate`: return that `validate`;
+- no freshness event in the interval: return neither.
+
+### Combination
+
+After suppression, combine:
+- all ordinary entries (`add`, `edit`, `delete`);
+- the selected freshness entries.
+
+Order the final array by ascending `JournalIndex`.
+
+### Important cursor semantics
+
+"Latest" means latest within the scanned interval, not necessarily latest in the complete journal. Example:
+
+```
+index 5 = invalidate X
+index 8 = validate X
+index 12 = invalidate X
+```
+
+With `since = index 6, H = 10`, return `validate X at index 8`. Index 5 is outside the interval and index 12 is above the fixed bound.
+
+With `since = baseline, H = 12`, return only `invalidate X at index 12` for freshness of X.
 
 ---
 
