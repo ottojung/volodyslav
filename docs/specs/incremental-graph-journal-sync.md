@@ -150,6 +150,7 @@ given combination of state action, cached-value presence, and graph freshness.
 | `add`/`edit` | yes | `potentially-outdated` | no | — | valid (S must be `add`) |
 | `add`/`edit` | yes | `potentially-outdated` | yes | != W | valid (older-incarnation history) |
 | `edit` | yes | `up-to-date` | no | — | **INVALID** |
+| `edit` | yes | `potentially-outdated` | no | — | **INVALID** |
 | `add`/`edit` | no | `missing` | any | any | valid (F is historical) |
 | `delete` | no | n/a | any | any | valid (F is historical) |
 | none | — | n/a | yes | any | **INVALID** (orphan) |
@@ -197,6 +198,17 @@ A source freshness entry for a semantic key with no source state entry is
 invalid. Every legitimate freshness event originates from an existing node
 incarnation, and `logicalJournalView` never removes that incarnation's latest
 state entry.
+
+#### Identical-state conflicting-initial-freshness integrity check
+
+When both sources contain the same canonical state event (same `eventId`,
+same immutable payload) and neither source has an applicable freshness event
+for the winning identifier `W`, both sources' stored initial freshness values
+for `W` MUST agree. If one source stores `W` as `up-to-date` and the other as
+`potentially-outdated`, synchronization fails with an integrity error. The same
+state `eventId` associated with different stored initial freshness values is
+not a direction-dependent choice — the result must be the same regardless of
+which replica is described first.
 
 #### On any consistency failure
 
@@ -264,26 +276,19 @@ immutable journal-payload serialization.
 This stage selects the canonical freshness event retained in the destination
 journal. The final graph freshness is determined by the graph synchronization
 rules (see `docs/specs/incremental-graph-synchronization.md` §8). The canonical
-freshness history event does not by itself force the graph freshness.
+freshness history event does not by itself force the graph freshness — a
+retained `validate` permits but does not force `up-to-date`, and a retained
+`invalidate` forbids `up-to-date` unless a later canonical `validate` exists.
 
 For a canonically materialized key, let the winning identifier be `W`. Consider
 each source freshness entry only when `entry.id === W`; ignore freshness for
 another identifier. Compare candidates by later `time`, then lexicographically
 greater `eventId` on a tie. The winner is the canonical freshness history event.
 
-If neither source supplies freshness evidence for `W`, use the winning source
-graph state's stored freshness as the basis for final freshness. An `add`
-without matching freshness evidence uses its associated stored initial
-freshness, which may be either `up-to-date` or `potentially-outdated`.
-
-When both sources contain the same canonical state event (same `eventId`,
-same immutable payload) and neither source has an applicable freshness event
-for `W`, both sources' stored freshness values MUST agree. If one source
-stores `W` as `up-to-date` and the other as `potentially-outdated`,
-synchronization fails with an integrity error. The same state `eventId`
-associated with different stored initial freshness values is not a
-direction-dependent choice — the result must be the same regardless of which
-replica is described first.
+If neither source supplies freshness evidence for `W`, canonical freshness
+history is absent. The node's initial freshness (which may be `up-to-date` or
+`potentially-outdated`) is stored graph state, not journal history; it is
+preserved as part of the canonical graph state.
 
 For a canonically deleted key, freshness never sets graph state. Preserve no
 freshness event when neither source has one; preserve the sole entry when only
