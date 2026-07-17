@@ -118,6 +118,52 @@ REQ-JS-12: After sync, the local `last_journal_index` MUST be advanced to cover 
 
 Synchronization must bring journal storage into physical agreement.
 
+### The canonical merge function
+
+The pairwise journal reconciliation is defined as a function:
+
+```
+canonicalMerge(A, B)
+```
+
+It takes:
+- two fixed committed replica states (A and B);
+- their stable host identities.
+
+It does not read:
+- current wall clock;
+- caller direction;
+- host-relative "local" authorship;
+- mutable remote state.
+
+The output is:
+- canonical graph target (for every conflicting node key, the winning graph state);
+- canonical journal prefix (for every numeric position through P, the resolved state);
+- canonical fresh event list (deterministically ordered);
+- final watermark (P + n).
+
+REQ-JS-13a: `canonicalMerge` MUST be deterministic, symmetric, and commutative:
+
+```
+canonicalMerge(A, B) = canonicalMerge(B, A)
+```
+
+REQ-JS-13b: `canonicalMerge` MUST be idempotent for already-converged inputs:
+
+```
+canonicalMerge(T, T) = T
+```
+
+where `T` is an already converged target. Merging the already converged target with itself creates no new sync event, no new journal index, and no watermark change.
+
+### Partial canonical-target application
+
+Before any participant exposes a canonical target, the target MUST be fixed completely, including: prefix states, fresh-event ordering, fresh positions, generated event payloads, generated event IDs, and final watermark.
+
+REQ-JS-13c: Once any participant has committed that target, retry MUST reuse the exact same target. It MUST NOT regenerate sync events with different times, creators, IDs, or positions. Recomputation is permitted only if no participant has yet committed the old target.
+
+REQ-JS-13d: A synchronization session is complete only when all participants have applied that target. If one participant applies it and another does not, synchronization is incomplete. If a participant performs a new ordinary append after applying the target, that append is post-plan activity and belongs to a later reconciliation; the prior session cannot claim full current-state convergence beyond its fixed frontier.
+
 REQ-JS-13: After synchronization completes, for every `JournalIndex` `i`, all synchronized hosts MUST agree that `rendered/r/journal/i` is either:
 
 - the **same** `JournalEntry` value (byte-for-byte identical), or
@@ -269,20 +315,25 @@ REQ-JS-16e: In the concurrent case, because `closeGarden` does not exclude ordin
    - latest surviving local `add` or `edit` journal entry (to confirm the intended conflict-winner timestamp is still valid);
    - any appended entries since the initially captured watermark that concern affected keys.
 
-   If any semantic evidence changed in a way that would alter a conflict-resolution decision, sync MUST handle the retry as follows:
+   If any semantic evidence changed in a way that would alter a conflict-resolution decision, sync MUST follow this retry policy:
 
-   **Option A (fallback):** If the changed evidence can be immediately recomputed from already available local and remote data without external I/O, sync recomputes the affected resolution while continuing to hold darkroom. Because darkroom serializes journal mutations but does not block per-node pull mutexes or daytime activity, the recomputation must be restricted to the data already in hand.
+   **First stale validation:**
+   1. Release darkroom.
+   2. Retain `closeGarden`.
+   3. Rebuild the canonical plan from the fixed remote revision and current local state.
+   4. Reacquire darkroom.
+   5. Revalidate.
 
-   **Option B (retry):** Otherwise, sync releases darkroom (but retains `closeGarden`), returns to reconciliation analysis (step 2 of this protocol), builds a new unindexed canonical plan, reacquires darkroom, and revalidates again.
+   **Second stale validation (fallback for progress):**
+   If the second attempt is also stale:
+   1. Continue holding `closeGarden`.
+   2. Acquire darkroom.
+   3. Recompute the complete affected local reconciliation while holding darkroom.
+   4. Commit before releasing darkroom.
 
-   In either option, sync NEVER returns to analysis while still holding darkroom. Sync NEVER releases `closeGarden` during a retry — new readers must not enter while structural sync is pending.
+   This fallback exists solely to guarantee progress against a continuous stream of local appenders. It sacrifices short darkroom duration only when necessary. Sync NEVER releases `closeGarden` during a retry — new readers must not enter while structural sync is pending.
 
    Revalidating only physical journal positions is insufficient. Journal positions alone do not capture late-arriving materialization facts: a node that was absent during analysis may have been materialized by a concurrent append, or a node whose latest `add`/`edit` entry sync intended to use as conflict evidence may have been superseded by a newer entry committed during analysis. These semantic facts can change the outcome of per-node conflict resolution and MUST be rechecked.
-
-   To prevent indefinite starvation from continuous ordinary appends, use a bounded optimistic retry:
-
-   - After one failed optimistic revalidation (Option A falls through to Option B), the next attempt recomputes the complete affected reconciliation while holding darkroom through analysis and finalization (Option A with full recomputation under darkroom).
-   - This is the fallback path. It sacrifices short darkroom duration only when necessary to guarantee progress.
 
 6. Re-read the current committed local `last_journal_index = H`.
 7. Re-read every local journal position that the prepared reconciliation intended to delete, poison, or otherwise reason about.
@@ -308,7 +359,7 @@ Under this protocol, all journal-index allocation and established-position mutat
 
 ### Evidence collection and deduplication
 
-Before canonical ordering, synchronization MUST build one explicit collection of fresh events. Use event identity (`JournalEventId`), not payload equality, for deduplication.
+Before canonical ordering, synchronization MUST build one explicit collection of fresh events, based on the canonical graph and journal target. Use event identity (`JournalEventId`), not payload equality, for deduplication.
 
 REQ-JS-16f: The queued collection consists of:
 
@@ -350,11 +401,13 @@ Because `eventId` is globally unique, this is a true total order. All prior keys
 
 When a journal entry is removed from an established position by sync (by poisoning or absence propagation), some entries may need to survive through fresh reappend while others are genuinely obsolete. This section applies only to sync-induced removal. Compaction follows its own retention rules (see `incremental-graph-journal-compaction.md`) and never reappends removed entries.
 
+All relevance decisions are based on the canonical graph and journal target, not on whichever host is currently called local.
+
 REQ-JS-16h: The following kinds of evidence are "still relevant" and MUST be reappended when removed from an established position by sync:
 
-- The only surviving `add` or `edit` entry for a currently materialized node key (mandatory under REQ-JC-07).
-- A `delete` entry that carries the most recent timestamp for a node key that was present on another host (needed for sync conflict convergence).
-- An `invalidate` entry that is the only surviving journal record of a freshness downgrade for a materialized node whose `add`/`edit` evidence is still needed but whose value might have changed.
+- An `add` or `edit` entry that is the only surviving value evidence for a node that is materialized in the canonical graph target (mandatory under REQ-JC-07).
+- A `delete` entry that carries the most recent timestamp for a node key that is deleted in the canonical graph target (needed for sync conflict convergence).
+- An `invalidate` entry that is the only surviving journal record of a freshness downgrade for a node that is materialized in the canonical graph target and whose latest retained `add`/`edit` evidence does not subsume the invalidation.
 
 The following kinds of evidence are NOT "still relevant" and MAY be dropped:
 
