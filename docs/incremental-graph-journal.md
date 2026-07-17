@@ -89,9 +89,11 @@ docs/specs/incremental-graph-journal-emission.md
 
 ## Synchronization
 
-The journal participates in synchronization between hosts.
+The journal participates in synchronization between hosts. Synchronization produces one immutable canonical revision `R` containing the reconciled graph target, journal prefix, fresh events, and final watermark.
 
-Synchronization must reconcile graph state and journal state together, so that graph-state reconciliation is visible through later journal queries. Sync may introduce journal changes that represent remote graph changes, conflict resolution, or reconciliation effects.
+Sync-generated events have deterministic identity: the SHA-256 digest of a canonical serialization of their `SyncEventDerivation`. This breaks the circular dependency where event identity depended on the final physical position.
+
+Pairwise convergence is symmetric and idempotent. Multi-host convergence is achieved through fair repeated synchronization after graph activity becomes quiescent.
 
 The journal synchronization model defines how journal histories are compared, merged, appended, deleted, or compacted during sync. It also defines how timestamps and host identities participate in conflict resolution.
 
