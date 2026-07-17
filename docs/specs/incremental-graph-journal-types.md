@@ -525,7 +525,17 @@ The internal widening follows the same pattern as `unsafeStringToNodeIdentifier`
 
 `PossibleNodeChange` is the public unit of journal observation. It is returned by `graph.possibleMaybeChanges` and may be passed back as the `since` argument to a later call in the same process session. Every `PossibleNodeChange` is derived from a committed journal entry.
 
-**This PR specifies only same-process, in-memory journal token usage.** A `PossibleNodeChange` returned during a process session is valid as `since` for subsequent calls within that same session. Persistence of these tokens across process restarts, synchronization boundaries, or migration boundaries, and the corresponding long-lived validity guarantees, are out of scope for this PR and deferred to a future computor/cursor-persistence specification.
+**This PR specifies only same-process, in-memory journal token usage.** A `PossibleNodeChange` returned during a process session is valid as `since` for subsequent calls within that same session. Specifically, within the same process:
+
+- A `PossibleNodeChange` cursor remains valid across **physical compaction**. The token's private journal index persists even if its backing entry is physically deleted. A later query scans strictly after that index and tolerates absent entries (see REQ-JC-14 in `incremental-graph-journal-compaction.md`).
+- A `PossibleNodeChange` cursor remains valid across **structural synchronization and active-replica cutover** in the same process. The notification coverage rules (Stage 7a in `incremental-graph-journal-sync.md`) ensure that any change observable to the cursor is reported through repositioned canonical events.
+- A `PossibleNodeChange` cursor is **not portable** to another process or host without additional serialization mechanisms that are not specified by this PR.
+
+Persistence of these tokens across process restarts, synchronization boundaries
+that involve heterogeneous hosts without the notification protocol, or
+migration/schema boundaries, and the corresponding long-lived validity
+guarantees, are out of scope for this PR and deferred to a future
+computor/cursor-persistence specification.
 
 ```js
 class PossibleNodeChangeClass {
