@@ -45,7 +45,7 @@ The main query interface is:
 graph.possibleMaybeChanges({ since, to }): Promise<Array<PossibleNodeChange>>
 ```
 
-The operation scans journal storage starting from the supplied `since` value and returns later possible changes matching the `to` filter as a finite array. The `since` argument accepts `PossibleNodeChange | BaselinePossibleNodeChange`; `baselinePossibleNodeChange()` returns a position less than any real journal index.
+The operation computes the logical journal view through a fixed upper bound `H`, restricts to entries strictly after `since`, applies the `to` filter, and returns the result in ascending index order. The `since` argument accepts `PossibleNodeChange | BaselinePossibleNodeChange`; `baselinePossibleNodeChange()` returns a position less than any real journal index.
 
 The detailed scan order, initial value behavior, filtering behavior, and result semantics are specified in:
 

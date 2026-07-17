@@ -201,7 +201,8 @@ No established position changes. The old `add` entry at index 1 is preserved exa
 Before migration:
   H = 3
 
-Migration performs storage.create(B) and storage.invalidate(C).
+Migration performs storage.create(B, ..., "up-to-date") and
+storage.invalidate(C).
 
 After migration:
   index 4 = add B         (fresh entry, no gap between 3 and 4)

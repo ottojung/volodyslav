@@ -575,7 +575,7 @@ class PossibleNodeChangeClass {
  */
 ```
 
-REQ-JT-21: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. Private journal fields (`id`, `key`, `creator`, `index`) are not part of the public nominal type. Callers MUST NOT depend on fields beyond those listed in the public `PossibleNodeChange` type.
+REQ-JT-21: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. Private journal fields (`id`, `key`, `creator`, `eventId`, `index`) are not part of the public nominal type. Callers MUST NOT depend on fields beyond those listed in the public `PossibleNodeChange` type.
 
 REQ-JT-22: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
 
@@ -653,7 +653,7 @@ The journal implementation internally uses `PrivatePossibleNodeChange` (which in
  │  Public fields (PossibleNodeChange):         │
  │      nodeName, bindings, action, time        │
  │  Not part of public API contract:            │
- │      id, key, creator, index                 │
+ │      id, key, creator, eventId, index        │
 └──────────────────────────────────────────────┘
 ```
 
