@@ -193,21 +193,23 @@ Because synchronization holds `closeGarden`, `possibleMaybeChanges` cannot selec
 `possibleMaybeChanges` reports possible changes, not an exact command log.
 
 When synchronization changes the graph:
-- the remote `add`, `edit`, `delete`, `invalidate`, or `validate` event that caused the change is already journal evidence for the affected key;
+- the existing canonical event — whether `add`, `edit`, `delete`, `invalidate`, or `validate` — is already journal evidence for the affected key;
 - if that evidence occupies a remote suffix position, it is copied into the same unestablished numeric position;
 - if its old numeric position conflicts with established local state, it is reappended at a fresh position;
 - a caller receiving that event re-reads the current graph state.
 
-Therefore the existing causal event is sufficient. An additional synthetic notification would duplicate evidence without adding information.
+Therefore the existing canonical event is sufficient. An additional synthetic notification would duplicate evidence without adding information.
 
 ### Identifier conflict
 
 When two identifiers for the same semantic key conflict:
 - determine the graph winner using the existing timestamp and `NodeIdentifier` rules;
-- preserve the relevant existing events for the winner and loser according to journal retention rules;
-- do not emit an additional synthetic `delete` or `edit`.
+- preserve the canonical state winner and, when one exists, the canonical freshness event;
+- omit the losing state event;
+- omit obsolete freshness events;
+- do not emit a synthetic `delete` or `edit`.
 
-The existing conflicting events already indicate that the semantic key may have changed. Consumers must re-check current graph state.
+The existing canonical event is sufficient because consumers re-read current graph state. The winner may originate from either source.
 
 ---
 
@@ -470,6 +472,8 @@ freshness during synchronization.
 
 ### T7 — Remote suffix preserved at same index (no race)
 
+Assuming E is canonical:
+
 ```
 local H = 5
 remote H = 6, remote[6] = E
@@ -480,7 +484,7 @@ sync replicates E at index 6 in the inactive destination
 sync commits H = 6
 ```
 
-The remote entry is preserved at its original numeric position because it was unestablished locally.
+The remote entry is preserved at its original numeric position because it was unestablished locally. A noncanonical remote suffix event is omitted.
 
 ### T8 — Pre-sync same-index conflict
 
