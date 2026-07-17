@@ -29,17 +29,15 @@ Compaction, not migration, is responsible for later removal of redundant histori
 
 ### `storage.keep`
 
-Preserves a node as-is in the new version. The node's value, freshness, inputs, revdeps, counters, and timestamps are copied unchanged.
+Preserves a node as-is in the new version. The node's value, freshness, inputs, revdeps, counters, and timestamps are copied unchanged. Because freshness is copied unchanged, keep never performs a freshness transition.
 
-REQ-JM-01: `storage.keep` MUST NOT create a journal entry unless it actually performs a freshness transition from `potentially-outdated` to `up-to-date`. In that case, it MUST emit a `validate` entry. The node's pre-migration journal history (if any survives compaction) is preserved.
+REQ-JM-01: `storage.keep` MUST NOT create a journal entry. It preserves existing journal history unchanged (subject to later compaction).
 
 ### `storage.override`
 
-Replaces a node's value with a migration-supplied value.
+Replaces a node's value with a migration-supplied value. Override leaves the node potentially-outdated so it will be recomputed on first pull in the new namespace. Because override intentionally does not restore freshness, it never performs a freshness transition from `potentially-outdated` to `up-to-date`.
 
-REQ-JM-02: `storage.override` MUST NOT create a journal entry merely because storage was rewritten by the migration. The value change is a migration artifact, not a graph computation. However, if override separately validates freshness (transitions from `potentially-outdated` to `up-to-date`), it MUST emit a `validate` entry.
-
-Rationale: `override` rewrites storage during a namespace transition. The old version's computed value is replaced by a migration-supplied value. This is a migration-level operation, not a graph-level edit. If the new value differs from the old value, the node will be recomputed on first `pull` in the new namespace (because override leaves nodes potentially-outdated), producing a regular `edit` journal entry at that time. The migration itself does not emit one.
+REQ-JM-02: `storage.override` MUST NOT create a journal entry. The value change is a migration artifact, not a graph computation. The node will be recomputed on first `pull` in the new namespace, producing an `edit` (and `validate` if freshness transitions) as a regular graph journal entry at that time.
 
 ### `storage.invalidate`
 
@@ -67,7 +65,7 @@ REQ-JM-07: `storage.delete` MUST NOT remove, purge, or otherwise modify any esta
 
 ## Distinction from other change sources
 
-The journal distinguishes migration-originated state from ordinary graph changes. Migration actions that change graph-observable state (`storage.create`, `storage.delete`, `storage.invalidate`) emit journal entries; identity-preserving operations (`storage.keep`, `storage.override`) do not:
+The journal distinguishes migration-originated state from ordinary graph changes. Migration actions that change graph-observable state (`storage.create`, `storage.delete`, `storage.invalidate`) emit journal entries; identity-preserving operations (`storage.keep`, `storage.override`) never emit journal entries:
 
 | Operation | Journal effect | Reason |
 |-----------|---------------|--------|
