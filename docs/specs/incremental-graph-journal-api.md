@@ -51,13 +51,9 @@ Restricts the returned possible changes to nodes whose keys match the filter. Se
 
 ### Return value
 
-`graph.possibleMaybeChanges` returns `Promise<Array<PossibleNodeChange>>`. The returned array contains one `PossibleNodeChange` per surviving journal entry that:
+`graph.possibleMaybeChanges` returns `Promise<Array<PossibleNodeChange>>`. The returned array contains, for each matching semantic node key, at most its latest state entry (`add`, `edit`, or `delete`) and its latest freshness entry (`invalidate` or `validate`) from the logically compacted journal through the fixed bound `H`, provided those entries' journal indices are strictly greater than `since`.
 
-1. was recorded at a journal position strictly after the position referenced by `since`;
-2. matches `to` according to `DEF-NF-MATCH-01`;
-3. has meaningful public fields (`nodeName`, `bindings`, `action`, `time`) that describe the change.
-
-REQ-JA-01: The returned array is finite. It contains one value per surviving matching journal entry in the scanned span, subject to freshness suppression (§Freshness suppression). Compacted-away entries are not reconstructed.
+REQ-JA-01: The returned array is finite. For each matching semantic node key, it contains at most its latest state entry and latest freshness entry from the logically compacted journal through the fixed bound `H`, provided their indices are strictly greater than `since`. Compacted-away entries are not reconstructed.
 
 ---
 
@@ -79,54 +75,103 @@ REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When s
 
 ## Multiple entries for the same node
 
-`graph.possibleMaybeChanges` returns one `PossibleNodeChange` per surviving journal entry that matches the filter, subject to freshness suppression rules below. A single node key may appear in multiple journal entries — for example, the node's initial `add`, a later `edit` from recomputation, and additional entries from sync reconciliation.
+`graph.possibleMaybeChanges` returns at most two `PossibleNodeChange` values per matching semantic node key: one state/lifecycle entry (`add`, `edit`, or `delete`) and one freshness entry (`invalidate` or `validate`). Older entries for the same key and category are logically suppressed even when still physically present.
 
 REQ-JA-05: A returned `edit` entry describes a graph change or sync reconciliation that produced a journal entry. The entry's presence does not guarantee that the node's value materially changed from the consumer's perspective. Consumers SHOULD re-check the current node value rather than assuming the entry describes a visible state transition.
 
 ---
 
-## Freshness suppression
+## Normative semantics
 
-For the fixed scan interval `(since, H]` and after applying `NodeFilter`, the following rules apply:
+The normative conceptual order for `possibleMaybeChanges` is:
 
-### Ordinary actions
+1. `enterGarden` → select active replica → read fixed `H = last_journal_index`
+2. Construct `logicalJournalView(journal, H)` — logically compact first through the complete prefix
+3. Restrict to entries whose journal index is strictly greater than `since`
+4. Apply `NodeFilter` to the retained entries
+5. Order by ascending `JournalIndex`
+6. Project to `PossibleNodeChange`
+7. Leave garden and return the finite array
 
-Return every surviving matching entry whose action is `add`, `edit`, or `delete`.
-
-### Freshness actions
-
-For each semantic `NodeKey`, consider every surviving matching entry in the scan interval whose action is `invalidate` or `validate`.
-
-Return only the one with the greatest `JournalIndex`.
-
-Therefore the result contains at most one freshness entry per node key.
-
-The selected entry reports the latest freshness transition within the scanned interval:
-- latest is `invalidate`: return that `invalidate`;
-- latest is `validate`: return that `validate`;
-- no freshness event in the interval: return neither.
-
-### Combination
-
-After suppression, combine:
-- all ordinary entries (`add`, `edit`, `delete`);
-- the selected freshness entries.
-
-Order the final array by ascending `JournalIndex`.
-
-### Important cursor semantics
-
-"Latest" means latest within the scanned interval, not necessarily latest in the complete journal. Example:
+The defining property is:
 
 ```
-index 5 = invalidate X
-index 8 = validate X
-index 12 = invalidate X
+logically compact first
+then apply the cursor
 ```
 
-With `since = index 6, H = 10`, return `validate X at index 8`. Index 5 is outside the interval and index 12 is above the fixed bound.
+not:
 
-With `since = baseline, H = 12`, return only `invalidate X at index 12` for freshness of X.
+```
+iterate raw physical entries after the cursor
+```
+
+### Exact result contract
+
+For every semantic node key matching `to`, the query returns at most:
+
+- its latest state entry (`add`, `edit`, or `delete`) through `H`, if that entry's index is greater than `since`;
+- its latest freshness entry (`invalidate` or `validate`) through `H`, if that entry's index is greater than `since`.
+
+The final array is sorted by ascending physical `JournalIndex`.
+
+REQ-JA-01a: `possibleMaybeChanges` MUST NOT return entries whose action is `add`, `edit`, or `delete` when a later-index entry of the same category exists for the same semantic key through `H`. The latest state entry per key is returned; older state entries within the prefix are suppressed by logical compaction.
+
+REQ-JA-01b: `possibleMaybeChanges` MUST NOT return entries whose action is `invalidate` or `validate` when a later-index entry of the same category exists for the same semantic key through `H`. The latest freshness entry per key is returned; older freshness entries within the prefix are suppressed by logical compaction.
+
+### Equivalent implementation
+
+The implementation does not need to scan entries before `since`. For each key and category:
+
+- If the retained winner through `H` is greater than `since`, it is also the greatest-index entry in that category within `(since, H]`;
+- If no entry in that category exists in `(since, H]`, the retained winner is not returned.
+
+Therefore an implementation may scan only `(since, H]` and retain, per matching semantic key:
+
+- greatest-index `add | edit | delete`;
+- greatest-index `invalidate | validate`.
+
+This is an optimization equivalence.
+
+The normative meaning remains logical compaction through `H`, followed by cursor restriction.
+
+### Cursor semantics
+
+The logical winner is selected through the complete fixed prefix ending at `H`. It is returned only when its retained index is greater than `since`.
+
+Example:
+
+```
+index 2 = add X
+index 5 = edit X
+index 8 = edit X
+index 10 = invalidate X
+index 12 = validate X
+```
+
+For a baseline query through `H = 12`, return:
+
+```
+index 8  = edit X
+index 12 = validate X
+```
+
+Do not return indices 2, 5, or 10, even if they still physically exist.
+
+For `since = index 6, H = 12`, return the same two entries:
+
+```
+index 8  = edit X
+index 12 = validate X
+```
+
+For `since = index 9, H = 12`, return only:
+
+```
+index 12 = validate X
+```
+
+For `since = index 12, H = 12`, return neither entry for X.
 
 ---
 
@@ -149,7 +194,7 @@ function baselinePossibleNodeChange()
 
 REQ-JA-07: `baselinePossibleNodeChange()` MUST be callable at any time. It MUST NOT require a prior call to `graph.possibleMaybeChanges`.
 
-REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` MUST return all currently available surviving journal-backed `PossibleNodeChange` values matching `to`. This returns a `PossibleNodeChange` for every surviving journal entry whose node key matches the filter, subject to freshness suppression (§Freshness suppression).
+REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` MUST return the `PossibleNodeChange` values for every matching semantic node key's latest state entry and latest freshness entry from the logical journal view through the fixed bound `H`. This yields at most two entries per matching key.
 
 ---
 
@@ -157,16 +202,15 @@ REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to
 
 ### Correctness requirement
 
-REQ-JA-CONC-01: `possibleMaybeChanges({ since, to })` MUST observe a consistent journal state through shared garden access. There must exist a linearization point during the call such that the returned array is exactly:
+REQ-JA-CONC-01: `possibleMaybeChanges({ since, to })` MUST observe a consistent journal state through shared garden access. There must exist a linearization point during the call such that the returned array is exactly the result of:
 
-- all surviving ordinary entries (`add`, `edit`, `delete`) in that journal state;
-- only the greatest-index surviving freshness entry (`invalidate`, `validate`) per semantic node key;
-- whose journal index is strictly greater than the position referenced by `since`;
-- whose node key matches `to`;
-- ordered by ascending `JournalIndex`;
-- projected to `PossibleNodeChange`.
+1. Constructing `logicalJournalView` through the captured bound `H`;
+2. Restricting to entries whose journal index is strictly greater than the position referenced by `since`;
+3. Applying `NodeFilter`;
+4. Ordering by ascending `JournalIndex`;
+5. Projecting to `PossibleNodeChange`.
 
-No ordinary matching entry is skipped. A freshness entry is omitted only when a later matching `validate` or `invalidate` for the same semantic node key exists in the observed span.
+The returned array contains, for each matching semantic node key: at most its latest state entry and its latest freshness entry through `H`, when those entries' indices exceed `since`.
 
 ### Shared garden access
 
