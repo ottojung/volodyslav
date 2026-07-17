@@ -28,33 +28,62 @@ REQ-JS-02: If both hosts have the same `time` for the conflicting node, tie-brea
 
 This ensures deterministic resolution on all hosts.
 
-### Implementation of resolution
+### One canonical graph target
 
-REQ-JS-03: When a node key conflict is resolved against the local host (the local host loses):
+Synchronization computes one canonical graph target and one canonical journal target, not a host-relative resolution.
 
-- The local `NodeIdentifier` and all associated graph-state records (value, freshness, inputs, revdeps, counters, timestamps) are removed.
-- A `delete` journal entry is emitted for the local node key, with `time` set to the current sync time and `creator` set to the local host.
-- The remote host's `NodeIdentifier` and value replace the local records.
+REQ-JS-03: For each conflicting node key, sync MUST determine the winning canonical graph state using timestamp and identifier tie-breaking (REQ-JS-01, REQ-JS-02). The loser's records (value, freshness, inputs, revdeps, counters, timestamps) are removed. A single canonical set of notifications is included in the journal target. The result must not depend on which replica is called "local."
 
-REQ-JS-04: When a node key conflict is resolved in favor of the local host (the local host wins):
+The same canonical graph and journal target is applied to every participant before declaring convergence. Local application mechanics (how a host physically applies the target) are implementation-defined, but the canonical semantic resolution is independent of which host executes the merge.
 
-- The local state is preserved unchanged.
-- No `delete` entry is emitted for the remote node key on the local host.
-- The remote host will resolve the conflict in the same way when it syncs, producing a `delete` on its side.
+### Deterministic sync-generated events
 
-REQ-JS-05: The resolution algorithm MUST be deterministic and commutative: two hosts applying the same set of changes in any order must arrive at the same final state. The timestamp-then-identifier tie-breaking rules satisfy this.
+REQ-JS-04: For a pairwise reconciliation, every newly generated sync event is authored by the lexicographically smaller participating `Hostname`:
+
+```
+syncAuthor = lexicographically smaller participating Hostname
+```
+
+Every newly generated sync event in that canonical plan has:
+
+```
+creator = syncAuthor
+eventId.creator = syncAuthor
+```
+
+This is independent of which host initiated the operation.
+
+REQ-JS-05: For each generated event, `time` is set to the maximum `time` among its causal journal events (the `causes` array in `PendingSyncEventKey`):
+
+- Remote value adoption uses the winning `add` or `edit` event time.
+- Remote deletion uses the winning remote `delete` event time.
+- Identifier-conflict delete and winner-edit use the maximum time among the winning and losing value-evidence events.
+
+Every generated sync event MUST have at least one causal journal event. If the implementation reaches a case requiring a generated event but has no journal cause, it is a separate unsupported/no-evidence case — do not fall back to graph timestamps or wall clock.
+
+REQ-JS-06: Generated events participate in canonical ordering using their `PendingSyncEventKey`. After positions are assigned, a generated event at position `i` receives:
+
+```
+eventId = {
+    creator: syncAuthor,
+    originIndex: i,
+}
+```
+
+The same complete event bytes are then part of the canonical target applied to all participants.
 
 ---
 
 ## Journal entries produced by sync
 
-REQ-JS-06: If synchronization changes graph state, sync MUST make that change visible through the journal. Specifically:
+REQ-JS-07: If synchronization changes canonical graph state, sync MUST make that change visible as a journal entry in the canonical target. Specifically:
 
-- If a remote node value is adopted (because the remote timestamp wins), an `edit` journal entry is appended for the node key.
-- If a remote node is newly materialized locally (first time seen), an `add` journal entry is appended.
-- If a local node is removed because the remote host deleted it and the remote deletion timestamp wins, a `delete` journal entry is appended.
+- If a remote node value is adopted (its timestamp wins), an `edit` journal entry is included in the canonical target.
+- If a remote node is newly materialized (first time seen), an `add` journal entry is included.
+- If a node is removed because the remote deletion timestamp wins, a `delete` journal entry is included.
+- If a losing `NodeIdentifier` is dematerialized by conflict resolution, a `delete` entry is included.
 
-REQ-JS-07: Sync MUST NOT omit a journal entry that would be necessary for later `graph.possibleMaybeChanges` queries to observe a material graph change.
+REQ-JS-08: Sync MUST NOT omit a journal entry that would be necessary for later `graph.possibleMaybeChanges` queries to observe a material graph change.
 
 ---
 
@@ -62,30 +91,26 @@ REQ-JS-07: Sync MUST NOT omit a journal entry that would be necessary for later 
 
 ### Conflicting identifier allocation
 
-REQ-JS-08: When two hosts independently allocate `NodeIdentifier` values for the same node key (i.e., both hosts pulled the same previously-unmaterialized node before syncing), one identifier must lose. The losing identifier produces a `delete` journal entry:
+REQ-JS-09: When two hosts independently allocate `NodeIdentifier` values for the same node key, one identifier loses based on timestamp and identifier tie-breaking (REQ-JS-01, REQ-JS-02). The canonical target includes:
 
-- The entry's `action` is `"delete"`.
-- The entry's key is the semantic node key (same for both identifiers).
-- The entry's `time` is set to the sync resolution time.
-- The entry's `creator` is set to the local host.
-
-The winning identifier's value produces an `edit` entry per REQ-JS-06.
+- A `delete` entry for the losing identifier's node key (author: `syncAuthor`, time: max causal time, per REQ-JS-05).
+- An `edit` entry for the winning identifier's value (author: `syncAuthor`, time: max causal time, per REQ-JS-05).
 
 ### Remote deletion
 
-REQ-JS-09: If the remote host has a surviving `delete` journal entry for a node key that the local host has materialized:
+REQ-JS-10: If one host has a surviving `delete` journal entry for a node key that the other host has materialized:
 
-- Compare the remote `delete` entry's `time` against the local node's latest surviving `add` or `edit` journal entry time.
-- If the remote `delete` time is later, the deletion wins. The local node is removed, and a `delete` journal entry is emitted.
-- If the local node's latest `add` or `edit` entry time is later, the local node is preserved. No `delete` is emitted locally; the remote host handles its side on its next sync.
+- Compare the `delete` entry's `time` against the materialized node's latest surviving `add` or `edit` journal entry time.
+- If the `delete` time is later, the deletion wins in the canonical target. A `delete` entry (author: `syncAuthor`, time: `delete` entry time) is included as a sync-generated event.
+- If the latest `add` or `edit` entry time is later, the node is preserved in the canonical target. No `delete` is included.
 
 ---
 
 ## Journal storage during sync
 
-REQ-JS-10: New journal entries appended during sync (conflict-resolution notifications) MUST receive fresh `JournalIndex` values. These are allocated from the local watermark and appended at the current head of the journal.
+REQ-JS-11: New journal entries appended during sync (conflict-resolution notifications) MUST receive fresh `JournalIndex` values. These are allocated from the local watermark and appended at the current head of the journal.
 
-REQ-JS-11: After sync, the local `last_journal_index` MUST be advanced to cover the maximum of the pre-sync local value, the pre-sync remote value, and any freshly allocated indices. This ensures the watermark reflects all indices present on any synchronized host.
+REQ-JS-12: After sync, the local `last_journal_index` MUST be advanced to cover the maximum of the pre-sync local value, the pre-sync remote value, and any freshly allocated indices. This ensures the watermark reflects all indices present on any synchronized host.
 
 ---
 
@@ -93,7 +118,7 @@ REQ-JS-11: After sync, the local `last_journal_index` MUST be advanced to cover 
 
 Synchronization must bring journal storage into physical agreement.
 
-REQ-JS-12: After synchronization completes, for every `JournalIndex` `i`, all synchronized hosts MUST agree that `rendered/r/journal/i` is either:
+REQ-JS-13: After synchronization completes, for every `JournalIndex` `i`, all synchronized hosts MUST agree that `rendered/r/journal/i` is either:
 
 - the **same** `JournalEntry` value (byte-for-byte identical), or
 - **absent** (compacted or deleted on that host).
@@ -102,7 +127,7 @@ What is NOT allowed is host A having one `JournalEntry` at index `i` while host 
 
 ### Resolving divergent indices
 
-REQ-JS-13: If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, that index is poisoned. Both conflicting entries MUST be deleted from index `i`. Any still-relevant changes described by the conflicting entries MUST be appended at fresh `JournalIndex` values above the unified merge frontier `P`:
+REQ-JS-14: If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, that index is poisoned. Both conflicting entries MUST be deleted from index `i`. Any still-relevant changes described by the conflicting entries MUST be appended at fresh `JournalIndex` values above the unified merge frontier `P`:
 
 ```
 P = max(
@@ -119,7 +144,7 @@ This rule avoids the risk that choosing one authoritative entry to remain at the
 
 ### Present-versus-absent conflict
 
-REQ-JS-14: If one synchronized host has an established journal entry at index `i` and another host has an established absence at the same index `i`, absence wins at index `i`. The present entry MUST be removed from index `i` on every host that has it. Absence at an established index may be caused by compaction, poisoning, propagated remote compaction, or any other structural deletion.
+REQ-JS-15: If one synchronized host has an established journal entry at index `i` and another host has an established absence at the same index `i`, absence wins at index `i`. The present entry MUST be removed from index `i` on every host that has it. Absence at an established index may be caused by compaction, poisoning, propagated remote compaction, or any other structural deletion.
 
 If the removed entry still carries relevant journal evidence (i.e., it is the only surviving `add` or `edit` for a materialized node key), that evidence MUST be reappended at a fresh local index before or atomically with removing the established entry. This ensures that compaction evidence rules (REQ-JC-07) and materialized-node visibility are preserved.
 
@@ -151,7 +176,7 @@ P       = max(localH, remoteH)
    | absent     | entry E     | absence at i (see below for evidence preservation) |
    | entry E    | entry F (E ≠ F) | poison: absence at i; queue E and F for fresh reappend |
 
-   If the present entry was removed by absence, queue it for fresh reappend only when required by the evidence-preservation policy (REQ-JS-14h). If two different entries are poisoned, queue both for fresh reappend.
+   If the present entry was removed by absence, queue it for fresh reappend only when required by the evidence-preservation policy (REQ-JS-16h). If two different entries are poisoned, queue both for fresh reappend.
 
 2. **Only local has established state at `i`** (i ≤ localH, i > remoteH):
 
@@ -194,13 +219,13 @@ An unestablished position is not an established absence. Installing remote state
 
 If the position became established locally before sync finalization (a concurrent append claimed it), sync MUST reconcile the local and remote states at `i` using the normal same-index convergence rules.
 
-REQ-JS-14a: A remote suffix position `i` MAY be replicated at local position `i` when `i` is greater than the current committed local `last_journal_index` at darkroom finalization. Replication into an unestablished position is preservation of an existing replicated physical position, not creation of a new journal event.
+REQ-JS-16a: A remote suffix position `i` MAY be replicated at local position `i` when `i` is greater than the current committed local `last_journal_index` at darkroom finalization. Replication into an unestablished position is preservation of an existing replicated physical position, not creation of a new journal event.
 
-REQ-JS-14b: A remote suffix position MUST NOT overwrite, fill, replace, or rewrite a position that is already established locally. If position `i` became established locally before sync finalization, sync MUST reconcile the local and remote states at `i` using the same-index convergence rules (poisoning and fresh reappend, per REQ-JS-13 and REQ-JS-14).
+REQ-JS-16b: A remote suffix position MUST NOT overwrite, fill, replace, or rewrite a position that is already established locally. If position `i` became established locally before sync finalization, sync MUST reconcile the local and remote states at `i` using the same-index convergence rules (poisoning and fresh reappend, per REQ-JS-13 and REQ-JS-14).
 
-REQ-JS-14c: The local `last_journal_index` MUST advance to cover the maximum of the remote watermark and any freshly allocated local indices. After sync completes, the local host's watermark is at least as large as the remote watermark.
+REQ-JS-16c: The local `last_journal_index` MUST advance to cover the maximum of the remote watermark and any freshly allocated local indices. After sync completes, the local host's watermark is at least as large as the remote watermark.
 
-REQ-JS-14d: In the basic remote-suffix case (no concurrent ordinary appends and no pre-existing local state at the relevant indices), the procedure is:
+REQ-JS-16d: In the basic remote-suffix case (no concurrent ordinary appends and no pre-existing local state at the relevant indices), the procedure is:
 
 1. Acquire `closeGarden` before examining established journal structure.
 2. Perform reconciliation analysis while holding `closeGarden` — read remote journal entries, determine reconciliation needs, and prepare logical journal effects without assigning final local indices.
@@ -226,13 +251,13 @@ REQ-JS-14d: In the basic remote-suffix case (no concurrent ordinary appends and 
    - Treat as fresh evidence. Queue the remote entry for fresh allocation above `P`.
 
 7. **Establish all absences through `P`.** Known-absent remote suffix positions (indices where the remote host has no entry) establish local absence at those positions, advancing the watermark.
-8. **Canonically order** the queued fresh evidence (remote entries that could not retain their positions, reappended conflict-losing entries) according to the canonical ordering policy (REQ-JS-14i).
+8. **Canonically order** the queued fresh evidence (remote entries that could not retain their positions, reappended conflict-losing entries) according to the canonical ordering policy (REQ-JS-16i).
 9. **Allocate** the fresh evidence at positions `P + 1` through `P + n` where `n` is the number of entries in the ordered list.
 10. Install replicated entries, established absences, fresh entries, and the final watermark (now at least `max(P + n, remoteH)`) in one atomic durable batch.
 11. Release darkroom.
 12. Release `closeGarden`.
 
-REQ-JS-14e: In the concurrent case, because `closeGarden` does not exclude ordinary append-only journal growth (see the compatibility table in `docs/specs/incremental-graph-locking-design.md`), ordinary appends may commit while structural sync is analyzing. The following normative finalization protocol prevents races. Hold darkroom only during finalization, not during analysis:
+REQ-JS-16e: In the concurrent case, because `closeGarden` does not exclude ordinary append-only journal growth (see the compatibility table in `docs/specs/incremental-graph-locking-design.md`), ordinary appends may commit while structural sync is analyzing. The following normative finalization protocol prevents races. Hold darkroom only during finalization, not during analysis:
 
 1. Acquire `closeGarden` before selecting the active replica or examining established journal structure.
 2. Perform reconciliation analysis while holding `closeGarden` — read remote journal entries, identify conflict positions, determine reconciliation needs.
@@ -273,7 +298,7 @@ REQ-JS-14e: In the concurrent case, because `closeGarden` does not exclude ordin
    Every numeric position through `P` is resolved by the prefix merge. No separate "greatest fixed position retained" is needed. All newly generated and reappended entries receive indices strictly greater than `P`.
 
 9. **Establish all absences and poisoning through `P`.** Any positions that the reconciliation intends to delete or poison at or below `P` are written as structural deletions. No entry occupies or claims a position at or below `P` that is not already part of the finalized established state.
-10. **Canonically order** the queued fresh evidence (remote entries that could not retain their numeric positions because a concurrent append claimed them, reappended conflict-losing evidence) according to the canonical ordering policy (REQ-JS-14i).
+10. **Canonically order** the queued fresh evidence (remote entries that could not retain their numeric positions because a concurrent append claimed them, reappended conflict-losing evidence) according to the canonical ordering policy (REQ-JS-16i).
 11. **Allocate** the fresh evidence at positions `P + 1` through `P + n` where `n` is the number of entries in the ordered list.
 12. Install structural deletions/poisoning, fresh appended entries, replicated remote suffix entries (at positions that remained unestablished), graph reconciliation state, and the final watermark in one atomic durable batch.
 13. Release darkroom.
@@ -285,19 +310,19 @@ Under this protocol, all journal-index allocation and established-position mutat
 
 Before canonical ordering, synchronization MUST build one explicit collection of fresh events. Use event identity (`JournalEventId`), not payload equality, for deduplication.
 
-REQ-JS-14f: The queued collection consists of:
+REQ-JS-16f: The queued collection consists of:
 
 1. Every distinct event displaced by an entry-versus-entry poisoned position.
-2. Every event displaced by entry-versus-absence reconciliation that must survive under the evidence-preservation policy (REQ-JS-14h).
+2. Every event displaced by entry-versus-absence reconciliation that must survive under the evidence-preservation policy (REQ-JS-16h).
 3. Every newly generated journal event required to expose graph-state changes produced by this synchronization.
 4. Any other event that the canonical target requires but that cannot remain at its original position.
 
-REQ-JS-14g: After collecting, normalize the collection:
+REQ-JS-16g: After collecting, normalize the collection:
 
 1. Remove any event whose `eventId` is already present in a retained established target position.
 2. Deduplicate queued copies by `eventId` — the same logical event must not appear more than once in the collection.
 3. Preserve multiplicity between different `eventId` values, even when the entries are otherwise byte-for-byte identical. Structural payload equality MUST NOT collapse distinct events with different `eventId` values.
-4. Apply the sync-induced-removal evidence policy (REQ-JS-14h — "still relevant" rules).
+4. Apply the sync-induced-removal evidence policy (REQ-JS-16h — "still relevant" rules).
 5. Canonically order the remaining events.
 6. Allocate them at `B + 1 ... B + n`.
 
@@ -305,7 +330,7 @@ REQ-JS-14g: After collecting, normalize the collection:
 
 When synchronization produces multiple entries queued for fresh reappend (divergent entries, present-versus-absence-shifted entries, remote suffix entries that a concurrent append displaced), those entries MUST be assigned to fresh positions `B+1 .. B+n` in a canonical total order. The canonical order ensures that two hosts synchronizing the same set of remote evidence independently arrive at the same physical placement, preventing further same-index conflicts.
 
-REQ-JS-14i: The canonical ordering for reappended journal evidence is defined as:
+REQ-JS-16i: The canonical ordering for reappended journal evidence is defined as:
 
 1. **By `time` ascending** — entries with an earlier recorded timestamp are placed first.
 2. **By node key** (lexicographic `NodeKeyString` order) — entries with the same timestamp are ordered by their node key.
@@ -321,7 +346,7 @@ Because `eventId` is globally unique, this is a true total order. All prior keys
 
 When a journal entry is removed from an established position by sync (by poisoning or absence propagation), some entries may need to survive through fresh reappend while others are genuinely obsolete. This section applies only to sync-induced removal. Compaction follows its own retention rules (see `incremental-graph-journal-compaction.md`) and never reappends removed entries.
 
-REQ-JS-14h: The following kinds of evidence are "still relevant" and MUST be reappended when removed from an established position by sync:
+REQ-JS-16h: The following kinds of evidence are "still relevant" and MUST be reappended when removed from an established position by sync:
 
 - The only surviving `add` or `edit` entry for a currently materialized node key (mandatory under REQ-JC-07).
 - A `delete` entry that carries the most recent timestamp for a node key that was present on another host (needed for sync conflict convergence).
@@ -340,7 +365,7 @@ The following kinds of evidence are NOT "still relevant" and MAY be dropped:
 
 Sync MUST NOT fill, replace, or rewrite entries at established journal positions (at or below the committed watermark). After publication, an established position may remain unchanged or become absent, but it must never change from absent to present and must never change from one entry value to another. This guarantees that a cursor that has already scanned past position `i` cannot later discover a new entry behind it.
 
-REQ-JS-15: Sync operations that make structural changes to established journal positions MUST call `closeGarden`. Structural changes are limited to:
+REQ-JS-17: Sync operations that make structural changes to established journal positions MUST call `closeGarden`. Structural changes are limited to:
 
 - poisoning an existing index (making it absent);
 - deleting either conflicting entry at an existing index;
@@ -349,23 +374,23 @@ REQ-JS-15: Sync operations that make structural changes to established journal p
 
 Structural sync MUST NOT fill a previously absent established index, replace an established entry, or rewrite an entry's content. All new journal evidence MUST be appended at fresh indices strictly greater than the current committed watermark.
 
-The structural sync phase MUST hold `closeGarden` through its analysis and atomic durable mutation, following the normative finalization protocol in REQ-JS-14e. The durable batch uses darkroom inside the garden closure.
+The structural sync phase MUST hold `closeGarden` through its analysis and atomic durable mutation, following the normative finalization protocol in REQ-JS-16e. The durable batch uses darkroom inside the garden closure.
 
-REQ-JS-16: A purely append-only sync action that writes only fresh local indices MAY proceed without garden access. Fresh reappended entries MUST be allocated from the then-current watermark under the normal durable commit serialization. Do not assume that a previously captured position remains available while ordinary appenders continue; the allocation base `P = max(localH, remoteH)` is determined during darkroom finalization.
+REQ-JS-18: A purely append-only sync action that writes only fresh local indices MAY proceed without garden access. Fresh reappended entries MUST be allocated from the then-current watermark under the normal durable commit serialization. Do not assume that a previously captured position remains available while ordinary appenders continue; the allocation base `P = max(localH, remoteH)` is determined during darkroom finalization.
 
 ### Sync order
 
-REQ-JS-17: Sync SHOULD process remote journal entries in ascending `JournalIndex` order for deterministic traversal. `JournalIndex` order is not a global causal order across hosts. Divergent same-index entries are handled by the poisoned-index rule (REQ-JS-13).
+REQ-JS-19: Sync SHOULD process remote journal entries in ascending `JournalIndex` order for deterministic traversal. `JournalIndex` order is not a global causal order across hosts. Divergent same-index entries are handled by the poisoned-index rule (REQ-JS-13).
 
 ### Remote compaction
 
-REQ-JS-18: During sync, a host MAY transmit the set of `JournalIndex` values it has compacted away. The receiving host MAY then compact the corresponding entries from its own journal storage, provided doing so satisfies the compaction rules in `incremental-graph-journal-compaction.md`.
+REQ-JS-20: During sync, a host MAY transmit the set of `JournalIndex` values it has compacted away. The receiving host MAY then compact the corresponding entries from its own journal storage, provided doing so satisfies the compaction rules in `incremental-graph-journal-compaction.md`.
 
 ---
 
 ## Eventual consistency
 
-REQ-JS-19: After all hosts have completed synchronization and no further graph mutations occur, the following must hold:
+REQ-JS-21: After all hosts have completed synchronization and no further graph mutations occur, the following must hold:
 
 1. **Graph state converges**: For every node key, all hosts agree on the node's value (or absence).
 2. **Physical journal converges**: Per REQ-JS-12 and the unified merge algorithm, all hosts agree on each index's state (same entry or absent). Any pre-existing compaction absence propagates to all hosts during convergence via the unified rule (absence wins at any established index). After convergence, no disagreement about individual journal positions remains.
@@ -377,7 +402,7 @@ A pairwise journal reconciliation computes one canonical target journal state fr
 
 ## Host identity and journal consumers
 
-REQ-JS-20: Callers of `graph.possibleMaybeChanges` MUST NOT be required to understand or inspect host identities (`Hostname` values) or raw journal indices (`JournalIndex` values). Host identity is a journal-internal concern used only during synchronization.
+REQ-JS-22: Callers of `graph.possibleMaybeChanges` MUST NOT be required to understand or inspect host identities (`Hostname` values) or raw journal indices (`JournalIndex` values). Host identity is a journal-internal concern used only during synchronization.
 
 The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalIndex` from its public fields. Consumers see only `nodeName`, `bindings`, `action`, and `time`.
 
@@ -387,9 +412,9 @@ The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalInde
 
 Sync operates on the journal storage that exists at sync time. Compaction may have removed entries before sync.
 
-REQ-JS-21: Sync uses only surviving journal entries for conflict comparison. Absent journal entries are treated as "no journal evidence" — sync MUST NOT fall back to the `timestamps` sublevel as a replacement for missing journal entries. If no journal entry exists for a node key, sync uses its remaining available evidence (e.g., the fact of materialization and the node's identifier allocation) for conflict-resolution decisions according to the rules in this document.
+REQ-JS-23: Sync uses only surviving journal entries for conflict comparison. Absent journal entries are treated as "no journal evidence" — sync MUST NOT fall back to the `timestamps` sublevel as a replacement for missing journal entries. If no journal entry exists for a node key, sync uses its remaining available evidence (e.g., the fact of materialization and the node's identifier allocation) for conflict-resolution decisions according to the rules in this document.
 
-REQ-JS-22: Compaction MUST NOT remove the only surviving `add` or `edit` entry for a materialized node (see REQ-JC-07). This ensures sync always has at least one journal-backed timestamp per materialized node for conflict comparison. If compaction adheres to this rule, the "no journal evidence" case in REQ-JS-21 can only occur for nodes that were deleted or dematerialized on all synchronized hosts before compaction.
+REQ-JS-24: Compaction MUST NOT remove the only surviving `add` or `edit` entry for a materialized node (see REQ-JC-07). This ensures sync always has at least one journal-backed timestamp per materialized node for conflict comparison. If compaction adheres to this rule, the "no journal evidence" case in REQ-JS-21 can only occur for nodes that were deleted or dematerialized on all synchronized hosts before compaction.
 
 ---
 

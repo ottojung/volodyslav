@@ -62,6 +62,51 @@ REQ-JT-25: Synchronization MUST reject a mesh containing two distinct hosts with
 
 ---
 
+## PendingSyncEventKey (internal, pre-indexing)
+
+During synchronization, a new logical event may be required because the canonical graph state changes. Before its physical position and `JournalEventId` are assigned, it is represented as a `PendingSyncEventKey`.
+
+```js
+/**
+ * Canonical identity of one pending sync-generated effect before its
+ * physical position and JournalEventId are assigned.
+ *
+ * @typedef {object} PendingSyncEventKey
+ * @property {JournalAction} action
+ * @property {NodeKey} key
+ * @property {NodeIdentifier} id
+ * @property {Array<JournalEventId>} causes - Source events causing this effect.
+ *   Sorted canonically by JournalEventId order.
+ * @property {SyncEventReason} reason
+ */
+```
+
+The `causes` array contains the source journal events that caused the reconciliation effect. It is sorted canonically (by `creator` then `originIndex`).
+
+### SyncEventReason
+
+`SyncEventReason` is a closed internal set of reasons why a sync-generated event is needed:
+
+```js
+/**
+ * @typedef {'remote-materialization'
+ *         | 'remote-value-adoption'
+ *         | 'identifier-conflict-delete'
+ *         | 'identifier-conflict-winner-edit'
+ *         | 'remote-deletion'} SyncEventReason
+ */
+```
+
+- `remote-materialization`: the remote host materialized a node key that was not locally materialized. An `add` is generated.
+- `remote-value-adoption`: the remote host's value for a node key wins conflict resolution. An `edit` is generated.
+- `identifier-conflict-delete`: a losing `NodeIdentifier` must be represented as deleted. A `delete` is generated.
+- `identifier-conflict-winner-edit`: the winning identifier's value change from a conflict. An `edit` is generated.
+- `remote-deletion`: the remote host's deletion wins conflict resolution. A `delete` is generated.
+
+Two pending generated effects with the same complete `PendingSyncEventKey` are the same intended sync event and MUST be deduplicated before placement.
+
+---
+
 ## JournalEntry (internal)
 
 ### Shape
