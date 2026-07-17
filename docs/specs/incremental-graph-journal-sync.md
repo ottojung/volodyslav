@@ -47,18 +47,58 @@ The winning existing event is canonical. `add` or `edit` materializes the key
 using that event's `NodeIdentifier` and associated source graph value. `delete`
 leaves it nonmaterialized. Synchronization creates no event.
 
-### Stage 4 — Validate source graph consistency
+### Stage 4 — Validate source graph and freshness consistency
 
-For each source key:
+For each source key, let S be its source state entry and F its source freshness
+entry from `logicalJournalView(sourceJournal, sourceH)`.
 
-- a materialized node with identifier `W` requires a source state entry of
-  `add` or `edit` whose `id === W`;
-- a nonmaterialized key with a source state entry requires `delete`;
-- a key absent from both graph and journal may have no state entry.
+#### Materialized source node
 
-If one state `eventId` is associated with different stored graph values, or if
-graph state contradicts source state evidence, synchronization fails. Graph
-timestamp records MUST NOT replace journal evidence.
+Suppose a source has a materialized node with identifier `W`. Require:
+
+1. S exists.
+2. S.action is `add` or `edit`.
+3. S.id === W.
+
+Then validate freshness.
+
+**Matching freshness event.** If F exists and F.id === W, the source graph's
+stored freshness MUST agree with F.action:
+
+```
+F.action === "invalidate" → graph freshness === "potentially-outdated"
+F.action === "validate"   → graph freshness === "up-to-date"
+```
+
+Any disagreement is a journal-integrity error.
+
+**No matching freshness event.** If F does not exist or F.id !== W, the
+current node incarnation has no recorded freshness transition. Its stored
+freshness MUST therefore be `up-to-date`. This covers first materialization,
+which emits `add` but not `validate`, and rematerialization with a new
+identifier where an older incarnation's retained freshness history does not
+apply to `W`. A `potentially-outdated` materialized node without a matching
+`invalidate` is inconsistent and synchronization must fail.
+
+#### Nonmaterialized source key
+
+If the source has state evidence for the key, its latest state entry MUST be
+`delete`. A retained freshness event is historical only and does not assign
+graph freshness.
+
+#### Orphan freshness history
+
+A source freshness entry for a semantic key with no source state entry is
+invalid. Every legitimate freshness event originates from an existing node
+incarnation, and `logicalJournalView` never removes that incarnation's latest
+state entry.
+
+#### On any consistency failure
+
+Abort synchronization without applying the prepared target. Do not switch
+replicas. Leave the active replica unchanged. Do not repair the source silently.
+Do not choose graph storage over journal evidence. Do not choose journal
+evidence over graph storage.
 
 ### Stage 5 — Select canonical freshness
 
@@ -345,7 +385,76 @@ Sync SHOULD process remote journal entries in ascending `JournalIndex` order for
 
 ## Testable scenarios
 
-### T1 — Remote suffix preserved at same index (no race)
+### T1 — Stored freshness contradicts invalidate
+
+Source:
+```
+state: materialized W, stored freshness = up-to-date
+journal logical view: state = edit W, freshness = invalidate W
+```
+
+Synchronization fails with an integrity error. It must not silently make the
+node stale or ignore the event.
+
+### T2 — Stored freshness contradicts validate
+
+Source:
+```
+state: materialized W, stored freshness = potentially-outdated
+journal logical view: state = edit W, freshness = validate W
+```
+
+Synchronization fails.
+
+### T3 — Missing invalidate
+
+Source:
+```
+state: materialized W, stored freshness = potentially-outdated
+journal logical view: state = add W, no matching freshness event
+```
+
+Synchronization fails: a potentially-outdated node must have a matching
+invalidate.
+
+### T4 — First materialization
+
+Source:
+```
+state: materialized W, stored freshness = up-to-date
+journal logical view: state = add W, no matching freshness event
+```
+
+This is valid. First materialization emits `add` but not `validate`.
+
+### T5 — Old-incarnation freshness
+
+Source:
+```
+state: materialized W2, stored freshness = up-to-date
+journal logical view: state = add W2, freshness = invalidate W1
+```
+
+This is valid source history. The `invalidate W1` belongs to an older
+incarnation and does not make `W2` stale.
+
+### T6 — Self-synchronization stability
+
+An already conforming, physically canonical source synchronized with an
+identical copy. Expected result:
+
+- identical graph value;
+- identical graph freshness;
+- identical canonical state event;
+- identical canonical freshness event;
+- identical event positions;
+- no fresh append;
+- unchanged watermark.
+
+This verifies that valid freshness evidence cannot silently change graph
+freshness during synchronization.
+
+### T7 — Remote suffix preserved at same index (no race)
 
 ```
 local H = 5
@@ -359,7 +468,7 @@ sync commits H = 6
 
 The remote entry is preserved at its original numeric position because it was unestablished locally.
 
-### T2 — Pre-sync same-index conflict
+### T8 — Pre-sync same-index conflict
 
 An ordinary append commits `F` at local index 6 before synchronization acquires
 `holidayActivity`; the remote source has `E` at index 6. Synchronization poisons
@@ -378,7 +487,7 @@ different categories, both may be canonical. Both are freshly placed above `P`
 in the Stage 8 canonical ordering. Their exact positions cannot be stated unless
 all ordering fields are supplied.
 
-### T3 — Present-versus-absent propagation
+### T9 — Present-versus-absent propagation
 
 ```
 Host A: index 5 = E
@@ -387,7 +496,7 @@ Host B: index 5 = absent (compacted)
 
 Absence wins at index 5. If E is canonical and has no other surviving position, exactly one copy is freshly placed at index 6. Otherwise E is omitted.
 
-### T4 — Sparse remote suffix
+### T10 — Sparse remote suffix
 
 ```
 Local H = 5
@@ -396,11 +505,11 @@ Remote H = 100, indices 6..99 absent, index 100 = E
 
 Canonical prefix: indices 6..99 = absence, index 100 = E, H = 100.
 
-### T5 — Fresh entry ordering
+### T11 — Fresh entry ordering
 
 Two displaced entries: E1 (time=100) and E2 (time=200). Order by time ascending, then by the other canonical fields. Assign contiguous positions above P.
 
-### T6 — Duplicate event at several retained positions
+### T12 — Duplicate event at several retained positions
 
 ```
 index 3 = event X (eventId = "...")
@@ -409,7 +518,7 @@ index 8 = event X (eventId = "...")
 
 Canonical result: index 3 = absent, index 8 = event X. The greatest position survives.
 
-### T7 — Event ID integrity violation
+### T13 — Event ID integrity violation
 
 ```
 Host A: eventId X with payload E
@@ -418,11 +527,11 @@ Host B: eventId X with payload F (different)
 
 Synchronization fails with integrity error. No journal or graph mutation is committed. The entries are not poisoned or deduplicated.
 
-### T8 — No synthetic sync event
+### T14 — No synthetic sync event
 
 A remote edit wins graph conflict. The destination preserves or reappends the original remote edit event. The number of logical events does not increase merely because synchronization occurred.
 
-### T9 — Sync freshness conflict (winning identifier)
+### T15 — Sync freshness conflict (winning identifier)
 
 ```
 Host A:
@@ -444,18 +553,18 @@ cannot make B1 stale. Merged inactive destination:
 - the `invalidate` for A1 is removed as obsolete;
 - no new event is created.
 
-### T10 — Replica-switch failure
+### T16 — Replica-switch failure
 
 Synchronization fails while constructing the inactive destination. The old active replica remains selected. The old active graph and journal remain unchanged. The incomplete inactive destination is never visible.
 
-### T11 — Replica cutover
+### T17 — Replica cutover
 
 After the inactive destination is complete:
 - `closeGarden` prevents readers from selecting a replica during cutover;
 - the active pointer switches;
 - later readers select only the new replica.
 
-### T12 — Canonical lower, obsolete higher
+### T18 — Canonical lower, obsolete higher
 
 ```
 index 5 = canonical edit E
@@ -465,28 +574,28 @@ index 8 = obsolete edit F
 The destination retains E at index 5, makes index 8 absent, and does not append
 another E.
 
-### T13 — Canonical freshness displaced by absence
+### T19 — Canonical freshness displaced by absence
 
 The winning `validate` event is physically displaced during reconciliation (the source that provides it has established absence at that index on the other side). The destination reappends that same event above `P`, preserving its `eventId`.
 
-### T14 — No obsolete reappend
+### T20 — No obsolete reappend
 
 An older noncanonical `edit` event for a key is displaced during physical reconciliation (e.g., its position is poisoned). It is NOT reappended merely because it existed. Only canonical state and canonical freshness events are preserved.
 
 
-### T15 — One-sided state
+### T21 — One-sided state
 
 Source A has `add X`. Source B has no state event and no graph record for X. The
 existing `add` is canonical and materializes X.
 
-### T16 — Deleted freshness comparison
+### T22 — Deleted freshness comparison
 
 Source A's latest freshness is `invalidate X` at time 100. Source B's is
 `validate X` at time 200, and canonical graph state is deleted. The destination
 preserves only `validate X` as canonical journal history. It does not
 rematerialize X or assign graph freshness.
 
-### T17 — Canonical duplicate
+### T23 — Canonical duplicate
 
 ```
 index 5 = canonical event E
@@ -496,14 +605,14 @@ index 9 = same eventId E
 The destination preserves E at index 9, makes index 5 absent, and does not append
 a third copy.
 
-### T18 — Canonical event physically displaced
+### T24 — Canonical event physically displaced
 
 A canonical `validate`, `delete`, `add`, or `edit` loses every old position
 through established absence or same-index poisoning. Synchronization places
 exactly one fresh copy above `P`, preserving its `eventId` and complete payload.
 The same rule applies to canonical `invalidate`.
 
-### T19 — Repeated synchronization
+### T25 — Repeated synchronization
 
 A completed destination is synchronized again with either original source. The
 same canonical state and freshness events remain. Positioned canonical events
