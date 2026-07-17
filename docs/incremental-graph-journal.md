@@ -67,9 +67,13 @@ docs/specs/incremental-graph-node-filter.md
 
 ## Journal entries and change representation
 
-The journal stores graph changes in a structured form. Public consumers observe those changes through `PossibleNodeChange`.
+The journal stores graph changes in a structured form. Public consumers observe changes through `PossibleNodeChange`.
 
-The journal change model covers additions, edits, deletions, freshness invalidations, and changes produced by synchronization or migration. The exact representation of journal entries, timestamps, node keys, node identifiers, host information, and index/cursor behavior is specified in:
+The journal defines a **logical compaction projection** — the semantically significant view of journal entries through a fixed watermark. For each semantic node key, at most two entries are retained: the latest state/lifecycle entry (`add`, `edit`, or `delete`) and the latest freshness entry (`invalidate` or `validate`).
+
+`possibleMaybeChanges` exposes this logically compacted view: latest state entry and latest freshness entry per matching semantic key, with cursor and filter applied afterward.
+
+The exact representation of journal entries, timestamps, node keys, node identifiers, host information, the logical journal view, and index/cursor behavior is specified in:
 
 ```text
 docs/specs/incremental-graph-journal-types.md
@@ -117,7 +121,9 @@ docs/specs/incremental-graph-journal-migrations.md
 
 The journal may require maintenance as it grows.
 
-Compaction can remove journal entries to manage storage. Journal queries tolerate sparse storage by skipping absent entries and never reconstructing deleted entries. Maintenance procedures may also normalize journal storage after synchronization or migration.
+Compaction can remove journal entries to manage storage. Compaction only changes physical storage size. The public journal query already suppresses every entry that compaction is permitted to remove — both use the same `logicalJournalView` through the captured bound.
+
+Journal queries tolerate sparse storage by skipping absent entries and never reconstructing deleted entries.
 
 The rules for compaction, retained information, deleted entries, and maintenance safety are specified in:
 
@@ -140,7 +146,9 @@ closeGarden(procedure)   — exclusive access for structural maintenance
 
 ### `possibleMaybeChanges`
 
-`possibleMaybeChanges({ since, to })` MUST call `enterGarden` to acquire shared garden access before selecting the active replica. The linearization point is the read of `last_journal_index = H` after entering the garden. At that point, structural changes are excluded by shared garden access, and every position at or below `H` is finalized with respect to ordinary append-only operations. The returned array reflects that fixed upper bound: all surviving matching journal entries strictly after `since` and no greater than `H`, ordered by ascending `JournalIndex`, projected to `PossibleNodeChange`.
+`possibleMaybeChanges({ since, to })` MUST call `enterGarden` to acquire shared garden access before selecting the active replica. The linearization point is the read of `last_journal_index = H` after entering the garden. At that point, structural changes are excluded by shared garden access, and every position at or below `H` is finalized with respect to ordinary append-only operations.
+
+The returned array reflects the logically compacted journal through `H`: for each matching semantic node key, at most its latest state entry and its latest freshness entry, restricted to indices strictly greater than `since`, ordered by ascending `JournalIndex`, projected to `PossibleNodeChange`.
 
 ### Structural journal operations
 

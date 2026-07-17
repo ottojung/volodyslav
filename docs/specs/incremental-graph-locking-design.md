@@ -229,8 +229,13 @@ identical, whether top-level or nested.
 1. Call `enterGarden` to acquire shared garden access.
 2. Select the active replica (while holding `enterGarden`).
 3. Read `last_journal_index = H` from the selected replica, establishing a fixed upper bound.
-4. Scan indices strictly after `since` and no greater than `H`, collecting matching `PossibleNodeChange` values into an array.
-5. Leave the garden and return the array.
+4. Scan through the fixed bound `H` and retain, for every matching semantic key:
+   - the greatest-index state entry (`add`, `edit`, or `delete`);
+   - the greatest-index freshness entry (`invalidate` or `validate`).
+5. Sort the retained entries by ascending `JournalIndex` and return the array.
+6. Leave the garden and return the array.
+
+This is the logical-compaction-first semantic: compute `logicalJournalView` through `H`, then restrict to entries whose index exceeds `since` and whose key matches `to`. An equivalent implementation may scan only `(since, H]` and retain only the greatest-index matching entry per key and category.
 
 The linearization point is the read of `last_journal_index = H` after entering the garden. At that point:
 
@@ -320,6 +325,8 @@ keys, so they may proceed concurrently.
 `possibleMaybeChanges` uses shared garden access (`enterGarden`). It does not acquire the `DOME_ACTIVITY_KEY` mode lock or the darkroom lock, so it does not interfere with ordinary daytime or nighttime graph activity (reads, invalidations, pulls on different nodes, or ordinary append-only journal growth).
 
 Journal queries coexist with daytime activity, nighttime activity, and ordinary append-only journal growth. The published-prefix invariant guarantees that ordinary appends do not modify established positions, so queries need only exclude structural changes (via garden) and read a fixed upper bound.
+
+Garden exclusion prevents a query from observing a partially applied physical compaction, but the query result would be the same before and after the compaction anyway — both use the same `logicalJournalView` through the captured bound.
 
 Structural journal maintenance (compaction, sync) acquires exclusive garden access (`closeGarden`) for operations that mutate established journal positions. Replica cutover and migration also acquire `closeGarden`, but for lifecycle safety (preventing `possibleMaybeChanges` from traversing a replica while it is being replaced) rather than for journal mutation. Migration is append-only and does not structurally mutate established journal history.
 
