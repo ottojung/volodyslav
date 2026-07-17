@@ -72,16 +72,26 @@ REQ-JC-07: **Materialized-node evidence preservation.** For every currently mate
 
 ### Freshness event preservation
 
-REQ-JC-07a: For every semantic node key that has at least one surviving `validate` or `invalidate` event, compaction MUST preserve the event with the greatest `JournalIndex` among those two actions. This rule applies whether the node is materialized, potentially outdated, up to date, or deleted.
+REQ-JC-07a: For every materialized node key that has at least one surviving `validate` or `invalidate` event, compaction MUST preserve the event with the greatest `JournalIndex` among those two actions.
 
 REQ-JC-07b: Compaction MAY remove every older `validate` and `invalidate` event for that key.
 
 REQ-JC-07c: Neither `invalidate` nor `validate` satisfies value-evidence preservation (REQ-JC-07). A simple valid retention policy is:
 1. Preserve the latest required value evidence: latest `add` or `edit` for a materialized node.
-2. Preserve the greatest-index freshness event among `validate` and `invalidate`, if one exists.
+2. Preserve the greatest-index freshness event among `validate` and `invalidate`, if one exists, for a materialized node.
 3. Remove older redundant entries according to quota policy.
 
 REQ-JC-07d: A newer `validate` or `invalidate` does NOT allow compaction to remove the only surviving `add` or `edit`.
+
+### Entries for deleted nodes
+
+REQ-JC-08: Compaction MAY remove all journal entries for a node that has been deleted (whose `NodeIdentifier` no longer exists in the graph state) once the deletion is sufficiently old or once all hosts in the sync mesh are known to have processed the deletion. The exact policy for determining "sufficiently old" is implementation-defined. Freshness preservation (REQ-JC-07a) does not apply to deleted nodes — there is no materialized graph freshness to maintain.
+
+### Interaction with synchronization
+
+REQ-JC-09: Compaction MAY remove journal entries even when synchronization is pending. Sync does not use `timestamps` sublevel records as a replacement for missing journal entries. Instead, sync uses only surviving journal entries for conflict comparison. Absent journal entries are treated as "no journal evidence" rather than falling back to node timestamps. See `incremental-graph-journal-sync.md` for the sync conflict-resolution rules.
+
+REQ-JC-10: Compaction is safe for synchronization correctness as long as the surviving journal entries (if any) plus the sync conflict rules produce correct convergence. Sync does not require journal entries that do not exist.
 
 ### Entries for deleted nodes
 
