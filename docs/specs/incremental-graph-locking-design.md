@@ -376,7 +376,7 @@ Cutover acquires `holidayActivity` then `closeGarden`. Because `possibleMaybeCha
 
 ### C6 — Reader overlapping structural sync
 
-Structural sync calls `closeGarden`, which waits for readers and prevents new readers until established-position reconciliation completes. Existing readers complete on their captured snapshot.
+Structural sync calls `closeGarden`, which waits for readers and prevents new readers until established-position reconciliation completes. Existing readers complete on their captured journal bound (the fixed `H` they read after entering the garden).
 
 ### C7 — Compaction overlapping append
 
