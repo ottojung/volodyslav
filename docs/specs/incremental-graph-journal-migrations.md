@@ -81,7 +81,7 @@ The journal distinguishes migration-originated state from ordinary graph changes
 | `storage.invalidate` | `invalidate` entry | Freshness transition to `potentially-outdated` |
 | `storage.create` | `add` entry | Intentional new node creation |
 | `storage.delete` | `delete` entry | Node deleted by migration |
-| Sync conflict resolution | `delete` / `edit` entries | Cross-host reconciliation |
+| Synchronization | existing events copied/reappended | Cross-host reconciliation (no new events created) |
 
 ---
 

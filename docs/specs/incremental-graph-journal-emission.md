@@ -51,9 +51,7 @@ REQ-JE-07b: An `invalidate` entry is NOT a value change — it signals that the 
 
 REQ-JE-08: A `delete` journal entry represents the removal or supersession of a node. The following circumstances produce `delete` entries:
 
-- **Synchronization conflict resolution**: When two hosts allocate conflicting node identifiers for the same node key, the losing identifier is de-materialized. The system MUST emit a `delete` journal entry for the losing identifier's node key. See `incremental-graph-journal-sync.md`.
-
-- **Synchronization key disappearance**: When a remote host has deleted a node that the local host has materialized, the local host MUST emit a `delete` journal entry for that node key after reconciliation. See `incremental-graph-journal-sync.md`.
+- **Synchronization**: When synchronization reconciles conflicting identifiers for the same node key or propagates a remote deletion, the existing `delete` entries from the remote host are copied or reappended. Synchronization does not create new `delete` events. See `incremental-graph-journal-sync.md`.
 
 REQ-JE-09: Ordinary graph operations (`pull`, `invalidate`, recomputation) MUST NOT emit `delete` entries unless and until the IncrementalGraph system implements a general node deletion API. This specification does not assume such an API exists.
 
