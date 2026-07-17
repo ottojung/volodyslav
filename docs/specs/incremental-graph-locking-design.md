@@ -17,7 +17,7 @@ The target behavior is:
 4. Observations of the same concrete node must not coexist (telescope
    mutex).
 5. Observations of different concrete nodes may coexist.
-6. Migration and replica cutover are exclusive with all graph activity
+6. Migration, structural synchronization, and replica cutover are exclusive with all graph activity
    (daytime, nighttime) and also close the garden.
 7. Transaction commits for the same replica are serialized (the commit
    mutex is per-replica, not global, so commits to different replicas
@@ -98,8 +98,9 @@ uses darkroom as specified. Journal queries use garden, not darkroom.
 | `enterGarden` | daytime activity | yes |
 | `enterGarden` | nighttime activity | yes |
 | `enterGarden` | ordinary journal append | yes |
-| `closeGarden` | ordinary journal append | yes, except that durable commits remain serialized by darkroom |
-| `closeGarden` | holiday / cutover | no, because holiday also closes the garden |
+| generic `closeGarden` (for example, compaction) | ordinary journal append | yes, except that durable commits remain serialized by darkroom |
+| structural synchronization | ordinary journal append | no; synchronization also holds `holidayActivity` |
+| migration | ordinary journal append | no; migration also holds `holidayActivity` |
 
 ## Lock Keys
 
@@ -117,7 +118,8 @@ Three modes are defined on `DOME_ACTIVITY_KEY`:
 
 - `"daytime"` for `invalidate()` and inspection reads;
 - `"nighttime"` for all pull activity;
-- `"holiday"` for migration and replica cutover (exclusive with all other modes).
+- `"holiday"` for migration, structural synchronization, and replica cutover
+  (exclusive with all other modes).
 
 Because same-mode holders are compatible, many invalidates may overlap, and many
 pulls may overlap. Because different modes are incompatible, no pull may overlap
@@ -165,7 +167,7 @@ There is one exclusive mutex per replica, created through the `DARKROOM_FUNCTOR`
 
 It serializes the short finalization step where a finished transaction's batch
 and identifier allocations become part of that replica's settled record.
-Commit-snapshot reads (`listMaterializedNodes()`) also acquire the darkroom
+Commit-stable reads (`listMaterializedNodes()`) also acquire the darkroom
 to observe state between commit finalizations.
 
 ## Operation Protocol
@@ -232,8 +234,9 @@ identical, whether top-level or nested.
 4. Scan through the fixed bound `H` and retain, for every matching semantic key:
    - the greatest-index state entry (`add`, `edit`, or `delete`);
    - the greatest-index freshness entry (`invalidate` or `validate`).
-5. Sort the retained entries by ascending `JournalIndex` and return the array.
-6. Leave the garden and return the array.
+5. Sort the retained entries by ascending `JournalIndex`.
+6. Leave the garden.
+7. Return the array.
 
 This is the logical-compaction-first semantic: compute `logicalJournalView` through `H`, then restrict to entries whose index exceeds `since` and whose key matches `to`. An equivalent implementation may scan only `(since, H]` and retain only the greatest-index matching entry per key and category.
 
@@ -268,17 +271,18 @@ The important requirements are:
 - It must not decrease or overwrite a concurrently advanced `last_journal_index`.
 - Ordinary append-only journal growth may continue while the garden is closed; those appends use indices greater than `H` and are outside the compacted prefix.
 
-### `migration / replica cutover`
+### `migration / structural synchronization / replica cutover`
 
-A holiday closes both the dome and the garden. Migration and replica cutover
-follow this protocol:
+A holiday closes both the dome and the garden. Migration, structural
+synchronization, and replica cutover follow this protocol:
 
 1. Acquire `holidayActivity(...)` (graph activity mode lock, exclusive with
    all other graph activity).
 2. Call `closeGarden` (exclusive garden access).
-3. Perform the migration or cutover while both locks are held.
-4. Acquire darkroom inside those scopes when performing durable replica
-   mutations.
+3. Perform migration, or build the inactive synchronization destination, while
+   both locks are held.
+4. Acquire the destination darkroom inside those scopes for final durable
+   metadata and cutover.
 5. Release darkroom.
 6. Reopen the garden.
 7. Release the holiday lock.
@@ -328,7 +332,13 @@ Journal queries coexist with daytime activity, nighttime activity, and ordinary 
 
 Garden exclusion prevents a query from observing a partially applied physical compaction, but the query result would be the same before and after the compaction anyway — both use the same `logicalJournalView` through the captured bound.
 
-Structural journal maintenance (compaction, sync) acquires exclusive garden access (`closeGarden`) for operations that mutate established journal positions. Replica cutover and migration also acquire `closeGarden`, but for lifecycle safety (preventing `possibleMaybeChanges` from traversing a replica while it is being replaced) rather than for journal mutation. Migration is append-only and does not structurally mutate established journal history.
+Structural journal maintenance acquires exclusive garden access (`closeGarden`)
+for operations that mutate established journal positions. Generic garden
+closure, as used by compaction, can overlap ordinary appends. Structural
+synchronization additionally holds `holidayActivity`, so it cannot overlap
+ordinary appends. Replica cutover and migration also hold `holidayActivity` and
+`closeGarden`; migration is append-only and does not structurally mutate
+established journal history.
 
 ## Lock ordering and deadlock discipline
 
@@ -383,7 +393,11 @@ Cutover acquires `holidayActivity` then `closeGarden`. Because `possibleMaybeCha
 
 ### C6 — Reader overlapping structural sync
 
-Structural sync calls `closeGarden`, which waits for readers and prevents new readers until established-position reconciliation completes. Existing readers complete on their captured journal bound (the fixed `H` they read after entering the garden).
+Structural sync acquires `holidayActivity` and then calls `closeGarden`, which
+waits for readers and prevents new readers until inactive-destination
+construction and cutover complete. Existing readers complete on their captured
+journal bound (the fixed `H` they read after entering the garden), and ordinary
+appends cannot overlap the synchronization.
 
 ### C7 — Compaction overlapping append
 

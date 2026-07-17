@@ -2,7 +2,10 @@
 
 ## Purpose
 
-This document specifies when journal entries are created — the rules for `add`, `edit`, `delete`, `invalidate`, and `validate` emissions triggered by IncrementalGraph operations, synchronization, and migration.
+This document specifies when journal entries are created — the rules for `add`,
+`edit`, `delete`, `invalidate`, and `validate` emissions triggered by
+IncrementalGraph operations and migration. Synchronization only copies,
+repositions, or omits existing events.
 
 Journal emission is always coordinated with the graph storage mutation that caused it: a journal entry MUST NOT be durably committed unless the corresponding graph change is also durably committed.
 
@@ -80,9 +83,14 @@ REQ-JE-07j: Repeating an operation that leaves freshness unchanged emits nothing
 
 ### Deletion: `delete`
 
-REQ-JE-08: A `delete` journal entry represents the removal or supersession of a node. The following circumstances produce `delete` entries:
+REQ-JE-08: A `delete` journal entry represents an actual node deletion. The
+following operation produces `delete` entries:
 
-- **Synchronization**: When synchronization reconciles conflicting identifiers for the same node key or propagates a remote deletion, the existing `delete` entries from the remote host are copied or reappended. Synchronization does not create new `delete` events. See `incremental-graph-journal-sync.md`.
+- **Actual deletion operations**: `storage.delete` and any future graph deletion
+  operation emit a `delete` for the node they delete.
+
+Synchronization may copy or reposition an existing `delete`; it never emits
+one. See `incremental-graph-journal-sync.md`.
 
 REQ-JE-09: Ordinary graph operations (`pull`, `invalidate`, recomputation) MUST NOT emit `delete` entries unless and until the IncrementalGraph system implements a general node deletion API. This specification does not assume such an API exists.
 
