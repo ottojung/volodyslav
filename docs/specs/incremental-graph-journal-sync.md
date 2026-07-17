@@ -102,17 +102,16 @@ What is NOT allowed is host A having one `JournalEntry` at index `i` while host 
 
 ### Resolving divergent indices
 
-REQ-JS-13: If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, that index is poisoned. Both conflicting entries MUST be deleted from index `i`. Any still-relevant changes described by the conflicting entries MUST be appended at fresh `JournalIndex` values determined by the allocation base `B`:
+REQ-JS-13: If synchronization discovers that two hosts have different `JournalEntry` values at the same `JournalIndex` `i`, that index is poisoned. Both conflicting entries MUST be deleted from index `i`. Any still-relevant changes described by the conflicting entries MUST be appended at fresh `JournalIndex` values above the unified merge frontier `P`:
 
 ```
-B = max(
-    current local last_journal_index,
-    remote last_journal_index,
-    greatest fixed position retained by the reconciliation
+P = max(
+    revalidated local last_journal_index,
+    fixed remote last_journal_index
 )
 ```
 
-All newly generated and reappended entries MUST receive indices strictly greater than `B`. This ensures that reappended entries do not collide with the remote suffix or with any position that the reconciliation intends to preserve.
+All newly generated and reappended entries MUST receive indices `P + 1 .. P + n`. This ensures that reappended entries cannot collide with any established position because every numeric position through `P` is resolved by the prefix merge.
 
 If both conflicting entries describe changes to the same node key, the re-appended entries are distinct `PossibleNodeChange` values for that key at different journal indices. This is a direct consequence of the poisoning rule: each conflicting entry that carried a still-relevant change produces its own re-appended entry.
 
@@ -164,18 +163,18 @@ P       = max(localH, remoteH)
 
 **Fresh allocation base:**
 
-After the prefix merge, every position `1 .. P` has one canonical target state. Freshly generated or displaced events are allocated strictly after `P`:
+After the prefix merge, every position `1 .. P` has one canonical target state. The remaining merge frontier `P` is the fresh allocation base:
 
 ```
-B = max(
+P = max(
     revalidated local last_journal_index,
-    remote last_journal_index
+    fixed remote last_journal_index
 )
 ```
 
 If both replicas are mutable during the same session, use the maximum revalidated watermark across all participating replicas.
 
-Fresh events receive indices `B + 1 .. B + n`. The final watermark is `B + n`.
+Fresh events receive indices `P + 1 .. P + n`. The final watermark is `P + n`. The term `greatest fixed position retained by the reconciliation` is not needed because every numeric position through `P` is already resolved by the prefix merge; no position above `P` is retained by the reconciliation, and no position at or below `P` is available for fresh allocation.
 
 **A synchronization convergence point** is reached only when every participating replica has applied the same canonical target state. An implementation may physically apply the plan to replicas sequentially, but the logical target must already be fixed. A partially applied plan is an incomplete synchronization, not a successful convergence point. Retrying must apply or recompute the canonical target rather than inventing a different host-relative layout.
 
@@ -207,28 +206,29 @@ REQ-JS-14d: In the basic remote-suffix case (no concurrent ordinary appends and 
 2. Perform reconciliation analysis while holding `closeGarden` — read remote journal entries, determine reconciliation needs, and prepare logical journal effects without assigning final local indices.
 3. Acquire darkroom.
 4. Read `last_journal_index = H`.
-5. **Determine the allocation base `B`**:
+5. **Compute the unified merge frontier `P`**:
 
    ```
-   B = max(
+   P = max(
        H,
-       remote.last_journal_index,
-       greatest fixed position retained by the reconciliation
+       remote.last_journal_index
    )
    ```
 
+   Every numeric position through `P` is resolved by the prefix merge. No separate "greatest fixed position retained" is needed.
+
 6. For each remote suffix position `i` such that `H < i ≤ remoteH`:
 
-   If `i ≤ B` and position `i` is still unestablished locally (i.e., no concurrent append committed at `i` before darkroom):
+   If `i` is still unestablished locally at finalization (i.e., no concurrent append committed at `i` before darkroom):
    - Replicate the remote entry at local position `i`.
 
-   If `i > B` or if position `i` became established locally (a concurrent append committed there):
-   - Treat as fresh evidence. Queue the remote entry for allocation above `B`.
+   If position `i` became established locally (a concurrent append committed there):
+   - Treat as fresh evidence. Queue the remote entry for fresh allocation above `P`.
 
-7. **Establish all absences and poisoning through `max(H, localH)`.** Known-absent remote suffix positions (indices where the remote host has no entry) establish local absence at those positions, advancing the watermark to cover them.
+7. **Establish all absences through `P`.** Known-absent remote suffix positions (indices where the remote host has no entry) establish local absence at those positions, advancing the watermark.
 8. **Canonically order** the queued fresh evidence (remote entries that could not retain their positions, reappended conflict-losing entries) according to the canonical ordering policy (REQ-JS-14i).
-9. **Allocate** the fresh evidence at positions `B + 1` through `B + n` where `n` is the number of entries in the ordered list.
-10. Install replicated entries, established absences, fresh entries, and the final watermark (now at least `max(B + n, remoteH)`) in one atomic durable batch.
+9. **Allocate** the fresh evidence at positions `P + 1` through `P + n` where `n` is the number of entries in the ordered list.
+10. Install replicated entries, established absences, fresh entries, and the final watermark (now at least `max(P + n, remoteH)`) in one atomic durable batch.
 11. Release darkroom.
 12. Release `closeGarden`.
 
@@ -261,21 +261,20 @@ REQ-JS-14e: In the concurrent case, because `closeGarden` does not exclude ordin
 
 6. Re-read the current committed local `last_journal_index = H`.
 7. Re-read every local journal position that the prepared reconciliation intended to delete, poison, or otherwise reason about.
-8. **Determine the allocation base `B`**:
+8. **Compute the unified merge frontier `P`**:
 
    ```
-   B = max(
+   P = max(
        H,
-       remote.last_journal_index,
-       greatest fixed position retained by the reconciliation
+       remote.last_journal_index
    )
    ```
 
-   The "greatest fixed position retained by the reconciliation" is the highest established position at or below `max(H, remote.last_journal_index)` that the reconciliation will preserve unchanged at its numeric index. All newly generated and reappended entries MUST receive indices strictly greater than `B`.
+   Every numeric position through `P` is resolved by the prefix merge. No separate "greatest fixed position retained" is needed. All newly generated and reappended entries receive indices strictly greater than `P`.
 
-9. **Establish all absences and poisoning through `B`.** Any positions that the reconciliation intends to delete or poison at or below `B` are written as structural deletions. No entry occupies or claims a position at or below `B` that is not already part of the finalized established state.
+9. **Establish all absences and poisoning through `P`.** Any positions that the reconciliation intends to delete or poison at or below `P` are written as structural deletions. No entry occupies or claims a position at or below `P` that is not already part of the finalized established state.
 10. **Canonically order** the queued fresh evidence (remote entries that could not retain their numeric positions because a concurrent append claimed them, reappended conflict-losing evidence) according to the canonical ordering policy (REQ-JS-14i).
-11. **Allocate** the fresh evidence at positions `B + 1` through `B + n` where `n` is the number of entries in the ordered list.
+11. **Allocate** the fresh evidence at positions `P + 1` through `P + n` where `n` is the number of entries in the ordered list.
 12. Install structural deletions/poisoning, fresh appended entries, replicated remote suffix entries (at positions that remained unestablished), graph reconciliation state, and the final watermark in one atomic durable batch.
 13. Release darkroom.
 14. Release `closeGarden` (reopen the garden).
@@ -352,7 +351,7 @@ Structural sync MUST NOT fill a previously absent established index, replace an 
 
 The structural sync phase MUST hold `closeGarden` through its analysis and atomic durable mutation, following the normative finalization protocol in REQ-JS-14e. The durable batch uses darkroom inside the garden closure.
 
-REQ-JS-16: A purely append-only sync action that writes only fresh local indices MAY proceed without garden access. Fresh reappended entries MUST be allocated from the then-current watermark under the normal durable commit serialization. Do not assume that a previously captured position remains available while ordinary appenders continue; the allocation base `B = max(local H, remote H, greatest fixed position retained)` is determined during darkroom finalization.
+REQ-JS-16: A purely append-only sync action that writes only fresh local indices MAY proceed without garden access. Fresh reappended entries MUST be allocated from the then-current watermark under the normal durable commit serialization. Do not assume that a previously captured position remains available while ordinary appenders continue; the allocation base `P = max(localH, remoteH)` is determined during darkroom finalization.
 
 ### Sync order
 
@@ -451,7 +450,7 @@ sync enters darkroom, re-reads H = 6
 sync detects that index 6 is now established locally with F
 sync treats index 6 as a same-index conflict (F vs E)
 sync establishes absence at 6 (poisoning F from index 6)
-sync determines allocation base B = max(6, 6, 0) = 6
+sync computes P = max(6, 6) = 6
 sync reappends F at index 7 and E at index 8
 sync commits H = 8
 ```
@@ -512,7 +511,7 @@ at finalization:
   local[6] = F, remote[6] = E
   entries differ → target[6] = absent
   both F and E queued for fresh placement
-  B = max(6, 6) = 6
+  P = max(6, 6) = 6
   canonically ordered F and E at indices 7 and 8
   H = 8
 ```
