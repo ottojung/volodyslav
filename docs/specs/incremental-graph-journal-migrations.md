@@ -66,9 +66,11 @@ REQ-JM-03: `storage.invalidate` MUST emit an `invalidate` journal entry when it 
 
 ### `storage.create`
 
-Creates a new node (not present in the previous version) and assigns it an initial value.
+Creates a new node (not present in the previous version) and assigns it an initial value and freshness.
 
 REQ-JM-04: `storage.create` MUST create an `add` journal entry for the new node. This mirrors REQ-JE-01 for first materialization during normal graph operation.
+
+REQ-JM-04a: `storage.create` accepts an initial freshness of `"up-to-date"` or `"potentially-outdated"` (as defined in `docs/specs/migration.md`). The `add` entry carries no freshness event of its own — the initial freshness is recorded in the node's graph state, not as a journal entry. The `add` is the state/lifecycle entry; a freshness entry (`invalidate` or `validate`) is only emitted later by a real freshness transition.
 
 REQ-JM-05: The `add` entry for a `storage.create` operation MUST be emitted in the same durable migration batch as the node's records. See REQ-JE-11 and REQ-JE-12.
 
