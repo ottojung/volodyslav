@@ -321,7 +321,7 @@ keys, so they may proceed concurrently.
 
 Journal queries coexist with daytime activity, nighttime activity, and ordinary append-only journal growth. The published-prefix invariant guarantees that ordinary appends do not modify established positions, so queries need only exclude structural changes (via garden) and read a fixed upper bound.
 
-Structural journal maintenance (compaction, structural sync) acquires exclusive garden access (`closeGarden`) for operations that mutate established journal positions. Replica cutover and migration also acquire `closeGarden`, but for lifecycle safety (preventing `possibleMaybeChanges` from traversing a replica while it is being replaced) rather than for journal mutation. Migration is append-only and does not structurally mutate established journal history.
+Structural journal maintenance (compaction, sync) acquires exclusive garden access (`closeGarden`) for operations that mutate established journal positions. Replica cutover and migration also acquire `closeGarden`, but for lifecycle safety (preventing `possibleMaybeChanges` from traversing a replica while it is being replaced) rather than for journal mutation. Migration is append-only and does not structurally mutate established journal history.
 
 ## Lock ordering and deadlock discipline
 

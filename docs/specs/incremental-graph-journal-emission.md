@@ -100,33 +100,19 @@ REQ-JE-17: The `last_journal_index` stored in `rendered/r/global/last_journal_in
 
 ### JournalEventId assignment during first commit
 
-A transaction creating a new logical journal event prepares an event template without a completed `JournalEventId`.
-
-For an origin event (ordinary graph operation or migration):
-
-REQ-JE-18: During darkroom finalization, after assigning the event its initial `JournalIndex` `i`, the implementation MUST set:
+REQ-JE-18: During darkroom finalization, after assigning the event its initial `JournalIndex` `i`, the implementation MUST compute the event's `JournalEventId` as:
 
 ```
-eventId = {
-    kind: "origin",
-    creator: entry.creator,
-    originIndex: i,
-}
+const eventId = JSON.stringify([
+    'journal-event-v1',
+    hostnameToString(entry.creator),
+    journalIndexToNumber(i),
+]);
 ```
 
 The entry, `eventId`, physical index `i`, graph mutation, and final watermark MUST be committed in the same atomic durable batch.
 
-For a sync-generated event, the `eventId` is computed from the SHA-256 digest of the canonical serialization of its `SyncEventDerivation` (see `incremental-graph-journal-sync.md`). The digest is computed before any physical position is assigned:
-
-```
-eventId = {
-    kind: "sync",
-    creator: syncAuthor,
-    digest: sha256(canonicalSerialize(derivation)),
-}
-```
-
-REQ-JE-19: For an existing event being replicated or reappended (not newly created), the implementation MUST NOT assign a new event ID. It MUST preserve the original `eventId` (including its `kind`, `creator`, and either `originIndex` or `digest`). Only the physical storage position changes.
+REQ-JE-19: For an existing event being replicated or reappended (not newly created), the implementation MUST NOT assign a new event ID. It MUST preserve the original `eventId` string unchanged. Only the physical storage position changes.
 
 ---
 
@@ -172,20 +158,16 @@ A failed journal-emitting transaction:
 
 If a transaction prepares an unindexed entry, but then fails during darkroom finalization (or before), no trace of the failed entry remains in the journal index sequence.
 
-### P9 — Origin event ID assigned atomically
+### P9 — Event ID assigned atomically
 
 A new ordinary or migration event assigned initial position `7` receives:
 
 ```
-eventId = { kind: "origin", creator: emittingHost, originIndex: 7 }
+eventId = JSON.stringify(['journal-event-v1', hostnameToString(host), 7])
 ```
 
 Entry, event ID, graph writes, and watermark `7` commit atomically. A reader that sees the entry at index 7 also sees its complete `eventId`. A reader that does not see index 7 sees no part of the event.
 
 ### P10 — Replication preserves event ID
 
-An event reappended or replicated to another host retains its original `eventId`. The `eventId.kind`, `eventId.creator`, and either `eventId.originIndex` (for origin events) or `eventId.digest` (for sync events) remain the same across all copies, even though the physical storage index differs.
-
-### P11 — Sync-generated event ID computed before position
-
-A sync-generated event receives its `eventId` from the SHA-256 digest of its `SyncEventDerivation` before any physical position is assigned. The `eventId.kind` is `"sync"`. Two hosts computing the same derivation produce identical digests and therefore identical event IDs.
+An event reappended or replicated to another host retains its original `eventId` string unchanged. The `eventId` remains the same across all copies, even though the physical storage index differs.

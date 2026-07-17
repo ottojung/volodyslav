@@ -89,11 +89,9 @@ docs/specs/incremental-graph-journal-emission.md
 
 ## Synchronization
 
-The journal participates in synchronization between hosts. Synchronization produces one immutable canonical revision `R` containing the reconciled graph target, journal prefix, fresh events, and final watermark.
+Synchronization works by reading the current active local replica and the fetched remote replica, constructing the complete merged database in an inactive local replica, and switching the active-replica pointer only after the inactive replica is complete and durable. This is the existing replica-switching architecture; no database-state abstraction beyond the replicas that already exist in the IncrementalGraph design is introduced.
 
-Sync-generated events have deterministic identity: the SHA-256 digest of a canonical serialization of their `SyncEventDerivation`. This breaks the circular dependency where event identity depended on the final physical position.
-
-Pairwise convergence is symmetric and idempotent. Multi-host convergence is achieved through fair repeated synchronization after graph activity becomes quiescent.
+Journal events are only the events that were already emitted by ordinary graph operations, migration operations, explicit freshness transitions, and actual node deletion operations. Synchronization does not invent new logical journal events. Existing events may be copied into the inactive destination, retained at their existing numeric position, made absent by poisoning or absence propagation, moved to a fresh position when their original position cannot survive, deduplicated when the same logical event already survives elsewhere, or removed when superseded according to the settled compaction or freshness rules.
 
 The journal synchronization model defines how journal histories are compared, merged, appended, deleted, or compacted during sync. It also defines how timestamps and host identities participate in conflict resolution.
 

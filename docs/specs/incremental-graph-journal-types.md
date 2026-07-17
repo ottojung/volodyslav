@@ -12,135 +12,73 @@ All journal types follow the existing nominal/opaque typing discipline used by `
 
 ### Purpose
 
-`JournalEventId` provides stable, immutable identity for one logical journal event. Structural payload equality is insufficient to distinguish events because two truly distinct events may have identical action, node identifier, key, timestamp, and creator — for example, two edits to the same node within the same millisecond. Event identity is needed for deterministic deduplication during synchronization.
+`JournalEventId` provides stable, immutable identity for one logical journal event. All logical journal events are first emitted by an ordinary graph operation or migration.
 
-The type is a tagged internal union distinguishing origin events from deterministically derived sync events:
+The ID is created during the event's first durable commit:
+
+```js
+const eventId = JSON.stringify([
+    'journal-event-v1',
+    hostnameToString(creator),
+    journalIndexToNumber(originIndex),
+]);
+```
+
+Use exactly a fixed-order array passed to `JSON.stringify`. No custom serialization format. No multiple event-ID variants. No optional event-ID fields.
 
 ```js
 /**
  * Stable identity of one logical journal event.
  *
- * @typedef {OriginJournalEventId | DerivedSyncJournalEventId} JournalEventId
- */
-
-/**
- * Identity of an event originally emitted by an ordinary graph operation
- * or migration.
- *
- * @typedef {object} OriginJournalEventId
- * @property {'origin'} kind
- * @property {Hostname} creator
- * @property {JournalIndex} originIndex
- */
-
-/**
- * Identity of a deterministically derived synchronization event.
- *
- * digest is a lowercase hexadecimal SHA-256 digest of the canonical
- * serialized sync derivation (see SyncEventDerivation).
- *
- * @typedef {object} DerivedSyncJournalEventId
- * @property {'sync'} kind
- * @property {Hostname} creator
- * @property {string} digest
+ * @typedef {string} JournalEventId
  */
 ```
 
-Semantics:
+### Semantics
 
-- An origin event receives its `originIndex` from its first committed physical position, atomically during darkroom finalization. `eventId.kind = "origin"`.
-- A derived sync event receives its `digest` computed from the canonical serialization of its `SyncEventDerivation`. `eventId.kind = "sync"`.
-- Copying or reappending an entry preserves `eventId` unchanged.
-- A sync-generated event's identity does not depend on its final physical position.
+- `creator` is the host that originally emitted the event.
+- `originIndex` is the first physical journal position assigned to the event.
+- The event ID is assigned atomically with that first position.
+- Copying an event preserves its event ID.
+- Reappending an event preserves its event ID.
+- Moving an event does not change the encoded `originIndex`.
+- Two events created by the same host cannot have the same origin index.
+- Hostnames are unique within the synchronization mesh.
 
-### Identity scope
+### Integrity
 
-`JournalEventId` is unique within one synchronized IncrementalGraph database or synchronization mesh. It is not claiming uniqueness across unrelated graphs.
+One event ID identifies exactly one immutable journal payload.
 
-### Creator equality
-
-REQ-JT-23: `JournalEntry.eventId.creator` MUST equal `JournalEntry.creator`. The two fields must never disagree. `creator` means the host that originally emitted the logical event, not the host that later copied or reappended it. Copying and reappend preserve both fields.
-
-For origin events, creator is the emitting host. For derived sync events, creator is `syncAuthor` (the lexicographically smaller participating `Hostname`).
-
-### Immutable identity-to-payload mapping
-
-REQ-JT-24: One `JournalEventId` identifies exactly one immutable `JournalEntry` payload. For a fixed `eventId`, these fields must always remain identical across all copies and replicas: `action`, `id`, `key`, `time`, `creator`. Additionally, for sync-derived events, `syncDerivation` must also match (including the digest). If synchronization encounters the same `eventId` attached to different payloads, this is an integrity violation — not an ordinary same-index conflict. The operation MUST abort synchronization without applying the prepared target, report a journal-integrity error, and leave both journal and graph state unchanged. Deduplicating by `eventId` is safe only after this integrity check passes.
-
-### Host identity
-
-Because event identity depends on `Hostname`, duplicate host identity is invalid configuration.
-
-REQ-JT-25: Synchronization MUST reject a mesh containing two distinct hosts with the same `Hostname`. Duplicate host identities make event identity ambiguous.
-
-### One surviving position per event ID
-
-A converged journal contains at most one surviving entry for each `JournalEventId`. This is a global canonical invariant.
-
-REQ-JT-26: After the prefix merge and before fresh allocation, synchronization MUST:
-
-1. Gather every target position (both retained and newly queued) containing each `eventId`.
-2. Verify that every occurrence has the same immutable payload (action, id, key, time, creator, and for sync events: syncDerivation). If not, this is an integrity violation per REQ-JT-24.
-3. If an event occurs at exactly one position, preserve it.
-4. If it occurs at multiple positions, retain the occurrence with the greatest `JournalIndex`.
-5. Change every lower duplicate occurrence to established absence.
-6. Do not queue another fresh copy because a later surviving copy already exists.
-
-The greatest position survives, not the smallest, because retaining the later occurrence best preserves visibility for cursors that have already advanced past an earlier duplicate. This generalizes the deduplication of "same event through two paths" and also covers the case where both replicas already contain the same event ID at two different positions.
-
----
-
-## SyncEventDerivation (internal, pre-indexing)
-
-During synchronization, a new logical event may be required because the canonical graph state changes. Before its physical position and `JournalEventId` are assigned, the derivation of that event is represented as `SyncEventDerivation`. The derivation is immutable: once constructed, it is never changed.
+For identity comparison or integrity checking, use a fixed-order array and `JSON.stringify`:
 
 ```js
-/**
- * Immutable derivation of one canonical synchronization event.
- *
- * @typedef {object} SyncEventDerivation
- * @property {SyncEventReason} reason
- * @property {JournalAction} action
- * @property {NodeKey} key
- * @property {NodeIdentifier} id
- * @property {UnixTimestamp} time
- * @property {Hostname} creator
- * @property {Array<JournalEventId>} causes
- */
+JSON.stringify([
+    entry.action,
+    nodeIdentifierToString(entry.id),
+    nodeKeyToString(entry.key),
+    unixTimestampToNumber(entry.time),
+    hostnameToString(entry.creator),
+    entry.eventId,
+])
 ```
 
-Requirements:
+If the same `eventId` is encountered with different serialized payloads:
+- fail synchronization;
+- commit nothing;
+- leave the active replica unchanged;
+- do not poison the entries;
+- do not choose one arbitrarily.
 
-- `causes` is non-empty.
-- Duplicate cause IDs are removed.
-- Causes are sorted by canonical `JournalEventId` order.
-- `creator` is the canonical `syncAuthor` (lexicographically smaller participating `Hostname`).
-- `time` is the maximum timestamp among causal entries.
-- The derivation is immutable once constructed.
-- Two identical derivations describe the same logical sync event.
-- Distinct derivations describe distinct events.
+### Duplicate event positions
 
-### SyncEventReason
+If the same `eventId` survives at several physical positions in the merged destination:
+- retain the occurrence with the greatest `JournalIndex`;
+- make all lower occurrences absent;
+- do not create another fresh copy.
 
-`SyncEventReason` is a closed internal set of perspective-free reason names describing why a sync-generated event is needed. No reason name depends on which input is called local or remote.
+An unpositioned event queued for fresh placement does not participate in the "greatest position" comparison.
 
-```js
-/**
- * @typedef {'materialization-adoption'
- *         | 'value-adoption'
- *         | 'identifier-conflict-delete'
- *         | 'identifier-conflict-winner-edit'
- *         | 'deletion-adoption'} SyncEventReason
- */
-```
-
-- `materialization-adoption`: the canonical graph target contains a node absent from one input. An `add` is generated.
-- `value-adoption`: conflicting materialized states resolve to one canonical value. An `edit` is generated.
-- `identifier-conflict-delete`: a losing identifier is dematerialized. A `delete` is generated.
-- `identifier-conflict-winner-edit`: the winning identifier/value is reported after identifier conflict. An `edit` is generated.
-- `deletion-adoption`: canonical conflict resolution selects deletion. A `delete` is generated.
-
-Two derivations with the same complete `SyncEventDerivation` (including all fields) are the same intended sync event and MUST be deduplicated before placement.
+If the same event already survives at a positioned target entry, remove its queued fresh copy.
 
 ---
 
@@ -161,8 +99,6 @@ Two derivations with the same complete `SyncEventDerivation` (including all fiel
  * @property {UnixTimestamp} time - When the change was recorded.
  * @property {Hostname} creator - The host that recorded the change.
  * @property {JournalEventId} eventId - Stable identity of this event.
- * @property {SyncEventDerivation | undefined} syncDerivation - Present only for
- *   deterministically generated synchronization events. Undefined for origin events.
  */
 ```
 
@@ -170,24 +106,12 @@ The `*Class` declarations throughout this document (e.g. `UnixTimestampClass`, `
 
 A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChanges` do not receive `JournalEntry` values. The public API surface uses `PossibleNodeChange`.
 
-For origin events:
-```
-eventId.kind = "origin"
-syncDerivation = undefined
-```
-
-For sync-generated events:
-```
-eventId.kind = "sync"
-syncDerivation is present
-```
-
 ### JournalAction
 
 ```js
 /**
  * The kind of change recorded in a journal entry.
- * @typedef {'add' | 'edit' | 'delete' | 'invalidate'} JournalAction
+ * @typedef {'add' | 'edit' | 'delete' | 'invalidate' | 'validate'} JournalAction
  */
 ```
 
@@ -195,6 +119,7 @@ syncDerivation is present
 - `'edit'` — a node's stored value materially changed.
 - `'delete'` — a node was removed or superseded (by synchronization, conflict resolution, or migration deletion).
 - `'invalidate'` — a node's freshness changed from `up-to-date` to `potentially-outdated`.
+- `'validate'` — a node's freshness changed from `potentially-outdated` to `up-to-date`.
 
 ---
 
