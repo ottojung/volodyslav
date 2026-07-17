@@ -42,6 +42,24 @@ Semantics:
 - A newly generated sync notification is a new event and receives a new `eventId` at its first commit.
 - Two entries with identical payloads but different `eventId` values are distinct events and both MUST remain representable.
 
+### Identity scope
+
+`JournalEventId` is unique within one synchronized IncrementalGraph database or synchronization mesh. It is not claiming uniqueness across unrelated graphs.
+
+### Creator equality
+
+REQ-JT-23: `JournalEntry.eventId.creator` MUST equal `JournalEntry.creator`. The two fields must never disagree. `creator` means the host that originally emitted the logical event, not the host that later copied or reappended it. Copying and reappend preserve both fields.
+
+### Immutable identity-to-payload mapping
+
+REQ-JT-24: One `JournalEventId` identifies exactly one immutable `JournalEntry` payload. For a fixed `eventId`, these fields must always remain identical across all copies and replicas: `action`, `id`, `key`, `time`, `creator`. If synchronization encounters the same `eventId` attached to different payloads, this is an integrity violation — not an ordinary same-index conflict. The operation MUST abort synchronization without applying the prepared target, report a journal-integrity error, and leave both journal and graph state unchanged. Deduplicating by `eventId` is safe only after this integrity check passes.
+
+### Host identity
+
+Because event identity depends on `Hostname`, duplicate host identity is invalid configuration.
+
+REQ-JT-25: Synchronization MUST reject a mesh containing two distinct hosts with the same `Hostname`. The earlier fallback that accidental duplicate hostnames could fall through to another tie-breaker is removed: duplicate host identities make event identity ambiguous.
+
 ---
 
 ## JournalEntry (internal)
@@ -140,7 +158,7 @@ A `Hostname` is a string that uniquely identifies a host within the synchronizat
 
 REQ-JT-04: A `Hostname` MUST be stable for a given host across process restarts and reboots.
 
-REQ-JT-05: Two distinct hosts in the synchronization mesh MUST have different `Hostname` values. If two hosts accidentally share a hostname, tie-breaking falls through to the next deterministic rule (see `incremental-graph-journal-sync.md`).
+REQ-JT-05: Two distinct hosts in the synchronization mesh MUST have different `Hostname` values. Because event identity depends on `Hostname`, duplicate host identity is invalid configuration. Synchronization MUST reject a mesh containing two distinct hosts with the same `Hostname`.
 
 REQ-JT-06: `Hostname` MUST be a non-empty string. Implementations MAY impose additional restrictions (e.g., no whitespace, character set limits) based on the host identification source. Empty strings MUST NOT be accepted as `Hostname` values.
 

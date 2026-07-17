@@ -98,6 +98,23 @@ Gaps caused by failed transactions are NOT possible under this allocation model,
 
 REQ-JE-17: The `last_journal_index` stored in `rendered/r/global/last_journal_index` is updated to the committed journal entry's index as part of the same atomic durable batch.
 
+### JournalEventId assignment during first commit
+
+A transaction creating a new logical journal event prepares an event template without a completed `JournalEventId`.
+
+REQ-JE-18: During darkroom finalization, after assigning the event its initial `JournalIndex` `i`, the implementation MUST set:
+
+```
+eventId = {
+    creator: entry.creator,
+    originIndex: i,
+}
+```
+
+The entry, `eventId`, physical index `i`, graph mutation, and final watermark MUST be committed in the same atomic durable batch.
+
+REQ-JE-19: For an existing event being replicated or reappended (not newly created), the implementation MUST NOT assign a new event ID. It MUST preserve the original `eventId`. Only the physical storage position changes.
+
 ---
 
 ## Testing properties
@@ -141,3 +158,17 @@ A failed journal-emitting transaction:
 - creates no gap.
 
 If a transaction prepares an unindexed entry, but then fails during darkroom finalization (or before), no trace of the failed entry remains in the journal index sequence.
+
+### P9 — Event ID assigned atomically
+
+A new ordinary or migration event assigned initial position `7` receives:
+
+```
+eventId = { creator: emittingHost, originIndex: 7 }
+```
+
+Entry, event ID, graph writes, and watermark `7` commit atomically. A reader that sees the entry at index 7 also sees its complete `eventId`. A reader that does not see index 7 sees no part of the event.
+
+### P10 — Replication preserves event ID
+
+An event reappended or replicated to another host retains its original `eventId`. The `eventId.creator` and `eventId.originIndex` remain the same across all copies, even though the physical storage index differs.
