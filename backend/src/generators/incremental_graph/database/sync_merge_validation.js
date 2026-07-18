@@ -1,6 +1,6 @@
 const { nodeIdentifierToString } = require('./types');
 const { nodeIdentifierFromString } = require('./node_identifier');
-const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges, semanticInputKeys } = require('./graph_scheme');
+const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges, semanticInputKeys, GraphSchemeError } = require('./graph_scheme');
 const { fromISOString } = require('../../../datetime');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
@@ -158,7 +158,19 @@ async function assertValidReplicaMaterializationState(storage, lookup, context) 
     for (const identifierString of materializedIdentifiers) {
         const identifier = nodeIdentifierFromString(identifierString);
         if (await storage.freshness.get(identifier) !== 'up-to-date') continue;
-        const derivedEdges = deriveInputEdges(scheme, lookup, identifier);
+        let derivedEdges;
+        try {
+            derivedEdges = deriveInputEdges(scheme, lookup, identifier);
+        } catch (error) {
+            if (error instanceof GraphSchemeError) {
+                throw new ReplicaStateInvariantError(
+                    context,
+                    `is up-to-date but depends on an unmaterialized input (${error.message})`,
+                    identifierString
+                );
+            }
+            throw error;
+        }
         for (const input of derivedEdges) {
             const inputString = nodeIdentifierToString(input);
             if (!materializedIdentifiers.has(inputString)) {

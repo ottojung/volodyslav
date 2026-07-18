@@ -32,7 +32,6 @@ const {
     assertValidFinalMergeState,
     assertValidReplicaMaterializationState,
     FinalMergeStateError,
-    isFinalMergeStateError,
     ReplicaStateInvariantError,
     isReplicaStateInvariantError,
 } = require("../src/generators/incremental_graph/database/sync_merge_validation");
