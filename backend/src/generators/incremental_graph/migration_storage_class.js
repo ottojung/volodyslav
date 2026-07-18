@@ -212,9 +212,6 @@ class MigrationStorageClass {
         if (oldFreshness === undefined) {
             throw makeInvalidMigrationDecisionError(`Cannot override node ${nodeKey}: previous freshness is missing`);
         }
-        if (oldFreshness === "missing") {
-            throw makeInvalidMigrationDecisionError(`Cannot override node ${nodeKey}: previous freshness is missing-state`);
-        }
         const oldTimestamps = await this.prevStorage.timestamps.get(nodeKey);
         if (oldTimestamps === undefined) {
             throw makeInvalidMigrationDecisionError(`Cannot override node ${nodeKey}: previous timestamps are missing`);

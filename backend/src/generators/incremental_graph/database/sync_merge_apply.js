@@ -73,13 +73,7 @@ async function applyNodeDecisions(
             }));
         }
         if (directlyReloweredNodes.has(nodeKey)) {
-            await writer.push(targetStorage.values.delOp(destinationId));
-            await writer.push(targetStorage.freshness.putOp(destinationId, 'missing'));
-            await writer.push(targetStorage.valid.delOp(destinationId));
-            await writer.push(targetStorage.timestamps.putOp(destinationId, {
-                createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
-                modifiedAt: sourceTimestamp.modifiedAt,
-            }));
+            await writer.pushAll(buildDeleteNodeOps(targetStorage, destinationId));
         }
 
         if (
@@ -107,8 +101,7 @@ async function applyNodeDecisions(
             ? await sourceStorage.values.get(sourceId) !== undefined && !directlyReloweredNodes.has(nodeKey)
             : await targetStorage.values.get(destinationId) !== undefined;
         if (!destinationHasCachedValue) {
-            await writer.push(targetStorage.freshness.putOp(destinationId, 'missing'));
-            await writer.push(targetStorage.valid.delOp(destinationId));
+            await writer.pushAll(buildDeleteNodeOps(targetStorage, destinationId));
         }
 
         // Equal-version freshness: when both sides have the same modifiedAt but

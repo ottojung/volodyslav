@@ -53,15 +53,16 @@ async function copyNodeOps({
     /** @type {Array<*>} */
     const ops = [];
     const sourceValue = await sourceStorage.values.get(sourceId);
-    ops.push(sourceValue === undefined
-        ? targetStorage.values.delOp(destinationId)
-        : targetStorage.values.putOp(destinationId, sourceValue));
+    if (sourceValue === undefined) {
+        throw new Error(`Cannot copy materialized node ${String(sourceId)} without a cached value`);
+    }
+    ops.push(targetStorage.values.putOp(destinationId, sourceValue));
 
     const sourceFreshness = await sourceStorage.freshness.get(sourceId);
-    ops.push(targetStorage.freshness.putOp(
-        destinationId,
-        sourceValue === undefined ? 'missing' : (sourceFreshness ?? 'potentially-outdated')
-    ));
+    if (sourceFreshness !== 'up-to-date' && sourceFreshness !== 'potentially-outdated') {
+        throw new Error(`Cannot copy materialized node ${String(sourceId)} with freshness ${String(sourceFreshness)}`);
+    }
+    ops.push(targetStorage.freshness.putOp(destinationId, sourceFreshness));
 
     const sourceTimestamps = await sourceStorage.timestamps.get(sourceId);
     if (sourceTimestamps === undefined) {

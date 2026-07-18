@@ -137,7 +137,10 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 for (const outputKey of sortedDecisionOutputKeys) {
                     const decision = decisions.get(outputKey);
                     if (!decision || decision.kind === "delete") continue;
-                    yield outputKey;
+                    const value = decision.kind === "create" || decision.kind === "override"
+                        ? await decision.value(outputKey)
+                        : await prevStorage.values.get(outputKey);
+                    if (value !== undefined) yield outputKey;
                 }
             },
             async get(key) {
@@ -146,9 +149,9 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 if (decision.kind === "create") return decision.freshness;
                 if (decision.kind === "override") return await prevStorage.freshness.get(key);
                 const oldValue = await prevStorage.values.get(key);
-                if (decision.kind === "invalidate") return oldValue === undefined ? "missing" : "potentially-outdated";
-                if (oldValue === undefined) return "missing";
-                return await prevStorage.freshness.get(key) ?? "missing";
+                if (oldValue === undefined) return undefined;
+                if (decision.kind === "invalidate") return "potentially-outdated";
+                return await prevStorage.freshness.get(key);
             },
         },
         valid: {
@@ -166,7 +169,10 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 for (const outputKey of sortedDecisionOutputKeys) {
                     const decision = decisions.get(outputKey);
                     if (!decision || decision.kind === "delete") continue;
-                    yield outputKey;
+                    const value = decision.kind === "create" || decision.kind === "override"
+                        ? await decision.value(outputKey)
+                        : await prevStorage.values.get(outputKey);
+                    if (value !== undefined) yield outputKey;
                 }
             },
             async get(key) {

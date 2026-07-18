@@ -120,11 +120,11 @@ async function finalFreshness(prevStorage, decisions, nodeIdentifier) {
     if (decision === undefined || decision.kind === "delete") return undefined;
     if (decision.kind === "create") return decision.freshness;
     if (decision.kind === "override") return await prevStorage.freshness.get(nodeIdentifier);
+    if (await prevStorage.values.get(nodeIdentifier) === undefined) return undefined;
     if (decision.kind === "invalidate") {
-        return await prevStorage.values.get(nodeIdentifier) === undefined ? "missing" : "potentially-outdated";
+        return "potentially-outdated";
     }
-    if (await prevStorage.values.get(nodeIdentifier) === undefined) return "missing";
-    return await prevStorage.freshness.get(nodeIdentifier) ?? "missing";
+    return await prevStorage.freshness.get(nodeIdentifier);
 }
 
 /**

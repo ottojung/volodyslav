@@ -1,5 +1,3 @@
-const { IdentifierLookupConflictError } = require('./replica_errors');
-
 const { nodeIdentifierToString } = require('./types');
 const { nodeIdentifierFromString } = require('./node_identifier');
 const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges } = require('./graph_scheme');
@@ -8,13 +6,27 @@ const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges } = require('./grap
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 
 /**
- * Raised when a completed merge plan would persist identifier-keyed storage
- * that is not exactly covered by its final semantic lookup.
+ * Raised when a replica violates the materialized-cache invariant.
  */
-class FinalMergeStateError extends Error {
+class ReplicaStateInvariantError extends Error {
+    /**
+     * @param {string} context
+     * @param {string} invariant
+     * @param {string | undefined} identifier
+     */
+    constructor(context, invariant, identifier) {
+        super(identifier === undefined ? `${context}: ${invariant}` : `${context}: identifier ${identifier} ${invariant}`);
+        this.name = 'ReplicaStateInvariantError';
+        this.context = context;
+        this.invariant = invariant;
+        this.identifier = identifier;
+    }
+}
+
+class FinalMergeStateError extends ReplicaStateInvariantError {
     /** @param {string} detail */
     constructor(detail) {
-        super(`Invalid final sync merge state: ${detail}`);
+        super('final sync merge state', detail, undefined);
         this.name = 'FinalMergeStateError';
         this.detail = detail;
     }
@@ -29,137 +41,144 @@ function isFinalMergeStateError(object) {
 }
 
 /**
- * Validate the identifier-keyed final state before making the replica active.
- * Materialized nodes are identified by identifiers_keys_map. Cached nodes are
- * identified by values.keys().
- * @param {SchemaStorage} targetStorage
- * @param {IdentifierLookup} finalLookup
+ * @param {unknown} object
+ * @returns {object is ReplicaStateInvariantError}
+ */
+function isReplicaStateInvariantError(object) {
+    return object instanceof ReplicaStateInvariantError;
+}
+
+/**
+ * @param {SchemaStorage} storage
+ * @returns {Promise<Set<string>>}
+ */
+async function collectValueIdentifiers(storage) {
+    const identifiers = new Set();
+    for await (const identifier of storage.values.keys()) {
+        identifiers.add(nodeIdentifierToString(identifier));
+    }
+    return identifiers;
+}
+
+/**
+ * @param {unknown} record
+ * @returns {boolean}
+ */
+function isValidTimestampRecord(record) {
+    return record !== null
+        && typeof record === 'object'
+        && typeof Reflect.get(record, 'createdAt') === 'string'
+        && typeof Reflect.get(record, 'modifiedAt') === 'string';
+}
+
+/**
+ * Validate one replica's materialized-cache invariant and validity proofs.
+ * @param {SchemaStorage} storage
+ * @param {IdentifierLookup} lookup
+ * @param {string} context
  * @returns {Promise<void>}
  */
-async function assertValidFinalMergeState(targetStorage, finalLookup) {
-    const scheme = parseGraphScheme(await targetStorage.global.get(GRAPH_SCHEME_KEY));
-    const materializedIdentifiers = new Set(finalLookup.idToKey.keys());
-    const cachedIdentifiers = new Set();
-
-    for await (const identifier of targetStorage.values.keys()) {
-        const identifierString = nodeIdentifierToString(identifier);
-        cachedIdentifiers.add(identifierString);
-        if (!materializedIdentifiers.has(identifierString)) {
-            throw new FinalMergeStateError(`cached value ${identifierString} has no lookup entry`);
-        }
-    }
+async function assertValidReplicaMaterializationState(storage, lookup, context) {
+    const scheme = parseGraphScheme(await storage.global.get(GRAPH_SCHEME_KEY));
+    const materializedIdentifiers = new Set(lookup.idToKey.keys());
+    const cachedIdentifiers = await collectValueIdentifiers(storage);
 
     for (const identifierString of materializedIdentifiers) {
         const identifier = nodeIdentifierFromString(identifierString);
-        const freshness = await targetStorage.freshness.get(identifier);
+        if (!cachedIdentifiers.has(identifierString)) {
+            throw new ReplicaStateInvariantError(context, 'has no cached value', identifierString);
+        }
+        const freshness = await storage.freshness.get(identifier);
         if (freshness === undefined) {
-            throw new FinalMergeStateError(`materialized node ${identifierString} has no freshness entry`);
+            throw new ReplicaStateInvariantError(context, 'has no freshness entry', identifierString);
         }
-        if (freshness !== 'missing' && freshness !== 'up-to-date' && freshness !== 'potentially-outdated') {
-            throw new FinalMergeStateError(`materialized node ${identifierString} has invalid freshness ${String(freshness)}`);
+        if (freshness !== 'up-to-date' && freshness !== 'potentially-outdated') {
+            throw new ReplicaStateInvariantError(context, `has invalid freshness ${String(freshness)}`, identifierString);
         }
-        if (await targetStorage.timestamps.get(identifier) === undefined) {
-            throw new FinalMergeStateError(`materialized node ${identifierString} has no timestamps entry`);
+        const timestamps = await storage.timestamps.get(identifier);
+        if (timestamps === undefined) {
+            throw new ReplicaStateInvariantError(context, 'has no timestamps entry', identifierString);
         }
-        const hasValue = cachedIdentifiers.has(identifierString);
-        if (freshness === 'missing' && hasValue) {
-            throw new FinalMergeStateError(`missing node ${identifierString} has a cached value`);
-        }
-        if (freshness !== 'missing' && !hasValue) {
-            throw new FinalMergeStateError(`${freshness} node ${identifierString} has no cached value`);
+        if (!isValidTimestampRecord(timestamps)) {
+            throw new ReplicaStateInvariantError(context, 'has structurally invalid timestamps', identifierString);
         }
     }
 
-    for await (const identifier of targetStorage.freshness.keys()) {
-        if (!materializedIdentifiers.has(nodeIdentifierToString(identifier))) {
-            throw new FinalMergeStateError(`freshness entry ${nodeIdentifierToString(identifier)} has no lookup entry`);
+    for (const identifierString of cachedIdentifiers) {
+        if (!materializedIdentifiers.has(identifierString)) {
+            throw new ReplicaStateInvariantError(context, 'has cached value but no identifier lookup entry', identifierString);
         }
     }
-    for await (const identifier of targetStorage.timestamps.keys()) {
-        if (!materializedIdentifiers.has(nodeIdentifierToString(identifier))) {
-            throw new FinalMergeStateError(`timestamp entry ${nodeIdentifierToString(identifier)} has no lookup entry`);
-        }
-    }
-
-    for await (const identifier of targetStorage.valid.keys()) {
+    for await (const identifier of storage.freshness.keys()) {
         const identifierString = nodeIdentifierToString(identifier);
         if (!cachedIdentifiers.has(identifierString)) {
-            throw new FinalMergeStateError(`valid key ${identifierString} is not a cached node`);
+            throw new ReplicaStateInvariantError(context, 'has freshness entry but no cached value', identifierString);
         }
-        const validDependents = await targetStorage.valid.get(identifier) ?? [];
+    }
+    for await (const identifier of storage.timestamps.keys()) {
+        const identifierString = nodeIdentifierToString(identifier);
+        if (!cachedIdentifiers.has(identifierString)) {
+            throw new ReplicaStateInvariantError(context, 'has timestamps but no cached value', identifierString);
+        }
+    }
+
+    for await (const identifier of storage.valid.keys()) {
+        const identifierString = nodeIdentifierToString(identifier);
+        if (!cachedIdentifiers.has(identifierString)) {
+            throw new ReplicaStateInvariantError(context, 'valid key is not materialized', identifierString);
+        }
+        const validDependents = await storage.valid.get(identifier) ?? [];
         for (const dependent of validDependents) {
             const dependentString = nodeIdentifierToString(dependent);
             if (!cachedIdentifiers.has(dependentString)) {
-                throw new FinalMergeStateError(`valid[${identifierString}] references non-cached node ${dependentString}`);
+                throw new ReplicaStateInvariantError(context, `valid value references unmaterialized dependent ${dependentString}`, identifierString);
             }
-            const derivedEdges = deriveInputEdges(scheme, finalLookup, dependent);
+            const derivedEdges = deriveInputEdges(scheme, lookup, dependent);
             if (!derivedEdges.some(edge => nodeIdentifierToString(edge) === identifierString)) {
-                throw new FinalMergeStateError(`valid[${identifierString}] is not derived dependency of ${dependentString}`);
+                throw new ReplicaStateInvariantError(context, `valid value is not compatible with dependent ${dependentString}`, identifierString);
             }
         }
     }
 
     for (const identifierString of materializedIdentifiers) {
         const identifier = nodeIdentifierFromString(identifierString);
-        if (await targetStorage.freshness.get(identifier) !== 'up-to-date') continue;
-        const derivedEdges = deriveInputEdges(scheme, finalLookup, identifier);
+        if (await storage.freshness.get(identifier) !== 'up-to-date') continue;
+        const derivedEdges = deriveInputEdges(scheme, lookup, identifier);
         for (const input of derivedEdges) {
             const inputString = nodeIdentifierToString(input);
             if (!materializedIdentifiers.has(inputString)) {
-                throw new FinalMergeStateError(`up-to-date node ${identifierString} depends on non-materialized input ${inputString}`);
+                throw new ReplicaStateInvariantError(context, `is up-to-date but depends on unmaterialized input ${inputString}`, identifierString);
             }
-            if (!cachedIdentifiers.has(inputString)) {
-                throw new FinalMergeStateError(`up-to-date node ${identifierString} depends on non-cached input ${inputString}`);
-            }
-            const inputFreshness = await targetStorage.freshness.get(input);
+            const inputFreshness = await storage.freshness.get(input);
             if (inputFreshness !== 'up-to-date') {
-                throw new FinalMergeStateError(`up-to-date node ${identifierString} depends on non-up-to-date input ${inputString}`);
+                throw new ReplicaStateInvariantError(context, `is up-to-date but depends on non-up-to-date input ${inputString}`, identifierString);
             }
-            const validDependents = await targetStorage.valid.get(input) ?? [];
+            const validDependents = await storage.valid.get(input) ?? [];
             if (!validDependents.some(dependent => nodeIdentifierToString(dependent) === identifierString)) {
-                throw new FinalMergeStateError(`up-to-date node ${identifierString} lacks validity for input ${inputString}`);
+                throw new ReplicaStateInvariantError(context, `is up-to-date but lacks validity for input ${inputString}`, identifierString);
             }
         }
     }
 }
 
 /**
- * Validate pre-merge storage totality against identifiers_keys_map before
- * planning compares materialized records.
+ * Validate the identifier-keyed final state before making the replica active.
+ * @param {SchemaStorage} targetStorage
+ * @param {IdentifierLookup} finalLookup
+ * @returns {Promise<void>}
+ */
+async function assertValidFinalMergeState(targetStorage, finalLookup) {
+    await assertValidReplicaMaterializationState(targetStorage, finalLookup, 'final sync merge state');
+}
+
+/**
  * @param {SchemaStorage} storage
  * @param {IdentifierLookup} lookup
  * @param {string} context
  * @returns {Promise<void>}
  */
 async function assertLookupCoversMaterializedNodes(storage, lookup, context) {
-    for (const idString of lookup.idToKey.keys()) {
-        const id = nodeIdentifierFromString(idString);
-        const freshness = await storage.freshness.get(id);
-        if (freshness === undefined) {
-            throw new IdentifierLookupConflictError(`${context}: materialized node ${idString} has no freshness entry`);
-        }
-        if (freshness !== 'missing' && freshness !== 'up-to-date' && freshness !== 'potentially-outdated') {
-            throw new IdentifierLookupConflictError(`${context}: materialized node ${idString} has invalid freshness ${String(freshness)}`);
-        }
-        if (await storage.timestamps.get(id) === undefined) {
-            throw new IdentifierLookupConflictError(`${context}: materialized node ${idString} has no timestamps entry`);
-        }
-    }
-    for await (const id of storage.values.keys()) {
-        if (!lookup.idToKey.has(nodeIdentifierToString(id))) {
-            throw new IdentifierLookupConflictError(`${context}: cached node ${nodeIdentifierToString(id)} has no identifiers_keys_map entry`);
-        }
-    }
-    for await (const id of storage.freshness.keys()) {
-        if (!lookup.idToKey.has(nodeIdentifierToString(id))) {
-            throw new IdentifierLookupConflictError(`${context}: freshness entry ${nodeIdentifierToString(id)} has no identifiers_keys_map entry`);
-        }
-    }
-    for await (const id of storage.timestamps.keys()) {
-        if (!lookup.idToKey.has(nodeIdentifierToString(id))) {
-            throw new IdentifierLookupConflictError(`${context}: timestamp entry ${nodeIdentifierToString(id)} has no identifiers_keys_map entry`);
-        }
-    }
+    await assertValidReplicaMaterializationState(storage, lookup, context);
 }
 
 /**
@@ -169,13 +188,16 @@ async function assertLookupCoversMaterializedNodes(storage, lookup, context) {
  * @returns {Promise<void>}
  */
 async function assertMaterializedNodesHaveTimestamps(storage, lookup, context) {
-    await assertLookupCoversMaterializedNodes(storage, lookup, context);
+    await assertValidReplicaMaterializationState(storage, lookup, context);
 }
 
 module.exports = {
     assertValidFinalMergeState,
+    assertValidReplicaMaterializationState,
     assertLookupCoversMaterializedNodes,
     assertMaterializedNodesHaveTimestamps,
+    ReplicaStateInvariantError,
     FinalMergeStateError,
     isFinalMergeStateError,
+    isReplicaStateInvariantError,
 };

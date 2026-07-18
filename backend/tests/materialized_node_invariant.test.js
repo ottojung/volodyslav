@@ -22,7 +22,7 @@
 
 /* eslint jest/expect-expect: ["error", { "assertFunctionNames": ["expect", "expectInvariant"] }] */
 
-const { getRootDatabase, nodeIdentifierToString } = require("../src/generators/incremental_graph/database");
+const { getRootDatabase, nodeIdentifierToString, isReplicaStateInvariantError } = require("../src/generators/incremental_graph/database");
 const {
     createIncrementalGraph,
 } = require("../src/generators/incremental_graph");
@@ -236,4 +236,31 @@ describe("materialized node invariant", () => {
         await graph.pull("counter");
         await expectInvariant(db.getActiveIdentifierLookup(), db);
     });
+    test("active replica preparation rejects an identifier without a cached value", async () => {
+        const nodeDefs = [
+            {
+                output: "hollow",
+                inputs: [],
+                computor: async () => ({ type: "test", value: 7 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ];
+        await buildGraph(nodeDefs);
+        await graph.pull("hollow");
+
+        const identifier = db.getActiveIdentifierLookup().keyToId.values().next().value;
+        await db.getSchemaStorage().values.del(identifier);
+
+        let caught;
+        try {
+            await createIncrementalGraph(getTestCapabilities(), db, nodeDefs);
+        } catch (error) {
+            caught = error;
+        }
+        expect(isReplicaStateInvariantError(caught)).toBe(true);
+        expect(String(caught?.message)).toContain("active replica");
+        expect(String(caught?.message)).toContain("has no cached value");
+    });
+
 });

@@ -57,8 +57,7 @@ async function internalPropagateOutdated(
                 batch.freshness.put(output, "potentially-outdated");
             } else if (
                 currentFreshness !== undefined &&
-                currentFreshness !== "potentially-outdated" &&
-                currentFreshness !== "missing"
+                currentFreshness !== "potentially-outdated"
             ) {
                 /** @type {never} */
                 const freshness = currentFreshness;

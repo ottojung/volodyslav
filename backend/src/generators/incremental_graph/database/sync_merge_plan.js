@@ -268,6 +268,9 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
     }
 
+    const materializedFinalEntries = finalEntries.filter((entry) => !directlyReloweredNodes.has(entry[1]));
+    const materializedFinalIdentifierLookup = makeIdentifierLookup(materializedFinalEntries);
+
     return {
         initialDecisions,
         mergedInputsMap,
@@ -277,7 +280,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         reloweringInvalidatedNodes,
         equalVersionNeedsInvalidation,
         finalIdentifierForKey,
-        finalIdentifierLookup,
+        finalIdentifierLookup: materializedFinalIdentifierLookup,
         hasIdentifierReconciliation,
     };
 }
