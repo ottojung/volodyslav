@@ -91,7 +91,12 @@ Calling the same decision twice (except for `override` and `create`) is allowed 
 
 The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
 
-`invalidate` preserves the cached value if it exists, marks cached nodes as `"potentially-outdated"`, preserves `modifiedAt`, and does not preserve incoming or outgoing valid flags for the invalidated node. This is a conservative/hard invalidation: the clean-cache claim for the node is withdrawn.
+`invalidate` preserves the cached value if it exists, marks cached nodes as
+`"potentially-outdated"`, preserves `modifiedAt`, and does not preserve
+incoming or outgoing valid flags for the invalidated node. A missing node
+remains missing: invalidation does not create a value or rewrite its freshness.
+This is a conservative/hard invalidation: an existing clean-cache claim is
+withdrawn.
 
 `create(..., "up-to-date")` is a clean-cache assertion. The migration validates this assertion before writing the migrated state.
 `create(..., "potentially-outdated")` seeds a cached value without claiming it is clean.
@@ -100,7 +105,11 @@ The intended use case is format migration: the database version changes the seri
 
 #### INVALIDATE → propagate INVALIDATE downstream
 
-When a node is invalidated, all its dependents are automatically marked `INVALIDATE` (recursively), unless they are already `DELETE`d.  If a dependent already has a `KEEP` or `OVERRIDE` decision, `DecisionConflictError` is thrown immediately.
+When a node is invalidated, its cached dependents are automatically marked
+`INVALIDATE` (recursively), unless they are already `DELETE`d. Missing
+dependents are skipped and remain missing; propagation does not create cached
+values for them. If a cached dependent already has a `KEEP` or `OVERRIDE`
+decision, `DecisionConflictError` is thrown immediately.
 
 #### DELETE → propagate DELETE downstream (deferred, fan-in strict)
 

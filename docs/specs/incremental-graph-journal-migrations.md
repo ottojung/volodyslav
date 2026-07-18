@@ -91,9 +91,15 @@ nothing in either case.
 
 ### `storage.invalidate`
 
-Marks a node for recomputation in the new version by setting its freshness to `potentially-outdated`.
+Marks a cached node for recomputation in the new version by preserving its
+value and setting its freshness to `potentially-outdated`. A missing node
+remains missing.
 
-REQ-JM-03: `storage.invalidate` MUST emit an `invalidate` journal entry when it causes a node in the target migrated state to transition from `up-to-date` to `potentially-outdated`. This mirrors REQ-JE-07 and REQ-JE-07b for runtime freshness transitions. If the node was already `potentially-outdated`, no journal entry is emitted (mirroring the same rule for runtime cascading invalidation).
+REQ-JM-03: `storage.invalidate` MUST emit an `invalidate` journal entry when it
+causes a cached node in the target migrated state to transition from
+`up-to-date` to `potentially-outdated`. It preserves that cached value. If the
+node was already `potentially-outdated`, or if it was missing, no journal entry
+is emitted and its state is unchanged.
 
 ### `storage.create`
 
@@ -124,10 +130,11 @@ The journal distinguishes migration-originated state from ordinary graph changes
 | `pull` (first materialization) | `add` entry | New graph node |
 | `pull` (value change) | `edit` + `validate` entries | Graph recomputation changed value + freshness restored |
 | `pull` (unchanged recomputation) | `validate` entry | Freshness restored, value unchanged |
+| `pull` (missing-node recomputation) | contiguous `edit` + `validate` entries | Cached value established for the existing identifier, then freshness restored |
 | `invalidate` (standalone) | `invalidate` entry | Freshness downgrade |
 | `storage.keep` | no entry | Identity-preserving copy |
 | `storage.override` | no entry | Semantic-preserving representation rewrite; preserves freshness and does not emit a journal entry |
-| `storage.invalidate` | conditional `invalidate` entry | Emitted only when freshness changes from `up-to-date` to `potentially-outdated`. An already potentially outdated node emits nothing. |
+| `storage.invalidate` | conditional `invalidate` entry | Preserves a cached value and emits only for `up-to-date` → `potentially-outdated`; an already stale cached node or a missing node remains unchanged and emits nothing. |
 | `storage.create` | `add` entry | Intentional new node creation |
 | `storage.delete` | `delete` entry | Node deleted by migration |
 | Synchronization | existing events copied/reappended | Cross-host reconciliation (no new events created) |

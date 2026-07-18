@@ -114,7 +114,7 @@ The schema implicitly defines infinitely many dependency edges—one set for eac
 The public API requires both the `nodeName` (functor) and bindings to address a specific node:
 
 * `pull(nodeName, bindings)` — Evaluates the node instance identified by `NodeName` and `BindingEnvironment`
-* `invalidate(nodeName, bindings)` — Marks the node instance as potentially-outdated, triggering recomputation on next pull
+* `invalidate(nodeName, bindings)` — Marks a cached node instance as potentially-outdated, triggering recomputation on next pull; a missing node remains missing
 
 **For arity-0 nodes** (nodes with no arguments like `all_events`):
 * `pull("all_events", [])` and `pull("all_events")` are equivalent
@@ -430,8 +430,10 @@ Implementations MAY use any strategy to achieve property PROP-03 (e.g., memoizat
 
 **Effects:**
 1. Create `NodeKey` from `nodeName@bindings`
-2. Mark that node instance as `potentially-outdated`
-3. Mark all materialized transitive dependents as `potentially-outdated`
+2. If that node has a cached value, preserve the value and mark it
+   `potentially-outdated`; if it is missing, leave it missing
+3. Mark cached materialized transitive dependents as `potentially-outdated`;
+   skip missing dependents, which remain missing
 
 **Important:** `invalidate()` does NOT write a value. Values are provided by computors when nodes are pulled.
 
@@ -510,9 +512,16 @@ interface IncrementalGraph {
 **REQ-IFACE-03:** For compound-expressions (arity > 0), `bindings` MUST be provided with length matching the expression arity.
 
 **REQ-IFACE-04 (Inspection API):** Implementations MUST provide the inspection interface methods:
-* `getFreshness(nodeName, bindings?)` — Returns the freshness state of a specific node instance. Returns `"missing"` for unmaterialized nodes.
-* `getValue(nodeName, bindings?)` — Returns the currently stored value for a node instance without triggering recomputation, or `undefined` if the node has never been materialized.
-* `listMaterializedNodes()` — Returns an array of tuples `[NodeName, BindingEnvironment]` for all materialized node instances.
+* `getFreshness(nodeName, bindings?)` — Returns the freshness state of a
+  specific node instance. It returns `"missing"` both for an unmaterialized
+  semantic key and for a materialized identifier whose cached value is absent.
+* `getValue(nodeName, bindings?)` — Returns the currently stored value without
+  triggering recomputation, or `undefined` for both an unmaterialized key and a
+  materialized node whose cached value is absent.
+* `listMaterializedNodes()` — Returns an array of tuples
+  `[NodeName, BindingEnvironment]` for all identifier-registry entries. It
+  therefore distinguishes a materialized missing node from an unmaterialized
+  semantic key when used with the two inspection methods above.
 * `getSchemas()` — Returns the list of compiled node schemas registered with this graph.
 * `getSchemaByHead(nodeName)` — Returns the compiled schema for the given node name, or `null` if no such schema exists.
 * `getDbVersion()` — Returns the version string used for storage namespacing.
@@ -671,7 +680,10 @@ graph state across host branches is specified in a separate document:
 
 ### 4.2 Invariants
 
-**INV-01 (Outdated Downstream):** If node instance `N@B` is `potentially-outdated`, all transitive dependents of `N@B` that have been previously materialized (pulled or invalidated) are also `potentially-outdated`.
+**INV-01 (Outdated Downstream):** If node instance `N@B` is
+`potentially-outdated`, every cached transitive dependent of `N@B` that has
+been materialized is also `potentially-outdated`. A materialized dependent
+without a cached value remains `missing`.
 
 **INV-02 (Up-to-Date Upstream):** If node instance `N@B` is `up-to-date`, all transitive dependencies of `N@B` are also `up-to-date`.
 
@@ -764,4 +776,3 @@ Dynamically-pulled nodes are not part of the flag-based validity algorithm. They
 performed during a computor's execution and do not affect the structural dependency graph.
 
 ---
-

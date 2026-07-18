@@ -305,23 +305,23 @@ synchronization specification:
 The final identifier lookup maps final storage identifiers to semantic keys.
 It must be bijective.
 
-**DEF-SYNC-08 (Direct relowering):** A final node is directly relowered when
-the source-side dependency identifiers used by its stored value differ from the
-final lowered dependency identifiers. This occurs when the node's structural
-source side uses different storage identifiers for its inputs than the final
-merged graph.
+**DEF-SYNC-08 (Direct relowering):** A candidate value origin is directly
+relowered when the dependency identifiers used by that source's cached value
+differ from the canonical final identifiers in the lowered graph. Relowering is
+evaluated independently for every member of `candidateValueOrigins(K)`.
 
 **REQ-SYNC-10 (Direct relowering rules):**
 
-1. Directly relowered nodes MUST NOT remain `up-to-date`.
-2. Directly relowered nodes MUST NOT preserve their stored value as a valid
-   value for final freshness.
-3. Directly relowered nodes SHOULD have their stored value deleted, because the
-   system does not have a provenance proof that the stored value is valid for
-   the final lowered inputs.
-4. All materialized descendants of a directly relowered node MUST become
-   `potentially-outdated` unless independently recomputed later outside
-   synchronization (by `pull()`).
+1. A directly relowered origin is removed from the candidate's surviving
+   origin set and cannot support final freshness or validity proofs.
+2. If no valid origin remains, the candidate cached value MUST be removed and
+   its canonical identifier becomes a materialized missing node.
+3. If another valid origin for the same canonical event remains, that origin
+   may preserve the shared candidate semantic value subject to all other graph
+   eligibility rules.
+4. Materialized descendants lacking valid proofs after relowering become
+   `potentially-outdated` when cached or `missing` when no safe cached value can
+   be retained.
 5. Synchronization MUST NOT invoke computors to repair directly relowered
    nodes.
 
@@ -351,8 +351,7 @@ only if all of the following hold:
 5. Every direct input has a validity flag for this node in the final validity
    relation.
 6. The stored value's provenance and final dependency structure justify
-   preserving it (the node was not invalidated by conflict propagation or
-   relowering).
+   preserving it (at least one candidate source origin survives relowering).
 7. No applicable latest `invalidate` exists for the winning identifier.
    Either:
    * the canonical freshness history for the winning identifier is `validate`;
@@ -392,31 +391,25 @@ event.
 
 ## 9. Value Origin and Provenance
 
-**DEF-SYNC-09 (Final value origin rules):** For each final semantic key whose
-canonical state event is `add` or `edit`:
+**DEF-SYNC-09 (Candidate and surviving value origins):** For every final
+semantic key K whose canonical state event is `add` or `edit`,
+`candidateValueOrigins(K)` is the internal, nonpersisted proof set defined in
+`incremental-graph-journal-sync.md`: it contains one source origin for each
+source whose latest state event is that exact canonical event, whose current
+identifier is the event's identifier, and which has a cached value.
 
-- Origin is `{ kind: "source", side: "target", sourceId }` only if:
-  - the final stored value exists;
-  - the canonical state event's `NodeIdentifier` maps to the local source
-    identifier for the same semantic key;
-  - the local source provided the cached value (its latest state event is
-    the canonical event);
-  - the node is not directly relowered in a way that deletes or invalidates
-    its value provenance.
-- Origin is `{ kind: "source", side: "host", sourceId }` only if:
-  - the final stored value exists;
-  - the canonical state event's `NodeIdentifier` maps to the host source
-    identifier for the same semantic key;
-  - the host source provided the cached value (its latest state event is
-    the canonical event);
-  - the node is not directly relowered in a way that deletes or invalidates
-    its value provenance.
-- Origin is `{ kind: "none" }` otherwise.
+`survivingValueOrigins(K)` is the subset whose source dependency identifiers
+match the canonical final identifiers and whose provenance remains eligible
+under all graph rules. The set may contain the target origin, the host origin,
+both origins, or no origin. It is not persisted.
 
-When both sources supply the canonical event as their latest state event
-and both have cached values, those values must be `isEqual` (see
-`incremental-graph-journal-sync.md` §Graph-value consistency). If they differ
-the merge must fail as an integrity error.
+When both sources contribute candidates, their cached values must be
+`isEqual`; otherwise synchronization fails with an integrity error. Equal
+values denote the same candidate semantic value, but equality does not create
+an origin. A missing source contributes no origin and is not compared with the
+cached value. If every canonical-event source is missing, or if no candidate
+origin survives, the canonical identifier remains materialized but missing;
+no cached value is invented and no losing state event or identifier is chosen.
 
 **REQ-SYNC-13 (Equality does not create origin):**
 
@@ -461,10 +454,10 @@ only if ALL of the following hold:
    identifier lookup.
 2. Those semantic keys both have final identifiers in
    `finalIdentifierForKey`.
-3. `valueOrigin(finalD)` is exactly `{ kind: "source", side: S, sourceId:
-   sourceD }`.
-4. `valueOrigin(finalN)` is exactly `{ kind: "source", side: S, sourceId:
-   sourceN }`.
+3. `survivingValueOrigins(key(finalD))` contains the exact origin
+   `{ kind: "source", side: S, sourceId: sourceD }`.
+4. `survivingValueOrigins(key(finalN))` contains the exact origin
+   `{ kind: "source", side: S, sourceId: sourceN }`.
 5. `finalD` is a direct structural input of `finalN` in the final lowered
    graph per `mergedInputsMap`.
 6. The final dependency edge is derived from the final graph scheme and

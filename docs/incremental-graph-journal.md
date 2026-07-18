@@ -27,7 +27,16 @@ The journal is a graph-level change record. It lets code ask questions of the fo
 
 The answer is expressed as `PossibleNodeChange` values. A `PossibleNodeChange` is the public unit of journal observation and can be passed as `since` to a later `graph.possibleMaybeChanges` call in the same API context.
 
-**This PR specifies only same-process, in-memory journal token usage.** A `PossibleNodeChange` returned during a process session is valid as `since` for subsequent calls within that same session. Within the same process, a cursor remains valid across compaction (the private index survives physical deletion of its backing entry) and across structural synchronization and cutover (notification coverage reports changes through repositioned canonical events). Persistence of these tokens across process restarts, synchronization boundaries involving heterogeneous hosts, or migration/schema boundaries, and the corresponding long-lived validity guarantees, are out of scope for this PR and deferred to a future computor/cursor-persistence specification.
+The journal specifies only same-process, in-memory token usage. A
+`PossibleNodeChange` returned during a process session is valid as `since` for
+subsequent calls within that same session. Within the same process, a cursor
+remains valid across compaction (the private index survives physical deletion
+of its backing entry) and across structural synchronization and cutover
+(notification coverage reports changes through repositioned canonical events).
+Persistence of these tokens across process restarts, synchronization boundaries
+involving heterogeneous hosts, or migration/schema boundaries, and the
+corresponding long-lived validity guarantees, are outside this journal's token
+contract.
 
 The journal is designed for incremental graph maintenance. A caller can pass a previously observed `PossibleNodeChange` as the `since` argument, or use `baselinePossibleNodeChange()` (a position less than any real journal index) to start from the beginning of the journal.
 
@@ -81,7 +90,12 @@ docs/specs/incremental-graph-journal-types.md
 
 ## Journal emission
 
-Journal entries are produced by graph operations that change the observable graph state.
+Journal entries are produced by ordinary graph and migration operations under
+the emission rules. `validate` records successful recomputation of an already
+materialized node from a non-up-to-date state, including restoration of a
+missing cached value. Structural synchronization may select stale or missing
+graph state without creating a logical event; it repositions existing
+canonical events when cursor notification is required.
 
 The journal emission rules define which IncrementalGraph operations create
 journal changes and how those changes are coordinated with graph storage
