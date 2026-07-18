@@ -79,6 +79,16 @@ const TS2 = '2024-01-01T00:00:05.000Z';
 const TS3 = '2024-01-01T00:00:09.000Z';
 
 
+// NOTE: normalizeTestReplica() silently fills in any missing cached
+// value, freshness, or timestamps entry for every identifier in the
+// lookup. This makes writeNode()/writeIdentifierLookup() convenient for
+// building *valid* fixtures, but it means they cannot be used to
+// construct or preserve an *invalid* materialization state for a
+// negative test -- the gap will be silently repaired. Use
+// writeNodeRaw()/writeIdentifierLookupRaw() below instead when a test
+// needs to construct or preserve an invalid state, applying any
+// additional corruption (e.g. storage.timestamps.del(...)) directly on
+// top.
 async function normalizeTestReplica(storage) {
     const rawLookup = await storage.global.get(IDENTIFIERS_KEY);
     const rawScheme = await storage.global.get(GRAPH_SCHEME_KEY);
@@ -133,6 +143,29 @@ async function writeNode(storage, nodeKey, modifiedAt, valuePayload) {
 async function writeIdentifierLookup(storage, entries) {
     await storage.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(makeIdentifierLookup(entries)));
     await normalizeTestReplica(storage);
+}
+
+/**
+ * Like writeNode(), but does not call normalizeTestReplica(). Use this
+ * when the test needs to construct or preserve an invalid
+ * materialization state.
+ */
+async function writeNodeRaw(storage, nodeKey, modifiedAt, valuePayload) {
+    await storage.timestamps.put(nodeKey, { createdAt: modifiedAt, modifiedAt });
+    await storage.freshness.put(nodeKey, 'up-to-date');
+    await storage.values.put(nodeKey, valuePayload ?? {});
+}
+
+/**
+ * Like writeIdentifierLookup(), but does not call normalizeTestReplica().
+ * Use this when the test needs to construct or preserve an invalid
+ * materialization state.
+ * @param {import('../src/generators/incremental_graph/database/root_database').SchemaStorage} storage
+ * @param {Array<[import('../src/generators/incremental_graph/database').NodeIdentifier, import('../src/generators/incremental_graph/database').NodeKeyString]>} entries
+ * @returns {Promise<void>}
+ */
+async function writeIdentifierLookupRaw(storage, entries) {
+    await storage.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(makeIdentifierLookup(entries)));
 }
 
 /**
@@ -3927,3 +3960,8 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 });
+
+// Unused-by-default test helpers; referenced here to suppress lint.
+// They are intentionally not called by any existing test.
+void writeNodeRaw;
+void writeIdentifierLookupRaw;
