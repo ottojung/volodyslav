@@ -1,4 +1,6 @@
 const { makeDbToDbAdapter, unifyStores } = require('./unification');
+const { ReplicaStateInvariantError } = require('./sync_merge_validation');
+const { nodeIdentifierToString } = require('./types');
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./root_database').ReplicaName} ReplicaName */
@@ -42,6 +44,7 @@ function buildDeleteNodeOps(targetStorage, identifier) {
  * @param {SchemaStorage} options.sourceStorage
  * @param {NodeIdentifier} options.sourceId
  * @param {NodeIdentifier} options.destinationId
+ * @param {{createdAt: string, modifiedAt: string}} options.sourceTimestamps - Already-read timestamps for sourceId; the caller must have verified this is defined.
  * @returns {Promise<Array<*>>}
  */
 async function copyNodeOps({
@@ -49,24 +52,24 @@ async function copyNodeOps({
     sourceStorage,
     sourceId,
     destinationId,
+    sourceTimestamps,
 }) {
     /** @type {Array<*>} */
     const ops = [];
     const sourceValue = await sourceStorage.values.get(sourceId);
     if (sourceValue === undefined) {
-        throw new Error(`Cannot copy materialized node ${String(sourceId)} without a cached value`);
+        throw new ReplicaStateInvariantError('sync merge copy', 'has no cached value', nodeIdentifierToString(sourceId));
     }
     ops.push(targetStorage.values.putOp(destinationId, sourceValue));
 
     const sourceFreshness = await sourceStorage.freshness.get(sourceId);
     if (sourceFreshness !== 'up-to-date' && sourceFreshness !== 'potentially-outdated') {
-        throw new Error(`Cannot copy materialized node ${String(sourceId)} with freshness ${String(sourceFreshness)}`);
+        throw new ReplicaStateInvariantError('sync merge copy', `has invalid freshness ${String(sourceFreshness)}`, nodeIdentifierToString(sourceId));
     }
     ops.push(targetStorage.freshness.putOp(destinationId, sourceFreshness));
 
-    const sourceTimestamps = await sourceStorage.timestamps.get(sourceId);
     if (sourceTimestamps === undefined) {
-        throw new Error(`Cannot copy materialized node ${String(sourceId)} without timestamps`);
+        throw new ReplicaStateInvariantError('sync merge copy', 'has no timestamps entry', nodeIdentifierToString(sourceId));
     }
     ops.push(targetStorage.timestamps.putOp(destinationId, sourceTimestamps));
     return ops;

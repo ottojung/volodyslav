@@ -66,6 +66,7 @@ async function applyNodeDecisions(
                 sourceStorage,
                 sourceId,
                 destinationId,
+                sourceTimestamps: sourceTimestamp,
             }));
             await writer.push(targetStorage.timestamps.putOp(destinationId, {
                 createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
