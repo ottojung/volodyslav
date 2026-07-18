@@ -11,18 +11,20 @@ Journal emission is always coordinated with the graph storage mutation that caus
 
 ---
 
-## Universal freshness-transition invariant
+## Freshness emission invariant
 
-Every actual transition from `up-to-date` to `potentially-outdated` emits an
-`invalidate` journal entry. Every actual transition from `potentially-outdated`
-to `up-to-date` emits a `validate` journal entry. Operations that leave
-freshness unchanged emit nothing.
+Every ordinary graph or migration operation that transitions an existing
+cached node from `up-to-date` to `potentially-outdated` emits `invalidate`.
+Every successful graph recomputation that transitions an already materialized
+node from a non-up-to-date state to `up-to-date` emits `validate`. The latter
+includes both `potentially-outdated → up-to-date` and
+`missing → up-to-date`.
 
-This invariant applies to every system path that performs one of these
-transitions: ordinary invalidation, cascading invalidation, migration
-`storage.invalidate`, pull recomputation, and any other future path.
-The source journal is therefore authoritative evidence of every freshness
-transition for the current node incarnation.
+Structural synchronization may conservatively select a different final
+freshness or remove a cached value without emitting a logical event. It uses
+notification-aware repositioning of an existing canonical event instead. The
+journal is authoritative evidence of operation-emitted freshness transitions;
+it is not a complete command log of synchronization-selected graph freshness.
 
 ---
 
@@ -67,13 +69,23 @@ REQ-JE-07b: An `invalidate` entry is NOT a value change — it signals that the 
 
 ### Freshness transition: `validate`
 
-REQ-JE-07c: When a node's freshness changes from `potentially-outdated` to `up-to-date`, the system MUST emit a journal entry with `action: "validate"`. This transition may occur through:
+REQ-JE-07c: When successful graph recomputation makes an already materialized
+node `up-to-date` from any non-up-to-date state, the system MUST emit a journal
+entry with `action: "validate"`. This includes both
+`potentially-outdated → up-to-date` and `missing → up-to-date`. The
+transition may occur through:
 
 - A `pull(nodeName, bindings)` that recomputes a node and returns an unchanged value (recalculating does not change the value, but the freshness transition from `potentially-outdated` to `up-to-date` is a real event).
 - A `pull(nodeName, bindings)` that recomputes a node and returns a changed value: this emits both an `edit` and a `validate` (see below for the ordering).
 - Explicit validation paths that transition a node from `potentially-outdated` to `up-to-date` outside the ordinary pull path.
+- A successful pull of a missing materialized node, which emits `edit` followed
+  contiguously by `validate`.
 
-REQ-JE-07d: A `validate` entry is NOT a value change — it signals that the node's freshness has been restored. The node's stored value and `NodeIdentifier` are unchanged by this entry alone.
+REQ-JE-07d: A `validate` entry is NOT by itself a value change — it signals
+that an already materialized node's freshness has been restored from a
+non-up-to-date state. The preceding contiguous `edit` establishes the cached
+value when the old state was missing; `validate` records the restoration to
+`up-to-date`. The `NodeIdentifier` is unchanged.
 
 REQ-JE-07e: The `validate` entry MUST be emitted in the same durable transaction as the freshness state change.
 
@@ -145,7 +157,9 @@ Migration actions have their own journal-emission rules, specified fully in `inc
 - `storage.keep` produces no journal entry.
 - `storage.override` produces no journal entry. It is a semantic-preserving representation rewrite that inherits freshness from the old record and does not propagate invalidation.
 - `storage.delete` emits a `delete` journal entry for the deleted node (but does not remove older journal entries—see `incremental-graph-journal-migrations.md`).
-- `storage.invalidate` produces a conditional `invalidate` journal entry: emitted only when it causes the target node's freshness to transition from `up-to-date` to `potentially-outdated`. An already potentially outdated node emits nothing.
+- `storage.invalidate` preserves a cached value and emits `invalidate` only for
+  `up-to-date → potentially-outdated`. An already stale cached node and a
+  missing node remain unchanged and emit nothing.
 
 ---
 
@@ -182,7 +196,6 @@ REQ-JE-18: During darkroom finalization, after assigning the event its initial `
 
 ```
 const eventId = JSON.stringify([
-    'journal-event-v1',
     hostnameToString(entry.creator),
     journalIndexToNumber(i),
 ]);
@@ -220,9 +233,13 @@ Transitioning a node's freshness from `up-to-date` to `potentially-outdated` pro
 
 ### P5a — Entry on freshness transition (validate)
 
-Transitioning a node's freshness from `potentially-outdated` to `up-to-date` produces a journal entry with `action: "validate"`. This occurs when:
+Successful recomputation that transitions an already materialized node from a
+non-up-to-date state to `up-to-date` produces a journal entry with
+`action: "validate"`. This occurs when:
 - An unchanged recomputation returns the existing value (only `validate` emitted).
 - A changed recomputation emits `edit` and `validate` in that order (contiguous indices).
+- A missing-node recomputation emits `edit` and `validate` in that order
+  (contiguous indices); the missing node cannot return `Unchanged`.
 - A cache hit emits nothing (no freshness transition occurred).
 - First materialization emits only `add` (first materialization is not a transition from `potentially-outdated`).
 
@@ -258,7 +275,7 @@ If a transaction prepares an unindexed entry, but then fails during darkroom fin
 A new ordinary or migration event assigned initial position `7` receives:
 
 ```
-eventId = JSON.stringify(['journal-event-v1', hostnameToString(host), 7])
+eventId = JSON.stringify([hostnameToString(host), 7])
 ```
 
 Entry, event ID, graph writes, and watermark `7` commit atomically. A reader that sees the entry at index 7 also sees its complete `eventId`. A reader that does not see index 7 sees no part of the event.

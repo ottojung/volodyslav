@@ -72,10 +72,9 @@ For each semantic key:
   identifiers and times tie) lexicographically greater `eventId`.
 
 The winning existing event is canonical. `add` or `edit` materializes the key
-using that event's `NodeIdentifier`. The associated graph value is the cached
-value from whichever source supplies the event as its latest state event; if
-that source has no cached value (missing), the destination is materialized but
-missing. `delete` leaves it nonmaterialized. Synchronization creates no event.
+using that event's `NodeIdentifier`; every source satisfying the canonical
+event consistency conditions may contribute to `candidateValueOrigins(K)`.
+`delete` leaves the key nonmaterialized. Synchronization creates no event.
 
 The canonical state event does not override a graph-synchronization requirement
 to delete the candidate cached value, make the node missing, or downgrade it to
@@ -87,49 +86,6 @@ rules (value provenance, dependency relowering, conservative freshness).
 For each source key, let S be its source state entry and F its source freshness
 entry from `logicalJournalView(sourceJournal, sourceH)`.
 
-#### Materialized source node
-
-Suppose a source has a materialized node with identifier `W`. The node may be
-**cached** (has a stored value, freshness is `up-to-date` or
-`potentially-outdated`) or **missing** (has no stored value, freshness is
-`"missing"`). Require:
-
-1. S exists.
-2. S.action is `add` or `edit`.
-3. S.id === W.
-
-Then validate state and freshness.
-
-**Cached source node.** When a source has a cached value for `W`, the
-following consistency checks apply.
-
-_Matching freshness event._ If F exists and F.id === W, the source graph's
-stored freshness MUST agree with F.action:
-
-```
-F.action === "invalidate" → graph freshness === "potentially-outdated"
-F.action === "validate"   → graph freshness === "up-to-date"
-```
-
-Any disagreement is a journal-integrity error.
-
-_No matching freshness event._ If F does not exist or F.id !== W, the
-current node incarnation has no recorded freshness transition. The validity
-depends on S.action:
-
-- If S.action is `add`, the stored freshness may be either `up-to-date` or
-  `potentially-outdated` — it is the node incarnation's initial freshness
-  inherited from its first materialization. Examples include ordinary first
-  materialization (normally up to date), `storage.create(..., "up-to-date")`,
-  and `storage.create(..., "potentially-outdated")`. No synthetic freshness
-  event is required.
-
-- If S.action is `edit`, the source is inconsistent. Every conforming
-  value-changing recomputation emits both `edit` and `validate`. A
-  materialized node whose latest state entry is `edit` but lacks matching
-   freshness evidence cannot establish its stored freshness under this
-   specification. Synchronization must fail.
-
 ### Source consistency matrix
 
 For each source semantic key, let:
@@ -140,66 +96,20 @@ F = source latest freshness entry
 W = source materialized NodeIdentifier (from graph storage)
 ```
 
-The following table defines whether a source is internally consistent for a
-given combination of state action, cached-value presence, and graph freshness.
+This matrix is the sole normative source-consistency rule:
 
-| State action | Cached? | Graph freshness | F exists? | F.id? | Valid? |
-|---|---|---|---|---|---|
-| `add`/`edit` | yes | `up-to-date` | yes | == W | valid (F must be `validate`) |
-| `add`/`edit` | yes | `up-to-date` | no | — | valid (S must be `add`) |
-| `add`/`edit` | yes | `up-to-date` | yes | != W | valid (older-incarnation history) |
-| `add`/`edit` | yes | `potentially-outdated` | yes | == W | valid (any F action) |
-| `add`/`edit` | yes | `potentially-outdated` | no | — | valid (S must be `add`) |
-| `add`/`edit` | yes | `potentially-outdated` | yes | != W | valid (older-incarnation history) |
-| `edit` | yes | `up-to-date` | no | — | **INVALID** |
-| `edit` | yes | `potentially-outdated` | no | — | **INVALID** |
-| `add`/`edit` | no | `missing` | any | any | valid (F is historical) |
-| `delete` | no | n/a | any | any | valid (F is historical) |
-| none | — | n/a | yes | any | **INVALID** (orphan) |
+| Source graph state | Required graph/value shape | Valid freshness-history cases | Invalid cases |
+|---|---|---|---|
+| Cached and `up-to-date` | value present; `S.action` is `add` or `edit`; `S.id === W` | matching `F.id === W` with `F.action === validate`; or no matching F when `S.action === add`; or older-incarnation F when `S.action === add` | matching latest `invalidate`; or `S.action === edit` without matching freshness history |
+| Cached and `potentially-outdated` | value present; `S.action` is `add` or `edit`; `S.id === W` | matching `invalidate`; matching `validate` followed by conservative synchronization downgrade; or no matching F / older-incarnation F when `S.action === add` | `S.action === edit` without matching freshness history |
+| Missing | value absent; freshness is `missing`; `S.action` is `add` or `edit`; `S.id === W` | F is historical only: matching `validate`, matching `invalidate`, older-incarnation F, and no F are all permitted | any violation of the required graph/value shape |
+| Nonmaterialized | no identifier or cached value | if state evidence exists, latest S is `delete`; F is historical only | materialized state evidence without materialized graph state |
+| Orphan freshness | no state event exists for the semantic key | none | any F is invalid |
 
-Additional rules:
-
-- When a cached node's graph freshness is `up-to-date` and a matching `F`
-  exists and `F.id === W`, `F.action` MUST be `validate`. A matching
-  latest `invalidate` with current graph state `up-to-date` is an integrity
-  error.
-- When a cached node's graph freshness is `potentially-outdated` and a
-  matching `F` exists and `F.id === W`, `F.action` may be `invalidate` or
-  `validate` (the latter followed by a conservative graph-freshness
-  downgrade).
-- When graph freshness is `missing`, F is historical only and does not assign
-  current freshness. A matching `validate` or `invalidate` may remain from
-  before synchronization removed the cached value.
-- When `F.id !== W`, F is history for an older incarnation and does not
-  describe W.
-- A freshness event with no state event for the semantic key (orphan
-  freshness) remains invalid.
-
-**Missing source node.** When a source has a missing node for `W`
-(freshness `"missing"`, no value), the source is consistent only if:
-
-1. S exists and S.action is `add` or `edit`.
-2. S.id === W.
-3. The missing state arose from a prior conservative synchronization or
-   other valid structural removal — not from event evidence.
-
-A missing source node with freshness `"missing"` is valid. F is historical
-only and does not assign current freshness. A matching `validate` or
-`invalidate` may remain from before the cached value was removed; that is
-permitted journal history.
-
-#### Nonmaterialized source key
-
-If the source has state evidence for the key, its latest state entry MUST be
-`delete`. A retained freshness event is historical only and does not assign
-graph freshness.
-
-#### Orphan freshness history
-
-A source freshness entry for a semantic key with no source state entry is
-invalid. Every legitimate freshness event originates from an existing node
-incarnation, and `logicalJournalView` never removes that incarnation's latest
-state entry.
+In particular, a matching `validate` does not require current graph freshness
+to remain `up-to-date`: synchronization may have conservatively downgraded it.
+Freshness history is retained operation evidence, not a complete record of
+structurally selected current freshness.
 
 #### On any consistency failure
 
@@ -277,9 +187,9 @@ another identifier. Compare candidates by later `time`, then lexicographically
 greater `eventId` on a tie. The winner is the canonical freshness history event.
 
 If neither source supplies freshness evidence for `W`, canonical freshness
-history is absent. The node's initial freshness (which may be `up-to-date` or
-`potentially-outdated`) is stored graph state, not journal history; it is
-preserved as part of the canonical graph state.
+history is absent. Graph synchronization alone evaluates candidate origins,
+source cache states, final inputs, and validity proofs to select final graph
+freshness.
 
 For a canonically deleted key, freshness never sets graph state. Preserve no
 freshness event when neither source has one; preserve the sole entry when only
@@ -482,6 +392,10 @@ event:
 
 - One absent and the other exists;
 - Both exist with different `eventId`.
+
+When final canonical freshness history is absent but a source had freshness
+history, there is no freshness event available to carry that notification; use
+the canonical state event for that source instead.
 
 When graph freshness changes from up-to-date to stale or missing but the
 canonical freshness event itself is unchanged (e.g., conservative downgrade
@@ -707,7 +621,8 @@ journal logical view: state = add W, no matching freshness event
 
 This is valid. The `add` without matching freshness evidence uses its
 associated stored initial freshness, which is `potentially-outdated`.
-Synchronization preserves this freshness.
+Graph synchronization evaluates that cached origin and may preserve stale
+freshness or conservatively make the node missing.
 
 ### T3a — Missing freshness after edit
 
@@ -795,8 +710,10 @@ This is valid. Cross-source current-freshness equality is not an integrity
 rule — two conforming sources may contain the same `add` event with no
 matching freshness event while one is up to date and the other is potentially
 outdated. The canonical freshness history is absent; final graph freshness
-follows the winning source's stored initial freshness (determined by the
-graph synchronization rules).
+is selected conservatively by graph synchronization from both source cache
+states, candidate origins, final inputs, and validity proofs. If either
+source's graph-observable result differs from the final result, the canonical
+state event is its notification carrier.
 
 ### T5d — Identical state event, consistent freshness
 
@@ -847,8 +764,9 @@ Graph values are `isEqual`. Source A stores `up-to-date` and source B stores
 `potentially-outdated` as the initial freshness (after conservative
 downgrade). This is not corruption. Graph-value equality and initial-freshness
 agreement are independent concerns — the journal does not enforce cross-source
-freshness equality. Final graph freshness follows the winning source's stored
-initial freshness as determined by the graph synchronization rules.
+freshness equality. Graph synchronization selects final freshness
+conservatively; the canonical state event provides notification to each source
+whose graph-observable result differs.
 
 ### T5h — Missing and cached copies of the same event
 
@@ -1093,8 +1011,8 @@ again. No new logical event is created.
 ### T28 — Conservative missing-state notification
 
 ```
-Source A: H = 5, E at index 5
-Source B: H = 5, E at index 5 (same canonical event)
+Source A: localH = 5, E at index 5
+Source B: remoteH = 5, E at index 5 (same canonical event)
 ```
 
 Both sources contain the same canonical state event E at index 5 and cached

@@ -18,13 +18,14 @@ The ID is created during the event's first durable commit:
 
 ```js
 const eventId = JSON.stringify([
-    'journal-event-v1',
     hostnameToString(creator),
     journalIndexToNumber(originIndex),
 ]);
 ```
 
-Use exactly a fixed-order array passed to `JSON.stringify`. No custom serialization format. No multiple event-ID variants. No optional event-ID fields.
+Use exactly the fixed-order `[creator, originIndex]` tuple passed to
+`JSON.stringify`. No version tag, custom serialization format, multiple
+event-ID variants, or optional event-ID fields.
 
 ```js
 /**
@@ -121,7 +122,9 @@ A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChan
   another actual deletion operation. Synchronization may copy or reposition an
   existing delete.
 - `'invalidate'` — a node's freshness changed from `up-to-date` to `potentially-outdated`.
-- `'validate'` — a node's freshness changed from `potentially-outdated` to `up-to-date`.
+- `'validate'` — successful recomputation made an already materialized node
+  `up-to-date` from a non-up-to-date state. This includes both
+  `potentially-outdated → up-to-date` and `missing → up-to-date`.
 
 ---
 
@@ -657,7 +660,7 @@ The journal implementation internally uses `PrivatePossibleNodeChange` (which in
 └──────────────────────────────────────────────┘
 ```
 
-`privatePossibleNodeChangeToPossibleNodeChange` is a nominal narrowing of the same runtime value. It MUST NOT discard the private fields (`id`, `key`, `creator`, `index`) required for later journal-module widening. The runtime value retains both the public projection fields (`nodeName`, `bindings`, `action`, `time`) and the private journal-module fields.
+`privatePossibleNodeChangeToPossibleNodeChange` is a nominal narrowing of the same runtime value. It MUST NOT discard the private fields (`id`, `key`, `creator`, `eventId`, `index`) required for later journal-module widening. The runtime value retains both the public projection fields (`nodeName`, `bindings`, `action`, `time`) and the private journal-module fields.
 
 `possibleNodeChangeToPrivatePossibleNodeChangeUnsafe` reverses this narrowing. It is valid only because values returned by `graph.possibleMaybeChanges` were originally created from `PrivatePossibleNodeChange` via the narrowing operation above.
 
