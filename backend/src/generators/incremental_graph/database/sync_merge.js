@@ -259,12 +259,13 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         'Starting graph merge for host'
     );
 
+    await assertValidReplicaMaterializationState(hostStorage, hostLookup, 'staged host snapshot');
+
     await copyReplicaGently(rootDatabase, fromReplica, toReplica);
 
     const targetStorage = rootDatabase.schemaStorageForReplica(toReplica);
     const targetLookup = await loadTargetLookup(targetStorage);
     assertNoIdentifierCollisions(targetLookup, hostLookup);
-    await assertValidReplicaMaterializationState(hostStorage, hostLookup, 'staged host snapshot');
     await assertValidReplicaMaterializationState(targetStorage, targetLookup, 'local synchronization source');
 
     const targetSchemeRaw = await targetStorage.global.get(GRAPH_SCHEME_KEY);
