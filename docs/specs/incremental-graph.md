@@ -475,7 +475,7 @@ interface IncrementalGraph {
   getModificationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
 
   // Inspection API (read-only)
-  getFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "unmaterialized">;
+  getFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | undefined>;
   getValue(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue | undefined>;
   listMaterializedNodes(): Promise<Array<[NodeName, BindingEnvironment]>>;
   getSchemas(): Array<CompiledNode>;
@@ -491,7 +491,7 @@ interface IncrementalGraph {
 **REQ-IFACE-03:** For compound-expressions (arity > 0), `bindings` MUST be provided with length matching the expression arity.
 
 **REQ-IFACE-04 (Inspection API):** Implementations MUST provide the inspection interface methods:
-* `getFreshness(nodeName, bindings?)` — Returns the freshness state of a specific node instance. Returns `"unmaterialized"` for unmaterialized nodes.
+* `getFreshness(nodeName, bindings?)` — Returns the freshness state of a specific node instance. Returns `undefined` when no materialization exists for that node.
 * `getValue(nodeName, bindings?)` — Returns the currently stored value for a node instance without triggering recomputation, or `undefined` if the node has never been materialized.
 * `listMaterializedNodes()` — Returns an array of tuples `[NodeName, BindingEnvironment]` for all materialized node instances.
 * `getSchemas()` — Returns the list of compiled node schemas registered with this graph.
@@ -520,7 +520,7 @@ interface IncrementalGraph {
   * identifier reconciliation occurs;
   * dependency identifiers are relowered;
   * a cached value is deleted because the old value is not valid for the final dependency structure;
-  * freshness changes between `up-to-date`, `potentially-outdated`, and `missing`.
+  * freshness changes between `up-to-date` and `potentially-outdated`; no freshness record exists for unmaterialized nodes.
 
 * Migration invalidation (`migration.md`) follows the same invariant: invalidation of a cached node does not change `modifiedAt`. Freshness and validity are the mechanisms for representing uncertainty and recomputation requirements in migration, just as they are in runtime operations.
 

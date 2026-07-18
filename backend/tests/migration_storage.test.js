@@ -12,7 +12,6 @@ const {
     isPartialDeleteFanIn,
     isSchemaCompatibility,
     isGetMissingNode,
-    isGetMissingValue,
     isCreateExistingNode,
 } = require("../src/generators/incremental_graph/migration_errors");
 const { toJsonKey } = require("./test_json_key_helper");
@@ -323,7 +322,7 @@ describe("MigrationStorage", () => {
             expect(isGetMissingNode(err)).toBe(true);
         });
 
-        test("get(materializedWithoutValue) throws GetMissingValueError", async () => {
+        test("get(materializedWithoutValue) throws ReplicaStateInvariantError", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
@@ -332,7 +331,7 @@ describe("MigrationStorage", () => {
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
             const err = await ms.get(A).catch((e) => e);
-            expect(isGetMissingValue(err)).toBe(true);
+            expect(err.name).toBe("ReplicaStateInvariantError");
         });
 
         test("get(materializedWithValue) returns old value", async () => {

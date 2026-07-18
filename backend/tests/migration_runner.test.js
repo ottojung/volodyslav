@@ -555,8 +555,7 @@ describe("runMigration", () => {
             // Set up xStorage with a node that has valid flags
             await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
             await xStorage.freshness.put(nodeKey, "up-to-date");
-            // Store a validity flag in xStorage's valid sublevel
-            await xStorage.valid.put(nodeKey, [depKey]);
+            expect(depKey).toBeDefined();
 
             const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
@@ -1825,9 +1824,7 @@ describe("error identity: exact thrown object propagates", () => {
         const nkA = toJsonKey("A");
         const nkB = toJsonKey("B");
         await populateNode(xStorage, nkA);
-        await seedSingleAGraphScheme(xStorage);
-        await populateNode(xStorage, nkB);
-        await seedSingleAGraphScheme(xStorage);
+        await populateNode(xStorage, nkB, { freshness: "potentially-outdated" });
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });

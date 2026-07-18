@@ -125,7 +125,6 @@ This means that to delete a fan-in node `D = f(B, C)`, both `B` and `C` must be 
 | `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
 | `InvalidMigrationDecisionError` | `override` or `create` called without the cache-state proof required by its API. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
-| `GetMissingValueError` | `get()` called for a node in `S` with no computed value. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 
 ---

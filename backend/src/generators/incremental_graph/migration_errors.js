@@ -217,38 +217,6 @@ function isGetMissingNode(object) {
 }
 
 /**
- * Thrown when get() is called on a materialized node that has no computed value.
- */
-class GetMissingValue extends Error {
-    /**
-     * @param {NodeIdentifier} nodeKey
-     */
-    constructor(nodeKey) {
-        super(
-            `Node ${nodeKey} is in the previous version but has no computed value`
-        );
-        this.name = "GetMissingValueError";
-        this.nodeKey = nodeKey;
-    }
-}
-
-/**
- * @param {NodeIdentifier} nodeKey
- * @returns {GetMissingValue}
- */
-function makeGetMissingValueError(nodeKey) {
-    return new GetMissingValue(nodeKey);
-}
-
-/**
- * @param {unknown} object
- * @returns {object is GetMissingValue}
- */
-function isGetMissingValue(object) {
-    return object instanceof GetMissingValue;
-}
-
-/**
  * Thrown when a materialized node has missing or corrupt dependency metadata.
  */
 class MissingDependencyMetadata extends Error {
@@ -359,8 +327,6 @@ module.exports = {
     isSchemaCompatibility,
     makeGetMissingNodeError,
     isGetMissingNode,
-    makeGetMissingValueError,
-    isGetMissingValue,
     makeMissingDependencyMetadataError,
     isMissingDependencyMetadata,
 };

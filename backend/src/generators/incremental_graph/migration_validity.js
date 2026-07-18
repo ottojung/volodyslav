@@ -97,16 +97,14 @@ function materializedDecisionStrings(decisions) {
 }
 
 /**
- * @param {ReadableMigrationStorage} prevStorage
+ * @param {ReadableMigrationStorage} _prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @param {NodeIdentifier} nodeIdentifier
  * @returns {Promise<boolean>}
  */
-async function isFinalCached(prevStorage, decisions, nodeIdentifier) {
+async function isFinalCached(_prevStorage, decisions, nodeIdentifier) {
     const decision = decisions.get(nodeIdentifier);
-    if (decision === undefined || decision.kind === "delete") return false;
-    if (decision.kind === "create" || decision.kind === "override") return true;
-    return await prevStorage.values.get(nodeIdentifier) !== undefined;
+    return decision !== undefined && decision.kind !== "delete";
 }
 
 /**
@@ -119,12 +117,8 @@ async function finalFreshness(prevStorage, decisions, nodeIdentifier) {
     const decision = decisions.get(nodeIdentifier);
     if (decision === undefined || decision.kind === "delete") return undefined;
     if (decision.kind === "create") return decision.freshness;
-    if (decision.kind === "override") return "potentially-outdated";
-    if (await prevStorage.values.get(nodeIdentifier) === undefined) return undefined;
-    if (decision.kind === "invalidate") {
-        return "potentially-outdated";
-    }
-    return "potentially-outdated";
+    if (decision.kind === "invalidate") return "potentially-outdated";
+    return await prevStorage.freshness.get(nodeIdentifier);
 }
 
 /**

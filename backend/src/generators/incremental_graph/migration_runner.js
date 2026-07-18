@@ -17,11 +17,13 @@ const {
     makeEmptyIdentifierLookup,
     parseIdentifierLookup,
     assertValidFinalMergeState,
+    assertValidReplicaMaterializationState,
     parseGraphScheme,
     GRAPH_SCHEME_KEY,
     GraphSchemeError,
     MissingGraphSchemeError,
 } = require("./database");
+const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { buildDecisionsMap, buildDesiredValid, loadMaterializedNodes } = require("./migration_validity");
@@ -104,6 +106,34 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
  * @returns {ReadableSchemaStorage}
  */
 function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersion, datetime, maxAllocatedIndex, fingerprint, graphSchemeString) {
+    const producedValues = new Map();
+
+    /**
+     * @param {NodeIdentifier} key
+     * @param {Decision} decision
+     * @returns {Promise<ComputedValue | undefined>}
+     */
+    async function readFinalValue(key, decision) {
+        if (decision.kind === "create" || decision.kind === "override") {
+            const keyString = String(key);
+            let valuePromise = producedValues.get(keyString);
+            if (valuePromise === undefined) {
+                valuePromise = decision.value(key);
+                producedValues.set(keyString, valuePromise);
+            }
+            try {
+                const value = await valuePromise;
+                if (value === null || value === undefined) {
+                    throw makeInvalidMigrationDecisionError(`Migration value producer for ${keyString} did not return a computed value`);
+                }
+                return value;
+            } finally {
+                producedValues.delete(keyString);
+            }
+        }
+        return await prevStorage.values.get(key);
+    }
+
     const sortedDecisionOutputKeys = [...decisions.keys()]
         .sort(compareNodeIdentifier);
 
@@ -115,21 +145,13 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 for (const outputKey of sortedDecisionOutputKeys) {
                     const decision = decisions.get(outputKey);
                     if (!decision || decision.kind === "delete") continue;
-                    if (decision.kind === "create" || decision.kind === "override") {
-                        yield outputKey;
-                    } else if (decision.kind === "keep" || decision.kind === "invalidate") {
-                        const v = await prevStorage.values.get(outputKey);
-                        if (v !== undefined) yield outputKey;
-                    }
+                    yield outputKey;
                 }
             },
             async get(key) {
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
-                if (decision.kind === "create" || decision.kind === "override") {
-                    return await decision.value(key);
-                }
-                return await prevStorage.values.get(key);
+                return await readFinalValue(key, decision);
             },
         },
         freshness: {
@@ -137,21 +159,15 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 for (const outputKey of sortedDecisionOutputKeys) {
                     const decision = decisions.get(outputKey);
                     if (!decision || decision.kind === "delete") continue;
-                    const value = decision.kind === "create" || decision.kind === "override"
-                        ? await decision.value(outputKey)
-                        : await prevStorage.values.get(outputKey);
-                    if (value !== undefined) yield outputKey;
+                    yield outputKey;
                 }
             },
             async get(key) {
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
                 if (decision.kind === "create") return decision.freshness;
-                if (decision.kind === "override") return "potentially-outdated";
-                const oldValue = await prevStorage.values.get(key);
-                if (oldValue === undefined) return undefined;
                 if (decision.kind === "invalidate") return "potentially-outdated";
-                return "potentially-outdated";
+                return await prevStorage.freshness.get(key);
             },
         },
         valid: {
@@ -169,10 +185,7 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                 for (const outputKey of sortedDecisionOutputKeys) {
                     const decision = decisions.get(outputKey);
                     if (!decision || decision.kind === "delete") continue;
-                    const value = decision.kind === "create" || decision.kind === "override"
-                        ? await decision.value(outputKey)
-                        : await prevStorage.values.get(outputKey);
-                    if (value !== undefined) yield outputKey;
+                    yield outputKey;
                 }
             },
             async get(key) {
@@ -338,6 +351,12 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const oldLookup = rawOldIdentifiers === undefined
                 ? makeEmptyIdentifierLookup()
                 : parseIdentifierLookup(rawOldIdentifiers, 'migration source replica');
+
+            await assertValidReplicaMaterializationState(
+                prevStorage,
+                oldLookup,
+                `migration source replica (${fromReplica})`
+            );
 
             // Load previous-version materialized nodes.
             const materializedNodes = await loadMaterializedNodes(prevStorage);

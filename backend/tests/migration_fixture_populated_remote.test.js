@@ -1,8 +1,10 @@
+const path = require("path");
 const { makeInterface } = require("../src/generators/interface");
+const { CHECKPOINT_WORKING_PATH } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubDatetime, stubLogger, stubRandomSeed } = require("./stubs");
 const { stubIncrementalDatabaseRemoteBranches } = require("./stub_incremental_database_remote");
-const { forceVersion } = require("./migration_fixture_helpers");
+const { forceVersion, assertDirectoriesExactlyEqual } = require("./migration_fixture_helpers");
 
 jest.setTimeout(30000);
 
@@ -27,6 +29,13 @@ describe("populated rendered fixture migration", () => {
         ]);
 
         const generators = makeInterface(() => capabilities);
-        await expect(generators.ensureInitialized()).rejects.toThrow("lacks validity");
+        await generators.ensureInitialized();
+        await expect(generators.getAllEvents()).resolves.toHaveLength(26);
+
+        await assertDirectoriesExactlyEqual(
+            path.join(capabilities.environment.workingDirectory(), CHECKPOINT_WORKING_PATH, "rendered", "r"),
+            path.join(__dirname, "mock-incremental-database-remote-populated", "rendered", "r"),
+            new Set(["global/version"])
+        );
     });
 });

@@ -1026,7 +1026,7 @@ describe("Incremental graph validity", () => {
             await schemaStorage.values.del(depId);
 
             await expect(graph.pull("dependent", binding)).rejects.toThrow(
-                /up-to-date node has no stored value/
+                /has no cached value/
             );
         });
     });

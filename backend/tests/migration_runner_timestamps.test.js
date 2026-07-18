@@ -333,7 +333,7 @@ describe("override decision: timestamps are preserved", () => {
         expect(result.modifiedAt).toBe(OLD_TIMESTAMP.modifiedAt);
     });
 
-    test("override without previous timestamp is rejected", async () => {
+    test("migration source without previous timestamp is rejected", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -347,7 +347,7 @@ describe("override decision: timestamps are preserved", () => {
         await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await expect(runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
-        })).rejects.toThrow("previous timestamps are missing");
+        })).rejects.toThrow("has no timestamps entry");
     });
 
     test("override preserves both createdAt and modifiedAt when they differ", async () => {

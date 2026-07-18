@@ -65,7 +65,7 @@ function makeMockInterface({
         listMaterializedNodes: jest.fn().mockResolvedValue(materialized),
         getFreshness: jest.fn().mockImplementation(async (head, args) => {
             const key = JSON.stringify({ head, args });
-            return freshness.get(key) ?? "unmaterialized";
+            return freshness.get(key) ?? undefined;
         }),
         getValue: jest.fn().mockImplementation(async (head, args) => {
             const key = JSON.stringify({ head, args });
@@ -108,7 +108,7 @@ function makeTestApp(mockGraph) {
         getSchemas: jest.fn(() => mockGraph === null ? [] : mockGraph.getSchemas()),
         getSchemaByHead: jest.fn((head) => mockGraph === null ? null : mockGraph.getSchemaByHead(head)),
         listMaterializedNodes: jest.fn(async () => mockGraph === null ? [] : await mockGraph.listMaterializedNodes()),
-        getFreshness: jest.fn(async (head, args) => mockGraph === null ? "unmaterialized" : await mockGraph.getFreshness(head, args)),
+        getFreshness: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.getFreshness(head, args)),
         getValue: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.getValue(head, args)),
         pullGraphNode: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.pull(head, args)),
         invalidateGraphNode: jest.fn(async (head, args) => mockGraph === null ? undefined : await mockGraph.invalidate(head, args)),
@@ -298,7 +298,7 @@ describe("GET /api/graph/nodes", () => {
 
     it("excludes unmaterialized nodes", async () => {
         const materialized = [["all_events", []]];
-        // freshness map has no entry for all_events → "unmaterialized"
+        // freshness map has no entry for all_events → undefined
         const graph = makeMockInterface({ materialized });
         const { app } = makeTestApp(graph);
 

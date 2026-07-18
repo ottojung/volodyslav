@@ -68,7 +68,7 @@ as the actual database key for node values, freshness, timestamps, and validity
 entries. Corresponds to `NodeIdentifier` from the volatile-consistency spec.
 
 **TERM-SYNC-08 (Identifier lookup):** Bijective mapping between storage
-identifiers and semantic node keys for materialized or known nodes. Persisted
+identifiers and semantic node keys for materialized nodes. Persisted
 as `identifiers_keys_map` in the replica's global sublevel.
 
 **TERM-SYNC-09 (Materialized node):** A node with a stored value in the

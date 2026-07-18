@@ -99,10 +99,6 @@ async function internalUnsafeInvalidate(
             return { value: undefined };
         }
 
-        if (await tx.batch.values.get(outputIdentifier) === undefined) {
-            return { value: undefined };
-        }
-
         tx.batch.freshness.put(outputIdentifier, "potentially-outdated");
         await internalPropagateOutdated(incrementalGraph, outputIdentifier, tx.batch);
 

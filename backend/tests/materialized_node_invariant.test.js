@@ -263,4 +263,100 @@ describe("materialized node invariant", () => {
         expect(String(caught?.message)).toContain("has no cached value");
     });
 
+
+    test("invalidate reads no cached value or timestamps for an existing node", async () => {
+        await buildGraph([
+            {
+                output: "source",
+                inputs: [],
+                computor: async () => ({ type: "test", value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await graph.pull("source");
+        const storage = db.getSchemaStorage();
+        const valueGet = jest.spyOn(storage.values, "get");
+        const timestampGet = jest.spyOn(storage.timestamps, "get");
+
+        await graph.invalidate("source");
+
+        expect(valueGet).not.toHaveBeenCalled();
+        expect(timestampGet).not.toHaveBeenCalled();
+    });
+
+    test("invalidate of an unmaterialized node writes no materialization records", async () => {
+        await buildGraph([
+            {
+                output: "source",
+                inputs: [],
+                computor: async () => ({ type: "test", value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        const storage = db.getSchemaStorage();
+        const valuePut = jest.spyOn(storage.values, "putOp");
+        const freshnessPut = jest.spyOn(storage.freshness, "putOp");
+        const timestampPut = jest.spyOn(storage.timestamps, "putOp");
+        const beforeIds = [...db.getActiveIdentifierLookup().idToKey.keys()];
+
+        await graph.invalidate("source");
+
+        expect([...db.getActiveIdentifierLookup().idToKey.keys()]).toEqual(beforeIds);
+        expect(valuePut).not.toHaveBeenCalled();
+        expect(freshnessPut).not.toHaveBeenCalled();
+        expect(timestampPut).not.toHaveBeenCalled();
+    });
+
+    test("getFreshness reads only lookup and freshness", async () => {
+        await buildGraph([
+            {
+                output: "source",
+                inputs: [],
+                computor: async () => ({ type: "test", value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await graph.pull("source");
+        const storage = db.getSchemaStorage();
+        const valueGet = jest.spyOn(storage.values, "get");
+        const timestampGet = jest.spyOn(storage.timestamps, "get");
+        const validGet = jest.spyOn(storage.valid, "get");
+
+        await expect(graph.getFreshness("source")).resolves.toBe("up-to-date");
+
+        expect(valueGet).not.toHaveBeenCalled();
+        expect(timestampGet).not.toHaveBeenCalled();
+        expect(validGet).not.toHaveBeenCalled();
+    });
+
+    test("getValue reads only lookup and cached value", async () => {
+        await buildGraph([
+            {
+                output: "source",
+                inputs: [],
+                computor: async () => ({ type: "test", value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await graph.pull("source");
+        const storage = db.getSchemaStorage();
+        const freshnessGet = jest.spyOn(storage.freshness, "get");
+        const timestampGet = jest.spyOn(storage.timestamps, "get");
+        const validGet = jest.spyOn(storage.valid, "get");
+
+        await expect(graph.getValue("source")).resolves.toEqual({ type: "test", value: 1 });
+
+        expect(freshnessGet).not.toHaveBeenCalled();
+        expect(timestampGet).not.toHaveBeenCalled();
+        expect(validGet).not.toHaveBeenCalled();
+    });
+
 });

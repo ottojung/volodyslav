@@ -1,6 +1,7 @@
 const { nodeIdentifierToString } = require('./types');
 const { nodeIdentifierFromString } = require('./node_identifier');
-const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges } = require('./graph_scheme');
+const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges, semanticInputKeys } = require('./graph_scheme');
+const { fromISOString } = require('../../../datetime');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -60,6 +61,15 @@ async function collectValueIdentifiers(storage) {
     return identifiers;
 }
 
+
+/**
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isParseableIsoTimestamp(value) {
+    return typeof value === 'string' && fromISOString(value).isValid;
+}
+
 /**
  * @param {unknown} record
  * @returns {boolean}
@@ -67,8 +77,8 @@ async function collectValueIdentifiers(storage) {
 function isValidTimestampRecord(record) {
     return record !== null
         && typeof record === 'object'
-        && typeof Reflect.get(record, 'createdAt') === 'string'
-        && typeof Reflect.get(record, 'modifiedAt') === 'string';
+        && isParseableIsoTimestamp(Reflect.get(record, 'createdAt'))
+        && isParseableIsoTimestamp(Reflect.get(record, 'modifiedAt'));
 }
 
 /**
@@ -133,8 +143,13 @@ async function assertValidReplicaMaterializationState(storage, lookup, context) 
             if (!cachedIdentifiers.has(dependentString)) {
                 throw new ReplicaStateInvariantError(context, `valid value references unmaterialized dependent ${dependentString}`, identifierString);
             }
-            const derivedEdges = deriveInputEdges(scheme, lookup, dependent);
-            if (!derivedEdges.some(edge => nodeIdentifierToString(edge) === identifierString)) {
+            const dependencyKey = lookup.idToKey.get(identifierString);
+            const dependentKey = lookup.idToKey.get(dependentString);
+            if (dependencyKey === undefined || dependentKey === undefined) {
+                throw new ReplicaStateInvariantError(context, `valid edge ${identifierString} -> ${dependentString} is absent from identifier lookup`, identifierString);
+            }
+            const dependentInputKeys = semanticInputKeys(scheme, lookup, dependent);
+            if (!dependentInputKeys.some(inputKey => String(inputKey) === String(dependencyKey))) {
                 throw new ReplicaStateInvariantError(context, `valid value is not compatible with dependent ${dependentString}`, identifierString);
             }
         }
@@ -180,31 +195,10 @@ async function assertValidFinalMergeState(targetStorage, finalLookup) {
     }
 }
 
-/**
- * @param {SchemaStorage} storage
- * @param {IdentifierLookup} lookup
- * @param {string} context
- * @returns {Promise<void>}
- */
-async function assertLookupCoversMaterializedNodes(storage, lookup, context) {
-    await assertValidReplicaMaterializationState(storage, lookup, context);
-}
-
-/**
- * @param {SchemaStorage} storage
- * @param {IdentifierLookup} lookup
- * @param {string} context
- * @returns {Promise<void>}
- */
-async function assertMaterializedNodesHaveTimestamps(storage, lookup, context) {
-    await assertValidReplicaMaterializationState(storage, lookup, context);
-}
 
 module.exports = {
     assertValidFinalMergeState,
     assertValidReplicaMaterializationState,
-    assertLookupCoversMaterializedNodes,
-    assertMaterializedNodesHaveTimestamps,
     ReplicaStateInvariantError,
     FinalMergeStateError,
     isFinalMergeStateError,

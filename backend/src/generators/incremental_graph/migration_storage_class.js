@@ -7,12 +7,12 @@ const {
     IDENTIFIERS_KEY,
     makeNodeIdentifier,
     deriveInputEdges,
+    ReplicaStateInvariantError,
 } = require("./database");
 const {
     makeDecisionConflictError,
     makeOverrideConflictError,
     makeGetMissingNodeError,
-    makeGetMissingValueError,
     makeUndecidedNodesError,
     makeCreateExistingNodeError,
     makeInvalidMigrationDecisionError,
@@ -140,7 +140,7 @@ class MigrationStorageClass {
         }
         const value = await this.prevStorage.values.get(nodeKey);
         if (value === undefined) {
-            throw makeGetMissingValueError(nodeKey);
+            throw new ReplicaStateInvariantError("migration get", "has no cached value", String(nodeKey));
         }
         return value;
     }
@@ -204,18 +204,6 @@ class MigrationStorageClass {
         const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
         await assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex, this.oldGraphScheme, this.newGraphScheme);
-        const oldValue = await this.prevStorage.values.get(nodeKey);
-        if (oldValue === undefined) {
-            throw makeInvalidMigrationDecisionError(`Cannot override node ${nodeKey}: materialized node is not cached`);
-        }
-        const oldFreshness = await this.prevStorage.freshness.get(nodeKey);
-        if (oldFreshness === undefined) {
-            throw makeInvalidMigrationDecisionError(`Cannot override node ${nodeKey}: previous freshness is missing`);
-        }
-        const oldTimestamps = await this.prevStorage.timestamps.get(nodeKey);
-        if (oldTimestamps === undefined) {
-            throw makeInvalidMigrationDecisionError(`Cannot override node ${nodeKey}: previous timestamps are missing`);
-        }
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "override") {

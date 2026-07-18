@@ -33,6 +33,7 @@ const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = requi
 const { isUnchanged } = require("./unchanged");
 const {
     nodeIdentifierToString,
+    ReplicaStateInvariantError,
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
 const { normalizeInputEdges } = require("./database");
@@ -198,6 +199,9 @@ async function internalMaybeRecalculate(
     const batch = tx.batch;
     const nodeIdentifier = nodeDefinition.outputIdentifier;
     const oldValue = await batch.values.get(nodeIdentifier);
+    if (nodeDefinition.alreadyMaterialized === true && oldValue === undefined) {
+        throw new ReplicaStateInvariantError("pull", "has no cached value", nodeIdentifierToString(nodeIdentifier));
+    }
 
     /** @type {Array<ComputedValue>} */
     const inputValues = [];

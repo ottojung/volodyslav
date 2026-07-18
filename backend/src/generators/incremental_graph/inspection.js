@@ -22,7 +22,7 @@ const {
 } = require("./database");
 const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError, makeMissingTimestampError } = require("./errors");
-const { deserializeNodeKey, serializeNodeKey } = require("./database");
+const { deserializeNodeKey, serializeNodeKey, ReplicaStateInvariantError } = require("./database");
 const { fromISOString } = require("../../datetime");
 const { daytimeActivity } = require("./lock");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
@@ -31,7 +31,7 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
  * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @param {string} head
  * @param {Array<ConstValue>} [bindings=[]]
- * @returns {Promise<"up-to-date" | "potentially-outdated" | "unmaterialized">}
+ * @returns {Promise<"up-to-date" | "potentially-outdated" | undefined>}
  */
 async function internalGetFreshness(
     incrementalGraph,
@@ -51,11 +51,14 @@ async function internalGetFreshness(
         const concreteKey = serializeNodeKey(nodeKey);
         const nodeIdentifier = incrementalGraph.rootDatabase.nodeKeyToId(concreteKey);
         if (nodeIdentifier === undefined) {
-            return "unmaterialized";
+            return undefined;
         }
         const freshness = await incrementalGraph.storage.freshness.get(nodeIdentifier);
         if (freshness === undefined) {
-            return "unmaterialized";
+            throw new ReplicaStateInvariantError("freshness inspection", "has no freshness entry", nodeIdentifierToString(nodeIdentifier));
+        }
+        if (freshness !== "up-to-date" && freshness !== "potentially-outdated") {
+            throw new ReplicaStateInvariantError("freshness inspection", `has invalid freshness ${String(freshness)}`, nodeIdentifierToString(nodeIdentifier));
         }
         return freshness;
     });
@@ -83,7 +86,11 @@ async function internalGetValue(incrementalGraph, head, bindings = []) {
         if (nodeIdentifier === undefined) {
             return undefined;
         }
-        return await incrementalGraph.storage.values.get(nodeIdentifier);
+        const value = await incrementalGraph.storage.values.get(nodeIdentifier);
+        if (value === undefined) {
+            throw new ReplicaStateInvariantError("value inspection", "has no cached value", nodeIdentifierToString(nodeIdentifier));
+        }
+        return value;
     });
 }
 
@@ -164,7 +171,7 @@ async function internalGetCreationTime(
         }
         const record = await incrementalGraph.storage.timestamps.get(nodeIdentifier);
         if (record === undefined) {
-            throw makeMissingTimestampError(concreteKey);
+            throw new ReplicaStateInvariantError("creation-time inspection", "has no timestamps entry", nodeIdentifierToString(nodeIdentifier));
         }
         return fromISOString(record.createdAt);
     });
@@ -199,7 +206,7 @@ async function internalGetModificationTime(
         }
         const record = await incrementalGraph.storage.timestamps.get(nodeIdentifier);
         if (record === undefined) {
-            throw makeMissingTimestampError(concreteKey);
+            throw new ReplicaStateInvariantError("modification-time inspection", "has no timestamps entry", nodeIdentifierToString(nodeIdentifier));
         }
         return fromISOString(record.modifiedAt);
     });

@@ -47,8 +47,7 @@ const { LAST_NODE_INDEX_KEY } = require('./root_database');
 const { buildMergePlan } = require('./sync_merge_plan');
 const {
     assertValidFinalMergeState,
-    assertLookupCoversMaterializedNodes,
-    assertMaterializedNodesHaveTimestamps,
+    assertValidReplicaMaterializationState,
     FinalMergeStateError,
     isFinalMergeStateError,
 } = require('./sync_merge_validation');
@@ -265,10 +264,8 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const targetStorage = rootDatabase.schemaStorageForReplica(toReplica);
     const targetLookup = await loadTargetLookup(targetStorage);
     assertNoIdentifierCollisions(targetLookup, hostLookup);
-    await assertLookupCoversMaterializedNodes(hostStorage, hostLookup, 'staged host snapshot');
-    await assertMaterializedNodesHaveTimestamps(hostStorage, hostLookup, 'staged host snapshot');
-    await assertLookupCoversMaterializedNodes(targetStorage, targetLookup, 'merge target replica');
-    await assertMaterializedNodesHaveTimestamps(targetStorage, targetLookup, 'merge target replica');
+    await assertValidReplicaMaterializationState(hostStorage, hostLookup, 'staged host snapshot');
+    await assertValidReplicaMaterializationState(targetStorage, targetLookup, 'local synchronization source');
 
     const targetSchemeRaw = await targetStorage.global.get(GRAPH_SCHEME_KEY);
     const hostSchemeRaw = await hostStorage.global.get(GRAPH_SCHEME_KEY);

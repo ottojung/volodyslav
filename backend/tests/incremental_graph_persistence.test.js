@@ -199,7 +199,7 @@ describe("Incremental graph persistence and restart", () => {
 
             await graph1.invalidate("source");
 
-            expect(await graph1.getFreshness("source")).toBe("unmaterialized");
+            expect(await graph1.getFreshness("source")).toBeUndefined();
             expect(await graph1.listMaterializedNodes()).toEqual([]);
             expect(await getPersistedIdentifiersKeysMap(graph1)).toEqual(before);
 
@@ -208,7 +208,7 @@ describe("Incremental graph persistence and restart", () => {
             const db2 = await getRootDatabase(capabilities);
             const graph2 = await createIncrementalGraph(capabilities, db2, schemas);
 
-            expect(await graph2.getFreshness("source")).toBe("unmaterialized");
+            expect(await graph2.getFreshness("source")).toBeUndefined();
             expect(await graph2.listMaterializedNodes()).toEqual([]);
             expect(await getPersistedIdentifiersKeysMap(graph2)).toEqual(before);
 
@@ -237,8 +237,8 @@ describe("Incremental graph persistence and restart", () => {
 
             await graph.invalidate("derived");
 
-            expect(await graph.getFreshness("source")).toBe("unmaterialized");
-            expect(await graph.getFreshness("derived")).toBe("unmaterialized");
+            expect(await graph.getFreshness("source")).toBeUndefined();
+            expect(await graph.getFreshness("derived")).toBeUndefined();
             expect(await graph.listMaterializedNodes()).toEqual([]);
 
             await db.close();
