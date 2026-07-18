@@ -119,12 +119,12 @@ async function finalFreshness(prevStorage, decisions, nodeIdentifier) {
     const decision = decisions.get(nodeIdentifier);
     if (decision === undefined || decision.kind === "delete") return undefined;
     if (decision.kind === "create") return decision.freshness;
-    if (decision.kind === "override") return await prevStorage.freshness.get(nodeIdentifier);
+    if (decision.kind === "override") return "potentially-outdated";
     if (await prevStorage.values.get(nodeIdentifier) === undefined) return undefined;
     if (decision.kind === "invalidate") {
         return "potentially-outdated";
     }
-    return await prevStorage.freshness.get(nodeIdentifier);
+    return "potentially-outdated";
 }
 
 /**

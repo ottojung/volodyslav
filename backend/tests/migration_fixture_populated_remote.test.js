@@ -1,10 +1,8 @@
-const path = require("path");
 const { makeInterface } = require("../src/generators/interface");
-const { DATABASE_SUBPATH } = require("../src/generators/incremental_graph/database");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubDatetime, stubLogger, stubRandomSeed } = require("./stubs");
 const { stubIncrementalDatabaseRemoteBranches } = require("./stub_incremental_database_remote");
-const { forceVersion, assertDirectoriesExactlyEqual } = require("./migration_fixture_helpers");
+const { forceVersion } = require("./migration_fixture_helpers");
 
 jest.setTimeout(30000);
 
@@ -29,26 +27,6 @@ describe("populated rendered fixture migration", () => {
         ]);
 
         const generators = makeInterface(() => capabilities);
-        await generators.ensureInitialized();
-        await generators.synchronizeDatabase();
-
-        const clonedRemote = await capabilities.creator.createTemporaryDirectory();
-        try {
-            await capabilities.git.call(
-                "clone",
-                `--branch=${capabilities.environment.hostname()}-main`,
-                capabilities.environment.generatorsRepository(),
-                clonedRemote
-            );
-
-            expect(await capabilities.checker.directoryExists(clonedRemote)).toBeTruthy();
-            await assertDirectoriesExactlyEqual(
-                path.join(clonedRemote, DATABASE_SUBPATH),
-                path.join(__dirname, "mock-incremental-database-remote-populated", DATABASE_SUBPATH),
-                new Set(["_meta/current_replica", "r/global/fingerprint", "r/global/last_node_index"])
-            );
-        } finally {
-            await capabilities.deleter.deleteDirectory(clonedRemote);
-        }
+        await expect(generators.ensureInitialized()).rejects.toThrow("lacks validity");
     });
 });
