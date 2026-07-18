@@ -26,11 +26,15 @@ const validationActual = jest.requireActual('../src/generators/incremental_graph
 jest.mock('../src/generators/incremental_graph/database/sync_merge_validation', () => ({
     ...jest.requireActual('../src/generators/incremental_graph/database/sync_merge_validation'),
     assertValidFinalMergeState: jest.fn(),
+    assertValidReplicaMaterializationState: jest.fn(),
 }));
 const {
     assertValidFinalMergeState,
+    assertValidReplicaMaterializationState,
     FinalMergeStateError,
     isFinalMergeStateError,
+    ReplicaStateInvariantError,
+    isReplicaStateInvariantError,
 } = require("../src/generators/incremental_graph/database/sync_merge_validation");
 const {
     makeIdentifierLookup,
@@ -263,6 +267,9 @@ function makeSimpleMigrationSetup({ prevVersion = "1.0.0", currentVersion = "2.0
 beforeEach(() => {
     assertValidFinalMergeState.mockImplementation(
         (storage, lookup) => validationActual.assertValidFinalMergeState(storage, lookup)
+    );
+    assertValidReplicaMaterializationState.mockImplementation(
+        (storage, lookup, context) => validationActual.assertValidReplicaMaterializationState(storage, lookup, context)
     );
 });
 
@@ -1665,11 +1672,11 @@ describe("migration validation", () => {
         expect(mock.setCurrentReplicaPointerCalled).toBe(true);
     });
 
-    test("migration calls assertValidFinalMergeState before activating replica; rejection blocks activation", async () => {
-        // By mocking assertValidFinalMergeState to throw, we prove the
+    test("migration calls assertValidReplicaMaterializationState before activating replica; rejection blocks activation", async () => {
+        // By mocking assertValidReplicaMaterializationState to throw, we prove the
         // migration path calls it before setCurrentReplicaPointer.
-        assertValidFinalMergeState.mockRejectedValueOnce(
-            new FinalMergeStateError("simulated: target state invalid")
+        assertValidReplicaMaterializationState.mockRejectedValueOnce(
+            new ReplicaStateInvariantError('migration target replica', 'simulated: target state invalid', undefined)
         );
 
         const capabilities = await getTestCapabilities();
@@ -1703,8 +1710,8 @@ describe("migration validation", () => {
             caughtError = e;
         }
 
-        expect(assertValidFinalMergeState).toHaveBeenCalled();
-        expect(isFinalMergeStateError(caughtError)).toBe(true);
+        expect(assertValidReplicaMaterializationState).toHaveBeenCalled();
+        expect(isReplicaStateInvariantError(caughtError)).toBe(true);
         expect(mock.setCurrentReplicaPointerCalled).toBe(false);
     });
 });

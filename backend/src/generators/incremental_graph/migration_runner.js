@@ -16,7 +16,6 @@ const {
     LAST_NODE_INDEX_KEY,
     makeEmptyIdentifierLookup,
     parseIdentifierLookup,
-    assertValidFinalMergeState,
     assertValidReplicaMaterializationState,
     parseGraphScheme,
     GRAPH_SCHEME_KEY,
@@ -426,7 +425,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const targetLookup = rawIdentifiers === undefined
                 ? makeEmptyIdentifierLookup()
                 : parseIdentifierLookup(rawIdentifiers, 'migration target replica');
-            await assertValidFinalMergeState(toStorage, targetLookup);
+            await assertValidReplicaMaterializationState(toStorage, targetLookup, 'migration target replica');
 
             // Persist the new active replica pointer after all writes succeed.
             await rootDatabase.setCurrentReplicaPointer(toReplica);
