@@ -71,11 +71,8 @@ entries. Corresponds to `NodeIdentifier` from the volatile-consistency spec.
 identifiers and semantic node keys for materialized nodes. Persisted
 as `identifiers_keys_map` in the replica's global sublevel.
 
-**TERM-SYNC-09 (Materialized node):** A node with a stored value in the
-`values` sublevel.
-
-**TERM-SYNC-10 (Known node):** A node present in the final identifier lookup,
-whether or not it currently has a stored value.
+**TERM-SYNC-09 (Materialized node):** A node whose identifier exists in
+`identifiers_keys_map`, `values`, `freshness`, and `timestamps`.
 
 **TERM-SYNC-11 (Freshness):** Freshness state of a node: `"up-to-date"` or
 `"potentially-outdated"`.
