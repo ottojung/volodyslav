@@ -155,7 +155,9 @@ async function setupStandardGraph(storage, newHeadIndex, opts = {}) {
     await storage.freshness.put(A, "up-to-date");
     await storage.freshness.put(B, "up-to-date");
     await storage.freshness.put(C, "up-to-date");
-    await storage.freshness.put(D, opts.noValueForD ? "missing" : "up-to-date");
+    if (!opts.noValueForD) {
+        await storage.freshness.put(D, "up-to-date");
+    }
     await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
     await storage.timestamps.put(B, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
     await storage.timestamps.put(C, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });

@@ -168,7 +168,16 @@ async function assertValidReplicaMaterializationState(storage, lookup, context) 
  * @returns {Promise<void>}
  */
 async function assertValidFinalMergeState(targetStorage, finalLookup) {
-    await assertValidReplicaMaterializationState(targetStorage, finalLookup, 'final sync merge state');
+    try {
+        await assertValidReplicaMaterializationState(targetStorage, finalLookup, 'final sync merge state');
+    } catch (error) {
+        if (isReplicaStateInvariantError(error)) {
+            throw new FinalMergeStateError(error.identifier === undefined
+                ? error.invariant
+                : `identifier ${error.identifier} ${error.invariant}`);
+        }
+        throw error;
+    }
 }
 
 /**

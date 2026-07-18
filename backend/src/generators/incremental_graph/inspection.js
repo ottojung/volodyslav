@@ -31,7 +31,7 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
  * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @param {string} head
  * @param {Array<ConstValue>} [bindings=[]]
- * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
+ * @returns {Promise<"up-to-date" | "potentially-outdated" | "unmaterialized">}
  */
 async function internalGetFreshness(
     incrementalGraph,
@@ -51,11 +51,11 @@ async function internalGetFreshness(
         const concreteKey = serializeNodeKey(nodeKey);
         const nodeIdentifier = incrementalGraph.rootDatabase.nodeKeyToId(concreteKey);
         if (nodeIdentifier === undefined) {
-            return "missing";
+            return "unmaterialized";
         }
         const freshness = await incrementalGraph.storage.freshness.get(nodeIdentifier);
         if (freshness === undefined) {
-            return "missing";
+            return "unmaterialized";
         }
         return freshness;
     });

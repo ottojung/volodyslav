@@ -25,13 +25,13 @@ replacement operation in this algorithm.
 ```
 identifiers_keys_map : Map<NodeIdentifier, NodeKeyString>
 values               : Map<NodeIdentifier, Value>
-freshness            : Map<NodeIdentifier, "missing" | "potentially-outdated" | "up-to-date">
+freshness            : Map<NodeIdentifier, "potentially-outdated" | "up-to-date">
 timestamps           : Map<NodeIdentifier, { createdAt: ISOString, modifiedAt: ISOString }>
 valid                : Map<NodeIdentifier, Array<NodeIdentifier>>
 ```
 
-- `identifiers_keys_map` is the materialized node registry. A materialized node is an identity-level database record.
-- `values` is cached value storage. `values.keys()` is the cached-node set, not the materialized-node set.
+- `identifiers_keys_map`, `values`, `freshness`, and `timestamps` share the same key set. A materialized node is exactly a cached node.
+- `values` is cached value storage.
 - `freshness` is the total materialized-node freshness table.
 - `timestamps` is the total materialized-node timestamp table. `createdAt` is when the materialized node identity was first created; `modifiedAt` is a version timestamp for the stored semantic value (it advances only when the semantic value changes, not when freshness, validity, or other record metadata changes).
 - `valid` is the inverse validity relation for cached values. `valid[D]` contains dependents `N` whose cached value is known to be valid with respect to `D`'s current cached value.
@@ -39,11 +39,10 @@ valid                : Map<NodeIdentifier, Array<NodeIdentifier>>
 Terminology:
 
 ```text
-materialized node = node whose identifier exists in identifiers_keys_map
-cached node       = materialized node with an entry in values
-missing node      = materialized node without an entry in values
-fresh node        = materialized node with freshness == "up-to-date"
-stale node        = materialized node with freshness == "potentially-outdated"
+unmaterialized node = semantic node with no identifier and no cached value
+materialized node   = semantic node whose identifier exists in identifiers_keys_map, values, freshness, and timestamps
+fresh node          = materialized node with freshness == "up-to-date"
+stale node          = materialized node with freshness == "potentially-outdated"
 ```
 
 Storage invariants:
@@ -51,14 +50,13 @@ Storage invariants:
 ```text
 IdSet = keys(identifiers_keys_map)
 
+keys(values)     == IdSet
 keys(freshness)  == IdSet
 keys(timestamps) == IdSet
-keys(values)     ⊆ IdSet
-keys(valid)      ⊆ keys(values)
+keys(valid)      ⊆ IdSet
 
-freshness[id] == "missing"              ⇔ id ∉ keys(values)
-freshness[id] == "potentially-outdated" => id ∈ keys(values)
-freshness[id] == "up-to-date"           => id ∈ keys(values)
+freshness[id] == "potentially-outdated" => id ∈ IdSet
+freshness[id] == "up-to-date"           => id ∈ IdSet
 
 valid[D] contains N =>
   D ∈ keys(values)

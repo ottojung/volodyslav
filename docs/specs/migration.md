@@ -22,7 +22,7 @@ A failed migration never activates the target replica.  Failures before unificat
 
 ### Migration scope `S`
 
-`S` is the set of all nodes materialized in the previous version. A node is materialized if its identifier exists in `identifiers_keys_map`. A cached node is a materialized node with an entry in `values`; a missing node is a materialized node with freshness `"missing"` and no value; a fresh node has freshness `"up-to-date"`; a stale node has freshness `"potentially-outdated"`.
+`S` is the set of all nodes materialized in the previous version. A node is materialized if and only if its identifier exists in `identifiers_keys_map`, `values`, `freshness`, and `timestamps`. A fresh node has freshness `"up-to-date"`; a stale node has freshness `"potentially-outdated"`.
 
 After the user-supplied migration callback returns, **every node in `S` must have exactly one decision**.  Missing decisions cause `UndecidedNodesError`.
 

@@ -184,11 +184,11 @@ describe("migrate-snapshot-to-flag-validity", () => {
         writeJson(path.join(r, "freshness", "a"), "potentially-outdated");
         migrateSnapshot(root);
         expect(JSON.parse(fs.readFileSync(path.join(r, "freshness", "a"), "utf8"))).toBe("potentially-outdated");
-        expect(JSON.parse(fs.readFileSync(path.join(r, "freshness", "b"), "utf8"))).toBe("missing");
+        expect(fs.existsSync(path.join(r, "freshness", "b"))).toBe(false);
         expect(fs.readdirSync(path.join(r, "valid"))).toEqual([]);
     });
 
-    test("dependency changes before parent pull is represented by missing validity", () => {
+    test("dependency changes before parent pull is represented by absent validity", () => {
         const root = makeSnapshot({ parentFreshness: "potentially-outdated", counter: 2 });
         migrateSnapshot(root);
         expect(fs.existsSync(path.join(root, "rendered", "r", "valid", "a"))).toBe(false);

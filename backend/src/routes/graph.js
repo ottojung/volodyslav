@@ -98,7 +98,7 @@ async function handleGetNodes(capabilities, _req, res) {
     const result = [];
     for (const [head, args] of materialized) {
         const freshness = await capabilities.interface.getFreshness(head, args);
-        if (freshness !== "missing") {
+        if (freshness !== "unmaterialized") {
             const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, head, args);
             result.push({ head, args, freshness, createdAt, modifiedAt });
         }
@@ -132,7 +132,7 @@ async function handleGetNodesByHead(capabilities, req, res) {
     if (compiledNode.arity === 0) {
         // Arity-0: return single instance with value
         const freshness = await capabilities.interface.getFreshness(head, []);
-        if (freshness === "missing") {
+        if (freshness === "unmaterialized") {
             res.status(404).json({ error: `Node not materialized: ${JSON.stringify(head)}` });
             return;
         }
@@ -146,7 +146,7 @@ async function handleGetNodesByHead(capabilities, req, res) {
         for (const [nodeHead, args] of materialized) {
             if (nodeHead === head) {
                 const freshness = await capabilities.interface.getFreshness(nodeHead, args);
-                if (freshness !== "missing") {
+                if (freshness !== "unmaterialized") {
                     const { createdAt, modifiedAt } = await fetchTimestamps(capabilities.interface, nodeHead, args);
                     result.push({ head, args, freshness, createdAt, modifiedAt });
                 }
@@ -192,7 +192,7 @@ async function handleGetNodeByHeadAndArgs(capabilities, req, res) {
     }
 
     const freshness = await capabilities.interface.getFreshness(head, args);
-    if (freshness === "missing") {
+    if (freshness === "unmaterialized") {
         const displayKey = `${head}(${args.join(",")})`;
         res.status(404).json({ error: `Node not materialized: ${JSON.stringify(displayKey)}` });
         return;

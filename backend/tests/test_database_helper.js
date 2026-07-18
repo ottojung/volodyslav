@@ -1,6 +1,5 @@
 /**
- * Test helper to create a compatibility database interface.
- * This helps tests transition from old db.put() pattern to new storage pattern.
+ * Test helper to create a semantic-key database interface.
  *
  * Usage:
  *   const db = await getRootDatabase(capabilities);
@@ -8,9 +7,8 @@
  *   const graph = await createIncrementalGraph(db, graphDef);
  *   const testDb = makeTestDatabase(graph);
  *
- *   // Now use old pattern:
- *   await testDb.put("key", value);  // stores to storage.values
- *   await testDb.put("key", "up-to-date");  // stores to storage.freshness
+ *   await testDb.put("key", value);
+ *   await testDb.put("key", "up-to-date");
  */
 
 const {
@@ -203,7 +201,7 @@ function makeSemanticStorage(graph) {
 }
 
 /**
- * Create a test database interface that mimics the old Database class.
+ * Create a semantic-key test database interface.
  * @param {import('../src/generators/incremental_graph').IncrementalGraph} graph
  * @returns {{put: (key: string, value: any) => Promise<void>, del: (key: string) => Promise<void>}}
  */
@@ -221,9 +219,18 @@ function makeTestDatabase(graph) {
             const jsonKey = toJsonKey(key);
             if (value === "up-to-date" || value === "potentially-outdated") {
                 await storage.freshness.put(jsonKey, value);
-            } else {
-                await storage.values.put(jsonKey, value);
+                return;
             }
+            await storage.withBatch(async (batch) => {
+                batch.values.put(jsonKey, value);
+                if (await batch.freshness.get(jsonKey) === undefined) {
+                    batch.freshness.put(jsonKey, "potentially-outdated");
+                }
+                if (await batch.timestamps.get(jsonKey) === undefined) {
+                    const nowIso = graph.datetime.now().toISOString();
+                    batch.timestamps.put(jsonKey, { createdAt: nowIso, modifiedAt: nowIso });
+                }
+            });
         },
 
         /**
@@ -243,25 +250,26 @@ function makeTestDatabase(graph) {
             } catch (e) {
                 // Ignore if not found
             }
+            try {
+                await storage.timestamps.del(jsonKey);
+            } catch (e) {
+                // Ignore if not found
+            }
         },
     };
 }
 
 /**
- * freshnessKey is no longer needed with the new design.
- * This function now just returns the key unchanged.
- * Tests using freshnessKey("key") will pass "key" to put() with a Freshness value,
- * which makeTestDatabase() will correctly route to the freshness database.
  * @param {string} key
  * @returns {string}
- * @deprecated Use storage.freshness.put() directly instead
  */
 function freshnessKey(key) {
     return key;
 }
 
 module.exports = {
-    makeSemanticStorage,
     makeTestDatabase,
     freshnessKey,
+    makeSemanticStorage,
+    toJsonKey,
 };

@@ -135,7 +135,7 @@ function migrateSnapshot(snapshotDirectory) {
         const id = nodeIdentifierFromString(idString);
         const derivedInputs = deriveInputEdges(graphScheme, lookup, id);
         if (!cachedIds.has(idString)) {
-            nextFreshness.set(idString, "missing");
+            materializedIds.delete(idString);
             continue;
         }
         const oldFreshness = freshness.get(idString);
@@ -165,6 +165,9 @@ function migrateSnapshot(snapshotDirectory) {
 
     validateResult(graphScheme, lookup, materializedIds, nextFreshness, validObject);
 
+    writeJson(path.join(globalDirectory, "identifiers_keys_map"), [...lookup.idToKey.entries()]
+        .filter(([id]) => materializedIds.has(id))
+        .map(([id, key]) => [nodeIdentifierFromString(id), key]));
     for (const [id, state] of nextFreshness.entries()) writeJson(path.join(freshnessDirectory, id), state);
     for (const id of materializedIds) {
         const nowIso = "1970-01-01T00:00:00.000Z";
@@ -177,7 +180,7 @@ function migrateSnapshot(snapshotDirectory) {
     fs.rmSync(revdepsDirectory, { recursive: true, force: true });
     fs.rmSync(countersDirectory, { recursive: true, force: true });
 
-    validateWrittenSnapshot(replica, graphScheme, lookup);
+    validateWrittenSnapshot(replica, graphScheme, makeIdentifierLookup(readJson(path.join(globalDirectory, "identifiers_keys_map"))));
 }
 
 function validateResult(graphScheme, lookup, materializedIds, freshness, validObject) {

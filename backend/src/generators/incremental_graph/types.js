@@ -102,8 +102,8 @@
  */
 
 /**
- * Extended freshness status including missing state.
- * @typedef {'up-to-date' | 'potentially-outdated' | 'missing'} FreshnessStatus
+ * Extended freshness status including unmaterialized state.
+ * @typedef {'up-to-date' | 'potentially-outdated' | 'unmaterialized'} FreshnessStatus
  */
 
 /**
