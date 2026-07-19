@@ -53,58 +53,48 @@ async function applyNodeDecisions(
         }
         const structuralSide = decision === 'invalidate' ? initial : decision;
         const useHost = structuralSide === 'take';
-        const sourceStorage = useHost ? hostStorage : targetStorage;
         const sourceLookup = useHost ? hostLookup : targetLookup;
         const sourceId = sourceLookup.keyToId.get(String(nodeKey));
         if (sourceId === undefined) throw new IdentifierLookupConflictError(`Missing source identifier for ${String(nodeKey)}`);
 
-        const shouldCopy = decision !== 'keep' || sourceId !== destinationId;
+        if (!useHost && decision === 'keep' && sourceId === destinationId) {
+            if (equalVersionNeedsInvalidation.has(nodeKey)) {
+                await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
+            }
+            continue;
+        }
+
+        if (!useHost && decision === 'invalidate' && sourceId === destinationId) {
+            await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
+            continue;
+        }
+
+        const sourceStorage = useHost ? hostStorage : targetStorage;
         const destinationTimestamp = await targetStorage.timestamps.get(destinationId);
         const sourceTimestamp = await sourceStorage.timestamps.get(sourceId);
         if (sourceTimestamp === undefined) {
             throw new IdentifierLookupConflictError(`Source materialized node ${String(sourceId)} has no timestamps entry`);
         }
 
-        if (shouldCopy) {
-            await writer.pushAll(await copyNodeOps({
-                targetStorage,
-                sourceStorage,
-                sourceId,
-                destinationId,
-                sourceTimestamps: sourceTimestamp,
-            }));
-            await writer.push(targetStorage.timestamps.putOp(destinationId, {
-                createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
-                modifiedAt: sourceTimestamp.modifiedAt,
-            }));
-        }
+        await writer.pushAll(await copyNodeOps({
+            targetStorage,
+            sourceStorage,
+            sourceId,
+            destinationId,
+            sourceTimestamps: sourceTimestamp,
+        }));
+        await writer.push(targetStorage.timestamps.putOp(destinationId, {
+            createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
+            modifiedAt: sourceTimestamp.modifiedAt,
+        }));
         if (
             decision === 'invalidate' ||
-            hostOnlyNodesNeedingInvalidation.has(nodeKey)
+            hostOnlyNodesNeedingInvalidation.has(nodeKey) ||
+            equalVersionNeedsInvalidation.has(nodeKey)
         ) {
             await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
-            if (initial === 'take') {
-                const hostTimestamps = await hostStorage.timestamps.get(sourceId);
-                const targetId = targetLookup.keyToId.get(String(nodeKey));
-                const targetTimestamps = targetId === undefined
-                    ? undefined
-                    : await targetStorage.timestamps.get(targetId);
-                if (hostTimestamps !== undefined) {
-                    await writer.push(targetStorage.timestamps.putOp(destinationId, {
-                        createdAt: targetTimestamps?.createdAt ?? hostTimestamps.createdAt,
-                        modifiedAt: hostTimestamps.modifiedAt,
-                    }));
-                }
-            }
         }
 
-        if (equalVersionNeedsInvalidation.has(nodeKey)) {
-            await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
-        }
-
-        if (destinationTimestamp === undefined && !shouldCopy) {
-            throw new IdentifierLookupConflictError(`Destination materialized node ${String(destinationId)} has no timestamps entry`);
-        }
     }
 
     for (const [targetIdString, nodeKey] of targetLookup.idToKey.entries()) {
@@ -122,16 +112,18 @@ async function applyNodeDecisions(
 }
 
 /**
- * @param {Iterable<MergeDecision>} decisions
+ * @param {Iterable<[NodeKeyString, MergeDecision]>} decisions
+ * @param {IdentifierLookup} targetLookup
  * @returns {{ kept: number, taken: number, invalidated: number, deleted: number, hasChanges: boolean }}
  */
-function summarizeDecisions(decisions) {
+function summarizeDecisions(decisions, targetLookup) {
+    const decisionEntries = Array.from(decisions);
     let kept = 0;
     let taken = 0;
     let invalidated = 0;
     let deleted = 0;
 
-    for (const decision of decisions) {
+    for (const [, decision] of decisionEntries) {
         if (decision === 'keep') {
             kept += 1;
         } else if (decision === 'take') {
@@ -148,7 +140,7 @@ function summarizeDecisions(decisions) {
         taken,
         invalidated,
         deleted,
-        hasChanges: taken + invalidated + deleted > 0,
+        hasChanges: taken + invalidated > 0 || decisionEntries.some(([nodeKey, decision]) => decision === 'delete' && targetLookup.keyToId.has(String(nodeKey))),
     };
 }
 

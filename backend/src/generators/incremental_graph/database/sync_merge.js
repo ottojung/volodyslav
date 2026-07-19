@@ -313,7 +313,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         finalIdentifierForKey
     );
 
-    const summary = summarizeDecisions(decisions.values());
+    const summary = summarizeDecisions(decisions.entries(), targetLookup);
     const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation || equalVersionNeedsInvalidation.size > 0;
     const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
     const valueOriginByKey = await buildValueOriginByKey(

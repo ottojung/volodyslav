@@ -5,6 +5,8 @@
 const {
     nodeIdentifierToString,
     deriveInputEdges,
+    makeIdentifierLookup,
+    stringToNodeKeyString,
 } = require("./database");
 const {
     makeDecisionConflictError,
@@ -113,13 +115,27 @@ async function buildStructuralDependents(materializedNodes, oldGraphScheme, oldL
  * @param {object} ctx
  * @param {Set<NodeIdentifier>} ctx.materializedNodes
  * @param {Map<NodeIdentifier, Decision>} ctx.decisions
- * @param {import('./database/graph_scheme').GraphScheme} ctx.oldGraphScheme
+ * @param {import('./database/graph_scheme').GraphScheme} ctx.newGraphScheme
  * @param {import('./database/identifier_lookup').IdentifierLookup} ctx.oldLookup
  * @returns {Promise<void>}
  */
 async function propagateDeletes(ctx) {
-    const { materializedNodes, decisions, oldGraphScheme, oldLookup } = ctx;
-    const structuralDependents = await buildStructuralDependents(materializedNodes, oldGraphScheme, oldLookup);
+    const { materializedNodes, decisions, newGraphScheme, oldLookup } = ctx;
+    /** @type {Array<[NodeIdentifier, import('./database/types').NodeKeyString]>} */
+    const candidateEntries = [];
+    for (const nodeKey of materializedNodes) {
+        const semanticKey = oldLookup.idToKey.get(nodeIdentifierToString(nodeKey));
+        if (semanticKey !== undefined) {
+            candidateEntries.push([nodeKey, semanticKey]);
+        }
+    }
+    for (const [nodeKey, decision] of decisions) {
+        if (decision.kind === "create") {
+            candidateEntries.push([nodeKey, stringToNodeKeyString(decision.nodeKeyString)]);
+        }
+    }
+    const candidateLookup = makeIdentifierLookup(candidateEntries);
+    const structuralDependents = await buildStructuralDependents(materializedNodes, newGraphScheme, candidateLookup);
     const queue = [];
     for (const [nodeKey, decision] of decisions) {
         if (decision.kind === "delete") {
@@ -146,6 +162,7 @@ async function propagateDeletes(ctx) {
         }
     }
 }
+
 
 
 module.exports = {

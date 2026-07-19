@@ -146,7 +146,6 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
 
     /** @type {Map<NodeKeyString, NodeIdentifier>} */
     const candidateIdentifierForKey = new Map();
-    let hasIdentifierReconciliation = false;
     for (const [nodeKey, initial] of initialDecisions) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
@@ -157,9 +156,6 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             throw new IdentifierLookupConflictError(`Missing candidate identifier for ${String(nodeKey)}`);
         }
         candidateIdentifierForKey.set(nodeKey, candidateId);
-        if (targetId !== hostId && targetId !== undefined && hostId !== undefined) {
-            hasIdentifierReconciliation = true;
-        }
     }
 
     // Equal-version staleness: determined after final decisions are known,
@@ -259,6 +255,13 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         finalEntries.push([identifier, nodeKey]);
     }
     const finalIdentifierLookup = makeIdentifierLookup(finalEntries);
+    let hasIdentifierReconciliation = false;
+    for (const [nodeKey, finalId] of finalIdentifierForKey) {
+        const targetId = targetLookup.keyToId.get(String(nodeKey));
+        if (targetId !== undefined && targetId !== finalId) {
+            hasIdentifierReconciliation = true;
+        }
+    }
 
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const mergedInputsMap = new Map();

@@ -16,6 +16,29 @@ const { assertValidReplicaMaterializationState } = require('./sync_merge_validat
 /** @typedef {import('./synchronize').Capabilities} Capabilities */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 
+
+/**
+ * @param {{ keys: () => AsyncIterable<unknown> }} sublevel
+ * @returns {Promise<boolean>}
+ */
+async function hasAnyKey(sublevel) {
+    for await (const _key of sublevel.keys()) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * @param {import('./root_database').SchemaStorage} storage
+ * @returns {Promise<boolean>}
+ */
+async function hasGraphRecords(storage) {
+    return await hasAnyKey(storage.values)
+        || await hasAnyKey(storage.freshness)
+        || await hasAnyKey(storage.timestamps)
+        || await hasAnyKey(storage.valid);
+}
+
 /**
  * @param {Capabilities} capabilities
  * @param {RootDatabase} database
@@ -61,10 +84,18 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         );
     }
 
+    const targetStorage = database.schemaStorageForReplica(nextReplica);
+    const hasVersion = await targetGlobal.get('version') !== undefined;
     const hasGraphScheme = await targetGlobal.get(GRAPH_SCHEME_KEY) !== undefined;
     const rawLookup = await targetGlobal.get(IDENTIFIERS_KEY);
-    if (hasGraphScheme || rawLookup !== undefined) {
-        const targetStorage = database.schemaStorageForReplica(nextReplica);
+    const hasLookup = rawLookup !== undefined;
+    const hasRecords = await hasGraphRecords(targetStorage);
+    const genuinelyEmpty = !hasVersion && !hasGraphScheme && !hasLookup && !hasRecords;
+    const initialized = hasVersion && hasGraphScheme && hasLookup;
+    if (!genuinelyEmpty && !initialized) {
+        throw new Error('reset snapshot is neither genuinely empty nor fully initialized');
+    }
+    if (initialized) {
         const lookup = parseIdentifierLookup(rawLookup, 'reset snapshot');
         await assertValidReplicaMaterializationState(targetStorage, lookup, 'reset snapshot');
     }

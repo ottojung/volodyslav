@@ -553,6 +553,66 @@ describe("MigrationStorage", () => {
             const decisions = await ms.finalize();
             expect(decisions.get(D)?.kind).toBe("delete");
         });
+
+
+        test("delete propagation follows removed target dependency", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "B"]);
+            const A = nk("A");
+            const B = nk("B");
+            const oldScheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+                ],
+            };
+            const newScheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [] },
+                ],
+            };
+            const lookup = makeLookupFromKeys([A, B]);
+            await storage.values.put(A, DUMMY_VALUE);
+            await storage.values.put(B, DUMMY_VALUE);
+            const ms = makeMigrationStorage(storage, headIndex, [A, B], "testfingerprint", 0, oldScheme, newScheme, lookup);
+
+            await ms.delete(A);
+            await ms.invalidate(B);
+            const decisions = await ms.finalize();
+            expect(decisions.get(B)?.kind).toBe("invalidate");
+        });
+
+        test("delete propagation follows added target dependency", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "B"]);
+            const A = nk("A");
+            const B = nk("B");
+            const oldScheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [] },
+                ],
+            };
+            const newScheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+                ],
+            };
+            const lookup = makeLookupFromKeys([A, B]);
+            await storage.values.put(A, DUMMY_VALUE);
+            await storage.values.put(B, DUMMY_VALUE);
+            const ms = makeMigrationStorage(storage, headIndex, [A, B], "testfingerprint", 0, oldScheme, newScheme, lookup);
+
+            await ms.delete(A);
+            const decisions = await ms.finalize();
+            expect(decisions.get(B)?.kind).toBe("delete");
+        });
     });
 
     // -----------------------------------------------------------------------

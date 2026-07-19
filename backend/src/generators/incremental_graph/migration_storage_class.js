@@ -378,7 +378,7 @@ class MigrationStorageClass {
         await propagateDeletes({
             materializedNodes: this.materializedNodes,
             decisions: this.decisions,
-            oldGraphScheme: this.oldGraphScheme,
+            newGraphScheme: this.newGraphScheme,
             oldLookup: this.oldLookup,
         });
         this._checkCompleteness();
