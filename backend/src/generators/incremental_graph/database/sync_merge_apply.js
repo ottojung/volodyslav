@@ -75,25 +75,28 @@ async function applyNodeDecisions(
         if (sourceTimestamp === undefined) {
             throw new IdentifierLookupConflictError(`Source materialized node ${String(sourceId)} has no timestamps entry`);
         }
+        const sourceFreshness = await sourceStorage.freshness.get(sourceId);
+        if (sourceFreshness !== 'up-to-date' && sourceFreshness !== 'potentially-outdated') {
+            throw new IdentifierLookupConflictError(`Source materialized node ${String(sourceId)} has invalid freshness ${String(sourceFreshness)}`);
+        }
+        const finalFreshness = decision === 'invalidate'
+            || hostOnlyNodesNeedingInvalidation.has(nodeKey)
+            || equalVersionNeedsInvalidation.has(nodeKey)
+            ? 'potentially-outdated'
+            : sourceFreshness;
+        const finalTimestamps = {
+            createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
+            modifiedAt: sourceTimestamp.modifiedAt,
+        };
 
         await writer.pushAll(await copyNodeOps({
             targetStorage,
             sourceStorage,
             sourceId,
             destinationId,
-            sourceTimestamps: sourceTimestamp,
+            finalFreshness,
+            finalTimestamps,
         }));
-        await writer.push(targetStorage.timestamps.putOp(destinationId, {
-            createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
-            modifiedAt: sourceTimestamp.modifiedAt,
-        }));
-        if (
-            decision === 'invalidate' ||
-            hostOnlyNodesNeedingInvalidation.has(nodeKey) ||
-            equalVersionNeedsInvalidation.has(nodeKey)
-        ) {
-            await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
-        }
 
     }
 

@@ -613,6 +613,50 @@ describe("MigrationStorage", () => {
             const decisions = await ms.finalize();
             expect(decisions.get(B)?.kind).toBe("delete");
         });
+
+
+        test("delete() succeeds for node removed from target schema", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex([]);
+            const legacy = nk("LegacyNode");
+            const oldScheme = {
+                format: 1,
+                nodes: [{ head: "LegacyNode", arity: 0, inputTemplates: [] }],
+            };
+            const newScheme = { format: 1, nodes: [] };
+            const lookup = makeLookupFromKeys([legacy]);
+            await storage.values.put(legacy, DUMMY_VALUE);
+            const ms = makeMigrationStorage(storage, headIndex, [legacy], "testfingerprint", 0, oldScheme, newScheme, lookup);
+
+            await ms.delete(legacy);
+            const decisions = await ms.finalize();
+            expect(decisions.get(legacy)?.kind).toBe("delete");
+        });
+
+        test("created dependent of deleted input conflicts during finalization", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "D"]);
+            const A = nk("A");
+            const oldScheme = {
+                format: 1,
+                nodes: [{ head: "A", arity: 0, inputTemplates: [] }],
+            };
+            const newScheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "D", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+                ],
+            };
+            const lookup = makeLookupFromKeys([A]);
+            await storage.values.put(A, DUMMY_VALUE);
+            const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, oldScheme, newScheme, lookup);
+
+            await ms.delete(A);
+            await ms.create(nk("D"), () => Promise.resolve(DUMMY_VALUE), "potentially-outdated");
+            const error = await ms.finalize().catch((caught) => caught);
+            expect(isDecisionConflict(error)).toBe(true);
+        });
     });
 
     // -----------------------------------------------------------------------

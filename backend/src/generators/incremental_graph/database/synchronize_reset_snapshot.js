@@ -8,7 +8,7 @@ const {
 const { makeRootDatabase } = require('./root_database');
 const { scanFromFilesystem } = require('./render');
 const { requireValidFingerprint } = require('./fingerprint');
-const { IDENTIFIERS_KEY } = require('./identifier_lookup');
+const { IDENTIFIERS_KEY, makeEmptyIdentifierLookup } = require('./identifier_lookup');
 const { GRAPH_SCHEME_KEY } = require('./graph_scheme');
 const { parseIdentifierLookup } = require('./sync_merge_identifier_lookup');
 const { assertValidReplicaMaterializationState } = require('./sync_merge_validation');
@@ -91,12 +91,14 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
     const hasLookup = rawLookup !== undefined;
     const hasRecords = await hasGraphRecords(targetStorage);
     const genuinelyEmpty = !hasVersion && !hasGraphScheme && !hasLookup && !hasRecords;
-    const initialized = hasVersion && hasGraphScheme && hasLookup;
+    const initialized = hasVersion && hasGraphScheme;
     if (!genuinelyEmpty && !initialized) {
         throw new Error('reset snapshot is neither genuinely empty nor fully initialized');
     }
     if (initialized) {
-        const lookup = parseIdentifierLookup(rawLookup, 'reset snapshot');
+        const lookup = hasLookup
+            ? parseIdentifierLookup(rawLookup, 'reset snapshot')
+            : makeEmptyIdentifierLookup();
         await assertValidReplicaMaterializationState(targetStorage, lookup, 'reset snapshot');
     }
 

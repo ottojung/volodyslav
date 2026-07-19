@@ -7,9 +7,11 @@ const {
     deriveInputEdges,
     makeIdentifierLookup,
     stringToNodeKeyString,
+    GraphSchemeError,
 } = require("./database");
 const {
     makeDecisionConflictError,
+    makeInvalidMigrationDecisionError,
 } = require("./migration_errors");
 const {
     checkSchemaCompatibility,
@@ -135,7 +137,41 @@ async function propagateDeletes(ctx) {
         }
     }
     const candidateLookup = makeIdentifierLookup(candidateEntries);
-    const structuralDependents = await buildStructuralDependents(materializedNodes, newGraphScheme, candidateLookup);
+
+    /** @type {NodeIdentifier[]} */
+    const targetGraphNodes = [];
+    for (const nodeKey of materializedNodes) {
+        if (decisions.get(nodeKey)?.kind === "delete") continue;
+        targetGraphNodes.push(nodeKey);
+    }
+    for (const [nodeKey, decision] of decisions) {
+        if (decision.kind === "create") {
+            targetGraphNodes.push(nodeKey);
+        }
+    }
+
+    /** @type {Map<string, Set<NodeIdentifier>>} */
+    const structuralDependents = new Map();
+    for (const nodeKey of targetGraphNodes) {
+        let record;
+        try {
+            record = deriveInputEdges(newGraphScheme, candidateLookup, nodeKey);
+        } catch (error) {
+            if (error instanceof GraphSchemeError) {
+                const decision = decisions.get(nodeKey);
+                if (decision?.kind === 'create') continue;
+                throw makeInvalidMigrationDecisionError(error.message);
+            }
+            throw error;
+        }
+        for (const input of record) {
+            const inputStr = nodeIdentifierToString(input);
+            const deps = structuralDependents.get(inputStr) ?? new Set();
+            deps.add(nodeKey);
+            structuralDependents.set(inputStr, deps);
+        }
+    }
+
     const queue = [];
     for (const [nodeKey, decision] of decisions) {
         if (decision.kind === "delete") {
@@ -151,17 +187,20 @@ async function propagateDeletes(ctx) {
         const dependents = structuralDependents.get(nodeKeyStr);
         if (dependents === undefined) continue;
         for (const dep of dependents) {
-            if (!materializedNodes.has(dep)) continue;
             const existing = decisions.get(dep);
             if (existing?.kind === "delete") continue;
             if (existing !== undefined) {
                 throw makeDecisionConflictError(dep, existing.kind, "delete");
+            }
+            if (!materializedNodes.has(dep)) {
+                throw makeDecisionConflictError(dep, "create", "delete");
             }
             decisions.set(dep, { kind: "delete" });
             queue.push(dep);
         }
     }
 }
+
 
 
 
