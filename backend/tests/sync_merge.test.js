@@ -80,64 +80,13 @@ const TS3 = '2024-01-01T00:00:09.000Z';
 
 
 /**
- * Write a fully materialized node: values, freshness='up-to-date', timestamps.
+ * Write a fully materialized node with the given timestamp and optional value.
+ * Freshness is set to 'up-to-date'. Does NOT repair other nodes.
  */
-async function writeMaterializedNode(storage, nodeKey, modifiedAt, valuePayload) {
+async function writeNode(storage, nodeKey, modifiedAt, valuePayload) {
     await storage.timestamps.put(nodeKey, { createdAt: modifiedAt, modifiedAt });
     await storage.freshness.put(nodeKey, 'up-to-date');
     await storage.values.put(nodeKey, valuePayload ?? {});
-}
-
-/**
- * Set freshness to 'up-to-date' for a node that already has values + timestamps.
- */
-async function writeFreshNode(storage, nodeKey) {
-    await storage.freshness.put(nodeKey, 'up-to-date');
-}
-
-/**
- * Set freshness to 'potentially-outdated' for a node that already has values + timestamps.
- */
-async function writeStaleNode(storage, nodeKey) {
-    await storage.freshness.put(nodeKey, 'potentially-outdated');
-}
-
-/**
- * Write a forward validity edge from a source node to a dependent node.
- */
-async function writeValidityEdge(storage, sourceId, dependentId) {
-    const valid = await storage.valid.get(sourceId) ?? [];
-    if (!valid.some((d) => String(d) === String(dependentId))) {
-        await storage.valid.put(sourceId, [...valid, dependentId]);
-    }
-}
-
-/**
- * Bulk-write a complete replica fixture: lookup, all materialized nodes, and validity edges.
- * Each node entry is `{ identifier, key, modifiedAt, value, freshness? }`.
- * Each validity entry is `[sourceId, dependentId]`.
- */
-async function writeReplica(storage, { lookup, nodes, validity }) {
-    await storage.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(makeIdentifierLookup(lookup)));
-    for (const node of nodes) {
-        await writeMaterializedNode(storage, node.identifier, node.modifiedAt, node.value);
-        if (node.freshness === 'potentially-outdated') {
-            await storage.freshness.put(node.identifier, 'potentially-outdated');
-        }
-    }
-    if (validity) {
-        for (const [sourceId, dependentId] of validity) {
-            await writeValidityEdge(storage, sourceId, dependentId);
-        }
-    }
-}
-
-/**
- * Write a node into storage with a modifiedAt timestamp.
- * Does NOT repair other nodes.
- */
-async function writeNode(storage, nodeKey, modifiedAt, valuePayload) {
-    await writeMaterializedNode(storage, nodeKey, modifiedAt, valuePayload);
 }
 
 /**
@@ -150,20 +99,7 @@ async function writeIdentifierLookup(storage, entries) {
     await storage.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(makeIdentifierLookup(entries)));
 }
 
-async function writeNodeRaw(storage, nodeKey, modifiedAt, valuePayload) {
-    await storage.timestamps.put(nodeKey, { createdAt: modifiedAt, modifiedAt });
-    await storage.freshness.put(nodeKey, 'up-to-date');
-    await storage.values.put(nodeKey, valuePayload ?? {});
-}
 
-/**
- * @param {import('../src/generators/incremental_graph/database/root_database').SchemaStorage} storage
- * @param {Array<[import('../src/generators/incremental_graph/database').NodeIdentifier, import('../src/generators/incremental_graph/database').NodeKeyString]>} entries
- * @returns {Promise<void>}
- */
-async function writeIdentifierLookupRaw(storage, entries) {
-    await storage.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(makeIdentifierLookup(entries)));
-}
 
 /**
  * @param {Array<import('../src/generators/incremental_graph/database').NodeIdentifier>} nodeIdentifiers
@@ -1725,12 +1661,11 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('merge ensures required valid flag for up-to-date node even if missing before', async () => {
-        // A → B
-        // B is up-to-date
-        // valid[A] is missing B before merge
-        // merge result keeps B up-to-date (H-only C forces changes)
-        // after merge valid[A] contains B
+    test('rejects target merge when up-to-date node lacks mandatory validity proof', async () => {
+        // A → B per scheme (B depends on A).
+        // B is up-to-date in the target but valid[A] is missing B.
+        // Source validation rejects this because an up-to-date node must
+        // have its dependency registered in the input's validity record.
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -1743,35 +1678,26 @@ describe('mergeHostIntoReplica', () => {
 
             const nodeAId = nodeIdentifierFromString('74-abcdefghi');
             const nodeBId = nodeIdentifierFromString('75-abcdefghi');
-            const nodeCId = nodeIdentifierFromString('76-abcdefghi');
             const keyA = stringToNodeKeyString('{"head":"A_required_flag","args":[]}');
             const keyB = stringToNodeKeyString('{"head":"B_required_flag","args":[]}');
-            const keyC = stringToNodeKeyString('{"head":"C_extra","args":[]}');
 
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, nodeAId, TS1, { source: 'A' });
             await writeNode(L, nodeBId, TS1, { source: 'B' });
-            // valid[A] intentionally missing B
+            // valid[A] intentionally missing B — this violates the invariant
+            // because B is up-to-date and depends on A per the scheme.
             await writeIdentifierLookup(L, [[nodeAId, keyA], [nodeBId, keyB]]);
-            await L.valid.put(nodeAId, [nodeBId]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeGraphScheme(H);
             await writeNode(H, nodeAId, TS1, { source: 'A remote' });
             await writeNode(H, nodeBId, TS1, { source: 'B remote' });
-            await writeNode(H, nodeCId, TS2, { source: 'C remote' });
-            await writeIdentifierLookup(H, [
-                [nodeAId, keyA], [nodeBId, keyB], [nodeCId, keyC]
-            ]);
+            await writeIdentifierLookup(H, [[nodeAId, keyA], [nodeBId, keyB]]);
             await H.valid.put(nodeAId, [nodeBId]);
 
-            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
-
-            const T = db.getSchemaStorage();
-            expect(await T.freshness.get(nodeBId)).toBe('up-to-date');
-            const validA = await T.valid.get(nodeAId) ?? [];
-            const bIdStr = String(nodeBId);
-            expect(validA.some(d => String(d) === bIdStr)).toBe(true);
+            await expect(
+                mergeHostIntoReplica(logger, db, hostname)
+            ).rejects.toThrow(/is up-to-date but lacks validity/);
         } finally {
             if (db) await db.close();
         }
@@ -2769,68 +2695,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('validity-driven freshness downgrade does not change modifiedAt', async () => {
-        // Directly test rebuildMergedValidity's freshness-downgrade path:
-        // an up-to-date node whose dependency is not up-to-date gets downgraded.
-        // modifiedAt must remain unchanged during the downgrade.
-        const { rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
 
-            const nodeA = nodeIdentifierFromString('206-abcdefghi');
-            const nodeB = nodeIdentifierFromString('207-abcdefghi');
-            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
-            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
-
-            // Target storage: nodeA is potentially-outdated, nodeB is up-to-date
-            // but depends on nodeA via mergedInputsMap.
-            const targetStorage = db.schemaStorageForReplica('y');
-            await writeGraphScheme(targetStorage);
-            await targetStorage.values.put(nodeA, { value: 'A stale' });
-            await targetStorage.freshness.put(nodeA, 'potentially-outdated');
-            await targetStorage.timestamps.put(nodeA, { createdAt: TS1, modifiedAt: TS1 });
-            await targetStorage.values.put(nodeB, { value: 'B' });
-            await targetStorage.freshness.put(nodeB, 'up-to-date');
-            await targetStorage.timestamps.put(nodeB, { createdAt: TS2, modifiedAt: TS2 });
-
-            // Source storages (targetSource, hostSource) are empty — no validity transport.
-            const targetSourceStorage = db.schemaStorageForReplica('x');
-            const hostSourceStorage = db.hostnameSchemaStorage('peer');
-
-            const targetLookup = makeIdentifierLookup([[nodeA, keyA], [nodeB, keyB]]);
-            const hostLookup = makeIdentifierLookup([]);
-
-            const finalIdentifierForKey = new Map([[keyA, nodeA], [keyB, nodeB]]);
-            const mergedInputsMap = new Map([[nodeB, [nodeA]]]);
-            const valueOriginByKey = new Map();
-
-            // Record modifiedAt before the call.
-            const tsBefore = await targetStorage.timestamps.get(nodeB);
-
-            await rebuildMergedValidity({
-                targetStorage,
-                targetSourceStorage,
-                hostSourceStorage,
-                targetLookup,
-                hostLookup,
-                finalIdentifierForKey,
-                mergedInputsMap,
-                valueOriginByKey,
-            });
-
-            const freshnessB = await targetStorage.freshness.get(nodeB);
-            expect(freshnessB).toBe('potentially-outdated');
-
-            const tsAfter = await targetStorage.timestamps.get(nodeB);
-            // modifiedAt must remain unchanged — the downgrade must not manufacture a new timestamp.
-            expect(tsAfter?.modifiedAt).toBe(tsBefore?.modifiedAt);
-            expect(tsAfter?.modifiedAt).toBe(TS2);
-        } finally {
-            if (db) await db.close();
-        }
-    });
 
     test('repeated merge with same host does not advance timestamps', async () => {
         const capabilities = getTestCapabilities();
@@ -3496,64 +3361,6 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('freshness-only repair switches replica when validity does not change', async () => {
-        // A → B chain. Both snapshots have identical timestamps and identifiers.
-        // A is potentially-outdated, B is incorrectly up-to-date with valid[A]=[B].
-        // No merge decisions change, no identifier reconciliation occurs.
-        // rebuildMergedValidity must repair B's freshness and the freshness
-        // change alone must trigger a replica cutover.
-        const capabilities = getTestCapabilities();
-        let db;
-        try {
-            db = await getRootDatabase(capabilities);
-            await writeGraphScheme(db.schemaStorageForReplica('x'));
-            const logger = makeLogger();
-            const hostname = 'peer';
-            const appVersionStr = db.version;
-            await db.setGlobalVersion(appVersionStr);
-            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
-
-            const nodeA = nodeIdentifierFromString('340-abcdefghi');
-            const nodeB = nodeIdentifierFromString('341-abcdefghi');
-            const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
-            const keyB = stringToNodeKeyString('{"head":"host_stale_B","args":[]}');
-
-            const L = db.schemaStorageForReplica('x');
-            // A is stale, B is incorrectly up-to-date with valid[A]=[B]
-            await writeNode(L, nodeA, TS1, { value: 'A' });
-            await L.freshness.put(nodeA, 'potentially-outdated');
-            await writeNode(L, nodeB, TS1, { value: 'B' });
-            await L.freshness.put(nodeB, 'potentially-outdated');
-            await L.valid.put(nodeA, [nodeB]);
-            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
-
-            const H = db.hostnameSchemaStorage(hostname);
-            await writeGraphScheme(H);
-            // Host has the same state (identical snapshots)
-            await writeNode(H, nodeA, TS1, { value: 'A' });
-            await H.freshness.put(nodeA, 'potentially-outdated');
-            await writeNode(H, nodeB, TS1, { value: 'B' });
-            await H.valid.put(nodeA, [nodeB]);
-            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
-            await H.freshness.put(nodeB, 'potentially-outdated');
-
-            // Merge: all decisions are 'keep', no identifier reconciliation,
-            // no equal-version disagreement. But rebuildMergedValidity should
-            // repair B's freshness and report a change.
-            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
-
-            const T = db.getSchemaStorage();
-            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
-            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
-            expect((await T.timestamps.get(nodeA))?.modifiedAt).toBe(TS1);
-            expect((await T.timestamps.get(nodeB))?.modifiedAt).toBe(TS1);
-            expect(await T.values.get(nodeA)).toEqual({ value: 'A' });
-            expect(await T.values.get(nodeB)).toEqual({ value: 'B' });
-        } finally {
-            if (db) await db.close();
-        }
-    });
-
     // ── End-to-end sync-to-pull integration tests ──────────────────────
 
     test('pull rematerializes a directly relowered node after sync deletion', async () => {
@@ -3788,13 +3595,3 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 });
-
-// Unused-by-default test helpers; referenced here to suppress lint.
-// They are intentionally not called by any existing test.
-void writeNodeRaw;
-void writeIdentifierLookupRaw;
-void writeMaterializedNode;
-void writeFreshNode;
-void writeStaleNode;
-void writeValidityEdge;
-void writeReplica;

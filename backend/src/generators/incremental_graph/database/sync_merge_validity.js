@@ -310,34 +310,16 @@ async function rebuildMergedValidity({
     }
 
     const writer = new ReplicaBatchWriter(targetStorage);
-    let freshnessChanged = false;
 
-    // Traverse in topological order (inputs before dependents) so that
-    // freshness downgrades are visible when their dependents are processed.
+    // Traverse in topological order so that a node's inputs have their
+    // validity entries built before the node's own entries are written.
     for (const nodeIdentifier of topologicalSortFromMap(mergedInputsMap)) {
         const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
         const freshness = finalFreshness.get(nodeIdStr);
         if (freshness !== 'up-to-date') continue;
 
         const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
-        const cleanInputs = [];
-        let clean = true;
         for (const depId of requiredInputs) {
-            const depIdStr = nodeIdentifierToString(depId);
-            const depFreshness = finalFreshness.get(depIdStr);
-            if (depFreshness !== 'up-to-date') {
-                clean = false;
-                break;
-            }
-            cleanInputs.push(depId);
-        }
-        if (!clean) {
-            await writer.push(targetStorage.freshness.putOp(nodeIdentifier, 'potentially-outdated'));
-            finalFreshness.set(nodeIdStr, 'potentially-outdated');
-            freshnessChanged = true;
-            continue;
-        }
-        for (const depId of cleanInputs) {
             const depIdStr = nodeIdentifierToString(depId);
             depIdCache.set(depIdStr, depId);
             const dependents = validMap.get(depIdStr) ?? [];
@@ -358,7 +340,7 @@ async function rebuildMergedValidity({
     }
     await writer.flush();
     const validityChanged = !canonicalValidMapsEqual(oldCanonicalValidMap, canonicalizeValidMap(validMap));
-    return freshnessChanged || validityChanged;
+    return validityChanged;
 }
 
 module.exports = {
