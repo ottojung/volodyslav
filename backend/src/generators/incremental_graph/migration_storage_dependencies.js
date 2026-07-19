@@ -86,30 +86,6 @@ async function propagateInvalidate(ctx) {
 }
 
 /**
- * Build a structural dependency map by deriving dependency edges for every
- * materialized node from the stored graph scheme and identifier lookup.
- * The `valid` relation is a stale-cache proof and invalidation frontier,
- * not a complete structural dependency graph.
- * @param {Set<NodeIdentifier>} materializedNodes
- * @param {import('./database/graph_scheme').GraphScheme} oldGraphScheme
- * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
- * @returns {Promise<Map<string, Set<NodeIdentifier>>>}
- */
-async function buildStructuralDependents(materializedNodes, oldGraphScheme, oldLookup) {
-    const map = new Map();
-    for (const nodeKey of materializedNodes) {
-        const record = deriveInputEdges(oldGraphScheme, oldLookup, nodeKey);
-        for (const input of record) {
-            const inputStr = nodeIdentifierToString(input);
-            const deps = map.get(inputStr) ?? new Set();
-            deps.add(nodeKey);
-            map.set(inputStr, deps);
-        }
-    }
-    return map;
-}
-
-/**
  * BFS propagation of DELETE to every materialized structural dependent.
  *
  * Uses scheme-derived structural dependencies rather than valid so that
@@ -158,8 +134,6 @@ async function propagateDeletes(ctx) {
             record = deriveInputEdges(newGraphScheme, candidateLookup, nodeKey);
         } catch (error) {
             if (error instanceof GraphSchemeError) {
-                const decision = decisions.get(nodeKey);
-                if (decision?.kind === 'create') continue;
                 throw makeInvalidMigrationDecisionError(error.message);
             }
             throw error;
@@ -207,6 +181,5 @@ async function propagateDeletes(ctx) {
 module.exports = {
     readValidDependents,
     propagateInvalidate,
-    buildStructuralDependents,
     propagateDeletes,
 };

@@ -8,7 +8,7 @@ const {
 const { makeRootDatabase } = require('./root_database');
 const { scanFromFilesystem } = require('./render');
 const { requireValidFingerprint } = require('./fingerprint');
-const { IDENTIFIERS_KEY, makeEmptyIdentifierLookup } = require('./identifier_lookup');
+const { IDENTIFIERS_KEY } = require('./identifier_lookup');
 const { GRAPH_SCHEME_KEY } = require('./graph_scheme');
 const { parseIdentifierLookup } = require('./sync_merge_identifier_lookup');
 const { assertValidReplicaMaterializationState } = require('./sync_merge_validation');
@@ -85,20 +85,22 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
     }
 
     const targetStorage = database.schemaStorageForReplica(nextReplica);
-    const hasVersion = await targetGlobal.get('version') !== undefined;
+    const rawVersion = await targetGlobal.get('version');
+    const hasVersion = rawVersion !== undefined;
     const hasGraphScheme = await targetGlobal.get(GRAPH_SCHEME_KEY) !== undefined;
     const rawLookup = await targetGlobal.get(IDENTIFIERS_KEY);
     const hasLookup = rawLookup !== undefined;
     const hasRecords = await hasGraphRecords(targetStorage);
     const genuinelyEmpty = !hasVersion && !hasGraphScheme && !hasLookup && !hasRecords;
-    const initialized = hasVersion && hasGraphScheme;
+    const initialized = hasVersion && hasGraphScheme && hasLookup;
     if (!genuinelyEmpty && !initialized) {
         throw new Error('reset snapshot is neither genuinely empty nor fully initialized');
     }
     if (initialized) {
-        const lookup = hasLookup
-            ? parseIdentifierLookup(rawLookup, 'reset snapshot')
-            : makeEmptyIdentifierLookup();
+        if (typeof rawVersion !== 'string') {
+            throw new Error('reset snapshot version must be a string');
+        }
+        const lookup = parseIdentifierLookup(rawLookup, 'reset snapshot');
         await assertValidReplicaMaterializationState(targetStorage, lookup, 'reset snapshot');
     }
 

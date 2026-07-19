@@ -161,11 +161,16 @@ describe("synchronizeNoLock", () => {
 
     test("scans the synchronized rendered repository back into the live database", async () => {
         const capabilities = getTestCapabilities();
-        const remoteKey = '!x!!values!{"head":"event","args":["remote"]}';
+        const remoteNodeId = '1-testfingerprnt';
+        const remoteSemanticKey = '{"head":"event","args":["remote"]}';
+        const remoteKey = `!x!!values!${remoteNodeId}`;
         await seedRemoteRepository(capabilities, [
                         [remoteKey, { source: "remote" }],
+            [`!x!!freshness!${remoteNodeId}`, "potentially-outdated"],
+            [`!x!!timestamps!${remoteNodeId}`, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
             ["!x!!global!version", "remote-version"],
-            ["!x!!global!identifiers_keys_map", []],
+            ["!x!!global!graph_scheme", JSON.stringify({ format: 1, nodes: [{ head: "event", arity: 1, inputTemplates: [] }] })],
+            ["!x!!global!identifiers_keys_map", [[remoteNodeId, remoteSemanticKey]]],
             ["!x!!global!last_node_index", 0],
             ["!x!!global!fingerprint", "testfingerprnt"],
         ]);
@@ -371,11 +376,16 @@ describe("synchronizeNoLock", () => {
 
     test("resetToHostname succeeds even when snapshot omits _meta/current_replica", async () => {
         const capabilities = getTestCapabilities();
-        const snapshotKey = '!x!!values!{"head":"event","args":["reset"]}';
+        const snapshotNodeId = '1-snapshotfp';
+        const snapshotSemanticKey = '{"head":"event","args":["reset"]}';
+        const snapshotKey = `!x!!values!${snapshotNodeId}`;
         await seedHostnameBranchWithRenderedFiles(capabilities, [
             { path: renderedKeyPath(snapshotKey), content: JSON.stringify("after-reset") },
+            { path: renderedKeyPath(`!x!!freshness!${snapshotNodeId}`), content: JSON.stringify('potentially-outdated') },
+            { path: renderedKeyPath(`!x!!timestamps!${snapshotNodeId}`), content: JSON.stringify({ createdAt: '2024-01-01T00:00:00.000Z', modifiedAt: '2024-01-01T00:00:00.000Z' }) },
             { path: 'r/global/version', content: JSON.stringify('snapshot-version') },
-            { path: 'r/global/identifiers_keys_map', content: JSON.stringify([]) },
+            { path: 'r/global/graph_scheme', content: JSON.stringify(JSON.stringify({ format: 1, nodes: [{ head: 'event', arity: 1, inputTemplates: [] }] })) },
+            { path: 'r/global/identifiers_keys_map', content: JSON.stringify([[snapshotNodeId, snapshotSemanticKey]]) },
             { path: 'r/global/last_node_index', content: JSON.stringify(0) },
             { path: 'r/global/fingerprint', content: JSON.stringify('snapshotfingerprint') },
         ]);
@@ -386,11 +396,16 @@ describe("synchronizeNoLock", () => {
 
     test("reset preserves local fingerprint when database exists", async () => {
         const capabilities = getTestCapabilities();
-        const snapshotKey = '!x!!values!{"head":"event","args":["reset"]}';
+        const snapshotNodeId = '1-snapshotfp';
+        const snapshotSemanticKey = '{"head":"event","args":["reset"]}';
+        const snapshotKey = `!x!!values!${snapshotNodeId}`;
         await seedHostnameBranchWithRenderedFiles(capabilities, [
             { path: renderedKeyPath(snapshotKey), content: JSON.stringify("after-reset") },
+            { path: renderedKeyPath(`!x!!freshness!${snapshotNodeId}`), content: JSON.stringify('potentially-outdated') },
+            { path: renderedKeyPath(`!x!!timestamps!${snapshotNodeId}`), content: JSON.stringify({ createdAt: '2024-01-01T00:00:00.000Z', modifiedAt: '2024-01-01T00:00:00.000Z' }) },
             { path: 'r/global/version', content: JSON.stringify('snapshot-version') },
-            { path: 'r/global/identifiers_keys_map', content: JSON.stringify([]) },
+            { path: 'r/global/graph_scheme', content: JSON.stringify(JSON.stringify({ format: 1, nodes: [{ head: 'event', arity: 1, inputTemplates: [] }] })) },
+            { path: 'r/global/identifiers_keys_map', content: JSON.stringify([[snapshotNodeId, snapshotSemanticKey]]) },
             { path: 'r/global/last_node_index', content: JSON.stringify(0) },
             { path: 'r/global/fingerprint', content: JSON.stringify('snapshotfingerprint') },
         ]);

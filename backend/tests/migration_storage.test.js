@@ -82,6 +82,18 @@ function makeSingleNodeScheme(head) {
 }
 
 /**
+ * Build a graph scheme for zero-arity nodes.
+ * @param {string[]} heads
+ * @returns {import('../src/generators/incremental_graph/database/graph_scheme').GraphScheme}
+ */
+function makeZeroInputScheme(heads) {
+    return {
+        format: 1,
+        nodes: heads.map((head) => ({ head, arity: 0, inputTemplates: [] })),
+    };
+}
+
+/**
  * Build an identifier lookup mapping each NodeKeyString to itself.
  * @param {string[]} nodeKeyStrings
  * @returns {import('../src/generators/incremental_graph/database/identifier_lookup').IdentifierLookup}
@@ -187,7 +199,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -205,7 +217,7 @@ describe("MigrationStorage", () => {
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -217,7 +229,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -232,7 +244,7 @@ describe("MigrationStorage", () => {
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -248,7 +260,7 @@ describe("MigrationStorage", () => {
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -261,7 +273,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -277,7 +289,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -313,7 +325,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A"), B = nk("B");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -325,7 +337,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -340,7 +352,7 @@ describe("MigrationStorage", () => {
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -355,7 +367,7 @@ describe("MigrationStorage", () => {
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -708,7 +720,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -756,7 +768,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -852,7 +864,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -865,7 +877,7 @@ describe("MigrationStorage", () => {
             // "event(e)" has arity 1
             const headIndex = makeHeadIndex(["A", "event(e)"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -878,7 +890,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -897,7 +909,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -915,7 +927,7 @@ describe("MigrationStorage", () => {
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -931,7 +943,7 @@ describe("MigrationStorage", () => {
                 [A, A],
                 [nk("NEW"), nk("NEW")],
             ]);
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -947,7 +959,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -964,7 +976,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -988,7 +1000,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -1005,7 +1017,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -1022,7 +1034,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -1046,7 +1058,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "NEW"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -1071,7 +1083,7 @@ describe("MigrationStorage", () => {
             const storage1 = makeInMemorySchemaStorage();
             const headIndex1 = makeHeadIndex(["A", "NEW1", "NEW2"]);
             const A1 = nk("A");
-            const scheme1 = makeSingleNodeScheme("A");
+            const scheme1 = makeZeroInputScheme(["A", "NEW1", "NEW2"]);
             const lookup1 = makeLookupFromKeys([A1]);
             await storage1.values.put(A1, DUMMY_VALUE);
             const ms1 = makeMigrationStorage(storage1, headIndex1, [A1], "testfingerprint", 0, scheme1, scheme1, lookup1);
@@ -1084,7 +1096,7 @@ describe("MigrationStorage", () => {
             const storage2 = makeInMemorySchemaStorage();
             const headIndex2 = makeHeadIndex(["A", "NEW1", "NEW2"]);
             const A2 = nk("A");
-            const scheme2 = makeSingleNodeScheme("A");
+            const scheme2 = makeZeroInputScheme(["A", "NEW1", "NEW2"]);
             const lookup2 = makeLookupFromKeys([A2]);
             await storage2.values.put(A2, DUMMY_VALUE);
             const ms2 = makeMigrationStorage(storage2, headIndex2, [A2], "testfingerprint", 0, scheme2, scheme2, lookup2);
@@ -1115,7 +1127,7 @@ describe("MigrationStorage", () => {
             const storageA = makeInMemorySchemaStorage();
             const headIndexA = makeHeadIndex(["A", "NEW1", "NEW2"]);
             const A_A = nk("A");
-            const schemeA = makeSingleNodeScheme("A");
+            const schemeA = makeZeroInputScheme(["A", "NEW1", "NEW2"]);
             const lookupA = makeLookupFromKeys([A_A]);
             await storageA.values.put(A_A, DUMMY_VALUE);
             const msA = makeMigrationStorage(storageA, headIndexA, [A_A], "testfingerprint", 0, schemeA, schemeA, lookupA);
@@ -1129,7 +1141,7 @@ describe("MigrationStorage", () => {
             const headIndexB = makeHeadIndex(["A", "B", "NEW1", "NEW2"]);
             const A_B = nk("A");
             const B_B = nk("B");
-            const schemeB = { format: 1, nodes: [{ head: "A", arity: 0, inputTemplates: [] }, { head: "B", arity: 0, inputTemplates: [] }] };
+            const schemeB = makeZeroInputScheme(["A", "B", "NEW1", "NEW2"]);
             const lookupB = makeLookupFromKeys([A_B, B_B]);
             await storageB.values.put(A_B, DUMMY_VALUE);
             await storageB.values.put(B_B, DUMMY_VALUE);
@@ -1154,7 +1166,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "N1", "N2", "N3", "N4", "N5"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "N1", "N2", "N3", "N4", "N5"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
@@ -1191,7 +1203,7 @@ describe("MigrationStorage", () => {
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
 
@@ -1204,7 +1216,7 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            const scheme = makeSingleNodeScheme("A");
+            const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
