@@ -77,13 +77,6 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         );
     }
 
-    if (isExistingDb) {
-        await targetGlobal.put(
-            'fingerprint',
-            requireValidFingerprint(preImportFingerprint, 'pre-import live database')
-        );
-    }
-
     const targetStorage = database.schemaStorageForReplica(nextReplica);
     const hasGlobalRecords = await hasAnyKey(targetGlobal);
     const rawVersion = await targetGlobal.get('version');
@@ -111,6 +104,12 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         requireValidFingerprint(rawFingerprint, 'reset snapshot fingerprint');
         const lookup = parseIdentifierLookup(rawLookup, 'reset snapshot');
         await assertValidReplicaMaterializationState(targetStorage, lookup, 'reset snapshot');
+        if (isExistingDb) {
+            await targetGlobal.put(
+                'fingerprint',
+                requireValidFingerprint(preImportFingerprint, 'pre-import live database')
+            );
+        }
     }
 
     const previousReplica = database.currentReplicaName();

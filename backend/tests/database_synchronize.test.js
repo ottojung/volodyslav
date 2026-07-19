@@ -374,6 +374,33 @@ describe("synchronizeNoLock", () => {
         expect(error.message).toContain("input directory does not exist");
     });
 
+    test("resetToHostname accepts a genuinely empty snapshot for an existing database", async () => {
+        const capabilities = getTestCapabilities();
+        await seedHostnameBranchWithRenderedFiles(capabilities, [
+            { path: '_meta/current_replica', content: JSON.stringify('x') },
+        ]);
+
+        const db = await getRootDatabase(capabilities);
+        await db.setGlobalVersion('local-version');
+        const localReplica = db.currentReplicaName();
+        await db._rawPut(`!${localReplica}!!values!local-node`, { source: 'local' });
+        await db.close();
+
+        await synchronizeNoLock(capabilities, { resetToHostname: "test-host" });
+
+        const reopened = await getRootDatabase(capabilities);
+        try {
+            const entries = await collectRawEntries(reopened);
+            const activeReplica = reopened.currentReplicaName();
+            expect(entries.get(`!${activeReplica}!!global!version`)).toBeUndefined();
+            expect(entries.get(`!${activeReplica}!!global!graph_scheme`)).toBeUndefined();
+            expect(entries.get(`!${activeReplica}!!values!local-node`)).toBeUndefined();
+        } finally {
+            await reopened.close();
+        }
+    });
+
+
     test("resetToHostname succeeds even when snapshot omits _meta/current_replica", async () => {
         const capabilities = getTestCapabilities();
         const snapshotNodeId = '1-snapshotfp';
