@@ -5,7 +5,7 @@ const {
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
 } = require('./gitstore');
-const { makeRootDatabase } = require('./root_database');
+const { makeRootDatabase, LAST_NODE_INDEX_KEY } = require('./root_database');
 const { scanFromFilesystem } = require('./render');
 const { requireValidFingerprint } = require('./fingerprint');
 const { IDENTIFIERS_KEY } = require('./identifier_lookup');
@@ -85,14 +85,19 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
     }
 
     const targetStorage = database.schemaStorageForReplica(nextReplica);
+    const hasGlobalRecords = await hasAnyKey(targetGlobal);
     const rawVersion = await targetGlobal.get('version');
     const hasVersion = rawVersion !== undefined;
     const hasGraphScheme = await targetGlobal.get(GRAPH_SCHEME_KEY) !== undefined;
     const rawLookup = await targetGlobal.get(IDENTIFIERS_KEY);
     const hasLookup = rawLookup !== undefined;
     const hasRecords = await hasGraphRecords(targetStorage);
-    const genuinelyEmpty = !hasVersion && !hasGraphScheme && !hasLookup && !hasRecords;
-    const initialized = hasVersion && hasGraphScheme && hasLookup;
+    const rawLastNodeIndex = await targetGlobal.get(LAST_NODE_INDEX_KEY);
+    const hasLastNodeIndex = rawLastNodeIndex !== undefined;
+    const rawFingerprint = await targetGlobal.get('fingerprint');
+    const hasFingerprint = rawFingerprint !== undefined;
+    const genuinelyEmpty = !hasGlobalRecords && !hasRecords;
+    const initialized = hasVersion && hasGraphScheme && hasLookup && hasLastNodeIndex && hasFingerprint;
     if (!genuinelyEmpty && !initialized) {
         throw new Error('reset snapshot is neither genuinely empty nor fully initialized');
     }
@@ -100,6 +105,10 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         if (typeof rawVersion !== 'string') {
             throw new Error('reset snapshot version must be a string');
         }
+        if (typeof rawLastNodeIndex !== 'number') {
+            throw new Error('reset snapshot last_node_index must be a number');
+        }
+        requireValidFingerprint(rawFingerprint, 'reset snapshot fingerprint');
         const lookup = parseIdentifierLookup(rawLookup, 'reset snapshot');
         await assertValidReplicaMaterializationState(targetStorage, lookup, 'reset snapshot');
     }

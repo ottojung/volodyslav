@@ -2,7 +2,7 @@
  * Tests for MigrationStorage - strict migration decision API for incremental graph.
  */
 
-const { makeMigrationStorage } = require("../src/generators/incremental_graph/migration_storage");
+const { makeMigrationStorage: makeMigrationStorageBase } = require("../src/generators/incremental_graph/migration_storage");
 const { compileNodeDef } = require("../src/generators/incremental_graph/compiled_node");
 const { IDENTIFIERS_KEY } = require("../src/generators/incremental_graph/database");
 const {
@@ -41,17 +41,6 @@ function makeInMemorySchemaStorage() {
     const valid = makeInMemoryDb();
     const timestamps = makeInMemoryDb();
     const global = makeInMemoryDb();
-    const originalGlobalGet = global.get.bind(global);
-    global.get = async (key) => {
-        if (key !== IDENTIFIERS_KEY) {
-            return await originalGlobalGet(key);
-        }
-        const stored = await originalGlobalGet(key);
-        if (stored !== undefined) return stored;
-        return [...values.store.keys()]
-            .sort()
-            .map((nodeKey) => [nodeKey, nodeKey]);
-    };
     return {
         values,
         freshness,
@@ -65,6 +54,24 @@ function makeInMemorySchemaStorage() {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+
+/**
+ * @param {ReturnType<typeof makeInMemorySchemaStorage>} storage
+ * @param {Map<*, *>} newHeadIndex
+ * @param {string[]} materializedNodes
+ * @param {string} fingerprint
+ * @param {number} lastNodeIndex
+ * @param {import('../src/generators/incremental_graph/database/graph_scheme').GraphScheme} oldGraphScheme
+ * @param {import('../src/generators/incremental_graph/database/graph_scheme').GraphScheme} newGraphScheme
+ * @param {import('../src/generators/incremental_graph/database/identifier_lookup').IdentifierLookup} lookup
+ * @returns {import('../src/generators/incremental_graph/migration_storage').MigrationStorage}
+ */
+function makeMigrationStorage(storage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, lookup) {
+    storage.global.store.set(IDENTIFIERS_KEY, [...lookup.idToKey.entries()]);
+    return makeMigrationStorageBase(storage, newHeadIndex, materializedNodes, fingerprint, lastNodeIndex, oldGraphScheme, newGraphScheme, lookup);
+}
+
 
 /** NodeKeyString for a zero-arity node named `name`. */
 const nk = (name) => toJsonKey(name);
@@ -205,7 +212,10 @@ describe("MigrationStorage", () => {
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
-
+            await storage.global.put(IDENTIFIERS_KEY, [
+                [A, A],
+                [nk("NEW"), nk("NEW")],
+            ]);
             await ms.keep(A);
             await expect(ms.keep(A)).resolves.toBeUndefined();
         });
@@ -279,7 +289,6 @@ describe("MigrationStorage", () => {
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
-
             await ms.keep(A);
             const err = await ms.invalidate(A).catch((e) => e);
             expect(isDecisionConflict(err)).toBe(true);
@@ -812,11 +821,11 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
 
+            const ms = await setupStandardGraph(storage, headIndex);
+
             // Force an empty identifiers_keys_map so schema compatibility cannot
             // resolve semantic node keys for materialized nodes.
             await storage.global.put(IDENTIFIERS_KEY, []);
-
-            const ms = await setupStandardGraph(storage, headIndex);
             const err = await ms.keep(nk("A")).catch((e) => e);
             expect(isSchemaCompatibility(err)).toBe(true);
         });
@@ -915,7 +924,6 @@ describe("MigrationStorage", () => {
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
-
             await ms.keep(A);
             await expect(ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE), "up-to-date")).resolves.toBeUndefined();
         });
@@ -939,17 +947,16 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
-            await storage.global.put(IDENTIFIERS_KEY, [
-                [A, A],
-                [nk("NEW"), nk("NEW")],
-            ]);
             const scheme = makeZeroInputScheme(["A", "NEW"]);
             const lookup = makeLookupFromKeys([A]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
-
+            await storage.global.put(IDENTIFIERS_KEY, [
+                [A, A],
+                [nk("NEW"), nk("NEW")],
+            ]);
             await ms.keep(A);
             const err = await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE), "up-to-date").catch((e) => e);
             expect(isCreateExistingNode(err)).toBe(true);
@@ -965,7 +972,6 @@ describe("MigrationStorage", () => {
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
-
             await ms.keep(A);
             await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE), "up-to-date");
             const err = await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE_2), "up-to-date").catch((e) => e);
@@ -982,7 +988,6 @@ describe("MigrationStorage", () => {
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
-
             await ms.keep(A);
             await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE_2), "up-to-date");
             const decisions = await ms.finalize();
@@ -1023,7 +1028,6 @@ describe("MigrationStorage", () => {
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
-
             await ms.keep(A);
             // Pass a function that returns a promise that never resolves; create() should return immediately
             const neverResolves = () => new Promise(() => {});
@@ -1064,7 +1068,6 @@ describe("MigrationStorage", () => {
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
-
             await ms.keep(A);
             const semanticKey = nk("NEW");
             await ms.create(semanticKey, () => Promise.resolve(DUMMY_VALUE), "up-to-date");
