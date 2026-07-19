@@ -30,6 +30,11 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-10 (Freshness):** Conceptual state: `"up-to-date" | "potentially-outdated"`.
 
+**REQ-MAT-CLOSURE:** Materialized nodes form a dependency-closed set. For every materialized node N, every concrete input of N is materialized. Consequently, materializing N materializes its complete transitive dependency cone first, and removing any materialization requires removing all of its materialized transitive dependents.
+
+A materialization persists across restarts unless an explicit closure-preserving migration or synchronization operation removes it. Stale does not mean structurally incomplete: a potentially-outdated node may lack validity proofs, but it still has every concrete input materialized.
+
+
 **TERM-11 (Computor):** Async function: `(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>`.
 
 **DEF-OUTCOMES-01 (Outcomes Set):** For any schema node definition and arguments `(inputs, oldValue, bindings)`, `Outcomes(nodeName, bindings, inputs, oldValue) ⊆ ComputedValue` (equivalently `Outcomes(NodeInstance, inputs, oldValue)`) represents the set of all semantic values that could be produced by the computor in any permitted execution context. This set may be infinite. `Unchanged` is not part of `Outcomes`—it is an optimization sentinel only. `NodeKey` may be used as a storage key derived from the node instance, but it is not a semantic argument to `Outcomes`.

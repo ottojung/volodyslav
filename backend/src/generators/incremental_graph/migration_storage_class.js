@@ -26,7 +26,7 @@ const {
 const {
     readValidDependents,
     propagateInvalidate,
-    propagateDeletesAndCheckFanIn,
+    propagateDeletes,
 } = require("./migration_storage_dependencies");
 
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
@@ -370,12 +370,12 @@ class MigrationStorageClass {
     }
 
     /**
-     * Finalize the migration: propagate DELETE decisions, check fan-in constraints,
+     * Finalize the migration: propagate DELETE decisions through dependents,
      * and verify every node in S has exactly one decision.
      * @returns {Promise<Map<NodeIdentifier, Decision>>}
      */
     async finalize() {
-        await propagateDeletesAndCheckFanIn({
+        await propagateDeletes({
             materializedNodes: this.materializedNodes,
             decisions: this.decisions,
             oldGraphScheme: this.oldGraphScheme,

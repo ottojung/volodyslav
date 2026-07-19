@@ -9,7 +9,6 @@ const {
     isDecisionConflict,
     isOverrideConflict,
     isUndecidedNodes,
-    isPartialDeleteFanIn,
     isSchemaCompatibility,
     isGetMissingNode,
     isCreateExistingNode,
@@ -430,10 +429,10 @@ describe("MigrationStorage", () => {
     });
 
     // -----------------------------------------------------------------------
-    // Section 5: DELETE propagation + fan-in restriction
+    // Section 5: DELETE propagation
     // -----------------------------------------------------------------------
-    describe("Section 5: DELETE propagation + fan-in restriction", () => {
-        test("delete(B) alone throws PartialDeleteFanInError (C not deleted)", async () => {
+    describe("Section 5: DELETE propagation", () => {
+        test("delete(B) alone deletes fan-in dependent even when C remains", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
@@ -441,9 +440,8 @@ describe("MigrationStorage", () => {
             await ms.keep(nk("A"));
             await ms.delete(nk("B"));
             await ms.keep(nk("C"));
-            // D is undecided; during finalize, B is deleted but C is not → PartialDeleteFanInError
-            const err = await ms.finalize().catch((e) => e);
-            expect(isPartialDeleteFanIn(err)).toBe(true);
+            const decisions = await ms.finalize();
+            expect(decisions.get(nk("D"))?.kind).toBe("delete");
         });
 
         test("delete(B) and delete(C) results in D auto-deleted", async () => {
@@ -472,15 +470,16 @@ describe("MigrationStorage", () => {
             expect(decisions.get(nk("D"))?.kind).toBe("delete");
         });
 
-        test("delete(A) propagates to B, then tries D: PartialDeleteFanInError (C not deleted)", async () => {
+        test("delete(A) propagates transitively through fan-in dependent", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
             await ms.delete(nk("A"));
             await ms.keep(nk("C"));
-            const err = await ms.finalize().catch((e) => e);
-            expect(isPartialDeleteFanIn(err)).toBe(true);
+            const decisions = await ms.finalize();
+            expect(decisions.get(nk("B"))?.kind).toBe("delete");
+            expect(decisions.get(nk("D"))?.kind).toBe("delete");
         });
 
         test("keep(D) conflicts with delete auto-propagation", async () => {
@@ -492,7 +491,7 @@ describe("MigrationStorage", () => {
             await ms.keep(nk("D"));
             await ms.delete(nk("B"));
             await ms.delete(nk("C"));
-            // finalize tries to delete D (all inputs deleted) but D is KEEP → conflict
+            // finalize tries to delete D because one input is deleted, but D is KEEP → conflict
             const err = await ms.finalize().catch((e) => e);
             expect(isDecisionConflict(err)).toBe(true);
         });
@@ -524,10 +523,10 @@ describe("MigrationStorage", () => {
             expect(decisions.get(B)?.kind).toBe("delete");
         });
 
-        test("fan-in detection uses structural inputs when valid flags are missing (stale dependent)", async () => {
+        test("fan-in deletion uses structural inputs when valid flags are missing (stale dependent)", async () => {
             // B -> D, C -> D, valid[B] is missing D (stale). delete(B), keep(C).
-            // The structural dependency scan must still find D dependent on B
-            // and report PartialDeleteFanInError (C is kept so D has a surviving input).
+            // The structural dependency scan still finds D dependent on B
+            // and deletes D even though C remains materialized.
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["B", "C", "D"]);
             const B = nk("B");
@@ -551,10 +550,8 @@ describe("MigrationStorage", () => {
 
             await ms.delete(B);
             await ms.keep(C);
-            // D has no decision; structural scan finds D depends on B,
-            // but D's other input C is kept → PartialDeleteFanInError
-            const err = await ms.finalize().catch((e) => e);
-            expect(isPartialDeleteFanIn(err)).toBe(true);
+            const decisions = await ms.finalize();
+            expect(decisions.get(D)?.kind).toBe("delete");
         });
     });
 

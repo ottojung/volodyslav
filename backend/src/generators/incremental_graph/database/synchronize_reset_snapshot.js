@@ -8,6 +8,10 @@ const {
 const { makeRootDatabase } = require('./root_database');
 const { scanFromFilesystem } = require('./render');
 const { requireValidFingerprint } = require('./fingerprint');
+const { IDENTIFIERS_KEY } = require('./identifier_lookup');
+const { GRAPH_SCHEME_KEY } = require('./graph_scheme');
+const { parseIdentifierLookup } = require('./sync_merge_identifier_lookup');
+const { assertValidReplicaMaterializationState } = require('./sync_merge_validation');
 
 /** @typedef {import('./synchronize').Capabilities} Capabilities */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
@@ -55,6 +59,14 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
             'fingerprint',
             requireValidFingerprint(preImportFingerprint, 'pre-import live database')
         );
+    }
+
+    const hasGraphScheme = await targetGlobal.get(GRAPH_SCHEME_KEY) !== undefined;
+    const rawLookup = await targetGlobal.get(IDENTIFIERS_KEY);
+    if (hasGraphScheme || rawLookup !== undefined) {
+        const targetStorage = database.schemaStorageForReplica(nextReplica);
+        const lookup = parseIdentifierLookup(rawLookup, 'reset snapshot');
+        await assertValidReplicaMaterializationState(targetStorage, lookup, 'reset snapshot');
     }
 
     const previousReplica = database.currentReplicaName();

@@ -290,8 +290,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap,
         decisions,
         hOnlyNeedsInvalidate,
-        directlyReloweredNodes,
-        reloweringInvalidatedNodes,
         equalVersionNeedsInvalidation,
         finalIdentifierForKey,
         finalIdentifierLookup,
@@ -311,8 +309,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         initialDecisions,
         decisions,
         hOnlyNeedsInvalidate,
-        directlyReloweredNodes,
-        reloweringInvalidatedNodes,
         equalVersionNeedsInvalidation,
         finalIdentifierForKey
     );
@@ -325,10 +321,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         decisions,
         targetLookup,
         hostLookup,
-        directlyReloweredNodes,
-        targetStorage,
-        targetSourceStorage,
-        hostStorage,
         finalIdentifierForKey
     );
 
@@ -364,6 +356,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             kept: summary.kept,
             taken: summary.taken,
             invalidated: summary.invalidated,
+            deleted: summary.deleted,
             switchedReplica,
         },
         'Graph merge completed for host'

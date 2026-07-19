@@ -1498,10 +1498,10 @@ describe('mergeHostIntoReplica', () => {
 
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
-            // Directly relowered node and its transitive dependent are both stale.
+            // Directly relowered node and its transitive dependent are both deleted.
             const T = db.getSchemaStorage();
             expect(await T.freshness.get(hostAId)).toBeUndefined();
-            expect(await T.freshness.get(hostDId)).toBe('potentially-outdated');
+            expect(await T.freshness.get(hostDId)).toBeUndefined();
 
             // Write exact graph_scheme matching the nodeDefs below (nodes are sorted alphabetically by head)
             await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
@@ -1861,7 +1861,7 @@ describe('mergeHostIntoReplica', () => {
                 await writeGraphScheme(T);
                 await T.values.put(NODE_A, { v: 1 });
 
-                const lookup = makeIdentifierLookup([[NODE_A, stringToNodeKeyString('{"head":"test","args":[]}')]]);
+                const lookup = makeIdentifierLookup([[NODE_A, stringToNodeKeyString('{"head":"A_missing_valid","args":[]}')]]);
 
                 await expect(
                     assertValidFinalMergeState(T, lookup)
@@ -1881,7 +1881,7 @@ describe('mergeHostIntoReplica', () => {
                 await T.values.put(NODE_A, { v: 1 });
                 await T.freshness.put(NODE_A, 'mystery');
 
-                const lookup = makeIdentifierLookup([[NODE_A, stringToNodeKeyString('{"head":"test","args":[]}')]]);
+                const lookup = makeIdentifierLookup([[NODE_A, stringToNodeKeyString('{"head":"A_missing_valid","args":[]}')]]);
 
                 await expect(
                     assertValidFinalMergeState(T, lookup)
@@ -1902,7 +1902,7 @@ describe('mergeHostIntoReplica', () => {
                 await T.freshness.put(NODE_A, 'potentially-outdated');
                 await T.timestamps.put(NODE_A, { createdAt: '2024-01-01T00:00:00.000Z', modifiedAt: '2024-01-01T00:00:00.000Z' });
 
-                const lookup = makeIdentifierLookup([[NODE_A, stringToNodeKeyString('{"head":"test","args":[]}')]]);
+                const lookup = makeIdentifierLookup([[NODE_A, stringToNodeKeyString('{"head":"A_missing_valid","args":[]}')]]);
 
                 await expect(assertValidFinalMergeState(T, lookup)).resolves.toBeUndefined();
             } finally {
@@ -2320,7 +2320,7 @@ describe('mergeHostIntoReplica', () => {
 
 
 
-    test('value origins are none when final or source values are absent', async () => {
+    test('value origins are omitted for deleted final nodes', async () => {
         const { buildValueOriginByKey, rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
         const capabilities = getTestCapabilities();
         let db;
@@ -2351,23 +2351,19 @@ describe('mergeHostIntoReplica', () => {
             await targetStorage.freshness.put(finalB, 'potentially-outdated');
 
             const initialDecisions = new Map([[keyA, 'keep'], [keyB, 'keep']]);
-            const decisions = new Map([[keyA, 'keep'], [keyB, 'keep']]);
-            const finalIdentifierForKey = new Map([[keyA, finalA], [keyB, finalB]]);
+            const decisions = new Map([[keyA, 'keep'], [keyB, 'delete']]);
+            const finalIdentifierForKey = new Map([[keyA, finalA]]);
 
             const valueOriginByKey = await buildValueOriginByKey(
                 initialDecisions,
                 decisions,
                 targetLookup,
                 hostLookup,
-                new Set(),
-                targetStorage,
-                targetSourceStorage,
-                hostSourceStorage,
                 finalIdentifierForKey
             );
 
             expect(valueOriginByKey.get(keyA)).toEqual({ kind: 'source', side: 'target', sourceId: sourceA });
-            expect(valueOriginByKey.get(keyB)).toEqual({ kind: 'none' });
+            expect(valueOriginByKey.get(keyB)).toBeUndefined();
 
             await rebuildMergedValidity({
                 targetStorage,
@@ -3217,10 +3213,7 @@ describe('mergeHostIntoReplica', () => {
 
             const finalIdentifierForKey = new Map([[keyA, nodeA], [keyB, nodeB]]);
             const mergedInputsMap = new Map([[nodeB, [nodeA]]]);
-            const valueOriginByKey = new Map([
-                [keyA, { kind: 'none' }],
-                [keyB, { kind: 'none' }],
-            ]);
+            const valueOriginByKey = new Map();
 
             // Record modifiedAt before the call.
             const tsBefore = await targetStorage.timestamps.get(nodeB);

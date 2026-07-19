@@ -115,42 +115,6 @@ function isUndecidedNodes(object) {
 }
 
 /**
- * Thrown when DELETE propagation reaches a fan-in node whose non-deleted inputs remain.
- */
-class PartialDeleteFanIn extends Error {
-    /**
-     * @param {NodeIdentifier} nodeKey
-     * @param {readonly NodeIdentifier[]} inputs
-     */
-    constructor(nodeKey, inputs) {
-        super(
-            `Partial delete fan-in for node ${nodeKey}: cannot delete because not all inputs are deleted. ` +
-                `Inputs: ${inputs.join(", ")}`
-        );
-        this.name = "PartialDeleteFanInError";
-        this.nodeKey = nodeKey;
-        this.inputs = inputs;
-    }
-}
-
-/**
- * @param {NodeIdentifier} nodeKey
- * @param {readonly NodeIdentifier[]} inputs
- * @returns {PartialDeleteFanIn}
- */
-function makePartialDeleteFanInError(nodeKey, inputs) {
-    return new PartialDeleteFanIn(nodeKey, inputs);
-}
-
-/**
- * @param {unknown} object
- * @returns {object is PartialDeleteFanIn}
- */
-function isPartialDeleteFanIn(object) {
-    return object instanceof PartialDeleteFanIn;
-}
-
-/**
  * Thrown when keep/override/invalidate is called on a node incompatible with the new schema.
  */
 class SchemaCompatibility extends Error {
@@ -321,8 +285,6 @@ module.exports = {
     isCreateExistingNode,
     makeUndecidedNodesError,
     isUndecidedNodes,
-    makePartialDeleteFanInError,
-    isPartialDeleteFanIn,
     makeSchemaCompatibilityError,
     isSchemaCompatibility,
     makeGetMissingNodeError,

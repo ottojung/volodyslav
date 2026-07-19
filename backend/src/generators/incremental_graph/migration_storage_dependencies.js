@@ -8,7 +8,6 @@ const {
 } = require("./database");
 const {
     makeDecisionConflictError,
-    makePartialDeleteFanInError,
 } = require("./migration_errors");
 const {
     checkSchemaCompatibility,
@@ -107,8 +106,7 @@ async function buildStructuralDependents(materializedNodes, oldGraphScheme, oldL
 }
 
 /**
- * BFS propagation of DELETE to dependents whose all inputs are deleted,
- * followed by a fan-in violation scan.
+ * BFS propagation of DELETE to every materialized structural dependent.
  *
  * Uses scheme-derived structural dependencies rather than valid so that
  * stale nodes whose dependents are absent from valid are still discovered.
@@ -119,7 +117,7 @@ async function buildStructuralDependents(materializedNodes, oldGraphScheme, oldL
  * @param {import('./database/identifier_lookup').IdentifierLookup} ctx.oldLookup
  * @returns {Promise<void>}
  */
-async function propagateDeletesAndCheckFanIn(ctx) {
+async function propagateDeletes(ctx) {
     const { materializedNodes, decisions, oldGraphScheme, oldLookup } = ctx;
     const structuralDependents = await buildStructuralDependents(materializedNodes, oldGraphScheme, oldLookup);
     const queue = [];
@@ -138,13 +136,8 @@ async function propagateDeletesAndCheckFanIn(ctx) {
         if (dependents === undefined) continue;
         for (const dep of dependents) {
             if (!materializedNodes.has(dep)) continue;
-            if (decisions.get(dep)?.kind === "delete") continue;
-            const depRecord = deriveInputEdges(oldGraphScheme, oldLookup, dep);
-            const allDeleted = depRecord.every(
-                (inp) => decisions.get(inp)?.kind === "delete"
-            );
-            if (!allDeleted) continue;
             const existing = decisions.get(dep);
+            if (existing?.kind === "delete") continue;
             if (existing !== undefined) {
                 throw makeDecisionConflictError(dep, existing.kind, "delete");
             }
@@ -152,25 +145,12 @@ async function propagateDeletesAndCheckFanIn(ctx) {
             queue.push(dep);
         }
     }
-    // Fan-in violation: any non-deleted node reachable from a deleted node
-    // that was not itself auto-deleted means its inputs are only partially deleted.
-    for (const [nodeKey, decision] of decisions) {
-        if (decision.kind !== "delete") continue;
-        const nodeKeyStr = nodeIdentifierToString(nodeKey);
-        const dependents = structuralDependents.get(nodeKeyStr);
-        if (dependents === undefined) continue;
-        for (const dep of dependents) {
-            if (!materializedNodes.has(dep)) continue;
-            if (decisions.get(dep)?.kind === "delete") continue;
-            const depRecord = deriveInputEdges(oldGraphScheme, oldLookup, dep);
-            throw makePartialDeleteFanInError(dep, depRecord);
-        }
-    }
 }
+
 
 module.exports = {
     readValidDependents,
     propagateInvalidate,
     buildStructuralDependents,
-    propagateDeletesAndCheckFanIn,
+    propagateDeletes,
 };

@@ -1,6 +1,6 @@
 const { nodeIdentifierToString } = require('./types');
 const { nodeIdentifierFromString } = require('./node_identifier');
-const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges, semanticInputKeys, GraphSchemeError } = require('./graph_scheme');
+const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges, GraphSchemeError } = require('./graph_scheme');
 const { fromISOString } = require('../../../datetime');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
@@ -121,35 +121,56 @@ async function assertValidReplicaMaterializationState(storage, lookup, context) 
     }
     for await (const identifier of storage.freshness.keys()) {
         const identifierString = nodeIdentifierToString(identifier);
-        if (!cachedIdentifiers.has(identifierString)) {
-            throw new ReplicaStateInvariantError(context, 'has freshness entry but no cached value', identifierString);
+        if (!materializedIdentifiers.has(identifierString)) {
+            throw new ReplicaStateInvariantError(context, 'has freshness entry but no identifier lookup entry', identifierString);
         }
     }
     for await (const identifier of storage.timestamps.keys()) {
         const identifierString = nodeIdentifierToString(identifier);
-        if (!cachedIdentifiers.has(identifierString)) {
-            throw new ReplicaStateInvariantError(context, 'has timestamps but no cached value', identifierString);
+        if (!materializedIdentifiers.has(identifierString)) {
+            throw new ReplicaStateInvariantError(context, 'has timestamps but no identifier lookup entry', identifierString);
         }
+    }
+
+    /** @type {Map<string, import('./types').NodeIdentifier[]>} */
+    const inputEdgesByIdentifier = new Map();
+    for (const identifierString of materializedIdentifiers) {
+        const identifier = nodeIdentifierFromString(identifierString);
+        let inputs;
+        try {
+            inputs = deriveInputEdges(scheme, lookup, identifier);
+        } catch (error) {
+            if (error instanceof GraphSchemeError) {
+                throw new ReplicaStateInvariantError(
+                    context,
+                    `depends on unmaterialized input (${error.message})`,
+                    identifierString
+                );
+            }
+            throw error;
+        }
+        for (const input of inputs) {
+            const inputString = nodeIdentifierToString(input);
+            if (!materializedIdentifiers.has(inputString)) {
+                throw new ReplicaStateInvariantError(context, `depends on unmaterialized input ${inputString}`, identifierString);
+            }
+        }
+        inputEdgesByIdentifier.set(identifierString, inputs);
     }
 
     for await (const identifier of storage.valid.keys()) {
         const identifierString = nodeIdentifierToString(identifier);
-        if (!cachedIdentifiers.has(identifierString)) {
+        if (!materializedIdentifiers.has(identifierString)) {
             throw new ReplicaStateInvariantError(context, 'valid key is not materialized', identifierString);
         }
         const validDependents = await storage.valid.get(identifier) ?? [];
         for (const dependent of validDependents) {
             const dependentString = nodeIdentifierToString(dependent);
-            if (!cachedIdentifiers.has(dependentString)) {
+            if (!materializedIdentifiers.has(dependentString)) {
                 throw new ReplicaStateInvariantError(context, `valid value references unmaterialized dependent ${dependentString}`, identifierString);
             }
-            const dependencyKey = lookup.idToKey.get(identifierString);
-            const dependentKey = lookup.idToKey.get(dependentString);
-            if (dependencyKey === undefined || dependentKey === undefined) {
-                throw new ReplicaStateInvariantError(context, `valid edge ${identifierString} -> ${dependentString} is absent from identifier lookup`, identifierString);
-            }
-            const dependentInputKeys = semanticInputKeys(scheme, lookup, dependent);
-            if (!dependentInputKeys.some(inputKey => String(inputKey) === String(dependencyKey))) {
+            const dependentInputs = inputEdgesByIdentifier.get(dependentString) ?? [];
+            if (!dependentInputs.some(input => nodeIdentifierToString(input) === identifierString)) {
                 throw new ReplicaStateInvariantError(context, `valid value is not compatible with dependent ${dependentString}`, identifierString);
             }
         }
@@ -158,24 +179,9 @@ async function assertValidReplicaMaterializationState(storage, lookup, context) 
     for (const identifierString of materializedIdentifiers) {
         const identifier = nodeIdentifierFromString(identifierString);
         if (await storage.freshness.get(identifier) !== 'up-to-date') continue;
-        let derivedEdges;
-        try {
-            derivedEdges = deriveInputEdges(scheme, lookup, identifier);
-        } catch (error) {
-            if (error instanceof GraphSchemeError) {
-                throw new ReplicaStateInvariantError(
-                    context,
-                    `is up-to-date but depends on an unmaterialized input (${error.message})`,
-                    identifierString
-                );
-            }
-            throw error;
-        }
+        const derivedEdges = inputEdgesByIdentifier.get(identifierString) ?? [];
         for (const input of derivedEdges) {
             const inputString = nodeIdentifierToString(input);
-            if (!materializedIdentifiers.has(inputString)) {
-                throw new ReplicaStateInvariantError(context, `is up-to-date but depends on unmaterialized input ${inputString}`, identifierString);
-            }
             const inputFreshness = await storage.freshness.get(input);
             if (inputFreshness !== 'up-to-date') {
                 throw new ReplicaStateInvariantError(context, `is up-to-date but depends on non-up-to-date input ${inputString}`, identifierString);
