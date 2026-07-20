@@ -33,7 +33,7 @@ valid                : Map<NodeIdentifier, Array<NodeIdentifier>>
 - `values` is cached value storage.
 - `freshness` is the total materialized-node freshness table.
 - `timestamps` is the total materialized-node timestamp table. `createdAt` is when the materialized node identity was first created; `modifiedAt` is a version timestamp for the stored semantic value (it advances only when the semantic value changes, not when freshness, validity, or other record metadata changes).
-- `valid` is the inverse proof relation for up-to-date cached values. `valid[D]` contains dependents `N` whose current cached value has a proof with respect to `D`'s current cached value; `valid[D]` is also the outgoing frontier consumed when `D` is invalidated.
+- `valid` is the inverse proof relation for up-to-date cached values. `valid[D]` contains dependents `N` whose current cached value has a proof with respect to `D`'s current cached value; `valid[D]` is also the outgoing frontier traversed when `D` is invalidated.
 
 Terminology:
 
@@ -85,7 +85,7 @@ Answer:    No. The runtime pulls dependencies and invokes the computor. The old
 Distinguishing these two questions is the core of the flag-based design:
 
 - `freshness[N]` is the **read-path state** — it decides whether the runtime can return `N` immediately.
-- `valid[D]` is the **incoming proof set** for up-to-date dependents and the **outgoing proof frontier** consumed by invalidation propagation.
+- `valid[D]` is the **incoming proof set** for up-to-date dependents and the **outgoing proof frontier** traversed by invalidation propagation.
 - `valid` is also the **invalidation propagation frontier** — it identifies all up-to-date dependents that must be marked stale when `D` changes value.
 
 ## Input Terminology
@@ -165,14 +165,21 @@ This invariant is maintained by writers (`handleUnchanged`, `handleChanged`), sy
 rebuild, migration, and final validation. The pull fast path does not re-check `valid[D].has(N)`
 for an up-to-date node — it relies on the invariant being enforced by mutation paths.
 
-#### 3. Stale-node recomputation invariant
+#### 3. Stale-node semantics
 
 For every materialized node `N`:
 
-If `freshness[N] === "potentially-outdated"`, then:
-- `valid[N]` is empty;
-- if `inputEdges(N)` is non-empty, at least one input `D` lacks `N ∈ valid[D]`;
-- the next pull of `N` pulls dependencies and invokes `N`'s computor.
+- `freshness[N]` decides whether N may return immediately (`up-to-date`) or must revalidate.
+- `valid[N]` is the outgoing proof frontier. A stale node may have nonempty `valid[N]` because its stored semantic value has not changed.
+- `valid[D].has(N)` is an incoming proof. A stale node may retain complete incoming proofs when its staleness was recursively propagated rather than caused by a value change in a dependency.
+
+A stale node's next pull:
+
+1. Pulls every input position.
+2. If `values[N]` exists, `inputEdges(N)` is non-empty, and every incoming proof `valid[D].has(N)` is present: cache-revalidate (mark `up-to-date`, return cached value).
+3. Otherwise invokes `N`'s computor.
+
+Zero-input stale nodes have no incoming proofs to check and always invoke their computor.
 
 #### 4. Validity is allowed to be incomplete
 
@@ -180,25 +187,28 @@ Missing `D ⇝ N` does not mean `N` is not a structural dependent of `D`. It onl
 
 Therefore, operations that need the full structural graph, such as migration delete propagation, must use the derived `inputEdges`, not `valid`.
 
-#### 5. Stale nodes have no outgoing proofs
+#### 5. Stale nodes may retain outgoing proofs
 
-A potentially-outdated node has an empty `valid[N]` outgoing frontier after invalidation. Incoming proofs may be partially present for propagated invalidation, but a stale non-source node lacks at least one incoming structural proof.
+A stale node may have a nonempty `valid[N]` outgoing frontier because its stored semantic value has not changed. These outgoing proofs remain meaningful for downstream cache revalidation: when a downstream node later recomputes, it checks its incoming proofs, and if `valid[N].has(dependent)` survived, the dependent may cache-revalidate without invoking its own computor.
 
-When `N` recomputes and returns `Unchanged`, the runtime restores the incoming proofs for `N` itself and marks `N` up-to-date. It does not recreate proofs from `N` to dependents; each dependent restores its own incoming proofs only when it recomputes.
+Recursive invalidation propagates freshness only, without removing validity edges. When `N` recomputes and returns `Unchanged`, the runtime restores `N`'s incoming proofs and marks `N` up-to-date. Outgoing proofs from `N` to dependents that were preserved through the invalidation remain available; each downstream dependent checks its own incoming proofs when it later pulls.
 
 ## Intuition
 
 ```
 freshness decides whether a node is clean enough to return immediately.
 
-valid records proofs for up-to-date dependents and provides the frontier consumed by invalidation.
+valid records proofs for up-to-date dependents and provides the frontier traversed by invalidation propagation.
 
-Invalidation changes freshness and revokes validity proofs. A later pull must invoke the stale node's computor.
+Explicit invalidation removes the named node's incoming proofs (forcing recomputation).
+Recursive invalidation propagates freshness only — validity edges are preserved.
 
 A changed value clears outgoing validity from that node, because dependents validated against
 the old value can no longer trust it.
 
-An Unchanged result preserves the node's cached value and restores its incoming proofs; it does not resurrect outgoing proofs to dependents consumed by invalidation.
+An Unchanged result preserves the node's cached value, restores its incoming proofs,
+and preserves its outgoing proofs. Downstream dependents may cache-revalidate through
+preserved incoming proofs.
 ```
 
 ## Pull Algorithm
@@ -214,17 +224,24 @@ pull(N):
 
 3. Let inputEdges(N) be the deduplicated structural input list.
 
-4. Run N's computor with the pulled input values and values[N] as oldValue.
+4. If values[N] exists
+   and inputEdges(N) is non-empty
+   and for every D in inputEdges(N): valid[D].has(N):
+       freshness[N] = "up-to-date";
+       return values[N].
 
-5. If the computor returns Unchanged:
+5. Run N's computor with the pulled input values and values[N] as oldValue.
+
+6. If the computor returns Unchanged:
        require oldValue exists;
        add incoming validity flags for N;
        set freshness[N] = "up-to-date".
 
-6. If the computor returns a new value:
+7. If the computor returns a new value:
        remove old incoming validity for N;
-       consume valid[N] while propagating invalidation to dependents;
+       capture and clear valid[N];
        write the new value;
+       mark captured dependents stale and propagate freshness transitively;
        add new incoming validity flags for N;
        set freshness[N] = "up-to-date".
 ```
@@ -242,9 +259,9 @@ corruption/integrity check.
 Zero-input nodes follow the same fast path: an up-to-date zero-input node returns its
 value immediately.
 
-### Potentially-outdated recomputation
+### Potentially-outdated cache revalidation
 
-A potentially-outdated node `N` never returns its stored value directly. The stored value is passed to the computor as `oldValue`. After dependencies are pulled, the computor must either return a new value or `Unchanged`; only then are incoming validity proofs restored and `freshness[N]` set to `up-to-date`.
+A potentially-outdated node `N` pulls all dependencies. If `N` has a cached value, has at least one input, and every incoming validity proof is still present, `N` may reuse its cached value without invoking the computor (cache revalidation). Otherwise the computor is invoked with the pulled input values and the cached value as `oldValue`.
 
 ## Handling `Unchanged`
 
@@ -262,8 +279,8 @@ freshness[N] = "up-to-date"
 ```
 
 - `values[N]` is unchanged.
-- `valid[N]` is not recreated by `N` returning `Unchanged`.
-- Dependents of `N` remain stale until they recompute and restore their own incoming proofs.
+- `valid[N]` is not cleared — outgoing proofs from `N` to dependents remain valid.
+- Downstream dependents may later cache-revalidate through the preserved `valid[N]` proofs.
 
 ## Handling Changed Value
 
@@ -276,7 +293,8 @@ handleChanged(N, inputEdges, newValue):
 for every D in inputEdges:
     valid[D].remove(N)
 
-consume valid[N] by removing each outgoing edge while propagating invalidation
+let downstream = valid[N]
+clear valid[N]
 
 values[N] = newValue
 
@@ -286,7 +304,7 @@ for every D in inputEdges:
 freshness[N] = "up-to-date"
 for every M in downstream:
     freshness[M] = "potentially-outdated"
-    consume valid[M] recursively
+    propagate freshness through valid[M] without removing validity
 ```
 
 Removing `N` from each `valid[D]` removes claims that the old value of `N` was valid with respect
@@ -302,9 +320,7 @@ that dependent's own `valid` set.
 When a node `N` changes value, its dependents are marked potentially-outdated as shown in
 `handleChanged` above. Propagation walks the `valid` relation starting from `N`.
 
-### External invalidation without value change
-
-Marking a node potentially-outdated preserves its cached value but revokes validity proofs:
+### External invalidation without value change (explicit invalidation)
 
 ```
 invalidate(N):
@@ -318,16 +334,17 @@ for every D in inputEdges(N):
     valid[D].remove(N)
 
 for every M in snapshot(valid[N]):
-    valid[N].remove(M)
     freshness[M] = "potentially-outdated"
-    recursively consume valid[M]
+    propagate freshness through valid[M] without removing validity
 ```
 
-The next pull supplies the cached value as `oldValue`, pulls dependencies, invokes the computor, and restores incoming proofs only after `N` successfully recomputes or returns `Unchanged`.
+The next pull supplies the cached value as `oldValue`, pulls dependencies, and checks incoming proofs. Since `N`'s incoming proofs were removed, the cache predicate fails and the computor is invoked.
 
 ### Explicit and propagated invalidation
 
-Explicit invalidation removes every incoming proof for the root node. Propagated invalidation removes only the causal incoming proof or proofs corresponding to invalidated predecessor paths. In a diamond, every causal edge is processed even when a downstream node's outgoing frontier is expanded only once.
+Explicit invalidation removes every incoming proof for the root node, guaranteeing that its next pull invokes the computor.
+
+Propagated invalidation is freshness-only: it marks downstream nodes stale but preserves all validity edges. A downstream node reached through propagation retains its incoming proofs and may cache-revalidate when later pulled.
 
 ## Concurrent Validity Updates
 
@@ -460,18 +477,18 @@ described in the Invariants section above.
 - On changed result, the algorithm reads `valid[D]` as the downstream frontier.
 - It clears `valid[D]`.
 - It marks direct downstream nodes potentially-outdated.
-- It consumes outgoing validity frontiers to mark transitive dependents stale and revoke causal proofs.
+- It propagates stale freshness through outgoing validity frontiers to mark transitive dependents stale.
 - Since `valid[D]` is cleared, any direct dependent requiring `D ⇝ N` cannot be up-to-date until it recomputes and re-establishes the proof.
 
-### Theorem 3: Stale nodes cannot authorize downstream returns
+### Theorem 3: Preserved outgoing proofs authorize downstream cache revalidation
 
-**Claim:** Once a node is stale, no dependent can use that node as a proof source until the dependent recomputes.
+**Claim:** A stale node `N` with preserved outgoing proofs `valid[N]` may authorize a dependent to cache-revalidate without invoking its own computor, provided the dependent's incoming proofs survive.
 
 **Proof sketch:**
 
-- Strong invalidation consumes `valid[N]` for every affected stale node `N`.
-- `Unchanged` restores only the recomputed node's incoming proofs.
-- A dependent of `N` restores `N ⇝ dependent` only when that dependent recomputes.
+- Recursive invalidation propagates freshness without removing validity edges.
+- `Unchanged` preserves `valid[N]`; dependents still have `valid[N].has(dependent)`.
+- When a downstream dependent later pulls, it checks its incoming proofs. If `valid[N].has(dependent)` survived, the dependent may cache-revalidate.
 
 ### Theorem 4: Runtime invalidation can use "valid" as a frontier
 
