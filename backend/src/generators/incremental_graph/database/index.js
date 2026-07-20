@@ -107,8 +107,11 @@ const {
 
 const {
     assertValidFinalMergeState,
+    assertValidReplicaMaterializationState,
+    ReplicaStateInvariantError,
     FinalMergeStateError,
     isFinalMergeStateError,
+    isReplicaStateInvariantError,
 } = require('./sync_merge_validation');
 
 const {
@@ -206,7 +209,10 @@ module.exports = {
     assertExactStoredGraphSchemeMatches,
     initializeReplicaGlobals,
     assertValidFinalMergeState,
+    assertValidReplicaMaterializationState,
+    ReplicaStateInvariantError,
     FinalMergeStateError,
     isFinalMergeStateError,
+    isReplicaStateInvariantError,
     parseIdentifierLookup,
 };

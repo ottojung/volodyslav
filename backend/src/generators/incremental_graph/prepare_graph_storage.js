@@ -37,6 +37,7 @@ const {
     MissingGraphSchemeError,
     assertExactStoredGraphSchemeMatches,
     initializeReplicaGlobals,
+    assertValidReplicaMaterializationState,
 } = require("./database");
 
 /**
@@ -104,6 +105,12 @@ async function prepareIncrementalGraphStorage(rootDatabase, nodeDefs) {
             `active replica '${rootDatabase.currentReplicaName()}'`
         );
     }
+
+    await assertValidReplicaMaterializationState(
+        schemaStorage,
+        rootDatabase.getActiveIdentifierLookup(),
+        `active replica '${rootDatabase.currentReplicaName()}'`
+    );
 
     return {
         rootDatabase,

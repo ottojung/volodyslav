@@ -30,6 +30,11 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-10 (Freshness):** Conceptual state: `"up-to-date" | "potentially-outdated"`.
 
+**REQ-MAT-CLOSURE:** Materialized nodes form a dependency-closed set. For every materialized node N, every concrete input of N is materialized. Consequently, materializing N materializes its complete transitive dependency cone first, and removing any materialization requires removing all of its materialized transitive dependents.
+
+A materialization persists across restarts unless an explicit closure-preserving migration or synchronization operation removes it. Stale does not mean structurally incomplete: a potentially-outdated node may lack validity proofs, but it still has every concrete input materialized.
+
+
 **TERM-11 (Computor):** Async function: `(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>`.
 
 **DEF-OUTCOMES-01 (Outcomes Set):** For any schema node definition and arguments `(inputs, oldValue, bindings)`, `Outcomes(nodeName, bindings, inputs, oldValue) ⊆ ComputedValue` (equivalently `Outcomes(NodeInstance, inputs, oldValue)`) represents the set of all semantic values that could be produced by the computor in any permitted execution context. This set may be infinite. `Unchanged` is not part of `Outcomes`—it is an optimization sentinel only. `NodeKey` may be used as a storage key derived from the node instance, but it is not a semantic argument to `Outcomes`.
@@ -475,7 +480,7 @@ interface IncrementalGraph {
   getModificationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
 
   // Inspection API (read-only)
-  getFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
+  getFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | undefined>;
   getValue(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue | undefined>;
   listMaterializedNodes(): Promise<Array<[NodeName, BindingEnvironment]>>;
   getSchemas(): Array<CompiledNode>;
@@ -491,7 +496,7 @@ interface IncrementalGraph {
 **REQ-IFACE-03:** For compound-expressions (arity > 0), `bindings` MUST be provided with length matching the expression arity.
 
 **REQ-IFACE-04 (Inspection API):** Implementations MUST provide the inspection interface methods:
-* `getFreshness(nodeName, bindings?)` — Returns the freshness state of a specific node instance. Returns `"missing"` for unmaterialized nodes.
+* `getFreshness(nodeName, bindings?)` — Returns the freshness state of a specific node instance. Returns `undefined` when no materialization exists for that node.
 * `getValue(nodeName, bindings?)` — Returns the currently stored value for a node instance without triggering recomputation, or `undefined` if the node has never been materialized.
 * `listMaterializedNodes()` — Returns an array of tuples `[NodeName, BindingEnvironment]` for all materialized node instances.
 * `getSchemas()` — Returns the list of compiled node schemas registered with this graph.
@@ -520,7 +525,7 @@ interface IncrementalGraph {
   * identifier reconciliation occurs;
   * dependency identifiers are relowered;
   * a cached value is deleted because the old value is not valid for the final dependency structure;
-  * freshness changes between `up-to-date`, `potentially-outdated`, and `missing`.
+  * freshness changes between `up-to-date` and `potentially-outdated`; no freshness record exists for unmaterialized nodes.
 
 * Migration invalidation (`migration.md`) follows the same invariant: invalidation of a cached node does not change `modifiedAt`. Freshness and validity are the mechanisms for representing uncertainty and recomputation requirements in migration, just as they are in runtime operations.
 

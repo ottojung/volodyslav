@@ -47,8 +47,7 @@ const { LAST_NODE_INDEX_KEY } = require('./root_database');
 const { buildMergePlan } = require('./sync_merge_plan');
 const {
     assertValidFinalMergeState,
-    assertLookupCoversMaterializedNodes,
-    assertMaterializedNodesHaveTimestamps,
+    assertValidReplicaMaterializationState,
     FinalMergeStateError,
     isFinalMergeStateError,
 } = require('./sync_merge_validation');
@@ -260,15 +259,14 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         'Starting graph merge for host'
     );
 
+    await assertValidReplicaMaterializationState(hostStorage, hostLookup, 'staged host snapshot');
+
     await copyReplicaGently(rootDatabase, fromReplica, toReplica);
 
     const targetStorage = rootDatabase.schemaStorageForReplica(toReplica);
     const targetLookup = await loadTargetLookup(targetStorage);
     assertNoIdentifierCollisions(targetLookup, hostLookup);
-    await assertLookupCoversMaterializedNodes(hostStorage, hostLookup, 'staged host snapshot');
-    await assertMaterializedNodesHaveTimestamps(hostStorage, hostLookup, 'staged host snapshot');
-    await assertLookupCoversMaterializedNodes(targetStorage, targetLookup, 'merge target replica');
-    await assertMaterializedNodesHaveTimestamps(targetStorage, targetLookup, 'merge target replica');
+    await assertValidReplicaMaterializationState(targetStorage, targetLookup, 'local synchronization source');
 
     const targetSchemeRaw = await targetStorage.global.get(GRAPH_SCHEME_KEY);
     const hostSchemeRaw = await hostStorage.global.get(GRAPH_SCHEME_KEY);
@@ -292,8 +290,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap,
         decisions,
         hOnlyNeedsInvalidate,
-        directlyReloweredNodes,
-        reloweringInvalidatedNodes,
         equalVersionNeedsInvalidation,
         finalIdentifierForKey,
         finalIdentifierLookup,
@@ -313,13 +309,11 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         initialDecisions,
         decisions,
         hOnlyNeedsInvalidate,
-        directlyReloweredNodes,
-        reloweringInvalidatedNodes,
         equalVersionNeedsInvalidation,
         finalIdentifierForKey
     );
 
-    const summary = summarizeDecisions(decisions.values());
+    const summary = summarizeDecisions(decisions.entries(), targetLookup);
     const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation || equalVersionNeedsInvalidation.size > 0;
     const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
     const valueOriginByKey = await buildValueOriginByKey(
@@ -327,14 +321,10 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         decisions,
         targetLookup,
         hostLookup,
-        directlyReloweredNodes,
-        targetStorage,
-        targetSourceStorage,
-        hostStorage,
         finalIdentifierForKey
     );
 
-    const validityChanged = await rebuildMergedValidity({
+    const graphStateChanged = await rebuildMergedValidity({
         targetStorage,
         targetSourceStorage,
         hostSourceStorage: hostStorage,
@@ -344,7 +334,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap,
         valueOriginByKey,
     });
-    const hasChanges = hasSemanticChanges || validityChanged;
+    const hasChanges = hasSemanticChanges || graphStateChanged;
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
 
     if (hasChanges) {
@@ -366,6 +356,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             kept: summary.kept,
             taken: summary.taken,
             invalidated: summary.invalidated,
+            deleted: summary.deleted,
             switchedReplica,
         },
         'Graph merge completed for host'
