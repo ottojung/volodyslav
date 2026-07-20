@@ -872,7 +872,7 @@ describe("runMigration", () => {
             expect(allValidKeys).toEqual([]);
         });
 
-        test("preserves existing valid flags for stale kept nodes whose dependency's value is unchanged", async () => {
+        test("keeps stale kept nodes missing invalidated incoming proofs", async () => {
             // A → B
             // B is potentially-outdated, valid[A] contains B
             // migration keeps A and B
@@ -888,7 +888,6 @@ describe("runMigration", () => {
             await xStorage.values.put(bKey, { type: "all_events", events: [] });
             await xStorage.freshness.put(aKey, "up-to-date");
             await xStorage.freshness.put(bKey, "potentially-outdated");
-            await xStorage.valid.put(aKey, [bKey]);
 
             const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
@@ -902,7 +901,7 @@ describe("runMigration", () => {
                 { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
                 { output: "B", inputs: ["A"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
             ];
-            // valid[A] = [B] is set above, so auto-generation from valid handles this test.
+            // B is stale, so valid[A] intentionally lacks B.
 
             await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
@@ -915,7 +914,7 @@ describe("runMigration", () => {
 
             const validA = await yStorage.valid.get(aMigratedKey) ?? [];
             const bIdStr = String(bMigratedKey);
-            expect(validA.some(id => String(id) === bIdStr)).toBe(true);
+            expect(validA.some(id => String(id) === bIdStr)).toBe(false);
         });
 
         test("does not invent valid flags for stale kept nodes when valid was absent before migration", async () => {
@@ -1400,17 +1399,16 @@ async function populateNode(storage, nodeKey, {
     }
 }
 
-/** Build a two-node graph where B depends on A (A → B). */
+/** Build a valid two-node graph where stale B depends on A and lacks its causal proof. */
 async function buildTwoNodeGraph(storage, nodeKeyA, nodeKeyB, {
     timestampA = undefined,
     timestampB = undefined,
 } = {}) {
-        await populateNode(storage, nodeKeyA, { timestamps: timestampA });
+    await populateNode(storage, nodeKeyA, { timestamps: timestampA });
     await populateNode(storage, nodeKeyB, {
         freshness: "potentially-outdated",
         timestamps: timestampB,
     });
-    await storage.valid.put(nodeKeyA, [nodeKeyB]);
 }
 
 /** NodeDefs for a two-node schema [A, B]. */

@@ -28,17 +28,6 @@ const { invalidateDependentsFrom, revokeIncomingValidity } = require("./strong_i
 
 
 /**
- * Test-facing compatibility name for the shared strong propagation helper.
- * @param {IncrementalGraphInvalidateAccess} incrementalGraph
- * @param {import('./database/types').NodeIdentifier} changedIdentifier
- * @param {BatchBuilder} batch
- * @returns {Promise<void>}
- */
-async function internalPropagateOutdated(incrementalGraph, changedIdentifier, batch) {
-    await invalidateDependentsFrom(incrementalGraph.storage, batch, changedIdentifier);
-}
-
-/**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
  * @param {string} nodeName
  * @param {Array<ConstValue>} bindings
@@ -114,5 +103,4 @@ async function internalInvalidate(
 
 module.exports = {
     internalInvalidate,
-    internalPropagateOutdated,
 };

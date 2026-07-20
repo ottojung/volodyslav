@@ -711,7 +711,7 @@ describe("generators/incremental_graph", () => {
             const result = await graph.pull("nodeE");
 
             // input1=1 -> nodeA=10 -> nodeC(10+20=30) -> nodeE=90
-            // nodeB should skip recomputation (unchanged input)
+            // nodeB stays up-to-date because its dependency was not invalidated.
             expect(result.value).toBe(90);
             expect(computeCalls).toEqual(["nodeA", "nodeC", "nodeE"]);
 
@@ -776,13 +776,11 @@ describe("generators/incremental_graph", () => {
             inputCell.value = { value: 2 };
             await graph.invalidate("input");
 
-            // Chain with mixed states: dirty -> potentially-dirty -> potentially-dirty
-            // Middle node returns Unchanged, so output should skip recomputation
-            // (downstream validity consumed by invalidation)
+            // Chain with mixed states: dirty -> potentially-dirty -> potentially-dirty.
+            // Middle returns Unchanged, but output still recomputes because
+            // invalidation consumed the proof from middle to output.
 
             const result = await graph.pull("output");
-
-            // Middle returns Unchanged (preserving downstream validity), output skips recompute
             expect(result.value).toBe(20);
             expect(computeCalls).toEqual(["middle", "output"]);
 
@@ -1275,8 +1273,7 @@ describe("generators/incremental_graph", () => {
 
             const result = await graph.pull("output");
 
-            // With validity flags: inputs haven't changed, valid flags exist,
-            // so output should skip recomputation and just be marked up-to-date
+            // A potentially-outdated node recomputes even when its inputs are clean.
             expect(result.value).toBe(30);
             expect(computeCalls).toEqual(["output"]);
 

@@ -524,7 +524,7 @@ describe("Incremental graph validity", () => {
             await schemaStorage.freshness.put(srcId, "potentially-outdated");
 
             // Pull source — computor returns changed value (srcValue was 0, now 1).
-            // handleChanged calls propagateOutdatedFrom, which walks valid.
+            // handleChanged consumes outgoing validity proofs through the shared strong invalidation helper.
             await graph.pull("source");
 
             // Middle is a direct dependent of source via valid

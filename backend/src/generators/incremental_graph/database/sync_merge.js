@@ -324,6 +324,20 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         finalIdentifierForKey
     );
 
+    /** @type {Set<NodeIdentifier>} */
+    const directInvalidationRoots = new Set();
+    for (const [nodeKey, decision] of decisions) {
+        if (decision !== 'invalidate'
+            && !hOnlyNeedsInvalidate.has(nodeKey)
+            && !equalVersionNeedsInvalidation.has(nodeKey)) {
+            continue;
+        }
+        const finalId = finalIdentifierForKey.get(nodeKey);
+        if (finalId !== undefined) {
+            directInvalidationRoots.add(finalId);
+        }
+    }
+
     const graphStateChanged = await rebuildMergedValidity({
         targetStorage,
         targetSourceStorage,
@@ -333,6 +347,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         finalIdentifierForKey,
         mergedInputsMap,
         valueOriginByKey,
+        directInvalidationRoots,
     });
     const hasChanges = hasSemanticChanges || graphStateChanged;
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);

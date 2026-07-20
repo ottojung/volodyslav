@@ -39,7 +39,7 @@ async function getPersistedIdentifiersKeysMap(graph) {
 }
 
 describe("Incremental graph persistence and restart", () => {
-    describe("Restart preserves downstream up-to-date propagation", () => {
+    describe("Restart preserves recomputation-guaranteeing invalidation", () => {
         test("Unchanged propagation works after restart", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);
@@ -108,10 +108,10 @@ describe("Incremental graph persistence and restart", () => {
             expect(await graph2.getFreshness("B")).toBe("potentially-outdated");
             expect(await graph2.getFreshness("C")).toBe("potentially-outdated");
 
-            // Pull C - B should return Unchanged and propagate up-to-date to C
+            // Pull C: B returns Unchanged, but C still recomputes because invalidation consumed valid[B].has(C).
             const result2 = await graph2.pull("C");
             expect(result2.value).toBe(200); // Same as before
-            expect(computeCalls).toEqual(["B"]); // Only B computed, C was marked up-to-date via propagation
+            expect(computeCalls).toEqual(["B", "C"]);
 
             // Both B and C should be up-to-date now
             expect(await graph2.getFreshness("B")).toBe("up-to-date");

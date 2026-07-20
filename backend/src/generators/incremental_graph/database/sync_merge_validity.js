@@ -17,6 +17,7 @@ const { topologicalSortFromMap } = require('./topo_sort');
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
+/** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {'keep' | 'take' | 'invalidate' | 'delete'} MergeDecision */
 
 /**
@@ -232,6 +233,7 @@ function canonicalValidMapsEqual(left, right) {
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
  * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
+ * @param {Set<NodeIdentifier>} options.directInvalidationRoots
  * @returns {Promise<boolean>} Whether the canonical valid relation or any freshness record changed.
  */
 async function rebuildMergedValidity({
@@ -243,6 +245,7 @@ async function rebuildMergedValidity({
     finalIdentifierForKey: finalIdForKey,
     mergedInputsMap,
     valueOriginByKey,
+    directInvalidationRoots = new Set(),
 }) {
     const oldCanonicalValidMap = await readCanonicalValidMap(targetStorage);
 
@@ -300,37 +303,65 @@ async function rebuildMergedValidity({
     await transportValidityFromSide('target', targetSourceStorage, targetLookup);
     await transportValidityFromSide('host', hostSourceStorage, hostLookup);
 
-    /** @type {Map<string, string>} */
+    /** @type {Map<string, Freshness>} */
     const finalFreshness = new Map();
+    /** @type {Map<string, NodeIdentifier>} */
+    const finalIdentifierByString = new Map();
     for await (const nodeId of targetStorage.freshness.keys()) {
         const f = await targetStorage.freshness.get(nodeId);
         if (f !== undefined) {
-            finalFreshness.set(nodeIdentifierToString(nodeId), f);
+            const nodeIdStr = nodeIdentifierToString(nodeId);
+            finalFreshness.set(nodeIdStr, f);
+            finalIdentifierByString.set(nodeIdStr, nodeId);
         }
     }
+    for (const nodeIdentifier of mergedInputsMap.keys()) {
+        finalIdentifierByString.set(nodeIdentifierToString(nodeIdentifier), nodeIdentifier);
+    }
 
-    /** @param {NodeIdentifier} dependency @param {NodeIdentifier} dependent @returns {void} */
+    /** @param {NodeIdentifier} dependency @param {NodeIdentifier} dependent @returns {boolean} */
     function removeValidityEdge(dependency, dependent) {
         const dependencyString = nodeIdentifierToString(dependency);
         const dependentString = nodeIdentifierToString(dependent);
         const dependents = validMap.get(dependencyString) ?? [];
         const filtered = dependents.filter(item => nodeIdentifierToString(item) !== dependentString);
+        if (filtered.length === dependents.length) {
+            return false;
+        }
         if (filtered.length === 0) {
             validMap.delete(dependencyString);
         } else {
             validMap.set(dependencyString, filtered);
         }
+        return true;
     }
 
-    /** @param {NodeIdentifier} nodeIdentifier @returns {void} */
+    /** @param {NodeIdentifier} nodeIdentifier @returns {boolean} */
     function removeIncomingValidity(nodeIdentifier) {
+        let removed = false;
         const inputs = mergedInputsMap.get(nodeIdentifier) ?? [];
         for (const input of inputs) {
-            removeValidityEdge(input, nodeIdentifier);
+            removed = removeValidityEdge(input, nodeIdentifier) || removed;
         }
+        return removed;
+    }
+
+    /** @param {NodeIdentifier} nodeIdentifier @returns {boolean} */
+    function markStale(nodeIdentifier) {
+        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+        if (finalFreshness.get(nodeIdStr) === 'potentially-outdated') {
+            return false;
+        }
+        finalFreshness.set(nodeIdStr, 'potentially-outdated');
+        return true;
     }
 
     let freshnessChanged = false;
+    for (const root of directInvalidationRoots) {
+        freshnessChanged = markStale(root) || freshnessChanged;
+        removeIncomingValidity(root);
+    }
+
     let changed = true;
     while (changed) {
         changed = false;
@@ -338,42 +369,59 @@ async function rebuildMergedValidity({
             const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
             const freshness = finalFreshness.get(nodeIdStr);
             const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
-            if (freshness === 'up-to-date') {
-                let canRemainUpToDate = true;
-                for (const depId of requiredInputs) {
-                    const depIdStr = nodeIdentifierToString(depId);
-                    const dependents = validMap.get(depIdStr) ?? [];
-                    if (finalFreshness.get(depIdStr) !== 'up-to-date'
-                        || !dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
-                        canRemainUpToDate = false;
+
+            if (freshness !== 'up-to-date') {
+                const outgoing = validMap.get(nodeIdStr) ?? [];
+                if (outgoing.length > 0) {
+                    validMap.delete(nodeIdStr);
+                    for (const dependent of outgoing) {
+                        if (markStale(dependent)) {
+                            freshnessChanged = true;
+                        }
                     }
+                    changed = true;
                 }
-                if (!canRemainUpToDate) {
-                    finalFreshness.set(nodeIdStr, 'potentially-outdated');
-                    removeIncomingValidity(nodeIdentifier);
+                continue;
+            }
+
+            let hasStaleInput = false;
+            let hasMissingProof = false;
+            for (const depId of requiredInputs) {
+                const depIdStr = nodeIdentifierToString(depId);
+                const dependents = validMap.get(depIdStr) ?? [];
+                const hasProof = dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr);
+                if (finalFreshness.get(depIdStr) !== 'up-to-date') {
+                    hasStaleInput = true;
+                    if (hasProof && removeValidityEdge(depId, nodeIdentifier)) {
+                        changed = true;
+                    }
+                } else if (!hasProof) {
+                    hasMissingProof = true;
+                }
+            }
+
+            if (hasStaleInput) {
+                if (markStale(nodeIdentifier)) {
                     freshnessChanged = true;
                     changed = true;
                 }
                 continue;
             }
 
-            const outgoing = validMap.get(nodeIdStr) ?? [];
-            if (outgoing.length > 0) {
-                for (const dependent of outgoing) {
-                    finalFreshness.set(nodeIdentifierToString(dependent), 'potentially-outdated');
+            if (hasMissingProof) {
+                if (markStale(nodeIdentifier)) {
+                    freshnessChanged = true;
+                    changed = true;
                 }
-                validMap.delete(nodeIdStr);
-                freshnessChanged = true;
-                changed = true;
+                removeIncomingValidity(nodeIdentifier);
             }
         }
     }
 
     const writer = new ReplicaBatchWriter(targetStorage);
     for (const [nodeIdStr, freshness] of finalFreshness) {
-        if (freshness === 'potentially-outdated') {
-            await writer.push(targetStorage.freshness.putOp(depIdCache.get(nodeIdStr) ?? nodeIdentifierFromString(nodeIdStr), 'potentially-outdated'));
-        }
+        const nodeIdentifier = finalIdentifierByString.get(nodeIdStr) ?? nodeIdentifierFromString(nodeIdStr);
+        await writer.push(targetStorage.freshness.putOp(nodeIdentifier, freshness));
     }
 
     await targetStorage.valid.clear();
