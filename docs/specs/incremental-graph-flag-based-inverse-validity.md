@@ -426,14 +426,17 @@ transactions are active. In these contexts, raw full-array writes to `valid[D]` 
 
 After applying precise merge decisions, the merge flow:
 
-1. Preserves compatible `valid` entries from the surviving side where both the dependent and its
-   dependency have unchanged value identity and the dependent's derived `inputEdges` still include
-   the dependency.
-2. Removes entries for deleted or discarded identifiers.
-3. Removes entries whose dependent's value was changed, taken from an incompatible side, or whose
-   derived input edges no longer contain the dependency.
-4. Adds required missing flags for every up-to-date node per the invariant:
-   for every `D` in `inputEdges(N)`, `valid[D]` contains `N`.
+1. Transports compatible `valid` entries from both source sides where provenance, value identity,
+   and structural compatibility justify preserving the exact proof.
+2. Identifies **direct invalidation roots**: nodes whose decision is `invalidate`, equal-version
+   staleness, host-only invalidation, or any up-to-date node whose required incoming proof could
+   not be transported. All incoming proofs are removed from each direct root.
+3. Propagates stale freshness from each direct root through the transported validity frontier
+   without removing traversed validity edges. Descendants reached through propagated staleness
+   retain all incoming and outgoing proofs.
+4. Removes entries for deleted or discarded identifiers.
+5. Entries whose dependent no longer exists or whose derived input edges no longer contain the
+   dependency are removed.
 
 ### Migration
 
@@ -441,9 +444,9 @@ Migration rebuilds `valid` from the final migrated graph state:
 
 - `create` nodes marked `up-to-date` receive incoming valid flags for their current derived inputs because the migration callback supplies an up-to-date value.
 - `create` nodes marked `potentially-outdated` receive no incoming valid flags.
-- `override` and `keep` nodes preserve incoming valid flags only when previous proof, schema compatibility, value identity, and freshness rules justify preserving that exact proof.
-- Explicit `invalidate` nodes receive no incoming valid flags.
-- Propagated `invalidate` nodes omit proofs from recorded invalidation causes and preserve only unaffected old proofs justified by the migration rules.
+- `override` and `keep` nodes preserve incoming valid flags when previous proof, schema compatibility, value identity, and freshness rules justify preserving that exact proof.
+- **Explicit `invalidate`** nodes receive no incoming valid flags. Outgoing proofs from the explicitly invalidated node to its dependents survive when structurally and semantically transportable.
+- **Propagated `invalidate`** nodes preserve all historical incoming and outgoing proofs subject to normal structural compatibility and endpoint survival. Propagated invalidation changes freshness only.
 - `delete` nodes do not appear in `valid`.
 - Any `valid` entry pointing to a deleted identifier is absent after migration.
 
