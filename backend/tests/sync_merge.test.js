@@ -3853,7 +3853,8 @@ describe('mergeHostIntoReplica', () => {
             await T.values.put(nodeD, { v: 1 });
             await T.values.put(nodeE, { v: 2 });
             await T.values.put(nodeN, { v: 3 });
-            await T.freshness.put(nodeD, 'up-to-date');
+            // D is stale in target freshness — makes staleInput true for N
+            await T.freshness.put(nodeD, 'potentially-outdated');
             await T.freshness.put(nodeE, 'up-to-date');
             await T.freshness.put(nodeN, 'up-to-date');
             await T.valid.put(nodeD, [nodeN]);
@@ -3865,7 +3866,6 @@ describe('mergeHostIntoReplica', () => {
             await hostStorage.values.put(nodeD, { v: 1 });
             await hostStorage.values.put(nodeE, { v: 2 });
             await hostStorage.values.put(nodeN, { v: 3 });
-            // D's freshness is stale on host → D becomes stale input for N
             await hostStorage.freshness.put(nodeD, 'potentially-outdated');
             await hostStorage.freshness.put(nodeE, 'up-to-date');
             await hostStorage.valid.put(nodeD, [nodeN]);
@@ -3906,11 +3906,13 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('end-to-end: sync equal-version root forces recompute on first pull; freshness stale', async () => {
-        // A → B → C. Both sides have equal timestamps. Host B is
-        // potentially-outdated → B becomes an equal-version direct root.
-        // valid[A].has(B) must be removed. valid[B].has(C) must survive.
-        // First pull of C must invoke B's computor but not C's.
+    test('end-to-end: equal-version B direct root removes incoming proofs, C cache-revalidates', async () => {
+        // A → B → C. Equal timestamps on both sides. Host B is stale
+        // → B enters equal-version invalidation. Host C is up-to-date
+        // → C does NOT enter equal-version invalidation (only propagated).
+        // valid[A].has(B) must be absent (B's incoming proof removed).
+        // valid[B].has(C) must survive (C is propagated stale).
+        // B's first post-sync pull returns Unchanged; C must cache-revalidate.
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -3925,7 +3927,7 @@ describe('mergeHostIntoReplica', () => {
             let cCalls = 0;
             const nodeDefs = [
                 { output: "A", inputs: [], computor: async () => ({ v: 1 }), isDeterministic: true, hasSideEffects: false },
-                { output: "B", inputs: ["A"], computor: async () => { bCalls++; return ({ v: 2 }); }, isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async () => { bCalls++; return makeUnchanged(); }, isDeterministic: true, hasSideEffects: false },
                 { output: "C", inputs: ["B"], computor: async () => { cCalls++; return ({ v: 3 }); }, isDeterministic: true, hasSideEffects: false },
             ];
             const scheme = {
@@ -3947,7 +3949,7 @@ describe('mergeHostIntoReplica', () => {
             const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
             const keyC = stringToNodeKeyString('{"head":"C","args":[]}');
 
-            // Target: all up-to-date at TS1
+            // Target: all up-to-date at TS1 with proofs
             await writeNode(L, nodeA, TS1, { v: 1 });
             await writeNode(L, nodeB, TS1, { v: 2 });
             await writeNode(L, nodeC, TS1, { v: 3 });
@@ -3955,7 +3957,10 @@ describe('mergeHostIntoReplica', () => {
             await L.valid.put(nodeB, [nodeC]);
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
 
-            // Host: same timestamps but B is stale → equal-version root
+            // Host: same timestamps, B stale → B is an equal-version root.
+            // C is not present on the host side — it is target-only, so no
+            // equal-version check applies to C. C becomes propagated stale
+            // from B through the transported validity frontier.
             const hostname2 = 'peer-eq';
             await db.setHostnameGlobal(hostname2, 'version', db.version);
             const H = db.hostnameSchemaStorage(hostname2);
@@ -3963,23 +3968,28 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeA, TS1, { v: 1 });
             await writeNode(H, nodeB, TS1, { v: 2 });
             await H.freshness.put(nodeB, 'potentially-outdated');
-            await writeNode(H, nodeC, TS1, { v: 3 });
-            await H.freshness.put(nodeC, 'potentially-outdated');
             await H.valid.put(nodeA, [nodeB]);
-            await H.valid.put(nodeB, [nodeC]);
-            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
             expect(await mergeHostIntoReplica(logger, db, hostname2)).toBe(true);
 
             const T = db.getSchemaStorage();
+            // B is the only direct root — incoming proof removed
+            const validA = await T.valid.get(nodeA) ?? [];
+            expect(validA.some(d => String(d) === String(nodeB))).toBe(false);
+            // B's outgoing proof survives (C is propagated)
+            const validB = await T.valid.get(nodeB) ?? [];
+            expect(validB.some(d => String(d) === String(nodeC))).toBe(true);
             expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
             expect(await T.freshness.get(nodeC)).toBe('potentially-outdated');
 
-            // Open graph on merged state and pull C —
-            // B is a direct root and must recompute
+            // Open graph on merged state and pull C
             const graph = await createIncrementalGraph(capabilities, db, nodeDefs);
             const result = await graph.pull("C");
+            // B must recompute (direct root, returned Unchanged → preserved valid[B])
+            // C must cache-revalidate through preserved valid[B].has(C)
             expect(bCalls).toBe(1);
+            expect(cCalls).toBe(0);
             expect(result).toEqual({ v: 3 });
         } finally {
             if (db) await db.close();
