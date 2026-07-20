@@ -2,11 +2,14 @@ const { runMigration } = require("../src/generators/incremental_graph/migration_
 const { compileNodeDef } = require("../src/generators/incremental_graph/compiled_node");
 const {
     IDENTIFIERS_KEY,
+    LAST_NODE_INDEX_KEY,
     GRAPH_SCHEME_KEY,
     nodeIdentifierToString,
     buildGraphSchemeFromNodeDefs,
     serializeGraphScheme,
     isMissingGraphSchemeError,
+    isMissingIdentifierLookupError,
+    isMalformedIdentifierLookupError,
 } = require("../src/generators/incremental_graph/database");
 const {
     isUndecidedNodes,
@@ -99,18 +102,21 @@ function makeSchemaStorage() {
 
     const originalGlobalGet = global.get.bind(global);
     global.get = async (key) => {
-        if (key !== IDENTIFIERS_KEY) {
-            return await originalGlobalGet(key);
+        if (key === IDENTIFIERS_KEY) {
+            const stored = await originalGlobalGet(key);
+            if (stored !== undefined) return stored;
+            const out = [];
+            for await (const k of values.keys()) {
+                out.push([k, k]);
+            }
+            return out;
         }
-
-        const stored = await originalGlobalGet(key);
-        if (stored !== undefined) return stored;
-
-        const out = [];
-        for await (const k of values.keys()) {
-            out.push([k, k]);
+        if (key === LAST_NODE_INDEX_KEY) {
+            const stored = await originalGlobalGet(key);
+            if (stored !== undefined) return stored;
+            return 0;
         }
-        return out;
+        return await originalGlobalGet(key);
     };
 
     return {
@@ -126,6 +132,31 @@ function makeSchemaStorage() {
                 global.apply(operation);
                 valid.apply(operation);
                 timestamps.apply(operation);
+            }
+        },
+    };
+}
+
+/**
+ * Make a simple schema storage without auto-generation fallbacks.
+ * Used by tests that need to control exact metadata contents.
+ * @returns {object}
+ */
+function makeSimpleSchemaStorage() {
+    const values = makeInMemoryDb("values");
+    const freshness = makeInMemoryDb("freshness");
+    const global = makeInMemoryDb("global");
+    const valid = makeInMemoryDb("valid");
+    const timestamps = makeInMemoryDb("timestamps");
+    return {
+        values, freshness, global, valid, timestamps,
+        async batch(operations) {
+            for (const op of operations) {
+                values.apply(op);
+                freshness.apply(op);
+                global.apply(op);
+                valid.apply(op);
+                timestamps.apply(op);
             }
         },
     };
@@ -363,6 +394,188 @@ describe("runMigration", () => {
         expect(mock.setCurrentReplicaPointerCalled).toBe(false);
         expect(await yStorage.global.get("version")).toBeUndefined();
         expect(await yStorage.values.get(aKey)).toBeUndefined();
+    });
+
+    // ── Migration source metadata rejection tests ─────────────────────
+
+    test("rejects source with missing IDENTIFIERS_KEY", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+        const nodeKey = toJsonKey("A");
+
+        await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
+        await xStorage.freshness.put(nodeKey, "up-to-date");
+        await xStorage.timestamps.put(nodeKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
+        await xStorage.global.put("version", "1.0.0");
+        // Intentionally do NOT set IDENTIFIERS_KEY
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(caught).toBeDefined();
+        expect(isMissingIdentifierLookupError(caught)).toBe(true);
+        expect(String(caught.message)).toMatch(/identifiers_keys_map/i);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("rejects source with malformed IDENTIFIERS_KEY", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+        const nodeKey = toJsonKey("A");
+
+        await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
+        await xStorage.freshness.put(nodeKey, "up-to-date");
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, "not-an-array");
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(caught).toBeDefined();
+        expect(isMalformedIdentifierLookupError(caught)).toBe(true);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("rejects source with missing LAST_NODE_INDEX_KEY", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+
+        // Empty lookup to avoid ReplicaStateInvariantError from
+        // assertValidReplicaMaterializationState (no timestamps needed).
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, []);
+        // Intentionally do NOT set LAST_NODE_INDEX_KEY
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(caught).toBeDefined();
+        expect(isMissingIdentifierLookupError(caught)).toBe(true);
+        expect(String(caught.message)).toMatch(/identifiers_keys_map/i);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("rejects source with negative LAST_NODE_INDEX_KEY", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, []);
+        await xStorage.global.put(LAST_NODE_INDEX_KEY, -1);
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(caught).toBeDefined();
+        expect(isMissingIdentifierLookupError(caught)).toBe(true);
+        expect(String(caught.message)).toContain("last_node_index");
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("rejects source with non-integer LAST_NODE_INDEX_KEY", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, []);
+        await xStorage.global.put(LAST_NODE_INDEX_KEY, 3.14);
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(caught).toBeDefined();
+        expect(isMissingIdentifierLookupError(caught)).toBe(true);
+        expect(String(caught.message)).toContain("last_node_index");
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("rejects source with string LAST_NODE_INDEX_KEY", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, []);
+        await xStorage.global.put(LAST_NODE_INDEX_KEY, "0");
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(caught).toBeDefined();
+        expect(isMissingIdentifierLookupError(caught)).toBe(true);
+        expect(String(caught.message)).toContain("last_node_index");
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("empty but initialized source replica succeeds", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+
+        // Fully initialized replica with no graph records:
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, []);
+        await xStorage.global.put(LAST_NODE_INDEX_KEY, 0);
+        await xStorage.global.put("fingerprint", "testfingerprnt");
+        await xStorage.global.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [{ head: "A", arity: 0, inputTemplates: [] }] }));
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let migrationRan = false;
+        await expect(runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+            migrationRan = true;
+            // Can create a new node since the source is empty
+            await storage.create(toJsonKey("A"), () => Promise.resolve({ type: "all_events", events: [] }), "up-to-date");
+        })).resolves.toBe(mock.rootDatabase);
+
+        expect(migrationRan).toBe(true);
+        // Target should have the new node
+        const targetEntries = await yStorage.global.get(IDENTIFIERS_KEY);
+        expect(targetEntries).toBeDefined();
+        expect(targetEntries.length).toBe(1);
     });
 
     test("invalidate preserves graph records from previous storage", async () => {

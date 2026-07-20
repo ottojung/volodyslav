@@ -1,16 +1,12 @@
 const {
     compareNodeIdentifier,
-    IDENTIFIERS_KEY,
     nodeIdentifierToString,
     stringToNodeIdentifier,
     stringToNodeKeyString,
-    makeEmptyIdentifierLookup,
-    parseIdentifierLookup,
     deriveInputEdges,
 } = require("./database");
 const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 
-/** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database').ReadableSchemaStorage} ReadableSchemaStorage */
@@ -18,15 +14,11 @@ const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 /** @typedef {import('./migration_storage').Decision} Decision */
 
 /**
- * Collect all materialized node keys from a schema storage.
- * @param {SchemaStorage} storage
- * @returns {Promise<NodeIdentifier[]>}
+ * Collect all materialized node keys from a parsed identifier lookup.
+ * @param {import('./database/identifier_lookup').IdentifierLookup} lookup
+ * @returns {NodeIdentifier[]}
  */
-async function loadMaterializedNodes(storage) {
-    const rawIdentifiers = await storage.global.get(IDENTIFIERS_KEY);
-    const lookup = rawIdentifiers === undefined
-        ? makeEmptyIdentifierLookup()
-        : parseIdentifierLookup(rawIdentifiers, 'migration source replica');
+function loadMaterializedNodes(lookup) {
     return [...lookup.idToKey.keys()]
         .map(stringToNodeIdentifier)
         .sort(compareNodeIdentifier);
@@ -49,21 +41,17 @@ function addToValidSet(validSets, input, dependent) {
 
 /**
  * Build the identifiers_keys_map that reflects all decisions.
- * @param {ReadableMigrationStorage} prevStorage
+ * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
  * @param {Map<NodeIdentifier, Decision>} decisions
- * @returns {Promise<Array<[NodeIdentifier, NodeKeyString]>>}
+ * @returns {Array<[NodeIdentifier, NodeKeyString]>}
  */
-async function buildDecisionsMap(prevStorage, decisions) {
-    const oldEntries = await prevStorage.global.get(IDENTIFIERS_KEY);
-
+function buildDecisionsMap(oldLookup, decisions) {
     /** @type {Map<string, NodeKeyString>} */
     const idToKey = new Map();
-    if (Array.isArray(oldEntries)) {
-        for (const [id, nodeKeyJson] of oldEntries) {
-            const decision = decisions.get(stringToNodeIdentifier(String(id)));
-            if (!decision || decision.kind !== "delete") {
-                idToKey.set(String(id), stringToNodeKeyString(String(nodeKeyJson)));
-            }
+    for (const [idString, nodeKeyJson] of oldLookup.idToKey.entries()) {
+        const decision = decisions.get(stringToNodeIdentifier(idString));
+        if (!decision || decision.kind !== "delete") {
+            idToKey.set(idString, stringToNodeKeyString(String(nodeKeyJson)));
         }
     }
 
@@ -81,6 +69,9 @@ async function buildDecisionsMap(prevStorage, decisions) {
     entries.sort(([leftId], [rightId]) => compareNodeIdentifier(leftId, rightId));
     return entries;
 }
+
+
+
 
 /**
  * @param {Map<NodeIdentifier, Decision>} decisions

@@ -5,7 +5,6 @@
 const {
     deserializeNodeKey,
     stringToNodeKeyString,
-    IDENTIFIERS_KEY,
     nodeIdentifierToString,
     deriveInputPositions,
 } = require("./database");
@@ -16,7 +15,6 @@ const { makeSchemaCompatibilityError } = require("./migration_errors");
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').NodeName} NodeName */
-/** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 
 /** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
 /** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
@@ -25,24 +23,6 @@ const { makeSchemaCompatibilityError } = require("./migration_errors");
 /** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
 /** @typedef {import('./migration_decisions').CreateDecision} CreateDecision */
 /** @typedef {import('./migration_decisions').Decision} Decision */
-
-/**
- * Read the persisted identifiers_keys_map and return it as an index Map.
- * @param {ReadableMigrationStorage} prevStorage
- * @returns {Promise<Map<string, string>>}
- */
-async function loadIdentifiersKeysIndex(prevStorage) {
-    const index = new Map();
-    const entries = prevStorage.global !== undefined
-        ? await prevStorage.global.get(IDENTIFIERS_KEY)
-        : undefined;
-    if (Array.isArray(entries)) {
-        for (const [id, nodeKeyJson] of entries) {
-            index.set(String(id), String(nodeKeyJson));
-        }
-    }
-    return index;
-}
 
 /**
  * Resolve a node key to its parsed form using an indexed
@@ -110,7 +90,6 @@ async function assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex,
 }
 
 module.exports = {
-    loadIdentifiersKeysIndex,
     resolveNodeKeyFromIndex,
     checkSchemaCompatibility,
     assertKeepInputPositionsCompatible,

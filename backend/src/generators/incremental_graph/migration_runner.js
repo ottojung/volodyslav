@@ -14,7 +14,7 @@ const {
     compareNodeIdentifier,
     IDENTIFIERS_KEY,
     LAST_NODE_INDEX_KEY,
-    makeEmptyIdentifierLookup,
+    MissingIdentifierLookupError,
     parseIdentifierLookup,
     assertValidReplicaMaterializationState,
     parseGraphScheme,
@@ -95,16 +95,18 @@ const { unifyStores, makeDbToDbAdapter } = require("./database");
  * trade-off that avoids per-value memory retention.
  *
  * @param {ReadableMigrationStorage} prevStorage
+ * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} desiredValid
  * @param {import('./database/types').Version} newVersion
  * @param {import('../../datetime').Datetime} datetime - Datetime capability for generating timestamps.
  * @param {number} maxAllocatedIndex - The max allocated local index during this migration.
+ * @param {number} sourceLastNodeIndex - The validated durable last_node_index from the source replica.
  * @param {string} fingerprint - The database fingerprint to carry forward.
  * @param {string} graphSchemeString
  * @returns {ReadableSchemaStorage}
  */
-function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersion, datetime, maxAllocatedIndex, fingerprint, graphSchemeString) {
+function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid, newVersion, datetime, maxAllocatedIndex, sourceLastNodeIndex, fingerprint, graphSchemeString) {
     const producedValues = new Map();
 
     /**
@@ -214,13 +216,10 @@ function makeLazyMigrationSource(prevStorage, decisions, desiredValid, newVersio
                     return newVersion;
                 }
                 if (key === IDENTIFIERS_KEY) {
-                    return await buildDecisionsMap(prevStorage, decisions);
+                    return buildDecisionsMap(oldLookup, decisions);
                 }
                 if (key === LAST_NODE_INDEX_KEY) {
-                    const prevLastNodeIndex = await prevStorage.global.get(LAST_NODE_INDEX_KEY);
-                    const prevValue = (typeof prevLastNodeIndex === 'number' && Number.isInteger(prevLastNodeIndex) && prevLastNodeIndex >= 0)
-                        ? prevLastNodeIndex : 0;
-                    return Math.max(prevValue, maxAllocatedIndex);
+                    return Math.max(sourceLastNodeIndex, maxAllocatedIndex);
                 }
                 if (key === 'fingerprint') {
                     return fingerprint;
@@ -346,10 +345,20 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 );
             }
             const oldGraphScheme = parseGraphScheme(storedOldScheme);
+
+            // Strict source lookup loading: initialized replicas must have
+            // a valid identifiers_keys_map. An undefined or malformed lookup
+            // is rejected immediately.
             const rawOldIdentifiers = await prevStorage.global.get(IDENTIFIERS_KEY);
-            const oldLookup = rawOldIdentifiers === undefined
-                ? makeEmptyIdentifierLookup()
-                : parseIdentifierLookup(rawOldIdentifiers, 'migration source replica');
+            if (rawOldIdentifiers === undefined) {
+                throw new MissingIdentifierLookupError(
+                    `migration source replica (${fromReplica})`
+                );
+            }
+            const oldLookup = parseIdentifierLookup(
+                rawOldIdentifiers,
+                `migration source replica (${fromReplica})`
+            );
 
             await assertValidReplicaMaterializationState(
                 prevStorage,
@@ -358,7 +367,19 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             );
 
             // Load previous-version materialized nodes.
-            const materializedNodes = await loadMaterializedNodes(prevStorage);
+            const materializedNodes = loadMaterializedNodes(oldLookup);
+
+            // Validate source last_node_index: every initialized replica
+            // must have a valid durable last_node_index.
+            const rawSourceLastNodeIndex = await prevStorage.global.get(LAST_NODE_INDEX_KEY);
+            if (typeof rawSourceLastNodeIndex !== 'number'
+                || !Number.isInteger(rawSourceLastNodeIndex)
+                || rawSourceLastNodeIndex < 0) {
+                throw new MissingIdentifierLookupError(
+                    `migration source replica (${fromReplica}) has a version but missing or invalid last_node_index`
+                );
+            }
+            const sourceLastNodeIndex = rawSourceLastNodeIndex;
 
             // Create the MigrationStorage for the user callback.
             const migrationStorage = makeMigrationStorage(
@@ -366,7 +387,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
                 newHeadIndex,
                 materializedNodes,
                 rootDatabase.getFingerprint(),
-                rootDatabase.getLastNodeIndex(),
+                sourceLastNodeIndex,
                 oldGraphScheme,
                 newGraphScheme,
                 oldLookup
@@ -381,7 +402,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             const toStorage = rootDatabase.schemaStorageForReplica(toReplica);
 
             const finalLookup = parseIdentifierLookup(
-                await buildDecisionsMap(prevStorage, decisions),
+                buildDecisionsMap(oldLookup, decisions),
                 'migration target replica'
             );
 
@@ -399,11 +420,13 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // memory at O(|max value| + |keys|), matching the sync path.
             const lazySource = makeLazyMigrationSource(
                 prevStorage,
+                oldLookup,
                 decisions,
                 desiredValid,
                 currentVersion,
                 capabilities.datetime,
                 migrationStorage.getMaxAllocatedIndex(),
+                sourceLastNodeIndex,
                 rootDatabase.getFingerprint(),
                 graphSchemeString
             );
@@ -422,9 +445,10 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // This checks the invariant: every up-to-date node has valid flags
             // for every input, and no valid entries reference unknown identifiers.
             const rawIdentifiers = await toStorage.global.get(IDENTIFIERS_KEY);
-            const targetLookup = rawIdentifiers === undefined
-                ? makeEmptyIdentifierLookup()
-                : parseIdentifierLookup(rawIdentifiers, 'migration target replica');
+            if (rawIdentifiers === undefined) {
+                throw new MissingIdentifierLookupError('migration target replica');
+            }
+            const targetLookup = parseIdentifierLookup(rawIdentifiers, 'migration target replica');
             await assertValidReplicaMaterializationState(toStorage, targetLookup, 'migration target replica');
 
             // Persist the new active replica pointer after all writes succeed.

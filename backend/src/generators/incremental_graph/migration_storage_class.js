@@ -4,7 +4,6 @@
  */
 
 const {
-    IDENTIFIERS_KEY,
     makeNodeIdentifier,
     deriveInputEdges,
     ReplicaStateInvariantError,
@@ -21,7 +20,6 @@ const {
     checkSchemaCompatibility,
     assertKeepInputPositionsCompatible,
     resolveNodeKeyFromIndex,
-    loadIdentifiersKeysIndex,
 } = require("./migration_storage_schema");
 const {
     readValidDependents,
@@ -74,7 +72,7 @@ class MigrationStorageClass {
 
     /**
      * @private
-     * @type {undefined | Map<string, string>}
+     * @type {Map<string, string>}
      */
     _identifiersKeysIndex;
 
@@ -104,24 +102,19 @@ class MigrationStorageClass {
         this.decisions = new Map();
         this._fingerprint = fingerprint;
         this._nextIndex = lastNodeIndex + 1;
-        this._identifiersKeysIndex = undefined;
+        this._identifiersKeysIndex = buildIdentifiersKeysIndex(oldLookup);
         this.oldGraphScheme = oldGraphScheme;
         this.newGraphScheme = newGraphScheme;
         this.oldLookup = oldLookup;
     }
 
     /**
-     * Lazily load and index the persisted identifiers_keys_map record.
-     *
-     * This avoids repeatedly calling `prevStorage.global.get(IDENTIFIERS_KEY)`
-     * and linearly scanning the returned array during schema compatibility
-     * checks.
+     * Return the identifiers keys index, pre-built from oldLookup at
+     * construction time.
      * @private
-     * @returns {Promise<Map<string, string>>}
+     * @returns {Map<string, string>}
      */
-    async _getIdentifiersKeysIndex() {
-        if (this._identifiersKeysIndex !== undefined) return this._identifiersKeysIndex;
-        this._identifiersKeysIndex = await loadIdentifiersKeysIndex(this.prevStorage);
+    _getIdentifiersKeysIndex() {
         return this._identifiersKeysIndex;
     }
 
@@ -162,7 +155,7 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
+        const identifiersKeysIndex = this._getIdentifiersKeysIndex();
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
         await assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex, this.oldGraphScheme, this.newGraphScheme);
         const existing = this.decisions.get(nodeKey);
@@ -199,7 +192,7 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
+        const identifiersKeysIndex = this._getIdentifiersKeysIndex();
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
         await assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex, this.oldGraphScheme, this.newGraphScheme);
         const existing = this.decisions.get(nodeKey);
@@ -222,7 +215,7 @@ class MigrationStorageClass {
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
-        const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
+        const identifiersKeysIndex = this._getIdentifiersKeysIndex();
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
@@ -240,7 +233,7 @@ class MigrationStorageClass {
             materializedNodes: this.materializedNodes,
             decisions: this.decisions,
             newHeadIndex: this.newHeadIndex,
-            getIdentifiersKeysIndex: () => this._getIdentifiersKeysIndex(),
+            getIdentifiersKeysIndex: () => this._identifiersKeysIndex,
         });
     }
 
@@ -296,12 +289,9 @@ class MigrationStorageClass {
         }
         const keyStr = String(nodeKeyString);
 
-        const existingEntries = await this.prevStorage.global.get(IDENTIFIERS_KEY);
-        if (Array.isArray(existingEntries)) {
-            for (const [, existingKey] of existingEntries) {
-                if (String(existingKey) === keyStr) {
-                    throw makeCreateExistingNodeError(nodeKeyString);
-                }
+        for (const [, existingKey] of this.oldLookup.idToKey.entries()) {
+            if (String(existingKey) === keyStr) {
+                throw makeCreateExistingNodeError(nodeKeyString);
             }
         }
 
@@ -313,7 +303,7 @@ class MigrationStorageClass {
 
         const nodeKey = this._generateIdentifier();
         this.decisions.set(nodeKey, { kind: "create", nodeKeyString: keyStr, value, freshness });
-        const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
+        const identifiersKeysIndex = this._getIdentifiersKeysIndex();
         try { await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions); }
         catch (err) { this.decisions.delete(nodeKey); throw err; }
     }
@@ -361,7 +351,7 @@ class MigrationStorageClass {
      * @returns {Promise<import('./database/node_key').NodeKey | undefined>}
      */
     async resolveNodeKey(nodeKey) {
-        const identifiersKeysIndex = await this._getIdentifiersKeysIndex();
+        const identifiersKeysIndex = this._getIdentifiersKeysIndex();
         return resolveNodeKeyFromIndex(nodeKey, identifiersKeysIndex, this.decisions);
     }
 
@@ -406,6 +396,20 @@ class MigrationStorageClass {
             throw makeUndecidedNodesError(undecided);
         }
     }
+}
+
+/**
+ * Build an identifiers keys index map (idString → nodeKeyString) from a
+ * parsed identifier lookup.
+ * @param {import('./database/identifier_lookup').IdentifierLookup} lookup
+ * @returns {Map<string, string>}
+ */
+function buildIdentifiersKeysIndex(lookup) {
+    const index = new Map();
+    for (const [idString, nodeKeyString] of lookup.idToKey.entries()) {
+        index.set(idString, String(nodeKeyString));
+    }
+    return index;
 }
 
 module.exports = {

@@ -872,16 +872,19 @@ describe("MigrationStorage", () => {
             expect(isSchemaCompatibility(err)).toBe(true);
         });
 
-        test("keep() fails hard when identifiers_keys_map cannot resolve node", async () => {
+        test("keep() fails hard when lookup cannot resolve node", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
-
-            const ms = await setupStandardGraph(storage, headIndex);
-
-            // Force an empty identifiers_keys_map so schema compatibility cannot
-            // resolve semantic node keys for materialized nodes.
-            await storage.global.put(IDENTIFIERS_KEY, []);
-            const err = await ms.keep(nk("A")).catch((e) => e);
+            const A = nk("A");
+            const scheme = makeStandardGraphScheme();
+            // Create lookup missing A — its semantic key cannot be resolved.
+            const lookup = makeLookupFromKeys([nk("B"), nk("C"), nk("D")]);
+            await storage.values.put(A, DUMMY_VALUE);
+            await storage.values.put(nk("B"), DUMMY_VALUE);
+            await storage.values.put(nk("C"), DUMMY_VALUE);
+            await storage.values.put(nk("D"), DUMMY_VALUE);
+            const ms = makeMigrationStorage(storage, headIndex, [A, nk("B"), nk("C"), nk("D")], "testfingerprint", 0, scheme, scheme, lookup);
+            const err = await ms.keep(A).catch((e) => e);
             expect(isSchemaCompatibility(err)).toBe(true);
         });
 
@@ -1002,18 +1005,16 @@ describe("MigrationStorage", () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A"]);
             const A = nk("A");
+            const NEW = nk("NEW");
             const scheme = makeZeroInputScheme(["A", "NEW"]);
-            const lookup = makeLookupFromKeys([A]);
+            // Lookup must include NEW so the create collision check finds it.
+            const lookup = makeLookupFromKeys([A, NEW]);
             await storage.values.put(A, DUMMY_VALUE);
             await storage.freshness.put(A, "up-to-date");
             await storage.timestamps.put(A, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
             const ms = makeMigrationStorage(storage, headIndex, [A], "testfingerprint", 0, scheme, scheme, lookup);
-            await storage.global.put(IDENTIFIERS_KEY, [
-                [A, A],
-                [nk("NEW"), nk("NEW")],
-            ]);
             await ms.keep(A);
-            const err = await ms.create(nk("NEW"), () => Promise.resolve(DUMMY_VALUE), "up-to-date").catch((e) => e);
+            const err = await ms.create(NEW, () => Promise.resolve(DUMMY_VALUE), "up-to-date").catch((e) => e);
             expect(isCreateExistingNode(err)).toBe(true);
         });
 

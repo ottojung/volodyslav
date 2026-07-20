@@ -51,7 +51,7 @@ async function readValidDependents(nodeKey, prevStorage) {
  * @param {Set<NodeIdentifier>} ctx.materializedNodes
  * @param {Map<NodeIdentifier, Decision>} ctx.decisions
  * @param {Map<NodeName, CompiledNode>} ctx.newHeadIndex
- * @param {() => Promise<Map<string, string>>} ctx.getIdentifiersKeysIndex
+ * @param {() => Map<string, string>} ctx.getIdentifiersKeysIndex
  * @returns {Promise<void>}
  */
 async function propagateInvalidate(ctx) {
@@ -68,7 +68,7 @@ async function propagateInvalidate(ctx) {
             }
             throw makeDecisionConflictError(dep, existing.kind, "invalidate");
         }
-        const identifiersKeysIndex = await getIdentifiersKeysIndex();
+        const identifiersKeysIndex = getIdentifiersKeysIndex();
         await checkSchemaCompatibility(dep, newHeadIndex, identifiersKeysIndex, decisions);
         decisions.set(dep, { kind: "invalidate", provenance: "propagated" });
         await propagateInvalidate({
