@@ -247,7 +247,7 @@ async function rebuildMergedValidity({
     finalIdentifierForKey: finalIdForKey,
     mergedInputsMap,
     valueOriginByKey,
-    directInvalidationRoots = new Set(),
+    directInvalidationRoots,
 }) {
     const oldCanonicalValidMap = await readCanonicalValidMap(targetStorage);
 

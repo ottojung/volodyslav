@@ -1814,6 +1814,7 @@ describe('mergeHostIntoReplica', () => {
                 finalIdentifierForKey,
                 mergedInputsMap,
                 valueOriginByKey,
+            directInvalidationRoots: new Set(),
             });
 
             const validA = await targetStorage.valid.get(nodeA) ?? [];
@@ -1880,6 +1881,7 @@ describe('mergeHostIntoReplica', () => {
                 finalIdentifierForKey,
                 mergedInputsMap: new Map([[finalB, [finalA]]]),
                 valueOriginByKey,
+            directInvalidationRoots: new Set(),
             });
 
             const validA = await targetStorage.valid.get(finalA) ?? [];
@@ -2033,6 +2035,7 @@ describe('mergeHostIntoReplica', () => {
                     [keyA, { kind: 'source', side: 'target', sourceId: targetA }],
                     [keyB, { kind: 'source', side: 'host', sourceId: hostB }],
                 ]),
+            directInvalidationRoots: new Set(),
             });
 
             const validA = await targetStorage.valid.get(targetA) ?? [];
@@ -2129,6 +2132,7 @@ describe('mergeHostIntoReplica', () => {
                 finalIdentifierForKey,
                 mergedInputsMap: new Map([[finalB, [finalA]]]),
                 valueOriginByKey,
+            directInvalidationRoots: new Set(),
             });
 
             expect(String(finalA)).not.toBe(String(hostA));
@@ -3821,6 +3825,7 @@ describe('mergeHostIntoReplica', () => {
                 finalIdentifierForKey,
                 mergedInputsMap,
                 valueOriginByKey,
+            directInvalidationRoots: new Set(),
             });
 
             const validA = await T.valid.get(nodeA) ?? [];
@@ -3891,6 +3896,7 @@ describe('mergeHostIntoReplica', () => {
                 finalIdentifierForKey,
                 mergedInputsMap,
                 valueOriginByKey,
+            directInvalidationRoots: new Set(),
             });
 
             // D is stale → N has a stale input (propagated staleness).
