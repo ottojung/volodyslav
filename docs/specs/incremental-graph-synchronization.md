@@ -367,11 +367,14 @@ only if all of the following hold:
 If any of these do not hold, the node MUST be `potentially-outdated` or
 unmaterialized.
 
-**REQ-SYNC-12 (Meaning of potentially-outdated):** `potentially-outdated` does
-not mean the stored value is wrong. It means the stored value may only be passed
-as `oldValue` to the computor. The node cannot become `up-to-date` until its
-dependencies are pulled, its computor is invoked, and its incoming validity
-proofs are restored.
+**REQ-SYNC-12 (Meaning of potentially-outdated):** `potentially-outdated` means
+the system does not currently have enough proof to guarantee the stored value
+without verifying it. A stale node pulls all dependencies:
+
+- A **direct invalidation root** has had all incoming proofs removed. Its next pull must invoke its computor.
+- A **propagated stale descendant** retains all incoming and outgoing proofs. Its next pull may cache-revalidate without invoking its computor when every incoming proof remains present.
+
+A stale node that cache-revalidates is marked `up-to-date` and returns its stored value. A stale node whose cache predicate fails invokes its computor.
 
 ---
 

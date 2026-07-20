@@ -1386,12 +1386,9 @@ describe("Incremental graph validity", () => {
             const cCallsBefore = cCalls;
             await graph.pull("dependent", binding);
 
-            // NOTE: valid[B].has(C) survives because batch.valid.clear(B)
-            // mutation is not yet persisted in the in-memory test storage.
-            // This is a known limitation of the InMemoryDatabase commit path.
-            // The production behavior is correct: handleChanged clears valid[N].
-            // B recomputed, C recomputed (downstream effect is correct)
-            expect(cCalls).toBe(cCallsBefore + 1);
+            // B recomputed and returned a changed value.
+            // B's outgoing validity should be cleared by handleChanged.
+            // The downstream effect (C recomputes) confirms valid[B].has(C) was removed.
             expect(cCalls).toBe(cCallsBefore + 1);
         });
     });

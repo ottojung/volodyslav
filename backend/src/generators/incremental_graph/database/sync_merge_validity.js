@@ -368,17 +368,19 @@ async function rebuildMergedValidity({
                 }
             }
 
-            if (staleInput) {
-                // Propagated staleness — preserve all proofs
-                finalFreshness.set(nodeIdStr, 'potentially-outdated');
-                freshnessChanged = true;
-                changed = true;
-            } else if (missingProof) {
-                // Missing proof — classify as direct root
+            if (missingProof) {
+                // Missing proof — classify as direct root regardless of
+                // stale-input state. Remove all incoming proofs so the
+                // node's next pull invokes its computor.
                 finalFreshness.set(nodeIdStr, 'potentially-outdated');
                 freshnessChanged = true;
                 changed = true;
                 removeIncomingValidity(mergedInputsMap, validMap, nodeIdentifier);
+            } else if (staleInput) {
+                // Propagated staleness — preserve all proofs
+                finalFreshness.set(nodeIdStr, 'potentially-outdated');
+                freshnessChanged = true;
+                changed = true;
             }
         }
     }
