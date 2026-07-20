@@ -8,7 +8,7 @@
  */
 
 
-const { compareNodeIdentifier } = require('./node_identifier');
+const { compareNodeIdentifier, nodeIdentifierFromString } = require('./node_identifier');
 const { nodeIdentifierToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const { topologicalSortFromMap } = require('./topo_sort');
@@ -300,9 +300,6 @@ async function rebuildMergedValidity({
     await transportValidityFromSide('target', targetSourceStorage, targetLookup);
     await transportValidityFromSide('host', hostSourceStorage, hostLookup);
 
-    // In-memory freshness map that tracks both committed state and pending
-    // downgrades. When the loop queues a freshness downgrade, we update
-    // this map immediately so subsequent iterations see the new state.
     /** @type {Map<string, string>} */
     const finalFreshness = new Map();
     for await (const nodeId of targetStorage.freshness.keys()) {
@@ -312,32 +309,70 @@ async function rebuildMergedValidity({
         }
     }
 
-    const writer = new ReplicaBatchWriter(targetStorage);
-    let freshnessChanged = false;
-
-    // Traverse in topological order so that a node's inputs have their
-    // validity entries built before the node's own entries are written.
-    for (const nodeIdentifier of topologicalSortFromMap(mergedInputsMap)) {
-        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
-        const freshness = finalFreshness.get(nodeIdStr);
-        if (freshness !== 'up-to-date') continue;
-
-        const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
-        const hasStaleInput = requiredInputs.some((depId) => finalFreshness.get(nodeIdentifierToString(depId)) !== 'up-to-date');
-        if (hasStaleInput) {
-            finalFreshness.set(nodeIdStr, 'potentially-outdated');
-            freshnessChanged = true;
-            await writer.push(targetStorage.freshness.putOp(nodeIdentifier, 'potentially-outdated'));
-            continue;
+    /** @param {NodeIdentifier} dependency @param {NodeIdentifier} dependent @returns {void} */
+    function removeValidityEdge(dependency, dependent) {
+        const dependencyString = nodeIdentifierToString(dependency);
+        const dependentString = nodeIdentifierToString(dependent);
+        const dependents = validMap.get(dependencyString) ?? [];
+        const filtered = dependents.filter(item => nodeIdentifierToString(item) !== dependentString);
+        if (filtered.length === 0) {
+            validMap.delete(dependencyString);
+        } else {
+            validMap.set(dependencyString, filtered);
         }
-        for (const depId of requiredInputs) {
-            const depIdStr = nodeIdentifierToString(depId);
-            depIdCache.set(depIdStr, depId);
-            const dependents = validMap.get(depIdStr) ?? [];
-            validMap.set(depIdStr, dependents);
-            if (!dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
-                dependents.push(nodeIdentifier);
+    }
+
+    /** @param {NodeIdentifier} nodeIdentifier @returns {void} */
+    function removeIncomingValidity(nodeIdentifier) {
+        const inputs = mergedInputsMap.get(nodeIdentifier) ?? [];
+        for (const input of inputs) {
+            removeValidityEdge(input, nodeIdentifier);
+        }
+    }
+
+    let freshnessChanged = false;
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const nodeIdentifier of topologicalSortFromMap(mergedInputsMap)) {
+            const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+            const freshness = finalFreshness.get(nodeIdStr);
+            const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
+            if (freshness === 'up-to-date') {
+                let canRemainUpToDate = true;
+                for (const depId of requiredInputs) {
+                    const depIdStr = nodeIdentifierToString(depId);
+                    const dependents = validMap.get(depIdStr) ?? [];
+                    if (finalFreshness.get(depIdStr) !== 'up-to-date'
+                        || !dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
+                        canRemainUpToDate = false;
+                    }
+                }
+                if (!canRemainUpToDate) {
+                    finalFreshness.set(nodeIdStr, 'potentially-outdated');
+                    removeIncomingValidity(nodeIdentifier);
+                    freshnessChanged = true;
+                    changed = true;
+                }
+                continue;
             }
+
+            const outgoing = validMap.get(nodeIdStr) ?? [];
+            if (outgoing.length > 0) {
+                for (const dependent of outgoing) {
+                    finalFreshness.set(nodeIdentifierToString(dependent), 'potentially-outdated');
+                }
+                validMap.delete(nodeIdStr);
+                freshnessChanged = true;
+                changed = true;
+            }
+        }
+    }
+
+    const writer = new ReplicaBatchWriter(targetStorage);
+    for (const [nodeIdStr, freshness] of finalFreshness) {
+        if (freshness === 'potentially-outdated') {
+            await writer.push(targetStorage.freshness.putOp(depIdCache.get(nodeIdStr) ?? nodeIdentifierFromString(nodeIdStr), 'potentially-outdated'));
         }
     }
 

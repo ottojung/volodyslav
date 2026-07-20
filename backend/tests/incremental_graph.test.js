@@ -439,7 +439,7 @@ describe("generators/incremental_graph", () => {
             const result = await graph.pull("level3");
 
             expect(result.count).toBe(4); // Original value from first pull
-            expect(computeCalls).toEqual(["level1"]);
+            expect(computeCalls).toEqual(["level1", "level2", "level3"]);
 
             // All should be clean after pull
             const level1Freshness = await graph.getFreshness("level1");
@@ -778,13 +778,13 @@ describe("generators/incremental_graph", () => {
 
             // Chain with mixed states: dirty -> potentially-dirty -> potentially-dirty
             // Middle node returns Unchanged, so output should skip recomputation
-            // (downstream validity from Unchanged preserved)
+            // (downstream validity consumed by invalidation)
 
             const result = await graph.pull("output");
 
             // Middle returns Unchanged (preserving downstream validity), output skips recompute
             expect(result.value).toBe(20);
-            expect(computeCalls).toEqual(["middle"]);
+            expect(computeCalls).toEqual(["middle", "output"]);
 
             // All should be clean
             const inputFreshness = await graph.getFreshness("input");
@@ -1278,7 +1278,7 @@ describe("generators/incremental_graph", () => {
             // With validity flags: inputs haven't changed, valid flags exist,
             // so output should skip recomputation and just be marked up-to-date
             expect(result.value).toBe(30);
-            expect(computeCalls).toEqual([]); // cache hit from valid flags
+            expect(computeCalls).toEqual(["output"]);
 
             // Output should now be clean
             const outputFreshness = await graph.getFreshness("output");
@@ -1692,10 +1692,10 @@ describe("generators/incremental_graph", () => {
 
             const result = await graph.pull("output");
 
-            // All paths returned Unchanged (downstream validity preserved), output skips via cache hit
+            // All paths returned Unchanged (downstream validity preserved), output recomputes after proof revocation
             expect(result.value).toBe(100); // Original cached value
-            expect(computeCalls).toEqual(["pathA", "pathB", "pathC"]);
-            expect(computeCalls).not.toContain("output");
+            expect(computeCalls).toEqual(["pathA", "pathB", "pathC", "output"]);
+            expect(computeCalls).toContain("output");
 
             await db.close();
         });

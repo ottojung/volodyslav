@@ -1311,8 +1311,8 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         expect(nc(aC)).toBe(0);
         expect(nc(bC)).toBe(3); // one recompute
         expect(nc(cC)).toBe(3); // one recompute
-        expect(nc(dC)).toBe(1); // no recompute because c unchanged
-        expect(nc(eC)).toBe(1); // no recompute because d unchanged
+        expect(nc(dC)).toBe(2);
+        expect(nc(eC)).toBe(2);
 
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("up-to-date");

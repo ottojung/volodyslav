@@ -37,38 +37,7 @@ const {
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
 const { normalizeInputEdges } = require("./database");
-
-/**
- * Read the current valid set for a dependency from the mutation-aware batch.
- * Returns the database value merged with pending transaction-local mutations.
- * @param {BatchBuilder} batch
- * @param {NodeIdentifier} depId
- * @returns {Promise<NodeIdentifier[]>}
- */
-async function getValidSet(batch, depId) {
-    return await batch.valid.get(depId);
-}
-
-/**
- * Returns true when every dependency in inputEdges has a validity flag for N.
- * @param {BatchBuilder} batch
- * @param {NodeIdentifier} nId
- * @param {NodeIdentifier[]} inputEdges
- * @returns {Promise<boolean>}
- */
-async function allValidityFlagsPresent(batch, nId, inputEdges) {
-    if (inputEdges.length === 0) {
-        return false;
-    }
-    const nIdStr = nodeIdentifierToString(nId);
-    for (const depId of inputEdges) {
-        const validSet = await getValidSet(batch, depId);
-        if (!validSet.some(id => nodeIdentifierToString(id) === nIdStr)) {
-            return false;
-        }
-    }
-    return true;
-}
+const { invalidateDependentsFrom, revokeIncomingValidity } = require("./strong_invalidation");
 
 /**
  * Add N to valid[D] for each dependency D in inputEdges.
@@ -82,41 +51,6 @@ async function allValidityFlagsPresent(batch, nId, inputEdges) {
 function addValidityFlags(batch, nId, inputEdges) {
     for (const depId of inputEdges) {
         batch.valid.add(depId, nId);
-    }
-}
-
-/**
- * Propagate potentially-outdated freshness through validity sets.
- * Uses an iterative worklist to avoid stack overflow on deep chains.
- * @param {import('./graph_state').GraphStorage} storage
- * @param {BatchBuilder} batch
- * @param {NodeIdentifier} changedIdentifier
- * @param {NodeIdentifier[]} [initialDependents]
- * @returns {Promise<void>}
- */
-async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialDependents = undefined) {
-    /** @type {Set<string>} */
-    const visited = new Set();
-    /** @type {NodeIdentifier[]} */
-    const worklist = initialDependents === undefined ? [changedIdentifier] : [...initialDependents];
-
-    while (worklist.length > 0) {
-        const current = worklist.pop();
-        if (current === undefined) continue;
-        const currentStr = nodeIdentifierToString(current);
-        if (visited.has(currentStr)) continue;
-        visited.add(currentStr);
-
-        const dependents = await storage.getValid(current, batch);
-        for (const dep of dependents) {
-            const depStr = nodeIdentifierToString(dep);
-            if (visited.has(depStr)) continue;
-            const freshness = await batch.freshness.get(dep);
-            if (freshness === "up-to-date") {
-                batch.freshness.put(dep, "potentially-outdated");
-            }
-            worklist.push(dep);
-        }
     }
 }
 
@@ -149,21 +83,10 @@ async function handleUnchanged(_incrementalGraph, nodeIdentifier, inputEdges, ba
  * @returns {Promise<void>}
  */
 async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, alreadyMaterialized, batch) {
-    for (const edge of inputEdges) {
-        batch.valid.remove(edge, nodeIdentifier);
-    }
-    const downstream = await getValidSet(batch, nodeIdentifier);
-    batch.valid.clear(nodeIdentifier);
+    revokeIncomingValidity(batch, nodeIdentifier, inputEdges);
+    await invalidateDependentsFrom(incrementalGraph.storage, batch, nodeIdentifier);
     const datetime = incrementalGraph.datetime;
     const nowIso = datetime.now().toISOString();
-    for (const dependent of downstream) {
-        const freshness = await batch.freshness.get(dependent);
-        if (freshness === "up-to-date") {
-            batch.freshness.put(dependent, "potentially-outdated");
-        }
-    }
-    await propagateOutdatedFrom(incrementalGraph.storage, batch, nodeIdentifier, downstream);
-
     batch.values.put(nodeIdentifier, newValue);
 
 
@@ -232,17 +155,6 @@ async function internalMaybeRecalculate(
     // inputIdentifiers are inputPositions (preserving duplicates for computor args).
     // inputEdges are the normalized structural dependency-edge list.
     const inputEdges = normalizeInputEdges(inputIdentifiers);
-
-    // Cache predicate: reuse cached value iff:
-    // 1. cached value exists,
-    // 2. inputEdges is non-empty,
-    // 3. valid[D].has(N) for every D in inputEdges.
-    if (oldValue !== undefined && inputEdges.length > 0) {
-        if (await allValidityFlagsPresent(batch, nodeIdentifier, inputEdges)) {
-            batch.freshness.put(nodeIdentifier, "up-to-date");
-            return { value: oldValue, status: "cached" };
-        }
-    }
 
     const computedValue = await nodeDefinition.computor(inputValues, oldValue);
 

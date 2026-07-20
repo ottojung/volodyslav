@@ -418,3 +418,13 @@ to disk before X's computor runs with Y's value.
 
 *Verification:* use a test graph where X depends on Y (both unseen); inline a spy in the
 LevelDB batch flush for the inner pull and assert that Y's data (identifier, value, timestamps) is written in its own batch commit, separate from X's batch.
+
+## Strong invalidation validity semantics
+
+Invalidation revokes validity proofs and therefore implies recomputation before an affected materialized node can become up-to-date again. Freshness records whether a materialized node may return immediately: an `up-to-date` node may return its cached value, while a `potentially-outdated` node pulls its dependencies and invokes its computor with the cached value as `oldValue`.
+
+The `valid` relation is not a stale-cache reuse predicate. An incoming edge `valid[D].has(N)` is a proof required for `N` to be up-to-date. An outgoing set `valid[N]` is the proof frontier consumed by invalidation propagation.
+
+Explicit invalidation of `N` marks `N` potentially-outdated, removes every incoming proof from each structural input into `N`, and consumes `N`'s outgoing validity frontier. Propagated invalidation removes the causal proof or proofs by which invalidation reached the dependent, marks the dependent potentially-outdated, and consumes that dependent's outgoing frontier. In diamonds, edge processing is separate from node expansion, so every causal edge is removed even if a downstream node is expanded only once.
+
+A stale materialized node has no outgoing validity proofs. A stale non-source node lacks at least one incoming structural proof. Synchronization and migration preserve cached values but must not mint replacement proofs for invalidated nodes; their final replicas must satisfy the same strong-invalidation invariants before cutover.

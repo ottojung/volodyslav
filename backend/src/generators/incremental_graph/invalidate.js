@@ -15,59 +15,27 @@
  * @property {Map<import('./types').NodeName, import('./types').CompiledNode>} headIndex
  * @property {import('../../sleeper').SleepCapability} sleeper
  * @property {import('./graph_state').GraphStorage} storage
+ * @property {import('./lru_cache').ConcreteNodeCache} concreteInstantiations
  */
 
-const { stringToNodeName, nodeIdentifierToString, serializeNodeKey } = require("./database");
+const { stringToNodeName, nodeIdentifierToString, serializeNodeKey, ReplicaStateInvariantError, normalizeInputEdges } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { daytimeActivity } = require("./lock");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 const { lookupNodeIdentifier } = require("./graph_state");
+const { internalGetOrCreateConcreteNode } = require("./instantiation");
+const { invalidateDependentsFrom, revokeIncomingValidity } = require("./strong_invalidation");
+
 
 /**
+ * Test-facing compatibility name for the shared strong propagation helper.
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
  * @param {import('./database/types').NodeIdentifier} changedIdentifier
  * @param {BatchBuilder} batch
  * @returns {Promise<void>}
  */
-async function internalPropagateOutdated(
-    incrementalGraph,
-    changedIdentifier,
-    batch
-) {
-    /** @type {Set<string>} */
-    const visited = new Set();
-    /** @type {import('./database/types').NodeIdentifier[]} */
-    const worklist = [changedIdentifier];
-
-    while (worklist.length > 0) {
-        const current = worklist.pop();
-        if (current === undefined) continue;
-
-        const dynamicDependents = await incrementalGraph.storage.getValid(
-            current,
-            batch
-        );
-        for (const output of dynamicDependents) {
-            const outputStr = nodeIdentifierToString(output);
-            if (visited.has(outputStr)) continue;
-            visited.add(outputStr);
-
-            const currentFreshness = await batch.freshness.get(output);
-            if (currentFreshness === "up-to-date") {
-                batch.freshness.put(output, "potentially-outdated");
-            } else if (
-                currentFreshness !== undefined &&
-                currentFreshness !== "potentially-outdated"
-            ) {
-                /** @type {never} */
-                const freshness = currentFreshness;
-                throw new Error(
-                    `Unexpected freshness value ${freshness} for node ${outputStr}`
-                );
-            }
-            worklist.push(output);
-        }
-    }
+async function internalPropagateOutdated(incrementalGraph, changedIdentifier, batch) {
+    await invalidateDependentsFrom(incrementalGraph.storage, batch, changedIdentifier);
 }
 
 /**
@@ -99,12 +67,34 @@ async function internalUnsafeInvalidate(
             return { value: undefined };
         }
 
+        const concreteNode = internalGetOrCreateConcreteNode(
+            incrementalGraph,
+            concreteKey,
+            compiledNode,
+            bindings
+        );
+        const inputIdentifiers = [];
+        for (const inputKey of concreteNode.inputs) {
+            const inputIdentifier = lookupNodeIdentifier(tx, inputKey);
+            if (inputIdentifier === undefined) {
+                throw new ReplicaStateInvariantError(
+                    "invalidation",
+                    `depends on unmaterialized input ${String(inputKey)}`,
+                    nodeIdentifierToString(outputIdentifier)
+                );
+            }
+            inputIdentifiers.push(inputIdentifier);
+        }
+        const inputEdges = normalizeInputEdges(inputIdentifiers);
+
         tx.batch.freshness.put(outputIdentifier, "potentially-outdated");
-        await internalPropagateOutdated(incrementalGraph, outputIdentifier, tx.batch);
+        revokeIncomingValidity(tx.batch, outputIdentifier, inputEdges);
+        await invalidateDependentsFrom(incrementalGraph.storage, tx.batch, outputIdentifier);
 
         return { value: undefined };
     });
 }
+
 
 /**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
