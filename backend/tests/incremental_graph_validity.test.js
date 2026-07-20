@@ -307,9 +307,10 @@ describe("Incremental graph validity", () => {
 
     // === Test Obligation 1: Cache hit through valid flags (not freshness fast-path) ===
     describe("test obligation 1: cache hit through valid flags", () => {
-        it("invalidates source and cache-hits through valid flags downstream", async () => {
+        it("invalidates source and cache-hits through valid flags when source returns Unchanged", async () => {
+            let srcCalls = 0;
             const { nodeDefs, middleCC, dependentCC } = createChainGraph(
-                () => ({ v: "src" }),
+                () => { srcCalls++; if (srcCalls === 1) return ({ v: "src" }); return makeUnchanged(); },
                 () => ({ v: "mid" }),
                 () => ({ v: "dep" })
             );
@@ -350,10 +351,10 @@ describe("Incremental graph validity", () => {
             const depCallsBefore = dependentCC.getCallCount();
             const midCallsBefore = middleCC.getCallCount();
 
-            // Pull dependent: both mid and dep can cache-hit through preserved valid flags
+            // Pull dependent: source returns Unchanged, so valid[src].has(mid) is preserved.
+            // Mid cache-hits through preserved proof, dep cache-hits through preserved proof.
             const result = await graph.pull("dependent", binding);
 
-            // Cache hit through preserved valid flags
             expect(dependentCC.getCallCount()).toBe(depCallsBefore);
             expect(middleCC.getCallCount()).toBe(midCallsBefore);
             expect(result).toEqual({ v: "dep" });

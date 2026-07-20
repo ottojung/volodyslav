@@ -343,55 +343,50 @@ async function rebuildMergedValidity({
         }
     }
 
-    // Step 3: Topo-order pass: downgrade nodes with stale inputs.
-    // Do not remove outgoing validity from stale nodes — those proofs
-    // remain meaningful as long as the stale node's value hasn't changed.
-    const topoList = topologicalSortFromMap(mergedInputsMap);
-    for (const nodeIdentifier of topoList) {
-        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
-        const freshness = finalFreshness.get(nodeIdStr);
-        if (freshness !== 'up-to-date') continue;
+    // Step 3: Propagate staleness and handle missing-proof roots.
+    // For every surviving up-to-date node: if an input is stale (propagated
+    // staleness), mark the node stale but preserve all its proofs. If a
+    // required transported proof is missing, classify it as a new direct
+    // root: remove its incoming proofs and mark it stale.
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const nodeIdentifier of topologicalSortFromMap(mergedInputsMap)) {
+            const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+            if (finalFreshness.get(nodeIdStr) !== 'up-to-date') continue;
 
-        const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
-        let allInputsUpToDate = true;
-        let allProofsPresent = true;
-        for (const depId of requiredInputs) {
-            const depIdStr = nodeIdentifierToString(depId);
-            if (finalFreshness.get(depIdStr) !== 'up-to-date') {
-                allInputsUpToDate = false;
+            const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
+            let staleInput = false;
+            let missingProof = false;
+            for (const depId of requiredInputs) {
+                const depIdStr = nodeIdentifierToString(depId);
+                if (finalFreshness.get(depIdStr) !== 'up-to-date') {
+                    staleInput = true;
+                }
+                const dependents = validMap.get(depIdStr) ?? [];
+                if (!dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
+                    missingProof = true;
+                }
             }
-            const dependents = validMap.get(depIdStr) ?? [];
-            if (!dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
-                allProofsPresent = false;
-            }
-        }
 
-        if (!allInputsUpToDate || !allProofsPresent) {
-            finalFreshness.set(nodeIdStr, 'potentially-outdated');
-            freshnessChanged = true;
-            // Remove incoming proofs so the next pull invokes the computor.
-            removeIncomingValidity(mergedInputsMap, validMap, nodeIdentifier);
-        }
-    }
-
-    // Step 4: Add mandatory validity flags for every up-to-date node.
-    for (const nodeIdentifier of topoList) {
-        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
-        if (finalFreshness.get(nodeIdStr) !== 'up-to-date') continue;
-        const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
-        for (const depId of requiredInputs) {
-            const depIdStr = nodeIdentifierToString(depId);
-            depIdCache.set(depIdStr, depId);
-            let deps = validMap.get(depIdStr);
-            if (deps === undefined) {
-                deps = [];
-                validMap.set(depIdStr, deps);
-            }
-            if (!deps.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
-                deps.push(nodeIdentifier);
+            if (staleInput) {
+                // Propagated staleness — preserve all proofs
+                finalFreshness.set(nodeIdStr, 'potentially-outdated');
+                freshnessChanged = true;
+                changed = true;
+            } else if (missingProof) {
+                // Missing proof — classify as direct root
+                finalFreshness.set(nodeIdStr, 'potentially-outdated');
+                freshnessChanged = true;
+                changed = true;
+                removeIncomingValidity(mergedInputsMap, validMap, nodeIdentifier);
             }
         }
     }
+
+    // Step 4: Preserve only transported proofs for surviving materializations.
+    // Do NOT mint proofs that were not transported. Previously transported
+    // proofs remain in validMap; no mandatory creation is performed.
 
     const writer = new ReplicaBatchWriter(targetStorage);
     for (const [nodeIdStr, freshness] of finalFreshness) {
