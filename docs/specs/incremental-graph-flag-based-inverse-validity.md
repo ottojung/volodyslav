@@ -77,9 +77,12 @@ Answer:    Yes, iff freshness[N] === "up-to-date" and values[N] exists.
            up-to-date nodes is a storage invariant enforced by writers, not the read path.
 
 Question 2: If the node is only potentially-outdated, may the runtime return
-            its old value without calling the computor?
-Answer:    No. The runtime pulls dependencies and invokes the computor. The old
-           value is available only as oldValue for that computor invocation.
+             its old value without calling the computor?
+Answer:    Yes, iff all current inputs still validate it:
+             values[N] exists,
+             inputEdges(N) is non-empty,
+             and for every D in inputEdges(N): valid[D].has(N).
+           Zero-input nodes cannot pass this predicate and must recompute.
 ```
 
 Distinguishing these two questions is the core of the flag-based design:
@@ -126,10 +129,7 @@ For every materialized node `N` and every `D` in `inputEdges(N)`:
 - Every entry `N ∈ valid[D]` implies `D ∈ inputEdges(N)` and both endpoints are materialized nodes.
 - No `valid` entry points to discarded identifiers after merge or migration.
 
-Additional stale-node invariants are enforced:
-
-- If `freshness[N] == "potentially-outdated"`, then `valid[N]` is empty.
-- If `freshness[N] == "potentially-outdated"` and `inputEdges(N)` is non-empty, then at least one incoming proof `D ⇝ N` is absent.
+No reverse invariants are enforced for stale nodes. A stale node may retain complete incoming proofs when its staleness was propagated rather than caused by a value change. It may retain nonempty outgoing validity because its stored value has not changed.
 
 ## Correctness model for "valid"
 

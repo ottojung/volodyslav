@@ -3634,4 +3634,185 @@ describe('mergeHostIntoReplica', () => {
             if (db) await db.close();
         }
     });
+
+    // ── Sync validity regression tests ────────────────────────────────
+
+    test('direct invalidation root loses incoming proofs', async () => {
+        const { rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+
+            const nodeA = nodeIdentifierFromString('410-abcdefghi');
+            const nodeB = nodeIdentifierFromString('411-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"direct_root_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"direct_root_B","args":[]}');
+
+            const T = db.schemaStorageForReplica('y');
+            await writeGraphScheme(T);
+            await T.values.put(nodeA, { v: 1 });
+            await T.values.put(nodeB, { v: 2 });
+            await T.freshness.put(nodeA, 'up-to-date');
+            await T.freshness.put(nodeB, 'up-to-date');
+            await T.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(T, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const hostStorage = db.hostnameSchemaStorage('host');
+            await writeGraphScheme(hostStorage);
+            await writeIdentifierLookup(hostStorage, []);
+
+            const targetLookup = makeIdentifierLookup([[nodeA, keyA], [nodeB, keyB]]);
+            const hostLookup = makeIdentifierLookup([]);
+
+            const finalIdentifierForKey = new Map([[keyA, nodeA], [keyB, nodeB]]);
+            const mergedInputsMap = new Map([[nodeB, [nodeA]]]);
+            const valueOriginByKey = new Map();
+
+            await rebuildMergedValidity({
+                targetStorage: T,
+                targetSourceStorage: T,
+                hostSourceStorage: hostStorage,
+                targetLookup,
+                hostLookup,
+                finalIdentifierForKey,
+                mergedInputsMap,
+                valueOriginByKey,
+                directInvalidationRoots: new Set([nodeA]),
+            });
+
+            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+            const validA = await T.valid.get(nodeA) ?? [];
+            expect(validA.some(d => String(d) === String(nodeB))).toBe(false);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('propagated staleness preserves proofs through chain', async () => {
+        // A -> B -> C. A is a direct root. B and C are propagated.
+        // valid[B].has(C) must survive.
+        const { rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+
+            const nodeA = nodeIdentifierFromString('420-abcdefghi');
+            const nodeB = nodeIdentifierFromString('421-abcdefghi');
+            const nodeC = nodeIdentifierFromString('422-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"prop_chain_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"prop_chain_B","args":[]}');
+            const keyC = stringToNodeKeyString('{"head":"prop_chain_C","args":[]}');
+
+            const T = db.schemaStorageForReplica('y');
+            await writeGraphScheme(T);
+            await T.values.put(nodeA, { v: 1 });
+            await T.values.put(nodeB, { v: 2 });
+            await T.values.put(nodeC, { v: 3 });
+            await T.freshness.put(nodeA, 'up-to-date');
+            await T.freshness.put(nodeB, 'up-to-date');
+            await T.freshness.put(nodeC, 'up-to-date');
+            await T.valid.put(nodeA, [nodeB]);
+            await T.valid.put(nodeB, [nodeC]);
+            await writeIdentifierLookup(T, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
+
+            const hostStorage = db.hostnameSchemaStorage('host');
+            await writeGraphScheme(hostStorage);
+            await writeIdentifierLookup(hostStorage, []);
+
+            const targetLookup = makeIdentifierLookup([[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
+            const hostLookup = makeIdentifierLookup([]);
+
+            const finalIdentifierForKey = new Map([[keyA, nodeA], [keyB, nodeB], [keyC, nodeC]]);
+            const mergedInputsMap = new Map([[nodeB, [nodeA]], [nodeC, [nodeB]]]);
+            const valueOriginByKey = new Map();
+            valueOriginByKey.set(keyA, { kind: 'source', side: 'target', sourceId: nodeA });
+            valueOriginByKey.set(keyB, { kind: 'source', side: 'target', sourceId: nodeB });
+            valueOriginByKey.set(keyC, { kind: 'source', side: 'target', sourceId: nodeC });
+
+            await rebuildMergedValidity({
+                targetStorage: T,
+                targetSourceStorage: T,
+                hostSourceStorage: hostStorage,
+                targetLookup,
+                hostLookup,
+                finalIdentifierForKey,
+                mergedInputsMap,
+                valueOriginByKey,
+                directInvalidationRoots: new Set([nodeA]),
+            });
+
+            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeC)).toBe('potentially-outdated');
+
+            // A is zero-input (no incoming proofs to remove). Its outgoing
+            // proof valid[A].has(B) is preserved because A's value hasn't changed.
+            const validA = await T.valid.get(nodeA) ?? [];
+            expect(validA.some(d => String(d) === String(nodeB))).toBe(true);
+
+            // B is reached through propagated staleness — all proofs preserved.
+            const validB = await T.valid.get(nodeB) ?? [];
+            expect(validB.some(d => String(d) === String(nodeC))).toBe(true);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('missing untransportable proof creates direct root', async () => {
+        const { rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+
+            const nodeA = nodeIdentifierFromString('430-abcdefghi');
+            const nodeB = nodeIdentifierFromString('431-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"missing_proof_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"missing_proof_B","args":[]}');
+
+            const T = db.schemaStorageForReplica('y');
+            await writeGraphScheme(T);
+            await T.values.put(nodeA, { v: 1 });
+            await T.values.put(nodeB, { v: 2 });
+            await T.freshness.put(nodeA, 'up-to-date');
+            await T.freshness.put(nodeB, 'up-to-date');
+            await writeIdentifierLookup(T, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const hostStorage = db.hostnameSchemaStorage('host');
+            await writeGraphScheme(hostStorage);
+            await hostStorage.values.put(nodeA, { v: 1 });
+            await hostStorage.values.put(nodeB, { v: 2 });
+            await hostStorage.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(hostStorage, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const targetLookup = makeIdentifierLookup([[nodeA, keyA], [nodeB, keyB]]);
+            const hostLookup = makeIdentifierLookup([[nodeA, keyA], [nodeB, keyB]]);
+
+            const finalIdentifierForKey = new Map([[keyA, nodeA], [keyB, nodeB]]);
+            const mergedInputsMap = new Map([[nodeB, [nodeA]]]);
+            const valueOriginByKey = new Map();
+            valueOriginByKey.set(keyA, { kind: 'source', side: 'target', sourceId: nodeA });
+            valueOriginByKey.set(keyB, { kind: 'source', side: 'host', sourceId: nodeB });
+
+            await rebuildMergedValidity({
+                targetStorage: T,
+                targetSourceStorage: T,
+                hostSourceStorage: hostStorage,
+                targetLookup,
+                hostLookup,
+                finalIdentifierForKey,
+                mergedInputsMap,
+                valueOriginByKey,
+            });
+
+            const validA = await T.valid.get(nodeA) ?? [];
+            expect(validA.some(d => String(d) === String(nodeB))).toBe(false);
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+        } finally {
+            if (db) await db.close();
+        }
+    });
 });

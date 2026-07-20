@@ -215,12 +215,11 @@ function canonicalValidMapsEqual(left, right) {
  *    provenance for both endpoints.
  * 2. For every direct invalidation root: remove all incoming validity
  *    proofs and propagate freshness downstream without removing validity.
- * 3. Traverse merged nodes in topological order and downgrade an up-to-date
- *    node when any input is not up-to-date. Remove its incoming proofs so
- *    its next pull invokes its computor.
- * 4. Add mandatory validity flags for every up-to-date node whose inputs are
- *    also up-to-date.
- * 5. Clear the existing valid sublevel and write the rebuilt relation.
+ * 3. For surviving up-to-date nodes: if an input is stale (propagated
+ *    staleness), mark the node stale but preserve all its proofs. If a
+ *    required transported proof is missing (cannot be justified), classify
+ *    it as a new direct root: remove its incoming proofs and mark it stale.
+ * 4. Write the rebuilt freshness and validity state.
  *
  * A validity proof valid[D].has(N) is transported from a source side only
  * when D and N both resolve through the same source side and their final values

@@ -2354,4 +2354,38 @@ describe("retry after failure", () => {
 
         expect(mock.setCurrentReplicaPointerCalled).toBe(true);
     });
+
+    // ── Migration validity regression tests ────────────────────────────
+
+    test('explicit invalidation preserves outgoing proofs through chain', async () => {
+        // A → B → C. Explicitly invalidate A (zero-input root).
+        // A has no incoming proofs to remove. valid[A].has(B) is outgoing
+        // from A and is preserved (A's value unchanged).
+        // B is propagated, preserving valid[B].has(C).
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const nkA = toJsonKey("A"), nkB = toJsonKey("B"), nkC = toJsonKey("C");
+        await xStorage.values.put(nkA, { v: 1 });
+        await xStorage.values.put(nkB, { v: 2 });
+        await xStorage.values.put(nkC, { v: 3 });
+        await xStorage.valid.put(nkA, [nkB]);
+        await xStorage.valid.put(nkB, [nkC]);
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
+        const nodeDefs = [
+            { output: "A", inputs: [], computor: async () => ({ v: 1 }), isDeterministic: true, hasSideEffects: false },
+            { output: "B", inputs: ["A"], computor: async () => ({ v: 2 }), isDeterministic: true, hasSideEffects: false },
+            { output: "C", inputs: ["B"], computor: async () => ({ v: 3 }), isDeterministic: true, hasSideEffects: false },
+        ];
+        await seedGraphScheme(xStorage, nodeDefs);
+        await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+            await storage.invalidate(nkA);
+        });
+        const resultStorage = mock.rootDatabase.schemaStorageForReplica('y');
+        const validA = await resultStorage.valid.get(nkA) ?? [];
+        const validB = await resultStorage.valid.get(nkB) ?? [];
+        expect(validA.some(id => String(id) === String(nkB))).toBe(true);
+        expect(validB.some(id => String(id) === String(nkC))).toBe(true);
+    });
 });

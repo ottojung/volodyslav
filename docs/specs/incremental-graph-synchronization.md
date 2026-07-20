@@ -457,13 +457,14 @@ only if ALL of the following hold:
   validity proof transport. A proof is transported only on provenance match,
   not on extensional value match.
 
-**REQ-SYNC-16 (Mandatory final validity flags):** After transporting safe
-source proofs under the above rules, synchronization MUST add mandatory
-validity flags for every final `up-to-date` materialized node and each of its
-direct final inputs. This preserves the IncrementalGraph invariant that an
-`up-to-date` node has direct validity flags for all inputs. This does not allow
-making a stale node `up-to-date`; it only ensures the final validity relation
-is complete for nodes that are already justified as `up-to-date`.
+**REQ-SYNC-16 (Required incoming validity for up-to-date nodes):** Every final
+`up-to-date` materialized node must have complete incoming validity proofs for
+all its direct inputs. Synchronization must not mint a proof that cannot be
+justified through provenance transport. When a required proof cannot be
+transported or justified, the affected node must be classified as a direct
+invalidation root: all its incoming proofs are removed and it is marked
+`potentially-outdated`. This guarantees that its next pull recomputes and
+establishes fresh validity proofs.
 
 **REQ-SYNC-17 (Rebuild, not merge):** The final validity relation must be
 rebuilt from the final lowered graph, not textually merged from source
