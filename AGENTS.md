@@ -633,6 +633,10 @@ Important:
 - type checker configs must not be changed unless explicitly asked to by the user.
 - static analysis rules must not be ignored or disabled.
 
+## Notifications
+
+If `command -v my-notify` exits with status `0`, then call `my-notify "Volodyslav is ready for review"` when you're done with all the work to notify the user of it.
+
 ## Additional Guidelines
 
 - Follow existing naming conventions (snake_case for files, camelCase for functions)
