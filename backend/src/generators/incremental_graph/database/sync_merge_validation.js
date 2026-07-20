@@ -179,38 +179,18 @@ async function assertValidReplicaMaterializationState(storage, lookup, context) 
     for (const identifierString of materializedIdentifiers) {
         const identifier = nodeIdentifierFromString(identifierString);
         const freshness = await storage.freshness.get(identifier);
+        if (freshness !== 'up-to-date') continue;
         const derivedEdges = inputEdgesByIdentifier.get(identifierString) ?? [];
-        if (freshness === 'up-to-date') {
-            for (const input of derivedEdges) {
-                const inputString = nodeIdentifierToString(input);
-                const inputFreshness = await storage.freshness.get(input);
-                if (inputFreshness !== 'up-to-date') {
-                    throw new ReplicaStateInvariantError(context, `is up-to-date but depends on non-up-to-date input ${inputString}`, identifierString);
-                }
-                const validDependents = await storage.valid.get(input) ?? [];
-                if (!validDependents.some(dependent => nodeIdentifierToString(dependent) === identifierString)) {
-                    throw new ReplicaStateInvariantError(context, `is up-to-date but lacks validity for input ${inputString}`, identifierString);
-                }
-            }
-            continue;
-        }
-
-        const outgoingValidity = await storage.valid.get(identifier) ?? [];
-        if (outgoingValidity.length > 0) {
-            throw new ReplicaStateInvariantError(context, 'is stale but has outgoing validity proofs', identifierString);
-        }
-        if (derivedEdges.length === 0) {
-            continue;
-        }
-        let missingIncomingProof = false;
         for (const input of derivedEdges) {
+            const inputString = nodeIdentifierToString(input);
+            const inputFreshness = await storage.freshness.get(input);
+            if (inputFreshness !== 'up-to-date') {
+                throw new ReplicaStateInvariantError(context, `is up-to-date but depends on non-up-to-date input ${inputString}`, identifierString);
+            }
             const validDependents = await storage.valid.get(input) ?? [];
             if (!validDependents.some(dependent => nodeIdentifierToString(dependent) === identifierString)) {
-                missingIncomingProof = true;
+                throw new ReplicaStateInvariantError(context, `is up-to-date but lacks validity for input ${inputString}`, identifierString);
             }
-        }
-        if (!missingIncomingProof) {
-            throw new ReplicaStateInvariantError(context, 'is stale but has every incoming validity proof', identifierString);
         }
     }
 }

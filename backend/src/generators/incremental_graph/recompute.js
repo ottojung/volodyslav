@@ -37,7 +37,26 @@ const {
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
 const { normalizeInputEdges } = require("./database");
-const { invalidateDependentsFrom, revokeIncomingValidity } = require("./strong_invalidation");
+const { propagatePotentiallyOutdated } = require("./propagation");
+
+/**
+ * Return true when every dependency in inputEdges has a validity flag for N.
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} nId
+ * @param {NodeIdentifier[]} inputEdges
+ * @returns {Promise<boolean>}
+ */
+async function allIncomingValidityPresent(batch, nId, inputEdges) {
+    if (inputEdges.length === 0) return false;
+    const nIdStr = nodeIdentifierToString(nId);
+    for (const depId of inputEdges) {
+        const validSet = await batch.valid.get(depId);
+        if (validSet === undefined || !validSet.some(id => nodeIdentifierToString(id) === nIdStr)) {
+            return false;
+        }
+    }
+    return true;
+}
 
 /**
  * Add N to valid[D] for each dependency D in inputEdges.
@@ -48,9 +67,22 @@ const { invalidateDependentsFrom, revokeIncomingValidity } = require("./strong_i
  * @param {NodeIdentifier[]} inputEdges
  * @returns {void}
  */
-function addValidityFlags(batch, nId, inputEdges) {
+function addIncomingValidity(batch, nId, inputEdges) {
     for (const depId of inputEdges) {
         batch.valid.add(depId, nId);
+    }
+}
+
+/**
+ * Remove N from valid[D] for each dependency D in inputEdges.
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} nId
+ * @param {NodeIdentifier[]} inputEdges
+ * @returns {void}
+ */
+function removeIncomingValidity(batch, nId, inputEdges) {
+    for (const depId of inputEdges) {
+        batch.valid.remove(depId, nId);
     }
 }
 
@@ -63,7 +95,7 @@ function addValidityFlags(batch, nId, inputEdges) {
  * @returns {Promise<void>}
  */
 async function handleUnchanged(_incrementalGraph, nodeIdentifier, inputEdges, batch) {
-    addValidityFlags(batch, nodeIdentifier, inputEdges);
+    addIncomingValidity(batch, nodeIdentifier, inputEdges);
     batch.freshness.put(nodeIdentifier, "up-to-date");
 }
 
@@ -83,8 +115,10 @@ async function handleUnchanged(_incrementalGraph, nodeIdentifier, inputEdges, ba
  * @returns {Promise<void>}
  */
 async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, alreadyMaterialized, batch) {
-    revokeIncomingValidity(batch, nodeIdentifier, inputEdges);
-    await invalidateDependentsFrom(incrementalGraph.storage, batch, nodeIdentifier);
+    removeIncomingValidity(batch, nodeIdentifier, inputEdges);
+    const downstream = await batch.valid.get(nodeIdentifier);
+    batch.valid.clear(nodeIdentifier);
+    await propagatePotentiallyOutdated(incrementalGraph.storage, batch, downstream);
     const datetime = incrementalGraph.datetime;
     const nowIso = datetime.now().toISOString();
     batch.values.put(nodeIdentifier, newValue);
@@ -106,7 +140,7 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
         });
     }
 
-    addValidityFlags(batch, nodeIdentifier, inputEdges);
+    addIncomingValidity(batch, nodeIdentifier, inputEdges);
     batch.freshness.put(nodeIdentifier, "up-to-date");
 }
 
@@ -155,6 +189,18 @@ async function internalMaybeRecalculate(
     // inputIdentifiers are inputPositions (preserving duplicates for computor args).
     // inputEdges are the normalized structural dependency-edge list.
     const inputEdges = normalizeInputEdges(inputIdentifiers);
+
+    // Cache predicate: reuse cached value iff:
+    // 1. cached value exists,
+    // 2. inputEdges is non-empty,
+    // 3. valid[D].has(N) for every D in inputEdges.
+    if (oldValue !== undefined && inputEdges.length > 0) {
+        const allPresent = await allIncomingValidityPresent(batch, nodeIdentifier, inputEdges);
+        if (allPresent) {
+            batch.freshness.put(nodeIdentifier, "up-to-date");
+            return { value: oldValue, status: "cached" };
+        }
+    }
 
     const computedValue = await nodeDefinition.computor(inputValues, oldValue);
 

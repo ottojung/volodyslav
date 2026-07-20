@@ -138,7 +138,6 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
             }
         }
 
-        const freshness = await finalFreshness(prevStorage, decisions, nodeIdentifier);
         if (decision.kind === "create") {
             if (decision.freshness === "potentially-outdated") continue;
             for (const input of finalEdges) {
@@ -154,24 +153,10 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
             continue;
         }
 
+        // For keep/override and propagated invalidations: preserve old validity
+        // proofs when they remain structurally and semantically justified.
         const oldEdges = deriveInputEdges(oldScheme, oldLookup, nodeIdentifier);
-        if (freshness === "up-to-date") {
-            for (const input of finalEdges) {
-                if (!await isFinalCached(prevStorage, decisions, input)) continue;
-                const inputFreshness = await finalFreshness(prevStorage, decisions, input);
-                if (inputFreshness !== "up-to-date") continue;
-                if (!oldEdges.some(edge => nodeIdentifierToString(edge) === nodeIdentifierToString(input))) continue;
-                const existingValidForD = await prevStorage.valid.get(input) ?? [];
-                if (existingValidForD.some(id => nodeIdentifierToString(id) === nodeIdentifierToString(nodeIdentifier))) {
-                    addToValidSet(validSets, input, nodeIdentifier);
-                }
-            }
-            continue;
-        }
-
-        if (freshness !== "potentially-outdated") continue;
         for (const input of finalEdges) {
-            if (decision.kind === "invalidate" && decision.provenance === "propagated" && decision.invalidatedBy.has(input)) continue;
             const inputDecision = decisions.get(input);
             if (!inputDecision || (inputDecision.kind !== "keep" && inputDecision.kind !== "override")) continue;
             if (!await isFinalCached(prevStorage, decisions, input)) continue;

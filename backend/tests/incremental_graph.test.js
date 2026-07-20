@@ -439,7 +439,7 @@ describe("generators/incremental_graph", () => {
             const result = await graph.pull("level3");
 
             expect(result.count).toBe(4); // Original value from first pull
-            expect(computeCalls).toEqual(["level1", "level2", "level3"]);
+            expect(computeCalls).toEqual(["level1"]);
 
             // All should be clean after pull
             const level1Freshness = await graph.getFreshness("level1");
@@ -711,7 +711,7 @@ describe("generators/incremental_graph", () => {
             const result = await graph.pull("nodeE");
 
             // input1=1 -> nodeA=10 -> nodeC(10+20=30) -> nodeE=90
-            // nodeB stays up-to-date because its dependency was not invalidated.
+            // nodeB should skip recomputation (unchanged input)
             expect(result.value).toBe(90);
             expect(computeCalls).toEqual(["nodeA", "nodeC", "nodeE"]);
 
@@ -776,13 +776,15 @@ describe("generators/incremental_graph", () => {
             inputCell.value = { value: 2 };
             await graph.invalidate("input");
 
-            // Chain with mixed states: dirty -> potentially-dirty -> potentially-dirty.
-            // Middle returns Unchanged, but output still recomputes because
-            // invalidation consumed the proof from middle to output.
+            // Chain with mixed states: dirty -> potentially-dirty -> potentially-dirty
+            // Middle node returns Unchanged, so output should skip recomputation
+            // (downstream validity from Unchanged preserved)
 
             const result = await graph.pull("output");
+
+            // Middle returns Unchanged (preserving downstream validity), output skips recompute
             expect(result.value).toBe(20);
-            expect(computeCalls).toEqual(["middle", "output"]);
+            expect(computeCalls).toEqual(["middle"]);
 
             // All should be clean
             const inputFreshness = await graph.getFreshness("input");
@@ -1273,9 +1275,10 @@ describe("generators/incremental_graph", () => {
 
             const result = await graph.pull("output");
 
-            // A potentially-outdated node recomputes even when its inputs are clean.
+            // With validity flags: inputs haven't changed, valid flags exist,
+            // so output should skip recomputation and just be marked up-to-date
             expect(result.value).toBe(30);
-            expect(computeCalls).toEqual(["output"]);
+            expect(computeCalls).toEqual([]); // cache hit from valid flags
 
             // Output should now be clean
             const outputFreshness = await graph.getFreshness("output");
@@ -1689,10 +1692,10 @@ describe("generators/incremental_graph", () => {
 
             const result = await graph.pull("output");
 
-            // All paths returned Unchanged (downstream validity preserved), output recomputes after proof revocation
+            // All paths returned Unchanged (downstream validity preserved), output skips via cache hit
             expect(result.value).toBe(100); // Original cached value
-            expect(computeCalls).toEqual(["pathA", "pathB", "pathC", "output"]);
-            expect(computeCalls).toContain("output");
+            expect(computeCalls).toEqual(["pathA", "pathB", "pathC"]);
+            expect(computeCalls).not.toContain("output");
 
             await db.close();
         });

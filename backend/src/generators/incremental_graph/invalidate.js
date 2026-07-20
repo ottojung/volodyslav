@@ -24,8 +24,7 @@ const { daytimeActivity } = require("./lock");
 const { checkArity, ensureNodeNameIsHead } = require("./shared");
 const { lookupNodeIdentifier } = require("./graph_state");
 const { internalGetOrCreateConcreteNode } = require("./instantiation");
-const { invalidateDependentsFrom, revokeIncomingValidity } = require("./strong_invalidation");
-
+const { propagatePotentiallyOutdated } = require("./propagation");
 
 /**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
@@ -76,14 +75,35 @@ async function internalUnsafeInvalidate(
         }
         const inputEdges = normalizeInputEdges(inputIdentifiers);
 
+        // Explicit invalidation:
+        // 1. Mark N stale
+        // 2. Remove all incoming validity proofs (so next pull invokes computor)
+        // 3. Preserve outgoing validity proofs
+        // 4. Propagate stale freshness downstream without mutating validity
         tx.batch.freshness.put(outputIdentifier, "potentially-outdated");
-        revokeIncomingValidity(tx.batch, outputIdentifier, inputEdges);
-        await invalidateDependentsFrom(incrementalGraph.storage, tx.batch, outputIdentifier);
+        removeIncomingValidity(tx.batch, outputIdentifier, inputEdges);
+        const dependents = await tx.batch.valid.get(outputIdentifier);
+        if (dependents !== undefined && dependents.length > 0) {
+            await propagatePotentiallyOutdated(incrementalGraph.storage, tx.batch, dependents);
+        }
 
         return { value: undefined };
     });
 }
 
+
+/**
+ * Remove N from valid[D] for each dependency D in inputEdges.
+ * @param {BatchBuilder} batch
+ * @param {NodeIdentifier} nId
+ * @param {NodeIdentifier[]} inputEdges
+ * @returns {void}
+ */
+function removeIncomingValidity(batch, nId, inputEdges) {
+    for (const depId of inputEdges) {
+        batch.valid.remove(depId, nId);
+    }
+}
 
 /**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph

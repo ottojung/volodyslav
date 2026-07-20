@@ -661,16 +661,16 @@ describe('mergeHostIntoReplica', () => {
             // In T: A is force-kept (T-newer); B has no deps (independent of A).
             await writeNode(L, nodeA, TS3, undefined);
             await writeNode(L, nodeB, TS1, localValueB);
-            await L.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+            await L.valid.put(nodeA, [nodeB]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeGraphScheme(H);
             // In H: A is older; B is newer AND now depends on A.
             await writeNode(H, nodeA, TS1, undefined);
             await writeNode(H, nodeB, TS2, remoteValueB);
-            await H.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
+            await H.valid.put(nodeA, [nodeB]);
 
             db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
@@ -724,15 +724,15 @@ describe('mergeHostIntoReplica', () => {
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, nodeA, TS3, undefined);
             await writeNode(L, nodeB, TS1, localValueB);
-            await L.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+            await L.valid.put(nodeA, [nodeB]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, undefined);
             await writeNode(H, nodeB, TS2, remoteValueB);
-            await H.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
+            await H.valid.put(nodeA, [nodeB]);
 
             // First merge: B is 'invalidate', modifiedAt set to host's TS2.
             db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
@@ -746,7 +746,6 @@ describe('mergeHostIntoReplica', () => {
             await writeGraphScheme(H2);
             await writeNode(H2, nodeA, TS1, undefined);
             await writeNode(H2, nodeB, TS2, remoteValueB);
-            await H2.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H2, [[nodeA, keyA], [nodeB, keyB]]);
             await H2.valid.put(nodeA, [nodeB]);
 
@@ -897,7 +896,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('metadata-only host stale dependent does not import complete validity proof', async () => {
+    test('metadata-only host validity proof import switches when endpoints originate from host', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -926,6 +925,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeA, TS2, valueA);
             await writeNode(H, nodeB, TS2, valueB);
             await H.freshness.put(nodeB, 'potentially-outdated');
+            await H.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
             expect(db.currentReplicaName()).toBe('x');
@@ -939,7 +939,7 @@ describe('mergeHostIntoReplica', () => {
             expect(await T.freshness.get(nodeA)).toBe('up-to-date');
             expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
             const validA = await T.valid.get(nodeA) ?? [];
-            expect(validA.some(dependent => String(dependent) === String(nodeB))).toBe(false);
+            expect(validA.some(dependent => String(dependent) === String(nodeB))).toBe(true);
         } finally {
             if (db) await db.close();
         }
@@ -974,6 +974,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeA, TS1, valueA);
             await writeNode(H, nodeB, TS1, valueB);
             await H.freshness.put(nodeB, 'potentially-outdated');
+            await H.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
@@ -1007,6 +1008,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(L, nodeA, TS1, valueA);
             await writeNode(L, nodeB, TS1, valueB);
             await L.freshness.put(nodeB, 'potentially-outdated');
+            await L.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
@@ -1014,6 +1016,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeA, TS1, valueA);
             await writeNode(H, nodeB, TS1, valueB);
             await H.freshness.put(nodeB, 'potentially-outdated');
+            await H.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
             const switched = await mergeHostIntoReplica(logger, db, hostname);
@@ -1051,6 +1054,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeA, TS1, { source: 'A' });
             await writeNode(H, nodeB, TS1, { source: 'B host' });
             await H.freshness.put(nodeB, 'potentially-outdated');
+            await H.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
             const switched = await mergeHostIntoReplica(logger, db, hostname);
@@ -1089,6 +1093,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeA, TS1, { source: 'A host' });
             await writeNode(H, nodeB, TS1, { source: 'B' });
             await H.freshness.put(nodeB, 'potentially-outdated');
+            await H.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
 
             const switched = await mergeHostIntoReplica(logger, db, hostname);
@@ -1564,11 +1569,11 @@ describe('mergeHostIntoReplica', () => {
         });
     });
 
-    test('merge preserves stale node proof revocation when unrelated change occurs', async () => {
+    test('merge preserves valid for stale nodes when unrelated change occurs', async () => {
         // A → B
-        // B is potentially-outdated, so valid[A] lacks B
+        // B is potentially-outdated, valid[A] contains B
         // merge introduces unrelated node X
-        // after merge valid[A] still lacks B
+        // after merge valid[A] still contains B
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -1590,6 +1595,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(L, nodeAId, TS1, { source: 'A' });
             await writeNode(L, nodeBId, TS1, { source: 'B' });
             await L.freshness.put(nodeBId, 'potentially-outdated');
+            await L.valid.put(nodeAId, [nodeBId]);
             await writeIdentifierLookup(L, [[nodeAId, keyA], [nodeBId, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
@@ -1603,17 +1609,17 @@ describe('mergeHostIntoReplica', () => {
             expect(await T.freshness.get(nodeBId)).toBe('potentially-outdated');
             const validA = await T.valid.get(nodeAId) ?? [];
             const bIdStr = String(nodeBId);
-            expect(validA.some(d => String(d) === bIdStr)).toBe(false);
+            expect(validA.some(d => String(d) === bIdStr)).toBe(true);
         } finally {
             if (db) await db.close();
         }
     });
 
-    test('merge keeps stale node proof revoked when dependency value changes', async () => {
+    test('merge removes valid for stale nodes when dependency value changes', async () => {
         // A → B
-        // B is potentially-outdated, so valid[A] lacks B
+        // B is potentially-outdated, valid[A] contains B
         // merge changes A's value (A is taken from host with newer timestamp)
-        // after merge valid[A] continues to lack B
+        // after merge valid[A] no longer contains B
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -1633,6 +1639,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(L, nodeAId, TS1, { source: 'A old' });
             await writeNode(L, nodeBId, TS2, { source: 'B' });
             await L.freshness.put(nodeBId, 'potentially-outdated');
+            await L.valid.put(nodeAId, [nodeBId]);
             await writeIdentifierLookup(L, [[nodeAId, keyA], [nodeBId, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
@@ -1696,7 +1703,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('1. host-side stale nodes keep proofs revoked', async () => {
+    test('1. host-side stale validity proof is preserved', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -1729,6 +1736,8 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, nodeC, TS2, { source: 'C host' });
             await H.freshness.put(nodeB, 'potentially-outdated');
             await H.freshness.put(nodeC, 'potentially-outdated');
+            await H.valid.put(nodeA, [nodeB]);
+            await H.valid.put(nodeB, [nodeC]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
 
             db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
@@ -1738,8 +1747,8 @@ describe('mergeHostIntoReplica', () => {
             const validB = await T.valid.get(nodeB) ?? [];
             const bIdStr = String(nodeB);
             const cIdStr = String(nodeC);
-            expect(validA.some(d => String(d) === bIdStr)).toBe(false);
-            expect(validB.some(d => String(d) === cIdStr)).toBe(false);
+            expect(validA.some(d => String(d) === bIdStr)).toBe(true);
+            expect(validB.some(d => String(d) === cIdStr)).toBe(true);
             expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
             expect(await T.freshness.get(nodeC)).toBe('potentially-outdated');
         } finally {
@@ -1747,7 +1756,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('2. direct invalidation removes stale node incoming proofs even when value is preserved', async () => {
+    test('2. target-side stale validity proof is preserved even when merge decision is invalidate, if value preserved', async () => {
         const { rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
         const capabilities = getTestCapabilities();
         let db;
@@ -1805,12 +1814,11 @@ describe('mergeHostIntoReplica', () => {
                 finalIdentifierForKey,
                 mergedInputsMap,
                 valueOriginByKey,
-                directInvalidationRoots: new Set([nodeB]),
             });
 
             const validA = await targetStorage.valid.get(nodeA) ?? [];
             const bIdStr = String(nodeB);
-            expect(validA.some(d => String(d) === bIdStr)).toBe(false);
+            expect(validA.some(d => String(d) === bIdStr)).toBe(true);
         } finally {
             if (db) await db.close();
         }
@@ -1907,6 +1915,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, oldHostA, TS1, { source: 'A host' });
             await writeNode(H, hostB, TS3, { source: 'B host' });
             await H.freshness.put(hostB, 'potentially-outdated');
+            await H.valid.put(oldHostA, [hostB]);
             await writeIdentifierLookup(H, [[oldHostA, keyA], [hostB, keyB]]);
 
             db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
@@ -1917,8 +1926,9 @@ describe('mergeHostIntoReplica', () => {
             // oldHostA is deleted (A was kept from target)
             expect(await T.values.get(oldHostA)).toBeUndefined();
             expect(await T.valid.get(oldHostA) ?? []).toEqual([]);
-            // Since hostB is potentially-outdated, synchronization does not mint a proof.
-            // No proof is transported because the stale dependent lacks an incoming proof.
+            // Since hostB is potentially-outdated, no mandatory rebuild adds it.
+            // The host-side proof valid[oldHostA] = [hostB] doesn't transport because
+            // oldHostA's origin (host) differs from targetA (target).
             const validFinalA = await T.valid.get(targetA) ?? [];
             const bIdStr = String(hostB);
             expect(validFinalA.some(d => String(d) === bIdStr)).toBe(false);
@@ -1956,6 +1966,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(H, hostA, TS1, equalValue);
             await writeNode(H, hostB, TS2, { source: 'B host' });
             await H.freshness.put(hostB, 'potentially-outdated');
+            await H.valid.put(hostA, [hostB]);
             await writeIdentifierLookup(H, [[hostA, keyA], [hostB, keyB]]);
 
             db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
@@ -2194,6 +2205,8 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(L, nodeA, TS1, { v: 1 });
             await writeNode(L, nodeB, TS1, { v: 2 });
             await writeNode(L, nodeC, TS1, { v: 3 });
+            await L.valid.put(nodeA, [nodeB]);
+            await L.valid.put(nodeB, [nodeC]);
             await L.freshness.put(nodeB, 'potentially-outdated');
             await L.freshness.put(nodeC, 'potentially-outdated');
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
@@ -2334,7 +2347,7 @@ describe('mergeHostIntoReplica', () => {
 
 
     test('invalidation propagation terminates through an already-stale cycle', async () => {
-        const { invalidateDependentsFrom } = require('../src/generators/incremental_graph/strong_invalidation');
+        const { propagatePotentiallyOutdated } = require('../src/generators/incremental_graph/propagation');
         const { makeGraphStorage } = require('../src/generators/incremental_graph/graph_state');
         const capabilities = getTestCapabilities();
         let db;
@@ -2356,7 +2369,7 @@ describe('mergeHostIntoReplica', () => {
             const graphStorage = makeGraphStorage(db, capabilities.sleeper);
             const graph = { storage: graphStorage };
             await graphStorage.withTransaction(async (tx) => {
-                await invalidateDependentsFrom(graph.storage, tx.batch, nodeA);
+                await propagatePotentiallyOutdated(graph.storage, tx.batch, [nodeA]);
                 return { value: undefined };
             });
 
@@ -2650,15 +2663,15 @@ describe('mergeHostIntoReplica', () => {
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, nodeA, TS2, { value: 'target A' });
             await writeNode(L, nodeB, TS1, { value: 'target B' });
-            await L.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+            await L.valid.put(nodeA, [nodeB]);
 
             const H = db.hostnameSchemaStorage(hostname);
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, { value: 'host A' });
             await writeNode(H, nodeB, TS2, { value: 'host B' });
-            await H.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
+            await H.valid.put(nodeA, [nodeB]);
 
             db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
@@ -3228,8 +3241,6 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(L, nodeA, TS1, { value: 'A' });
             await writeNode(L, nodeB, TS1, { value: 'B' });
             await writeNode(L, nodeC, TS1, { value: 'C' });
-            await L.valid.put(nodeA, [nodeB]);
-            await L.valid.put(nodeB, [nodeC]);
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
             await L.valid.put(nodeA, [nodeB]);
             await L.valid.put(nodeB, [nodeC]);
@@ -3324,9 +3335,6 @@ describe('mergeHostIntoReplica', () => {
             // be preserved: N must be potentially-outdated.
             expect(await T.values.get(nHost)).toEqual({ value: 'N host' });
             expect(await T.freshness.get(nHost)).toBe('potentially-outdated');
-            const validX = await T.valid.get(xHost) ?? [];
-            expect(validX.some(dependent => String(dependent) === String(nHost))).toBe(false);
-            expect(await T.valid.get(nHost) ?? []).toEqual([]);
             const nTs = await T.timestamps.get(nHost);
             expect(nTs?.modifiedAt).toBe(TS1);
         } finally {
@@ -3362,8 +3370,6 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(L, nodeA, TS1, { value: 'A' });
             await writeNode(L, nodeB, TS1, { value: 'B' });
             await writeNode(L, nodeC, TS1, { value: 'C' });
-            await L.valid.put(nodeA, [nodeB]);
-            await L.valid.put(nodeB, [nodeC]);
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB], [nodeC, keyC]]);
             await L.valid.put(nodeA, [nodeB]);
             await L.valid.put(nodeB, [nodeC]);

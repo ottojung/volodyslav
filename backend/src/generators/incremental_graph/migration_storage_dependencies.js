@@ -43,8 +43,13 @@ async function readValidDependents(nodeKey, prevStorage) {
 }
 
 /**
- * Propagate INVALIDATE through previous validity edges while recording every
- * causal predecessor that revoked a dependent proof.
+ * Propagate INVALIDATE through previous validity edges.
+ *
+ * Recursive invalidation propagates freshness only — it does not remove
+ * validity edges. Each reached dependent is marked as a propagated
+ * invalidation, and the traversal continues through its outgoing validity
+ * frontier. A node-level visited set is sufficient; there is no need to
+ * track causal predecessors because no validity edges are revoked.
  * @param {object} ctx
  * @param {NodeIdentifier} ctx.nodeKey
  * @param {Set<NodeIdentifier>} ctx.visited
@@ -75,9 +80,6 @@ async function propagateInvalidate(ctx) {
                     continue;
                 }
                 if (existing.kind === "invalidate") {
-                    if (existing.provenance === "propagated") {
-                        existing.invalidatedBy.add(current);
-                    }
                     if (!visited.has(dep)) {
                         worklist.push(dep);
                     }
@@ -87,7 +89,7 @@ async function propagateInvalidate(ctx) {
             }
             const identifiersKeysIndex = getIdentifiersKeysIndex();
             await checkSchemaCompatibility(dep, newHeadIndex, identifiersKeysIndex, decisions);
-            decisions.set(dep, { kind: "invalidate", provenance: "propagated", invalidatedBy: new Set([current]) });
+            decisions.set(dep, { kind: "invalidate", provenance: "propagated" });
             if (!visited.has(dep)) {
                 worklist.push(dep);
             }

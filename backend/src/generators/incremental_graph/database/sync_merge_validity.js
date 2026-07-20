@@ -8,7 +8,7 @@
  */
 
 
-const { compareNodeIdentifier, nodeIdentifierFromString } = require('./node_identifier');
+const { compareNodeIdentifier } = require('./node_identifier');
 const { nodeIdentifierToString } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const { topologicalSortFromMap } = require('./topo_sort');
@@ -213,11 +213,14 @@ function canonicalValidMapsEqual(left, right) {
  * Algorithm:
  * 1. Transport validity entries from both source sides based on source
  *    provenance for both endpoints.
- * 2. Traverse merged nodes in topological order and downgrade an up-to-date
- *    node when any input is not up-to-date.
- * 3. Add mandatory validity flags for every up-to-date node whose inputs are
+ * 2. For every direct invalidation root: remove all incoming validity
+ *    proofs and propagate freshness downstream without removing validity.
+ * 3. Traverse merged nodes in topological order and downgrade an up-to-date
+ *    node when any input is not up-to-date. Remove its incoming proofs so
+ *    its next pull invokes its computor.
+ * 4. Add mandatory validity flags for every up-to-date node whose inputs are
  *    also up-to-date.
- * 4. Clear the existing valid sublevel and write the rebuilt relation.
+ * 5. Clear the existing valid sublevel and write the rebuilt relation.
  *
  * A validity proof valid[D].has(N) is transported from a source side only
  * when D and N both resolve through the same source side and their final values
@@ -319,109 +322,83 @@ async function rebuildMergedValidity({
         finalIdentifierByString.set(nodeIdentifierToString(nodeIdentifier), nodeIdentifier);
     }
 
-    /** @param {NodeIdentifier} dependency @param {NodeIdentifier} dependent @returns {boolean} */
-    function removeValidityEdge(dependency, dependent) {
-        const dependencyString = nodeIdentifierToString(dependency);
-        const dependentString = nodeIdentifierToString(dependent);
-        const dependents = validMap.get(dependencyString) ?? [];
-        const filtered = dependents.filter(item => nodeIdentifierToString(item) !== dependentString);
-        if (filtered.length === dependents.length) {
-            return false;
-        }
-        if (filtered.length === 0) {
-            validMap.delete(dependencyString);
-        } else {
-            validMap.set(dependencyString, filtered);
-        }
-        return true;
-    }
-
-    /** @param {NodeIdentifier} nodeIdentifier @returns {boolean} */
-    function removeIncomingValidity(nodeIdentifier) {
-        let removed = false;
-        const inputs = mergedInputsMap.get(nodeIdentifier) ?? [];
-        for (const input of inputs) {
-            removed = removeValidityEdge(input, nodeIdentifier) || removed;
-        }
-        return removed;
-    }
-
-    /** @param {NodeIdentifier} nodeIdentifier @returns {boolean} */
-    function markStale(nodeIdentifier) {
-        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
-        if (finalFreshness.get(nodeIdStr) === 'potentially-outdated') {
-            return false;
-        }
-        finalFreshness.set(nodeIdStr, 'potentially-outdated');
-        return true;
-    }
-
+    // Step 2: Handle direct invalidation roots.
+    // For each directly invalidated root: remove all incoming validity proofs,
+    // mark stale, and propagate freshness downstream preserving validity edges.
     let freshnessChanged = false;
     for (const root of directInvalidationRoots) {
-        freshnessChanged = markStale(root) || freshnessChanged;
-        removeIncomingValidity(root);
+        const rootIdStr = nodeIdentifierToString(root);
+        if (finalFreshness.get(rootIdStr) !== 'potentially-outdated') {
+            finalFreshness.set(rootIdStr, 'potentially-outdated');
+            freshnessChanged = true;
+        }
+        removeIncomingValidity(mergedInputsMap, validMap, root);
+        const rootDependents = validMap.get(rootIdStr) ?? [];
+        for (const dependent of rootDependents) {
+            const depStr = nodeIdentifierToString(dependent);
+            if (finalFreshness.get(depStr) !== 'potentially-outdated') {
+                finalFreshness.set(depStr, 'potentially-outdated');
+                freshnessChanged = true;
+            }
+        }
     }
 
-    let changed = true;
-    while (changed) {
-        changed = false;
-        for (const nodeIdentifier of topologicalSortFromMap(mergedInputsMap)) {
-            const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
-            const freshness = finalFreshness.get(nodeIdStr);
-            const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
+    // Step 3: Topo-order pass: downgrade nodes with stale inputs.
+    // Do not remove outgoing validity from stale nodes — those proofs
+    // remain meaningful as long as the stale node's value hasn't changed.
+    const topoList = topologicalSortFromMap(mergedInputsMap);
+    for (const nodeIdentifier of topoList) {
+        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+        const freshness = finalFreshness.get(nodeIdStr);
+        if (freshness !== 'up-to-date') continue;
 
-            if (freshness !== 'up-to-date') {
-                const outgoing = validMap.get(nodeIdStr) ?? [];
-                if (outgoing.length > 0) {
-                    validMap.delete(nodeIdStr);
-                    for (const dependent of outgoing) {
-                        if (markStale(dependent)) {
-                            freshnessChanged = true;
-                        }
-                    }
-                    changed = true;
-                }
-                continue;
+        const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
+        let allInputsUpToDate = true;
+        let allProofsPresent = true;
+        for (const depId of requiredInputs) {
+            const depIdStr = nodeIdentifierToString(depId);
+            if (finalFreshness.get(depIdStr) !== 'up-to-date') {
+                allInputsUpToDate = false;
             }
-
-            let hasStaleInput = false;
-            let hasMissingProof = false;
-            for (const depId of requiredInputs) {
-                const depIdStr = nodeIdentifierToString(depId);
-                const dependents = validMap.get(depIdStr) ?? [];
-                const hasProof = dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr);
-                if (finalFreshness.get(depIdStr) !== 'up-to-date') {
-                    hasStaleInput = true;
-                    if (hasProof && removeValidityEdge(depId, nodeIdentifier)) {
-                        changed = true;
-                    }
-                } else if (!hasProof) {
-                    hasMissingProof = true;
-                }
+            const dependents = validMap.get(depIdStr) ?? [];
+            if (!dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
+                allProofsPresent = false;
             }
+        }
 
-            if (hasStaleInput) {
-                if (markStale(nodeIdentifier)) {
-                    freshnessChanged = true;
-                    changed = true;
-                }
-                continue;
+        if (!allInputsUpToDate || !allProofsPresent) {
+            finalFreshness.set(nodeIdStr, 'potentially-outdated');
+            freshnessChanged = true;
+            // Remove incoming proofs so the next pull invokes the computor.
+            removeIncomingValidity(mergedInputsMap, validMap, nodeIdentifier);
+        }
+    }
+
+    // Step 4: Add mandatory validity flags for every up-to-date node.
+    for (const nodeIdentifier of topoList) {
+        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+        if (finalFreshness.get(nodeIdStr) !== 'up-to-date') continue;
+        const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
+        for (const depId of requiredInputs) {
+            const depIdStr = nodeIdentifierToString(depId);
+            depIdCache.set(depIdStr, depId);
+            let deps = validMap.get(depIdStr);
+            if (deps === undefined) {
+                deps = [];
+                validMap.set(depIdStr, deps);
             }
-
-            if (hasMissingProof) {
-                if (markStale(nodeIdentifier)) {
-                    freshnessChanged = true;
-                    changed = true;
-                }
-                removeIncomingValidity(nodeIdentifier);
+            if (!deps.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
+                deps.push(nodeIdentifier);
             }
         }
     }
 
     const writer = new ReplicaBatchWriter(targetStorage);
     for (const [nodeIdStr, freshness] of finalFreshness) {
-        const nodeIdentifier = finalIdentifierByString.get(nodeIdStr) ?? nodeIdentifierFromString(nodeIdStr);
-        await writer.push(targetStorage.freshness.putOp(nodeIdentifier, freshness));
+        const nodeIdentifier = finalIdentifierByString.get(nodeIdStr);
+        if (nodeIdentifier !== undefined) {
+            await writer.push(targetStorage.freshness.putOp(nodeIdentifier, freshness));
+        }
     }
 
     await targetStorage.valid.clear();
@@ -435,6 +412,28 @@ async function rebuildMergedValidity({
     await writer.flush();
     const validityChanged = !canonicalValidMapsEqual(oldCanonicalValidMap, canonicalizeValidMap(validMap));
     return validityChanged || freshnessChanged;
+}
+
+/**
+ * Remove N from every input's validity set.
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
+ * @param {Map<string, NodeIdentifier[]>} validMap
+ * @param {NodeIdentifier} nodeIdentifier
+ */
+function removeIncomingValidity(mergedInputsMap, validMap, nodeIdentifier) {
+    const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+    const inputs = mergedInputsMap.get(nodeIdentifier) ?? [];
+    for (const input of inputs) {
+        const inputStr = nodeIdentifierToString(input);
+        const dependents = validMap.get(inputStr);
+        if (dependents === undefined) continue;
+        const filtered = dependents.filter(d => nodeIdentifierToString(d) !== nodeIdStr);
+        if (filtered.length === 0) {
+            validMap.delete(inputStr);
+        } else {
+            validMap.set(inputStr, filtered);
+        }
+    }
 }
 
 module.exports = {
