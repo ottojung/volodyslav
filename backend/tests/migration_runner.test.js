@@ -2389,4 +2389,44 @@ describe("retry after failure", () => {
         expect(validB.some(id => String(id) === String(nkC))).toBe(true);
     });
 
+    test('non-source explicit root B loses incoming proofs, preserves outgoing proofs, C propagated stale', async () => {
+        // A → B → C. Explicitly invalidate B (non-zero-input root).
+        // valid[A].has(B) must be removed (incoming proof of the root).
+        // valid[B].has(C) must survive (outgoing proof, value unchanged).
+        // A remains up-to-date (no invalidation reached it).
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const nkA = toJsonKey("A"), nkB = toJsonKey("B"), nkC = toJsonKey("C");
+        await xStorage.values.put(nkA, { v: 1 });
+        await xStorage.values.put(nkB, { v: 2 });
+        await xStorage.values.put(nkC, { v: 3 });
+        await xStorage.freshness.put(nkA, 'up-to-date');
+        await xStorage.freshness.put(nkB, 'up-to-date');
+        await xStorage.freshness.put(nkC, 'up-to-date');
+        await xStorage.valid.put(nkA, [nkB]);
+        await xStorage.valid.put(nkB, [nkC]);
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
+        const nodeDefs = [
+            { output: "A", inputs: [], computor: async () => ({ v: 1 }), isDeterministic: true, hasSideEffects: false },
+            { output: "B", inputs: ["A"], computor: async () => ({ v: 2 }), isDeterministic: true, hasSideEffects: false },
+            { output: "C", inputs: ["B"], computor: async () => ({ v: 3 }), isDeterministic: true, hasSideEffects: false },
+        ];
+        await seedGraphScheme(xStorage, nodeDefs);
+        await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+            await storage.keep(nkA);
+            await storage.invalidate(nkB);
+            // C is left undecided — finalize will auto-propagate invalidation from B
+        });
+        const resultStorage = mock.rootDatabase.schemaStorageForReplica('y');
+        const validA = await resultStorage.valid.get(nkA) ?? [];
+        const validB = await resultStorage.valid.get(nkB) ?? [];
+        expect(await resultStorage.freshness.get(nkA)).toBe('up-to-date');
+        expect(await resultStorage.freshness.get(nkB)).toBe('potentially-outdated');
+        expect(await resultStorage.freshness.get(nkC)).toBe('potentially-outdated');
+        expect(validA.some(id => String(id) === String(nkB))).toBe(false);
+        expect(validB.some(id => String(id) === String(nkC))).toBe(true);
+    });
+
 });
