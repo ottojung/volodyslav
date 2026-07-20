@@ -2,15 +2,17 @@ const { runMigration } = require("../src/generators/incremental_graph/migration_
 const { compileNodeDef } = require("../src/generators/incremental_graph/compiled_node");
 const {
     IDENTIFIERS_KEY,
+    LAST_NODE_INDEX_KEY,
     GRAPH_SCHEME_KEY,
     nodeIdentifierToString,
     buildGraphSchemeFromNodeDefs,
     serializeGraphScheme,
     isMissingGraphSchemeError,
+    isMissingIdentifierLookupError,
+    isMalformedIdentifierLookupError,
 } = require("../src/generators/incremental_graph/database");
 const {
     isUndecidedNodes,
-    isPartialDeleteFanIn,
     isDecisionConflict,
 } = require("../src/generators/incremental_graph");
 const { toJsonKey } = require("./test_json_key_helper");
@@ -26,11 +28,14 @@ const validationActual = jest.requireActual('../src/generators/incremental_graph
 jest.mock('../src/generators/incremental_graph/database/sync_merge_validation', () => ({
     ...jest.requireActual('../src/generators/incremental_graph/database/sync_merge_validation'),
     assertValidFinalMergeState: jest.fn(),
+    assertValidReplicaMaterializationState: jest.fn(),
 }));
 const {
     assertValidFinalMergeState,
+    assertValidReplicaMaterializationState,
     FinalMergeStateError,
-    isFinalMergeStateError,
+    ReplicaStateInvariantError,
+    isReplicaStateInvariantError,
 } = require("../src/generators/incremental_graph/database/sync_merge_validation");
 const {
     makeIdentifierLookup,
@@ -97,18 +102,21 @@ function makeSchemaStorage() {
 
     const originalGlobalGet = global.get.bind(global);
     global.get = async (key) => {
-        if (key !== IDENTIFIERS_KEY) {
-            return await originalGlobalGet(key);
+        if (key === IDENTIFIERS_KEY) {
+            const stored = await originalGlobalGet(key);
+            if (stored !== undefined) return stored;
+            const out = [];
+            for await (const k of values.keys()) {
+                out.push([k, k]);
+            }
+            return out;
         }
-
-        const stored = await originalGlobalGet(key);
-        if (stored !== undefined) return stored;
-
-        const out = [];
-        for await (const k of values.keys()) {
-            out.push([k, k]);
+        if (key === LAST_NODE_INDEX_KEY) {
+            const stored = await originalGlobalGet(key);
+            if (stored !== undefined) return stored;
+            return 0;
         }
-        return out;
+        return await originalGlobalGet(key);
     };
 
     return {
@@ -124,6 +132,31 @@ function makeSchemaStorage() {
                 global.apply(operation);
                 valid.apply(operation);
                 timestamps.apply(operation);
+            }
+        },
+    };
+}
+
+/**
+ * Make a simple schema storage without auto-generation fallbacks.
+ * Used by tests that need to control exact metadata contents.
+ * @returns {object}
+ */
+function makeSimpleSchemaStorage() {
+    const values = makeInMemoryDb("values");
+    const freshness = makeInMemoryDb("freshness");
+    const global = makeInMemoryDb("global");
+    const valid = makeInMemoryDb("valid");
+    const timestamps = makeInMemoryDb("timestamps");
+    return {
+        values, freshness, global, valid, timestamps,
+        async batch(operations) {
+            for (const op of operations) {
+                values.apply(op);
+                freshness.apply(op);
+                global.apply(op);
+                valid.apply(op);
+                timestamps.apply(op);
             }
         },
     };
@@ -264,6 +297,9 @@ beforeEach(() => {
     assertValidFinalMergeState.mockImplementation(
         (storage, lookup) => validationActual.assertValidFinalMergeState(storage, lookup)
     );
+    assertValidReplicaMaterializationState.mockImplementation(
+        (storage, lookup, context) => validationActual.assertValidReplicaMaterializationState(storage, lookup, context)
+    );
 });
 
 describe("runMigration", () => {
@@ -358,6 +394,188 @@ describe("runMigration", () => {
         expect(mock.setCurrentReplicaPointerCalled).toBe(false);
         expect(await yStorage.global.get("version")).toBeUndefined();
         expect(await yStorage.values.get(aKey)).toBeUndefined();
+    });
+
+    // ── Migration source metadata rejection tests ─────────────────────
+
+    test("rejects source with missing IDENTIFIERS_KEY", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+        const nodeKey = toJsonKey("A");
+
+        await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
+        await xStorage.freshness.put(nodeKey, "up-to-date");
+        await xStorage.timestamps.put(nodeKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" });
+        await xStorage.global.put("version", "1.0.0");
+        // Intentionally do NOT set IDENTIFIERS_KEY
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(caught).toBeDefined();
+        expect(isMissingIdentifierLookupError(caught)).toBe(true);
+        expect(String(caught.message)).toMatch(/identifiers_keys_map/i);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("rejects source with malformed IDENTIFIERS_KEY", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+        const nodeKey = toJsonKey("A");
+
+        await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
+        await xStorage.freshness.put(nodeKey, "up-to-date");
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, "not-an-array");
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(caught).toBeDefined();
+        expect(isMalformedIdentifierLookupError(caught)).toBe(true);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("rejects source with missing LAST_NODE_INDEX_KEY", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+
+        // Empty lookup to avoid ReplicaStateInvariantError from
+        // assertValidReplicaMaterializationState (no timestamps needed).
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, []);
+        // Intentionally do NOT set LAST_NODE_INDEX_KEY
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(caught).toBeDefined();
+        expect(isMissingIdentifierLookupError(caught)).toBe(true);
+        expect(String(caught.message)).toMatch(/identifiers_keys_map/i);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("rejects source with negative LAST_NODE_INDEX_KEY", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, []);
+        await xStorage.global.put(LAST_NODE_INDEX_KEY, -1);
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(caught).toBeDefined();
+        expect(isMissingIdentifierLookupError(caught)).toBe(true);
+        expect(String(caught.message)).toContain("last_node_index");
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("rejects source with non-integer LAST_NODE_INDEX_KEY", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, []);
+        await xStorage.global.put(LAST_NODE_INDEX_KEY, 3.14);
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(caught).toBeDefined();
+        expect(isMissingIdentifierLookupError(caught)).toBe(true);
+        expect(String(caught.message)).toContain("last_node_index");
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("rejects source with string LAST_NODE_INDEX_KEY", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, []);
+        await xStorage.global.put(LAST_NODE_INDEX_KEY, "0");
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let caught;
+        try {
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async () => { throw new Error("callback should not execute"); });
+        } catch (e) { caught = e; }
+
+        expect(caught).toBeDefined();
+        expect(isMissingIdentifierLookupError(caught)).toBe(true);
+        expect(String(caught.message)).toContain("last_node_index");
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
+    test("empty but initialized source replica succeeds", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSimpleSchemaStorage();
+        const yStorage = makeSimpleSchemaStorage();
+
+        // Fully initialized replica with no graph records:
+        await xStorage.global.put("version", "1.0.0");
+        await xStorage.global.put(IDENTIFIERS_KEY, []);
+        await xStorage.global.put(LAST_NODE_INDEX_KEY, 0);
+        await xStorage.global.put("fingerprint", "testfingerprnt");
+        await xStorage.global.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [{ head: "A", arity: 0, inputTemplates: [] }] }));
+
+        const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false }];
+        await seedGraphScheme(xStorage, nodeDefs);
+
+        let migrationRan = false;
+        await expect(runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+            migrationRan = true;
+            // Can create a new node since the source is empty
+            await storage.create(toJsonKey("A"), () => Promise.resolve({ type: "all_events", events: [] }), "up-to-date");
+        })).resolves.toBe(mock.rootDatabase);
+
+        expect(migrationRan).toBe(true);
+        // Target should have the new node
+        const targetEntries = await yStorage.global.get(IDENTIFIERS_KEY);
+        expect(targetEntries).toBeDefined();
+        expect(targetEntries.length).toBe(1);
     });
 
     test("invalidate preserves graph records from previous storage", async () => {
@@ -555,8 +773,7 @@ describe("runMigration", () => {
             // Set up xStorage with a node that has valid flags
             await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
             await xStorage.freshness.put(nodeKey, "up-to-date");
-            // Store a validity flag in xStorage's valid sublevel
-            await xStorage.valid.put(nodeKey, [depKey]);
+            expect(depKey).toBeDefined();
 
             const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
@@ -1296,7 +1513,7 @@ describe("x-namespace state preserved on migration failure", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("PartialDeleteFanInError from finalize: x-namespace data unchanged", async () => {
+    test("fan-in deletion from finalize migrates successfully", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
@@ -1304,21 +1521,15 @@ describe("x-namespace state preserved on migration failure", () => {
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
-        const snapshotBefore = await captureStorageSnapshot(xStorage);
+        await seedGraphScheme(xStorage, makeFanInNodeDefs());
+        await expect(runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
+            await storage.delete(nkA);
+            await storage.keep(nkB);
+        })).resolves.toBe(rootDatabase);
 
-        // Delete only A but keep B → fan-in violation on C
-        let caughtFanIn;
-        try {
-            await seedGraphScheme(xStorage, makeFanInNodeDefs());
-            await runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
-                await storage.delete(nkA);
-                await storage.keep(nkB);
-                // C is left for finalize to propagate; PartialDeleteFanIn because B is not deleted
-            });
-        } catch (e) { caughtFanIn = e; }
-        expect(isPartialDeleteFanIn(caughtFanIn)).toBe(true);
-
-        expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
+        await expect(yStorage.values.get(nkA)).resolves.toBeUndefined();
+        await expect(yStorage.values.get(nkB)).resolves.toBeDefined();
+        await expect(yStorage.values.get(nkC)).resolves.toBeUndefined();
     });
 
     test("DecisionConflictError from callback: x-namespace data unchanged", async () => {
@@ -1487,13 +1698,11 @@ describe("x-namespace state preserved on migration failure", () => {
         await expect(xStorage.freshness.get(nkB)).resolves.toBe("potentially-outdated");
     });
 
-    test("three-node fan-in partially deleted: all three x-values preserved after PartialDeleteFanInError", async () => {
+    test("three-node fan-in deletion removes dependent during migration", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
-        const snapshotBefore = await captureStorageSnapshot(xStorage);
-
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
@@ -1502,11 +1711,12 @@ describe("x-namespace state preserved on migration failure", () => {
             runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
                 await storage.delete(nkA);
                 await storage.keep(nkB);
-                // C is undecided — will trigger fan-in or undecided error
             })
-        ).rejects.toThrow();
+        ).resolves.toBe(rootDatabase);
 
-        expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
+        await expect(yStorage.values.get(nkA)).resolves.toBeUndefined();
+        await expect(yStorage.values.get(nkB)).resolves.toBeDefined();
+        await expect(yStorage.values.get(nkC)).resolves.toBeUndefined();
     });
 });
 
@@ -1666,11 +1876,11 @@ describe("migration validation", () => {
         expect(mock.setCurrentReplicaPointerCalled).toBe(true);
     });
 
-    test("migration calls assertValidFinalMergeState before activating replica; rejection blocks activation", async () => {
-        // By mocking assertValidFinalMergeState to throw, we prove the
+    test("migration calls assertValidReplicaMaterializationState before activating replica; rejection blocks activation", async () => {
+        // By mocking assertValidReplicaMaterializationState to throw, we prove the
         // migration path calls it before setCurrentReplicaPointer.
-        assertValidFinalMergeState.mockRejectedValueOnce(
-            new FinalMergeStateError("simulated: target state invalid")
+        assertValidReplicaMaterializationState.mockRejectedValueOnce(
+            new ReplicaStateInvariantError('migration target replica', 'simulated: target state invalid', undefined)
         );
 
         const capabilities = await getTestCapabilities();
@@ -1704,8 +1914,8 @@ describe("migration validation", () => {
             caughtError = e;
         }
 
-        expect(assertValidFinalMergeState).toHaveBeenCalled();
-        expect(isFinalMergeStateError(caughtError)).toBe(true);
+        expect(assertValidReplicaMaterializationState).toHaveBeenCalled();
+        expect(isReplicaStateInvariantError(caughtError)).toBe(true);
         expect(mock.setCurrentReplicaPointerCalled).toBe(false);
     });
 });
@@ -1753,7 +1963,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
         expect(mock.setGlobalVersionCalledWith).toBeUndefined();
     });
 
-    test("PartialDeleteFanInError: x.setGlobalVersion never called", async () => {
+    test("successful fan-in deletion does not use failure-version path", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
@@ -1768,7 +1978,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
                 await storage.delete(nkA);
                 await storage.keep(nkB);
             })
-        ).rejects.toThrow();
+        ).resolves.toBe(mock.rootDatabase);
 
         expect(mock.setGlobalVersionCalledWith).toBeUndefined();
     });
@@ -1825,9 +2035,7 @@ describe("error identity: exact thrown object propagates", () => {
         const nkA = toJsonKey("A");
         const nkB = toJsonKey("B");
         await populateNode(xStorage, nkA);
-        await seedSingleAGraphScheme(xStorage);
-        await populateNode(xStorage, nkB);
-        await seedSingleAGraphScheme(xStorage);
+        await populateNode(xStorage, nkB, { freshness: "potentially-outdated" });
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
@@ -1849,7 +2057,7 @@ describe("error identity: exact thrown object propagates", () => {
         expect(caught["undecidedNodes"]).toContain(nkB);
     });
 
-    test("PartialDeleteFanInError from finalize carries the fan-in node key", async () => {
+    test("fan-in deletion finalizes without partial fan-in error", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
@@ -1858,18 +2066,11 @@ describe("error identity: exact thrown object propagates", () => {
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
-        let caught;
-        try {
-            await seedGraphScheme(xStorage, makeFanInNodeDefs());
-            await runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
-                await storage.delete(nkA);
-                await storage.keep(nkB);
-            });
-        } catch (e) {
-            caught = e;
-        }
-
-        expect(isPartialDeleteFanIn(caught)).toBe(true);
+        await seedGraphScheme(xStorage, makeFanInNodeDefs());
+        await expect(runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
+            await storage.delete(nkA);
+            await storage.keep(nkB);
+        })).resolves.toBe(rootDatabase);
     });
 
     test("DecisionConflictError from callback carries correct node key", async () => {
@@ -2016,7 +2217,6 @@ describe("infrastructure failures", () => {
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
-
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 

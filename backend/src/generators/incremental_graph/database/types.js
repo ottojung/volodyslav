@@ -408,8 +408,7 @@ function versionToString(Version) {
 
 /**
  * Freshness state for a materialized node record.
- * Missing means the materialized node has no cached value.
- * @typedef {'missing' | 'up-to-date' | 'potentially-outdated'} Freshness
+ * @typedef {'up-to-date' | 'potentially-outdated'} Freshness
  */
 
 /**

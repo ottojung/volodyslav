@@ -619,6 +619,7 @@ If you have access to `git`, then:
 - and write helpful multiline commit messages.
 
 It is always safe to commit, do it even if you weren't explicitly told to.
+Never squash conceptually unrelated changes, even if the result is still small.
 
 ## Github code of conduct
 
@@ -632,6 +633,10 @@ Important:
 - linter configs must not be changed unless explicitly asked to by the user.
 - type checker configs must not be changed unless explicitly asked to by the user.
 - static analysis rules must not be ignored or disabled.
+
+## Notifications
+
+If `command -v my-notify` exits with status `0`, then call `my-notify "Volodyslav is ready for review"` when you're done with all the work to notify the user of it.
 
 ## Additional Guidelines
 

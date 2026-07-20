@@ -1,6 +1,6 @@
 /**
  * Invariant: Every identifier-map entry corresponds exactly to a
- * materialized node, and vice versa.
+ * materialized node, and materialized nodes are dependency-closed.
  *
  * The identifiers_keys_map (persisted as `r/<replica>/global/identifiers_keys_map`)
  * is the authoritative bijection between semantic node keys and deterministic identifiers.
@@ -13,16 +13,13 @@
  * entry—otherwise there is no way to recover its semantic key from the
  * identifier stored in the values sublevel.
  *
- * This file tests both directions of the invariant:
- *   1. Map → values: For every identifier in identifiers_keys_map, there is a
- *      corresponding entry in the values sublevel.
- *   2. Values → map: For every entry in the values sublevel, the identifier
- *      appears in identifiers_keys_map.
+ * This file tests both record-domain equality and dependency closure: every
+ * materialized node has every concrete input materialized.
  */
 
 /* eslint jest/expect-expect: ["error", { "assertFunctionNames": ["expect", "expectInvariant"] }] */
 
-const { getRootDatabase, nodeIdentifierToString } = require("../src/generators/incremental_graph/database");
+const { getRootDatabase, nodeIdentifierToString, isReplicaStateInvariantError, assertValidReplicaMaterializationState } = require("../src/generators/incremental_graph/database");
 const {
     createIncrementalGraph,
 } = require("../src/generators/incremental_graph");
@@ -96,6 +93,8 @@ async function expectInvariant(lookup, db) {
         }
     }
     expect(valuesWithoutMap).toEqual(new Set());
+
+    await assertValidReplicaMaterializationState(db.getSchemaStorage(), lookup, "materialized node invariant test");
 }
 
 describe("materialized node invariant", () => {
@@ -236,4 +235,127 @@ describe("materialized node invariant", () => {
         await graph.pull("counter");
         await expectInvariant(db.getActiveIdentifierLookup(), db);
     });
+    test("active replica preparation rejects an identifier without a cached value", async () => {
+        const nodeDefs = [
+            {
+                output: "hollow",
+                inputs: [],
+                computor: async () => ({ type: "test", value: 7 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ];
+        await buildGraph(nodeDefs);
+        await graph.pull("hollow");
+
+        const identifier = db.getActiveIdentifierLookup().keyToId.values().next().value;
+        await db.getSchemaStorage().values.del(identifier);
+
+        let caught;
+        try {
+            await createIncrementalGraph(getTestCapabilities(), db, nodeDefs);
+        } catch (error) {
+            caught = error;
+        }
+        expect(isReplicaStateInvariantError(caught)).toBe(true);
+        expect(String(caught?.message)).toContain("active replica");
+        expect(String(caught?.message)).toContain("has no cached value");
+    });
+
+
+    test("invalidate reads no cached value or timestamps for an existing node", async () => {
+        await buildGraph([
+            {
+                output: "source",
+                inputs: [],
+                computor: async () => ({ type: "test", value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await graph.pull("source");
+        const storage = db.getSchemaStorage();
+        const valueGet = jest.spyOn(storage.values, "get");
+        const timestampGet = jest.spyOn(storage.timestamps, "get");
+
+        await graph.invalidate("source");
+
+        expect(valueGet).not.toHaveBeenCalled();
+        expect(timestampGet).not.toHaveBeenCalled();
+    });
+
+    test("invalidate of an unmaterialized node writes no materialization records", async () => {
+        await buildGraph([
+            {
+                output: "source",
+                inputs: [],
+                computor: async () => ({ type: "test", value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        const storage = db.getSchemaStorage();
+        const valuePut = jest.spyOn(storage.values, "putOp");
+        const freshnessPut = jest.spyOn(storage.freshness, "putOp");
+        const timestampPut = jest.spyOn(storage.timestamps, "putOp");
+        const beforeIds = [...db.getActiveIdentifierLookup().idToKey.keys()];
+
+        await graph.invalidate("source");
+
+        expect([...db.getActiveIdentifierLookup().idToKey.keys()]).toEqual(beforeIds);
+        expect(valuePut).not.toHaveBeenCalled();
+        expect(freshnessPut).not.toHaveBeenCalled();
+        expect(timestampPut).not.toHaveBeenCalled();
+    });
+
+    test("getFreshness reads only lookup and freshness", async () => {
+        await buildGraph([
+            {
+                output: "source",
+                inputs: [],
+                computor: async () => ({ type: "test", value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await graph.pull("source");
+        const storage = db.getSchemaStorage();
+        const valueGet = jest.spyOn(storage.values, "get");
+        const timestampGet = jest.spyOn(storage.timestamps, "get");
+        const validGet = jest.spyOn(storage.valid, "get");
+
+        await expect(graph.getFreshness("source")).resolves.toBe("up-to-date");
+
+        expect(valueGet).not.toHaveBeenCalled();
+        expect(timestampGet).not.toHaveBeenCalled();
+        expect(validGet).not.toHaveBeenCalled();
+    });
+
+    test("getValue reads only lookup and cached value", async () => {
+        await buildGraph([
+            {
+                output: "source",
+                inputs: [],
+                computor: async () => ({ type: "test", value: 1 }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await graph.pull("source");
+        const storage = db.getSchemaStorage();
+        const freshnessGet = jest.spyOn(storage.freshness, "get");
+        const timestampGet = jest.spyOn(storage.timestamps, "get");
+        const validGet = jest.spyOn(storage.valid, "get");
+
+        await expect(graph.getValue("source")).resolves.toEqual({ type: "test", value: 1 });
+
+        expect(freshnessGet).not.toHaveBeenCalled();
+        expect(timestampGet).not.toHaveBeenCalled();
+        expect(validGet).not.toHaveBeenCalled();
+    });
+
 });

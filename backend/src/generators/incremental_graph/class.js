@@ -127,7 +127,7 @@ class IncrementalGraphClass {
     /**
      * @param {string} head
      * @param {Array<ConstValue>} [bindings=[]]
-     * @returns {Promise<"up-to-date" | "potentially-outdated" | "missing">}
+     * @returns {Promise<"up-to-date" | "potentially-outdated" | undefined>}
      */
     async getFreshness(head, bindings = []) {
         return await internalGetFreshness(this, head, bindings);

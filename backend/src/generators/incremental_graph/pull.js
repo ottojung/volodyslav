@@ -38,7 +38,7 @@
 /** @typedef {import('./types').ResolvedConcreteNode} ResolvedConcreteNode */
 /** @typedef {import('./database/types').NodeKeyString} StoredNodeKeyString */
 
-const { stringToNodeName, nodeIdentifierToString } = require("./database");
+const { stringToNodeName, nodeIdentifierToString, ReplicaStateInvariantError } = require("./database");
 const { stringToNodeKeyString } = require("./database");
 const { makeInvalidNodeError } = require("./errors");
 const { nighttimeActivity, telescopeActivity } = require("./lock");
@@ -72,12 +72,20 @@ const { internalMaybeRecalculate } = require("./recompute");
  * @returns {Promise<ComputedValue | undefined>}
  */
 async function readUpToDateCachedValue(graph, nodeIdentifier) {
-    if (await graph.storage.freshness.get(nodeIdentifier) !== "up-to-date") {
+    const freshness = await graph.storage.freshness.get(nodeIdentifier);
+    const identifierString = nodeIdentifierToString(nodeIdentifier);
+    if (freshness === undefined) {
+        throw new ReplicaStateInvariantError("pull", "has no freshness entry", identifierString);
+    }
+    if (freshness !== "up-to-date" && freshness !== "potentially-outdated") {
+        throw new ReplicaStateInvariantError("pull", `has invalid freshness ${String(freshness)}`, identifierString);
+    }
+    if (freshness !== "up-to-date") {
         return undefined;
     }
     const value = await graph.storage.values.get(nodeIdentifier);
     if (value === undefined) {
-        throw new Error(`Impossible: up-to-date node has no stored value: ${nodeIdentifierToString(nodeIdentifier)}`);
+        throw new ReplicaStateInvariantError("pull", "has no cached value", identifierString);
     }
     return value;
 }
@@ -122,7 +130,7 @@ async function pullNodeWithTelescopeHeld(graph, nodeKeyStr) {
             const outputKey = concreteNode.output;
             const inputKeys = concreteNode.inputs;
             const computor = concreteNode.computor;
-            const nodeDefinition = { outputKey, inputKeys, outputIdentifier, computor };
+            const nodeDefinition = { outputKey, inputKeys, outputIdentifier, computor, alreadyMaterialized: committedIdentifier !== undefined };
 
             // mayRecalculate delegates to internalMaybeRecalculate in recompute.js
             // which runs inside the transaction scope. All awaits inside are

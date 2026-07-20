@@ -1742,7 +1742,7 @@ describe("generators/incremental_graph", () => {
 
             const graph = await createIncrementalGraph(capabilities, db, graphDef);
             // Initially missing
-            expect(await graph.getFreshness("node1")).toBe("missing");
+            expect(await graph.getFreshness("node1")).toBeUndefined();
 
             node1Cell.value = { val: 10 };
             await graph.pull("node1");
@@ -1750,7 +1750,7 @@ describe("generators/incremental_graph", () => {
             expect(await graph.getFreshness("node1")).toBe("potentially-outdated");
             
             // node2 should be missing (not yet materialized, so not marked outdated)
-            expect(await graph.getFreshness("node2")).toBe("missing");
+            expect(await graph.getFreshness("node2")).toBeUndefined();
 
             // Pull node2 -> up-to-date
             await graph.pull("node2");

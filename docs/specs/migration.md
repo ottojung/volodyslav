@@ -22,7 +22,7 @@ A failed migration never activates the target replica.  Failures before unificat
 
 ### Migration scope `S`
 
-`S` is the set of all nodes materialized in the previous version. A node is materialized if its identifier exists in `identifiers_keys_map`. A cached node is a materialized node with an entry in `values`; a missing node is a materialized node with freshness `"missing"` and no value; a fresh node has freshness `"up-to-date"`; a stale node has freshness `"potentially-outdated"`.
+`S` is the set of all nodes materialized in the previous version. A node is materialized if and only if its identifier exists in `identifiers_keys_map`, `values`, `freshness`, and `timestamps`. A fresh node has freshness `"up-to-date"`; a stale node has freshness `"potentially-outdated"`.
 
 After the user-supplied migration callback returns, **every node in `S` must have exactly one decision**.  Missing decisions cause `UndecidedNodesError`.
 
@@ -111,14 +111,11 @@ dependents are skipped and remain missing; propagation does not create cached
 values for them. If a cached dependent already has a `KEEP` or `OVERRIDE`
 decision, `DecisionConflictError` is thrown immediately.
 
-#### DELETE → propagate DELETE downstream (deferred, fan-in strict)
+#### DELETE → propagate DELETE downstream (deferred, dependency-closed)
 
-DELETE propagation runs at finalization (after the callback returns), via a BFS over dependents:
+DELETE propagation runs at finalization (after the callback returns), via a BFS over dependents. One deleted input is sufficient to delete an undecided dependent, and that deletion propagates through every transitive materialized dependent.
 
-* A dependent `D` is auto-deleted only if **all** of `D`'s inputs are deleted.
-* If `D` has some-but-not-all inputs deleted, `PartialDeleteFanInError` is thrown.
-
-This means that to delete a fan-in node `D = f(B, C)`, both `B` and `C` must be deleted (directly or via propagation).
+This preserves the materialization invariant that every materialized node has all of its concrete inputs materialized. If a dependent already has an explicit `KEEP`, `OVERRIDE`, or `INVALIDATE` decision, `DecisionConflictError` is thrown.
 
 ---
 
@@ -130,11 +127,9 @@ This means that to delete a fan-in node `D = f(B, C)`, both `B` and `C` must be 
 | `OverrideConflictError` | `override()` called more than once on the same node. |
 | `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
-| `PartialDeleteFanInError` | DELETE propagation reaches a fan-in node not all of whose inputs are deleted. |
 | `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
 | `InvalidMigrationDecisionError` | `override` or `create` called without the cache-state proof required by its API. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
-| `GetMissingValueError` | `get()` called for a node in `S` with no computed value. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 
 ---
