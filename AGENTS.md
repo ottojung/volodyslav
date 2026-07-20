@@ -619,6 +619,7 @@ If you have access to `git`, then:
 - and write helpful multiline commit messages.
 
 It is always safe to commit, do it even if you weren't explicitly told to.
+Never squash conceptually unrelated changes, even if the result is still small.
 
 ## Github code of conduct
 
