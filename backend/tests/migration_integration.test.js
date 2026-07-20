@@ -52,10 +52,10 @@ describe("migration integration", () => {
         try {
             db = await getRootDatabase(caps);
 
-            let bCalls = 0, cCalls = 0;
+            let aCalls = 0, bCalls = 0, cCalls = 0;
             const nodeDefs = [
-                { output: "A", inputs: [], computor: async () => ({ v: 1 }), isDeterministic: true, hasSideEffects: false },
-                { output: "B", inputs: ["A"], computor: async () => { bCalls++; if (bCalls === 1) return ({ v: 2 }); return makeUnchanged(); }, isDeterministic: true, hasSideEffects: false },
+                { output: "A", inputs: [], computor: async () => { aCalls++; return ({ v: 1 }); }, isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async (_inputs, oldValue) => { bCalls++; if (oldValue === undefined) return ({ v: 2 }); return makeUnchanged(); }, isDeterministic: true, hasSideEffects: false },
                 { output: "C", inputs: ["B"], computor: async () => { cCalls++; return ({ v: 3 }); }, isDeterministic: true, hasSideEffects: false },
             ];
 
@@ -112,13 +112,17 @@ describe("migration integration", () => {
             expect(await storage.global.get(GRAPH_SCHEME_KEY)).toBeDefined();
 
             // --- Phase 4: Open graph on the migrated replica and pull C ---
-            bCalls = 1; cCalls = 1;
+            // Track only post-migration calls. B already has a value and
+            // must return makeUnchanged so its outgoing proof is preserved.
+            aCalls = 0; bCalls = 0; cCalls = 0;
             const g2 = await createIncrementalGraph(caps, db, nodeDefs);
             const result = await g2.pull("C");
-            // B must recompute (direct root, returns Unchanged)
-            expect(bCalls).toBe(2);
-            // C must cache-revalidate through preserved valid[B].has(C)
-            expect(cCalls).toBe(1);
+            // A is up-to-date — must not compute
+            expect(aCalls).toBe(0);
+            // B is a direct root (missing incoming proof) — must recompute
+            expect(bCalls).toBe(1);
+            // C is a propagated descendant with preserved valid[B].has(C) — cache-revalidates
+            expect(cCalls).toBe(0);
             expect(result).toEqual({ v: 3 });
 
             // --- Phase 5: Final state assertions ---
