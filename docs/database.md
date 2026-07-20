@@ -21,7 +21,7 @@ Within each namespace there are further typed sublevels:
 | Sublevel    | Purpose                                                   |
 |-------------|-----------------------------------------------------------|
 | `values`    | The computed output value for each graph node             |
-| `freshness` | Total materialized-node freshness table: `missing`, `potentially-outdated`, or `up-to-date` |
+| `freshness` | Total materialized-node freshness table: `potentially-outdated` or `up-to-date` |
 | `valid`     | Inverse validity relation for cached values (input → validated cached consumers) |
 | `timestamps`| Total materialized-node timestamp table (`createdAt` identity creation, `modifiedAt` value version) |
 | `global`    | Namespace metadata (version, identifiers_keys_map materialized-node registry, last_node_index, fingerprint, graph_scheme) |
@@ -169,7 +169,9 @@ Two higher-level operations are available:
   synchronises the rendered repository with the remote generators repository,
   and then scans the updated rendered snapshot back into the live database.
   During per-host graph merge, this sync path switches `_meta/current_replica`
-  only if the merge introduced graph changes (`take`/`invalidate` decisions).
-  Pure no-op merges keep the active replica pointer unchanged.
+  only when the final local graph differs from the active source replica, such as
+  imported host materializations, target materialization deletions, surviving
+  identifier reconciliation, freshness or validity changes. Pure no-op merges keep
+  the active replica pointer unchanged.
 
 See [`docs/gitstore.md`](./gitstore.md) for the gitstore primitives that back these operations.
