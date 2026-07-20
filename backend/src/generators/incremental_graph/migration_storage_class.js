@@ -38,7 +38,7 @@ const {
 /**
  * @typedef {{ kind: 'keep' }} KeepDecision
  * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} OverrideDecision
- * @typedef {{ kind: 'invalidate' }} InvalidateDecision
+ * @typedef {{ kind: 'invalidate', provenance: 'explicit' | 'propagated' }} InvalidateDecision
  * @typedef {{ kind: 'delete' }} DeleteDecision
  * @typedef {"up-to-date" | "potentially-outdated"} CreatedFreshness
  * @typedef {{ kind: 'create', nodeKeyString: string, value: (nodeKey: NodeIdentifier) => Promise<ComputedValue>, freshness: CreatedFreshness }} CreateDecision
@@ -228,10 +228,13 @@ class MigrationStorageClass {
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
-            if (existing.kind === "invalidate") return;
+            if (existing.kind === "invalidate") {
+                existing.provenance = "explicit";
+                return;
+            }
             throw makeDecisionConflictError(nodeKey, existing.kind, "invalidate");
         }
-        this.decisions.set(nodeKey, { kind: "invalidate" });
+        this.decisions.set(nodeKey, { kind: "invalidate", provenance: "explicit" });
         await propagateInvalidate({
             nodeKey,
             visited: new Set(),
@@ -257,6 +260,10 @@ class MigrationStorageClass {
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "delete") return;
+            if (existing.kind === "invalidate" && existing.provenance === "propagated") {
+                this.decisions.set(nodeKey, { kind: "delete" });
+                return;
+            }
             throw makeDecisionConflictError(nodeKey, existing.kind, "delete");
         }
         this.decisions.set(nodeKey, { kind: "delete" });

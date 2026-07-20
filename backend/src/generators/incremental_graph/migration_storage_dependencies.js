@@ -26,7 +26,7 @@ const {
 /**
  * @typedef {{ kind: 'keep' }} KeepDecision
  * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} OverrideDecision
- * @typedef {{ kind: 'invalidate' }} InvalidateDecision
+ * @typedef {{ kind: 'invalidate', provenance: 'explicit' | 'propagated' }} InvalidateDecision
  * @typedef {{ kind: 'delete' }} DeleteDecision
  * @typedef {"up-to-date" | "potentially-outdated"} CreatedFreshness
  * @typedef {{ kind: 'create', nodeKeyString: string, value: (nodeKey: NodeIdentifier) => Promise<ComputedValue>, freshness: CreatedFreshness }} CreateDecision
@@ -72,7 +72,7 @@ async function propagateInvalidate(ctx) {
         }
         const identifiersKeysIndex = await getIdentifiersKeysIndex();
         await checkSchemaCompatibility(dep, newHeadIndex, identifiersKeysIndex, decisions);
-        decisions.set(dep, { kind: "invalidate" });
+        decisions.set(dep, { kind: "invalidate", provenance: "propagated" });
         await propagateInvalidate({
             nodeKey: dep,
             visited,
@@ -164,6 +164,11 @@ async function propagateDeletes(ctx) {
             const existing = decisions.get(dep);
             if (existing?.kind === "delete") continue;
             if (existing !== undefined) {
+                if (existing.kind === "invalidate" && existing.provenance === "propagated") {
+                    decisions.set(dep, { kind: "delete" });
+                    queue.push(dep);
+                    continue;
+                }
                 throw makeDecisionConflictError(dep, existing.kind, "delete");
             }
             if (!materializedNodes.has(dep)) {
