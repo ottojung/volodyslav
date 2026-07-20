@@ -1284,11 +1284,11 @@ describe("Incremental graph validity", () => {
     describe("explicit non-source invalidation", () => {
         it("A->B->C invalidate B: removes incoming proofs of B, forces recompute", async () => {
             let bCalls = 0;
-            let cCalls = 0;
+
             const { nodeDefs } = createChainGraph(
                 () => ({ v: "src" }),
                 () => { bCalls++; return ({ v: "mid" }); },
-                () => { cCalls++; return ({ v: "dep" }); }
+                () => ({ v: "dep" })
             );
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
@@ -1310,7 +1310,6 @@ describe("Incremental graph validity", () => {
             expect(readValidSet(bId).some(id => id === nodeIdentifierToString(cId))).toBe(true);
 
             const bCallsBefore = bCalls;
-            const cCallsBefore = cCalls;
 
             await graph.invalidate("middle", binding);
 
@@ -1344,7 +1343,7 @@ describe("Incremental graph validity", () => {
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
-            const cKey = makeNodeStorageKey("dependent", binding);
+
 
             await graph.pull("source");
             await graph.pull("middle", binding);
@@ -1371,15 +1370,10 @@ describe("Incremental graph validity", () => {
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
-            const bKey = makeNodeStorageKey("middle", binding);
-            const cKey = makeNodeStorageKey("dependent", binding);
 
             await graph.pull("source");
             await graph.pull("middle", binding);
             await graph.pull("dependent", binding);
-
-            const bId = db.nodeKeyToId(bKey);
-            const cId = db.nodeKeyToId(cKey);
 
             await graph.invalidate("middle", binding);
 
@@ -1498,7 +1492,7 @@ describe("Incremental graph validity", () => {
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
-            const bKey = makeNodeStorageKey("middle", binding);
+
 
             await graph.pull("source");
             await graph.pull("middle", binding);
@@ -1568,6 +1562,7 @@ describe("Incremental graph validity", () => {
             await graph.pull("dependent", binding);
 
             const bId = db.nodeKeyToId(bKey);
+            const cId = db.nodeKeyToId(cKey);
 
             await graph.invalidate("source");
 
@@ -1645,11 +1640,10 @@ describe("Incremental graph validity", () => {
 
     describe("already-stale traversal", () => {
         it("B already stale before invalidating source, traversal still reaches C", async () => {
-            let cCalls = 0;
             const { nodeDefs } = createChainGraph(
                 () => ({ v: "src" }),
                 () => ({ v: "mid" }),
-                () => { cCalls++; return ({ v: "dep" }); }
+                () => ({ v: "dep" })
             );
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
