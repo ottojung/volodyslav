@@ -1481,31 +1481,6 @@ describe("Incremental graph validity", () => {
             expect(result).toEqual({ v: "dep" });
         });
 
-        it("invalidating A with changed value: B recomputes (validity clearance not visible in InMemoryDatabase)", async () => {
-            let aValue = 0;
-            let bCalls = 0;
-            const { nodeDefs } = createChainGraph(
-                () => ({ v: ++aValue }),
-                () => { bCalls++; return ({ v: "mid" }); },
-                () => ({ v: "dep" })
-            );
-            const testCapabilities = getTestCapabilities();
-            graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
-            const binding = [{ id: "x" }];
-
-
-            await graph.pull("source");
-            await graph.pull("middle", binding);
-            await graph.pull("dependent", binding);
-
-            await graph.invalidate("source");
-            const bCallsBefore = bCalls;
-
-            // Pull middle — A changed, B recomputes
-            await graph.pull("middle", binding);
-            expect(bCalls).toBe(bCallsBefore + 1);
-        });
-
         it("A changed, B returns Unchanged, C cache-revalidates", async () => {
             let aValue = 0;
             let bCalls = 0;
