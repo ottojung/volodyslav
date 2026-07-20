@@ -575,6 +575,61 @@ describe("MigrationStorage", () => {
             expect(decisions.get(D)?.kind).toBe("delete");
         });
 
+        test("delete propagation replaces automatically propagated invalidation", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "C", "D"]);
+            const A = nk("A");
+            const C = nk("C");
+            const D = nk("D");
+            const scheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "C", arity: 0, inputTemplates: [] },
+                    { head: "D", arity: 0, inputTemplates: [{ head: "A", args: [] }, { head: "C", args: [] }] },
+                ],
+            };
+            const lookup = makeLookupFromKeys([A, C, D]);
+            await storage.values.put(A, DUMMY_VALUE);
+            await storage.values.put(C, DUMMY_VALUE);
+            await storage.values.put(D, DUMMY_VALUE);
+            await storage.valid.put(C, [D]);
+            const ms = makeMigrationStorage(storage, headIndex, [A, C, D], "testfingerprint", 0, scheme, scheme, lookup);
+
+            await ms.invalidate(C);
+            await ms.delete(A);
+            const decisions = await ms.finalize();
+            expect(decisions.get(D)?.kind).toBe("delete");
+        });
+
+        test("delete propagation conflicts with explicit invalidation after automatic propagation", async () => {
+            const storage = makeInMemorySchemaStorage();
+            const headIndex = makeHeadIndex(["A", "C", "D"]);
+            const A = nk("A");
+            const C = nk("C");
+            const D = nk("D");
+            const scheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "C", arity: 0, inputTemplates: [] },
+                    { head: "D", arity: 0, inputTemplates: [{ head: "A", args: [] }, { head: "C", args: [] }] },
+                ],
+            };
+            const lookup = makeLookupFromKeys([A, C, D]);
+            await storage.values.put(A, DUMMY_VALUE);
+            await storage.values.put(C, DUMMY_VALUE);
+            await storage.values.put(D, DUMMY_VALUE);
+            await storage.valid.put(C, [D]);
+            const ms = makeMigrationStorage(storage, headIndex, [A, C, D], "testfingerprint", 0, scheme, scheme, lookup);
+
+            await ms.invalidate(C);
+            await ms.invalidate(D);
+            await ms.delete(A);
+            const error = await ms.finalize().catch((e) => e);
+            expect(isDecisionConflict(error)).toBe(true);
+        });
+
 
         test("delete propagation follows removed target dependency", async () => {
             const storage = makeInMemorySchemaStorage();

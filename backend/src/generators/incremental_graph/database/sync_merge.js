@@ -324,7 +324,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         finalIdentifierForKey
     );
 
-    const validityChanged = await rebuildMergedValidity({
+    const graphStateChanged = await rebuildMergedValidity({
         targetStorage,
         targetSourceStorage,
         hostSourceStorage: hostStorage,
@@ -334,7 +334,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap,
         valueOriginByKey,
     });
-    const hasChanges = hasSemanticChanges || validityChanged;
+    const hasChanges = hasSemanticChanges || graphStateChanged;
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
 
     if (hasChanges) {

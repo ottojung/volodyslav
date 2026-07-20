@@ -207,13 +207,16 @@ function canonicalValidMapsEqual(left, right) {
 }
 
 /**
- * Rebuild the valid relation from provenance-based value origin transport.
+ * Rebuild the valid relation and propagate freshness downgrades from merged inputs.
  *
  * Algorithm:
  * 1. Transport validity entries from both source sides based on source
  *    provenance for both endpoints.
- * 2. Add mandatory flags for every up-to-date node.
- * 3. Clear the existing valid sublevel and write the rebuilt relation.
+ * 2. Traverse merged nodes in topological order and downgrade an up-to-date
+ *    node when any input is not up-to-date.
+ * 3. Add mandatory validity flags for every up-to-date node whose inputs are
+ *    also up-to-date.
+ * 4. Clear the existing valid sublevel and write the rebuilt relation.
  *
  * A validity proof valid[D].has(N) is transported from a source side only
  * when D and N both resolve through the same source side and their final values
@@ -229,7 +232,7 @@ function canonicalValidMapsEqual(left, right) {
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
  * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
- * @returns {Promise<boolean>} Whether the canonical valid relation changed.
+ * @returns {Promise<boolean>} Whether the canonical valid relation or any freshness record changed.
  */
 async function rebuildMergedValidity({
     targetStorage,
@@ -310,6 +313,7 @@ async function rebuildMergedValidity({
     }
 
     const writer = new ReplicaBatchWriter(targetStorage);
+    let freshnessChanged = false;
 
     // Traverse in topological order so that a node's inputs have their
     // validity entries built before the node's own entries are written.
@@ -319,6 +323,13 @@ async function rebuildMergedValidity({
         if (freshness !== 'up-to-date') continue;
 
         const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
+        const hasStaleInput = requiredInputs.some((depId) => finalFreshness.get(nodeIdentifierToString(depId)) !== 'up-to-date');
+        if (hasStaleInput) {
+            finalFreshness.set(nodeIdStr, 'potentially-outdated');
+            freshnessChanged = true;
+            await writer.push(targetStorage.freshness.putOp(nodeIdentifier, 'potentially-outdated'));
+            continue;
+        }
         for (const depId of requiredInputs) {
             const depIdStr = nodeIdentifierToString(depId);
             depIdCache.set(depIdStr, depId);
@@ -340,7 +351,7 @@ async function rebuildMergedValidity({
     }
     await writer.flush();
     const validityChanged = !canonicalValidMapsEqual(oldCanonicalValidMap, canonicalizeValidMap(validMap));
-    return validityChanged;
+    return validityChanged || freshnessChanged;
 }
 
 module.exports = {

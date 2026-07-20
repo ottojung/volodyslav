@@ -2042,6 +2042,46 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
+    test('equal-version invalidation propagates stale freshness to newer dependents', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'equal-version-peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeA = nodeIdentifierFromString('138-abcdefghi');
+            const nodeB = nodeIdentifierFromString('139-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"stale_input_A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"stale_input_B","args":[]}');
+
+            const target = db.schemaStorageForReplica('x');
+            await writeNode(target, nodeA, TS1, { source: 'A' });
+            await writeNode(target, nodeB, TS3, { source: 'B target' });
+            await target.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(target, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const host = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(host);
+            await writeNode(host, nodeA, TS1, { source: 'A' });
+            await writeNode(host, nodeB, TS2, { source: 'B host' });
+            await host.freshness.put(nodeA, 'potentially-outdated');
+            await host.freshness.put(nodeB, 'potentially-outdated');
+            await writeIdentifierLookup(host, [[nodeA, keyA], [nodeB, keyB]]);
+
+            db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
+
+            const storage = db.getSchemaStorage();
+            expect(await storage.freshness.get(nodeA)).toBe('potentially-outdated');
+            expect(await storage.freshness.get(nodeB)).toBe('potentially-outdated');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     test('4. identifier lowering transports valid proofs to final identifiers', async () => {
         const { rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
         const capabilities = getTestCapabilities();

@@ -23,15 +23,13 @@ const {
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 
-/**
- * @typedef {{ kind: 'keep' }} KeepDecision
- * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} OverrideDecision
- * @typedef {{ kind: 'invalidate' }} InvalidateDecision
- * @typedef {{ kind: 'delete' }} DeleteDecision
- * @typedef {"up-to-date" | "potentially-outdated"} CreatedFreshness
- * @typedef {{ kind: 'create', nodeKeyString: string, value: (nodeKey: NodeIdentifier) => Promise<ComputedValue>, freshness: CreatedFreshness }} CreateDecision
- * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision | CreateDecision} Decision
- */
+/** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
+/** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
+/** @typedef {import('./migration_decisions').InvalidateDecision} InvalidateDecision */
+/** @typedef {import('./migration_decisions').DeleteDecision} DeleteDecision */
+/** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
+/** @typedef {import('./migration_decisions').CreateDecision} CreateDecision */
+/** @typedef {import('./migration_decisions').Decision} Decision */
 
 /**
  * Reads the outgoing validity frontier for a node from the previous storage.
@@ -72,7 +70,7 @@ async function propagateInvalidate(ctx) {
         }
         const identifiersKeysIndex = await getIdentifiersKeysIndex();
         await checkSchemaCompatibility(dep, newHeadIndex, identifiersKeysIndex, decisions);
-        decisions.set(dep, { kind: "invalidate" });
+        decisions.set(dep, { kind: "invalidate", provenance: "propagated" });
         await propagateInvalidate({
             nodeKey: dep,
             visited,
@@ -164,6 +162,11 @@ async function propagateDeletes(ctx) {
             const existing = decisions.get(dep);
             if (existing?.kind === "delete") continue;
             if (existing !== undefined) {
+                if (existing.kind === "invalidate" && existing.provenance === "propagated") {
+                    decisions.set(dep, { kind: "delete" });
+                    queue.push(dep);
+                    continue;
+                }
                 throw makeDecisionConflictError(dep, existing.kind, "delete");
             }
             if (!materializedNodes.has(dep)) {
