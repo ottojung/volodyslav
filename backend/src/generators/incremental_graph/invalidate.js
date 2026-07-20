@@ -83,9 +83,7 @@ async function internalUnsafeInvalidate(
         tx.batch.freshness.put(outputIdentifier, "potentially-outdated");
         removeIncomingValidity(tx.batch, outputIdentifier, inputEdges);
         const dependents = await tx.batch.valid.get(outputIdentifier);
-        if (dependents !== undefined && dependents.length > 0) {
-            await propagatePotentiallyOutdated(incrementalGraph.storage, tx.batch, dependents);
-        }
+        await propagatePotentiallyOutdated(incrementalGraph.storage, tx.batch, dependents);
 
         return { value: undefined };
     });
