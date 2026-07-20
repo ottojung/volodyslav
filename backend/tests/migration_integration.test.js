@@ -12,8 +12,6 @@ const { runMigration } = require("../src/generators/incremental_graph/migration_
 const {
     getRootDatabase,
     GRAPH_SCHEME_KEY,
-    IDENTIFIERS_KEY,
-    LAST_NODE_INDEX_KEY,
 } = require("../src/generators/incremental_graph/database");
 const {
     createIncrementalGraph,
@@ -22,7 +20,7 @@ const {
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
 
-// Mock checkpointMigration to avoid git infrastructure
+// Mock checkpointMigration to avoid requiring git infrastructure
 jest.mock('../src/generators/incremental_graph/database', () => ({
     ...jest.requireActual('../src/generators/incremental_graph/database'),
     checkpointMigration: jest.fn(),
@@ -45,12 +43,12 @@ describe("migration integration", () => {
         );
     });
 
-    test("explicit B root removes A→B, preserves B→C, C cache-revalidates after pull", async () => {
-        // A → B → C. Real RootDatabase, real migration, real pull.
+    test("explicit B root removes A→B, preserves B→C, C cache-revalidates; durable cutover", async () => {
         const caps = getTestCapabilities();
         let db;
         try {
             db = await getRootDatabase(caps);
+            const appVersion = db.getVersion();
 
             let aCalls = 0, bCalls = 0, cCalls = 0;
             const nodeDefs = [
@@ -58,37 +56,52 @@ describe("migration integration", () => {
                 { output: "B", inputs: ["A"], computor: async (_inputs, oldValue) => { bCalls++; if (oldValue === undefined) return ({ v: 2 }); return makeUnchanged(); }, isDeterministic: true, hasSideEffects: false },
                 { output: "C", inputs: ["B"], computor: async () => { cCalls++; return ({ v: 3 }); }, isDeterministic: true, hasSideEffects: false },
             ];
+            const expectedScheme = JSON.stringify({
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+                    { head: "C", arity: 0, inputTemplates: [{ head: "B", args: [] }] },
+                ],
+            });
 
-            // --- Phase 1: Build version-1 source, materialize A→B→C ---
+            // --- Phase 1: Build version-1 source ---
             const g1 = await createIncrementalGraph(caps, db, nodeDefs);
             await g1.pull("C");
             expect(bCalls).toBe(1);
             expect(cCalls).toBe(1);
 
-            // Overwrite version to "1" so migration detects a change
             const activeBefore = db.currentReplicaName();
             const storageBefore = db.getSchemaStorage();
             await storageBefore.global.put("version", "1");
             await db.close();
 
-            // --- Phase 2: Reopen and migrate to version 2 ---
+            // --- Phase 2: Reopen and migrate ---
             db = await getRootDatabase(caps);
-            // Migrate: keep A, invalidate B. C is left undecided and will
-            // become propagated invalidate via finalize().
-            const migrated = await runMigration(caps, db, nodeDefs, async (storage) => {
+            await runMigration(caps, db, nodeDefs, async (storage) => {
                 for await (const nk of storage.listMaterializedNodes()) {
                     const key = await storage.resolveNodeKey(nk);
-                    if (!key) continue; // skip unresolvable
+                    if (!key) continue;
                     if (String(key.head) === "A") {
                         await storage.keep(nk);
                     } else if (String(key.head) === "B") {
                         await storage.invalidate(nk);
                     }
-                    // C is deliberately left undecided
                 }
             });
 
-            // --- Phase 3: Verify post-migration state via active replica ---
+            // --- Phase 3: Prove in-memory cutover ---
+            const activeAfter = db.currentReplicaName();
+            expect(activeAfter).not.toBe(activeBefore);
+            expect(db.otherReplicaName()).toBe(activeBefore);
+
+            // --- Phase 4: Prove durable cutover (reopen) ---
+            await db.close();
+            db = await getRootDatabase(caps);
+            expect(db.currentReplicaName()).toBe(activeAfter);
+            expect(db.otherReplicaName()).toBe(activeBefore);
+
+            // --- Phase 5: Verify post-migration persisted state ---
             const storage = db.getSchemaStorage();
             const lookup = db.getActiveIdentifierLookup();
             const aId = lookup.keyToId.get('{"head":"A","args":[]}');
@@ -107,25 +120,19 @@ describe("migration integration", () => {
             expect(validA.some(d => String(d) === String(bId))).toBe(false);
             expect(validB.some(d => String(d) === String(cId))).toBe(true);
 
-            // Verify version and graph_scheme in the active replica
-            expect(await storage.global.get("version")).toBeDefined();
-            expect(await storage.global.get(GRAPH_SCHEME_KEY)).toBeDefined();
+            expect(await storage.global.get("version")).toBe(appVersion);
+            expect(await storage.global.get(GRAPH_SCHEME_KEY)).toBe(expectedScheme);
 
-            // --- Phase 4: Open graph on the migrated replica and pull C ---
-            // Track only post-migration calls. B already has a value and
-            // must return makeUnchanged so its outgoing proof is preserved.
+            // --- Phase 6: Open graph and pull C ---
             aCalls = 0; bCalls = 0; cCalls = 0;
             const g2 = await createIncrementalGraph(caps, db, nodeDefs);
             const result = await g2.pull("C");
-            // A is up-to-date — must not compute
             expect(aCalls).toBe(0);
-            // B is a direct root (missing incoming proof) — must recompute
             expect(bCalls).toBe(1);
-            // C is a propagated descendant with preserved valid[B].has(C) — cache-revalidates
             expect(cCalls).toBe(0);
             expect(result).toEqual({ v: 3 });
 
-            // --- Phase 5: Final state assertions ---
+            // --- Phase 7: Final state ---
             expect(await g2.getFreshness("A")).toBe("up-to-date");
             expect(await g2.getFreshness("B")).toBe("up-to-date");
             expect(await g2.getFreshness("C")).toBe("up-to-date");
