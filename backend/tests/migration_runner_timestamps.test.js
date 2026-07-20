@@ -10,6 +10,7 @@ const { runMigration } = require("../src/generators/incremental_graph/migration_
 const { compileNodeDef } = require("../src/generators/incremental_graph/compiled_node");
 const {
     IDENTIFIERS_KEY,
+    LAST_NODE_INDEX_KEY,
     GRAPH_SCHEME_KEY,
     nodeIdentifierToString,
     buildGraphSchemeFromNodeDefs,
@@ -87,18 +88,21 @@ function makeSchemaStorage() {
 
     const originalGlobalGet = global.get.bind(global);
     global.get = async (key) => {
-        if (key !== IDENTIFIERS_KEY) {
-            return await originalGlobalGet(key);
+        if (key === IDENTIFIERS_KEY) {
+            const stored = await originalGlobalGet(key);
+            if (stored !== undefined) return stored;
+            const out = [];
+            for await (const k of values.keys()) {
+                out.push([k, k]);
+            }
+            return out;
         }
-
-        const stored = await originalGlobalGet(key);
-        if (stored !== undefined) return stored;
-
-        const out = [];
-        for await (const k of values.keys()) {
-            out.push([k, k]);
+        if (key === LAST_NODE_INDEX_KEY) {
+            const stored = await originalGlobalGet(key);
+            if (stored !== undefined) return stored;
+            return 0;
         }
-        return out;
+        return await originalGlobalGet(key);
     };
 
     return {
@@ -333,7 +337,7 @@ describe("override decision: timestamps are preserved", () => {
         expect(result.modifiedAt).toBe(OLD_TIMESTAMP.modifiedAt);
     });
 
-    test("override without previous timestamp is rejected", async () => {
+    test("migration source without previous timestamp is rejected", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const yStorage = makeSchemaStorage();
@@ -347,7 +351,7 @@ describe("override decision: timestamps are preserved", () => {
         await seedGraphScheme(xStorage, makeNodeDefs(["A"]));
         await expect(runMigration(capabilities, rootDatabase, makeNodeDefs(["A"]), async (storage) => {
             await storage.override(nodeKey, async () => ({ type: "all_events", events: [] }));
-        })).rejects.toThrow("previous timestamps are missing");
+        })).rejects.toThrow("has no timestamps entry");
     });
 
     test("override preserves both createdAt and modifiedAt when they differ", async () => {

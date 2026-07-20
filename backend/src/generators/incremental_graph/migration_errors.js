@@ -115,42 +115,6 @@ function isUndecidedNodes(object) {
 }
 
 /**
- * Thrown when DELETE propagation reaches a fan-in node whose non-deleted inputs remain.
- */
-class PartialDeleteFanIn extends Error {
-    /**
-     * @param {NodeIdentifier} nodeKey
-     * @param {readonly NodeIdentifier[]} inputs
-     */
-    constructor(nodeKey, inputs) {
-        super(
-            `Partial delete fan-in for node ${nodeKey}: cannot delete because not all inputs are deleted. ` +
-                `Inputs: ${inputs.join(", ")}`
-        );
-        this.name = "PartialDeleteFanInError";
-        this.nodeKey = nodeKey;
-        this.inputs = inputs;
-    }
-}
-
-/**
- * @param {NodeIdentifier} nodeKey
- * @param {readonly NodeIdentifier[]} inputs
- * @returns {PartialDeleteFanIn}
- */
-function makePartialDeleteFanInError(nodeKey, inputs) {
-    return new PartialDeleteFanIn(nodeKey, inputs);
-}
-
-/**
- * @param {unknown} object
- * @returns {object is PartialDeleteFanIn}
- */
-function isPartialDeleteFanIn(object) {
-    return object instanceof PartialDeleteFanIn;
-}
-
-/**
  * Thrown when keep/override/invalidate is called on a node incompatible with the new schema.
  */
 class SchemaCompatibility extends Error {
@@ -214,38 +178,6 @@ function makeGetMissingNodeError(nodeKey) {
  */
 function isGetMissingNode(object) {
     return object instanceof GetMissingNode;
-}
-
-/**
- * Thrown when get() is called on a materialized node that has no computed value.
- */
-class GetMissingValue extends Error {
-    /**
-     * @param {NodeIdentifier} nodeKey
-     */
-    constructor(nodeKey) {
-        super(
-            `Node ${nodeKey} is in the previous version but has no computed value`
-        );
-        this.name = "GetMissingValueError";
-        this.nodeKey = nodeKey;
-    }
-}
-
-/**
- * @param {NodeIdentifier} nodeKey
- * @returns {GetMissingValue}
- */
-function makeGetMissingValueError(nodeKey) {
-    return new GetMissingValue(nodeKey);
-}
-
-/**
- * @param {unknown} object
- * @returns {object is GetMissingValue}
- */
-function isGetMissingValue(object) {
-    return object instanceof GetMissingValue;
 }
 
 /**
@@ -353,14 +285,10 @@ module.exports = {
     isCreateExistingNode,
     makeUndecidedNodesError,
     isUndecidedNodes,
-    makePartialDeleteFanInError,
-    isPartialDeleteFanIn,
     makeSchemaCompatibilityError,
     isSchemaCompatibility,
     makeGetMissingNodeError,
     isGetMissingNode,
-    makeGetMissingValueError,
-    isGetMissingValue,
     makeMissingDependencyMetadataError,
     isMissingDependencyMetadata,
 };

@@ -57,8 +57,7 @@ async function internalPropagateOutdated(
                 batch.freshness.put(output, "potentially-outdated");
             } else if (
                 currentFreshness !== undefined &&
-                currentFreshness !== "potentially-outdated" &&
-                currentFreshness !== "missing"
+                currentFreshness !== "potentially-outdated"
             ) {
                 /** @type {never} */
                 const freshness = currentFreshness;
@@ -97,10 +96,6 @@ async function internalUnsafeInvalidate(
     await incrementalGraph.storage.withTransaction(async (tx) => {
         const outputIdentifier = lookupNodeIdentifier(tx, concreteKey);
         if (outputIdentifier === undefined) {
-            return { value: undefined };
-        }
-
-        if (await tx.batch.values.get(outputIdentifier) === undefined) {
             return { value: undefined };
         }
 

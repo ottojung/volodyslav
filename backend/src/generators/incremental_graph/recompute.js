@@ -33,6 +33,7 @@ const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = requi
 const { isUnchanged } = require("./unchanged");
 const {
     nodeIdentifierToString,
+    ReplicaStateInvariantError,
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
 const { normalizeInputEdges } = require("./database");
@@ -143,10 +144,11 @@ async function handleUnchanged(_incrementalGraph, nodeIdentifier, inputEdges, ba
  * @param {NodeIdentifier} nodeIdentifier
  * @param {NodeIdentifier[]} inputEdges
  * @param {ComputedValue} newValue
+ * @param {boolean} alreadyMaterialized
  * @param {BatchBuilder} batch
  * @returns {Promise<void>}
  */
-async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, batch) {
+async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, alreadyMaterialized, batch) {
     for (const edge of inputEdges) {
         batch.valid.remove(edge, nodeIdentifier);
     }
@@ -166,14 +168,17 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
 
 
     const existingTimestamp = await batch.timestamps.get(nodeIdentifier);
-    if (existingTimestamp === undefined) {
+    if (alreadyMaterialized === true) {
+        if (existingTimestamp === undefined) {
+            throw new ReplicaStateInvariantError("pull", "has no timestamps entry", nodeIdentifierToString(nodeIdentifier));
+        }
         batch.timestamps.put(nodeIdentifier, {
-            createdAt: nowIso,
+            createdAt: existingTimestamp.createdAt,
             modifiedAt: nowIso,
         });
     } else {
         batch.timestamps.put(nodeIdentifier, {
-            createdAt: existingTimestamp.createdAt,
+            createdAt: nowIso,
             modifiedAt: nowIso,
         });
     }
@@ -198,6 +203,9 @@ async function internalMaybeRecalculate(
     const batch = tx.batch;
     const nodeIdentifier = nodeDefinition.outputIdentifier;
     const oldValue = await batch.values.get(nodeIdentifier);
+    if (nodeDefinition.alreadyMaterialized === true && oldValue === undefined) {
+        throw new ReplicaStateInvariantError("pull", "has no cached value", nodeIdentifierToString(nodeIdentifier));
+    }
 
     /** @type {Array<ComputedValue>} */
     const inputValues = [];
@@ -262,7 +270,7 @@ async function internalMaybeRecalculate(
         return { value: result, status: "unchanged" };
     }
 
-    await handleChanged(incrementalGraph, nodeIdentifier, inputEdges, computedValue, batch);
+    await handleChanged(incrementalGraph, nodeIdentifier, inputEdges, computedValue, nodeDefinition.alreadyMaterialized, batch);
     return { value: computedValue, status: "changed" };
 }
 

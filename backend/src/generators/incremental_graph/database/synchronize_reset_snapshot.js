@@ -5,12 +5,39 @@ const {
     DATABASE_SUBPATH,
     LIVE_DATABASE_WORKING_PATH,
 } = require('./gitstore');
-const { makeRootDatabase } = require('./root_database');
+const { makeRootDatabase, LAST_NODE_INDEX_KEY } = require('./root_database');
 const { scanFromFilesystem } = require('./render');
 const { requireValidFingerprint } = require('./fingerprint');
+const { IDENTIFIERS_KEY } = require('./identifier_lookup');
+const { GRAPH_SCHEME_KEY } = require('./graph_scheme');
+const { parseIdentifierLookup } = require('./sync_merge_identifier_lookup');
+const { assertValidReplicaMaterializationState } = require('./sync_merge_validation');
 
 /** @typedef {import('./synchronize').Capabilities} Capabilities */
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
+
+
+/**
+ * @param {{ keys: () => AsyncIterable<unknown> }} sublevel
+ * @returns {Promise<boolean>}
+ */
+async function hasAnyKey(sublevel) {
+    for await (const _key of sublevel.keys()) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * @param {import('./root_database').SchemaStorage} storage
+ * @returns {Promise<boolean>}
+ */
+async function hasGraphRecords(storage) {
+    return await hasAnyKey(storage.values)
+        || await hasAnyKey(storage.freshness)
+        || await hasAnyKey(storage.timestamps)
+        || await hasAnyKey(storage.valid);
+}
 
 /**
  * @param {Capabilities} capabilities
@@ -50,11 +77,39 @@ async function importResetSnapshotIntoDatabase(capabilities, database, workTree,
         );
     }
 
-    if (isExistingDb) {
-        await targetGlobal.put(
-            'fingerprint',
-            requireValidFingerprint(preImportFingerprint, 'pre-import live database')
-        );
+    const targetStorage = database.schemaStorageForReplica(nextReplica);
+    const hasGlobalRecords = await hasAnyKey(targetGlobal);
+    const rawVersion = await targetGlobal.get('version');
+    const hasVersion = rawVersion !== undefined;
+    const hasGraphScheme = await targetGlobal.get(GRAPH_SCHEME_KEY) !== undefined;
+    const rawLookup = await targetGlobal.get(IDENTIFIERS_KEY);
+    const hasLookup = rawLookup !== undefined;
+    const hasRecords = await hasGraphRecords(targetStorage);
+    const rawLastNodeIndex = await targetGlobal.get(LAST_NODE_INDEX_KEY);
+    const hasLastNodeIndex = rawLastNodeIndex !== undefined;
+    const rawFingerprint = await targetGlobal.get('fingerprint');
+    const hasFingerprint = rawFingerprint !== undefined;
+    const genuinelyEmpty = !hasGlobalRecords && !hasRecords;
+    const initialized = hasVersion && hasGraphScheme && hasLookup && hasLastNodeIndex && hasFingerprint;
+    if (!genuinelyEmpty && !initialized) {
+        throw new Error('reset snapshot is neither genuinely empty nor fully initialized');
+    }
+    if (initialized) {
+        if (typeof rawVersion !== 'string') {
+            throw new Error('reset snapshot version must be a string');
+        }
+        if (typeof rawLastNodeIndex !== 'number') {
+            throw new Error('reset snapshot last_node_index must be a number');
+        }
+        requireValidFingerprint(rawFingerprint, 'reset snapshot fingerprint');
+        const lookup = parseIdentifierLookup(rawLookup, 'reset snapshot');
+        await assertValidReplicaMaterializationState(targetStorage, lookup, 'reset snapshot');
+        if (isExistingDb) {
+            await targetGlobal.put(
+                'fingerprint',
+                requireValidFingerprint(preImportFingerprint, 'pre-import live database')
+            );
+        }
     }
 
     const previousReplica = database.currentReplicaName();

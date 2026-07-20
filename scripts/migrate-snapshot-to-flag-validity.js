@@ -128,6 +128,11 @@ function migrateSnapshot(snapshotDirectory) {
 
     const materializedIds = new Set(lookup.idToKey.keys());
     const cachedIds = new Set(values.keys());
+    for (const idString of cachedIds) {
+        if (!materializedIds.has(idString)) {
+            throw new SnapshotMigrationError(`Cached value id has no identifier lookup entry: ${idString}`);
+        }
+    }
     const nextFreshness = new Map();
     const valid = new Map();
 
@@ -135,11 +140,13 @@ function migrateSnapshot(snapshotDirectory) {
         const id = nodeIdentifierFromString(idString);
         const derivedInputs = deriveInputEdges(graphScheme, lookup, id);
         if (!cachedIds.has(idString)) {
-            nextFreshness.set(idString, "missing");
-            continue;
+            throw new SnapshotMigrationError(`Identifier has no cached value: ${idString}`);
         }
         const oldFreshness = freshness.get(idString);
-        if (oldFreshness !== undefined && oldFreshness !== "up-to-date" && oldFreshness !== "potentially-outdated") {
+        if (oldFreshness === undefined) {
+            throw new SnapshotMigrationError(`Materialized node is missing freshness: ${idString}`);
+        }
+        if (oldFreshness !== "up-to-date" && oldFreshness !== "potentially-outdated") {
             throw new SnapshotMigrationError(`Malformed freshness for ${idString}: expected up-to-date or potentially-outdated`);
         }
         nextFreshness.set(idString, "potentially-outdated");
@@ -157,6 +164,7 @@ function migrateSnapshot(snapshotDirectory) {
 
     for (const idString of freshness.keys()) {
         if (!materializedIds.has(idString)) throw new SnapshotMigrationError(`Freshness id has no identifier lookup entry: ${idString}`);
+        if (!cachedIds.has(idString)) throw new SnapshotMigrationError(`Freshness id has no cached value: ${idString}`);
     }
 
     const validObject = [...valid.entries()]
@@ -165,6 +173,8 @@ function migrateSnapshot(snapshotDirectory) {
 
     validateResult(graphScheme, lookup, materializedIds, nextFreshness, validObject);
 
+    writeJson(path.join(globalDirectory, "identifiers_keys_map"), [...lookup.idToKey.entries()]
+        .map(([id, key]) => [nodeIdentifierFromString(id), key]));
     for (const [id, state] of nextFreshness.entries()) writeJson(path.join(freshnessDirectory, id), state);
     for (const id of materializedIds) {
         const nowIso = "1970-01-01T00:00:00.000Z";
@@ -177,7 +187,7 @@ function migrateSnapshot(snapshotDirectory) {
     fs.rmSync(revdepsDirectory, { recursive: true, force: true });
     fs.rmSync(countersDirectory, { recursive: true, force: true });
 
-    validateWrittenSnapshot(replica, graphScheme, lookup);
+    validateWrittenSnapshot(replica, graphScheme, makeIdentifierLookup(readJson(path.join(globalDirectory, "identifiers_keys_map"))));
 }
 
 function validateResult(graphScheme, lookup, materializedIds, freshness, validObject) {
