@@ -18,15 +18,13 @@ const { makeSchemaCompatibilityError } = require("./migration_errors");
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 
-/**
- * @typedef {{ kind: 'keep' }} KeepDecision
- * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} OverrideDecision
- * @typedef {{ kind: 'invalidate' }} InvalidateDecision
- * @typedef {{ kind: 'delete' }} DeleteDecision
- * @typedef {"up-to-date" | "potentially-outdated"} CreatedFreshness
- * @typedef {{ kind: 'create', nodeKeyString: string, value: (nodeKey: NodeIdentifier) => Promise<ComputedValue>, freshness: CreatedFreshness }} CreateDecision
- * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision | CreateDecision} Decision
- */
+/** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
+/** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
+/** @typedef {import('./migration_decisions').InvalidateDecision} InvalidateDecision */
+/** @typedef {import('./migration_decisions').DeleteDecision} DeleteDecision */
+/** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
+/** @typedef {import('./migration_decisions').CreateDecision} CreateDecision */
+/** @typedef {import('./migration_decisions').Decision} Decision */
 
 /**
  * Read the persisted identifiers_keys_map and return it as an index Map.

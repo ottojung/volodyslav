@@ -26,7 +26,7 @@ const {
 const {
     readValidDependents,
     propagateInvalidate,
-    propagateDeletesAndCheckFanIn,
+    propagateDeletes,
 } = require("./migration_storage_dependencies");
 
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
@@ -35,15 +35,13 @@ const {
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 
-/**
- * @typedef {{ kind: 'keep' }} KeepDecision
- * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} OverrideDecision
- * @typedef {{ kind: 'invalidate' }} InvalidateDecision
- * @typedef {{ kind: 'delete' }} DeleteDecision
- * @typedef {"up-to-date" | "potentially-outdated"} CreatedFreshness
- * @typedef {{ kind: 'create', nodeKeyString: string, value: (nodeKey: NodeIdentifier) => Promise<ComputedValue>, freshness: CreatedFreshness }} CreateDecision
- * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision | CreateDecision} Decision
- */
+/** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
+/** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
+/** @typedef {import('./migration_decisions').InvalidateDecision} InvalidateDecision */
+/** @typedef {import('./migration_decisions').DeleteDecision} DeleteDecision */
+/** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
+/** @typedef {import('./migration_decisions').CreateDecision} CreateDecision */
+/** @typedef {import('./migration_decisions').Decision} Decision */
 
 /**
  * MigrationStorage class.
@@ -228,10 +226,13 @@ class MigrationStorageClass {
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
-            if (existing.kind === "invalidate") return;
+            if (existing.kind === "invalidate") {
+                existing.provenance = "explicit";
+                return;
+            }
             throw makeDecisionConflictError(nodeKey, existing.kind, "invalidate");
         }
-        this.decisions.set(nodeKey, { kind: "invalidate" });
+        this.decisions.set(nodeKey, { kind: "invalidate", provenance: "explicit" });
         await propagateInvalidate({
             nodeKey,
             visited: new Set(),
@@ -257,6 +258,10 @@ class MigrationStorageClass {
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "delete") return;
+            if (existing.kind === "invalidate" && existing.provenance === "propagated") {
+                this.decisions.set(nodeKey, { kind: "delete" });
+                return;
+            }
             throw makeDecisionConflictError(nodeKey, existing.kind, "delete");
         }
         this.decisions.set(nodeKey, { kind: "delete" });
@@ -370,15 +375,15 @@ class MigrationStorageClass {
     }
 
     /**
-     * Finalize the migration: propagate DELETE decisions, check fan-in constraints,
+     * Finalize the migration: propagate DELETE decisions through dependents,
      * and verify every node in S has exactly one decision.
      * @returns {Promise<Map<NodeIdentifier, Decision>>}
      */
     async finalize() {
-        await propagateDeletesAndCheckFanIn({
+        await propagateDeletes({
             materializedNodes: this.materializedNodes,
             decisions: this.decisions,
-            oldGraphScheme: this.oldGraphScheme,
+            newGraphScheme: this.newGraphScheme,
             oldLookup: this.oldLookup,
         });
         this._checkCompleteness();

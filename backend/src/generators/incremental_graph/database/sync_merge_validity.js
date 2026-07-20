@@ -17,7 +17,7 @@ const { topologicalSortFromMap } = require('./topo_sort');
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {'keep' | 'take' | 'invalidate'} MergeDecision */
+/** @typedef {'keep' | 'take' | 'invalidate' | 'delete'} MergeDecision */
 
 /**
  * @typedef {object} SourceValueOrigin
@@ -27,7 +27,7 @@ const { topologicalSortFromMap } = require('./topo_sort');
  */
 
 /**
- * @typedef {SourceValueOrigin | { kind: 'none' }} ValueOrigin
+ * @typedef {SourceValueOrigin} ValueOrigin
  */
 
 /**
@@ -95,17 +95,10 @@ class ReplicaBatchWriter {
  * The map describes the provenance of every final stored value:
  * - { kind: "source", side, sourceId } if the final value is a byte-for-byte
  *   copy preserved from that side's source identifier.
- * - { kind: "none" } if the final value is deleted, absent, or not a preserved
- *   copy from either source.
- *
  * @param {Map<NodeKeyString, 'keep' | 'take'>} initialDecisions
  * @param {Map<NodeKeyString, MergeDecision>} decisions
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
- * @param {Set<NodeKeyString>} directlyReloweredNodes
- * @param {SchemaStorage} targetStorage
- * @param {SchemaStorage} targetSourceStorage
- * @param {SchemaStorage} hostSourceStorage
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
  * @returns {Promise<Map<NodeKeyString, ValueOrigin>>}
  */
@@ -114,39 +107,20 @@ async function buildValueOriginByKey(
     decisions,
     targetLookup,
     hostLookup,
-    directlyReloweredNodes,
-    targetStorage,
-    targetSourceStorage,
-    hostSourceStorage,
     finalIdentifierForKey
 ) {
     /** @type {Map<NodeKeyString, ValueOrigin>} */
     const map = new Map();
 
-    for (const [nodeKey] of decisions) {
-        if (directlyReloweredNodes.has(nodeKey)) {
-            map.set(nodeKey, { kind: 'none' });
-            continue;
-        }
-        const finalId = finalIdentifierForKey.get(nodeKey);
-        if (finalId === undefined || await targetStorage.values.get(finalId) === undefined) {
-            map.set(nodeKey, { kind: 'none' });
-            continue;
-        }
+    for (const [nodeKey, decision] of decisions) {
+        if (decision === 'delete') continue;
+        if (!finalIdentifierForKey.has(nodeKey)) continue;
         const initial = initialDecisions.get(nodeKey);
-        if (initial === undefined) {
-            map.set(nodeKey, { kind: 'none' });
-            continue;
-        }
-        const decision = decisions.get(nodeKey);
+        if (initial === undefined) continue;
         const sourceSide = decision === 'invalidate' ? initial : decision;
         const sourceLookup = sourceSide === 'take' ? hostLookup : targetLookup;
-        const sourceStorage = sourceSide === 'take' ? hostSourceStorage : targetSourceStorage;
         const sourceId = sourceLookup.keyToId.get(String(nodeKey));
-        if (sourceId === undefined || await sourceStorage.values.get(sourceId) === undefined) {
-            map.set(nodeKey, { kind: 'none' });
-            continue;
-        }
+        if (sourceId === undefined) continue;
         map.set(nodeKey, { kind: 'source', side: sourceSide === 'take' ? 'host' : 'target', sourceId });
     }
 
@@ -162,7 +136,6 @@ async function buildValueOriginByKey(
  */
 function originMatches(origin, side, sourceId) {
     return origin !== undefined
-        && origin.kind === 'source'
         && origin.side === side
         && nodeIdentifierToString(origin.sourceId) === nodeIdentifierToString(sourceId);
 }
@@ -234,13 +207,16 @@ function canonicalValidMapsEqual(left, right) {
 }
 
 /**
- * Rebuild the valid relation from provenance-based value origin transport.
+ * Rebuild the valid relation and propagate freshness downgrades from merged inputs.
  *
  * Algorithm:
  * 1. Transport validity entries from both source sides based on source
  *    provenance for both endpoints.
- * 2. Add mandatory flags for every up-to-date node.
- * 3. Clear the existing valid sublevel and write the rebuilt relation.
+ * 2. Traverse merged nodes in topological order and downgrade an up-to-date
+ *    node when any input is not up-to-date.
+ * 3. Add mandatory validity flags for every up-to-date node whose inputs are
+ *    also up-to-date.
+ * 4. Clear the existing valid sublevel and write the rebuilt relation.
  *
  * A validity proof valid[D].has(N) is transported from a source side only
  * when D and N both resolve through the same source side and their final values
@@ -256,7 +232,7 @@ function canonicalValidMapsEqual(left, right) {
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
  * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
- * @returns {Promise<boolean>} Whether the canonical valid relation changed.
+ * @returns {Promise<boolean>} Whether the canonical valid relation or any freshness record changed.
  */
 async function rebuildMergedValidity({
     targetStorage,
@@ -324,11 +300,6 @@ async function rebuildMergedValidity({
     await transportValidityFromSide('target', targetSourceStorage, targetLookup);
     await transportValidityFromSide('host', hostSourceStorage, hostLookup);
 
-    const cachedIds = new Set();
-    for await (const cachedId of targetStorage.values.keys()) {
-        cachedIds.add(nodeIdentifierToString(cachedId));
-    }
-
     // In-memory freshness map that tracks both committed state and pending
     // downgrades. When the loop queues a freshness downgrade, we update
     // this map immediately so subsequent iterations see the new state.
@@ -344,34 +315,22 @@ async function rebuildMergedValidity({
     const writer = new ReplicaBatchWriter(targetStorage);
     let freshnessChanged = false;
 
-    // Traverse in topological order (inputs before dependents) so that
-    // freshness downgrades are visible when their dependents are processed.
-    // Only process identifiers that have a cached value in the target.
+    // Traverse in topological order so that a node's inputs have their
+    // validity entries built before the node's own entries are written.
     for (const nodeIdentifier of topologicalSortFromMap(mergedInputsMap)) {
         const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
-        if (!cachedIds.has(nodeIdStr)) continue;
         const freshness = finalFreshness.get(nodeIdStr);
         if (freshness !== 'up-to-date') continue;
 
         const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
-        const cleanInputs = [];
-        let clean = true;
-        for (const depId of requiredInputs) {
-            const depIdStr = nodeIdentifierToString(depId);
-            const depFreshness = finalFreshness.get(depIdStr);
-            if (!cachedIds.has(depIdStr) || depFreshness !== 'up-to-date') {
-                clean = false;
-                break;
-            }
-            cleanInputs.push(depId);
-        }
-        if (!clean) {
-            await writer.push(targetStorage.freshness.putOp(nodeIdentifier, 'potentially-outdated'));
+        const hasStaleInput = requiredInputs.some((depId) => finalFreshness.get(nodeIdentifierToString(depId)) !== 'up-to-date');
+        if (hasStaleInput) {
             finalFreshness.set(nodeIdStr, 'potentially-outdated');
             freshnessChanged = true;
+            await writer.push(targetStorage.freshness.putOp(nodeIdentifier, 'potentially-outdated'));
             continue;
         }
-        for (const depId of cleanInputs) {
+        for (const depId of requiredInputs) {
             const depIdStr = nodeIdentifierToString(depId);
             depIdCache.set(depIdStr, depId);
             const dependents = validMap.get(depIdStr) ?? [];
@@ -392,7 +351,7 @@ async function rebuildMergedValidity({
     }
     await writer.flush();
     const validityChanged = !canonicalValidMapsEqual(oldCanonicalValidMap, canonicalizeValidMap(validMap));
-    return freshnessChanged || validityChanged;
+    return validityChanged || freshnessChanged;
 }
 
 module.exports = {

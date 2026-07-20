@@ -44,7 +44,8 @@ function buildDeleteNodeOps(targetStorage, identifier) {
  * @param {SchemaStorage} options.sourceStorage
  * @param {NodeIdentifier} options.sourceId
  * @param {NodeIdentifier} options.destinationId
- * @param {{createdAt: string, modifiedAt: string}} options.sourceTimestamps - Already-read timestamps for sourceId; the caller must have verified this is defined.
+ * @param {import('./types').Freshness} options.finalFreshness
+ * @param {{createdAt: string, modifiedAt: string}} options.finalTimestamps
  * @returns {Promise<Array<*>>}
  */
 async function copyNodeOps({
@@ -52,7 +53,8 @@ async function copyNodeOps({
     sourceStorage,
     sourceId,
     destinationId,
-    sourceTimestamps,
+    finalFreshness,
+    finalTimestamps,
 }) {
     /** @type {Array<*>} */
     const ops = [];
@@ -62,16 +64,8 @@ async function copyNodeOps({
     }
     ops.push(targetStorage.values.putOp(destinationId, sourceValue));
 
-    const sourceFreshness = await sourceStorage.freshness.get(sourceId);
-    if (sourceFreshness !== 'up-to-date' && sourceFreshness !== 'potentially-outdated') {
-        throw new ReplicaStateInvariantError('sync merge copy', `has invalid freshness ${String(sourceFreshness)}`, nodeIdentifierToString(sourceId));
-    }
-    ops.push(targetStorage.freshness.putOp(destinationId, sourceFreshness));
-
-    if (sourceTimestamps === undefined) {
-        throw new ReplicaStateInvariantError('sync merge copy', 'has no timestamps entry', nodeIdentifierToString(sourceId));
-    }
-    ops.push(targetStorage.timestamps.putOp(destinationId, sourceTimestamps));
+    ops.push(targetStorage.freshness.putOp(destinationId, finalFreshness));
+    ops.push(targetStorage.timestamps.putOp(destinationId, finalTimestamps));
     return ops;
 }
 

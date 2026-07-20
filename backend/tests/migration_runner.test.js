@@ -10,7 +10,6 @@ const {
 } = require("../src/generators/incremental_graph/database");
 const {
     isUndecidedNodes,
-    isPartialDeleteFanIn,
     isDecisionConflict,
 } = require("../src/generators/incremental_graph");
 const { toJsonKey } = require("./test_json_key_helper");
@@ -1301,7 +1300,7 @@ describe("x-namespace state preserved on migration failure", () => {
         expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
     });
 
-    test("PartialDeleteFanInError from finalize: x-namespace data unchanged", async () => {
+    test("fan-in deletion from finalize migrates successfully", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
@@ -1309,21 +1308,15 @@ describe("x-namespace state preserved on migration failure", () => {
 
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
-        const snapshotBefore = await captureStorageSnapshot(xStorage);
+        await seedGraphScheme(xStorage, makeFanInNodeDefs());
+        await expect(runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
+            await storage.delete(nkA);
+            await storage.keep(nkB);
+        })).resolves.toBe(rootDatabase);
 
-        // Delete only A but keep B → fan-in violation on C
-        let caughtFanIn;
-        try {
-            await seedGraphScheme(xStorage, makeFanInNodeDefs());
-            await runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
-                await storage.delete(nkA);
-                await storage.keep(nkB);
-                // C is left for finalize to propagate; PartialDeleteFanIn because B is not deleted
-            });
-        } catch (e) { caughtFanIn = e; }
-        expect(isPartialDeleteFanIn(caughtFanIn)).toBe(true);
-
-        expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
+        await expect(yStorage.values.get(nkA)).resolves.toBeUndefined();
+        await expect(yStorage.values.get(nkB)).resolves.toBeDefined();
+        await expect(yStorage.values.get(nkC)).resolves.toBeUndefined();
     });
 
     test("DecisionConflictError from callback: x-namespace data unchanged", async () => {
@@ -1492,13 +1485,11 @@ describe("x-namespace state preserved on migration failure", () => {
         await expect(xStorage.freshness.get(nkB)).resolves.toBe("potentially-outdated");
     });
 
-    test("three-node fan-in partially deleted: all three x-values preserved after PartialDeleteFanInError", async () => {
+    test("three-node fan-in deletion removes dependent during migration", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
-        const snapshotBefore = await captureStorageSnapshot(xStorage);
-
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
@@ -1507,11 +1498,12 @@ describe("x-namespace state preserved on migration failure", () => {
             runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
                 await storage.delete(nkA);
                 await storage.keep(nkB);
-                // C is undecided — will trigger fan-in or undecided error
             })
-        ).rejects.toThrow();
+        ).resolves.toBe(rootDatabase);
 
-        expect(await captureStorageSnapshot(xStorage)).toEqual(snapshotBefore);
+        await expect(yStorage.values.get(nkA)).resolves.toBeUndefined();
+        await expect(yStorage.values.get(nkB)).resolves.toBeDefined();
+        await expect(yStorage.values.get(nkC)).resolves.toBeUndefined();
     });
 });
 
@@ -1758,7 +1750,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
         expect(mock.setGlobalVersionCalledWith).toBeUndefined();
     });
 
-    test("PartialDeleteFanInError: x.setGlobalVersion never called", async () => {
+    test("successful fan-in deletion does not use failure-version path", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
@@ -1773,7 +1765,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
                 await storage.delete(nkA);
                 await storage.keep(nkB);
             })
-        ).rejects.toThrow();
+        ).resolves.toBe(mock.rootDatabase);
 
         expect(mock.setGlobalVersionCalledWith).toBeUndefined();
     });
@@ -1852,7 +1844,7 @@ describe("error identity: exact thrown object propagates", () => {
         expect(caught["undecidedNodes"]).toContain(nkB);
     });
 
-    test("PartialDeleteFanInError from finalize carries the fan-in node key", async () => {
+    test("fan-in deletion finalizes without partial fan-in error", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
@@ -1861,18 +1853,11 @@ describe("error identity: exact thrown object propagates", () => {
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
-        let caught;
-        try {
-            await seedGraphScheme(xStorage, makeFanInNodeDefs());
-            await runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
-                await storage.delete(nkA);
-                await storage.keep(nkB);
-            });
-        } catch (e) {
-            caught = e;
-        }
-
-        expect(isPartialDeleteFanIn(caught)).toBe(true);
+        await seedGraphScheme(xStorage, makeFanInNodeDefs());
+        await expect(runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
+            await storage.delete(nkA);
+            await storage.keep(nkB);
+        })).resolves.toBe(rootDatabase);
     });
 
     test("DecisionConflictError from callback carries correct node key", async () => {
@@ -2019,7 +2004,6 @@ describe("infrastructure failures", () => {
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
-
         const { yStorage } = makeYDb(makeSchemaStorage());
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 

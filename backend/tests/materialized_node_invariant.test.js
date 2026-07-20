@@ -1,6 +1,6 @@
 /**
  * Invariant: Every identifier-map entry corresponds exactly to a
- * materialized node, and vice versa.
+ * materialized node, and materialized nodes are dependency-closed.
  *
  * The identifiers_keys_map (persisted as `r/<replica>/global/identifiers_keys_map`)
  * is the authoritative bijection between semantic node keys and deterministic identifiers.
@@ -13,16 +13,13 @@
  * entry—otherwise there is no way to recover its semantic key from the
  * identifier stored in the values sublevel.
  *
- * This file tests both directions of the invariant:
- *   1. Map → values: For every identifier in identifiers_keys_map, there is a
- *      corresponding entry in the values sublevel.
- *   2. Values → map: For every entry in the values sublevel, the identifier
- *      appears in identifiers_keys_map.
+ * This file tests both record-domain equality and dependency closure: every
+ * materialized node has every concrete input materialized.
  */
 
 /* eslint jest/expect-expect: ["error", { "assertFunctionNames": ["expect", "expectInvariant"] }] */
 
-const { getRootDatabase, nodeIdentifierToString, isReplicaStateInvariantError } = require("../src/generators/incremental_graph/database");
+const { getRootDatabase, nodeIdentifierToString, isReplicaStateInvariantError, assertValidReplicaMaterializationState } = require("../src/generators/incremental_graph/database");
 const {
     createIncrementalGraph,
 } = require("../src/generators/incremental_graph");
@@ -96,6 +93,8 @@ async function expectInvariant(lookup, db) {
         }
     }
     expect(valuesWithoutMap).toEqual(new Set());
+
+    await assertValidReplicaMaterializationState(db.getSchemaStorage(), lookup, "materialized node invariant test");
 }
 
 describe("materialized node invariant", () => {

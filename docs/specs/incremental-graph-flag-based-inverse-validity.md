@@ -125,7 +125,8 @@ of which are fixed for the lifetime of the `IncrementalGraph` instance.
 For every materialized node `N` and every `D` in `inputEdges(N)`:
 
 - If `freshness[N] == "up-to-date"`, then `valid[D]` contains `N`.
-- Every entry `N ∈ valid[D]` implies `D ∈ inputEdges(N)` and `N` is a known materialized node.
+- Materialized nodes form a dependency-closed set: for every materialized `N`, every `D ∈ inputEdges(N)` is materialized.
+- Every entry `N ∈ valid[D]` implies `D ∈ inputEdges(N)` and both endpoints are materialized nodes.
 - No `valid` entry points to discarded identifiers after merge or migration.
 
 The reverse implication is also operationally important:
@@ -152,7 +153,7 @@ because the node is stale.
 
 #### 1. Structural soundness of validity
 
-If `N ∈ valid[D]`, then both identifiers are known materialized identifiers and `D ∈ inputEdges(N)`.
+If `N ∈ valid[D]`, then both identifiers are materialized identifiers and `D ∈ inputEdges(N)`.
 
 This prevents validity edges from pointing to nonexistent nodes or to nodes that do not structurally depend on the key.
 
@@ -192,7 +193,7 @@ A potentially-outdated zero-input node must recompute.
 
 Missing `D ⇝ N` does not mean `N` is not a structural dependent of `D`. It only means `N` does not currently have a cache proof with respect to `D`.
 
-Therefore, operations that need the full structural graph, such as migration delete/fan-in checks, must use the derived `inputEdges`, not `valid`.
+Therefore, operations that need the full structural graph, such as migration delete propagation, must use the derived `inputEdges`, not `valid`.
 
 #### 5. Stale nodes may retain conditional outgoing proofs
 
@@ -579,7 +580,7 @@ This theorem is about runtime cache invalidation, not about structural graph ope
 
 - Stale nodes may lack some incoming validity proofs.
 - Missing validity does not imply missing structural dependency.
-- Therefore migration deletion, fan-in checks, and any operation that needs all structural dependents must use the derived `inputEdges`.
+- Therefore migration deletion propagation and any operation that needs all structural dependents must use the derived `inputEdges`.
 
 Document this explicitly because it prevents a future reader from treating `valid` as a renamed reverse-dependency index.
 

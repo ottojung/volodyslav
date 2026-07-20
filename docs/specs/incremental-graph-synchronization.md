@@ -87,13 +87,10 @@ internal proof object, not a public API concept:
 - `{ kind: "source", side: "target" | "host", sourceId }` means the final
   stored value is known to have been copied or preserved from exactly that
   source side and source identifier.
-- `{ kind: "none" }` means no such provenance proof is available. This includes
-  absent values, deleted values, directly relowered values, and any value
-  whose source cannot be proven.
+- Deleted materializations do not appear in the final value-origin map.
 
 **REQ-SYNC-01 (Value origin from copy, not equality):** Deep equality of
-stored values MUST NOT create a value origin. Deep equality of stored values
-MUST NOT upgrade `{ kind: "none" }` to `{ kind: "source", ... }`.
+stored values MUST NOT create a value origin.
 
 ---
 
@@ -318,17 +315,9 @@ merged graph.
 
 **REQ-SYNC-10 (Direct relowering rules):**
 
-1. Directly relowered nodes MUST NOT remain `up-to-date`.
-2. Directly relowered nodes MUST NOT preserve their stored value as a valid
-   value for final freshness.
-3. Directly relowered nodes SHOULD have their stored value deleted, because the
-   system does not have a provenance proof that the stored value is valid for
-   the final lowered inputs.
-4. All materialized descendants of a directly relowered node MUST become
-   `potentially-outdated` unless independently recomputed later outside
-   synchronization (by `pull()`).
-5. Synchronization MUST NOT invoke computors to repair directly relowered
-   nodes.
+1. Directly relowered nodes MUST be omitted from the final materialized graph.
+2. Every transitive materialized dependent of a directly relowered node MUST also be omitted from the final materialized graph.
+3. Synchronization MUST NOT invoke computors to repair directly relowered nodes.
 
 ---
 
@@ -375,7 +364,7 @@ its dependency relation, subject to the validity proof transport rules of §11.
   - `sourceId` is the host source identifier for the same semantic key;
   - the node is not directly relowered in a way that deletes or invalidates
     its value provenance.
-- Origin is `{ kind: "none" }` otherwise.
+- Deleted materializations have no origin entry.
 
 **REQ-SYNC-13 (Equality does not create origin):**
 

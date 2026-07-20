@@ -290,8 +290,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap,
         decisions,
         hOnlyNeedsInvalidate,
-        directlyReloweredNodes,
-        reloweringInvalidatedNodes,
         equalVersionNeedsInvalidation,
         finalIdentifierForKey,
         finalIdentifierLookup,
@@ -311,13 +309,11 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         initialDecisions,
         decisions,
         hOnlyNeedsInvalidate,
-        directlyReloweredNodes,
-        reloweringInvalidatedNodes,
         equalVersionNeedsInvalidation,
         finalIdentifierForKey
     );
 
-    const summary = summarizeDecisions(decisions.values());
+    const summary = summarizeDecisions(decisions.entries(), targetLookup);
     const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation || equalVersionNeedsInvalidation.size > 0;
     const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
     const valueOriginByKey = await buildValueOriginByKey(
@@ -325,14 +321,10 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         decisions,
         targetLookup,
         hostLookup,
-        directlyReloweredNodes,
-        targetStorage,
-        targetSourceStorage,
-        hostStorage,
         finalIdentifierForKey
     );
 
-    const validityChanged = await rebuildMergedValidity({
+    const graphStateChanged = await rebuildMergedValidity({
         targetStorage,
         targetSourceStorage,
         hostSourceStorage: hostStorage,
@@ -342,7 +334,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap,
         valueOriginByKey,
     });
-    const hasChanges = hasSemanticChanges || validityChanged;
+    const hasChanges = hasSemanticChanges || graphStateChanged;
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
 
     if (hasChanges) {
@@ -364,6 +356,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             kept: summary.kept,
             taken: summary.taken,
             invalidated: summary.invalidated,
+            deleted: summary.deleted,
             switchedReplica,
         },
         'Graph merge completed for host'

@@ -5,10 +5,13 @@
 const {
     nodeIdentifierToString,
     deriveInputEdges,
+    makeIdentifierLookup,
+    stringToNodeKeyString,
+    GraphSchemeError,
 } = require("./database");
 const {
     makeDecisionConflictError,
-    makePartialDeleteFanInError,
+    makeInvalidMigrationDecisionError,
 } = require("./migration_errors");
 const {
     checkSchemaCompatibility,
@@ -20,15 +23,13 @@ const {
 /** @typedef {import('./types').NodeName} NodeName */
 /** @typedef {import('./migration_storage').ReadableMigrationStorage} ReadableMigrationStorage */
 
-/**
- * @typedef {{ kind: 'keep' }} KeepDecision
- * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} OverrideDecision
- * @typedef {{ kind: 'invalidate' }} InvalidateDecision
- * @typedef {{ kind: 'delete' }} DeleteDecision
- * @typedef {"up-to-date" | "potentially-outdated"} CreatedFreshness
- * @typedef {{ kind: 'create', nodeKeyString: string, value: (nodeKey: NodeIdentifier) => Promise<ComputedValue>, freshness: CreatedFreshness }} CreateDecision
- * @typedef {KeepDecision | OverrideDecision | InvalidateDecision | DeleteDecision | CreateDecision} Decision
- */
+/** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
+/** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
+/** @typedef {import('./migration_decisions').InvalidateDecision} InvalidateDecision */
+/** @typedef {import('./migration_decisions').DeleteDecision} DeleteDecision */
+/** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
+/** @typedef {import('./migration_decisions').CreateDecision} CreateDecision */
+/** @typedef {import('./migration_decisions').Decision} Decision */
 
 /**
  * Reads the outgoing validity frontier for a node from the previous storage.
@@ -69,7 +70,7 @@ async function propagateInvalidate(ctx) {
         }
         const identifiersKeysIndex = await getIdentifiersKeysIndex();
         await checkSchemaCompatibility(dep, newHeadIndex, identifiersKeysIndex, decisions);
-        decisions.set(dep, { kind: "invalidate" });
+        decisions.set(dep, { kind: "invalidate", provenance: "propagated" });
         await propagateInvalidate({
             nodeKey: dep,
             visited,
@@ -83,45 +84,66 @@ async function propagateInvalidate(ctx) {
 }
 
 /**
- * Build a structural dependency map by deriving dependency edges for every
- * materialized node from the stored graph scheme and identifier lookup.
- * The `valid` relation is a stale-cache proof and invalidation frontier,
- * not a complete structural dependency graph.
- * @param {Set<NodeIdentifier>} materializedNodes
- * @param {import('./database/graph_scheme').GraphScheme} oldGraphScheme
- * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
- * @returns {Promise<Map<string, Set<NodeIdentifier>>>}
- */
-async function buildStructuralDependents(materializedNodes, oldGraphScheme, oldLookup) {
-    const map = new Map();
-    for (const nodeKey of materializedNodes) {
-        const record = deriveInputEdges(oldGraphScheme, oldLookup, nodeKey);
-        for (const input of record) {
-            const inputStr = nodeIdentifierToString(input);
-            const deps = map.get(inputStr) ?? new Set();
-            deps.add(nodeKey);
-            map.set(inputStr, deps);
-        }
-    }
-    return map;
-}
-
-/**
- * BFS propagation of DELETE to dependents whose all inputs are deleted,
- * followed by a fan-in violation scan.
+ * BFS propagation of DELETE to every materialized structural dependent.
  *
  * Uses scheme-derived structural dependencies rather than valid so that
  * stale nodes whose dependents are absent from valid are still discovered.
  * @param {object} ctx
  * @param {Set<NodeIdentifier>} ctx.materializedNodes
  * @param {Map<NodeIdentifier, Decision>} ctx.decisions
- * @param {import('./database/graph_scheme').GraphScheme} ctx.oldGraphScheme
+ * @param {import('./database/graph_scheme').GraphScheme} ctx.newGraphScheme
  * @param {import('./database/identifier_lookup').IdentifierLookup} ctx.oldLookup
  * @returns {Promise<void>}
  */
-async function propagateDeletesAndCheckFanIn(ctx) {
-    const { materializedNodes, decisions, oldGraphScheme, oldLookup } = ctx;
-    const structuralDependents = await buildStructuralDependents(materializedNodes, oldGraphScheme, oldLookup);
+async function propagateDeletes(ctx) {
+    const { materializedNodes, decisions, newGraphScheme, oldLookup } = ctx;
+    /** @type {Array<[NodeIdentifier, import('./database/types').NodeKeyString]>} */
+    const candidateEntries = [];
+    for (const nodeKey of materializedNodes) {
+        const semanticKey = oldLookup.idToKey.get(nodeIdentifierToString(nodeKey));
+        if (semanticKey !== undefined) {
+            candidateEntries.push([nodeKey, semanticKey]);
+        }
+    }
+    for (const [nodeKey, decision] of decisions) {
+        if (decision.kind === "create") {
+            candidateEntries.push([nodeKey, stringToNodeKeyString(decision.nodeKeyString)]);
+        }
+    }
+    const candidateLookup = makeIdentifierLookup(candidateEntries);
+
+    /** @type {NodeIdentifier[]} */
+    const targetGraphNodes = [];
+    for (const nodeKey of materializedNodes) {
+        if (decisions.get(nodeKey)?.kind === "delete") continue;
+        targetGraphNodes.push(nodeKey);
+    }
+    for (const [nodeKey, decision] of decisions) {
+        if (decision.kind === "create") {
+            targetGraphNodes.push(nodeKey);
+        }
+    }
+
+    /** @type {Map<string, Set<NodeIdentifier>>} */
+    const structuralDependents = new Map();
+    for (const nodeKey of targetGraphNodes) {
+        let record;
+        try {
+            record = deriveInputEdges(newGraphScheme, candidateLookup, nodeKey);
+        } catch (error) {
+            if (error instanceof GraphSchemeError) {
+                throw makeInvalidMigrationDecisionError(error.message);
+            }
+            throw error;
+        }
+        for (const input of record) {
+            const inputStr = nodeIdentifierToString(input);
+            const deps = structuralDependents.get(inputStr) ?? new Set();
+            deps.add(nodeKey);
+            structuralDependents.set(inputStr, deps);
+        }
+    }
+
     const queue = [];
     for (const [nodeKey, decision] of decisions) {
         if (decision.kind === "delete") {
@@ -137,40 +159,30 @@ async function propagateDeletesAndCheckFanIn(ctx) {
         const dependents = structuralDependents.get(nodeKeyStr);
         if (dependents === undefined) continue;
         for (const dep of dependents) {
-            if (!materializedNodes.has(dep)) continue;
-            if (decisions.get(dep)?.kind === "delete") continue;
-            const depRecord = deriveInputEdges(oldGraphScheme, oldLookup, dep);
-            const allDeleted = depRecord.every(
-                (inp) => decisions.get(inp)?.kind === "delete"
-            );
-            if (!allDeleted) continue;
             const existing = decisions.get(dep);
+            if (existing?.kind === "delete") continue;
             if (existing !== undefined) {
+                if (existing.kind === "invalidate" && existing.provenance === "propagated") {
+                    decisions.set(dep, { kind: "delete" });
+                    queue.push(dep);
+                    continue;
+                }
                 throw makeDecisionConflictError(dep, existing.kind, "delete");
+            }
+            if (!materializedNodes.has(dep)) {
+                throw makeDecisionConflictError(dep, "create", "delete");
             }
             decisions.set(dep, { kind: "delete" });
             queue.push(dep);
         }
     }
-    // Fan-in violation: any non-deleted node reachable from a deleted node
-    // that was not itself auto-deleted means its inputs are only partially deleted.
-    for (const [nodeKey, decision] of decisions) {
-        if (decision.kind !== "delete") continue;
-        const nodeKeyStr = nodeIdentifierToString(nodeKey);
-        const dependents = structuralDependents.get(nodeKeyStr);
-        if (dependents === undefined) continue;
-        for (const dep of dependents) {
-            if (!materializedNodes.has(dep)) continue;
-            if (decisions.get(dep)?.kind === "delete") continue;
-            const depRecord = deriveInputEdges(oldGraphScheme, oldLookup, dep);
-            throw makePartialDeleteFanInError(dep, depRecord);
-        }
-    }
 }
+
+
+
 
 module.exports = {
     readValidDependents,
     propagateInvalidate,
-    buildStructuralDependents,
-    propagateDeletesAndCheckFanIn,
+    propagateDeletes,
 };
