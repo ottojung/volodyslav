@@ -217,16 +217,6 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
     };
 }
 
-/**
- * Creates a yStorage and wraps it for backward compatibility with tests that
- * previously used makeYDb to create a yDb object.
- * Now simply returns the storage as yStorage.
- * @param {object} storage - The y-namespace SchemaStorage
- * @returns {{ yStorage: object }}
- */
-function makeYDb(storage) {
-    return { yStorage: storage };
-}
 
 /**
  * Creates test capabilities.
@@ -587,7 +577,7 @@ describe("runMigration", () => {
         await previousStorage.values.put(nodeKey, { type: "all_events", events: [] });
         await previousStorage.freshness.put(nodeKey, "up-to-date");
 
-        const { yStorage } = makeYDb(currentStorage);
+        const yStorage = currentStorage;
         const { rootDatabase } = makeRootDatabaseMock({
             prevVersion: "previous",
             currentVersion: "current",
@@ -617,7 +607,7 @@ describe("runMigration", () => {
             const capabilities = await getTestCapabilities();
             const previousStorage = makeSchemaStorage();
             const currentStorage = makeSchemaStorage();
-            const { yStorage } = makeYDb(currentStorage);
+            const yStorage = currentStorage;
             const mock = makeRootDatabaseMock({
                 prevVersion: undefined,
                 currentVersion: "1.0.0",
@@ -635,7 +625,7 @@ describe("runMigration", () => {
         test("fresh init is now owned by prepareIncrementalGraphStorage, not runMigration", async () => {
               const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const { yStorage } = makeYDb(makeSchemaStorage());
+            const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
                 prevVersion: undefined,
                 currentVersion: "1.0.0",
@@ -654,7 +644,7 @@ describe("runMigration", () => {
         test("does not call checkpointMigration", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const { yStorage } = makeYDb(makeSchemaStorage());
+            const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
                 prevVersion: undefined,
                 currentVersion: "1.0.0",
@@ -670,7 +660,7 @@ describe("runMigration", () => {
         test("fresh graph_scheme init is owned by prepareIncrementalGraphStorage", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const { yStorage } = makeYDb(makeSchemaStorage());
+            const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
                 prevVersion: undefined,
                 currentVersion: "1.0.0",
@@ -698,7 +688,7 @@ describe("runMigration", () => {
         test("skips migration and does not switch to replica", async () => {
           const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const { yStorage } = makeYDb(makeSchemaStorage());
+            const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
                 prevVersion: "1.0.0",
                 currentVersion: "1.0.0",
@@ -716,7 +706,7 @@ describe("runMigration", () => {
         test("does not call checkpointMigration", async () => {
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
-            const { yStorage } = makeYDb(makeSchemaStorage());
+            const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
                 prevVersion: "1.0.0",
                 currentVersion: "1.0.0",
@@ -1215,12 +1205,12 @@ describe("runMigration", () => {
             const nodeKey = toJsonKey("A");
             await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
 
-            const yMock = makeYDb(makeSchemaStorage());
+            const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
                 prevVersion: "1.0.0",
                 currentVersion: "2.0.0",
                 xStorage,
-                yStorage: yMock.yStorage,
+                yStorage,
             });
 
             const nodeDefs = [{
@@ -1248,12 +1238,12 @@ describe("runMigration", () => {
             const nodeKey = toJsonKey("A");
             await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
 
-            const yMock = makeYDb(makeSchemaStorage());
+            const yStorage = makeSchemaStorage();
             const mock = makeRootDatabaseMock({
                 prevVersion: "1.0.0",
                 currentVersion: "2.0.0",
                 xStorage,
-                yStorage: yMock.yStorage,
+                yStorage,
             });
 
             const nodeDefs = [{
@@ -1454,7 +1444,7 @@ describe("x-namespace state preserved on migration failure", () => {
         await populateNode(xStorage, nodeKey, { freshness: "up-to-date" });
         await seedSingleAGraphScheme(xStorage);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
@@ -1473,7 +1463,7 @@ describe("x-namespace state preserved on migration failure", () => {
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
@@ -1495,7 +1485,7 @@ describe("x-namespace state preserved on migration failure", () => {
         await populateNode(xStorage, nkB, { freshness: "potentially-outdated" });
         await seedGraphScheme(xStorage, makeTwoNodeDefs());
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
@@ -1519,7 +1509,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
         await seedGraphScheme(xStorage, makeFanInNodeDefs());
         await expect(runMigration(capabilities, rootDatabase, makeFanInNodeDefs(), async (storage) => {
@@ -1539,7 +1529,7 @@ describe("x-namespace state preserved on migration failure", () => {
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
@@ -1658,7 +1648,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const nkB = toJsonKey("B");
         await buildTwoNodeGraph(xStorage, nkA, nkB);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
         const snapshotBefore = await captureStorageSnapshot(xStorage);
 
@@ -1682,7 +1672,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const nkB = toJsonKey("B");
         await buildTwoNodeGraph(xStorage, nkA, nkB);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         await seedGraphScheme(xStorage, makeTwoNodeDefs());
@@ -1703,7 +1693,7 @@ describe("x-namespace state preserved on migration failure", () => {
         const xStorage = makeSchemaStorage();
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         await seedGraphScheme(xStorage, makeFanInNodeDefs());
@@ -1932,7 +1922,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
         await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
         await seedSingleAGraphScheme(xStorage);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await expect(
@@ -1950,7 +1940,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
         await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
         await seedSingleAGraphScheme(xStorage);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         let caughtUndecided3;
@@ -1969,7 +1959,7 @@ describe("x.setGlobalVersion not called on migration failure", () => {
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const mock = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         await seedGraphScheme(xStorage, makeFanInNodeDefs());
@@ -2037,7 +2027,7 @@ describe("error identity: exact thrown object propagates", () => {
         await populateNode(xStorage, nkA);
         await populateNode(xStorage, nkB, { freshness: "potentially-outdated" });
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         let caught;
@@ -2063,7 +2053,7 @@ describe("error identity: exact thrown object propagates", () => {
         const [nkA, nkB, nkC] = [toJsonKey("A"), toJsonKey("B"), toJsonKey("C")];
         await buildFanInGraph(xStorage, nkA, nkB, nkC);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         await seedGraphScheme(xStorage, makeFanInNodeDefs());
@@ -2080,7 +2070,7 @@ describe("error identity: exact thrown object propagates", () => {
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         let caught;
@@ -2191,7 +2181,7 @@ describe("infrastructure failures", () => {
         // We need a fresh mock so we can check setCurrentReplicaPointerCalled
         const freshXStorage = makeSchemaStorage();
         await freshXStorage.values.put(nodeKey, { type: "all_events", events: [] });
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const freshMock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage: freshXStorage, yStorage });
 
         let callbackRan = false;
@@ -2217,7 +2207,7 @@ describe("infrastructure failures", () => {
         await populateNode(xStorage, nodeKey);
         await seedSingleAGraphScheme(xStorage);
         const snapshotBefore = await captureStorageSnapshot(xStorage);
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         await expect(
@@ -2244,7 +2234,7 @@ describe("infrastructure failures", () => {
         // Rebuild with a mock that tracks the replica switch cutover via setCurrentReplicaPointerCalled
         const freshXStorage = makeSchemaStorage();
         await freshXStorage.values.put(nodeKey, { type: "all_events", events: [] });
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const freshMock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage: freshXStorage, yStorage });
 
         let caught;
@@ -2275,7 +2265,7 @@ describe("retry after failure", () => {
         await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
         await seedSingleAGraphScheme(xStorage);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         // First attempt fails
@@ -2299,7 +2289,7 @@ describe("retry after failure", () => {
         const nodeKey = toJsonKey("A");
         await xStorage.values.put(nodeKey, { type: "all_events", events: [] });
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const { rootDatabase } = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
 
         const nodeDef = { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false };
@@ -2329,7 +2319,7 @@ describe("retry after failure", () => {
         const nkB = toJsonKey("B");
         await buildTwoNodeGraph(xStorage, nkA, nkB);
 
-        const { yStorage } = makeYDb(makeSchemaStorage());
+        const yStorage = makeSchemaStorage();
         const mock = makeRootDatabaseMock({ prevVersion: "v1", currentVersion: "v2", xStorage, yStorage });
 
         // First attempt: only decide A, B undecided → fail
