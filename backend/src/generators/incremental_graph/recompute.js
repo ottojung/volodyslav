@@ -38,6 +38,7 @@ const {
 const { lookupNodeIdentifier } = require("./graph_state");
 const { normalizeInputEdges } = require("./database");
 const { propagatePotentiallyOutdated } = require("./propagation");
+const { removeIncomingValidity } = require("./validity");
 
 /**
  * Return true when every dependency in inputEdges has a validity flag for N.
@@ -70,19 +71,6 @@ async function allIncomingValidityPresent(batch, nId, inputEdges) {
 function addIncomingValidity(batch, nId, inputEdges) {
     for (const depId of inputEdges) {
         batch.valid.add(depId, nId);
-    }
-}
-
-/**
- * Remove N from valid[D] for each dependency D in inputEdges.
- * @param {BatchBuilder} batch
- * @param {NodeIdentifier} nId
- * @param {NodeIdentifier[]} inputEdges
- * @returns {void}
- */
-function removeIncomingValidity(batch, nId, inputEdges) {
-    for (const depId of inputEdges) {
-        batch.valid.remove(depId, nId);
     }
 }
 

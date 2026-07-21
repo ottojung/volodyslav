@@ -25,6 +25,7 @@ const { checkArity, ensureNodeNameIsHead } = require("./shared");
 const { lookupNodeIdentifier } = require("./graph_state");
 const { internalGetOrCreateConcreteNode } = require("./instantiation");
 const { propagatePotentiallyOutdated } = require("./propagation");
+const { removeIncomingValidity } = require("./validity");
 
 /**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
@@ -89,19 +90,6 @@ async function internalUnsafeInvalidate(
     });
 }
 
-
-/**
- * Remove N from valid[D] for each dependency D in inputEdges.
- * @param {BatchBuilder} batch
- * @param {NodeIdentifier} nId
- * @param {NodeIdentifier[]} inputEdges
- * @returns {void}
- */
-function removeIncomingValidity(batch, nId, inputEdges) {
-    for (const depId of inputEdges) {
-        batch.valid.remove(depId, nId);
-    }
-}
 
 /**
  * @param {IncrementalGraphInvalidateAccess} incrementalGraph
