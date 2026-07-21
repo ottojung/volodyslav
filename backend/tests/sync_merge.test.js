@@ -2633,6 +2633,74 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
+    test('pure keep does not copy or rewrite node after replica copy', async () => {
+        // mergeHostIntoReplica() first copies the active replica into the inactive
+        // replica. A node whose selected source is local and whose final outcome
+        // is 'keep' with the same source and destination identifier is already
+        // present in its exact final primary-record state. applyNodeOutcomes
+        // must not copy or rewrite the value, freshness, or timestamps for such
+        // a pure-keep node.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            const appVersionStr = db.version;
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const nodeA = NODE_A;
+            const L = db.schemaStorageForReplica('x');
+            await writeNode(L, nodeA, TS2, { value: 'local' });
+            await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await writeGraphScheme(H);
+            await writeNode(H, nodeA, TS1, { value: 'remote' });
+            await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
+
+            // Instrument the target (inactive) storage before merge to count
+            // putOps for the pure-keep node's primary records.
+            const T = db.schemaStorageForReplica('y');
+            let valuePutCount = 0;
+            let freshnessPutCount = 0;
+            let timestampPutCount = 0;
+            const nodeStr = String(nodeA);
+            const origValuesPutOp = T.values.putOp.bind(T.values);
+            const origFreshnessPutOp = T.freshness.putOp.bind(T.freshness);
+            const origTimestampsPutOp = T.timestamps.putOp.bind(T.timestamps);
+            T.values.putOp = (key, value) => {
+                if (String(key) === nodeStr) valuePutCount += 1;
+                return origValuesPutOp(key, value);
+            };
+            T.freshness.putOp = (key, value) => {
+                if (String(key) === nodeStr) freshnessPutCount += 1;
+                return origFreshnessPutOp(key, value);
+            };
+            T.timestamps.putOp = (key, value) => {
+                if (String(key) === nodeStr) timestampPutCount += 1;
+                return origTimestampsPutOp(key, value);
+            };
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+
+            // Pure-keep node must not have been rewritten after the replica copy.
+            expect(valuePutCount).toBe(0);
+            expect(freshnessPutCount).toBe(0);
+            expect(timestampPutCount).toBe(0);
+
+            const activeT = db.getSchemaStorage();
+            expect(await activeT.values.get(nodeA)).toEqual({ value: 'local' });
+            expect(await activeT.freshness.get(nodeA)).toBe('up-to-date');
+            const ts = await activeT.timestamps.get(nodeA);
+            expect(ts?.modifiedAt).toBe(TS2);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     test('pure take preserves host modifiedAt unchanged', async () => {
         const capabilities = getTestCapabilities();
         let db;

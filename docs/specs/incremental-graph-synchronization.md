@@ -223,10 +223,10 @@ closure guarantees this.
 
 ## 6. Timestamp Conflict Policy
 
-**REQ-SYNC-07 (Timestamp-based initial decision):** For each semantic key:
+**REQ-SYNC-07 (Timestamp-based source selection):** For each semantic key:
 
-- If present only in L: `initialDecision = keep`.
-- If present only in H: `initialDecision = take`.
+- If present only in L: `selectedSideByKey = keep`.
+- If present only in H: `selectedSideByKey = take`.
 - If present in both L and H:
   - Compare `modifiedAt` timestamps.
   - The replica with the newer `modifiedAt` wins.
@@ -615,7 +615,7 @@ This is a safety property, not a convergence property.
 
 ## 15. Proof Obligations and Specification Labels
 
-**TERM-SYNC-17 (Normative labels):** The following label prefixes are used
+**TERM-SYNC-18 (Normative labels):** The following label prefixes are used
 throughout this specification:
 
 | Prefix | Category |

@@ -9,7 +9,7 @@ const { ReplicaBatchWriter } = require('./sync_merge_validity');
 /** @typedef {'keep' | 'take' | 'invalidate' | 'delete'} MergeOutcome */
 
 /**
- * Apply semantic decisions by copying the selected side into the final storage
+ * Apply semantic outcomes by copying the selected side into the final storage
  * identifier and writing planner-lowered inputs.
  * @param {SchemaStorage} targetStorage
  * @param {SchemaStorage} hostStorage
@@ -20,7 +20,7 @@ const { ReplicaBatchWriter } = require('./sync_merge_validity');
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
  * @returns {Promise<void>}
  */
-async function applyNodeDecisions(
+async function applyNodeOutcomes(
     targetStorage,
     hostStorage,
     targetLookup,
@@ -55,6 +55,10 @@ async function applyNodeDecisions(
 
         if (!useHost && outcome === 'invalidate' && sourceId === destinationId) {
             await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
+            continue;
+        }
+
+        if (!useHost && outcome === 'keep' && sourceId === destinationId) {
             continue;
         }
 
@@ -106,7 +110,7 @@ async function applyNodeDecisions(
  * @param {IdentifierLookup} targetLookup
  * @returns {{ kept: number, taken: number, invalidated: number, deleted: number, hasChanges: boolean }}
  */
-function summarizeDecisions(outcomes, targetLookup) {
+function summarizeOutcomes(outcomes, targetLookup) {
     const outcomeEntries = Array.from(outcomes);
     let kept = 0;
     let taken = 0;
@@ -135,6 +139,6 @@ function summarizeDecisions(outcomes, targetLookup) {
 }
 
 module.exports = {
-    applyNodeDecisions,
-    summarizeDecisions,
+    applyNodeOutcomes,
+    summarizeOutcomes,
 };

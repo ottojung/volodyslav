@@ -53,7 +53,7 @@ const {
 } = require('./sync_merge_validation');
 const { copyReplicaGently } = require('./sync_merge_transfer');
 const { rebuildMergedValidity, buildValueOriginByKey, ReplicaBatchWriter } = require('./sync_merge_validity');
-const { applyNodeDecisions, summarizeDecisions } = require('./sync_merge_apply');
+const { applyNodeOutcomes, summarizeOutcomes } = require('./sync_merge_apply');
 const {
     assertNoIdentifierCollisions,
     parseIdentifierLookup,
@@ -67,7 +67,7 @@ const {
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').Version} Version */
-/** @typedef {'keep' | 'take' | 'invalidate'} MergeDecision */
+/** @typedef {'keep' | 'take' | 'invalidate' | 'delete'} MergeOutcome */
 
 /**
  * Thrown when the staged host graph was produced by a different schema version
@@ -299,7 +299,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         hostLookup
     );
 
-    await applyNodeDecisions(
+    await applyNodeOutcomes(
         targetStorage,
         hostStorage,
         targetLookup,
@@ -309,7 +309,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         finalIdentifierForKey
     );
 
-    const summary = summarizeDecisions(outcomeByKey.entries(), targetLookup);
+    const summary = summarizeOutcomes(outcomeByKey.entries(), targetLookup);
     const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation;
     const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
     const valueOriginByKey = await buildValueOriginByKey(

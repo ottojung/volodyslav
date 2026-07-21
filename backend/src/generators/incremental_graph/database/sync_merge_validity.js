@@ -1,10 +1,15 @@
 /**
  * Merge validity preservation and reconstruction for incremental-graph merge.
  *
- * After node decisions are applied and the final graph state is assembled,
+ * After node outcomes are applied and the final graph state is assembled,
  * this module rebuilds the valid relation from the final merged inputs and
  * freshness, while transporting provenance-backed validity entries from both the
  * original target replica and the staged host replica.
+ *
+ * Missing transportable proofs are classified during merge planning. Validity
+ * reconstruction expects that classification to be complete. Discovering a
+ * missing proof during reconstruction throws UnplannedMissingValidityProofError.
+ * Reconstruction does not itself create a new direct invalidation root.
  */
 
 
@@ -18,7 +23,7 @@ const { topologicalSortFromMap } = require('./topo_sort');
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').Freshness} Freshness */
-/** @typedef {'keep' | 'take' | 'invalidate' | 'delete'} MergeDecision */
+/** @typedef {'keep' | 'take' | 'invalidate' | 'delete'} MergeOutcome */
 
 /**
  * @typedef {object} SourceValueOrigin
@@ -101,7 +106,7 @@ class ReplicaBatchWriter {
  * selected structural side, including hard-invalidated and directly relowered
  * nodes. Only deleted nodes have no value origin.
  * @param {Map<NodeKeyString, 'keep' | 'take'>} selectedSideByKey
- * @param {Map<NodeKeyString, MergeDecision>} outcomeByKey
+ * @param {Map<NodeKeyString, MergeOutcome>} outcomeByKey
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
@@ -389,11 +394,12 @@ async function rebuildMergedValidity({
         removeIncomingValidity(mergedInputsMap, validMap, root);
     }
 
-    // Step 3: Propagate staleness and handle missing-proof roots.
+    // Step 3: Propagate staleness and detect unplanned missing proofs.
     // For every surviving up-to-date node: if an input is stale (propagated
     // staleness), mark the node stale but preserve all its proofs. If a
-    // required transported proof is missing, classify it as a new direct
-    // root: remove its incoming proofs and mark it stale.
+    // required transported proof is unexpectedly missing, throw an
+    // UnplannedMissingValidityProofError — missing-proof classification must
+    // have been handled during merge planning.
     //
     // A single roots-to-leaves traversal is sufficient because:
     // - every input of N has already been processed when N is visited;

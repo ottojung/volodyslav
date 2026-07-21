@@ -37,6 +37,14 @@ function countDistinctSemanticInputs(inputKeys) {
  * Classify direct invalidation candidates under the temporary pairwise policy.
  * Returns a set of keys that should be invalidated (not deleted).
  * Deletion roots are computed separately via arity check.
+ *
+ * FIXME(#1521): This arity-based invalidate-vs-delete rule is deliberately
+ * conservative. The current pairwise database state does not retain exact
+ * historical input-version provenance. Until the graph journal provides that
+ * provenance, direct invalidation candidates with at most one distinct semantic
+ * input retain oldValue, while candidates with multiple distinct inputs are
+ * deleted. Replace this classifier with journal-backed coherent-history analysis.
+ *
  * @param {Set<NodeKeyString>} directInvalidationCandidateKeys
  * @param {Map<NodeKeyString, NodeKeyString[]>} selectedInputsByKey
  * @returns {{ hardInvalidationKeys: Set<NodeKeyString>, deletionRootKeys: Set<NodeKeyString> }}
@@ -276,6 +284,10 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
     }
 
+    // FIXME(#1521): Equal modifiedAt is temporarily treated as identity of one
+    // replicated semantic value version. Independent recomputations can collide at
+    // the same timestamp. Replace this approximation with journal-backed stable
+    // value-version identity.
     for (const nodeKey of equalTimestamps) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
