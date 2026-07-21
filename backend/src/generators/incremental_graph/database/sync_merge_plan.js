@@ -5,6 +5,7 @@ const { IdentifierLookupConflictError } = require('./replica_errors');
 
 const { GRAPH_SCHEME_KEY, parseGraphScheme, semanticInputKeys } = require('./graph_scheme');
 const { normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require('./input_edges');
+const { isEqual } = require('./computed_value_equal');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -30,11 +31,13 @@ function semanticInputsFromScheme(scheme, lookup, identifier) {
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
  * @returns {Promise<{
- *   initialDecisions: Map<NodeKeyString, 'keep' | 'take'>,
+ *   initialSourceByKey: Map<NodeKeyString, 'keep' | 'take'>,
+ *   selectedSourceByKey: Map<NodeKeyString, 'keep' | 'take'>,
  *   mergedInputsMap: Map<NodeIdentifier, NodeIdentifier[]>,
- *   decisions: Map<NodeKeyString, 'keep' | 'take' | 'invalidate' | 'delete'>,
- *   hOnlyNeedsInvalidate: Set<NodeKeyString>,
- *   equalVersionNeedsInvalidation: Set<NodeKeyString>,
+ *   conflictInvalidationCandidates: Set<NodeKeyString>,
+ *   directInvalidationKeys: Set<NodeKeyString>,
+ *   deletionRoots: Set<NodeKeyString>,
+ *   deletedMaterializationKeys: Set<NodeKeyString>,
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
  *   hasIdentifierReconciliation: boolean
@@ -119,36 +122,37 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
     }
 
-    /** @type {Map<NodeKeyString, 'keep' | 'take' | 'invalidate' | 'delete'>} */
-    const decisions = new Map();
+    /** @type {Map<NodeKeyString, 'keep' | 'take'>} */
+    const selectedSourceByKey = new Map();
     /** @type {Set<NodeKeyString>} */
-    const hOnlyNeedsInvalidate = new Set();
+    const conflictInvalidationCandidates = new Set();
     for (const [nodeKey, initial] of initialDecisions) {
         const inKeep = keepTainted.has(nodeKey);
         const inTake = takeTainted.has(nodeKey);
         if (targetOnlyNodes.has(nodeKey)) {
-            decisions.set(nodeKey, inTake ? 'invalidate' : 'keep');
+            selectedSourceByKey.set(nodeKey, 'keep');
+            if (inTake) conflictInvalidationCandidates.add(nodeKey);
         } else if (hOnlyNodes.has(nodeKey)) {
-            decisions.set(nodeKey, 'take');
-            if (inKeep) hOnlyNeedsInvalidate.add(nodeKey);
+            selectedSourceByKey.set(nodeKey, 'take');
+            if (inKeep) conflictInvalidationCandidates.add(nodeKey);
         } else if (inKeep && inTake) {
-            decisions.set(nodeKey, 'invalidate');
+            selectedSourceByKey.set(nodeKey, initial);
+            conflictInvalidationCandidates.add(nodeKey);
         } else if (inKeep) {
-            decisions.set(nodeKey, 'keep');
+            selectedSourceByKey.set(nodeKey, 'keep');
         } else if (inTake) {
-            decisions.set(nodeKey, 'take');
+            selectedSourceByKey.set(nodeKey, 'take');
         } else {
-            decisions.set(nodeKey, initial);
+            selectedSourceByKey.set(nodeKey, initial);
         }
     }
 
     /** @type {Map<NodeKeyString, NodeIdentifier>} */
     const candidateIdentifierForKey = new Map();
-    for (const [nodeKey, initial] of initialDecisions) {
+    for (const nodeKey of initialDecisions.keys()) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
-        const decision = decisions.get(nodeKey);
-        const finalSide = decision === 'invalidate' ? initial : decision;
+        const finalSide = selectedSourceByKey.get(nodeKey);
         const candidateId = finalSide === 'take' ? hostId : targetId;
         if (finalSide === undefined || candidateId === undefined) {
             throw new IdentifierLookupConflictError(`Missing candidate identifier for ${String(nodeKey)}`);
@@ -158,17 +162,12 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
 
     // Equal-version staleness: determined after final decisions are known,
     // because taint propagation can change which side ultimately wins.
-    /** @type {Set<NodeKeyString>} */
-    const equalVersionNeedsInvalidation = new Set();
     for (const nodeKey of equalTimestamps) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
         if (targetId === undefined || hostId === undefined) continue;
-        const initial = initialDecisions.get(nodeKey);
-        if (initial === undefined) continue;
-        const decision = decisions.get(nodeKey);
-        if (decision === undefined) continue;
-        const finalSide = decision === 'invalidate' ? initial : decision;
+        const finalSide = selectedSourceByKey.get(nodeKey);
+        if (finalSide === undefined) continue;
         const finalIsTake = finalSide === 'take';
         const finalId = finalIsTake ? hostId : targetId;
         const otherId = finalIsTake ? targetId : hostId;
@@ -177,7 +176,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         const finalFreshness = await finalStorage.freshness.get(finalId);
         const otherFreshness = await otherStorage.freshness.get(otherId);
         if (finalFreshness === 'up-to-date' && otherFreshness !== 'up-to-date') {
-            equalVersionNeedsInvalidation.add(nodeKey);
+            conflictInvalidationCandidates.add(nodeKey);
         }
     }
 
@@ -187,9 +186,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     const candidateDependentsByKey = new Map();
     /** @type {Set<NodeKeyString>} */
     const directlyReloweredNodes = new Set();
-    for (const [nodeKey, decision] of decisions) {
-        const initial = initialDecisions.get(nodeKey);
-        const structuralSide = decision === 'invalidate' ? initial : decision;
+    for (const [nodeKey, structuralSide] of selectedSourceByKey) {
         const lookup = structuralSide === 'take' ? hostLookup : targetLookup;
         const scheme = structuralSide === 'take' ? hostScheme : targetScheme;
         const sourceId = lookup.keyToId.get(String(nodeKey));
@@ -222,12 +219,40 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
 
         if (!arraysOfNodeIdentifiersEqual(normalizeInputEdges(sourceInputIds), normalizeInputEdges(candidateInputIds))) {
             directlyReloweredNodes.add(nodeKey);
+            conflictInvalidationCandidates.add(nodeKey);
         }
     }
 
     /** @type {Set<NodeKeyString>} */
-    const deletedMaterializationKeys = new Set(directlyReloweredNodes);
-    const queue = [...directlyReloweredNodes];
+    const directInvalidationKeys = new Set();
+    /** @type {Set<NodeKeyString>} */
+    const deletionRoots = new Set();
+    for (const nodeKey of conflictInvalidationCandidates) {
+        /** @type {import('./types').ComputedValue[]} */
+        const distinctValues = [];
+        const targetId = targetLookup.keyToId.get(String(nodeKey));
+        const hostId = hostLookup.keyToId.get(String(nodeKey));
+        for (const source of [{ storage: T, identifier: targetId }, { storage: H, identifier: hostId }]) {
+            if (source.identifier === undefined) continue;
+            const value = await source.storage.values.get(source.identifier);
+            if (value === undefined) continue;
+            if (!distinctValues.some(existing => isEqual(existing, value))) {
+                distinctValues.push(value);
+            }
+        }
+        if (distinctValues.length === 0) {
+            throw new IdentifierLookupConflictError(`Conflict candidate ${String(nodeKey)} has no cached values`);
+        }
+        if (distinctValues.length === 1) {
+            directInvalidationKeys.add(nodeKey);
+        } else {
+            deletionRoots.add(nodeKey);
+        }
+    }
+
+    /** @type {Set<NodeKeyString>} */
+    const deletedMaterializationKeys = new Set(deletionRoots);
+    const queue = [...deletionRoots];
     let head = 0;
     while (head < queue.length) {
         const deletedKey = queue[head];
@@ -236,11 +261,9 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         for (const dependentKey of candidateDependentsByKey.get(deletedKey) ?? []) {
             if (deletedMaterializationKeys.has(dependentKey)) continue;
             deletedMaterializationKeys.add(dependentKey);
+            directInvalidationKeys.delete(dependentKey);
             queue.push(dependentKey);
         }
-    }
-    for (const nodeKey of deletedMaterializationKeys) {
-        decisions.set(nodeKey, 'delete');
     }
 
     /** @type {Map<NodeKeyString, NodeIdentifier>} */
@@ -280,11 +303,13 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     }
 
     return {
-        initialDecisions,
+        initialSourceByKey: initialDecisions,
+        selectedSourceByKey,
         mergedInputsMap,
-        decisions,
-        hOnlyNeedsInvalidate,
-        equalVersionNeedsInvalidation,
+        conflictInvalidationCandidates,
+        directInvalidationKeys,
+        deletionRoots,
+        deletedMaterializationKeys,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,

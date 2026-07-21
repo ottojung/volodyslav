@@ -18,7 +18,7 @@ const { topologicalSortFromMap } = require('./topo_sort');
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').Freshness} Freshness */
-/** @typedef {'keep' | 'take' | 'invalidate' | 'delete'} MergeDecision */
+/** @typedef {'keep' | 'take'} SourceSelection */
 
 /**
  * @typedef {object} SourceValueOrigin
@@ -96,16 +96,14 @@ class ReplicaBatchWriter {
  * The map describes the provenance of every final stored value:
  * - { kind: "source", side, sourceId } if the final value is a byte-for-byte
  *   copy preserved from that side's source identifier.
- * @param {Map<NodeKeyString, 'keep' | 'take'>} initialDecisions
- * @param {Map<NodeKeyString, MergeDecision>} decisions
+ * @param {Map<NodeKeyString, SourceSelection>} selectedSourceByKey
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
  * @returns {Promise<Map<NodeKeyString, ValueOrigin>>}
  */
 async function buildValueOriginByKey(
-    initialDecisions,
-    decisions,
+    selectedSourceByKey,
     targetLookup,
     hostLookup,
     finalIdentifierForKey
@@ -113,12 +111,8 @@ async function buildValueOriginByKey(
     /** @type {Map<NodeKeyString, ValueOrigin>} */
     const map = new Map();
 
-    for (const [nodeKey, decision] of decisions) {
-        if (decision === 'delete') continue;
+    for (const [nodeKey, sourceSide] of selectedSourceByKey) {
         if (!finalIdentifierForKey.has(nodeKey)) continue;
-        const initial = initialDecisions.get(nodeKey);
-        if (initial === undefined) continue;
-        const sourceSide = decision === 'invalidate' ? initial : decision;
         const sourceLookup = sourceSide === 'take' ? hostLookup : targetLookup;
         const sourceId = sourceLookup.keyToId.get(String(nodeKey));
         if (sourceId === undefined) continue;

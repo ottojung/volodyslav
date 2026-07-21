@@ -177,44 +177,79 @@ structural source side (target/local or host), selects a final storage
 identifier, derives final dependency edges from the graph scheme, and applies
 the result to T.
 
-**DEF-SYNC-03 (Initial decision):**
+**DEF-SYNC-03 (Source selection):** Source selection answers only which
+source record supplies the retained bytes for a semantic key:
 
-- `initialDecision(key) ∈ { keep, take }`
-- `keep` means the initial candidate is the local/target source.
-- `take` means the initial candidate is the host source.
+- `initialSourceByKey(key) ∈ { target, host }` is selected by the existing
+  timestamp and taint rules.
+- `selectedSourceByKey(key) ∈ { target, host }` is the final retained source
+  when the materialization survives.
 
-**DEF-SYNC-04 (Decision):**
+Source selection does not decide freshness and does not decide whether the
+materialization survives.
 
-- `decision(key) ∈ { keep, take, invalidate, delete }`
-- `keep` means preserve or copy from the local target source.
-- `take` means copy from the host source.
-- `invalidate` means the node is marked potentially-outdated regardless of
-  which side provides its structural data.
-- `delete` means the semantic key's materialization is omitted from the final
-  replica. A deleted materialization has no final identifier, cached value,
-  freshness, timestamps, validity entries, or value origin. `delete` is an
-  internal merge result, not a request to delete the semantic node family from
-  the graph schema.
+**DEF-SYNC-04 (Conflict invalidation candidate):** A key is a conflict
+invalidation candidate when synchronization cannot preserve the selected
+source's claim that the cached value is current after reconciliation. This set
+includes mixed target/host ancestry, target-only and host-only opposite-side
+ancestry, equal-version conservative freshness invalidation, and direct
+relowering where final input identifiers differ from the retained source's input
+identifiers.
+
+**DEF-SYNC-05 (Unambiguous old value):** A conflict invalidation candidate has
+an unambiguous old value when all cached values available from materialized
+sources for that key form one equivalence class under the canonical computed
+value `isEqual`. Equality is used only to decide whether the computor would
+receive the same semantic `oldValue`; it does not prove freshness, computation
+history, provenance, or validity-proof transport.
+
+**DEF-SYNC-06 (Ambiguous competing old values):** A conflict invalidation
+candidate has ambiguous old values when available cached values partition into
+more than one `isEqual` equivalence class. Timestamps, identifier equality,
+freshness equality, object identity, and validity edges do not resolve this
+ambiguity.
+
+**REQ-SYNC-07 (Hard invalidation):** A surviving conflict invalidation
+candidate MUST be a direct hard invalidation root. Its materialization survives,
+its selected source value, identifier, modified timestamp, and destination/source
+created timestamp rule are preserved, its structural input edges are lowered to
+final identifiers, final freshness is `potentially-outdated`, and all incoming
+validity proofs are removed. The next pull MUST invoke the computor and pass the
+retained cached value as `oldValue`.
+
+**REQ-SYNC-08 (Ambiguity deletion roots):** A conflict invalidation candidate
+with ambiguous competing old values MUST become a deletion root. Synchronization
+MUST remove its identifier lookup entry, cached value, freshness, timestamps,
+validity key, incoming validity references, and all other primary
+materialization records. Synchronization MUST NOT retain either competing value
+as `oldValue` and MUST NOT invoke the computor.
+
+**REQ-SYNC-09 (Structural deletion closure):** Final materializations must be
+closed over semantic dependencies. After ambiguity deletion roots are chosen,
+`deletedMaterializationKeys` is the union of deletion roots and every transitive
+materialized dependent of a deletion root, using dependency edges derived from
+the graph scheme rather than the validity relation. Every key in this closure is
+fully removed; unrelated materializations are unaffected.
+
+**REQ-SYNC-10 (Direct relowering):** Direct relowering is a conflict
+invalidation candidate, not an unconditional deletion. If relowering leaves one
+semantic cached value, retain it and hard-invalidate. If relowering leaves
+multiple distinct cached values, delete and propagate structural deletion
+closure.
 
 **TERM-SYNC-15 (finalIdentifierForKey):** A partial map from semantic node keys
-to their final storage identifiers:
-
-```
-finalIdentifierForKey:
-    { key ∈ Keys | decision(key) ≠ delete } → NodeIdentifier
-```
-
-- `keep` maps to the local source identifier.
-- `take` maps to the host source identifier.
-- `invalidate` maps to the identifier selected by the preliminary structural side.
-- `delete` has no final identifier and is absent from the map.
+to final storage identifiers for surviving materializations. Deleted
+materializations have no final identifier and no value origin.
 
 **TERM-SYNC-16 (mergedInputsMap):** The map from each surviving final storage
-identifier to the list of its final dependency storage identifiers, derived from
-the graph scheme and lowered through `finalIdentifierForKey`. Defined only for
-materializations whose decision is not `delete`. Every dependency of a surviving
-materialization also survives and has a final identifier; the delete-propagation
-closure guarantees this.
+identifier to its final dependency identifiers, derived from the graph scheme
+and lowered through `finalIdentifierForKey`.
+
+**REQ-SYNC-11 (Later pull behavior):** After hard invalidation, a later pull
+sees the cached value and supplies it as `oldValue` while computing from final
+inputs. After deletion, a later pull treats the node as unmaterialized, supplies
+`oldValue === undefined`, allocates a fresh identifier, and computes normally
+from dependencies.
 
 ---
 

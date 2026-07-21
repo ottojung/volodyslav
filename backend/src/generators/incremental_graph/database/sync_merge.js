@@ -67,7 +67,6 @@ const {
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').Version} Version */
-/** @typedef {'keep' | 'take' | 'invalidate'} MergeDecision */
 
 /**
  * Thrown when the staged host graph was produced by a different schema version
@@ -286,11 +285,10 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const targetLastNodeIndex = rootDatabase.getLastNodeIndex();
 
     const {
-        initialDecisions,
+        selectedSourceByKey,
         mergedInputsMap,
-        decisions,
-        hOnlyNeedsInvalidate,
-        equalVersionNeedsInvalidation,
+        directInvalidationKeys,
+        deletedMaterializationKeys,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
@@ -306,19 +304,22 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         hostStorage,
         targetLookup,
         hostLookup,
-        initialDecisions,
-        decisions,
-        hOnlyNeedsInvalidate,
-        equalVersionNeedsInvalidation,
+        selectedSourceByKey,
+        directInvalidationKeys,
+        deletedMaterializationKeys,
         finalIdentifierForKey
     );
 
-    const summary = summarizeDecisions(decisions.entries(), targetLookup);
-    const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation || equalVersionNeedsInvalidation.size > 0;
+    const summary = summarizeDecisions({
+        selectedSourceByKey,
+        directInvalidationKeys,
+        deletedMaterializationKeys,
+        targetLookup,
+    });
+    const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation;
     const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
     const valueOriginByKey = await buildValueOriginByKey(
-        initialDecisions,
-        decisions,
+        selectedSourceByKey,
         targetLookup,
         hostLookup,
         finalIdentifierForKey
@@ -326,12 +327,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
     /** @type {Set<NodeIdentifier>} */
     const directInvalidationRoots = new Set();
-    for (const [nodeKey, decision] of decisions) {
-        if (decision !== 'invalidate'
-            && !hOnlyNeedsInvalidate.has(nodeKey)
-            && !equalVersionNeedsInvalidation.has(nodeKey)) {
-            continue;
-        }
+    for (const nodeKey of directInvalidationKeys) {
         const finalId = finalIdentifierForKey.get(nodeKey);
         if (finalId !== undefined) {
             directInvalidationRoots.add(finalId);
