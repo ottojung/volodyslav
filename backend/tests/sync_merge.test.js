@@ -4001,4 +4001,80 @@ describe('mergeHostIntoReplica', () => {
             if (db) await db.close();
         }
     });
+
+    test('no-op merge does not write freshness records', async () => {
+        const { rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+
+            const nodeA = nodeIdentifierFromString('500-aaaaaaaaa');
+            const nodeB = nodeIdentifierFromString('501-bbbbbbbbb');
+            const keyA = stringToNodeKeyString('{"head":"X","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"Y","args":[]}');
+
+            const T = db.schemaStorageForReplica('y');
+            await writeGraphScheme(T);
+            await writeNode(T, nodeA, '2024-01-01T00:00:00.000Z', { v: 1 });
+            await writeNode(T, nodeB, '2024-01-02T00:00:00.000Z', { v: 2 });
+            await T.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(T, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const hostStorage = db.hostnameSchemaStorage('host');
+            await writeGraphScheme(hostStorage);
+            await writeIdentifierLookup(hostStorage, []);
+
+            const targetLookup = makeIdentifierLookup([[nodeA, keyA], [nodeB, keyB]]);
+            const hostLookup = makeIdentifierLookup([]);
+
+            const finalIdentifierForKey = new Map([[keyA, nodeA], [keyB, nodeB]]);
+            const mergedInputsMap = new Map([[nodeB, [nodeA]]]);
+            const valueOriginByKey = new Map();
+            valueOriginByKey.set(keyA, { kind: 'source', side: 'target', sourceId: nodeA });
+            valueOriginByKey.set(keyB, { kind: 'source', side: 'target', sourceId: nodeB });
+
+            // Capture freshness before the no-op merge
+            const beforeA = await T.freshness.get(nodeA);
+            const beforeB = await T.freshness.get(nodeB);
+
+            await rebuildMergedValidity({
+                targetStorage: T,
+                targetSourceStorage: T,
+                hostSourceStorage: hostStorage,
+                targetLookup,
+                hostLookup,
+                finalIdentifierForKey,
+                mergedInputsMap,
+                valueOriginByKey,
+                directInvalidationRoots: new Set(),
+            });
+
+            // No-op merge: freshness unchanged
+            expect(await T.freshness.get(nodeA)).toBe(beforeA);
+            expect(await T.freshness.get(nodeB)).toBe(beforeB);
+            // Validity unchanged
+            const validA = await T.valid.get(nodeA) ?? [];
+            expect(validA.some(d => String(d) === String(nodeB))).toBe(true);
+
+            // Now introduce a direct root
+            await rebuildMergedValidity({
+                targetStorage: T,
+                targetSourceStorage: T,
+                hostSourceStorage: hostStorage,
+                targetLookup,
+                hostLookup,
+                finalIdentifierForKey,
+                mergedInputsMap,
+                valueOriginByKey,
+                directInvalidationRoots: new Set([nodeA]),
+            });
+
+            // Only the root and its dependents change freshness
+            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+        } finally {
+            if (db) await db.close();
+        }
+    });
 });

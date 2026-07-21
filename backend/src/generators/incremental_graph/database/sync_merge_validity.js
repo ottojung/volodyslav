@@ -324,11 +324,14 @@ async function rebuildMergedValidity({
     // Step 2: Handle direct invalidation roots.
     // For each directly invalidated root: remove all incoming validity proofs,
     // mark stale, and propagate freshness downstream preserving validity edges.
+    /** @type {Set<string>} */
+    const dirtyFreshness = new Set();
     let freshnessChanged = false;
     for (const root of directInvalidationRoots) {
         const rootIdStr = nodeIdentifierToString(root);
         if (finalFreshness.get(rootIdStr) !== 'potentially-outdated') {
             finalFreshness.set(rootIdStr, 'potentially-outdated');
+            dirtyFreshness.add(rootIdStr);
             freshnessChanged = true;
         }
         removeIncomingValidity(mergedInputsMap, validMap, root);
@@ -337,6 +340,7 @@ async function rebuildMergedValidity({
             const depStr = nodeIdentifierToString(dependent);
             if (finalFreshness.get(depStr) !== 'potentially-outdated') {
                 finalFreshness.set(depStr, 'potentially-outdated');
+                dirtyFreshness.add(depStr);
                 freshnessChanged = true;
             }
         }
@@ -373,12 +377,14 @@ async function rebuildMergedValidity({
                 // stale-input state. Remove all incoming proofs so the
                 // node's next pull invokes its computor.
                 finalFreshness.set(nodeIdStr, 'potentially-outdated');
+                dirtyFreshness.add(nodeIdStr);
                 freshnessChanged = true;
                 changed = true;
                 removeIncomingValidity(mergedInputsMap, validMap, nodeIdentifier);
             } else if (staleInput) {
                 // Propagated staleness — preserve all proofs
                 finalFreshness.set(nodeIdStr, 'potentially-outdated');
+                dirtyFreshness.add(nodeIdStr);
                 freshnessChanged = true;
                 changed = true;
             }
@@ -390,9 +396,10 @@ async function rebuildMergedValidity({
     // proofs remain in validMap; no mandatory creation is performed.
 
     const writer = new ReplicaBatchWriter(targetStorage);
-    for (const [nodeIdStr, freshness] of finalFreshness) {
+    for (const nodeIdStr of dirtyFreshness) {
+        const freshness = finalFreshness.get(nodeIdStr);
         const nodeIdentifier = finalIdentifierByString.get(nodeIdStr);
-        if (nodeIdentifier !== undefined) {
+        if (freshness !== undefined && nodeIdentifier !== undefined) {
             await writer.push(targetStorage.freshness.putOp(nodeIdentifier, freshness));
         }
     }
