@@ -4335,4 +4335,97 @@ describe('mergeHostIntoReplica', () => {
             if (db) await db.close();
         }
     });
+
+    test('rejects host with unsorted validity array, active replica unchanged', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeShared = nodeIdentifierFromString('801-abcdefghi');
+            const nodeDep1 = nodeIdentifierFromString('802-abcdefghi');
+            const nodeDep2 = nodeIdentifierFromString('803-abcdefghi');
+            const keyShared = stringToNodeKeyString('{"head":"shared","args":[]}');
+            const keyDep1 = stringToNodeKeyString('{"head":"dep1","args":[]}');
+            const keyDep2 = stringToNodeKeyString('{"head":"dep2","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            const scheme = { format: 1, nodes: [
+                { head: "shared", arity: 0, inputTemplates: [] },
+                { head: "dep1", arity: 0, inputTemplates: [{ head: "shared", args: [] }] },
+                { head: "dep2", arity: 0, inputTemplates: [{ head: "shared", args: [] }] },
+            ] };
+            await L.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
+            await writeNode(L, nodeShared, TS1, { v: 1 });
+            await writeNode(L, nodeDep1, TS2, { v: 2 });
+            await writeNode(L, nodeDep2, TS2, { v: 3 });
+            await writeIdentifierLookup(L, [[nodeShared, keyShared], [nodeDep1, keyDep1], [nodeDep2, keyDep2]]);
+            await L.valid.put(nodeShared, [nodeDep1, nodeDep2]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
+            await writeNode(H, nodeShared, TS1, { v: 1 });
+            await writeNode(H, nodeDep1, TS2, { v: 2 });
+            await writeNode(H, nodeDep2, TS2, { v: 3 });
+            await writeIdentifierLookup(H, [[nodeShared, keyShared], [nodeDep1, keyDep1], [nodeDep2, keyDep2]]);
+            // unsorted valid array — should be [dep1, dep2], stored as [dep2, dep1]
+            await H.valid.put(nodeShared, [nodeDep2, nodeDep1]);
+
+            await expect(mergeHostIntoReplica(logger, db, hostname)).rejects.toThrow(/not strictly sorted/);
+            expect(db.currentReplicaName()).toBe('x');
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('rejects local replica with unsorted validity array, active replica unchanged', async () => {
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const nodeShared = nodeIdentifierFromString('804-abcdefghi');
+            const nodeDep1 = nodeIdentifierFromString('805-abcdefghi');
+            const nodeDep2 = nodeIdentifierFromString('806-abcdefghi');
+            const keyShared = stringToNodeKeyString('{"head":"shared","args":[]}');
+            const keyDep1 = stringToNodeKeyString('{"head":"dep1","args":[]}');
+            const keyDep2 = stringToNodeKeyString('{"head":"dep2","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            const scheme = { format: 1, nodes: [
+                { head: "shared", arity: 0, inputTemplates: [] },
+                { head: "dep1", arity: 0, inputTemplates: [{ head: "shared", args: [] }] },
+                { head: "dep2", arity: 0, inputTemplates: [{ head: "shared", args: [] }] },
+            ] };
+            await L.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
+            await writeNode(L, nodeShared, TS1, { v: 1 });
+            await writeNode(L, nodeDep1, TS2, { v: 2 });
+            await writeNode(L, nodeDep2, TS2, { v: 3 });
+            await writeIdentifierLookup(L, [[nodeShared, keyShared], [nodeDep1, keyDep1], [nodeDep2, keyDep2]]);
+            // unsorted valid array in local replica — [dep2, dep1] instead of [dep1, dep2]
+            await L.valid.put(nodeShared, [nodeDep2, nodeDep1]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
+            await writeNode(H, nodeShared, TS2, { v: 4 });
+            await writeNode(H, nodeDep1, TS1, { v: 5 });
+            await writeNode(H, nodeDep2, TS1, { v: 6 });
+            await writeIdentifierLookup(H, [[nodeShared, keyShared], [nodeDep1, keyDep1], [nodeDep2, keyDep2]]);
+            // Host has sorted valid (valid host state) — the test is about local unsorted
+            await H.valid.put(nodeShared, [nodeDep1, nodeDep2]);
+
+            await expect(mergeHostIntoReplica(logger, db, hostname)).rejects.toThrow(/not strictly sorted/);
+            expect(db.currentReplicaName()).toBe('x');
+        } finally {
+            if (db) await db.close();
+        }
+    });
 });

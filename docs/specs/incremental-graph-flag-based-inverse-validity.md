@@ -529,10 +529,52 @@ Document this explicitly because it prevents a future reader from treating `vali
 
 **Proof sketch:**
 
-- Previous validity entries are captured before clearing.
-- A previous validity edge is preserved only when both sides map through the target lookup, both final identifiers exist, both decisions are compatible with keeping the old value identity, and the dependent's derived input edges still include the dependency.
-- Required incoming validity is then added for every node whose final freshness is `"up-to-date"`.
-- Final validation checks unknown identifiers, compatibility with derived input edges, and required incoming validity for clean nodes.
+The merge validity algorithm (`rebuildMergedValidity`) does **not** mint proofs. It
+only transports preexisting proofs from either source side when provenance
+supports it, and it classifies nodes without a full proof set as direct roots.
+
+1. **Exact source-side proof transport**: A validity edge `valid[D].has(N)` is
+   transported from a source side (target or host) only when both `D` and `N`
+   have the same value origin from that side, both final identifiers preserve
+   the exact source identifiers, and the derived input edges of `N` still
+   include `D`. No cross-side mixing: a target-origin dependency and a
+   host-origin dependent never exchange a transported proof.
+
+2. **Structural-edge survival**: A transported proof that passes the two-sided
+   provenance check is preserved only if `D` is still a structural input of `N`
+   in the merged graph. Removed or relowered inputs do not carry proofs.
+
+3. **Incoming-proof revocation for direct roots**: Every node in the merge plan
+   whose decision is `invalidate`, equal-version staleness, host-only
+   invalidation, or any up-to-date node whose required transported proof could
+   not be found has all incoming proofs removed from its inputs' `valid` sets.
+   These are the direct invalidation roots.
+
+4. **Missing-proof nodes become direct roots**: A single topological traversal
+   processes nodes from inputs to dependents. If an up-to-date node lacks a
+   required transported proof in any of its inputs' `valid` sets, it is
+   classified as a direct root: its freshness becomes `potentially-outdated`,
+   and all incoming validity proofs are removed. No proof is manufactured.
+
+5. **Freshness-only propagation to descendants**: When a direct root is made
+   stale, its freshness propagates through the transported validity frontier
+   without removing validity edges. Descendants reached through propagation
+   retain all incoming and outgoing proofs.
+
+6. **Final validation of remaining clean nodes**: After the traversal, any node
+   that is still `up-to-date` has all required transported proofs (otherwise it
+   would have been reclassified as a direct root), all its inputs are also
+   `up-to-date`, and no stale descendant is accidentally promoted to clean by
+   proof reconstruction.
+
+7. **No proof minting**: The algorithm never creates a validity edge that was
+   not already present in at least one source side and successfully transported.
+   The only validity edges in the final state are those that survived the
+   two-sided provenance check.
+
+Final validation (`assertValidFinalMergeState`) checks unknown identifiers,
+compatibility with derived input edges, and required incoming validity for all
+remaining clean nodes.
 
 ### Theorem 7: Validity mutation logs avoid lost updates
 

@@ -43,6 +43,103 @@ describe("migration integration", () => {
         );
     });
 
+    test("stale keep/override region A→B→C loses both proofs, both recompute with oldValue", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+
+            /** @type {Array<{bOld: unknown, cOld: unknown}>} */
+            const receivedOldValues = [];
+            let aCalls = 0, bCalls = 0, cCalls = 0;
+
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => { aCalls++; return ({ v: 1 }); }, isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async (_inputs, oldValue) => { bCalls++; receivedOldValues.push({ bOld: oldValue }); return ({ v: 2 }); }, isDeterministic: true, hasSideEffects: false },
+                { output: "C", inputs: ["B"], computor: async (_inputs, oldValue) => { cCalls++; receivedOldValues.push({ cOld: oldValue }); return ({ v: 3 }); }, isDeterministic: true, hasSideEffects: false },
+            ];
+
+            // --- Phase 1: Build version-1 source with A→B→C chain ---
+            const g1 = await createIncrementalGraph(caps, db, nodeDefs);
+            await g1.pull("C");
+            expect(aCalls).toBe(1);
+            expect(bCalls).toBe(1);
+            expect(cCalls).toBe(1);
+
+            // Invalidate A → propagates stale freshness to B and C, proofs preserved
+            await g1.invalidate("A");
+            const storageBefore = db.getSchemaStorage();
+            const aId = db.getActiveIdentifierLookup().keyToId.get('{"head":"A","args":[]}');
+            const bId = db.getActiveIdentifierLookup().keyToId.get('{"head":"B","args":[]}');
+            const cId = db.getActiveIdentifierLookup().keyToId.get('{"head":"C","args":[]}');
+            expect(await storageBefore.freshness.get(aId)).toBe("potentially-outdated");
+            expect(await storageBefore.freshness.get(bId)).toBe("potentially-outdated");
+            expect(await storageBefore.freshness.get(cId)).toBe("potentially-outdated");
+            const validABefore = await storageBefore.valid.get(aId) ?? [];
+            const validBBefore = await storageBefore.valid.get(bId) ?? [];
+            expect(validABefore.some(d => String(d) === String(bId))).toBe(true);
+            expect(validBBefore.some(d => String(d) === String(cId))).toBe(true);
+
+            await storageBefore.global.put("version", "1");
+            await db.close();
+
+            // --- Phase 2: Reopen and migrate — keep all stale nodes ---
+            db = await getRootDatabase(caps);
+            await runMigration(caps, db, nodeDefs, async (storage) => {
+                for await (const nk of storage.listMaterializedNodes()) {
+                    await storage.keep(nk);
+                }
+            });
+
+            // --- Phase 3: Verify post-migration state ---
+            const storage = db.getSchemaStorage();
+            const lookup = db.getActiveIdentifierLookup();
+            const aId2 = lookup.keyToId.get('{"head":"A","args":[]}');
+            const bId2 = lookup.keyToId.get('{"head":"B","args":[]}');
+            const cId2 = lookup.keyToId.get('{"head":"C","args":[]}');
+            expect(aId2).toBeDefined();
+            expect(bId2).toBeDefined();
+            expect(cId2).toBeDefined();
+
+            // All keep their freshness — all potentially-outdated
+            expect(await storage.freshness.get(aId2)).toBe("potentially-outdated");
+            expect(await storage.freshness.get(bId2)).toBe("potentially-outdated");
+            expect(await storage.freshness.get(cId2)).toBe("potentially-outdated");
+
+            // All incoming proofs removed (stale keep region loses both proofs)
+            const validA = await storage.valid.get(aId2) ?? [];
+            const validB = await storage.valid.get(bId2) ?? [];
+            expect(validA.some(d => String(d) === String(bId2))).toBe(false);
+            expect(validB.some(d => String(d) === String(cId2))).toBe(false);
+
+            // --- Phase 4: Pull C — both B and C must recompute with oldValue ---
+            aCalls = 0; bCalls = 0; cCalls = 0;
+            receivedOldValues.length = 0;
+            const g2 = await createIncrementalGraph(caps, db, nodeDefs);
+            const result = await g2.pull("C");
+            // A recomputes (zero-input, stale), B recomputes (missing proof), C recomputes (missing proof)
+            expect(aCalls).toBe(1);
+            expect(bCalls).toBe(1);
+            expect(cCalls).toBe(1);
+            expect(result).toEqual({ v: 3 });
+            // oldValue was delivered to both B and C
+            expect(receivedOldValues.length).toBe(2);
+            expect(receivedOldValues[0].bOld).toEqual({ v: 2 });
+            expect(receivedOldValues[1].cOld).toEqual({ v: 3 });
+
+            // --- Phase 5: Final state — proofs and freshness restored ---
+            expect(await g2.getFreshness("A")).toBe("up-to-date");
+            expect(await g2.getFreshness("B")).toBe("up-to-date");
+            expect(await g2.getFreshness("C")).toBe("up-to-date");
+            const validAFinal = await storage.valid.get(aId2) ?? [];
+            const validBFinal = await storage.valid.get(bId2) ?? [];
+            expect(validAFinal.some(d => String(d) === String(bId2))).toBe(true);
+            expect(validBFinal.some(d => String(d) === String(cId2))).toBe(true);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     test("explicit B root removes A→B, preserves B→C, C cache-revalidates; durable cutover", async () => {
         const caps = getTestCapabilities();
         let db;
