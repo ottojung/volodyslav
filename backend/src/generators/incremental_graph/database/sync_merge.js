@@ -289,8 +289,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         initialDecisions,
         mergedInputsMap,
         decisions,
-        hOnlyNeedsInvalidate,
-        equalVersionNeedsInvalidation,
         hardInvalidationKeys,
         finalIdentifierForKey,
         finalIdentifierLookup,
@@ -309,13 +307,12 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         hostLookup,
         initialDecisions,
         decisions,
-        hOnlyNeedsInvalidate,
-        equalVersionNeedsInvalidation,
+        hardInvalidationKeys,
         finalIdentifierForKey
     );
 
     const summary = summarizeDecisions(decisions.entries(), targetLookup);
-    const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation || equalVersionNeedsInvalidation.size > 0;
+    const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation;
     const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
     const valueOriginByKey = await buildValueOriginByKey(
         initialDecisions,

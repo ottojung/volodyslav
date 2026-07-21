@@ -5,6 +5,7 @@ const { IdentifierLookupConflictError } = require('./replica_errors');
 
 const { GRAPH_SCHEME_KEY, parseGraphScheme, semanticInputKeys } = require('./graph_scheme');
 const { normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require('./input_edges');
+const { buildTransportedValidityPlan } = require('./sync_merge_validity');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -85,42 +86,6 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
 }
 
 /**
- * @param {'target' | 'host'} side
- * @param {SchemaStorage} storage
- * @param {IdentifierLookup} lookup
- * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
- * @param {Map<NodeKeyString, { side: 'target' | 'host', sourceId: NodeIdentifier }>} originByKey
- * @param {Map<NodeKeyString, NodeKeyString[]>} selectedInputsByKey
- * @param {Map<string, Set<string>>} transportedProofs
- * @returns {Promise<void>}
- */
-async function addTransportedProofs(side, storage, lookup, finalIdentifierForKey, originByKey, selectedInputsByKey, transportedProofs) {
-    for await (const sourceDepId of storage.valid.keys()) {
-        const depKey = lookup.idToKey.get(String(sourceDepId));
-        if (depKey === undefined) continue;
-        const depOrigin = originByKey.get(depKey);
-        const finalDepId = finalIdentifierForKey.get(depKey);
-        if (depOrigin === undefined || finalDepId === undefined) continue;
-        if (depOrigin.side !== side || String(depOrigin.sourceId) !== String(sourceDepId)) continue;
-        const dependents = await storage.valid.get(sourceDepId) ?? [];
-        for (const sourceDependentId of dependents) {
-            const dependentKey = lookup.idToKey.get(String(sourceDependentId));
-            if (dependentKey === undefined) continue;
-            const dependentOrigin = originByKey.get(dependentKey);
-            const finalDependentId = finalIdentifierForKey.get(dependentKey);
-            if (dependentOrigin === undefined || finalDependentId === undefined) continue;
-            if (dependentOrigin.side !== side || String(dependentOrigin.sourceId) !== String(sourceDependentId)) continue;
-            const selectedInputKeys = selectedInputsByKey.get(dependentKey) ?? [];
-            if (!selectedInputKeys.some(inputKey => String(inputKey) === String(depKey))) continue;
-            const depIdStr = String(finalDepId);
-            const set = transportedProofs.get(depIdStr) ?? new Set();
-            set.add(String(finalDependentId));
-            transportedProofs.set(depIdStr, set);
-        }
-    }
-}
-
-/**
  * Find up-to-date selected nodes whose required direct-input proofs cannot be transported.
  * @param {SchemaStorage} T
  * @param {SchemaStorage} H
@@ -132,18 +97,34 @@ async function addTransportedProofs(side, storage, lookup, finalIdentifierForKey
  * @returns {Promise<Set<NodeKeyString>>}
  */
 async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, selectedSideByKey, selectedInputsByKey, finalIdentifierForKey) {
-    /** @type {Map<NodeKeyString, { side: 'target' | 'host', sourceId: NodeIdentifier }>} */
+    /** @type {Map<NodeKeyString, import('./sync_merge_validity').ValueOrigin>} */
     const originByKey = new Map();
+    /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
+    const mergedInputsMap = new Map();
     for (const [nodeKey, side] of selectedSideByKey) {
-        if (!finalIdentifierForKey.has(nodeKey)) continue;
+        const finalId = finalIdentifierForKey.get(nodeKey);
+        if (finalId === undefined) continue;
         const lookup = side === 'take' ? hostLookup : targetLookup;
         const sourceId = lookup.keyToId.get(String(nodeKey));
-        if (sourceId !== undefined) originByKey.set(nodeKey, { side: side === 'take' ? 'host' : 'target', sourceId });
+        if (sourceId !== undefined) {
+            originByKey.set(nodeKey, { kind: 'source', side: side === 'take' ? 'host' : 'target', sourceId });
+        }
+        const inputIds = [];
+        for (const inputKey of selectedInputsByKey.get(nodeKey) ?? []) {
+            const inputId = finalIdentifierForKey.get(inputKey);
+            if (inputId !== undefined) inputIds.push(inputId);
+        }
+        mergedInputsMap.set(finalId, normalizeInputEdges(inputIds));
     }
-    /** @type {Map<string, Set<string>>} */
-    const transportedProofs = new Map();
-    await addTransportedProofs('target', T, targetLookup, finalIdentifierForKey, originByKey, selectedInputsByKey, transportedProofs);
-    await addTransportedProofs('host', H, hostLookup, finalIdentifierForKey, originByKey, selectedInputsByKey, transportedProofs);
+    const { validMap: transportedProofs } = await buildTransportedValidityPlan({
+        targetSourceStorage: T,
+        hostSourceStorage: H,
+        targetLookup,
+        hostLookup,
+        finalIdentifierForKey,
+        mergedInputsMap,
+        valueOriginByKey: originByKey,
+    });
 
     /** @type {Set<NodeKeyString>} */
     const missingRoots = new Set();
@@ -159,8 +140,8 @@ async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, 
         for (const inputKey of inputKeys) {
             const finalInputId = finalIdentifierForKey.get(inputKey);
             if (finalInputId === undefined) continue;
-            const set = transportedProofs.get(String(finalInputId)) ?? new Set();
-            if (!set.has(String(finalNodeId))) {
+            const dependents = transportedProofs.get(String(finalInputId)) ?? [];
+            if (!dependents.some(dependent => String(dependent) === String(finalNodeId))) {
                 missingRoots.add(nodeKey);
                 break;
             }
@@ -186,8 +167,6 @@ async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, 
  *   deletedMaterializationKeys: Set<NodeKeyString>,
  *   mergedInputsMap: Map<NodeIdentifier, NodeIdentifier[]>,
  *   decisions: Map<NodeKeyString, 'keep' | 'take' | 'invalidate' | 'delete'>,
- *   hOnlyNeedsInvalidate: Set<NodeKeyString>,
- *   equalVersionNeedsInvalidation: Set<NodeKeyString>,
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
  *   hasIdentifierReconciliation: boolean
@@ -258,13 +237,10 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
 
     /** @type {Set<NodeKeyString>} */
     const directInvalidationCandidateKeys = new Set();
-    /** @type {Set<NodeKeyString>} */
-    const hOnlyNeedsInvalidate = new Set();
     for (const [nodeKey, selectedSide] of selectedSideByKey) {
         if ((selectedSide === 'keep' && takeTainted.has(nodeKey))
             || (selectedSide === 'take' && keepTainted.has(nodeKey))) {
             directInvalidationCandidateKeys.add(nodeKey);
-            if (targetLookup.keyToId.get(String(nodeKey)) === undefined) hOnlyNeedsInvalidate.add(nodeKey);
         }
     }
 
@@ -305,8 +281,6 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
     }
 
-    /** @type {Set<NodeKeyString>} */
-    const equalVersionNeedsInvalidation = new Set();
     for (const nodeKey of equalTimestamps) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
@@ -314,7 +288,6 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         const finalFreshness = await T.freshness.get(targetId);
         const otherFreshness = await H.freshness.get(hostId);
         if (finalFreshness === 'up-to-date' && otherFreshness !== 'up-to-date') {
-            equalVersionNeedsInvalidation.add(nodeKey);
             directInvalidationCandidateKeys.add(nodeKey);
         }
     }
@@ -386,8 +359,6 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         deletedMaterializationKeys,
         mergedInputsMap,
         decisions,
-        hOnlyNeedsInvalidate,
-        equalVersionNeedsInvalidation,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,

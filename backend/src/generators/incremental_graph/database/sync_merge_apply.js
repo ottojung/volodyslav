@@ -17,8 +17,7 @@ const { ReplicaBatchWriter } = require('./sync_merge_validity');
  * @param {IdentifierLookup} hostLookup
  * @param {Map<NodeKeyString, 'keep' | 'take'>} initialDecisions
  * @param {Map<NodeKeyString, MergeDecision>} decisions
- * @param {Set<NodeKeyString>} hostOnlyNodesNeedingInvalidation
- * @param {Set<NodeKeyString>} equalVersionNeedsInvalidation
+ * @param {Set<NodeKeyString>} hardInvalidationKeys
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
  * @returns {Promise<void>}
  */
@@ -29,8 +28,7 @@ async function applyNodeDecisions(
     hostLookup,
     initialDecisions,
     decisions,
-    hostOnlyNodesNeedingInvalidation,
-    equalVersionNeedsInvalidation,
+    hardInvalidationKeys,
     finalIdentifierForKey
 ) {
     const writer = new ReplicaBatchWriter(targetStorage);
@@ -58,7 +56,7 @@ async function applyNodeDecisions(
         if (sourceId === undefined) throw new IdentifierLookupConflictError(`Missing source identifier for ${String(nodeKey)}`);
 
         if (!useHost && decision === 'keep' && sourceId === destinationId) {
-            if (equalVersionNeedsInvalidation.has(nodeKey)) {
+            if (hardInvalidationKeys.has(nodeKey)) {
                 await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
             }
             continue;
@@ -79,9 +77,7 @@ async function applyNodeDecisions(
         if (sourceFreshness !== 'up-to-date' && sourceFreshness !== 'potentially-outdated') {
             throw new IdentifierLookupConflictError(`Source materialized node ${String(sourceId)} has invalid freshness ${String(sourceFreshness)}`);
         }
-        const finalFreshness = decision === 'invalidate'
-            || hostOnlyNodesNeedingInvalidation.has(nodeKey)
-            || equalVersionNeedsInvalidation.has(nodeKey)
+        const finalFreshness = hardInvalidationKeys.has(nodeKey)
             ? 'potentially-outdated'
             : sourceFreshness;
         const finalTimestamps = {

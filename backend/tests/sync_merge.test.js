@@ -467,12 +467,12 @@ describe('mergeHostIntoReplica', () => {
             const T = db.getSchemaStorage();
             expect(await T.global.get(IDENTIFIERS_KEY)).toEqual([
                 [targetParent, parentKey],
+                [hostChild, childKey],
             ]);
-            // Child's structural dependency on parent changed from hostParent to
-            // targetParent, making it directly relowered. Its value is deleted
-            // and freshness becomes potentially-outdated.
-            expect(await T.freshness.get(hostChild)).toBeUndefined();
-            expect(await T.values.get(hostChild)).toBeUndefined();
+            // Child has one distinct semantic input, so direct relowering
+            // hard-invalidates the selected host child instead of deleting it.
+            expect(await T.freshness.get(hostChild)).toBe('potentially-outdated');
+            expect(await T.values.get(hostChild)).toBeDefined();
             expect(await T.values.get(targetChild)).toBeUndefined();
             expect(await T.values.get(hostParent)).toBeUndefined();
 
@@ -2264,11 +2264,10 @@ describe('mergeHostIntoReplica', () => {
             // B is taken (host-newer, TS2 > no target B): finalB = hostB
             // B depends on A (via scheme). B's source inputs use hostLookup -> hostA.
             // B's final inputs use finalIdentifierForKey -> targetA (A kept).
-            // hostA != targetA => direct relowering => B's value deleted, origin none.
-            // host-side proof valid[hostA] = [hostB] must NOT transport.
-            // hostA is deleted (A kept from target), so valid[hostA] doesn't exist.
-            expect(await T.values.get(hostB)).toBeUndefined();
-            expect(await T.freshness.get(hostB)).toBeUndefined();
+            // hostA != targetA => direct relowering. B has one distinct semantic input,
+            // so B is hard-invalidated and its selected host value is retained.
+            expect(await T.values.get(hostB)).toEqual({ source: 'B host' });
+            expect(await T.freshness.get(hostB)).toBe('potentially-outdated');
             const validTargetA = await T.valid.get(targetA) ?? [];
             expect(validTargetA.some(dependent => String(dependent) === String(hostB))).toBe(false);
             expect(await T.valid.get(hostA) ?? []).toEqual([]);
@@ -2814,11 +2813,11 @@ describe('mergeHostIntoReplica', () => {
             db = await mergeAndReopenIfSwitched(capabilities, logger, db, hostname);
 
             const T = db.getSchemaStorage();
-            // A is directly relowered and its value deleted → modifiedAt still from
-            // source (host A = TS2), no freshness entry.
+            // A has one distinct semantic input, so direct relowering hard-invalidates
+            // the selected host A and preserves its source modifiedAt.
             const tsA = await T.timestamps.get(hostA);
-            expect(tsA).toBeUndefined();
-            expect(await T.freshness.get(hostA)).toBeUndefined();
+            expect(tsA?.modifiedAt).toBe(TS2);
+            expect(await T.freshness.get(hostA)).toBe('potentially-outdated');
         } finally {
             if (db) await db.close();
         }
@@ -3419,12 +3418,11 @@ describe('mergeHostIntoReplica', () => {
             // X is force-taken (host TS2 > target TS1)
             expect(await T.values.get(xHost)).toEqual({ value: 'X host' });
             expect(await T.freshness.get(xHost)).toBe('up-to-date');
-            // N is taken (taint changed from keep to take). Host N was up-to-date,
-            // but local N was stale at the same version. The stale evidence must
-            // be preserved: N must be potentially-outdated.
-            expect(await T.values.get(nHost)).toEqual({ value: 'N host' });
-            expect(await T.freshness.get(nHost)).toBe('potentially-outdated');
-            const nTs = await T.timestamps.get(nHost);
+            // N keeps its own timestamp-tie winner. Opposite ancestry hard-invalidates
+            // the selected local N without switching to the host value.
+            expect(await T.values.get(nTarget)).toEqual({ value: 'N local' });
+            expect(await T.freshness.get(nTarget)).toBe('potentially-outdated');
+            const nTs = await T.timestamps.get(nTarget);
             expect(nTs?.modifiedAt).toBe(TS1);
         } finally {
             if (db) await db.close();
@@ -3532,20 +3530,20 @@ describe('mergeHostIntoReplica', () => {
             // Merge: C is force-keep (target TS1 >= host TS1), A is directly
             // relowered because its source input (hostCId) differs from final
             // input (targetCId).
-            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             const T = db.getSchemaStorage();
-            // Directly relowered node A is fully absent after sync.
-            expect(await T.values.get(hostAId)).toBeUndefined();
-            expect(await T.freshness.get(hostAId)).toBeUndefined();
-            expect(await T.timestamps.get(hostAId)).toBeUndefined();
+            // Directly relowered one-input node A is retained and hard-invalidated.
+            expect(await T.values.get(hostAId)).toEqual({ source: 'A computed from host C' });
+            expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
+            expect(await T.timestamps.get(hostAId)).toBeDefined();
             // C survives materialized.
             expect(await T.values.get(targetCId)).toEqual(targetCValue);
             expect(await T.freshness.get(targetCId)).toBe('up-to-date');
 
             // Verify A's key is not in the final lookup (deleted materialization).
             const finalLookup = makeIdentifierLookup(await T.global.get(IDENTIFIERS_KEY));
-            expect(finalLookup.keyToId.has(String(keyA))).toBe(false);
+            expect(finalLookup.keyToId.has(String(keyA))).toBe(true);
             expect(finalLookup.keyToId.has(String(keyC))).toBe(true);
 
             // Write exact graph_scheme matching the nodeDefs below.
@@ -3584,7 +3582,7 @@ describe('mergeHostIntoReplica', () => {
             const afterLookup = makeIdentifierLookup(await T.global.get(IDENTIFIERS_KEY));
             const freshAId = afterLookup.keyToId.get(String(keyA));
             expect(freshAId).toBeDefined();
-            expect(String(freshAId)).not.toBe(String(hostAId));
+            expect(String(freshAId)).toBe(String(hostAId));
             expect(await T.freshness.get(freshAId)).toBe('up-to-date');
             expect(await T.values.get(freshAId)).toEqual({ source: 'recomputed from target C' });
         } finally {
@@ -3635,24 +3633,24 @@ describe('mergeHostIntoReplica', () => {
             await H.valid.put(hostCId, [hostAId]);
             await H.valid.put(hostAId, [hostDId]);
 
-            // Merge: C is force-keep, A is directly relowered → cascade to D.
-            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+            // Merge: C is force-keep, A is directly relowered → A is hard-invalidated.
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             const T = db.getSchemaStorage();
-            // Both the directly relowered node and the transitive dependent are fully absent.
-            expect(await T.values.get(hostAId)).toBeUndefined();
-            expect(await T.freshness.get(hostAId)).toBeUndefined();
-            expect(await T.timestamps.get(hostAId)).toBeUndefined();
-            expect(await T.values.get(hostDId)).toBeUndefined();
-            expect(await T.freshness.get(hostDId)).toBeUndefined();
-            expect(await T.timestamps.get(hostDId)).toBeUndefined();
+            // One-input relowering hard-invalidates A; D survives as propagated stale.
+            expect(await T.values.get(hostAId)).toEqual({ source: 'stale A' });
+            expect(await T.freshness.get(hostAId)).toBe('potentially-outdated');
+            expect(await T.timestamps.get(hostAId)).toBeDefined();
+            expect(await T.values.get(hostDId)).toEqual({ source: 'stale D' });
+            expect(await T.freshness.get(hostDId)).toBe('potentially-outdated');
+            expect(await T.timestamps.get(hostDId)).toBeDefined();
             // C survives.
             expect(await T.values.get(targetCId)).toEqual(targetCValue);
 
             // Verify A and D keys are absent from the final lookup.
             const finalLookup = makeIdentifierLookup(await T.global.get(IDENTIFIERS_KEY));
-            expect(finalLookup.keyToId.has(String(keyA))).toBe(false);
-            expect(finalLookup.keyToId.has(String(keyD))).toBe(false);
+            expect(finalLookup.keyToId.has(String(keyA))).toBe(true);
+            expect(finalLookup.keyToId.has(String(keyD))).toBe(true);
             expect(finalLookup.keyToId.has(String(keyC))).toBe(true);
 
             // Write exact graph_scheme matching the nodeDefs below.
@@ -3706,8 +3704,8 @@ describe('mergeHostIntoReplica', () => {
             const freshDId = afterLookup.keyToId.get(String(keyD));
             expect(freshAId).toBeDefined();
             expect(freshDId).toBeDefined();
-            expect(String(freshAId)).not.toBe(String(hostAId));
-            expect(String(freshDId)).not.toBe(String(hostDId));
+            expect(String(freshAId)).toBe(String(hostAId));
+            expect(String(freshDId)).toBe(String(hostDId));
             expect(await T.freshness.get(freshAId)).toBe('up-to-date');
             expect(await T.freshness.get(freshDId)).toBe('up-to-date');
             expect(await T.values.get(freshAId)).toEqual({ source: 'A from target C' });
@@ -3910,7 +3908,7 @@ describe('mergeHostIntoReplica', () => {
                 finalIdentifierForKey,
                 mergedInputsMap,
                 valueOriginByKey,
-            directInvalidationRoots: new Set(),
+                directInvalidationRoots: new Set([nodeB]),
             });
 
             const validA = await T.valid.get(nodeA) ?? [];
@@ -3981,7 +3979,7 @@ describe('mergeHostIntoReplica', () => {
                 finalIdentifierForKey,
                 mergedInputsMap,
                 valueOriginByKey,
-            directInvalidationRoots: new Set(),
+                directInvalidationRoots: new Set([nodeN]),
             });
 
             // D is stale → N has a stale input (propagated staleness).
@@ -4318,7 +4316,7 @@ describe('mergeHostIntoReplica', () => {
                 finalIdentifierForKey,
                 mergedInputsMap,
                 valueOriginByKey,
-                directInvalidationRoots: new Set([nodeD]),
+                directInvalidationRoots: new Set([nodeD, nodeN]),
             });
 
             // D was a direct root → stale, incoming proofs removed

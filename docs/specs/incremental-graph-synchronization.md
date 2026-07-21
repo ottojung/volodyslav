@@ -276,75 +276,106 @@ distinguish which side has fresher metadata. The merge MUST be conservative:
 
 ---
 
-## 7. Conflict Propagation and Merge Decisions
+## 7. Candidate Selection, Direct Invalidation, and Deletion
 
-**DEF-SYNC-05 (Force roots):**
+The temporary pairwise merge rule implemented for
+https://github.com/ottojung/volodyslav/issues/1520 separates source selection,
+direct hard invalidation, propagated staleness, and deletion. The future
+journal-backed coherent-history rule is tracked by
+https://github.com/ottojung/volodyslav/issues/1521; this section specifies only
+the current conservative pairwise behaviour.
 
-- `forceKeepRoot`: a key where both replicas have the key and local
-  `modifiedAt` is strictly newer.
-- `forceTakeRoot`: a key where both replicas have the key and host `modifiedAt`
-  is strictly newer.
+**DEF-SYNC-05 (Selected side):** `selectedSideByKey` records `keep` or `take`
+for every materialized semantic key. It is selected by REQ-SYNC-07 only:
+target-only keeps target, host-only takes host, the greater UTC `modifiedAt`
+wins when both sides are present, and exact timestamp ties keep target/local.
+Ancestor taint never changes this selected side. For a root `A`, competing
+versions use `modifiedAt`; value disagreement alone does not invalidate or
+delete the root.
 
-**DEF-SYNC-06 (Taint propagation):**
+**DEF-SYNC-06 (Taint propagation):** Keep-taint propagates forward from every
+key where local `modifiedAt` strictly wins. Take-taint propagates forward from
+every key where host `modifiedAt` strictly wins. Taint is ancestry information,
+not a source-selection override. A selected local/target candidate has
+opposite-side ancestry when take-taint reaches it. A selected host candidate has
+opposite-side ancestry when keep-taint reaches it.
 
-- Keep-taint propagates forward from every `forceKeepRoot` along the initially
-  chosen semantic dependency graph (the graph defined by
-  `initialDecision`-selected source side and its graph scheme).
-- Take-taint propagates forward from every `forceTakeRoot` along the initially
-  chosen semantic dependency graph.
+**DEF-SYNC-07 (Direct invalidation candidate):** A direct invalidation candidate
+is a selected cached node whose next required recomputation must invoke the
+computor rather than accept cache-only revalidation. Candidates are produced by:
 
-**DEF-SYNC-07 (Decision rules):**
+1. opposite-side ancestry reaching the selected candidate;
+2. direct input relowering;
+3. equal-version stale metadata from REQ-SYNC-08c;
+4. missing transportable direct-input validity proofs discovered during
+   planning.
 
-- If a key is target-only:
-  - `keep`, unless it is take-tainted, in which case `invalidate`.
-- If a key is host-only:
-  - `take`.
-  - If it is keep-tainted, its final freshness must be `potentially-outdated`.
-- If a key exists on both sides:
-  - If both keep-tainted and take-tainted: `invalidate`.
-  - Else if keep-tainted: `keep`.
-  - Else if take-tainted: `take`.
-  - Else: use `initialDecision`.
+**DEF-SYNC-08 (Direct relowering):** A selected cached node is directly
+relowered when the source identifiers of the inputs against which its selected
+source materialization was stored differ from the final selected input
+identifiers. Direct relowering creates a direct invalidation candidate; it is
+not by itself a deletion decision.
 
-**Rationale:** A node downstream of conflicting timestamp choices cannot simply
-inherit freshness from one side, because its stored value may have been
-computed from inputs not chosen in the final graph. Invalidation is a
-conservative way to preserve correctness without recomputing during sync.
+**REQ-SYNC-09 (Distinct semantic input classifier):** The classifier counts
+distinct semantic direct dependency keys. It must not count computor argument
+positions, graph-scheme arity, lowered storage identifiers, or validity-edge
+count. `X(A)` and `X(A, A)` have one distinct semantic input. `X(A, B)` has two
+distinct semantic inputs.
+
+For every direct invalidation candidate:
+
+- zero or one distinct semantic input: retain the selected cached value,
+  preserve its `modifiedAt`, mark it `potentially-outdated`, and remove incoming
+  validity proofs so the next pull invokes the computor with the retained value
+  as `oldValue`;
+- more than one distinct semantic input: delete the materialization so the next
+  pull invokes the computor with `oldValue === undefined`, and `Unchanged` is not
+  legal.
+
+Direct relowering therefore follows:
+
+```text
+direct relowering
+    → direct invalidation candidate
+    → hard invalidate when distinct-input count <= 1
+    → delete when distinct-input count > 1
+```
+
+Thus `A → B` may hard-invalidate `B` when synchronization ambiguity prevents
+`B` from remaining current, but it does not delete `B`. For `A,B → D`, once `D`
+requires direct hard invalidation, the temporary policy deletes `D`.
+
+**REQ-SYNC-10 (Structural deletion closure):** Deletion roots expand through
+transitive materialized dependents in the selected semantic dependency graph. If
+`D` is deleted in `A,B → D → E → F`, then `E` and `F` are deleted as
+materialized dependents, while `A`, `B`, siblings, and unrelated
+materializations such as `U` survive. The closure follows structural semantic
+dependencies, not only validity edges, and synchronization never invokes
+computors while applying it. Deleted nodes have no final identifier, cached
+value, freshness, timestamps, validity entries, or value origin.
+
+**TERM-SYNC-17 (Propagated staleness):** A node can become
+`potentially-outdated` because one of its inputs is stale. That is propagated
+staleness, not a direct invalidation candidate. Propagated stale nodes retain
+transportable incoming proofs and are not deleted merely because they have
+multiple inputs.
 
 ---
 
-## 8. Identifier Reconciliation, Edge Lowering, and Deletion Closure
+## 8. Identifier Reconciliation and Edge Lowering
 
-**REQ-SYNC-09 (Final identifier selection):** For each semantic key whose
-decision is not `delete`, the final identifier is selected from the chosen
-structural source side:
+**REQ-SYNC-11 (Final identifier selection):** For each semantic key whose
+decision is not `delete`, the final identifier is selected from
+`selectedSideByKey`:
 
 - `keep` → local source identifier.
 - `take` → host source identifier.
-- `invalidate` → identifier from `initialDecision`.
+- `invalidate` → the source identifier selected by `selectedSideByKey`.
 
-The final identifier lookup maps final storage identifiers to semantic keys
-for surviving materializations only. It must be bijective between final
-identifiers and `FinalKeys = { key ∈ Keys | decision(key) ≠ delete }`.
-Deleted keys must not remain in the lookup.
-
-**DEF-SYNC-08 (Direct relowering):** During candidate lowering, the merge plan
-builds candidate final dependency edges from the preliminary
-`keep`/`take`/`invalidate` choices. A materialization is directly relowered
-when the storage identifiers of the inputs used by its source value differ from
-the candidate final input identifiers.
-
-**REQ-SYNC-10 (Direct relowering and deletion closure rules):**
-
-1. Every directly relowered materialization receives `decision = delete`.
-2. Every transitive materialized dependent of a deleted materialization also
-   receives `decision = delete`.
-3. This propagation is structural and follows candidate graph dependencies, not
-   only stored validity flags.
-4. Deleted nodes have no final identifier, cached value, freshness, timestamps,
-   validity entries, or value origin.
-5. Synchronization MUST NOT invoke computors to recreate a deleted
-   materialization.
+The final identifier lookup maps final storage identifiers to semantic keys for
+surviving materializations only. It must be bijective between final identifiers
+and `FinalKeys = { key ∈ Keys | decision(key) ≠ delete }`. Deleted keys must
+not remain in the lookup.
 
 ---
 
@@ -600,94 +631,3 @@ copy of L into T.
 
 **PROP-SYNC-04 (No computor invocation):** Synchronization never invokes a
 computor function, directly or indirectly.
-
----
-
-## Temporary direct-invalidation classification for issue #1520
-
-The pairwise merge rule implemented for
-https://github.com/ottojung/volodyslav/issues/1520 separates source selection,
-direct hard invalidation, propagated staleness, and deletion. The future
-journal-backed coherent-history rule is tracked by
-https://github.com/ottojung/volodyslav/issues/1521; this section specifies only
-the current conservative pairwise behaviour.
-
-### Per-node candidate selection
-
-Every materialized semantic node chooses its cached candidate using only that
-node's own UTC `modifiedAt` policy:
-
-- target only: keep target;
-- host only: take host;
-- both present: the greater UTC `modifiedAt` wins;
-- exact timestamp tie: keep target/local.
-
-Ancestor taint never changes this selected side. Taint can only say that the
-selected candidate cannot be accepted as current without invoking the computor.
-For a root `A`, competing versions use `modifiedAt`; disagreement alone does not
-invalidate or delete the root.
-
-### Direct invalidation candidates
-
-A direct invalidation candidate is a selected cached node whose next required
-recomputation must invoke the computor rather than accept cache-only
-revalidation. Candidates are created by opposite-side ancestry, direct input
-relowering, equal-version stale metadata, or missing transportable direct-input
-validity proofs discovered during planning. Direct relowering is therefore:
-
-```text
-direct relowering
-    → direct invalidation candidate
-    → hard invalidate when distinct-input count <= 1
-    → delete when distinct-input count > 1
-```
-
-Missing-proof roots are classified before the final plan is applied. Validity
-reconstruction must not silently invent an additional direct hard-invalidation
-root after deletion planning.
-
-### Propagated staleness
-
-A node can become `potentially-outdated` because one of its inputs is stale. That
-is propagated staleness, not a direct invalidation candidate. Propagated stale
-nodes retain transportable incoming proofs and are not deleted merely because
-they have multiple inputs.
-
-### Distinct semantic input classifier
-
-The classifier counts distinct semantic direct dependency keys, not computor
-argument positions, graph-scheme arity, lowered storage identifiers, or validity
-edge count. `X(A)` and `X(A, A)` have one distinct semantic input. `X(A, B)` has
-two distinct semantic inputs.
-
-For every direct invalidation candidate:
-
-- zero or one distinct semantic input: retain the selected cached value, preserve
-  its `modifiedAt`, mark it `potentially-outdated`, and remove incoming validity
-  proofs so the next pull invokes the computor with the retained value as
-  `oldValue`;
-- more than one distinct semantic input: delete the materialization so the next
-  pull invokes the computor with `oldValue === undefined`, and `Unchanged` is not
-  legal.
-
-Thus `A → B` may hard-invalidate `B` when synchronization ambiguity prevents `B`
-from remaining current, but it does not delete `B`. For `A,B → D`, once `D`
-requires direct hard invalidation, the temporary policy deletes `D`.
-
-### Structural deletion closure
-
-Deletion roots expand through transitive materialized dependents in the selected
-semantic dependency graph. If `D` is deleted in `A,B → D → E → F`, then `E` and
-`F` are deleted as materialized dependents, while `A`, `B`, siblings, and
-unrelated materializations such as `U` survive. The closure follows structural
-semantic dependencies, not only validity edges, and synchronization never invokes
-computors while applying it.
-
-### Value opacity and storage format
-
-Synchronization planning and validity analysis must not inspect, compare,
-serialize, hash, or infer provenance from `ComputedValue` contents. The transfer
-layer may copy selected value bytes opaquely. This rule adds no sublevel,
-timestamp field, migration, vector clock, tombstone, conflict frontier, or
-journal placeholder, and it remains pairwise and order-sensitive until #1521
-provides exact historical input-version provenance.
