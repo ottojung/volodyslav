@@ -1,5 +1,5 @@
 const { nodeIdentifierToString } = require('./types');
-const { nodeIdentifierFromString } = require('./node_identifier');
+const { nodeIdentifierFromString, compareNodeIdentifier } = require('./node_identifier');
 const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges, GraphSchemeError } = require('./graph_scheme');
 const { fromISOString } = require('../../../datetime');
 
@@ -164,6 +164,19 @@ async function assertValidReplicaMaterializationState(storage, lookup, context) 
             throw new ReplicaStateInvariantError(context, 'valid key is not materialized', identifierString);
         }
         const validDependents = await storage.valid.get(identifier) ?? [];
+        // The validity array must be strictly increasing (sorted, no duplicates).
+        let previous = null;
+        for (const dependent of validDependents) {
+            if (previous !== null && compareNodeIdentifier(previous, dependent) >= 0) {
+                const depStr = nodeIdentifierToString(dependent);
+                throw new ReplicaStateInvariantError(
+                    context,
+                    `valid set is not strictly sorted and unique (noncanonical at ${depStr})`,
+                    identifierString
+                );
+            }
+            previous = dependent;
+        }
         for (const dependent of validDependents) {
             const dependentString = nodeIdentifierToString(dependent);
             if (!materializedIdentifiers.has(dependentString)) {

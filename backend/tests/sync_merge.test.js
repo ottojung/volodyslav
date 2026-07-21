@@ -1567,6 +1567,91 @@ describe('mergeHostIntoReplica', () => {
                 if (db) await db.close();
             }
         });
+
+        test('rejects unsorted validity array', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+
+                const nodeA = NODE_A;
+                const nodeB = NODE_B;
+                const nodeC = nodeIdentifierFromString('93-ccccccccc');
+                const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+                const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+                const keyC = stringToNodeKeyString('{"head":"C","args":[]}');
+
+                const T = db.schemaStorageForReplica('x');
+                const scheme = { format: 1, nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [] },
+                    { head: "C", arity: 0, inputTemplates: [] },
+                ] };
+                await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
+                await T.values.put(nodeA, { v: 1 });
+                await T.values.put(nodeB, { v: 2 });
+                await T.values.put(nodeC, { v: 3 });
+                await T.freshness.put(nodeA, 'up-to-date');
+                await T.freshness.put(nodeB, 'up-to-date');
+                await T.freshness.put(nodeC, 'up-to-date');
+                await T.timestamps.put(nodeA, { createdAt: '2024-01-01T00:00:00.000Z', modifiedAt: '2024-01-01T00:00:00.000Z' });
+                await T.timestamps.put(nodeB, { createdAt: '2024-01-01T00:00:00.000Z', modifiedAt: '2024-01-01T00:00:00.000Z' });
+                await T.timestamps.put(nodeC, { createdAt: '2024-01-01T00:00:00.000Z', modifiedAt: '2024-01-01T00:00:00.000Z' });
+                // valid[A] = [C, B] — unsorted
+                await T.valid.put(nodeA, [nodeC, nodeB]);
+
+                const lookup = makeIdentifierLookup([
+                    [nodeA, keyA],
+                    [nodeB, keyB],
+                    [nodeC, keyC],
+                ]);
+
+                await expect(
+                    assertValidFinalMergeState(T, lookup)
+                ).rejects.toThrow('valid set is not strictly sorted and unique');
+            } finally {
+                if (db) await db.close();
+            }
+        });
+
+        test('rejects duplicate validity entry', async () => {
+            const capabilities = getTestCapabilities();
+            let db;
+            try {
+                db = await getRootDatabase(capabilities);
+
+                const nodeA = NODE_A;
+                const nodeB = NODE_B;
+                const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+                const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+
+                const T = db.schemaStorageForReplica('x');
+                const scheme = { format: 1, nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [] },
+                ] };
+                await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
+                await T.values.put(nodeA, { v: 1 });
+                await T.values.put(nodeB, { v: 2 });
+                await T.freshness.put(nodeA, 'up-to-date');
+                await T.freshness.put(nodeB, 'up-to-date');
+                await T.timestamps.put(nodeA, { createdAt: '2024-01-01T00:00:00.000Z', modifiedAt: '2024-01-01T00:00:00.000Z' });
+                await T.timestamps.put(nodeB, { createdAt: '2024-01-01T00:00:00.000Z', modifiedAt: '2024-01-01T00:00:00.000Z' });
+                // valid[A] = [B, B] — duplicate
+                await T.valid.put(nodeA, [nodeB, nodeB]);
+
+                const lookup = makeIdentifierLookup([
+                    [nodeA, keyA],
+                    [nodeB, keyB],
+                ]);
+
+                await expect(
+                    assertValidFinalMergeState(T, lookup)
+                ).rejects.toThrow('valid set is not strictly sorted and unique');
+            } finally {
+                if (db) await db.close();
+            }
+        });
     });
 
     test('merge preserves valid for stale nodes when unrelated change occurs', async () => {
