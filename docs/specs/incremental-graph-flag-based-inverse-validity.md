@@ -533,12 +533,15 @@ The merge validity algorithm (`rebuildMergedValidity`) does **not** mint proofs.
 only transports preexisting proofs from either source side when provenance
 supports it, and it classifies nodes without a full proof set as direct roots.
 
-1. **Exact source-side proof transport**: A validity edge `valid[D].has(N)` is
-   transported from a source side (target or host) only when both `D` and `N`
-   have the same value origin from that side, both final identifiers preserve
-   the exact source identifiers, and the derived input edges of `N` still
-   include `D`. No cross-side mixing: a target-origin dependency and a
-   host-origin dependent never exchange a transported proof.
+1. **Exact source-side proof transport**: A validity edge
+   `valid[sourceD].has(sourceN)` is transported from a source side `S` only
+   when both source identifiers resolve to semantic keys with surviving final
+   identifiers in `finalIdentifierForKey`, and `valueOrigin(finalD)` records
+   `{ kind: "source", side: S, sourceId: sourceD }` while
+   `valueOrigin(finalN)` records `{ kind: "source", side: S, sourceId: sourceN }`.
+   The final storage identifiers may differ from the source identifiers because
+   of identifier reconciliation. No cross-side mixing: a target-origin
+   dependency and a host-origin dependent never exchange a transported proof.
 
 2. **Structural-edge survival**: A transported proof that passes the two-sided
    provenance check is preserved only if `D` is still a structural input of `N`
