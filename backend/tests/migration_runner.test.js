@@ -828,11 +828,13 @@ describe("runMigration", () => {
             expect(allValidKeys).toEqual([]);
         });
 
-        test("preserves existing valid flags for stale kept nodes whose dependency's value is unchanged", async () => {
+        test("stale kept node loses incoming proofs after migration", async () => {
             // A → B
             // B is potentially-outdated, valid[A] contains B
             // migration keeps A and B
-            // after migration valid[A] still contains B
+            // after migration valid[A] no longer contains B because
+            // a preexisting stale node carried through keep is conservatively
+            // treated as a direct invalidation root.
             const capabilities = await getTestCapabilities();
             const xStorage = makeSchemaStorage();
             const aKey = toJsonKey("A");
@@ -855,7 +857,6 @@ describe("runMigration", () => {
                 { output: "A", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
                 { output: "B", inputs: ["A"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
             ];
-            // valid[A] = [B] is set above, so auto-generation from valid handles this test.
 
             await seedGraphScheme(xStorage, nodeDefs);
             await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
@@ -868,7 +869,10 @@ describe("runMigration", () => {
 
             const validA = await yStorage.valid.get(aMigratedKey) ?? [];
             const bIdStr = String(bMigratedKey);
-            expect(validA.some(id => String(id) === bIdStr)).toBe(true);
+            // B was stale before migration and kept: incoming proof removed
+            expect(validA.some(id => String(id) === bIdStr)).toBe(false);
+            // B's outgoing proof to C does not exist here, but the principle
+            // is that outgoing proofs of a stale kept node survive.
         });
 
         test("does not invent valid flags for stale kept nodes when valid was absent before migration", async () => {
@@ -912,6 +916,57 @@ describe("runMigration", () => {
             const validA = await yStorage.valid.get(aMigratedKey) ?? [];
             const bIdStr = String(bMigratedKey);
             expect(validA.some(id => String(id) === bIdStr)).toBe(false);
+        });
+
+        test("stale kept node with multiple inputs loses all incoming proofs", async () => {
+            // D ─┐
+            //    ├→ N  (N is stale, kept)
+            // E ─┘
+            // Both D→N and E→N were valid before migration.
+            // N is stale and kept: both incoming proofs must be removed.
+            const capabilities = await getTestCapabilities();
+            const xStorage = makeSchemaStorage();
+            const dKey = toJsonKey("D");
+            const eKey = toJsonKey("E");
+            const nKey = toJsonKey("N");
+
+            await seedNode(xStorage, dKey);
+            await seedNode(xStorage, eKey);
+            await seedNode(xStorage, nKey);
+            await xStorage.freshness.put(nKey, "potentially-outdated");
+            await xStorage.valid.put(dKey, [nKey]);
+            await xStorage.valid.put(eKey, [nKey]);
+
+            const yStorage = makeSchemaStorage();
+            const mock = makeRootDatabaseMock({
+                prevVersion: "1.0.0",
+                currentVersion: "2.0.0",
+                xStorage,
+                yStorage,
+            });
+
+            const nodeDefs = [
+                { output: "D", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+                { output: "E", inputs: [], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+                { output: "N", inputs: ["D", "E"], computor: async () => ({ type: "all_events", events: [] }), isDeterministic: true, hasSideEffects: false },
+            ];
+
+            await seedGraphScheme(xStorage, nodeDefs);
+            await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+                await storage.keep(dKey);
+                await storage.keep(eKey);
+                await storage.keep(nKey);
+            });
+
+            const dMigrated = await getMigratedKey(yStorage, dKey);
+            const eMigrated = await getMigratedKey(yStorage, eKey);
+            const nMigrated = await getMigratedKey(yStorage, nKey);
+
+            const validD = await yStorage.valid.get(dMigrated) ?? [];
+            const validE = await yStorage.valid.get(eMigrated) ?? [];
+            expect(validD.some(id => String(id) === String(nMigrated))).toBe(false);
+            expect(validE.some(id => String(id) === String(nMigrated))).toBe(false);
+            expect(await yStorage.freshness.get(nMigrated)).toBe("potentially-outdated");
         });
 
         test("writes version to y/global/version before calling setCurrentReplicaPointer", async () => {
