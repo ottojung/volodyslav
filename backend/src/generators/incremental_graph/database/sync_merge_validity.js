@@ -351,43 +351,43 @@ async function rebuildMergedValidity({
     // staleness), mark the node stale but preserve all its proofs. If a
     // required transported proof is missing, classify it as a new direct
     // root: remove its incoming proofs and mark it stale.
-    let changed = true;
-    while (changed) {
-        changed = false;
-        for (const nodeIdentifier of topologicalSortFromMap(mergedInputsMap)) {
-            const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
-            if (finalFreshness.get(nodeIdStr) !== 'up-to-date') continue;
+    //
+    // A single roots-to-leaves traversal is sufficient because:
+    // - every input of N has already been processed when N is visited;
+    // - if N becomes stale, every structural dependent of N occurs later;
+    // - removing N's incoming proofs does not change any ancestor's state.
+    const topologicalOrder = topologicalSortFromMap(mergedInputsMap);
+    for (const nodeIdentifier of topologicalOrder) {
+        const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+        if (finalFreshness.get(nodeIdStr) !== 'up-to-date') continue;
 
-            const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
-            let staleInput = false;
-            let missingProof = false;
-            for (const depId of requiredInputs) {
-                const depIdStr = nodeIdentifierToString(depId);
-                if (finalFreshness.get(depIdStr) !== 'up-to-date') {
-                    staleInput = true;
-                }
-                const dependents = validMap.get(depIdStr) ?? [];
-                if (!dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
-                    missingProof = true;
-                }
+        const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
+        let staleInput = false;
+        let missingProof = false;
+        for (const depId of requiredInputs) {
+            const depIdStr = nodeIdentifierToString(depId);
+            if (finalFreshness.get(depIdStr) !== 'up-to-date') {
+                staleInput = true;
             }
+            const dependents = validMap.get(depIdStr) ?? [];
+            if (!dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
+                missingProof = true;
+            }
+        }
 
-            if (missingProof) {
-                // Missing proof — classify as direct root regardless of
-                // stale-input state. Remove all incoming proofs so the
-                // node's next pull invokes its computor.
-                finalFreshness.set(nodeIdStr, 'potentially-outdated');
-                dirtyFreshness.add(nodeIdStr);
-                freshnessChanged = true;
-                changed = true;
-                removeIncomingValidity(mergedInputsMap, validMap, nodeIdentifier);
-            } else if (staleInput) {
-                // Propagated staleness — preserve all proofs
-                finalFreshness.set(nodeIdStr, 'potentially-outdated');
-                dirtyFreshness.add(nodeIdStr);
-                freshnessChanged = true;
-                changed = true;
-            }
+        if (missingProof) {
+            // Missing proof — classify as direct root regardless of
+            // stale-input state. Remove all incoming proofs so the
+            // node's next pull invokes its computor.
+            finalFreshness.set(nodeIdStr, 'potentially-outdated');
+            dirtyFreshness.add(nodeIdStr);
+            freshnessChanged = true;
+            removeIncomingValidity(mergedInputsMap, validMap, nodeIdentifier);
+        } else if (staleInput) {
+            // Propagated staleness — preserve all proofs
+            finalFreshness.set(nodeIdStr, 'potentially-outdated');
+            dirtyFreshness.add(nodeIdStr);
+            freshnessChanged = true;
         }
     }
 
