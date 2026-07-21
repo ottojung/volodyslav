@@ -615,7 +615,7 @@ This is a safety property, not a convergence property.
 
 ## 15. Proof Obligations and Specification Labels
 
-**TERM-SYNC-18 (Normative labels):** The following label prefixes are used
+**TERM-SYNC-19 (Normative labels):** The following label prefixes are used
 throughout this specification:
 
 | Prefix | Category |

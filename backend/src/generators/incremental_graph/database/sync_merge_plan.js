@@ -4,7 +4,8 @@ const { makeIdentifierLookup } = require('./identifier_lookup');
 const { IdentifierLookupConflictError } = require('./replica_errors');
 
 const { GRAPH_SCHEME_KEY, parseGraphScheme, semanticInputKeys } = require('./graph_scheme');
-const { normalizeInputEdges, arraysOfNodeIdentifiersEqual } = require('./input_edges');
+const { normalizeInputEdges } = require('./input_edges');
+const { nodeIdentifierToString } = require('./types');
 const { buildTransportedValidityPlan } = require('./sync_merge_validity');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
@@ -31,6 +32,31 @@ function semanticInputsFromScheme(scheme, lookup, identifier) {
  */
 function countDistinctSemanticInputs(inputKeys) {
     return new Set(inputKeys.map(String)).size;
+}
+
+/**
+ * Check whether a source-side node represents the same semantic value version
+ * as the final selected node.
+ *
+ * True when:
+ * 1. sourceId is the actual selected source identifier; or
+ * 2. the source and final nodes have the same semantic key and exactly equal
+ *    modifiedAt (the temporary approximation tracked by #1521).
+ *
+ * Do not inspect or compare ComputedValue.
+ * Do not add persistent metadata, sublevels, clocks, tombstones, or provenance
+ * records.
+ *
+ * @param {object} options
+ * @param {NodeIdentifier} options.sourceId
+ * @param {NodeIdentifier} options.finalId
+ * @param {NodeKeyString} options.nodeKey
+ * @param {Set<NodeKeyString>} options.equalTimestampKeys
+ * @returns {boolean}
+ */
+function sourceRepresentsFinalVersion({ sourceId, finalId, nodeKey, equalTimestampKeys }) {
+    if (nodeIdentifierToString(sourceId) === nodeIdentifierToString(finalId)) return true;
+    return equalTimestampKeys.has(nodeKey);
 }
 
 /**
@@ -96,9 +122,10 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
  * @param {Map<NodeKeyString, 'keep' | 'take'>} selectedSideByKey
  * @param {Map<NodeKeyString, NodeKeyString[]>} selectedInputsByKey
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
+ * @param {Set<NodeKeyString>} equalTimestampKeys
  * @returns {Promise<Set<NodeKeyString>>}
  */
-async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, selectedSideByKey, selectedInputsByKey, finalIdentifierForKey) {
+async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, selectedSideByKey, selectedInputsByKey, finalIdentifierForKey, equalTimestampKeys) {
     /** @type {Map<NodeKeyString, import('./sync_merge_validity').ValueOrigin>} */
     const originByKey = new Map();
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
@@ -126,6 +153,7 @@ async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, 
         finalIdentifierForKey,
         mergedInputsMap,
         valueOriginByKey: originByKey,
+        equalTimestampKeys,
     });
 
     /** @type {Set<NodeKeyString>} */
@@ -163,6 +191,7 @@ async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, 
  * - `finalIdentifierLookup`: bijective final lookup
  * - `mergedInputsMap`: final lowered input edges
  * - `hasIdentifierReconciliation`: whether identifiers changed
+ * - `equalTimestamps`: set of keys with equal modifiedAt across sides
  *
  * @param {SchemaStorage} T
  * @param {SchemaStorage} H
@@ -175,7 +204,8 @@ async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, 
  *   mergedInputsMap: Map<NodeIdentifier, NodeIdentifier[]>,
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
- *   hasIdentifierReconciliation: boolean
+ *   hasIdentifierReconciliation: boolean,
+ *   equalTimestamps: Set<NodeKeyString>
  * }>} 
  */
 async function buildMergePlan(T, H, targetLookup, hostLookup) {
@@ -260,7 +290,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     }
 
     /** @type {Map<NodeKeyString, Set<NodeKeyString>>} */
-    const selectedDependentsByKey = new Map();
+        const selectedDependentsByKey = new Map();
     for (const [nodeKey, inputKeys] of selectedInputsByKey) {
         for (const inputKey of inputKeys) {
             const dependents = selectedDependentsByKey.get(inputKey) ?? new Set();
@@ -269,18 +299,18 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
         const selectedSide = selectedSideByKey.get(nodeKey);
         const lookup = selectedSide === 'take' ? hostLookup : targetLookup;
-        const sourceInputIds = inputKeys.map((inputKey) => {
-            const inputId = lookup.keyToId.get(String(inputKey));
-            if (inputId === undefined) throw new IdentifierLookupConflictError(`Missing source input identifier for ${String(inputKey)}`);
-            return inputId;
-        });
-        const finalInputIds = inputKeys.map((inputKey) => {
-            const inputId = provisionalIdentifierForKey.get(inputKey);
-            if (inputId === undefined) throw new IdentifierLookupConflictError(`Missing candidate input identifier for ${String(inputKey)}`);
-            return inputId;
-        });
-        if (!arraysOfNodeIdentifiersEqual(normalizeInputEdges(sourceInputIds), normalizeInputEdges(finalInputIds))) {
-            directInvalidationCandidateKeys.add(nodeKey);
+        const distinctInputKeys = [...new Set(inputKeys)];
+        for (const inputKey of distinctInputKeys) {
+            const sourceId = lookup.keyToId.get(String(inputKey));
+            const finalId = provisionalIdentifierForKey.get(inputKey);
+            if (sourceId === undefined || finalId === undefined) {
+                directInvalidationCandidateKeys.add(nodeKey);
+                break;
+            }
+            if (!sourceRepresentsFinalVersion({ sourceId, finalId, nodeKey: inputKey, equalTimestampKeys: equalTimestamps })) {
+                directInvalidationCandidateKeys.add(nodeKey);
+                break;
+            }
         }
     }
 
@@ -305,7 +335,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     let changed = true;
     while (changed) {
         const missingProofRoots = await findMissingTransportedProofRoots(
-            T, H, targetLookup, hostLookup, selectedSideByKey, selectedInputsByKey, finalIdentifierForKey
+            T, H, targetLookup, hostLookup, selectedSideByKey, selectedInputsByKey, finalIdentifierForKey, equalTimestamps
         );
         for (const nodeKey of missingProofRoots) directInvalidationCandidateKeys.add(nodeKey);
         const classified = classifyInvalidationCandidates(directInvalidationCandidateKeys, selectedInputsByKey);
@@ -359,6 +389,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
+        equalTimestamps,
     };
 }
 

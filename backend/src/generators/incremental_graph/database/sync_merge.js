@@ -292,6 +292,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
+        equalTimestamps,
     } = await buildMergePlan(
         targetStorage,
         hostStorage,
@@ -340,6 +341,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap,
         valueOriginByKey,
         directInvalidationRoots,
+        equalTimestampKeys: equalTimestamps,
     });
     const hasChanges = hasSemanticChanges || graphStateChanged;
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
