@@ -103,7 +103,7 @@ Example: `inputPositions(N) = [A, A, B]` means the computor receives `[value(A),
 
 **inputEdges(N)** — the normalized structural dependency-edge list. Duplicate input positions
 collapse to one edge, preserving first occurrence for deterministic ordering. This list drives the
-`valid` relation (via proof restoration in the `addValidityFlags` helper).
+`valid` relation (via proof restoration in the `addIncomingValidity` helper).
 
 Example: `inputPositions(N) = [A, A, B]` → `inputEdges(N) = [A, B]`.
 
