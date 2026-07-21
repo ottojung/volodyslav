@@ -154,9 +154,19 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
         }
 
         // Preserve old outgoing proofs when the input's stored semantic value
-        // survives — this includes keep, override, and both explicit and
-        // propagated invalidations (invalidation changes freshness, not value).
+        // survives — this applies to keep, override, and propagated
+        // invalidations (invalidation changes freshness, not value).
         // Delete nodes have no surviving value; create nodes have no old proof.
+        // Explicit invalidation is excluded above.
+        //
+        // A preexisting stale node carried through keep or override loses its
+        // incoming proofs: persisted storage does not encode whether its
+        // staleness was explicit or propagated, so we conservatively treat it
+        // as a direct invalidation root.
+        const nodeFreshness = await finalFreshness(prevStorage, decisions, nodeIdentifier);
+        const isKeepOrOverride = decision.kind === "keep" || decision.kind === "override";
+        if (isKeepOrOverride && nodeFreshness === "potentially-outdated") continue;
+
         /** @param {import('./migration_storage').Decision | undefined} d @returns {boolean} */
         const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create";
         const oldEdges = deriveInputEdges(oldScheme, oldLookup, nodeIdentifier);
