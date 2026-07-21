@@ -35,6 +35,8 @@ function countDistinctSemanticInputs(inputKeys) {
 
 /**
  * Classify direct invalidation candidates under the temporary pairwise policy.
+ * Returns a set of keys that should be invalidated (not deleted).
+ * Deletion roots are computed separately via arity check.
  * @param {Set<NodeKeyString>} directInvalidationCandidateKeys
  * @param {Map<NodeKeyString, NodeKeyString[]>} selectedInputsByKey
  * @returns {{ hardInvalidationKeys: Set<NodeKeyString>, deletionRootKeys: Set<NodeKeyString> }}
@@ -45,14 +47,6 @@ function classifyInvalidationCandidates(directInvalidationCandidateKeys, selecte
     /** @type {Set<NodeKeyString>} */
     const deletionRootKeys = new Set();
     for (const nodeKey of directInvalidationCandidateKeys) {
-        // FIXME(#1521): This arity-based invalidate-vs-delete rule is deliberately
-        // conservative. The current pairwise database state does not retain exact
-        // historical input-version provenance, so it cannot determine whether a
-        // multi-input oldValue belongs to one coherent history. Until the graph
-        // journal provides that provenance, direct hard-invalidation roots with at
-        // most one distinct semantic input retain oldValue, while multi-input roots
-        // are deleted. Replace this classifier with journal-backed coherent-history
-        // analysis when #1521 is implemented.
         if (countDistinctSemanticInputs(selectedInputsByKey.get(nodeKey) ?? []) > 1) {
             deletionRootKeys.add(nodeKey);
         } else {
@@ -153,20 +147,24 @@ async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, 
 /**
  * Compute the semantic merge plan, then lower its graph back to final storage identifiers.
  *
+ * Returns the canonical planning result:
+ * - `selectedSideByKey`: per-node source selection (keep or take)
+ * - `selectedInputsByKey`: per-node selected semantic input keys
+ * - `outcomeByKey`: per-node final outcome (keep, take, invalidate, delete)
+ * - `finalIdentifierForKey`: surviving node identifiers
+ * - `finalIdentifierLookup`: bijective final lookup
+ * - `mergedInputsMap`: final lowered input edges
+ * - `hasIdentifierReconciliation`: whether identifiers changed
+ *
  * @param {SchemaStorage} T
  * @param {SchemaStorage} H
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
  * @returns {Promise<{
- *   initialDecisions: Map<NodeKeyString, 'keep' | 'take'>,
  *   selectedSideByKey: Map<NodeKeyString, 'keep' | 'take'>,
  *   selectedInputsByKey: Map<NodeKeyString, NodeKeyString[]>,
- *   directInvalidationCandidateKeys: Set<NodeKeyString>,
- *   hardInvalidationKeys: Set<NodeKeyString>,
- *   deletionRootKeys: Set<NodeKeyString>,
- *   deletedMaterializationKeys: Set<NodeKeyString>,
+ *   outcomeByKey: Map<NodeKeyString, 'keep' | 'take' | 'invalidate' | 'delete'>,
  *   mergedInputsMap: Map<NodeIdentifier, NodeIdentifier[]>,
- *   decisions: Map<NodeKeyString, 'keep' | 'take' | 'invalidate' | 'delete'>,
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
  *   hasIdentifierReconciliation: boolean
@@ -255,8 +253,6 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
 
     /** @type {Map<NodeKeyString, Set<NodeKeyString>>} */
     const selectedDependentsByKey = new Map();
-    /** @type {Set<NodeKeyString>} */
-    const directlyReloweredNodes = new Set();
     for (const [nodeKey, inputKeys] of selectedInputsByKey) {
         for (const inputKey of inputKeys) {
             const dependents = selectedDependentsByKey.get(inputKey) ?? new Set();
@@ -276,7 +272,6 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             return inputId;
         });
         if (!arraysOfNodeIdentifiersEqual(normalizeInputEdges(sourceInputIds), normalizeInputEdges(finalInputIds))) {
-            directlyReloweredNodes.add(nodeKey);
             directInvalidationCandidateKeys.add(nodeKey);
         }
     }
@@ -295,10 +290,6 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     let finalIdentifierForKey = new Map(provisionalIdentifierForKey);
     /** @type {Set<NodeKeyString>} */
     let deletedMaterializationKeys = new Set();
-    /** @type {Set<NodeKeyString>} */
-    let hardInvalidationKeys = new Set();
-    /** @type {Set<NodeKeyString>} */
-    let deletionRootKeys = new Set();
     let changed = true;
     while (changed) {
         const missingProofRoots = await findMissingTransportedProofRoots(
@@ -306,9 +297,8 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         );
         for (const nodeKey of missingProofRoots) directInvalidationCandidateKeys.add(nodeKey);
         const classified = classifyInvalidationCandidates(directInvalidationCandidateKeys, selectedInputsByKey);
-        deletionRootKeys = classified.deletionRootKeys;
+        const deletionRootKeys = classified.deletionRootKeys;
         deletedMaterializationKeys = expandStructuralDeletionClosure(deletionRootKeys, selectedDependentsByKey);
-        hardInvalidationKeys = new Set([...classified.hardInvalidationKeys].filter(key => !deletedMaterializationKeys.has(key)));
         const nextFinalIdentifierForKey = new Map();
         for (const [nodeKey, identifier] of provisionalIdentifierForKey) {
             if (!deletedMaterializationKeys.has(nodeKey)) nextFinalIdentifierForKey.set(nodeKey, identifier);
@@ -318,11 +308,11 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     }
 
     /** @type {Map<NodeKeyString, 'keep' | 'take' | 'invalidate' | 'delete'>} */
-    const decisions = new Map();
+    const outcomeByKey = new Map();
     for (const [nodeKey, selectedSide] of selectedSideByKey) {
-        if (deletedMaterializationKeys.has(nodeKey)) decisions.set(nodeKey, 'delete');
-        else if (hardInvalidationKeys.has(nodeKey)) decisions.set(nodeKey, 'invalidate');
-        else decisions.set(nodeKey, selectedSide);
+        if (deletedMaterializationKeys.has(nodeKey)) outcomeByKey.set(nodeKey, 'delete');
+        else if (directInvalidationCandidateKeys.has(nodeKey) && !deletedMaterializationKeys.has(nodeKey)) outcomeByKey.set(nodeKey, 'invalidate');
+        else outcomeByKey.set(nodeKey, selectedSide);
     }
 
     /** @type {Array<[NodeIdentifier, NodeKeyString]>} */
@@ -350,15 +340,10 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     }
 
     return {
-        initialDecisions: selectedSideByKey,
         selectedSideByKey,
         selectedInputsByKey,
-        directInvalidationCandidateKeys,
-        hardInvalidationKeys,
-        deletionRootKeys,
-        deletedMaterializationKeys,
+        outcomeByKey,
         mergedInputsMap,
-        decisions,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,

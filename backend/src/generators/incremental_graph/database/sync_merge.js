@@ -286,10 +286,9 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const targetLastNodeIndex = rootDatabase.getLastNodeIndex();
 
     const {
-        initialDecisions,
+        selectedSideByKey,
         mergedInputsMap,
-        decisions,
-        hardInvalidationKeys,
+        outcomeByKey,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
@@ -305,18 +304,17 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         hostStorage,
         targetLookup,
         hostLookup,
-        initialDecisions,
-        decisions,
-        hardInvalidationKeys,
+        selectedSideByKey,
+        outcomeByKey,
         finalIdentifierForKey
     );
 
-    const summary = summarizeDecisions(decisions.entries(), targetLookup);
+    const summary = summarizeDecisions(outcomeByKey.entries(), targetLookup);
     const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation;
     const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
     const valueOriginByKey = await buildValueOriginByKey(
-        initialDecisions,
-        decisions,
+        selectedSideByKey,
+        outcomeByKey,
         targetLookup,
         hostLookup,
         finalIdentifierForKey
@@ -324,8 +322,8 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
     /** @type {Set<NodeIdentifier>} */
     const directInvalidationRoots = new Set();
-    for (const nodeKey of decisions.keys()) {
-        if (!hardInvalidationKeys.has(nodeKey)) continue;
+    for (const [nodeKey, outcome] of outcomeByKey) {
+        if (outcome !== 'invalidate') continue;
         const finalId = finalIdentifierForKey.get(nodeKey);
         if (finalId !== undefined) {
             directInvalidationRoots.add(finalId);

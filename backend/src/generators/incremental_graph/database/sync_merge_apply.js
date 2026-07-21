@@ -6,7 +6,7 @@ const { ReplicaBatchWriter } = require('./sync_merge_validity');
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {'keep' | 'take' | 'invalidate' | 'delete'} MergeDecision */
+/** @typedef {'keep' | 'take' | 'invalidate' | 'delete'} MergeOutcome */
 
 /**
  * Apply semantic decisions by copying the selected side into the final storage
@@ -15,9 +15,8 @@ const { ReplicaBatchWriter } = require('./sync_merge_validity');
  * @param {SchemaStorage} hostStorage
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
- * @param {Map<NodeKeyString, 'keep' | 'take'>} initialDecisions
- * @param {Map<NodeKeyString, MergeDecision>} decisions
- * @param {Set<NodeKeyString>} hardInvalidationKeys
+ * @param {Map<NodeKeyString, 'keep' | 'take'>} selectedSideByKey
+ * @param {Map<NodeKeyString, MergeOutcome>} outcomeByKey
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
  * @returns {Promise<void>}
  */
@@ -26,20 +25,19 @@ async function applyNodeDecisions(
     hostStorage,
     targetLookup,
     hostLookup,
-    initialDecisions,
-    decisions,
-    hardInvalidationKeys,
+    selectedSideByKey,
+    outcomeByKey,
     finalIdentifierForKey
 ) {
     const writer = new ReplicaBatchWriter(targetStorage);
 
-    for (const [nodeKey, decision] of decisions) {
-        const initial = initialDecisions.get(nodeKey);
+    for (const [nodeKey, outcome] of outcomeByKey) {
+        const initial = selectedSideByKey.get(nodeKey);
         const destinationId = finalIdentifierForKey.get(nodeKey);
         if (initial === undefined) {
             throw new IdentifierLookupConflictError(`Incomplete merge plan for ${String(nodeKey)}`);
         }
-        if (decision === 'delete') {
+        if (outcome === 'delete') {
             const targetId = targetLookup.keyToId.get(String(nodeKey));
             if (targetId !== undefined) {
                 await writer.pushAll(buildDeleteNodeOps(targetStorage, targetId));
@@ -49,20 +47,13 @@ async function applyNodeDecisions(
         if (destinationId === undefined) {
             throw new IdentifierLookupConflictError(`Surviving merge plan has no final identifier for ${String(nodeKey)}`);
         }
-        const structuralSide = decision === 'invalidate' ? initial : decision;
+        const structuralSide = outcome === 'invalidate' ? initial : outcome;
         const useHost = structuralSide === 'take';
         const sourceLookup = useHost ? hostLookup : targetLookup;
         const sourceId = sourceLookup.keyToId.get(String(nodeKey));
         if (sourceId === undefined) throw new IdentifierLookupConflictError(`Missing source identifier for ${String(nodeKey)}`);
 
-        if (!useHost && decision === 'keep' && sourceId === destinationId) {
-            if (hardInvalidationKeys.has(nodeKey)) {
-                await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
-            }
-            continue;
-        }
-
-        if (!useHost && decision === 'invalidate' && sourceId === destinationId) {
+        if (!useHost && outcome === 'invalidate' && sourceId === destinationId) {
             await writer.push(targetStorage.freshness.putOp(destinationId, 'potentially-outdated'));
             continue;
         }
@@ -77,7 +68,7 @@ async function applyNodeDecisions(
         if (sourceFreshness !== 'up-to-date' && sourceFreshness !== 'potentially-outdated') {
             throw new IdentifierLookupConflictError(`Source materialized node ${String(sourceId)} has invalid freshness ${String(sourceFreshness)}`);
         }
-        const finalFreshness = hardInvalidationKeys.has(nodeKey)
+        const finalFreshness = outcome === 'invalidate'
             ? 'potentially-outdated'
             : sourceFreshness;
         const finalTimestamps = {
@@ -111,23 +102,23 @@ async function applyNodeDecisions(
 }
 
 /**
- * @param {Iterable<[NodeKeyString, MergeDecision]>} decisions
+ * @param {Iterable<[NodeKeyString, MergeOutcome]>} outcomes
  * @param {IdentifierLookup} targetLookup
  * @returns {{ kept: number, taken: number, invalidated: number, deleted: number, hasChanges: boolean }}
  */
-function summarizeDecisions(decisions, targetLookup) {
-    const decisionEntries = Array.from(decisions);
+function summarizeDecisions(outcomes, targetLookup) {
+    const outcomeEntries = Array.from(outcomes);
     let kept = 0;
     let taken = 0;
     let invalidated = 0;
     let deleted = 0;
 
-    for (const [, decision] of decisionEntries) {
-        if (decision === 'keep') {
+    for (const [, outcome] of outcomeEntries) {
+        if (outcome === 'keep') {
             kept += 1;
-        } else if (decision === 'take') {
+        } else if (outcome === 'take') {
             taken += 1;
-        } else if (decision === 'invalidate') {
+        } else if (outcome === 'invalidate') {
             invalidated += 1;
         } else {
             deleted += 1;
@@ -139,7 +130,7 @@ function summarizeDecisions(decisions, targetLookup) {
         taken,
         invalidated,
         deleted,
-        hasChanges: taken + invalidated > 0 || decisionEntries.some(([nodeKey, decision]) => decision === 'delete' && targetLookup.keyToId.has(String(nodeKey))),
+        hasChanges: taken + invalidated > 0 || outcomeEntries.some(([nodeKey, outcome]) => outcome === 'delete' && targetLookup.keyToId.has(String(nodeKey))),
     };
 }
 

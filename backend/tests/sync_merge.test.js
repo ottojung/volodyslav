@@ -1942,12 +1942,12 @@ describe('mergeHostIntoReplica', () => {
             await targetStorage.freshness.put(finalA, 'potentially-outdated');
             await targetStorage.freshness.put(finalB, 'potentially-outdated');
 
-            const initialDecisions = new Map([[keyA, 'keep'], [keyB, 'keep']]);
+            const selectedSideByKey = new Map([[keyA, 'keep'], [keyB, 'keep']]);
             const decisions = new Map([[keyA, 'keep'], [keyB, 'delete']]);
             const finalIdentifierForKey = new Map([[keyA, finalA]]);
 
             const valueOriginByKey = await buildValueOriginByKey(
-                initialDecisions,
+                selectedSideByKey,
                 decisions,
                 targetLookup,
                 hostLookup,
@@ -3490,15 +3490,16 @@ describe('mergeHostIntoReplica', () => {
 
     // ── End-to-end sync-to-pull integration tests ──────────────────────
 
-    test('pull rematerializes a directly relowered node after sync deletion', async () => {
-        // Production sequence:
-        // 1. Target C (identifier C_target) survives as the final identifier.
-        // 2. Host A was computed against host C (C_host), a different identifier.
-        // 3. Synchronization deletes A (directly relowered) because its
-        //    source input differs from its final input.
-        // 4. pull(A) runs with no committed identifier (deleted from lookup).
-        // 5. A is rematerialized using the surviving target C.
-        // 6. A's computor runs exactly once.
+    test('sync hard-invalidates one-input directly relowered node, pull passes retained value as oldValue', async () => {
+        // A → B (one distinct semantic input).
+        // Target C (C_target) is the final identifier for keyC.
+        // Host A was computed against host C (C_host), a different identifier.
+        // Synchronization selects local C (target-newer) and host A (host-only).
+        // A is directly relowered because its source input (C_host) differs
+        // from its final input (C_target) → hard-invalidated (one input).
+        // After sync: A retained with value, freshness = 'potentially-outdated',
+        // identifier unchanged.
+        // pull(A): computor receives final selected C value and oldValue = retained A.
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -3523,13 +3524,10 @@ describe('mergeHostIntoReplica', () => {
             const H = db.hostnameSchemaStorage(hostname);
             await writeGraphScheme(H);
             await writeNode(H, hostCId, TS1, { source: 'host C' });
-            await writeNode(H, hostAId, TS1, { source: 'A computed from host C' });
+            await writeNode(H, hostAId, TS2, { source: 'A computed from host C' });
             await writeIdentifierLookup(H, [[hostCId, keyC], [hostAId, keyA]]);
             await H.valid.put(hostCId, [hostAId]);
 
-            // Merge: C is force-keep (target TS1 >= host TS1), A is directly
-            // relowered because its source input (hostCId) differs from final
-            // input (targetCId).
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             const T = db.getSchemaStorage();
@@ -3541,12 +3539,10 @@ describe('mergeHostIntoReplica', () => {
             expect(await T.values.get(targetCId)).toEqual(targetCValue);
             expect(await T.freshness.get(targetCId)).toBe('up-to-date');
 
-            // Verify A's key is not in the final lookup (deleted materialization).
+            // A's key is present in the final lookup (retained, not deleted).
             const finalLookup = makeIdentifierLookup(await T.global.get(IDENTIFIERS_KEY));
-            expect(finalLookup.keyToId.has(String(keyA))).toBe(true);
-            expect(finalLookup.keyToId.has(String(keyC))).toBe(true);
+            expect(finalLookup.keyToId.get(String(keyA))).toBe(hostAId);
 
-            // Write exact graph_scheme matching the nodeDefs below.
             await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
                 format: 1,
                 nodes: [
@@ -3557,7 +3553,10 @@ describe('mergeHostIntoReplica', () => {
 
             await db.initializeActiveIdentifierLookup();
 
-            const computeA = jest.fn(async ([input]) => ({ source: `recomputed from ${input.source}` }));
+            const retainedValue = { source: 'A computed from host C' };
+            const computeA = jest.fn(async ([inputC], oldValue) => {
+                return { source: `recomputed from ${inputC.source}`, oldValue: oldValue?.source };
+            });
             const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: 'c_counter_collision',
@@ -3575,28 +3574,538 @@ describe('mergeHostIntoReplica', () => {
                 },
             ]);
 
-            await expect(graph.pull('a_counter_collision')).resolves.toEqual({ source: 'recomputed from target C' });
+            await expect(graph.pull('a_counter_collision')).resolves.toEqual({
+                source: 'recomputed from target C',
+                oldValue: 'A computed from host C',
+            });
             expect(computeA).toHaveBeenCalledTimes(1);
+            // Computor received the exact retained selected host A value as oldValue.
+            expect(computeA.mock.calls[0][0]).toEqual([targetCValue]);
+            expect(computeA.mock.calls[0][1]).toEqual(retainedValue);
 
-            // After pull, A is rematerialized with a fresh identifier.
+            // Identifier remains unchanged (not a fresh allocation).
             const afterLookup = makeIdentifierLookup(await T.global.get(IDENTIFIERS_KEY));
-            const freshAId = afterLookup.keyToId.get(String(keyA));
-            expect(freshAId).toBeDefined();
-            expect(String(freshAId)).toBe(String(hostAId));
-            expect(await T.freshness.get(freshAId)).toBe('up-to-date');
-            expect(await T.values.get(freshAId)).toEqual({ source: 'recomputed from target C' });
+            const afterAId = afterLookup.keyToId.get(String(keyA));
+            expect(afterAId).toBe(hostAId);
+            expect(await T.freshness.get(afterAId)).toBe('up-to-date');
+            expect(await T.values.get(afterAId)).toEqual({
+                source: 'recomputed from target C',
+                oldValue: 'A computed from host C',
+            });
         } finally {
             if (db) await db.close();
         }
     });
 
-    test('pull rematerializes transitively deleted dependents in dependency order', async () => {
-        // C → A → D chain where C is force-kept, A is directly relowered,
-        // and D is transitively deleted (depends on deleted A).
-        // 1. Target C (C_target) survives.
-        // 2. Sync deletes A (directly relowered) and D (transitive dependent).
-        // 3. Pull D recomputes A first, then D, each exactly once.
-        // 4. Final state satisfies record-domain equality and dependency closure.
+    test('sync hard-invalidates one-input node with local A newer, host B newer', async () => {
+        // A → B: local A newer (force-keep), host B newer (force-take).
+        // Opposite ancestry makes B a direct invalidation candidate.
+        // B has one distinct semantic input (A), so hard-invalidated.
+        // pull(B): computor receives selected host B value as oldValue.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const customScheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+                ],
+            };
+            const schemeStr = JSON.stringify(customScheme);
+
+            const nodeA = NODE_A;
+            const nodeB = NODE_B;
+            const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+            const localAValue = { source: 'local A' };
+            const hostBValue = { source: 'host B' };
+
+            const L = db.schemaStorageForReplica('x');
+            await L.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            // Local A at TS2 (newer), local B at TS1 (older)
+            await writeNode(L, nodeA, TS2, localAValue);
+            await writeNode(L, nodeB, TS1, { source: 'local B' });
+            await L.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            // Host A at TS1 (older), host B at TS3 (newer)
+            await writeNode(H, nodeA, TS1, { source: 'host A' });
+            await writeNode(H, nodeB, TS3, hostBValue);
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
+            await H.valid.put(nodeA, [nodeB]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // A is kept (local-newer), B is taken (host-newer) and hard-invalidated
+            // (keep-taint through A + take-taint from B itself).
+            expect(await T.values.get(nodeA)).toEqual(localAValue);
+            expect(await T.freshness.get(nodeA)).toBe('up-to-date');
+            expect(await T.values.get(nodeB)).toEqual(hostBValue);
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+
+            // Open graph on the merged state and pull B.
+            // Write scheme that describes A and B.
+            await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+                ],
+            }));
+            await db.initializeActiveIdentifierLookup();
+
+            const computeB = jest.fn(async ([inputA], oldValue) => {
+                return { value: 'recomputed', oldValue: oldValue?.source };
+            });
+            const graph = await createIncrementalGraph(capabilities, db, [
+                { output: 'A', inputs: [], computor: async () => localAValue, isDeterministic: true, hasSideEffects: false },
+                { output: 'B', inputs: ['A'], computor: computeB, isDeterministic: true, hasSideEffects: false },
+            ]);
+
+            await expect(graph.pull('B')).resolves.toEqual({ value: 'recomputed', oldValue: 'host B' });
+            expect(computeB).toHaveBeenCalledTimes(1);
+            expect(computeB.mock.calls[0][0]).toEqual([localAValue]);
+            expect(computeB.mock.calls[0][1]).toEqual(hostBValue);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('sync hard-invalidates one-input node with host A newer, local B newer', async () => {
+        // A → B: host A newer (force-take), local B newer (force-keep).
+        // Opposite ancestry makes B a direct invalidation candidate.
+        // B has one distinct semantic input (A), so hard-invalidated.
+        // pull(B): computor receives selected local B value as oldValue.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const customScheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+                ],
+            };
+            const schemeStr = JSON.stringify(customScheme);
+
+            const nodeA = nodeIdentifierFromString('51-abcdefghi');
+            const nodeB = nodeIdentifierFromString('52-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+            const hostAValue = { source: 'host A' };
+            const localBValue = { source: 'local B' };
+
+            const L = db.schemaStorageForReplica('x');
+            await L.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            // Local A at TS1 (older), local B at TS3 (newer)
+            await writeNode(L, nodeA, TS1, { source: 'local A' });
+            await writeNode(L, nodeB, TS3, localBValue);
+            await L.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            // Host A at TS2 (newer), host B at TS1 (older)
+            await writeNode(H, nodeA, TS2, hostAValue);
+            await writeNode(H, nodeB, TS1, { source: 'host B' });
+            await writeIdentifierLookup(H, [[nodeA, keyA], [nodeB, keyB]]);
+            await H.valid.put(nodeA, [nodeB]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // A is taken (host-newer), B is kept (local-newer) and hard-invalidated
+            // (take-taint through A + keep-taint from B itself).
+            expect(await T.values.get(nodeA)).toEqual(hostAValue);
+            expect(await T.freshness.get(nodeA)).toBe('up-to-date');
+            expect(await T.values.get(nodeB)).toEqual(localBValue);
+            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+
+            await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [{ head: "A", args: [] }] },
+                ],
+            }));
+            await db.initializeActiveIdentifierLookup();
+
+            const computeB = jest.fn(async ([inputA], oldValue) => {
+                return { value: 'recomputed', oldValue: oldValue?.source };
+            });
+            const graph = await createIncrementalGraph(capabilities, db, [
+                { output: 'A', inputs: [], computor: async () => hostAValue, isDeterministic: true, hasSideEffects: false },
+                { output: 'B', inputs: ['A'], computor: computeB, isDeterministic: true, hasSideEffects: false },
+            ]);
+
+            await expect(graph.pull('B')).resolves.toEqual({ value: 'recomputed', oldValue: 'local B' });
+            expect(computeB).toHaveBeenCalledTimes(1);
+            expect(computeB.mock.calls[0][0]).toEqual([hostAValue]);
+            expect(computeB.mock.calls[0][1]).toEqual(localBValue);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('sync hard-invalidates X(A,A) single distinct input even with repeated argument', async () => {
+        // X has arguments (A, A) → one distinct semantic input.
+        // Direct invalidation candidate must be hard-invalidated, not deleted.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const customScheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "X", arity: 0, inputTemplates: [{ head: "A", args: [] }, { head: "A", args: [] }] },
+                ],
+            };
+            const schemeStr = JSON.stringify(customScheme);
+
+            const targetAId = nodeIdentifierFromString('61-abcdefghi');
+            const hostAId = nodeIdentifierFromString('62-abcdefghi');
+            const hostXId = nodeIdentifierFromString('63-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+            const keyX = stringToNodeKeyString('{"head":"X","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await L.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            await writeNode(L, targetAId, TS2, { source: 'target A' });
+            await writeIdentifierLookup(L, [[targetAId, keyA]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            await writeNode(H, hostAId, TS1, { source: 'host A' });
+            await writeNode(H, hostXId, TS2, { source: 'X from host' });
+            await writeIdentifierLookup(H, [[hostAId, keyA], [hostXId, keyX]]);
+            await H.valid.put(hostAId, [hostXId]);
+
+            // X is taken (host TS2 > target has no X). X has one distinct
+            // semantic input (A). Merge: A is kept (target TS2 > host TS1).
+            // X is directly relowered because source input (hostAId) differs
+            // from final input (targetAId). One distinct input → hard-invalidated.
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // hostXId retained (hard-invalidated, one distinct input).
+            expect(await T.values.get(hostXId)).toEqual({ source: 'X from host' });
+            expect(await T.freshness.get(hostXId)).toBe('potentially-outdated');
+            expect(await T.timestamps.get(hostXId)).toBeDefined();
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('sync deletes multi-input direct invalidation root D(A,B), pull passes undefined oldValue', async () => {
+        // A ─┐
+        //    ├→ D
+        // B ─┘
+        //
+        // D is a direct invalidation candidate with two distinct semantic
+        // inputs → deleted. After sync: no lookup entry, no cached value,
+        // no freshness, no timestamp.
+        // pull(D): computor receives final selected A and B values,
+        // oldValue === undefined.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const customScheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [] },
+                    { head: "D", arity: 0, inputTemplates: [{ head: "A", args: [] }, { head: "B", args: [] }] },
+                ],
+            };
+            const schemeStr = JSON.stringify(customScheme);
+
+            const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+            const keyD = stringToNodeKeyString('{"head":"D","args":[]}');
+
+            // Host has A, B, and D. Target has only A and B (D not on target).
+            // D is taken from host but directly relowered because its inputs
+            // use host identifiers while final A uses target identifier.
+            // Two distinct semantic inputs → deleted.
+            const targetAId = nodeIdentifierFromString('71-abcdefghi');
+            const hostAId = nodeIdentifierFromString('72-abcdefghi');
+            const hostBId = nodeIdentifierFromString('73-abcdefghi');
+            const hostDId = nodeIdentifierFromString('74-abcdefghi');
+            const targetAValue = { source: 'target A' };
+
+            const L = db.schemaStorageForReplica('x');
+            await L.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            await writeNode(L, targetAId, TS2, targetAValue);
+            await writeIdentifierLookup(L, [[targetAId, keyA]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            await writeNode(H, hostAId, TS1, { source: 'host A' });
+            await writeNode(H, hostBId, TS2, { source: 'host B' });
+            await writeNode(H, hostDId, TS1, { source: 'D from host' });
+            await writeIdentifierLookup(H, [
+                [hostAId, keyA],
+                [hostBId, keyB],
+                [hostDId, keyD],
+            ]);
+            await H.valid.put(hostAId, [hostDId]);
+            await H.valid.put(hostBId, [hostDId]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // A is kept (target TS2 > host TS1), B is taken (host-only),
+            // D is deleted (two distinct inputs, directly relowered).
+            expect(await T.values.get(targetAId)).toEqual(targetAValue);
+            expect(await T.freshness.get(targetAId)).toBe('up-to-date');
+            expect(await T.values.get(hostBId)).toEqual({ source: 'host B' });
+            expect(await T.freshness.get(hostBId)).toBe('up-to-date');
+
+            // D must be fully deleted: no lookup, no value, no freshness, no timestamp.
+            const finalLookup = makeIdentifierLookup(await T.global.get(IDENTIFIERS_KEY));
+            expect(finalLookup.keyToId.has(String(keyD))).toBe(false);
+            expect(await T.values.get(hostDId)).toBeUndefined();
+            expect(await T.freshness.get(hostDId)).toBeUndefined();
+            expect(await T.timestamps.get(hostDId)).toBeUndefined();
+
+            // Set up graph scheme for pull test.
+            await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [] },
+                    { head: "D", arity: 0, inputTemplates: [{ head: "A", args: [] }, { head: "B", args: [] }] },
+                ],
+            }));
+            await db.initializeActiveIdentifierLookup();
+
+            const computeD = jest.fn(async ([inputA, inputB], oldValue) => {
+                return { source: `D from ${inputA.source} and ${inputB.source}`, oldValue };
+            });
+            const graph = await createIncrementalGraph(capabilities, db, [
+                { output: 'A', inputs: [], computor: async () => targetAValue, isDeterministic: true, hasSideEffects: false },
+                { output: 'B', inputs: [], computor: async () => ({ source: 'host B' }), isDeterministic: true, hasSideEffects: false },
+                { output: 'D', inputs: ['A', 'B'], computor: computeD, isDeterministic: true, hasSideEffects: false },
+            ]);
+
+            await expect(graph.pull('D')).resolves.toEqual({
+                source: 'D from target A and host B',
+                oldValue: undefined,
+            });
+            expect(computeD).toHaveBeenCalledTimes(1);
+            expect(computeD.mock.calls[0][0]).toEqual([targetAValue, { source: 'host B' }]);
+            expect(computeD.mock.calls[0][1]).toBeUndefined();
+
+            // D is materialized through the normal new-materialization path.
+            const afterLookup = makeIdentifierLookup(await T.global.get(IDENTIFIERS_KEY));
+            expect(afterLookup.keyToId.has(String(keyD))).toBe(true);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('sync deletes multi-input D, pull with makeUnchanged rejects because no oldValue retained', async () => {
+        // A ─┐
+        //    ├→ D
+        // B ─┘
+        //
+        // D is deleted (multi-input). Computor returns makeUnchanged().
+        // Pull must reject because there is no retained old value.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const customScheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [] },
+                    { head: "D", arity: 0, inputTemplates: [{ head: "A", args: [] }, { head: "B", args: [] }] },
+                ],
+            };
+            const schemeStr = JSON.stringify(customScheme);
+
+            const targetAId = nodeIdentifierFromString('81-abcdefghi');
+            const hostAId = nodeIdentifierFromString('82-abcdefghi');
+            const hostBId = nodeIdentifierFromString('83-abcdefghi');
+            const hostDId = nodeIdentifierFromString('84-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+            const keyD = stringToNodeKeyString('{"head":"D","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await L.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            await writeNode(L, targetAId, TS2, { source: 'target A' });
+            await writeIdentifierLookup(L, [[targetAId, keyA]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            await writeNode(H, hostAId, TS1, { source: 'host A' });
+            await writeNode(H, hostBId, TS2, { source: 'host B' });
+            await writeNode(H, hostDId, TS1, { source: 'D' });
+            await writeIdentifierLookup(H, [
+                [hostAId, keyA],
+                [hostBId, keyB],
+                [hostDId, keyD],
+            ]);
+            await H.valid.put(hostAId, [hostDId]);
+            await H.valid.put(hostBId, [hostDId]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            // Set up graph for pull test.
+            const T = db.getSchemaStorage();
+            await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [] },
+                    { head: "D", arity: 0, inputTemplates: [{ head: "A", args: [] }, { head: "B", args: [] }] },
+                ],
+            }));
+            await db.initializeActiveIdentifierLookup();
+
+            const computeD = jest.fn(async () => makeUnchanged());
+            const graph = await createIncrementalGraph(capabilities, db, [
+                { output: 'A', inputs: [], computor: async () => ({ source: 'target A' }), isDeterministic: true, hasSideEffects: false },
+                { output: 'B', inputs: [], computor: async () => ({ source: 'host B' }), isDeterministic: true, hasSideEffects: false },
+                { output: 'D', inputs: ['A', 'B'], computor: computeD, isDeterministic: true, hasSideEffects: false },
+            ]);
+
+            await expect(graph.pull('D')).rejects.toThrow();
+            expect(computeD).toHaveBeenCalledTimes(1);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('sync deletes transitive closure of multi-input root A,B->D->E->F', async () => {
+        // A ─┐
+        //    ├→ D → E → F
+        // B ─┘
+        //
+        // D has two distinct inputs → deleted.
+        // E and F are transitive materialized dependents → deleted.
+        // A, B, and unrelated nodes survive.
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+            await writeGraphScheme(db.schemaStorageForReplica('x'));
+            const logger = makeLogger();
+            const hostname = 'peer';
+            await db.setGlobalVersion(db.version);
+            await db.setHostnameGlobal(hostname, 'version', db.version);
+
+            const customScheme = {
+                format: 1,
+                nodes: [
+                    { head: "A", arity: 0, inputTemplates: [] },
+                    { head: "B", arity: 0, inputTemplates: [] },
+                    { head: "D", arity: 0, inputTemplates: [{ head: "A", args: [] }, { head: "B", args: [] }] },
+                    { head: "E", arity: 0, inputTemplates: [{ head: "D", args: [] }] },
+                    { head: "F", arity: 0, inputTemplates: [{ head: "E", args: [] }] },
+                ],
+            };
+            const schemeStr = JSON.stringify(customScheme);
+
+            const targetAId = nodeIdentifierFromString('91-abcdefghi');
+            const hostAId = nodeIdentifierFromString('92-abcdefghi');
+            const hostBId = nodeIdentifierFromString('93-abcdefghi');
+            const hostDId = nodeIdentifierFromString('94-abcdefghi');
+            const hostEId = nodeIdentifierFromString('95-abcdefghi');
+            const hostFId = nodeIdentifierFromString('96-abcdefghi');
+            const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+            const keyD = stringToNodeKeyString('{"head":"D","args":[]}');
+            const keyE = stringToNodeKeyString('{"head":"E","args":[]}');
+            const keyF = stringToNodeKeyString('{"head":"F","args":[]}');
+
+            const L = db.schemaStorageForReplica('x');
+            await L.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            await writeNode(L, targetAId, TS2, { source: 'target A' });
+            await writeIdentifierLookup(L, [[targetAId, keyA]]);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
+            await writeNode(H, hostAId, TS1, { source: 'host A' });
+            await writeNode(H, hostBId, TS2, { source: 'host B' });
+            await writeNode(H, hostDId, TS1, { source: 'D' });
+            await writeNode(H, hostEId, TS1, { source: 'E' });
+            await writeNode(H, hostFId, TS1, { source: 'F' });
+            await writeIdentifierLookup(H, [
+                [hostAId, keyA],
+                [hostBId, keyB],
+                [hostDId, keyD],
+                [hostEId, keyE],
+                [hostFId, keyF],
+            ]);
+            await H.valid.put(hostAId, [hostDId]);
+            await H.valid.put(hostBId, [hostDId]);
+            await H.valid.put(hostDId, [hostEId]);
+            await H.valid.put(hostEId, [hostFId]);
+
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
+
+            const T = db.getSchemaStorage();
+            // D, E, F deleted; A, B survive.
+            expect(await T.values.get(targetAId)).toEqual({ source: 'target A' });
+            expect(await T.values.get(hostBId)).toEqual({ source: 'host B' });
+            expect(await T.values.get(hostDId)).toBeUndefined();
+            expect(await T.values.get(hostEId)).toBeUndefined();
+            expect(await T.values.get(hostFId)).toBeUndefined();
+
+            const finalLookup = makeIdentifierLookup(await T.global.get(IDENTIFIERS_KEY));
+            expect(finalLookup.keyToId.has(String(keyD))).toBe(false);
+            expect(finalLookup.keyToId.has(String(keyE))).toBe(false);
+            expect(finalLookup.keyToId.has(String(keyF))).toBe(false);
+            expect(finalLookup.keyToId.has(String(keyA))).toBe(true);
+            expect(finalLookup.keyToId.has(String(keyB))).toBe(true);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('sync hard-invalidates one-input chain A->B->C, pull preserves transitive retention', async () => {
+        // C → A → D chain where C is force-keep, A is directly relowered
+        // (one input), D is propagated stale (transitive, not directly invalidated).
+        // A is hard-invalidated (retained), D survives as propagated stale.
+        // pull(D): A recomputed first, then D with oldValue = retained D value.
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -3623,7 +4132,7 @@ describe('mergeHostIntoReplica', () => {
             const H = db.hostnameSchemaStorage(hostname);
             await writeGraphScheme(H);
             await writeNode(H, hostCId, TS1, { source: 'host C' });
-            await writeNode(H, hostAId, TS1, { source: 'stale A' });
+            await writeNode(H, hostAId, TS2, { source: 'stale A' });
             await writeNode(H, hostDId, TS1, { source: 'stale D' });
             await writeIdentifierLookup(H, [
                 [hostCId, keyC],
@@ -3633,7 +4142,6 @@ describe('mergeHostIntoReplica', () => {
             await H.valid.put(hostCId, [hostAId]);
             await H.valid.put(hostAId, [hostDId]);
 
-            // Merge: C is force-keep, A is directly relowered → A is hard-invalidated.
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             const T = db.getSchemaStorage();
@@ -3643,17 +4151,14 @@ describe('mergeHostIntoReplica', () => {
             expect(await T.timestamps.get(hostAId)).toBeDefined();
             expect(await T.values.get(hostDId)).toEqual({ source: 'stale D' });
             expect(await T.freshness.get(hostDId)).toBe('potentially-outdated');
-            expect(await T.timestamps.get(hostDId)).toBeDefined();
-            // C survives.
-            expect(await T.values.get(targetCId)).toEqual(targetCValue);
 
-            // Verify A and D keys are absent from the final lookup.
+            // All keys present in the final lookup (none deleted).
             const finalLookup = makeIdentifierLookup(await T.global.get(IDENTIFIERS_KEY));
             expect(finalLookup.keyToId.has(String(keyA))).toBe(true);
             expect(finalLookup.keyToId.has(String(keyD))).toBe(true);
             expect(finalLookup.keyToId.has(String(keyC))).toBe(true);
 
-            // Write exact graph_scheme matching the nodeDefs below.
+            // Set up graph scheme for pull test.
             await T.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
                 format: 1,
                 nodes: [
@@ -3665,8 +4170,8 @@ describe('mergeHostIntoReplica', () => {
 
             await db.initializeActiveIdentifierLookup();
 
-            const computeA = jest.fn(async ([input]) => ({ source: `A from ${input.source}` }));
-            const computeD = jest.fn(async ([input]) => ({ source: `D from ${input.source}` }));
+            const computeA = jest.fn(async ([input], oldValue) => ({ source: `A from ${input.source}`, oldValue: oldValue?.source }));
+            const computeD = jest.fn(async ([input], oldValue) => ({ source: `D from ${input.source}`, oldValue: oldValue?.source }));
             const graph = await createIncrementalGraph(capabilities, db, [
                 {
                     output: 'c_transitive_relower',
@@ -3691,32 +4196,29 @@ describe('mergeHostIntoReplica', () => {
                 },
             ]);
 
-            // Pull the final dependent. A must be computed first, then D.
+            // Pull D: A computed first (gets oldValue = retained A), then D.
             await expect(graph.pull('d_transitive_relower')).resolves.toEqual({
                 source: 'D from A from target C',
+                oldValue: 'stale D',
             });
             expect(computeA).toHaveBeenCalledTimes(1);
+            expect(computeA.mock.calls[0][0]).toEqual([targetCValue]);
+            expect(computeA.mock.calls[0][1]).toEqual({ source: 'stale A' });
             expect(computeD).toHaveBeenCalledTimes(1);
+            expect(computeD.mock.calls[0][0]).toEqual([{ source: 'A from target C', oldValue: 'stale A' }]);
+            expect(computeD.mock.calls[0][1]).toEqual({ source: 'stale D' });
 
-            // After pull, A and D are rematerialized with fresh identifiers.
+            // Identifiers remain unchanged (not fresh allocations).
             const afterLookup = makeIdentifierLookup(await T.global.get(IDENTIFIERS_KEY));
-            const freshAId = afterLookup.keyToId.get(String(keyA));
-            const freshDId = afterLookup.keyToId.get(String(keyD));
-            expect(freshAId).toBeDefined();
-            expect(freshDId).toBeDefined();
-            expect(String(freshAId)).toBe(String(hostAId));
-            expect(String(freshDId)).toBe(String(hostDId));
-            expect(await T.freshness.get(freshAId)).toBe('up-to-date');
-            expect(await T.freshness.get(freshDId)).toBe('up-to-date');
-            expect(await T.values.get(freshAId)).toEqual({ source: 'A from target C' });
-            expect(await T.values.get(freshDId)).toEqual({ source: 'D from A from target C' });
+            expect(afterLookup.keyToId.get(String(keyA))).toBe(hostAId);
+            expect(afterLookup.keyToId.get(String(keyD))).toBe(hostDId);
 
-            // Verify dependency closure: D's input is A in the final lookup.
+            // Verify dependency closure.
             const scheme = JSON.parse(await T.global.get(GRAPH_SCHEME_KEY));
-            const dInputs = semanticInputKeys(scheme, afterLookup, freshDId);
+            const dInputs = semanticInputKeys(scheme, afterLookup, hostDId);
             expect(dInputs).toHaveLength(1);
             const dInputId = afterLookup.keyToId.get(String(dInputs[0]));
-            expect(String(dInputId)).toBe(String(freshAId));
+            expect(String(dInputId)).toBe(String(hostAId));
         } finally {
             if (db) await db.close();
         }

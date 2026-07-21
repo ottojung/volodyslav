@@ -96,16 +96,20 @@ class ReplicaBatchWriter {
  * The map describes the provenance of every final stored value:
  * - { kind: "source", side, sourceId } if the final value is a byte-for-byte
  *   copy preserved from that side's source identifier.
- * @param {Map<NodeKeyString, 'keep' | 'take'>} initialDecisions
- * @param {Map<NodeKeyString, MergeDecision>} decisions
+ *
+ * Every surviving value (outcome !== 'delete') has a source origin from its
+ * selected structural side, including hard-invalidated and directly relowered
+ * nodes. Only deleted nodes have no value origin.
+ * @param {Map<NodeKeyString, 'keep' | 'take'>} selectedSideByKey
+ * @param {Map<NodeKeyString, MergeDecision>} outcomeByKey
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
  * @returns {Promise<Map<NodeKeyString, ValueOrigin>>}
  */
 async function buildValueOriginByKey(
-    initialDecisions,
-    decisions,
+    selectedSideByKey,
+    outcomeByKey,
     targetLookup,
     hostLookup,
     finalIdentifierForKey
@@ -113,12 +117,12 @@ async function buildValueOriginByKey(
     /** @type {Map<NodeKeyString, ValueOrigin>} */
     const map = new Map();
 
-    for (const [nodeKey, decision] of decisions) {
-        if (decision === 'delete') continue;
+    for (const [nodeKey, outcome] of outcomeByKey) {
+        if (outcome === 'delete') continue;
         if (!finalIdentifierForKey.has(nodeKey)) continue;
-        const initial = initialDecisions.get(nodeKey);
-        if (initial === undefined) continue;
-        const sourceSide = decision === 'invalidate' ? initial : decision;
+        const selectedSide = selectedSideByKey.get(nodeKey);
+        if (selectedSide === undefined) continue;
+        const sourceSide = outcome === 'invalidate' ? selectedSide : outcome;
         const sourceLookup = sourceSide === 'take' ? hostLookup : targetLookup;
         const sourceId = sourceLookup.keyToId.get(String(nodeKey));
         if (sourceId === undefined) continue;

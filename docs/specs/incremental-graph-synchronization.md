@@ -177,42 +177,45 @@ structural source side (target/local or host), selects a final storage
 identifier, derives final dependency edges from the graph scheme, and applies
 the result to T.
 
-**DEF-SYNC-03 (Initial decision):**
+**DEF-SYNC-03 (Selected source side):** `selectedSideByKey` records the
+per-node candidate source side before final outcome classification:
 
-- `initialDecision(key) ∈ { keep, take }`
-- `keep` means the initial candidate is the local/target source.
-- `take` means the initial candidate is the host source.
+- `selectedSideByKey(key) ∈ { keep, take }`
+- `keep` means the candidate source is the local/target replica.
+- `take` means the candidate source is the host replica.
 
-**DEF-SYNC-04 (Decision):**
+**DEF-SYNC-04 (Final outcome):** `outcomeByKey` records the canonical final
+outcome for each semantic key after classification:
 
-- `decision(key) ∈ { keep, take, invalidate, delete }`
+- `outcomeByKey(key) ∈ { keep, take, invalidate, delete }`
 - `keep` means preserve or copy from the local target source.
 - `take` means copy from the host source.
 - `invalidate` means the node is marked potentially-outdated regardless of
-  which side provides its structural data.
+  which side provides its structural data. One-input direct invalidation roots
+  are invalidated; their value is retained.
 - `delete` means the semantic key's materialization is omitted from the final
   replica. A deleted materialization has no final identifier, cached value,
-  freshness, timestamps, validity entries, or value origin. `delete` is an
-  internal merge result, not a request to delete the semantic node family from
-  the graph schema.
+  freshness, timestamps, validity entries, or value origin. Multi-input direct
+  invalidation roots are deleted. `delete` is an internal merge result, not a
+  request to delete the semantic node family from the graph schema.
 
 **TERM-SYNC-15 (finalIdentifierForKey):** A partial map from semantic node keys
 to their final storage identifiers:
 
 ```
 finalIdentifierForKey:
-    { key ∈ Keys | decision(key) ≠ delete } → NodeIdentifier
+    { key ∈ Keys | outcomeByKey(key) ≠ delete } → NodeIdentifier
 ```
 
 - `keep` maps to the local source identifier.
 - `take` maps to the host source identifier.
-- `invalidate` maps to the identifier selected by the preliminary structural side.
+- `invalidate` maps to the identifier selected by `selectedSideByKey`.
 - `delete` has no final identifier and is absent from the map.
 
 **TERM-SYNC-16 (mergedInputsMap):** The map from each surviving final storage
 identifier to the list of its final dependency storage identifiers, derived from
 the graph scheme and lowered through `finalIdentifierForKey`. Defined only for
-materializations whose decision is not `delete`. Every dependency of a surviving
+materializations whose outcome is not `delete`. Every dependency of a surviving
 materialization also survives and has a final identifier; the delete-propagation
 closure guarantees this.
 
@@ -365,7 +368,7 @@ multiple inputs.
 ## 8. Identifier Reconciliation and Edge Lowering
 
 **REQ-SYNC-11 (Final identifier selection):** For each semantic key whose
-decision is not `delete`, the final identifier is selected from
+outcome is not `delete`, the final identifier is selected from
 `selectedSideByKey`:
 
 - `keep` → local source identifier.
@@ -374,14 +377,14 @@ decision is not `delete`, the final identifier is selected from
 
 The final identifier lookup maps final storage identifiers to semantic keys for
 surviving materializations only. It must be bijective between final identifiers
-and `FinalKeys = { key ∈ Keys | decision(key) ≠ delete }`. Deleted keys must
+and `FinalKeys = { key ∈ Keys | outcome(key) ≠ delete }`. Deleted keys must
 not remain in the lookup.
 
 ---
 
 ## 9. Freshness Merge Policy
 
-**REQ-SYNC-11 (Up-to-date eligibility):** A final node may be `up-to-date`
+**REQ-SYNC-11a (Up-to-date eligibility):** A final node may be `up-to-date`
 only if all of the following hold:
 
 1. It has a stored value in the final state.
@@ -412,19 +415,29 @@ A stale node that cache-revalidates is marked `up-to-date` and returns its store
 ## 10. Value Origin and Provenance
 
 **DEF-SYNC-09 (Final value origin rules):** For each surviving semantic key
-(`decision(key) ≠ delete`):
+(`outcome(key) ≠ delete`):
 
-- Origin is `{ kind: "source", side: "target", sourceId }` only if:
+- Every surviving value copied or preserved byte-for-byte from a selected source
+  has that exact source origin, including hard-invalidated and directly relowered
+  nodes.
+- Origin is `{ kind: "source", side: "target", sourceId }` if:
   - the final stored value exists;
   - it was copied or preserved from the local source replica L;
-  - `sourceId` is the local source identifier for the same semantic key;
-  - the node is not directly relowered.
-- Origin is `{ kind: "source", side: "host", sourceId }` only if:
+  - `sourceId` is the local source identifier for the same semantic key.
+- Origin is `{ kind: "source", side: "host", sourceId }` if:
   - the final stored value exists;
   - it was copied or preserved from host source replica H;
-  - `sourceId` is the host source identifier for the same semantic key;
-  - the node is not directly relowered.
-- Deleted materializations (`decision = delete`) have no origin entry.
+  - `sourceId` is the host source identifier for the same semantic key.
+- Deleted materializations (`outcome = delete`) have no origin entry.
+
+**Rationale:** Direct relowering means the cache value cannot remain certified
+against its final inputs and the node becomes a direct invalidation candidate.
+Its incoming validity proofs are removed. However, the retained value itself
+still has known source provenance because it was preserved byte-for-byte from
+the selected source. This distinction is necessary because outgoing proofs
+concerning the retained value may still be transported when their other
+endpoint has matching source provenance. Deleted nodes have no final value
+and therefore no value origin.
 
 **REQ-SYNC-13 (Equality does not create origin):**
 
@@ -544,12 +557,12 @@ replica T. The active replica pointer switches only after the final state is
 built, validated, and committed.
 
 **TERM-SYNC-18 (Merge summary):** After each per-host merge, the implementation
-records counts of decisions:
+records counts of outcomes:
 
-- `kept`: number of semantic keys whose final decision is `keep`.
-- `taken`: number of semantic keys whose final decision is `take`.
-- `invalidated`: number of semantic keys whose final decision is `invalidate`.
-- `deleted`: number of semantic keys whose final decision is `delete`.
+- `kept`: number of semantic keys whose final outcome is `keep`.
+- `taken`: number of semantic keys whose final outcome is `take`.
+- `invalidated`: number of semantic keys whose final outcome is `invalidate`.
+- `deleted`: number of semantic keys whose final outcome is `delete`.
 
 A deletion counts as a semantic graph-state change only when the target replica
 previously contained that materialization. A host-only key that is deleted
