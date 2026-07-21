@@ -3664,7 +3664,7 @@ describe('mergeHostIntoReplica', () => {
             }));
             await db.initializeActiveIdentifierLookup();
 
-            const computeB = jest.fn(async ([inputA], oldValue) => {
+            const computeB = jest.fn(async ([_inputA], oldValue) => {
                 return { value: 'recomputed', oldValue: oldValue?.source };
             });
             const graph = await createIncrementalGraph(capabilities, db, [
@@ -3746,7 +3746,7 @@ describe('mergeHostIntoReplica', () => {
             }));
             await db.initializeActiveIdentifierLookup();
 
-            const computeB = jest.fn(async ([inputA], oldValue) => {
+            const computeB = jest.fn(async ([_inputA], oldValue) => {
                 return { value: 'recomputed', oldValue: oldValue?.source };
             });
             const graph = await createIncrementalGraph(capabilities, db, [
