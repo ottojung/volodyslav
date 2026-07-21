@@ -207,6 +207,25 @@ function canonicalValidMapsEqual(left, right) {
     return true;
 }
 
+class UnplannedMissingValidityProofError extends Error {
+    /**
+     * @param {NodeIdentifier} nodeIdentifier
+     */
+    constructor(nodeIdentifier) {
+        super(`Merge planning missed a required validity proof for ${String(nodeIdentifier)}`);
+        this.name = 'UnplannedMissingValidityProofError';
+        this.nodeIdentifier = nodeIdentifier;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is UnplannedMissingValidityProofError}
+ */
+function isUnplannedMissingValidityProofError(object) {
+    return object instanceof UnplannedMissingValidityProofError;
+}
+
 /**
  * Rebuild the valid relation and propagate freshness downgrades from merged inputs.
  *
@@ -369,13 +388,7 @@ async function rebuildMergedValidity({
         }
 
         if (missingProof) {
-            // Missing proof — classify as direct root regardless of
-            // stale-input state. Remove all incoming proofs so the
-            // node's next pull invokes its computor.
-            finalFreshness.set(nodeIdStr, 'potentially-outdated');
-            dirtyFreshness.add(nodeIdStr);
-            freshnessChanged = true;
-            removeIncomingValidity(mergedInputsMap, validMap, nodeIdentifier);
+            throw new UnplannedMissingValidityProofError(nodeIdentifier);
         } else if (staleInput) {
             // Propagated staleness — preserve all proofs
             finalFreshness.set(nodeIdStr, 'potentially-outdated');
@@ -441,4 +454,6 @@ module.exports = {
     rebuildMergedValidity,
     buildValueOriginByKey,
     ReplicaBatchWriter,
+    UnplannedMissingValidityProofError,
+    isUnplannedMissingValidityProofError,
 };

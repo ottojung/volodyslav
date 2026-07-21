@@ -600,3 +600,94 @@ copy of L into T.
 
 **PROP-SYNC-04 (No computor invocation):** Synchronization never invokes a
 computor function, directly or indirectly.
+
+---
+
+## Temporary direct-invalidation classification for issue #1520
+
+The pairwise merge rule implemented for
+https://github.com/ottojung/volodyslav/issues/1520 separates source selection,
+direct hard invalidation, propagated staleness, and deletion. The future
+journal-backed coherent-history rule is tracked by
+https://github.com/ottojung/volodyslav/issues/1521; this section specifies only
+the current conservative pairwise behaviour.
+
+### Per-node candidate selection
+
+Every materialized semantic node chooses its cached candidate using only that
+node's own UTC `modifiedAt` policy:
+
+- target only: keep target;
+- host only: take host;
+- both present: the greater UTC `modifiedAt` wins;
+- exact timestamp tie: keep target/local.
+
+Ancestor taint never changes this selected side. Taint can only say that the
+selected candidate cannot be accepted as current without invoking the computor.
+For a root `A`, competing versions use `modifiedAt`; disagreement alone does not
+invalidate or delete the root.
+
+### Direct invalidation candidates
+
+A direct invalidation candidate is a selected cached node whose next required
+recomputation must invoke the computor rather than accept cache-only
+revalidation. Candidates are created by opposite-side ancestry, direct input
+relowering, equal-version stale metadata, or missing transportable direct-input
+validity proofs discovered during planning. Direct relowering is therefore:
+
+```text
+direct relowering
+    → direct invalidation candidate
+    → hard invalidate when distinct-input count <= 1
+    → delete when distinct-input count > 1
+```
+
+Missing-proof roots are classified before the final plan is applied. Validity
+reconstruction must not silently invent an additional direct hard-invalidation
+root after deletion planning.
+
+### Propagated staleness
+
+A node can become `potentially-outdated` because one of its inputs is stale. That
+is propagated staleness, not a direct invalidation candidate. Propagated stale
+nodes retain transportable incoming proofs and are not deleted merely because
+they have multiple inputs.
+
+### Distinct semantic input classifier
+
+The classifier counts distinct semantic direct dependency keys, not computor
+argument positions, graph-scheme arity, lowered storage identifiers, or validity
+edge count. `X(A)` and `X(A, A)` have one distinct semantic input. `X(A, B)` has
+two distinct semantic inputs.
+
+For every direct invalidation candidate:
+
+- zero or one distinct semantic input: retain the selected cached value, preserve
+  its `modifiedAt`, mark it `potentially-outdated`, and remove incoming validity
+  proofs so the next pull invokes the computor with the retained value as
+  `oldValue`;
+- more than one distinct semantic input: delete the materialization so the next
+  pull invokes the computor with `oldValue === undefined`, and `Unchanged` is not
+  legal.
+
+Thus `A → B` may hard-invalidate `B` when synchronization ambiguity prevents `B`
+from remaining current, but it does not delete `B`. For `A,B → D`, once `D`
+requires direct hard invalidation, the temporary policy deletes `D`.
+
+### Structural deletion closure
+
+Deletion roots expand through transitive materialized dependents in the selected
+semantic dependency graph. If `D` is deleted in `A,B → D → E → F`, then `E` and
+`F` are deleted as materialized dependents, while `A`, `B`, siblings, and
+unrelated materializations such as `U` survive. The closure follows structural
+semantic dependencies, not only validity edges, and synchronization never invokes
+computors while applying it.
+
+### Value opacity and storage format
+
+Synchronization planning and validity analysis must not inspect, compare,
+serialize, hash, or infer provenance from `ComputedValue` contents. The transfer
+layer may copy selected value bytes opaquely. This rule adds no sublevel,
+timestamp field, migration, vector clock, tombstone, conflict frontier, or
+journal placeholder, and it remains pairwise and order-sensitive until #1521
+provides exact historical input-version provenance.

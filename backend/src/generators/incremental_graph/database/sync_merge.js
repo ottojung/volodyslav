@@ -291,6 +291,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         decisions,
         hOnlyNeedsInvalidate,
         equalVersionNeedsInvalidation,
+        hardInvalidationKeys,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
@@ -326,12 +327,8 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
     /** @type {Set<NodeIdentifier>} */
     const directInvalidationRoots = new Set();
-    for (const [nodeKey, decision] of decisions) {
-        if (decision !== 'invalidate'
-            && !hOnlyNeedsInvalidate.has(nodeKey)
-            && !equalVersionNeedsInvalidation.has(nodeKey)) {
-            continue;
-        }
+    for (const nodeKey of decisions.keys()) {
+        if (!hardInvalidationKeys.has(nodeKey)) continue;
         const finalId = finalIdentifierForKey.get(nodeKey);
         if (finalId !== undefined) {
             directInvalidationRoots.add(finalId);
