@@ -214,12 +214,14 @@ function canonicalValidMapsEqual(left, right) {
  * 1. Transport validity entries from both source sides based on source
  *    provenance for both endpoints.
  * 2. For every direct invalidation root: remove all incoming validity
- *    proofs and propagate freshness downstream without removing validity.
- * 3. For surviving up-to-date nodes: if an input is stale (propagated
- *    staleness), mark the node stale but preserve all its proofs. If a
- *    required transported proof is missing (cannot be justified), classify
- *    it as a new direct root: remove its incoming proofs and mark it stale.
- * 4. Write the rebuilt freshness and validity state.
+ *    proofs and mark stale. The single topological traversal classifies
+ *    all descendants.
+ * 3. Single roots-to-leaves traversal of surviving up-to-date nodes:
+ *    if a required transported proof is missing, classify the node as a
+ *    direct root (remove incoming proofs, mark stale). Otherwise if an
+ *    input is stale, mark stale while preserving all proofs.
+ * 4. Compare final validity against stored state. Write dirty freshness
+ *    and rewritten validity only when they have actually changed.
  *
  * A validity proof valid[D].has(N) is transported from a source side only
  * when D and N both resolve through the same source side and their final values
@@ -323,7 +325,7 @@ async function rebuildMergedValidity({
 
     // Step 2: Handle direct invalidation roots.
     // For each directly invalidated root: remove all incoming validity proofs,
-    // mark stale, and propagate freshness downstream preserving validity edges.
+    // mark stale, and let the topological traversal classify all descendants.
     /** @type {Set<string>} */
     const dirtyFreshness = new Set();
     let freshnessChanged = false;
@@ -335,15 +337,6 @@ async function rebuildMergedValidity({
             freshnessChanged = true;
         }
         removeIncomingValidity(mergedInputsMap, validMap, root);
-        const rootDependents = validMap.get(rootIdStr) ?? [];
-        for (const dependent of rootDependents) {
-            const depStr = nodeIdentifierToString(dependent);
-            if (finalFreshness.get(depStr) !== 'potentially-outdated') {
-                finalFreshness.set(depStr, 'potentially-outdated');
-                dirtyFreshness.add(depStr);
-                freshnessChanged = true;
-            }
-        }
     }
 
     // Step 3: Propagate staleness and handle missing-proof roots.
@@ -395,6 +388,10 @@ async function rebuildMergedValidity({
     // Do NOT mint proofs that were not transported. Previously transported
     // proofs remain in validMap; no mandatory creation is performed.
 
+    // Step 4: Compare final validity against the stored state before mutating.
+    const finalCanonicalValidMap = canonicalizeValidMap(validMap);
+    const validityChanged = !canonicalValidMapsEqual(oldCanonicalValidMap, finalCanonicalValidMap);
+
     const writer = new ReplicaBatchWriter(targetStorage);
     for (const nodeIdStr of dirtyFreshness) {
         const freshness = finalFreshness.get(nodeIdStr);
@@ -404,16 +401,17 @@ async function rebuildMergedValidity({
         }
     }
 
-    await targetStorage.valid.clear();
-    for (const [depIdStr, dependents] of validMap) {
-        const depId = depIdCache.get(depIdStr);
-        if (depId !== undefined && dependents.length > 0) {
-            dependents.sort(compareNodeIdentifier);
-            await writer.push(targetStorage.valid.putOp(depId, dependents));
+    if (validityChanged) {
+        await targetStorage.valid.clear();
+        for (const [depIdStr, dependents] of validMap) {
+            const depId = depIdCache.get(depIdStr);
+            if (depId !== undefined && dependents.length > 0) {
+                dependents.sort(compareNodeIdentifier);
+                await writer.push(targetStorage.valid.putOp(depId, dependents));
+            }
         }
     }
     await writer.flush();
-    const validityChanged = !canonicalValidMapsEqual(oldCanonicalValidMap, canonicalizeValidMap(validMap));
     return validityChanged || freshnessChanged;
 }
 

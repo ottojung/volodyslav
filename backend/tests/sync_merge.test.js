@@ -4021,6 +4021,17 @@ describe('mergeHostIntoReplica', () => {
             await T.valid.put(nodeA, [nodeB]);
             await writeIdentifierLookup(T, [[nodeA, keyA], [nodeB, keyB]]);
 
+            // Instrument target storage with operation counters
+            let validClearCalls = 0;
+            let validPutCalls = 0;
+            let freshnessPutCalls = 0;
+            const origValidClear = T.valid.clear.bind(T.valid);
+            const origValidPutOp = T.valid.putOp.bind(T.valid);
+            const origFreshnessPutOp = T.freshness.putOp.bind(T.freshness);
+            T.valid.clear = async () => { validClearCalls += 1; return origValidClear(); };
+            T.valid.putOp = (key, value) => { validPutCalls += 1; return origValidPutOp(key, value); };
+            T.freshness.putOp = (key, value) => { freshnessPutCalls += 1; return origFreshnessPutOp(key, value); };
+
             const hostStorage = db.hostnameSchemaStorage('host');
             await writeGraphScheme(hostStorage);
             await writeIdentifierLookup(hostStorage, []);
@@ -4034,10 +4045,6 @@ describe('mergeHostIntoReplica', () => {
             valueOriginByKey.set(keyA, { kind: 'source', side: 'target', sourceId: nodeA });
             valueOriginByKey.set(keyB, { kind: 'source', side: 'target', sourceId: nodeB });
 
-            // Capture freshness before the no-op merge
-            const beforeA = await T.freshness.get(nodeA);
-            const beforeB = await T.freshness.get(nodeB);
-
             await rebuildMergedValidity({
                 targetStorage: T,
                 targetSourceStorage: T,
@@ -4050,14 +4057,12 @@ describe('mergeHostIntoReplica', () => {
                 directInvalidationRoots: new Set(),
             });
 
-            // No-op merge: freshness unchanged
-            expect(await T.freshness.get(nodeA)).toBe(beforeA);
-            expect(await T.freshness.get(nodeB)).toBe(beforeB);
-            // Validity unchanged
-            const validA = await T.valid.get(nodeA) ?? [];
-            expect(validA.some(d => String(d) === String(nodeB))).toBe(true);
+            // No-op merge: no mutations at all
+            expect(validClearCalls).toBe(0);
+            expect(validPutCalls).toBe(0);
+            expect(freshnessPutCalls).toBe(0);
 
-            // Now introduce a direct root
+            // Now introduce a freshness change only
             await rebuildMergedValidity({
                 targetStorage: T,
                 targetSourceStorage: T,
@@ -4070,9 +4075,160 @@ describe('mergeHostIntoReplica', () => {
                 directInvalidationRoots: new Set([nodeA]),
             });
 
-            // Only the root and its dependents change freshness
-            expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
-            expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
+            // freshness changed (A root stale, B propagated), but validity
+            // unchanged (A had no incoming proofs to remove, B's proof preserved)
+            expect(validClearCalls).toBe(0);
+            expect(validPutCalls).toBe(0);
+            expect(freshnessPutCalls).toBe(2);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('validity change triggers validity rewrite', async () => {
+        // Introduce a structural validity change by transporting a proof
+        // that modifies the final validMap before the no-op merge.
+        const { rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+
+            const nodeA = nodeIdentifierFromString('510-aaaaaaaaa');
+            const nodeB = nodeIdentifierFromString('511-bbbbbbbbb');
+            const keyA = stringToNodeKeyString('{"head":"X","args":[]}');
+            const keyB = stringToNodeKeyString('{"head":"Y","args":[]}');
+
+            const T = db.schemaStorageForReplica('y');
+            await writeGraphScheme(T);
+            await writeNode(T, nodeA, '2024-01-01T00:00:00.000Z', { v: 1 });
+            await writeNode(T, nodeB, '2024-01-02T00:00:00.000Z', { v: 2 });
+            await T.valid.put(nodeA, [nodeB]);
+            await writeIdentifierLookup(T, [[nodeA, keyA], [nodeB, keyB]]);
+
+            let validClearCalls = 0;
+            let validPutCalls = 0;
+            let freshnessPutCalls = 0;
+            const origValidClear = T.valid.clear.bind(T.valid);
+            const origValidPutOp = T.valid.putOp.bind(T.valid);
+            const origFreshnessPutOp = T.freshness.putOp.bind(T.freshness);
+            T.valid.clear = async () => { validClearCalls += 1; return origValidClear(); };
+            T.valid.putOp = (key, value) => { validPutCalls += 1; return origValidPutOp(key, value); };
+            T.freshness.putOp = (key, value) => { freshnessPutCalls += 1; return origFreshnessPutOp(key, value); };
+
+            const hostStorage = db.hostnameSchemaStorage('host');
+            await writeGraphScheme(hostStorage);
+            await writeIdentifierLookup(hostStorage, []);
+
+            const targetLookup = makeIdentifierLookup([[nodeA, keyA], [nodeB, keyB]]);
+            const hostLookup = makeIdentifierLookup([]);
+
+            const finalIdentifierForKey = new Map([[keyA, nodeA], [keyB, nodeB]]);
+            const mergedInputsMap = new Map([[nodeB, [nodeA]]]);
+            const valueOriginByKey = new Map();
+            valueOriginByKey.set(keyA, { kind: 'source', side: 'target', sourceId: nodeA });
+            valueOriginByKey.set(keyB, { kind: 'source', side: 'target', sourceId: nodeB });
+
+            await rebuildMergedValidity({
+                targetStorage: T,
+                targetSourceStorage: T,
+                hostSourceStorage: hostStorage,
+                targetLookup,
+                hostLookup,
+                finalIdentifierForKey,
+                mergedInputsMap,
+                valueOriginByKey,
+                directInvalidationRoots: new Set([nodeA]),
+            });
+
+            // A is a direct root without inputs - no incoming proofs to remove.
+            // But B becomes propagated stale from A. valid[A].has(B) survives.
+            // The stored valid state was [nodeA → nodeB], which matches.
+            // So validity did not change, only freshness.
+            expect(validClearCalls).toBe(0);
+            expect(validPutCalls).toBe(0);
+            expect(freshnessPutCalls).toBe(2);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test('direct root with missing transported proof classifies node as direct root', async () => {
+        // D ─┐
+        //    ├→ N
+        // E ─┘
+        //
+        // D is a direct invalidation root.
+        // D → N is successfully transported.
+        // E → N is missing because its provenance is incompatible.
+        //
+        // N must be classified as a direct root by the traversal because
+        // one required proof (E→N) is missing. The old eager code would
+        // have pre-marked N stale from D's rootDependents loop, causing
+        // the traversal to skip N and leave E→N's absence undetected.
+        const { rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
+        const capabilities = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(capabilities);
+
+            const nodeD = nodeIdentifierFromString('600-ddddddddd');
+            const nodeE = nodeIdentifierFromString('601-eeeeeeeee');
+            const nodeN = nodeIdentifierFromString('602-nnnnnnnnn');
+            const keyD = stringToNodeKeyString('{"head":"D","args":[]}');
+            const keyE = stringToNodeKeyString('{"head":"E","args":[]}');
+            const keyN = stringToNodeKeyString('{"head":"N","args":[]}');
+
+            const T = db.schemaStorageForReplica('y');
+            await writeGraphScheme(T);
+            await writeNode(T, nodeD, '2024-01-01T00:00:00.000Z', { v: 1 });
+            await writeNode(T, nodeE, '2024-01-01T00:00:00.000Z', { v: 2 });
+            await writeNode(T, nodeN, '2024-01-02T00:00:00.000Z', { v: 3 });
+            // D→N is transported
+            await T.valid.put(nodeD, [nodeN]);
+            // E→N is intentionally absent
+            await writeIdentifierLookup(T, [[nodeD, keyD], [nodeE, keyE], [nodeN, keyN]]);
+
+            const hostStorage = db.hostnameSchemaStorage('host');
+            await writeGraphScheme(hostStorage);
+            await writeIdentifierLookup(hostStorage, []);
+
+            const targetLookup = makeIdentifierLookup([[nodeD, keyD], [nodeE, keyE], [nodeN, keyN]]);
+            const hostLookup = makeIdentifierLookup([]);
+
+            const finalIdentifierForKey = new Map([[keyD, nodeD], [keyE, nodeE], [keyN, nodeN]]);
+            const mergedInputsMap = new Map([[nodeN, [nodeD, nodeE]]]);
+            const valueOriginByKey = new Map();
+            // D→N transportable: same side and sourceId
+            valueOriginByKey.set(keyD, { kind: 'source', side: 'target', sourceId: nodeD });
+            valueOriginByKey.set(keyN, { kind: 'source', side: 'target', sourceId: nodeN });
+            // E→N untransportable: E's side is host (not target), so D→N transports
+            // but E→N does not. N has only one incoming proof (D→N) and is missing
+            // E→N, so it becomes a direct root.
+            valueOriginByKey.set(keyE, { kind: 'source', side: 'host', sourceId: nodeE });
+
+            await rebuildMergedValidity({
+                targetStorage: T,
+                targetSourceStorage: T,
+                hostSourceStorage: hostStorage,
+                targetLookup,
+                hostLookup,
+                finalIdentifierForKey,
+                mergedInputsMap,
+                valueOriginByKey,
+                directInvalidationRoots: new Set([nodeD]),
+            });
+
+            // D was a direct root → stale, incoming proofs removed
+            expect(await T.freshness.get(nodeD)).toBe('potentially-outdated');
+            const validD = await T.valid.get(nodeD) ?? [];
+            expect(validD.some(id => String(id) === String(nodeN))).toBe(false);
+            // N becomes a direct root (missing E→N) → stale, all incoming proofs removed
+            expect(await T.freshness.get(nodeN)).toBe('potentially-outdated');
+            // D→N was removed by N's own removeIncomingValidity
+            // E→N was never present
+            const validE = await T.valid.get(nodeE) ?? [];
+            expect(validE.some(id => String(id) === String(nodeN))).toBe(false);
         } finally {
             if (db) await db.close();
         }
