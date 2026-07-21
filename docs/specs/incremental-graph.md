@@ -721,7 +721,7 @@ indexing. This means:
 
 - freshness updates during `invalidate()` are not propagated through dynamically-pulled nodes,
 - dynamically-pulled nodes do not appear in `inputEdges(N)` or `valid`,
-- the cache predicate does not consider dynamically-pulled nodes.
+- validity-proof restoration does not consider dynamically-pulled nodes.
 
 Dynamically-pulled nodes are not part of the flag-based validity algorithm. They are ad-hoc queries
 performed during a computor's execution and do not affect the structural dependency graph.

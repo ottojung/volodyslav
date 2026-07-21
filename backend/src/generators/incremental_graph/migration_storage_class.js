@@ -220,7 +220,7 @@ class MigrationStorageClass {
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "invalidate") {
-                existing.provenance = "explicit";
+                this.decisions.set(nodeKey, { kind: "invalidate", provenance: "explicit" });
                 return;
             }
             throw makeDecisionConflictError(nodeKey, existing.kind, "invalidate");

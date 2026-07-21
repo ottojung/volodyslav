@@ -37,33 +37,22 @@ const {
 } = require("./database");
 const { lookupNodeIdentifier } = require("./graph_state");
 const { normalizeInputEdges } = require("./database");
+const { propagatePotentiallyOutdated } = require("./propagation");
+const { removeIncomingValidity } = require("./validity");
 
 /**
- * Read the current valid set for a dependency from the mutation-aware batch.
- * Returns the database value merged with pending transaction-local mutations.
- * @param {BatchBuilder} batch
- * @param {NodeIdentifier} depId
- * @returns {Promise<NodeIdentifier[]>}
- */
-async function getValidSet(batch, depId) {
-    return await batch.valid.get(depId);
-}
-
-/**
- * Returns true when every dependency in inputEdges has a validity flag for N.
+ * Return true when every dependency in inputEdges has a validity flag for N.
  * @param {BatchBuilder} batch
  * @param {NodeIdentifier} nId
  * @param {NodeIdentifier[]} inputEdges
  * @returns {Promise<boolean>}
  */
-async function allValidityFlagsPresent(batch, nId, inputEdges) {
-    if (inputEdges.length === 0) {
-        return false;
-    }
+async function allIncomingValidityPresent(batch, nId, inputEdges) {
+    if (inputEdges.length === 0) return false;
     const nIdStr = nodeIdentifierToString(nId);
     for (const depId of inputEdges) {
-        const validSet = await getValidSet(batch, depId);
-        if (!validSet.some(id => nodeIdentifierToString(id) === nIdStr)) {
+        const validSet = await batch.valid.get(depId);
+        if (validSet === undefined || !validSet.some(id => nodeIdentifierToString(id) === nIdStr)) {
             return false;
         }
     }
@@ -79,44 +68,9 @@ async function allValidityFlagsPresent(batch, nId, inputEdges) {
  * @param {NodeIdentifier[]} inputEdges
  * @returns {void}
  */
-function addValidityFlags(batch, nId, inputEdges) {
+function addIncomingValidity(batch, nId, inputEdges) {
     for (const depId of inputEdges) {
         batch.valid.add(depId, nId);
-    }
-}
-
-/**
- * Propagate potentially-outdated freshness through validity sets.
- * Uses an iterative worklist to avoid stack overflow on deep chains.
- * @param {import('./graph_state').GraphStorage} storage
- * @param {BatchBuilder} batch
- * @param {NodeIdentifier} changedIdentifier
- * @param {NodeIdentifier[]} [initialDependents]
- * @returns {Promise<void>}
- */
-async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialDependents = undefined) {
-    /** @type {Set<string>} */
-    const visited = new Set();
-    /** @type {NodeIdentifier[]} */
-    const worklist = initialDependents === undefined ? [changedIdentifier] : [...initialDependents];
-
-    while (worklist.length > 0) {
-        const current = worklist.pop();
-        if (current === undefined) continue;
-        const currentStr = nodeIdentifierToString(current);
-        if (visited.has(currentStr)) continue;
-        visited.add(currentStr);
-
-        const dependents = await storage.getValid(current, batch);
-        for (const dep of dependents) {
-            const depStr = nodeIdentifierToString(dep);
-            if (visited.has(depStr)) continue;
-            const freshness = await batch.freshness.get(dep);
-            if (freshness === "up-to-date") {
-                batch.freshness.put(dep, "potentially-outdated");
-            }
-            worklist.push(dep);
-        }
     }
 }
 
@@ -129,7 +83,7 @@ async function propagateOutdatedFrom(storage, batch, changedIdentifier, initialD
  * @returns {Promise<void>}
  */
 async function handleUnchanged(_incrementalGraph, nodeIdentifier, inputEdges, batch) {
-    addValidityFlags(batch, nodeIdentifier, inputEdges);
+    addIncomingValidity(batch, nodeIdentifier, inputEdges);
     batch.freshness.put(nodeIdentifier, "up-to-date");
 }
 
@@ -149,21 +103,12 @@ async function handleUnchanged(_incrementalGraph, nodeIdentifier, inputEdges, ba
  * @returns {Promise<void>}
  */
 async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, alreadyMaterialized, batch) {
-    for (const edge of inputEdges) {
-        batch.valid.remove(edge, nodeIdentifier);
-    }
-    const downstream = await getValidSet(batch, nodeIdentifier);
+    removeIncomingValidity(batch, nodeIdentifier, inputEdges);
+    const downstream = await batch.valid.get(nodeIdentifier);
     batch.valid.clear(nodeIdentifier);
+    await propagatePotentiallyOutdated(incrementalGraph.storage, batch, downstream);
     const datetime = incrementalGraph.datetime;
     const nowIso = datetime.now().toISOString();
-    for (const dependent of downstream) {
-        const freshness = await batch.freshness.get(dependent);
-        if (freshness === "up-to-date") {
-            batch.freshness.put(dependent, "potentially-outdated");
-        }
-    }
-    await propagateOutdatedFrom(incrementalGraph.storage, batch, nodeIdentifier, downstream);
-
     batch.values.put(nodeIdentifier, newValue);
 
 
@@ -183,7 +128,7 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
         });
     }
 
-    addValidityFlags(batch, nodeIdentifier, inputEdges);
+    addIncomingValidity(batch, nodeIdentifier, inputEdges);
     batch.freshness.put(nodeIdentifier, "up-to-date");
 }
 
@@ -238,7 +183,8 @@ async function internalMaybeRecalculate(
     // 2. inputEdges is non-empty,
     // 3. valid[D].has(N) for every D in inputEdges.
     if (oldValue !== undefined && inputEdges.length > 0) {
-        if (await allValidityFlagsPresent(batch, nodeIdentifier, inputEdges)) {
+        const allPresent = await allIncomingValidityPresent(batch, nodeIdentifier, inputEdges);
+        if (allPresent) {
             batch.freshness.put(nodeIdentifier, "up-to-date");
             return { value: oldValue, status: "cached" };
         }

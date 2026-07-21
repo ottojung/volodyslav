@@ -128,7 +128,7 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
     const materialized = materializedDecisionStrings(decisions);
 
     for (const [nodeIdentifier, decision] of decisions) {
-        if (decision.kind === "delete" || decision.kind === "invalidate") continue;
+        if (decision.kind === "delete" || (decision.kind === "invalidate" && decision.provenance === "explicit")) continue;
         if (!await isFinalCached(prevStorage, decisions, nodeIdentifier)) continue;
 
         const finalEdges = deriveInputEdges(newScheme, finalLookup, nodeIdentifier);
@@ -138,7 +138,6 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
             }
         }
 
-        const freshness = await finalFreshness(prevStorage, decisions, nodeIdentifier);
         if (decision.kind === "create") {
             if (decision.freshness === "potentially-outdated") continue;
             for (const input of finalEdges) {
@@ -154,20 +153,26 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
             continue;
         }
 
-        if (freshness === "up-to-date") {
-            for (const input of finalEdges) {
-                if (await isFinalCached(prevStorage, decisions, input)) {
-                    addToValidSet(validSets, input, nodeIdentifier);
-                }
-            }
-            continue;
-        }
+        // Preserve old outgoing proofs when the input's stored semantic value
+        // survives — this applies to keep, override, and propagated
+        // invalidations (invalidation changes freshness, not value).
+        // Delete nodes have no surviving value; create nodes have no old proof.
+        // Explicit invalidation is excluded above.
+        //
+        // A preexisting stale node carried through keep or override loses its
+        // incoming proofs: persisted storage does not encode whether its
+        // staleness was explicit or propagated, so we conservatively treat it
+        // as a direct invalidation root.
+        const nodeFreshness = await finalFreshness(prevStorage, decisions, nodeIdentifier);
+        const isKeepOrOverride = decision.kind === "keep" || decision.kind === "override";
+        if (isKeepOrOverride && nodeFreshness === "potentially-outdated") continue;
 
-        if ((decision.kind !== "keep" && decision.kind !== "override") || freshness !== "potentially-outdated") continue;
+        /** @param {import('./migration_storage').Decision | undefined} d @returns {boolean} */
+        const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create";
         const oldEdges = deriveInputEdges(oldScheme, oldLookup, nodeIdentifier);
         for (const input of finalEdges) {
             const inputDecision = decisions.get(input);
-            if (!inputDecision || (inputDecision.kind !== "keep" && inputDecision.kind !== "override")) continue;
+            if (!preservesValue(inputDecision)) continue;
             if (!await isFinalCached(prevStorage, decisions, input)) continue;
             if (!oldEdges.some(edge => nodeIdentifierToString(edge) === nodeIdentifierToString(input))) continue;
             const existingValidForD = await prevStorage.valid.get(input) ?? [];

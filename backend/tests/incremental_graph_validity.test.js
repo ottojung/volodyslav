@@ -305,11 +305,17 @@ describe("Incremental graph validity", () => {
         db = new InMemoryDatabase();
     });
 
+    /** Read valid set safely, returning [] when no entry exists */
+    function readValidSet(identifier) {
+        return db._readSublevel('valid', identifier) ?? [];
+    }
+
     // === Test Obligation 1: Cache hit through valid flags (not freshness fast-path) ===
     describe("test obligation 1: cache hit through valid flags", () => {
-        it("cache-hits through valid[D].has(N) when potentially-outdated but all flags present", async () => {
+        it("invalidates source and cache-hits through valid flags when source returns Unchanged", async () => {
+            let srcCalls = 0;
             const { nodeDefs, middleCC, dependentCC } = createChainGraph(
-                () => ({ v: "src" }),
+                () => { srcCalls++; if (srcCalls === 1) return ({ v: "src" }); return makeUnchanged(); },
                 () => ({ v: "mid" }),
                 () => ({ v: "dep" })
             );
@@ -317,6 +323,7 @@ describe("Incremental graph validity", () => {
             const testCapabilities = getTestCapabilities();
             graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
             const binding = [{ id: "x" }];
+            const srcKey = makeNodeStorageKey("source");
             const midKey = makeNodeStorageKey("middle", binding);
             const depKey = makeNodeStorageKey("dependent", binding);
 
@@ -325,26 +332,34 @@ describe("Incremental graph validity", () => {
             await graph.pull("middle", binding);
             await graph.pull("dependent", binding);
 
+            const srcId = db.nodeKeyToId(srcKey);
             const midId = db.nodeKeyToId(midKey);
             const depId = db.nodeKeyToId(depKey);
 
-            // Verify valid flags were established: valid[mid].has(dep)
+            // Verify valid flags were established: valid[src].has(mid), valid[mid].has(dep)
+            const validSrc = db._readSublevel('valid', srcId);
+            expect(validSrc.some(id => id === nodeIdentifierToString(midId))).toBe(true);
             const validMid = db._readSublevel('valid', midId);
-            expect(validMid).toBeTruthy();
             expect(validMid.some(id => id === nodeIdentifierToString(depId))).toBe(true);
 
-            // Now mark dependent potentially-outdated directly
-            // (bypasses freshness fast-path, forces cache predicate check)
-            await graph.invalidate("dependent", binding);
+            // Invalidate source (zero-input, no incoming proofs to remove)
+            // This propagates stale freshness to mid and dep
+            await graph.invalidate("source");
+            expect(db._readSublevel('freshness', srcId)).toBe("potentially-outdated");
+            expect(db._readSublevel('freshness', midId)).toBe("potentially-outdated");
             expect(db._readSublevel('freshness', depId)).toBe("potentially-outdated");
+
+            // Valid flags are preserved (source is zero-input, no incoming to remove)
+            expect(readValidSet(srcId).some(id => id === nodeIdentifierToString(midId))).toBe(true);
+            expect(readValidSet(midId).some(id => id === nodeIdentifierToString(depId))).toBe(true);
 
             const depCallsBefore = dependentCC.getCallCount();
             const midCallsBefore = middleCC.getCallCount();
 
-            // Pull dependent: freshness is outdated, but valid[mid].has(dep) exists
+            // Pull dependent: source returns Unchanged, so valid[src].has(mid) is preserved.
+            // Mid cache-hits through preserved proof, dep cache-hits through preserved proof.
             const result = await graph.pull("dependent", binding);
 
-            // Cache hit through valid flags — dependent's computor NOT called
             expect(dependentCC.getCallCount()).toBe(depCallsBefore);
             expect(middleCC.getCallCount()).toBe(midCallsBefore);
             expect(result).toEqual({ v: "dep" });
@@ -1261,6 +1276,368 @@ describe("Incremental graph validity", () => {
             await expect(
                 createIncrementalGraph(testCapabilities, existingDb, nodeDefs)
             ).rejects.toThrow(/global\/graph_scheme/);
+        });
+    });
+
+    // ── Explicit non-source invalidation ─────────────────────────────
+
+    describe("explicit non-source invalidation", () => {
+        it("A->B->C invalidate B: removes incoming proofs of B, forces recompute", async () => {
+            let bCalls = 0;
+
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => { bCalls++; return ({ v: "mid" }); },
+                () => ({ v: "dep" })
+            );
+            const testCapabilities = getTestCapabilities();
+            graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const aKey = makeNodeStorageKey("source");
+            const bKey = makeNodeStorageKey("middle", binding);
+            const cKey = makeNodeStorageKey("dependent", binding);
+
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            const aId = db.nodeKeyToId(aKey);
+            const bId = db.nodeKeyToId(bKey);
+            const cId = db.nodeKeyToId(cKey);
+
+            // Verify initial proofs
+            expect(readValidSet(aId).some(id => id === nodeIdentifierToString(bId))).toBe(true);
+            expect(readValidSet(bId).some(id => id === nodeIdentifierToString(cId))).toBe(true);
+
+            const bCallsBefore = bCalls;
+
+            await graph.invalidate("middle", binding);
+
+            // Assert immediate state
+            expect(db._readSublevel('freshness', bId)).toBe("potentially-outdated");
+            expect(db._readSublevel('freshness', cId)).toBe("potentially-outdated");
+            expect(db._readSublevel('freshness', aId)).toBe("up-to-date");
+
+            // valid[A].has(B) is removed (incoming proof of explicit root B)
+            const validA = db._readSublevel('valid', aId) ?? [];
+            expect(validA.some(id => id === nodeIdentifierToString(bId))).toBe(false);
+
+            // valid[B].has(C) is preserved (outgoing proof, B's value unchanged)
+            const validB = db._readSublevel('valid', bId) ?? [];
+            expect(validB.some(id => id === nodeIdentifierToString(cId))).toBe(true);
+
+            // Pull C — B's computor must run (B lacks incoming proof)
+            const result = await graph.pull("dependent", binding);
+            expect(bCalls).toBe(bCallsBefore + 1);
+            expect(result).toEqual({ v: "dep" });
+        });
+
+        it("explicit B invalidated, B returns Unchanged, C cache-revalidates", async () => {
+            let bCalls = 0;
+            let cCalls = 0;
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => { bCalls++; if (bCalls === 1) return ({ v: "mid" }); return makeUnchanged(); },
+                () => { cCalls++; return ({ v: "dep" }); }
+            );
+            const testCapabilities = getTestCapabilities();
+            graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+
+
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            await graph.invalidate("middle", binding);
+
+            // Pull C — B returns Unchanged, valid[B].has(C) was preserved
+            const cCallsBefore = cCalls;
+            const result = await graph.pull("dependent", binding);
+            expect(bCalls).toBe(2); // initial + invalidation recompute
+            expect(cCalls).toBe(cCallsBefore);
+            expect(result).toEqual({ v: "dep" });
+        });
+
+        it("explicit B invalidated, B returns changed, C recomputes", async () => {
+            let bCalls = 0;
+            let cCalls = 0;
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => { bCalls++; return ({ v: "mid-" + bCalls }); },
+                () => { cCalls++; return ({ v: "dep-" + cCalls }); }
+            );
+            const testCapabilities = getTestCapabilities();
+            graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            await graph.invalidate("middle", binding);
+
+            const cCallsBefore = cCalls;
+            await graph.pull("dependent", binding);
+
+            // B recomputed and returned a changed value.
+            // B's outgoing validity should be cleared by handleChanged.
+            // The downstream effect (C recomputes) confirms valid[B].has(C) was removed.
+            expect(cCalls).toBe(cCallsBefore + 1);
+        });
+    });
+
+    // ── Explicit fan-in invalidation ─────────────────────────────────
+
+    describe("explicit fan-in invalidation", () => {
+        it("invalidate(D) removes both incoming proofs A→D and B→D", async () => {
+            let dCalls = 0;
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => ({ v: "a" }), isDeterministic: false, hasSideEffects: false },
+                { output: "B", inputs: [], computor: async () => ({ v: "b" }), isDeterministic: false, hasSideEffects: false },
+                { output: "D(x)", inputs: ["A", "B"], computor: async () => { dCalls++; return ({ v: "d" }); }, isDeterministic: false, hasSideEffects: false },
+            ];
+            const testCapabilities = getTestCapabilities();
+            graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const dKey = makeNodeStorageKey("D", binding);
+
+            await graph.pull("A");
+            await graph.pull("B");
+            await graph.pull("D", binding);
+
+            const aId = db.nodeKeyToId(makeNodeStorageKey("A"));
+            const bId = db.nodeKeyToId(makeNodeStorageKey("B"));
+            const dId = db.nodeKeyToId(dKey);
+
+            // Verify both incoming proofs exist
+            expect(readValidSet(aId).some(id => id === nodeIdentifierToString(dId))).toBe(true);
+            expect(readValidSet(bId).some(id => id === nodeIdentifierToString(dId))).toBe(true);
+
+            const dCallsBefore = dCalls;
+
+            await graph.invalidate("D", binding);
+
+            // Both incoming proofs removed
+            expect(readValidSet(aId).some(id => id === nodeIdentifierToString(dId))).toBe(false);
+            expect(readValidSet(bId).some(id => id === nodeIdentifierToString(dId))).toBe(false);
+
+            // D's next pull invokes computor
+            await graph.pull("D", binding);
+            expect(dCalls).toBe(dCallsBefore + 1);
+        });
+    });
+
+    // ── Propagated invalidation ──────────────────────────────────────
+
+    describe("propagated invalidation", () => {
+        it("invalidating A propagates freshness but preserves proofs A→B→C", async () => {
+            let aCalls = 0;
+            let bCalls = 0;
+            let cCalls = 0;
+            const { nodeDefs } = createChainGraph(
+                () => { aCalls++; if (aCalls === 1) return ({ v: "src" }); return makeUnchanged(); },
+                () => { bCalls++; return ({ v: "mid" }); },
+                () => { cCalls++; return ({ v: "dep" }); }
+            );
+            const testCapabilities = getTestCapabilities();
+            graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const aKey = makeNodeStorageKey("source");
+            const bKey = makeNodeStorageKey("middle", binding);
+            const cKey = makeNodeStorageKey("dependent", binding);
+
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            const aId = db.nodeKeyToId(aKey);
+            const bId = db.nodeKeyToId(bKey);
+            const cId = db.nodeKeyToId(cKey);
+
+            // Verify proofs
+            expect(readValidSet(aId).some(id => id === nodeIdentifierToString(bId))).toBe(true);
+            expect(readValidSet(bId).some(id => id === nodeIdentifierToString(cId))).toBe(true);
+
+            await graph.invalidate("source");
+
+            // All stale
+            expect(db._readSublevel('freshness', aId)).toBe("potentially-outdated");
+            expect(db._readSublevel('freshness', bId)).toBe("potentially-outdated");
+            expect(db._readSublevel('freshness', cId)).toBe("potentially-outdated");
+
+            // All proofs preserved (A returns Unchanged on recompute)
+            expect(readValidSet(aId).some(id => id === nodeIdentifierToString(bId))).toBe(true);
+            expect(readValidSet(bId).some(id => id === nodeIdentifierToString(cId))).toBe(true);
+
+            // Pull C — A returns Unchanged, B and C cache-revalidate
+            const aCallsBefore = aCalls;
+            const bCallsBefore = bCalls;
+            const cCallsBefore = cCalls;
+            const result = await graph.pull("dependent", binding);
+            expect(aCalls).toBe(aCallsBefore + 1);
+            expect(bCalls).toBe(bCallsBefore);
+            expect(cCalls).toBe(cCallsBefore);
+            expect(result).toEqual({ v: "dep" });
+        });
+
+        it("A changed, B returns Unchanged, C cache-revalidates", async () => {
+            let aValue = 0;
+            let bCalls = 0;
+            let cCalls = 0;
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: ++aValue }),
+                () => { bCalls++; if (bCalls === 1) return ({ v: "mid" }); return makeUnchanged(); },
+                () => { cCalls++; return ({ v: "dep" }); }
+            );
+            const testCapabilities = getTestCapabilities();
+            graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const bKey = makeNodeStorageKey("middle", binding);
+            const cKey = makeNodeStorageKey("dependent", binding);
+
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            const bId = db.nodeKeyToId(bKey);
+            const cId = db.nodeKeyToId(cKey);
+
+            await graph.invalidate("source");
+
+            // Pull middle (B recomputes, gets changed A) then pull C
+            await graph.pull("middle", binding);
+
+            // B returned Unchanged — valid[B].has(C) preserved
+            expect(readValidSet(bId).some(id => id === nodeIdentifierToString(cId))).toBe(true);
+
+            const cCallsBefore = cCalls;
+            const result = await graph.pull("dependent", binding);
+            expect(cCalls).toBe(cCallsBefore);
+            expect(result).toEqual({ v: "dep" });
+        });
+
+        it("A changed, B changed value, C recomputes", async () => {
+            let aValue = 0;
+            let bValue = 0;
+            let cCalls = 0;
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: ++aValue }),
+                () => { bValue++; return ({ v: "mid-" + bValue }); },
+                () => { cCalls++; return ({ v: "dep" }); }
+            );
+            const testCapabilities = getTestCapabilities();
+            graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const bKey = makeNodeStorageKey("middle", binding);
+            const cKey = makeNodeStorageKey("dependent", binding);
+
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            const bId = db.nodeKeyToId(bKey);
+            const cId = db.nodeKeyToId(cKey);
+
+            await graph.invalidate("source");
+
+            // Pull middle — B recomputes, changes value
+            // Pull C — C must recompute (valid[B] cleared)
+            await graph.pull("middle", binding);
+
+            expect(readValidSet(bId).some(id => id === nodeIdentifierToString(cId))).toBe(false);
+
+            const cCallsBefore = cCalls;
+            await graph.pull("dependent", binding);
+            expect(cCalls).toBe(cCallsBefore + 1);
+        });
+    });
+
+    // ── Diamond propagation ──────────────────────────────────────────
+
+    describe("diamond propagation", () => {
+        it("A invalidated: all nodes stale, all proofs preserved, cache-revalidate on Unchanged", async () => {
+            let aCalls = 0;
+            let bCalls = 0;
+            let cCalls = 0;
+            let dCalls = 0;
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: () => { aCalls++; if (aCalls === 1) return ({ v: 1 }); return makeUnchanged(); }, isDeterministic: false, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: () => { bCalls++; return ({ v: 2 }); }, isDeterministic: false, hasSideEffects: false },
+                { output: "C", inputs: ["A"], computor: () => { cCalls++; return ({ v: 3 }); }, isDeterministic: false, hasSideEffects: false },
+                { output: "D", inputs: ["B", "C"], computor: () => { dCalls++; return ({ v: 4 }); }, isDeterministic: false, hasSideEffects: false },
+            ];
+            const testCapabilities = getTestCapabilities();
+            graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
+
+            await graph.pull("A");
+            await graph.pull("B");
+            await graph.pull("C");
+            await graph.pull("D");
+
+            const aId = db.nodeKeyToId(makeNodeStorageKey("A"));
+            const bId = db.nodeKeyToId(makeNodeStorageKey("B"));
+            const cId = db.nodeKeyToId(makeNodeStorageKey("C"));
+            const dId = db.nodeKeyToId(makeNodeStorageKey("D"));
+
+            // Verify diamond proofs
+            expect(readValidSet(aId).some(id => id === nodeIdentifierToString(bId))).toBe(true);
+            expect(readValidSet(aId).some(id => id === nodeIdentifierToString(cId))).toBe(true);
+            expect(readValidSet(bId).some(id => id === nodeIdentifierToString(dId))).toBe(true);
+            expect(readValidSet(cId).some(id => id === nodeIdentifierToString(dId))).toBe(true);
+
+            await graph.invalidate("A");
+
+            // All stale
+            expect(db._readSublevel('freshness', aId)).toBe("potentially-outdated");
+            expect(db._readSublevel('freshness', bId)).toBe("potentially-outdated");
+            expect(db._readSublevel('freshness', cId)).toBe("potentially-outdated");
+            expect(db._readSublevel('freshness', dId)).toBe("potentially-outdated");
+
+            // All proofs preserved
+            expect(readValidSet(aId).some(id => id === nodeIdentifierToString(bId))).toBe(true);
+            expect(readValidSet(aId).some(id => id === nodeIdentifierToString(cId))).toBe(true);
+            expect(readValidSet(bId).some(id => id === nodeIdentifierToString(dId))).toBe(true);
+            expect(readValidSet(cId).some(id => id === nodeIdentifierToString(dId))).toBe(true);
+
+            // Pull D — A returns Unchanged, B/C/D cache-revalidate
+            const bCallsBefore = bCalls;
+            const cCallsBefore = cCalls;
+            const dCallsBefore = dCalls;
+            await graph.pull("D");
+            expect(bCalls).toBe(bCallsBefore);
+            expect(cCalls).toBe(cCallsBefore);
+            expect(dCalls).toBe(dCallsBefore);
+        });
+    });
+
+    // ── Already-stale traversal ──────────────────────────────────────
+
+    describe("already-stale traversal", () => {
+        it("B already stale before invalidating source, traversal still reaches C", async () => {
+            const { nodeDefs } = createChainGraph(
+                () => ({ v: "src" }),
+                () => ({ v: "mid" }),
+                () => ({ v: "dep" })
+            );
+            const testCapabilities = getTestCapabilities();
+            graph = await createIncrementalGraph(testCapabilities, db, nodeDefs);
+            const binding = [{ id: "x" }];
+            const cKey = makeNodeStorageKey("dependent", binding);
+
+            await graph.pull("source");
+            await graph.pull("middle", binding);
+            await graph.pull("dependent", binding);
+
+            const cId = db.nodeKeyToId(cKey);
+
+            // Make B stale first (source still up-to-date)
+            await graph.invalidate("middle", binding);
+
+            // Now invalidate source — must propagate through stale B to C
+            await graph.invalidate("source");
+
+            expect(db._readSublevel('freshness', cId)).toBe("potentially-outdated");
         });
     });
 });

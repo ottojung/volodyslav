@@ -43,7 +43,13 @@ async function readValidDependents(nodeKey, prevStorage) {
 }
 
 /**
- * Recursively propagate INVALIDATE through the validity sets of a node.
+ * Propagate INVALIDATE through previous validity edges.
+ *
+ * Recursive invalidation propagates freshness only — it does not remove
+ * validity edges. Each reached dependent is marked as a propagated
+ * invalidation, and the traversal continues through its outgoing validity
+ * frontier. A node-level visited set is sufficient; there is no need to
+ * track causal predecessors because no validity edges are revoked.
  * @param {object} ctx
  * @param {NodeIdentifier} ctx.nodeKey
  * @param {Set<NodeIdentifier>} ctx.visited
@@ -56,30 +62,38 @@ async function readValidDependents(nodeKey, prevStorage) {
  */
 async function propagateInvalidate(ctx) {
     const { nodeKey, visited, prevStorage, materializedNodes, decisions, newHeadIndex, getIdentifiersKeysIndex } = ctx;
-    if (visited.has(nodeKey)) return;
-    visited.add(nodeKey);
-    const dependents = await readValidDependents(nodeKey, prevStorage);
-    for (const dep of dependents) {
-        if (!materializedNodes.has(dep)) continue;
-        const existing = decisions.get(dep);
-        if (existing !== undefined) {
-            if (existing.kind === "delete" || existing.kind === "invalidate") {
-                continue;
+    /** @type {NodeIdentifier[]} */
+    const worklist = [nodeKey];
+
+    while (worklist.length > 0) {
+        const current = worklist.pop();
+        if (current === undefined) continue;
+        if (visited.has(current)) continue;
+        visited.add(current);
+
+        const dependents = await readValidDependents(current, prevStorage);
+        for (const dep of dependents) {
+            if (!materializedNodes.has(dep)) continue;
+            const existing = decisions.get(dep);
+            if (existing !== undefined) {
+                if (existing.kind === "delete") {
+                    continue;
+                }
+                if (existing.kind === "invalidate") {
+                    if (!visited.has(dep)) {
+                        worklist.push(dep);
+                    }
+                    continue;
+                }
+                throw makeDecisionConflictError(dep, existing.kind, "invalidate");
             }
-            throw makeDecisionConflictError(dep, existing.kind, "invalidate");
+            const identifiersKeysIndex = getIdentifiersKeysIndex();
+            await checkSchemaCompatibility(dep, newHeadIndex, identifiersKeysIndex, decisions);
+            decisions.set(dep, { kind: "invalidate", provenance: "propagated" });
+            if (!visited.has(dep)) {
+                worklist.push(dep);
+            }
         }
-        const identifiersKeysIndex = getIdentifiersKeysIndex();
-        await checkSchemaCompatibility(dep, newHeadIndex, identifiersKeysIndex, decisions);
-        decisions.set(dep, { kind: "invalidate", provenance: "propagated" });
-        await propagateInvalidate({
-            nodeKey: dep,
-            visited,
-            prevStorage,
-            materializedNodes,
-            decisions,
-            newHeadIndex,
-            getIdentifiersKeysIndex,
-        });
     }
 }
 

@@ -367,11 +367,14 @@ only if all of the following hold:
 If any of these do not hold, the node MUST be `potentially-outdated` or
 unmaterialized.
 
-**REQ-SYNC-12 (Meaning of potentially-outdated):** `potentially-outdated` does
-not mean the stored value is wrong. It means the system does not currently have
-enough proof to return the stored value without recomputation. A
-potentially-outdated node may still carry useful validity proofs about parts of
-its dependency relation, subject to the validity proof transport rules of §11.
+**REQ-SYNC-12 (Meaning of potentially-outdated):** `potentially-outdated` means
+the system does not currently have enough proof to guarantee the stored value
+without verifying it. A stale node pulls all dependencies:
+
+- A **direct invalidation root** has had all incoming proofs removed. Its next pull must invoke its computor.
+- A **propagated stale descendant** retains all incoming and outgoing proofs. Its next pull may cache-revalidate without invoking its computor when every incoming proof remains present.
+
+A stale node that cache-revalidates is marked `up-to-date` and returns its stored value. A stale node whose cache predicate fails invokes its computor.
 
 ---
 
@@ -457,13 +460,14 @@ only if ALL of the following hold:
   validity proof transport. A proof is transported only on provenance match,
   not on extensional value match.
 
-**REQ-SYNC-16 (Mandatory final validity flags):** After transporting safe
-source proofs under the above rules, synchronization MUST add mandatory
-validity flags for every final `up-to-date` materialized node and each of its
-direct final inputs. This preserves the IncrementalGraph invariant that an
-`up-to-date` node has direct validity flags for all inputs. This does not allow
-making a stale node `up-to-date`; it only ensures the final validity relation
-is complete for nodes that are already justified as `up-to-date`.
+**REQ-SYNC-16 (Required incoming validity for up-to-date nodes):** Every final
+`up-to-date` materialized node must have complete incoming validity proofs for
+all its direct inputs. Synchronization must not mint a proof that cannot be
+justified through provenance transport. When a required proof cannot be
+transported or justified, the affected node must be classified as a direct
+invalidation root: all its incoming proofs are removed and it is marked
+`potentially-outdated`. This guarantees that its next pull recomputes and
+establishes fresh validity proofs.
 
 **REQ-SYNC-17 (Rebuild, not merge):** The final validity relation must be
 rebuilt from the final lowered graph, not textually merged from source
