@@ -18,6 +18,7 @@ const { ReplicaBatchWriter } = require('./sync_merge_validity');
  * @param {Map<NodeKeyString, SourceSelection>} selectedSourceByKey
  * @param {Set<NodeKeyString>} directInvalidationKeys
  * @param {Set<NodeKeyString>} deletedMaterializationKeys
+ * @param {Map<NodeKeyString, import('./value_clock').ValueClock>} finalConflictFrontierByKey
  * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
  * @returns {Promise<void>}
  */
@@ -29,6 +30,7 @@ async function applyNodeDecisions(
     selectedSourceByKey,
     directInvalidationKeys,
     deletedMaterializationKeys,
+    finalConflictFrontierByKey,
     finalIdentifierForKey
 ) {
     const writer = new ReplicaBatchWriter(targetStorage);
@@ -38,6 +40,10 @@ async function applyNodeDecisions(
             const targetId = targetLookup.keyToId.get(String(nodeKey));
             if (targetId !== undefined) {
                 await writer.pushAll(buildDeleteNodeOps(targetStorage, targetId));
+            }
+            const frontier = finalConflictFrontierByKey.get(nodeKey);
+            if (frontier !== undefined) {
+                await writer.push(targetStorage.conflictFrontiers.putOp(nodeKey, frontier));
             }
             continue;
         }
@@ -52,6 +58,8 @@ async function applyNodeDecisions(
         if (sourceId === undefined) throw new IdentifierLookupConflictError(`Missing source identifier for ${String(nodeKey)}`);
 
         const finalFreshnessOverride = directInvalidationKeys.has(nodeKey) ? 'potentially-outdated' : undefined;
+        await writer.push(targetStorage.conflictFrontiers.delOp(nodeKey));
+
         if (!useHost && sourceId === destinationId) {
             if (finalFreshnessOverride !== undefined) {
                 await writer.push(targetStorage.freshness.putOp(destinationId, finalFreshnessOverride));
@@ -84,6 +92,12 @@ async function applyNodeDecisions(
         }));
     }
 
+    for (const [nodeKey, frontier] of finalConflictFrontierByKey) {
+        if (!deletedMaterializationKeys.has(nodeKey)) {
+            await writer.push(targetStorage.conflictFrontiers.putOp(nodeKey, frontier));
+        }
+    }
+
     for (const [targetIdString, nodeKey] of targetLookup.idToKey.entries()) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const finalId = finalIdentifierForKey.get(nodeKey);
@@ -106,13 +120,15 @@ async function applyNodeDecisions(
  * @param {Map<NodeKeyString, SourceSelection>} options.selectedSourceByKey
  * @param {Set<NodeKeyString>} options.directInvalidationKeys
  * @param {Set<NodeKeyString>} options.deletedMaterializationKeys
+ * @param {Map<NodeKeyString, import('./value_clock').ValueClock>} options.finalConflictFrontierByKey
  * @param {IdentifierLookup} options.targetLookup
- * @returns {{ kept: number, taken: number, invalidated: number, deleted: number, hasChanges: boolean }}
+ * @returns {{ kept: number, taken: number, invalidated: number, deleted: number, conflicted: number, hasChanges: boolean }}
  */
 function summarizeDecisions({
     selectedSourceByKey,
     directInvalidationKeys,
     deletedMaterializationKeys,
+    finalConflictFrontierByKey,
     targetLookup,
 }) {
     let kept = 0;
@@ -122,14 +138,17 @@ function summarizeDecisions({
         else kept += 1;
     }
     const deleted = deletedMaterializationKeys.size;
+    const conflicted = finalConflictFrontierByKey.size;
     const invalidated = directInvalidationKeys.size;
     return {
         kept,
         taken,
         invalidated,
-        deleted,
+        deleted: deleted + conflicted - conflicted,
+        conflicted,
         hasChanges: taken > 0
             || invalidated > 0
+            || finalConflictFrontierByKey.size > 0
             || Array.from(deletedMaterializationKeys).some(nodeKey => targetLookup.keyToId.has(String(nodeKey))),
     };
 }

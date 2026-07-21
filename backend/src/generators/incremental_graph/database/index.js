@@ -85,6 +85,16 @@ const {
 } = require('./unification');
 
 const {
+    normalizeValueClock,
+    validateValueClock,
+    valueClocksEqual,
+    valueClockDominates,
+    valueClocksConcurrent,
+    joinValueClocks,
+    incrementValueClock,
+} = require('./value_clock');
+
+const {
     normalizeInputEdges,
     arraysOfNodeIdentifiersEqual,
 } = require('./input_edges');
@@ -133,6 +143,13 @@ module.exports = {
     isValidFingerprint,
     requireValidFingerprint,
     LAST_NODE_INDEX_KEY,
+    normalizeValueClock,
+    validateValueClock,
+    valueClocksEqual,
+    valueClockDominates,
+    valueClocksConcurrent,
+    joinValueClocks,
+    incrementValueClock,
     makeTypedDatabase,
     isTypedDatabase,
     checkpointDatabase,

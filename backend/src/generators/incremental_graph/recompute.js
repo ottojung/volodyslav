@@ -27,6 +27,7 @@
  * @property {import('./graph_state').GraphStorage} storage
  * @property {import('../../datetime').Datetime} datetime
  * @property {import('../../sleeper').SleepCapability} sleeper
+ * @property {import('./database/root_database').RootDatabase} rootDatabase
  */
 
 const { makeInvalidComputorReturnValueError, makeInvalidUnchangedError } = require("./errors");
@@ -39,6 +40,7 @@ const { lookupNodeIdentifier } = require("./graph_state");
 const { normalizeInputEdges } = require("./database");
 const { propagatePotentiallyOutdated } = require("./propagation");
 const { removeIncomingValidity } = require("./validity");
+const { incrementValueClock } = require("./database");
 
 /**
  * Return true when every dependency in inputEdges has a validity flag for N.
@@ -99,10 +101,11 @@ async function handleUnchanged(_incrementalGraph, nodeIdentifier, inputEdges, ba
  * @param {NodeIdentifier[]} inputEdges
  * @param {ComputedValue} newValue
  * @param {boolean} alreadyMaterialized
+ * @param {NodeKeyString} nodeKey
  * @param {BatchBuilder} batch
  * @returns {Promise<void>}
  */
-async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, alreadyMaterialized, batch) {
+async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newValue, alreadyMaterialized, nodeKey, batch) {
     removeIncomingValidity(batch, nodeIdentifier, inputEdges);
     const downstream = await batch.valid.get(nodeIdentifier);
     batch.valid.clear(nodeIdentifier);
@@ -110,7 +113,11 @@ async function handleChanged(incrementalGraph, nodeIdentifier, inputEdges, newVa
     const datetime = incrementalGraph.datetime;
     const nowIso = datetime.now().toISOString();
     batch.values.put(nodeIdentifier, newValue);
-
+    const conflictFrontier = await batch.conflictFrontiers.get(nodeKey);
+    const existingClock = alreadyMaterialized ? await batch.valueClocks.get(nodeIdentifier) : undefined;
+    const baseClock = conflictFrontier ?? existingClock;
+    batch.valueClocks.put(nodeIdentifier, incrementValueClock(baseClock, incrementalGraph.rootDatabase.getFingerprint()));
+    batch.conflictFrontiers.del(nodeKey);
 
     const existingTimestamp = await batch.timestamps.get(nodeIdentifier);
     if (alreadyMaterialized === true) {
@@ -216,7 +223,7 @@ async function internalMaybeRecalculate(
         return { value: result, status: "unchanged" };
     }
 
-    await handleChanged(incrementalGraph, nodeIdentifier, inputEdges, computedValue, nodeDefinition.alreadyMaterialized, batch);
+    await handleChanged(incrementalGraph, nodeIdentifier, inputEdges, computedValue, nodeDefinition.alreadyMaterialized, nodeDefinition.outputKey, batch);
     return { value: computedValue, status: "changed" };
 }
 

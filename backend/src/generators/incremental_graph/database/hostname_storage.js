@@ -70,6 +70,7 @@ function validateHostname(hostname) {
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
 /** @typedef {import('./types').TimestampRecord} TimestampRecord */
+/** @typedef {import('./value_clock').ValueClock} ValueClock */
 
 /**
  * @template T
@@ -98,6 +99,10 @@ function buildBareSchemaStorage(namespaceSublevel) {
     const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<ValueClock, NodeIdentifier>} */
+    const valueClocksSublevel = namespaceSublevel.sublevel('value_clocks', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<ValueClock, import('./types').NodeKeyString>} */
+    const conflictFrontiersSublevel = namespaceSublevel.sublevel('conflict_frontiers', { valueEncoding: 'json' });
     /** @type {GlobalSublevelType} */
     const globalSublevel = namespaceSublevel.sublevel('global', { valueEncoding: 'json' });
 
@@ -114,6 +119,8 @@ function buildBareSchemaStorage(namespaceSublevel) {
         freshness: makeTypedDatabase(freshnessSublevel),
         valid: makeTypedDatabase(validSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
+        valueClocks: makeTypedDatabase(valueClocksSublevel),
+        conflictFrontiers: makeTypedDatabase(conflictFrontiersSublevel),
         global: makeTypedDatabase(globalSublevel),
     };
 }

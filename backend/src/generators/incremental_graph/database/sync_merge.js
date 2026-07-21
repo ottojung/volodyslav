@@ -289,6 +289,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap,
         directInvalidationKeys,
         deletedMaterializationKeys,
+        finalConflictFrontierByKey,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
@@ -307,6 +308,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         selectedSourceByKey,
         directInvalidationKeys,
         deletedMaterializationKeys,
+        finalConflictFrontierByKey,
         finalIdentifierForKey
     );
 
@@ -314,6 +316,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         selectedSourceByKey,
         directInvalidationKeys,
         deletedMaterializationKeys,
+        finalConflictFrontierByKey,
         targetLookup,
     });
     const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation;
@@ -368,6 +371,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             taken: summary.taken,
             invalidated: summary.invalidated,
             deleted: summary.deleted,
+            conflicted: summary.conflicted,
             switchedReplica,
         },
         'Graph merge completed for host'

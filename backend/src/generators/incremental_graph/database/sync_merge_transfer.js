@@ -31,6 +31,7 @@ function buildDeleteNodeOps(targetStorage, identifier) {
         targetStorage.freshness.delOp(identifier),
         targetStorage.valid.delOp(identifier),
         targetStorage.timestamps.delOp(identifier),
+        targetStorage.valueClocks.delOp(identifier),
     ];
 }
 
@@ -63,6 +64,11 @@ async function copyNodeOps({
         throw new ReplicaStateInvariantError('sync merge copy', 'has no cached value', nodeIdentifierToString(sourceId));
     }
     ops.push(targetStorage.values.putOp(destinationId, sourceValue));
+    const sourceClock = await sourceStorage.valueClocks.get(sourceId);
+    if (sourceClock === undefined) {
+        throw new ReplicaStateInvariantError('sync merge copy', 'has no value clock', nodeIdentifierToString(sourceId));
+    }
+    ops.push(targetStorage.valueClocks.putOp(destinationId, sourceClock));
 
     ops.push(targetStorage.freshness.putOp(destinationId, finalFreshness));
     ops.push(targetStorage.timestamps.putOp(destinationId, finalTimestamps));

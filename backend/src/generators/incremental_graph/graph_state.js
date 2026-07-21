@@ -44,6 +44,7 @@ const {
 /** @typedef {import('./database/root_database').FreshnessDatabase} FreshnessDatabase */
 /** @typedef {import('./database/root_database').ValidDatabase} ValidDatabase */
 /** @typedef {import('./database/root_database').TimestampsDatabase} TimestampsDatabase */
+/** @typedef {import('./database/root_database').ValueClocksDatabase} ValueClocksDatabase */
 /** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
@@ -106,10 +107,11 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
 
 /**
  * @template TValue
+ * @template TKey
  * @typedef {object} BatchDatabaseOps
- * @property {(key: NodeIdentifier, value: TValue) => void} put - Queue a put operation in the current batch.
- * @property {(key: NodeIdentifier) => void} del - Queue a delete operation in the current batch.
- * @property {(key: NodeIdentifier) => Promise<TValue | undefined>} get - Read with read-your-writes batch consistency.
+ * @property {(key: TKey, value: TValue) => void} put - Queue a put operation in the current batch.
+ * @property {(key: TKey) => void} del - Queue a delete operation in the current batch.
+ * @property {(key: TKey) => Promise<TValue | undefined>} get - Read with read-your-writes batch consistency.
  */
 
 /**
@@ -124,10 +126,12 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
 
 /**
  * @typedef {object} BatchBuilder
- * @property {BatchDatabaseOps<ComputedValue>} values - Node value storage.
- * @property {BatchDatabaseOps<Freshness>} freshness - Freshness storage.
+ * @property {BatchDatabaseOps<ComputedValue, NodeIdentifier>} values - Node value storage.
+ * @property {BatchDatabaseOps<Freshness, NodeIdentifier>} freshness - Freshness storage.
  * @property {ValidBatchOps} valid - Validity flags with mutation tracking for concurrent safety.
- * @property {BatchDatabaseOps<TimestampRecord>} timestamps - Creation/modification timestamps.
+ * @property {BatchDatabaseOps<TimestampRecord, NodeIdentifier>} timestamps - Creation/modification timestamps.
+ * @property {BatchDatabaseOps<import('./database/value_clock').ValueClock, NodeIdentifier>} valueClocks - Cached-value causal clocks.
+ * @property {BatchDatabaseOps<import('./database/value_clock').ValueClock, NodeKeyString>} conflictFrontiers - Conflict frontiers keyed by semantic key.
  */
 
 /**
@@ -153,6 +157,8 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
  * @property {FreshnessDatabase} freshness - Identifier-keyed freshness storage.
  * @property {ValidDatabase} valid - Identifier-keyed inverse validity flags.
  * @property {TimestampsDatabase} timestamps - Identifier-keyed timestamps.
+ * @property {ValueClocksDatabase} valueClocks - Identifier-keyed value clocks.
+ * @property {import('./database/root_database').ConflictFrontiersDatabase} conflictFrontiers - Semantic-keyed conflict frontiers.
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
  * @property {<T>(fn: (tx: Transaction) => Promise<{value: T}>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
  * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} getValid - Read a node's valid set inside the current batch.
@@ -166,30 +172,32 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
  * first and fall through to the underlying database on a miss.
  *
  * @template TValue
- * @param {{ get: (key: NodeIdentifier) => Promise<TValue | undefined>, putOp: (key: NodeIdentifier, value: TValue) => object, delOp: (key: NodeIdentifier) => object }} db
+ * @template TKey
+ * @param {{ get: (key: TKey) => Promise<TValue | undefined>, putOp: (key: TKey, value: TValue) => object, delOp: (key: TKey) => object }} db
  * @param {Array<object>} operations - Shared operations array all sublevels append to.
- * @returns {BatchDatabaseOps<TValue>}
+ * @param {(key: TKey) => string} keyToString
+ * @returns {BatchDatabaseOps<TValue, TKey>}
  */
-function makeSublevelBatch(db, operations) {
+function makeSublevelBatch(db, operations, keyToString) {
     /** @type {Map<string, TValue>} */
     const puts = new Map();
     /** @type {Set<string>} */
     const dels = new Set();
     return {
         put(key, value) {
-            const k = nodeIdentifierToString(key);
+            const k = keyToString(key);
             puts.set(k, value);
             dels.delete(k);
             operations.push(db.putOp(key, value));
         },
         del(key) {
-            const k = nodeIdentifierToString(key);
+            const k = keyToString(key);
             dels.add(k);
             puts.delete(k);
             operations.push(db.delOp(key));
         },
         async get(key) {
-            const k = nodeIdentifierToString(key);
+            const k = keyToString(key);
             if (dels.has(k)) {
                 return undefined;
             }
@@ -289,10 +297,12 @@ function createBatch(schemaStorage) {
     const validMutations = new Map();
     /** @type {BatchBuilder} */
     const batch = {
-        values: makeSublevelBatch(schemaStorage.values, operations),
-        freshness: makeSublevelBatch(schemaStorage.freshness, operations),
+        values: makeSublevelBatch(schemaStorage.values, operations, nodeIdentifierToString),
+        freshness: makeSublevelBatch(schemaStorage.freshness, operations, nodeIdentifierToString),
         valid: makeValidBatchOps(schemaStorage.valid, validMutations),
-        timestamps: makeSublevelBatch(schemaStorage.timestamps, operations),
+        timestamps: makeSublevelBatch(schemaStorage.timestamps, operations, nodeIdentifierToString),
+        valueClocks: makeSublevelBatch(schemaStorage.valueClocks, operations, nodeIdentifierToString),
+        conflictFrontiers: makeSublevelBatch(schemaStorage.conflictFrontiers, operations, String),
     };
     return { batch, operations, validMutations };
 }
@@ -329,6 +339,8 @@ function makeGraphStorage(rootDatabase, sleeper) {
         get freshness() { return rootDatabase.getSchemaStorage().freshness; },
         get valid() { return rootDatabase.getSchemaStorage().valid; },
         get timestamps() { return rootDatabase.getSchemaStorage().timestamps; },
+        get valueClocks() { return rootDatabase.getSchemaStorage().valueClocks; },
+        get conflictFrontiers() { return rootDatabase.getSchemaStorage().conflictFrontiers; },
         async withBatch(fn) {
             const activeSchemaStorage = rootDatabase.getSchemaStorage();
             const { batch, operations, validMutations } = createBatch(activeSchemaStorage);

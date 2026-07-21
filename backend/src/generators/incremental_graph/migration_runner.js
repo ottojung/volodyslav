@@ -28,6 +28,7 @@ const { makeMigrationStorage } = require("./migration_storage");
 const { buildDecisionsMap, buildDesiredValid, loadMaterializedNodes } = require("./migration_validity");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
+const { incrementValueClock } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -203,6 +204,16 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
                 return existing;
             },
         },
+
+        valueClocks: {
+            keys: async function* keys() { for (const outputKey of sortedDecisionOutputKeys) { const decision = decisions.get(outputKey); if (decision && decision.kind !== "delete") yield outputKey; } },
+            async get(key) {
+                const decision = decisions.get(key);
+                if (!decision || decision.kind === "delete") return undefined;
+                return decision.kind === "create" ? incrementValueClock(undefined, fingerprint) : await prevStorage.valueClocks.get(key);
+            },
+        },
+        conflictFrontiers: { keys: async function* keys() {}, async get(_key) { return undefined; } },
         global: {
             async *keys() {
                 yield 'version';

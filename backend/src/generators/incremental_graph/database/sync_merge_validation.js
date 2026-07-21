@@ -2,6 +2,7 @@ const { nodeIdentifierToString } = require('./types');
 const { nodeIdentifierFromString, compareNodeIdentifier } = require('./node_identifier');
 const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges, GraphSchemeError } = require('./graph_scheme');
 const { fromISOString } = require('../../../datetime');
+const { validateValueClock } = require('./value_clock');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -112,6 +113,11 @@ async function assertValidReplicaMaterializationState(storage, lookup, context) 
         if (!isValidTimestampRecord(timestamps)) {
             throw new ReplicaStateInvariantError(context, 'has structurally invalid timestamps', identifierString);
         }
+        const valueClock = await storage.valueClocks.get(identifier);
+        if (valueClock === undefined) {
+            throw new ReplicaStateInvariantError(context, 'has no value clock', identifierString);
+        }
+        validateValueClock(valueClock);
     }
 
     for (const identifierString of cachedIdentifiers) {
@@ -130,6 +136,21 @@ async function assertValidReplicaMaterializationState(storage, lookup, context) 
         if (!materializedIdentifiers.has(identifierString)) {
             throw new ReplicaStateInvariantError(context, 'has timestamps but no identifier lookup entry', identifierString);
         }
+    }
+    for await (const identifier of storage.valueClocks.keys()) {
+        const identifierString = nodeIdentifierToString(identifier);
+        if (!materializedIdentifiers.has(identifierString)) {
+            throw new ReplicaStateInvariantError(context, 'has value clock but no identifier lookup entry', identifierString);
+        }
+        const valueClock = await storage.valueClocks.get(identifier);
+        validateValueClock(valueClock);
+    }
+    for await (const nodeKey of storage.conflictFrontiers.keys()) {
+        if (lookup.keyToId.has(String(nodeKey))) {
+            throw new ReplicaStateInvariantError(context, 'has both materialization and conflict frontier', String(nodeKey));
+        }
+        const frontier = await storage.conflictFrontiers.get(nodeKey);
+        validateValueClock(frontier);
     }
 
     /** @type {Map<string, import('./types').NodeIdentifier[]>} */

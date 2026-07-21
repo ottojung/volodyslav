@@ -424,7 +424,8 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {ComputedValue | Freshness | NodeIdentifier[] | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
+ * @typedef {import('./value_clock').ValueClock} ValueClock
+ * @typedef {ComputedValue | Freshness | NodeIdentifier[] | TimestampRecord | Version | IdentifiersKeysMap | ValueClock | number | string} DatabaseStoredValue
  */
 
 /**

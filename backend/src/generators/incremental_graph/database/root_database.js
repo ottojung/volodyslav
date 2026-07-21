@@ -53,6 +53,7 @@ const {
 /** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').TimestampRecord} TimestampRecord */
+/** @typedef {import('./value_clock').ValueClock} ValueClock */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */
 /** @typedef {import('./types').DatabaseStoredValue} DatabaseStoredValue */
@@ -150,6 +151,16 @@ function assertNeverReplicaName(name) {
  */
 
 /**
+ * Database for storing cached-value causal clocks.
+ * @typedef {GenericDatabase<ValueClock, NodeIdentifier>} ValueClocksDatabase
+ */
+
+/**
+ * Database for storing unmaterialized conflict frontiers by semantic key.
+ * @typedef {GenericDatabase<ValueClock, import('./types').NodeKeyString>} ConflictFrontiersDatabase
+ */
+
+/**
  * Database for storing inverse validity flags.
  * Key: persisted dependency identifier
  * Value: sorted array of dependent identifiers whose current values have been
@@ -172,6 +183,8 @@ function assertNeverReplicaName(name) {
  * @property {FreshnessDatabase} freshness - Node freshness state
  * @property {ValidDatabase} valid - Inverse validity flags (dependency -> dependents validated against it)
  * @property {TimestampsDatabase} timestamps - Node timestamps (creation and modification)
+ * @property {ValueClocksDatabase} valueClocks - Cached-value causal clocks
+ * @property {ConflictFrontiersDatabase} conflictFrontiers - Unmaterialized conflict frontiers
  * @property {GlobalVersionDatabase} global - Replica-level global state (version + identifiers lookup metadata)
  * @property {(operations: DatabaseBatchOperation[]) => Promise<void>} batch - Batch operation interface for atomic writes
  */
@@ -226,6 +239,10 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
     const validSublevel = namespaceSublevel.sublevel('valid', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<TimestampRecord, NodeIdentifier>} */
     const timestampsSublevel = namespaceSublevel.sublevel('timestamps', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<ValueClock, NodeIdentifier>} */
+    const valueClocksSublevel = namespaceSublevel.sublevel('value_clocks', { valueEncoding: 'json' });
+    /** @type {SimpleSublevel<ValueClock, import('./types').NodeKeyString>} */
+    const conflictFrontiersSublevel = namespaceSublevel.sublevel('conflict_frontiers', { valueEncoding: 'json' });
 
     // True once this closure's first non-empty batch() verifies any existing global/version.
     // Prevents redundant DB reads on subsequent batch calls.
@@ -257,6 +274,8 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
         freshness: makeTypedDatabase(freshnessSublevel),
         valid: makeTypedDatabase(validSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
+        valueClocks: makeTypedDatabase(valueClocksSublevel),
+        conflictFrontiers: makeTypedDatabase(conflictFrontiersSublevel),
         global: makeTypedDatabase(globalSublevel),
     };
 }

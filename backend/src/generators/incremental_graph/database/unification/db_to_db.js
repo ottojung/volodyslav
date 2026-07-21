@@ -32,7 +32,7 @@
 /** @typedef {import('./core').UnificationAdapter} UnificationAdapter */
 /** @typedef {import('../types').NodeIdentifier} NodeIdentifier */
 
-const { stringToNodeIdentifier } = require('../types');
+const { stringToNodeIdentifier, stringToNodeKeyString } = require('../types');
 
 /**
  * Narrow unknown to the typed value expected by the target sublevel.
@@ -52,8 +52,8 @@ function convertUnknownToStoredValue(value) {
  * InMemorySchemaStorage sublevels satisfy this interface.
  *
  * @typedef {object} ReadableNodeSublevel
- * @property {(key: NodeIdentifier) => Promise<unknown>} get
- * @property {() => AsyncIterable<NodeIdentifier>} keys
+ * @property {(key: *) => Promise<unknown>} get
+ * @property {() => AsyncIterable<*>} keys
  */
 
 /**
@@ -67,6 +67,8 @@ function convertUnknownToStoredValue(value) {
  * @property {ReadableGlobalSublevel} global
  * @property {ReadableNodeSublevel} valid
  * @property {ReadableNodeSublevel} timestamps
+ * @property {ReadableNodeSublevel} valueClocks
+ * @property {ReadableNodeSublevel} conflictFrontiers
  */
 
 /**
@@ -77,10 +79,12 @@ function convertUnknownToStoredValue(value) {
  * @type {readonly string[]}
  */
 const DATA_SUBLEVELS = Object.freeze([
+    'conflict_frontiers',
     'freshness',
     'global',
     'timestamps',
     'valid',
+    'value_clocks',
     'values',
 ]);
 
@@ -121,7 +125,7 @@ function parseCompositeKey(compositeKey) {
  *
  * @param {ReadableSchemaStorage} source
  * @param {string} sublevel
- * @returns {ReadableSchemaStorage['values'] | ReadableSchemaStorage['freshness'] | ReadableSchemaStorage['global'] | ReadableSchemaStorage['valid'] | ReadableSchemaStorage['timestamps']}
+ * @returns {ReadableSchemaStorage['values'] | ReadableSchemaStorage['freshness'] | ReadableSchemaStorage['global'] | ReadableSchemaStorage['valid'] | ReadableSchemaStorage['timestamps'] | ReadableSchemaStorage['valueClocks'] | ReadableSchemaStorage['conflictFrontiers']}
  */
 function getSourceSubDb(source, sublevel) {
     switch (sublevel) {
@@ -130,6 +134,8 @@ function getSourceSubDb(source, sublevel) {
         case 'global': return source.global;
         case 'valid': return source.valid;
         case 'timestamps': return source.timestamps;
+        case 'value_clocks': return source.valueClocks;
+        case 'conflict_frontiers': return source.conflictFrontiers;
         default: throw new Error(`Unknown sublevel name: ${sublevel}`);
     }
 }
@@ -194,6 +200,8 @@ function makeDbToDbAdapter(source, target, options = {}) {
                 case 'freshness': return await source.freshness.get(stringToNodeIdentifier(nodeKey));
                 case 'valid': return await source.valid.get(stringToNodeIdentifier(nodeKey));
                 case 'timestamps': return await source.timestamps.get(stringToNodeIdentifier(nodeKey));
+                case 'value_clocks': return await source.valueClocks.get(stringToNodeIdentifier(nodeKey));
+                case 'conflict_frontiers': return await source.conflictFrontiers.get(stringToNodeKeyString(nodeKey));
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -206,6 +214,8 @@ function makeDbToDbAdapter(source, target, options = {}) {
                 case 'freshness': return await target.freshness.get(stringToNodeIdentifier(nodeKey));
                 case 'valid': return await target.valid.get(stringToNodeIdentifier(nodeKey));
                 case 'timestamps': return await target.timestamps.get(stringToNodeIdentifier(nodeKey));
+                case 'value_clocks': return await target.valueClocks.get(stringToNodeIdentifier(nodeKey));
+                case 'conflict_frontiers': return await target.conflictFrontiers.get(stringToNodeKeyString(nodeKey));
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -225,6 +235,8 @@ function makeDbToDbAdapter(source, target, options = {}) {
                 case 'freshness': await target.freshness.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
                 case 'valid': await target.valid.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
                 case 'timestamps': await target.timestamps.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
+                case 'value_clocks': await target.valueClocks.noFlushPut(stringToNodeIdentifier(nodeKey), convertUnknownToStoredValue(value)); return;
+                case 'conflict_frontiers': await target.conflictFrontiers.noFlushPut(stringToNodeKeyString(nodeKey), convertUnknownToStoredValue(value)); return;
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -240,6 +252,8 @@ function makeDbToDbAdapter(source, target, options = {}) {
                 case 'freshness': await target.freshness.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
                 case 'valid': await target.valid.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
                 case 'timestamps': await target.timestamps.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'value_clocks': await target.valueClocks.noFlushDel(stringToNodeIdentifier(nodeKey)); return;
+                case 'conflict_frontiers': await target.conflictFrontiers.noFlushDel(stringToNodeKeyString(nodeKey)); return;
                 default: throw new Error(`Unknown sublevel name: ${sublevel}`);
             }
         },
@@ -282,7 +296,7 @@ function makeDbToDbAdapter(source, target, options = {}) {
  * checking in batch() — it is intended purely as a temporary capture store for
  * tests or intermediate computation, not as a durable replica.
  *
- * @returns {{ values: object, freshness: object, global: object, valid: object, timestamps: object, batch: function, _stores: object }}
+ * @returns {{ values: object, freshness: object, global: object, valid: object, timestamps: object, valueClocks: object, conflictFrontiers: object, batch: function, _stores: object }}
  */
 function makeInMemorySchemaStorage() {
     /** @type {Map<string, unknown>} */
@@ -295,6 +309,8 @@ function makeInMemorySchemaStorage() {
     const validStore = new Map();
     /** @type {Map<string, unknown>} */
     const timestampsStore = new Map();
+    const valueClocksStore = new Map();
+    const conflictFrontiersStore = new Map();
 
     /**
      * @param {Map<string, unknown>} store
@@ -331,7 +347,7 @@ function makeInMemorySchemaStorage() {
                 // JS default string comparison matches byte order.
                 const sorted = [...store.keys()].sort();
                 for (const k of sorted) {
-                    if (sublevelName === 'global') {
+                    if (sublevelName === 'global' || sublevelName === 'conflict_frontiers') {
                         yield k;
                     } else {
                         yield stringToNodeIdentifier(k);
@@ -355,6 +371,8 @@ function makeInMemorySchemaStorage() {
             case 'global': return globalStore;
             case 'valid': return validStore;
             case 'timestamps': return timestampsStore;
+            case 'value_clocks': return valueClocksStore;
+            case 'conflict_frontiers': return conflictFrontiersStore;
             default: return undefined;
         }
     }
@@ -377,11 +395,14 @@ function makeInMemorySchemaStorage() {
     }
 
     return {
+        /** @type {object} */
         values: makeSubstorage(valuesStore, 'values'),
         freshness: makeSubstorage(freshnessStore, 'freshness'),
         global: makeSubstorage(globalStore, 'global'),
         valid: makeSubstorage(validStore, 'valid'),
         timestamps: makeSubstorage(timestampsStore, 'timestamps'),
+        valueClocks: makeSubstorage(valueClocksStore, 'value_clocks'),
+        conflictFrontiers: makeSubstorage(conflictFrontiersStore, 'conflict_frontiers'),
         batch,
         _stores: {
             values: valuesStore,
@@ -389,6 +410,8 @@ function makeInMemorySchemaStorage() {
             global: globalStore,
             valid: validStore,
             timestamps: timestampsStore,
+            valueClocks: valueClocksStore,
+            conflictFrontiers: conflictFrontiersStore,
         },
     };
 }

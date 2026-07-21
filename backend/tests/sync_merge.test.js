@@ -83,10 +83,15 @@ const TS3 = '2024-01-01T00:00:09.000Z';
  * Write a fully materialized node with the given timestamp and optional value.
  * Freshness is set to 'up-to-date'. Does NOT repair other nodes.
  */
+function clockFromTimestamp(modifiedAt) {
+    return { TEST: Number(modifiedAt.slice(17, 19)) || 1 };
+}
+
 async function writeNode(storage, nodeKey, modifiedAt, valuePayload) {
     await storage.timestamps.put(nodeKey, { createdAt: modifiedAt, modifiedAt });
     await storage.freshness.put(nodeKey, 'up-to-date');
     await storage.values.put(nodeKey, valuePayload ?? {});
+    await storage.valueClocks.put(nodeKey, clockFromTimestamp(modifiedAt));
 }
 
 /**
@@ -97,6 +102,14 @@ async function writeNode(storage, nodeKey, modifiedAt, valuePayload) {
  */
 async function writeIdentifierLookup(storage, entries) {
     await storage.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(makeIdentifierLookup(entries)));
+    for (const [identifier] of entries) {
+        const value = await storage.values.get(identifier);
+        const clock = await storage.valueClocks.get(identifier);
+        if (value !== undefined && clock === undefined) {
+            const timestamps = await storage.timestamps.get(identifier);
+            await storage.valueClocks.put(identifier, clockFromTimestamp(timestamps?.modifiedAt ?? TS1));
+        }
+    }
 }
 
 
