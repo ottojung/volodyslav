@@ -89,7 +89,6 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
  *
  * Returns the canonical planning result:
  * - `selectedSideByKey`: per-node source selection (keep or take)
- * - `selectedInputsByKey`: per-node selected semantic input keys
  * - `outcomeByKey`: per-node final outcome (keep, take, invalidate, delete)
  * - `finalIdentifierForKey`: surviving node identifiers
  * - `finalIdentifierLookup`: bijective final lookup
@@ -103,7 +102,6 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
  * @param {IdentifierLookup} hostLookup
  * @returns {Promise<{
  *   selectedSideByKey: Map<NodeKeyString, 'keep' | 'take'>,
- *   selectedInputsByKey: Map<NodeKeyString, NodeKeyString[]>,
  *   outcomeByKey: Map<NodeKeyString, 'keep' | 'take' | 'invalidate' | 'delete'>,
  *   mergedInputsMap: Map<NodeIdentifier, NodeIdentifier[]>,
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
@@ -276,7 +274,6 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
 
     return {
         selectedSideByKey,
-        selectedInputsByKey,
         outcomeByKey,
         mergedInputsMap,
         finalIdentifierForKey,
