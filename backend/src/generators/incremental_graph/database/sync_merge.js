@@ -12,17 +12,35 @@
  *
  * 1. Verify that `H` was written by the same schema version as the local
  *    database.
- * 2. Copy `L` into `T`.
- * 3. Parse the target/host identifier lookups and reject only the corrupt case
- *    where one identifier names different semantic keys.
- * 4. Build a semantic-node-key merge plan from timestamps and dependencies. Newer
- *    local nodes are kept, newer host nodes are taken, and descendants of both a
- *    local-newer and host-newer ancestor are invalidated so they recompute from
- *    the merged inputs.
- * 5. Choose one final identifier per semantic key, lower all chosen inputs to
- *    those identifiers, apply the plan to `T`, and remove losing target records.
- * 6. Validate and persist the newly constructed lookup and
- *    switch replicas when graph data or identifier reconciliation changed.
+ * 2. Copy `L` into `T` (the inactive replica).
+ * 3. Parse target/host identifier lookups and reject identifiers that map to
+ *    different semantic keys.
+ * 4. Select a candidate source side (keep or take) for each semantic node key
+ *    using UTC modifiedAt. Exact timestamp ties select local.
+ * 5. Propagate taint forward from timestamp winners along the selected
+ *    dependency graph. Taint records ancestry; it does not override source
+ *    selection.
+ * 6. Detect direct invalidation candidates: nodes with opposite-side ancestry,
+ *    direct relowering through source-version identity mismatch, or stale
+ *    equal-version metadata (FIXME(#1521) approximation).
+ * 7. Classify each candidate by distinct semantic input count:
+ *    - 0 or 1 distinct input: hard invalidate (retain cached value as
+ *      oldValue, mark stale, remove incoming proofs).
+ *    - 2+ distinct inputs: delete (oldValue will be undefined, Unchanged not
+ *      legal).
+ * 8. Expand deletion roots through transitive materialized dependents.
+ * 9. Apply final outcomes to T: copy/keep values, freshness, and timestamps
+ *    from the appropriate source; mark hard-invalidated nodes stale; remove
+ *    deleted records.
+ * 10. Rebuild validity and propagated freshness: transport validity proofs
+ *     through source-version identity and final structural edges; mark direct
+ *     invalidation roots stale; propagate staleness forward preserving valid
+ *     proofs; throw UnplannedMissingValidityProofError if planning and proof
+ *     transport disagree.
+ * 11. Validate the final state: every up-to-date node must have up-to-date
+ *     inputs and complete incoming proofs.
+ * 12. Switch the active replica pointer when graph data or identifier
+ *     reconciliation changed.
  *
  * Error handling policy:
  * - Version mismatch throws HostVersionMismatchError.
