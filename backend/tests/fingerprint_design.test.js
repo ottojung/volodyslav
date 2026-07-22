@@ -417,9 +417,6 @@ describe('fingerprint design', () => {
             await hostGlobal.put(IDENTIFIERS_KEY, []);
             await hostGlobal.put(LAST_NODE_INDEX_KEY, 0);
             await hostGlobal.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
-            await hostGlobal.put(IDENTIFIERS_KEY, []);
-            await hostGlobal.put(LAST_NODE_INDEX_KEY, 0);
-            await hostGlobal.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
 
             // Local storage also needs graph_scheme for merge validation.
             const localGlobal = db.getSchemaStorage().global;

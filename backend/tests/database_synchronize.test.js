@@ -235,11 +235,29 @@ describe("synchronizeNoLock", () => {
         }
     });
 
+    /**
+     * Write the local graph scheme and return the local database fingerprint.
+     * @param {object} capabilities
+     * @returns {Promise<string>}
+     */
+    /**
+     * Return a test fingerprint that is deterministically distinct from the local fingerprint.
+     * @param {string} localFingerprint
+     * @param {string} preferred
+     * @returns {string}
+     */
+    function makeDistinctTestFingerprint(localFingerprint, preferred) {
+        return preferred === localFingerprint
+            ? `${preferred}x`
+            : preferred;
+    }
+
     async function writeLocalGraphScheme(capabilities) {
         const db = await getRootDatabase(capabilities);
         try {
             const scheme = { format: 1, nodes: [{ head: "event", arity: 1, inputTemplates: [] }] };
             await db._rawPut('!x!!global!graph_scheme', JSON.stringify(scheme));
+            return db.getFingerprint();
         } finally {
             await db.close();
         }
@@ -247,16 +265,18 @@ describe("synchronizeNoLock", () => {
 
     test("merges rendered data from other hostname branches into the live database", async () => {
         const capabilities = getTestCapabilities();
+        const localFingerprint = await writeLocalGraphScheme(capabilities);
+        const aliceFingerprint = makeDistinctTestFingerprint(localFingerprint, 'alicealice');
         const aliceNodeArgs = '{"head":"event","args":["alice"]}';
         const aliceNodeIdentifier = 'aliceaaaa';
         const aliceTimestampsKey = `!x!!timestamps!${aliceNodeIdentifier}`;
         const aliceGraphScheme = JSON.stringify({ format: 1, nodes: [{ head: "event", arity: 1, inputTemplates: [] }] });
-        await writeLocalGraphScheme(capabilities);
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
                 hostname: "test-host",
                 entries: [
                     ["!_meta!current_replica", "x"],
+                    ["!x!!global!fingerprint", localFingerprint],
                     ["!x!!global!identifiers_keys_map", []],
                     ["!x!!global!graph_scheme", aliceGraphScheme],
                 ],
@@ -267,6 +287,7 @@ describe("synchronizeNoLock", () => {
                     [`!x!!values!${aliceNodeIdentifier}`, { source: "alice" }],
                     [aliceTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
                     [`!x!!freshness!${aliceNodeIdentifier}`, "up-to-date"],
+                    ["!x!!global!fingerprint", aliceFingerprint],
                     ["!x!!global!identifiers_keys_map", [[aliceNodeIdentifier, aliceNodeArgs]]],
                     ["!x!!global!graph_scheme", aliceGraphScheme],
                 ],
@@ -290,16 +311,19 @@ describe("synchronizeNoLock", () => {
 
     test("on partial host-merge failures, merges successful hosts before rethrowing", async () => {
         const capabilities = getTestCapabilities();
+        const localFingerprint = await writeLocalGraphScheme(capabilities);
+        const bobFingerprint = makeDistinctTestFingerprint(localFingerprint, 'bobbobbbb');
+        const zedFingerprint = makeDistinctTestFingerprint(localFingerprint, 'zedzedzed');
         const bobNodeArgs = '{"head":"event","args":["bob"]}';
         const bobNodeIdentifier = 'bobbbbbbb';
         const bobTimestampsKey = `!x!!timestamps!${bobNodeIdentifier}`;
         const graphSchemeJson = JSON.stringify({ format: 1, nodes: [{ head: "event", arity: 1, inputTemplates: [] }] });
-        await writeLocalGraphScheme(capabilities);
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
             {
                 hostname: "test-host",
                 entries: [
                     ["!_meta!current_replica", "x"],
+                    ["!x!!global!fingerprint", localFingerprint],
                     ["!x!!global!identifiers_keys_map", []],
                     ["!x!!global!graph_scheme", graphSchemeJson],
                 ],
@@ -310,6 +334,7 @@ describe("synchronizeNoLock", () => {
                     [`!x!!values!${bobNodeIdentifier}`, { source: "bob" }],
                     [bobTimestampsKey, { createdAt: "2024-01-01T00:00:00.000Z", modifiedAt: "2024-01-01T00:00:00.000Z" }],
                     [`!x!!freshness!${bobNodeIdentifier}`, "up-to-date"],
+                    ["!x!!global!fingerprint", bobFingerprint],
                     ["!x!!global!identifiers_keys_map", [[bobNodeIdentifier, bobNodeArgs]]],
                     ["!x!!global!graph_scheme", graphSchemeJson],
                 ],
@@ -318,6 +343,7 @@ describe("synchronizeNoLock", () => {
                 hostname: "zed",
                 entries: [
                     ['!x!!global!version', "incompatible-version"],
+                    ['!x!!global!fingerprint', zedFingerprint],
                     ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
                     ['!x!!global!identifiers_keys_map', [['z-abcdefghi', '{"head":"event","args":["zed"]}']]],
                     ['!x!!global!graph_scheme', graphSchemeJson],
