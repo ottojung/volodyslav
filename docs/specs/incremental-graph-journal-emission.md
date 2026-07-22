@@ -4,11 +4,24 @@
 
 This document specifies when journal entries are created — the rules for `add`,
 `edit`, `delete`, `invalidate`, and `validate` emissions triggered by
-IncrementalGraph operations, migration, and synchronization. Synchronization may
-emit `invalidate` and `delete`; it may also copy, reposition, or omit existing
-events.
+IncrementalGraph operations, migration, and synchronization.
+
+Synchronization may emit `invalidate` and `delete`; it may also copy,
+reposition, or omit existing events. See
+`docs/specs/incremental-graph-journal-sync.md` for the exact pre/post
+conditions.
 
 Journal emission is always coordinated with the graph storage mutation that caused it: a journal entry MUST NOT be durably committed unless the corresponding graph change is also durably committed.
+
+## Completeness requirement
+
+Every journal-observable graph transition must emit its required journal event
+atomically with that transition. No ordinary graph or migration transition
+covered by this specification may occur without its journal event.
+
+Later compaction may remove superseded entries. That does not weaken the
+requirement that the event existed and committed atomically when the transition
+occurred. A removed event was truthful historical evidence when committed.
 
 ---
 
@@ -19,13 +32,10 @@ materialized node from `up-to-date` to `potentially-outdated` emits
 `invalidate`. Every successful graph recomputation that transitions an already
 materialized node from `potentially-outdated` to `up-to-date` emits `validate`.
 
-Synchronization may emit `invalidate` for actual up-to-date to stale
-transitions produced by graph merge, and `delete` for actual materialized to
-unmaterialized transitions. When no sync-originated event applies,
-synchronization uses notification-aware repositioning of an existing canonical
-event instead. The journal is authoritative evidence of operation-emitted
-freshness transitions; it is not a complete command log of
-synchronization-selected graph freshness.
+Synchronization may emit `invalidate` and `delete` under the conditions
+specified in `docs/specs/incremental-graph-journal-sync.md`. When no
+sync-originated event applies, synchronization uses notification-aware
+repositioning of an existing canonical event instead.
 
 ---
 
@@ -62,6 +72,7 @@ REQ-JE-07: When a node's freshness changes from `up-to-date` to `potentially-out
 
 - An explicit `invalidate(nodeName, bindings)` call.
 - Cascading invalidation from an invalidated dependency.
+- Synchronization, under the conditions specified in `incremental-graph-journal-sync.md`.
 - Any other system path that transitions a node's freshness from `up-to-date` to `potentially-outdated`.
 
 REQ-JE-07a: The `invalidate` entry MUST be emitted in the same durable transaction as the freshness state change.
