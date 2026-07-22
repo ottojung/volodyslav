@@ -118,13 +118,13 @@ A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChan
 
 - `'add'` — a node became materialized for the first time.
 - `'edit'` — a node's stored value materially changed.
-- `'delete'` — a node deletion event originally emitted by `storage.delete` or
-  another actual deletion operation. Synchronization may copy or reposition an
-  existing delete.
+- `'delete'` — a node deletion event emitted by `storage.delete`, another
+  actual deletion operation, or synchronization (when final graph unmaterializes
+  a previously materialized local node).
 - `'invalidate'` — a node's freshness changed from `up-to-date` to `potentially-outdated`.
 - `'validate'` — successful recomputation made an already materialized node
   `up-to-date` from a non-up-to-date state. This includes both
-  `potentially-outdated → up-to-date` and `missing → up-to-date`.
+  `potentially-outdated → up-to-date`.
 
 ---
 
@@ -226,7 +226,7 @@ REQ-JT-02: The persisted representation of `UnixTimestamp` is a numeric integer 
 
 REQ-JT-03: Implementations SHOULD record journal timestamps using the local system clock at the time of emission. Host clocks are not assumed to be synchronized across hosts.
 
-These timestamps are used by the v1 sync conflict policy. A particular host's wall clock may be incorrect, but this is the best available signal for conflict ordering — the system trusts hosts and does not rely on external time authorities. See `incremental-graph-journal-sync.md` §Conflict resolution.
+Journal timestamps provide human-readable event ordering for consumers. Graph synchronization uses graph `modifiedAt` timestamps, not journal timestamps, for conflict resolution.
 
 ### Nominal typing
 
