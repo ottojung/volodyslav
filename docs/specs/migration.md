@@ -164,6 +164,18 @@ If no previous version is found, the migration is a no-op.
 
 ---
 
+## Journal interaction
+
+Migration has limited interaction with the journal system. The detailed rules
+are defined in `docs/specs/incremental-graph-journal-migrations.md`.
+
+- Finalized `CREATE` produces an `add` journal entry.
+- Finalized `DELETE` produces a `delete` entry for every deleted materialization.
+- Fresh-to-stale finalized transitions produce an `invalidate` entry.
+- `KEEP` and semantic-preserving `OVERRIDE` produce no journal entry.
+- Journal entries are emitted atomically with their corresponding graph
+  transitions.
+
 ## Atomicity guarantee
 
 Decisions are collected in memory during the callback.  The desired state is unified into the target replica's storage, then validated with `assertValidFinalMergeState` before the replica pointer is switched.  A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
