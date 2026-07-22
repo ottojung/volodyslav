@@ -5,7 +5,7 @@ const { IdentifierLookupConflictError } = require('./replica_errors');
 
 const { GRAPH_SCHEME_KEY, parseGraphScheme, semanticInputKeys } = require('./graph_scheme');
 const { normalizeInputEdges } = require('./input_edges');
-const { nodeIdentifierToString } = require('./types');
+const { sourceRepresentsFinalVersion } = require('./sync_merge_version_identity');
 const { buildTransportedValidityPlan } = require('./sync_merge_validity');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
@@ -32,31 +32,6 @@ function semanticInputsFromScheme(scheme, lookup, identifier) {
  */
 function countDistinctSemanticInputs(inputKeys) {
     return new Set(inputKeys.map(String)).size;
-}
-
-/**
- * Check whether a source-side node represents the same semantic value version
- * as the final selected node.
- *
- * True when:
- * 1. sourceId is the actual selected source identifier; or
- * 2. the source and final nodes have the same semantic key and exactly equal
- *    modifiedAt (the temporary approximation tracked by #1521).
- *
- * Do not inspect or compare ComputedValue.
- * Do not add persistent metadata, sublevels, clocks, tombstones, or provenance
- * records.
- *
- * @param {object} options
- * @param {NodeIdentifier} options.sourceId
- * @param {NodeIdentifier} options.finalId
- * @param {NodeKeyString} options.nodeKey
- * @param {Set<NodeKeyString>} options.equalTimestampKeys
- * @returns {boolean}
- */
-function sourceRepresentsFinalVersion({ sourceId, finalId, nodeKey, equalTimestampKeys }) {
-    if (nodeIdentifierToString(sourceId) === nodeIdentifierToString(finalId)) return true;
-    return equalTimestampKeys.has(nodeKey);
 }
 
 /**
@@ -153,6 +128,7 @@ async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, 
         finalIdentifierForKey,
         mergedInputsMap,
         valueOriginByKey: originByKey,
+        selectedSideByKey,
         equalTimestampKeys,
     });
 
@@ -298,6 +274,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             selectedDependentsByKey.set(inputKey, dependents);
         }
         const selectedSide = selectedSideByKey.get(nodeKey);
+        if (selectedSide === undefined) continue;
         const lookup = selectedSide === 'take' ? hostLookup : targetLookup;
         const distinctInputKeys = [...new Set(inputKeys)];
         for (const inputKey of distinctInputKeys) {
@@ -307,7 +284,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
                 directInvalidationCandidateKeys.add(nodeKey);
                 break;
             }
-            if (!sourceRepresentsFinalVersion({ sourceId, finalId, nodeKey: inputKey, equalTimestampKeys: equalTimestamps })) {
+            if (!sourceRepresentsFinalVersion({ side: selectedSide, sourceId, nodeKey: inputKey, selectedSideByKey, finalIdentifierForKey: provisionalIdentifierForKey, equalTimestampKeys: equalTimestamps })) {
                 directInvalidationCandidateKeys.add(nodeKey);
                 break;
             }

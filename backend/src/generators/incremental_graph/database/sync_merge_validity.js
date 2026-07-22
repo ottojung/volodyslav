@@ -15,6 +15,7 @@
 
 const { compareNodeIdentifier } = require('./node_identifier');
 const { nodeIdentifierToString } = require('./types');
+const { sourceRepresentsFinalVersion } = require('./sync_merge_version_identity');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const { topologicalSortFromMap } = require('./topo_sort');
 
@@ -138,42 +139,6 @@ async function buildValueOriginByKey(
 }
 
 /**
- * Check whether a ValueOrigin matches a specific source side and source identifier.
- * @param {ValueOrigin | undefined} origin
- * @param {'target' | 'host'} side
- * @param {NodeIdentifier} sourceId
- * @returns {boolean}
- */
-function originMatches(origin, side, sourceId) {
-    return origin !== undefined
-        && origin.side === side
-        && nodeIdentifierToString(origin.sourceId) === nodeIdentifierToString(sourceId);
-}
-
-/**
- * Check whether a source-side node matches a final node through value origin
- * or equal-timestamp version equivalence.
- *
- * Returns true when:
- * 1. originMatches(origin, side, sourceId) holds; or
- * 2. the semantic nodeKey has equal modifiedAt on both sides (temporary
- *    approximation tracked by #1521), meaning the source-side identifier and
- *    the final identifier represent the same semantic value version even
- *    though their storage identifiers differ.
- *
- * @param {ValueOrigin | undefined} origin
- * @param {'target' | 'host'} side
- * @param {NodeIdentifier} sourceId
- * @param {NodeKeyString} nodeKey
- * @param {Set<NodeKeyString>} equalTimestampKeys
- * @returns {boolean}
- */
-function originOrVersionMatches(origin, side, sourceId, nodeKey, equalTimestampKeys) {
-    if (originMatches(origin, side, sourceId)) return true;
-    return equalTimestampKeys.has(nodeKey);
-}
-
-/**
  * Check whether a NodeIdentifier is present in a list.
  * @param {NodeIdentifier[]} list
  * @param {NodeIdentifier} id
@@ -269,10 +234,8 @@ function isUnplannedMissingValidityProofError(object) {
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
  * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
- * @param {Set<NodeKeyString>} [options.equalTimestampKeys] - Keys with equal
- *   modifiedAt across sides. When present, a source-side node with the same
- *   key and equal timestamps is treated as the same semantic value version
- *   even when its storage identifier differs from the final identifier.
+ * @param {Map<NodeKeyString, 'keep' | 'take'>} options.selectedSideByKey
+ * @param {Set<NodeKeyString>} options.equalTimestampKeys
  * @returns {Promise<{ validMap: Map<string, NodeIdentifier[]>, depIdCache: Map<string, NodeIdentifier> }>}
  */
 async function buildTransportedValidityPlan({
@@ -283,8 +246,10 @@ async function buildTransportedValidityPlan({
     finalIdentifierForKey: finalIdForKey,
     mergedInputsMap,
     valueOriginByKey,
-    equalTimestampKeys = new Set(),
+    selectedSideByKey,
+    equalTimestampKeys,
 }) {
+    void valueOriginByKey;
     /** @type {Map<string, NodeIdentifier[]>} */
     const validMap = new Map();
     /** @type {Map<string, NodeIdentifier>} */
@@ -304,7 +269,14 @@ async function buildTransportedValidityPlan({
             if (depKey === undefined) continue;
             const finalDepId = finalIdForKey.get(depKey);
             if (finalDepId === undefined) continue;
-            if (!originOrVersionMatches(valueOriginByKey.get(depKey), side, sourceDepId, depKey, equalTimestampKeys)) continue;
+            if (!sourceRepresentsFinalVersion({
+                side: side === 'target' ? 'keep' : 'take',
+                sourceId: sourceDepId,
+                nodeKey: depKey,
+                selectedSideByKey,
+                finalIdentifierForKey: finalIdForKey,
+                equalTimestampKeys,
+            })) continue;
 
             for (const sourceDependentId of sourceDependents) {
                 const dependentIdStr = nodeIdentifierToString(sourceDependentId);
@@ -312,7 +284,14 @@ async function buildTransportedValidityPlan({
                 if (dependentKey === undefined) continue;
                 const finalDependentId = finalIdForKey.get(dependentKey);
                 if (finalDependentId === undefined) continue;
-                if (!originOrVersionMatches(valueOriginByKey.get(dependentKey), side, sourceDependentId, dependentKey, equalTimestampKeys)) continue;
+                if (!sourceRepresentsFinalVersion({
+                    side: side === 'target' ? 'keep' : 'take',
+                    sourceId: sourceDependentId,
+                    nodeKey: dependentKey,
+                    selectedSideByKey,
+                    finalIdentifierForKey: finalIdForKey,
+                    equalTimestampKeys,
+                })) continue;
                 const finalInputs = mergedInputsMap.get(finalDependentId) ?? [];
                 if (!containsIdentifier(finalInputs, finalDepId)) continue;
 
@@ -365,7 +344,8 @@ async function buildTransportedValidityPlan({
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
  * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
  * @param {Set<NodeIdentifier>} options.directInvalidationRoots
- * @param {Set<NodeKeyString>} [options.equalTimestampKeys]
+ * @param {Map<NodeKeyString, 'keep' | 'take'>} options.selectedSideByKey
+ * @param {Set<NodeKeyString>} options.equalTimestampKeys
  * @returns {Promise<boolean>} Whether the canonical valid relation or any freshness record changed.
  */
 async function rebuildMergedValidity({
@@ -378,7 +358,8 @@ async function rebuildMergedValidity({
     mergedInputsMap,
     valueOriginByKey,
     directInvalidationRoots,
-    equalTimestampKeys = new Set(),
+    selectedSideByKey,
+    equalTimestampKeys,
 }) {
     const oldCanonicalValidMap = await readCanonicalValidMap(targetStorage);
 
@@ -390,6 +371,7 @@ async function rebuildMergedValidity({
         finalIdentifierForKey: finalIdForKey,
         mergedInputsMap,
         valueOriginByKey,
+        selectedSideByKey,
         equalTimestampKeys,
     });
 

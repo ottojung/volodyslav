@@ -1899,7 +1899,9 @@ describe('mergeHostIntoReplica', () => {
                 finalIdentifierForKey,
                 mergedInputsMap,
                 valueOriginByKey,
-            directInvalidationRoots: new Set(),
+                directInvalidationRoots: new Set(),
+                selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep']]),
+                equalTimestampKeys: new Set(),
             });
 
             const validA = await targetStorage.valid.get(nodeA) ?? [];
@@ -1966,7 +1968,9 @@ describe('mergeHostIntoReplica', () => {
                 finalIdentifierForKey,
                 mergedInputsMap: new Map([[finalB, [finalA]]]),
                 valueOriginByKey,
-            directInvalidationRoots: new Set(),
+                directInvalidationRoots: new Set(),
+                selectedSideByKey,
+                equalTimestampKeys: new Set(),
             });
 
             const validA = await targetStorage.valid.get(finalA) ?? [];
@@ -2120,7 +2124,9 @@ describe('mergeHostIntoReplica', () => {
                     [keyA, { kind: 'source', side: 'target', sourceId: targetA }],
                     [keyB, { kind: 'source', side: 'host', sourceId: hostB }],
                 ]),
-            directInvalidationRoots: new Set(),
+                directInvalidationRoots: new Set(),
+                selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'take']]),
+                equalTimestampKeys: new Set(),
             });
 
             const validA = await targetStorage.valid.get(targetA) ?? [];
@@ -2170,7 +2176,7 @@ describe('mergeHostIntoReplica', () => {
         }
     });
 
-    test('4. identifier lowering transports valid proofs to final identifiers', async () => {
+    test('4. identifier lowering transports valid proofs to matching host identifiers', async () => {
         const { rebuildMergedValidity } = require('../src/generators/incremental_graph/database/sync_merge_validity');
         const capabilities = getTestCapabilities();
         let db;
@@ -2179,17 +2185,15 @@ describe('mergeHostIntoReplica', () => {
 
             const hostA = nodeIdentifierFromString('112-abcdefghi');
             const hostB = nodeIdentifierFromString('113-abcdefghi');
-            const finalA = nodeIdentifierFromString('114-abcdefghi');
-            const finalB = nodeIdentifierFromString('115-abcdefghi');
             const keyA = stringToNodeKeyString('{"head":"ident_A","args":[]}');
             const keyB = stringToNodeKeyString('{"head":"ident_B","args":[]}');
 
             const targetStorage = db.schemaStorageForReplica('y');
             await writeGraphScheme(targetStorage);
-            await targetStorage.values.put(finalA, { source: 'A host' });
-            await targetStorage.values.put(finalB, { source: 'B host' });
-            await targetStorage.freshness.put(finalA, 'potentially-outdated');
-            await targetStorage.freshness.put(finalB, 'potentially-outdated');
+            await targetStorage.values.put(hostA, { source: 'A host' });
+            await targetStorage.values.put(hostB, { source: 'B host' });
+            await targetStorage.freshness.put(hostA, 'potentially-outdated');
+            await targetStorage.freshness.put(hostB, 'potentially-outdated');
 
             const hostStorage = db.hostnameSchemaStorage('ident-host');
             await writeGraphScheme(hostStorage);
@@ -2202,7 +2206,7 @@ describe('mergeHostIntoReplica', () => {
             await writeGraphScheme(targetSourceStorage);
             const targetLookup = makeIdentifierLookup([]);
 
-            const finalIdentifierForKey = new Map([[keyA, finalA], [keyB, finalB]]);
+            const finalIdentifierForKey = new Map([[keyA, hostA], [keyB, hostB]]);
             const valueOriginByKey = new Map([
                 [keyA, { kind: 'source', side: 'host', sourceId: hostA }],
                 [keyB, { kind: 'source', side: 'host', sourceId: hostB }],
@@ -2215,15 +2219,15 @@ describe('mergeHostIntoReplica', () => {
                 targetLookup,
                 hostLookup,
                 finalIdentifierForKey,
-                mergedInputsMap: new Map([[finalB, [finalA]]]),
+                mergedInputsMap: new Map([[hostB, [hostA]]]),
                 valueOriginByKey,
-            directInvalidationRoots: new Set(),
+                directInvalidationRoots: new Set(),
+                selectedSideByKey: new Map([[keyA, 'take'], [keyB, 'take']]),
+                equalTimestampKeys: new Set(),
             });
 
-            expect(String(finalA)).not.toBe(String(hostA));
-            expect(String(finalB)).not.toBe(String(hostB));
-            const validA = await targetStorage.valid.get(finalA) ?? [];
-            expect(validA.some(dependent => String(dependent) === String(finalB))).toBe(true);
+            const validA = await targetStorage.valid.get(hostA) ?? [];
+            expect(validA.some(dependent => String(dependent) === String(hostB))).toBe(true);
         } finally {
             if (db) await db.close();
         }
@@ -4646,6 +4650,8 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 valueOriginByKey,
                 directInvalidationRoots: new Set([nodeB]),
+                selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep'], [keyC, 'keep']]),
+                equalTimestampKeys: new Set(),
             });
 
             expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
@@ -4713,6 +4719,8 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 valueOriginByKey,
                 directInvalidationRoots: new Set([nodeA]),
+                selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep'], [keyC, 'keep']]),
+                equalTimestampKeys: new Set(),
             });
 
             expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
@@ -4778,6 +4786,8 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 valueOriginByKey,
                 directInvalidationRoots: new Set([nodeB]),
+                selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'take']]),
+                equalTimestampKeys: new Set(),
             });
 
             const validA = await T.valid.get(nodeA) ?? [];
@@ -4849,6 +4859,8 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 valueOriginByKey,
                 directInvalidationRoots: new Set([nodeN]),
+                selectedSideByKey: new Map([[keyD, 'keep'], [keyE, 'take'], [keyN, 'keep']]),
+                equalTimestampKeys: new Set(),
             });
 
             // D is stale → N has a stale input (propagated staleness).
@@ -5007,6 +5019,8 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 valueOriginByKey,
                 directInvalidationRoots: new Set(),
+                selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep']]),
+                equalTimestampKeys: new Set(),
             });
 
             // No-op merge: no mutations at all
@@ -5025,6 +5039,8 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 valueOriginByKey,
                 directInvalidationRoots: new Set([nodeA]),
+                selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep']]),
+                equalTimestampKeys: new Set(),
             });
 
             // freshness changed (A root stale, B propagated), but validity
@@ -5099,6 +5115,8 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 valueOriginByKey,
                 directInvalidationRoots: new Set([nodeB]),
+                selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep'], [keyC, 'keep']]),
+                equalTimestampKeys: new Set(),
             });
 
             // B is a direct root: valid.clear + one put (valid[B] = [C])
@@ -5186,6 +5204,8 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 valueOriginByKey,
                 directInvalidationRoots: new Set([nodeD, nodeN]),
+                selectedSideByKey: new Map([[keyD, 'keep'], [keyE, 'take'], [keyN, 'keep']]),
+                equalTimestampKeys: new Set(),
             });
 
             // D was a direct root → stale, incoming proofs removed

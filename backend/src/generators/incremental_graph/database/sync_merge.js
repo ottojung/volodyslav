@@ -341,6 +341,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap,
         valueOriginByKey,
         directInvalidationRoots,
+        selectedSideByKey,
         equalTimestampKeys: equalTimestamps,
     });
     const hasChanges = hasSemanticChanges || graphStateChanged;
