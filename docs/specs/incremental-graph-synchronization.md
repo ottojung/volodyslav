@@ -32,8 +32,14 @@ synchronization.
 
 - This document does not specify git internals beyond the observable
   staging/checkpoint/branch role needed by synchronization.
-- This document does not promise commutativity or order-independence across
-  multiple host merges unless the implementation explicitly proves it.
+- Pairwise commutativity is required for any two valid source replicas using
+  the same schema: merging A with B and merging B with A must produce
+  observably equivalent final IncrementalGraph states after ignoring only
+  local physical details such as inactive replica slot names and temporary
+  paths.
+- This document does not establish associativity across three or more replicas
+  or arbitrary sequential host-order independence unless those properties are
+  separately proven.
 - This document does not specify exact LevelDB key formats except where
   semantic lookup invariants require it.
 
@@ -96,15 +102,14 @@ represents the final selected semantic value version when:
 
 1. it is the actual selected source materialization (its side and identifier
    match the final selected side and identifier); or
-2. local and host contain the same semantic key and their `modifiedAt`
-   timestamps compare equal under the synchronization timestamp comparison.
+2. both source replicas contain the same semantic key with complete version
+   identity: equal `modifiedAt` and equal canonical `NodeIdentifier`.
 
 This is the canonical `sourceRepresentsFinalVersion()` operation. It
 determines whether source-side dependency histories and validity proofs apply
-to the final selected semantic version. Equal timestamps can collide between
-independent recomputations; this approximation is tracked by #1521 and must be
-replaced with journal-backed value-version identity. ComputedValue equality,
-hashing, or serialization must not be used as identity evidence.
+to the final selected semantic version. Equal timestamps with different
+identifiers are distinct versions. ComputedValue equality, hashing, or
+serialization must not be used as identity evidence.
 
 **REQ-SYNC-01 (Value origin from copy, not equality):** Deep equality of
 stored values MUST NOT create a value origin.
@@ -240,14 +245,20 @@ closure guarantees this.
 
 ## 6. Timestamp Conflict Policy
 
-**REQ-SYNC-07 (Timestamp-based source selection):** For each semantic key:
+**REQ-SYNC-07 (Canonical materialization selection):** For each semantic key:
 
-- If present only in L: `selectedSideByKey = keep`.
-- If present only in H: `selectedSideByKey = take`.
-- If present in both L and H:
-  - Compare `modifiedAt` timestamps.
-  - The replica with the newer `modifiedAt` wins.
-  - Equal `modifiedAt` keeps local target.
+- If present only in L: select that materialization.
+- If present only in H: select that materialization.
+- If present in both L and H, compare materialization candidates by the fixed
+  tuple `(modifiedAt, NodeIdentifier)`:
+  1. the newer `modifiedAt` wins;
+  2. on equal `modifiedAt`, the lexicographically greater canonical
+     `NodeIdentifier` string wins using deterministic JavaScript code-unit
+     ordering;
+  3. exact equality of both tuple fields means both replicas contain the same
+     selected version.
+- The comparison MUST NOT prefer a candidate because it is named local, host,
+  keep, take, current, or target.
 - Missing timestamps for materialized values are invalid or corrupt state under
   the main graph spec. Synchronization MUST NOT use missing timestamps to
   justify an `up-to-date` final node. It may reject the host or merge
@@ -577,6 +588,8 @@ commit must not leave callers reading from an invalid partial merge target.
 
 ## 14. Multi-Host Synchronization
 
+**REQ-SYNC-22 (Pairwise commutativity):** For valid source replicas A and B using the same schema, merging A with B and merging B with A produce observably equivalent final IncrementalGraph states. Observable equivalence includes semantic keys, selected identifiers, stored values, freshness, timestamps, lowered inputs, reverse dependencies, validity proofs, allocation watermarks, deletion outcomes, and invalidation outcomes. It may ignore only local physical details such as temporary paths, logs, replica-slot names, and source-role labels.
+
 **REQ-SYNC-23 (Sequential per-host merge):** Normal synchronization may merge
 multiple host branches sequentially. Each per-host merge observes the result of
 prior successful per-host merges (because each merge may switch the active
@@ -590,9 +603,7 @@ invariants in §12 before proceeding to the next host.
 synchronization may continue with remaining hosts and aggregate all failures
 into a single composite error.
 
-**REQ-SYNC-26 (No order independence guarantee):** This specification does not
-guarantee host-order independence unless a future document proves and requires
-it. Correctness is not CRDT-like convergence or commutative merge semantics.
+**REQ-SYNC-26 (No multi-host order independence guarantee):** This specification requires pairwise commutativity for a single two-replica merge. It does not guarantee associativity across three or more replicas or arbitrary sequential host-order independence unless a future document proves and requires those properties. Correctness is not full CRDT-like convergence.
 The correctness obligation for multi-host synchronization is that each
 individual per-host merge satisfies the invariants of §12 at the moment it
 completes, and that the final state after all host merges (successful or

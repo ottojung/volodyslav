@@ -172,7 +172,7 @@ class UnplannedMissingValidityProofError extends Error {
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
  * @param {Map<NodeKeyString, 'keep' | 'take'>} options.selectedSideByKey
- * @param {Set<NodeKeyString>} options.equalTimestampKeys
+ * @param {Set<NodeKeyString>} options.equalVersionKeys
  * @returns {Promise<{ validMap: Map<string, NodeIdentifier[]>, depIdCache: Map<string, NodeIdentifier> }>}
  */
 async function buildTransportedValidityPlan({
@@ -183,7 +183,7 @@ async function buildTransportedValidityPlan({
     finalIdentifierForKey: finalIdForKey,
     mergedInputsMap,
     selectedSideByKey,
-    equalTimestampKeys,
+    equalVersionKeys,
 }) {
     /** @type {Map<string, NodeIdentifier[]>} */
     const validMap = new Map();
@@ -210,7 +210,7 @@ async function buildTransportedValidityPlan({
                 nodeKey: depKey,
                 selectedSideByKey,
                 finalIdentifierForKey: finalIdForKey,
-                equalTimestampKeys,
+                equalVersionKeys,
             })) continue;
 
             for (const sourceDependentId of sourceDependents) {
@@ -225,7 +225,7 @@ async function buildTransportedValidityPlan({
                     nodeKey: dependentKey,
                     selectedSideByKey,
                     finalIdentifierForKey: finalIdForKey,
-                    equalTimestampKeys,
+                    equalVersionKeys,
                 })) continue;
                 const finalInputs = mergedInputsMap.get(finalDependentId) ?? [];
                 if (!containsIdentifier(finalInputs, finalDepId)) continue;
@@ -268,7 +268,7 @@ async function buildTransportedValidityPlan({
  * when both endpoints' source identifiers represent the final version through
  * the canonical source-version identity relation (sourceRepresentsFinalVersion).
  * Both endpoints come from the same source replica. Their final stored byte
- * origins do not need to be that source replica when equal-timestamp copies
+ * origins do not need to be that source replica when exact-version copies
  * represent the same temporary semantic versions.
  * - D is still a structural input of N in the merged graph.
  *
@@ -282,7 +282,7 @@ async function buildTransportedValidityPlan({
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
  * @param {Set<NodeIdentifier>} options.directInvalidationRoots
  * @param {Map<NodeKeyString, 'keep' | 'take'>} options.selectedSideByKey
- * @param {Set<NodeKeyString>} options.equalTimestampKeys
+ * @param {Set<NodeKeyString>} options.equalVersionKeys
  * @returns {Promise<boolean>} Whether the canonical valid relation or any freshness record changed.
  */
 async function rebuildMergedValidity({
@@ -295,7 +295,7 @@ async function rebuildMergedValidity({
     mergedInputsMap,
     directInvalidationRoots,
     selectedSideByKey,
-    equalTimestampKeys,
+    equalVersionKeys,
 }) {
     const oldCanonicalValidMap = await readCanonicalValidMap(targetStorage);
 
@@ -307,7 +307,7 @@ async function rebuildMergedValidity({
         finalIdentifierForKey: finalIdForKey,
         mergedInputsMap,
         selectedSideByKey,
-        equalTimestampKeys,
+        equalVersionKeys,
     });
 
     /** @type {Map<string, Freshness>} */

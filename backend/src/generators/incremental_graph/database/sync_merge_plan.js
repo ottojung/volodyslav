@@ -1,11 +1,11 @@
 const { topologicalSortFromMap } = require('./topo_sort');
-const { compareIsoTimestamps } = require('./sync_merge_timestamps');
 const { makeIdentifierLookup } = require('./identifier_lookup');
 const { IdentifierLookupConflictError } = require('./replica_errors');
 
 const { GRAPH_SCHEME_KEY, parseGraphScheme, semanticInputKeys } = require('./graph_scheme');
 const { normalizeInputEdges } = require('./input_edges');
 const { sourceRepresentsFinalVersion } = require('./sync_merge_version_identity');
+const { compareMaterializationCandidates, makeMaterializationCandidate } = require('./sync_merge_candidates');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -94,7 +94,7 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
  * - `finalIdentifierLookup`: bijective final lookup
  * - `mergedInputsMap`: final lowered input edges
  * - `hasIdentifierReconciliation`: whether identifiers changed
- * - `equalTimestamps`: set of keys with equal modifiedAt across sides
+ * - `equalVersions`: set of keys with equal canonical version identity across sides
  *
  * @param {SchemaStorage} T
  * @param {SchemaStorage} H
@@ -107,7 +107,7 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
  *   hasIdentifierReconciliation: boolean,
- *   equalTimestamps: Set<NodeKeyString>
+ *   equalVersions: Set<NodeKeyString>
  * }>} 
  */
 async function buildMergePlan(T, H, targetLookup, hostLookup) {
@@ -120,13 +120,14 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     const forceKeepRoots = new Set();
     /** @type {Set<NodeKeyString>} */
     const forceTakeRoots = new Set();
-    /** @type {Set<NodeKeyString>} */
-    const allNodeKeys = new Set();
-    for (const nodeKey of targetLookup.idToKey.values()) allNodeKeys.add(nodeKey);
-    for (const nodeKey of hostLookup.idToKey.values()) allNodeKeys.add(nodeKey);
+    /** @type {NodeKeyString[]} */
+    const allNodeKeys = Array.from(new Set([
+        ...targetLookup.idToKey.values(),
+        ...hostLookup.idToKey.values(),
+    ])).sort();
 
     /** @type {Set<NodeKeyString>} */
-    const equalTimestamps = new Set();
+    const equalVersions = new Set();
     for (const nodeKey of allNodeKeys) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
@@ -140,7 +141,12 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
         const targetTimestamps = await T.timestamps.get(targetId);
         const hostTimestamps = await H.timestamps.get(hostId);
-        const cmp = compareIsoTimestamps(targetTimestamps?.modifiedAt, hostTimestamps?.modifiedAt);
+        if (targetTimestamps === undefined) throw new IdentifierLookupConflictError(`Target materialized node ${String(targetId)} has no timestamps entry`);
+        if (hostTimestamps === undefined) throw new IdentifierLookupConflictError(`Host materialized node ${String(hostId)} has no timestamps entry`);
+        const cmp = compareMaterializationCandidates(
+            makeMaterializationCandidate(targetId, targetTimestamps.modifiedAt),
+            makeMaterializationCandidate(hostId, hostTimestamps.modifiedAt)
+        );
         if (cmp >= 0) {
             selectedSideByKey.set(nodeKey, 'keep');
             if (cmp > 0) forceKeepRoots.add(nodeKey);
@@ -148,7 +154,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             selectedSideByKey.set(nodeKey, 'take');
             forceTakeRoots.add(nodeKey);
         }
-        if (cmp === 0) equalTimestamps.add(nodeKey);
+        if (cmp === 0) equalVersions.add(nodeKey);
     }
 
     /** @type {Map<NodeKeyString, NodeKeyString[]>} */
@@ -192,7 +198,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     }
 
     /** @type {Map<NodeKeyString, Set<NodeKeyString>>} */
-        const selectedDependentsByKey = new Map();
+    const selectedDependentsByKey = new Map();
     for (const [nodeKey, inputKeys] of selectedInputsByKey) {
         for (const inputKey of inputKeys) {
             const dependents = selectedDependentsByKey.get(inputKey) ?? new Set();
@@ -210,24 +216,24 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
                 directInvalidationCandidateKeys.add(nodeKey);
                 break;
             }
-            if (!sourceRepresentsFinalVersion({ side: selectedSide, sourceId, nodeKey: inputKey, selectedSideByKey, finalIdentifierForKey: provisionalIdentifierForKey, equalTimestampKeys: equalTimestamps })) {
+            if (!sourceRepresentsFinalVersion({ side: selectedSide, sourceId, nodeKey: inputKey, selectedSideByKey, finalIdentifierForKey: provisionalIdentifierForKey, equalVersionKeys: equalVersions })) {
                 directInvalidationCandidateKeys.add(nodeKey);
                 break;
             }
         }
     }
 
-    // FIXME(#1521): Equal modifiedAt is temporarily treated as identity of one
-    // replicated semantic value version. Independent recomputations can collide at
-    // the same timestamp. Replace this approximation with journal-backed stable
-    // value-version identity.
-    for (const nodeKey of equalTimestamps) {
+    // Exact same-version replicas use conservative freshness: any stale source
+    // prevents the final node from remaining up-to-date.
+    for (const nodeKey of equalVersions) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
         if (targetId === undefined || hostId === undefined) continue;
-        const finalFreshness = await T.freshness.get(targetId);
-        const otherFreshness = await H.freshness.get(hostId);
-        if (finalFreshness === 'up-to-date' && otherFreshness !== 'up-to-date') {
+        const selectedSide = selectedSideByKey.get(nodeKey);
+        const selectedFreshness = selectedSide === 'take' ? await H.freshness.get(hostId) : await T.freshness.get(targetId);
+        const targetFreshness = await T.freshness.get(targetId);
+        const hostFreshness = await H.freshness.get(hostId);
+        if (selectedFreshness === 'up-to-date' && (targetFreshness !== 'up-to-date' || hostFreshness !== 'up-to-date')) {
             directInvalidationCandidateKeys.add(nodeKey);
         }
     }
@@ -279,7 +285,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
-        equalTimestamps,
+        equalVersions,
     };
 }
 

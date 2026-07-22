@@ -48,6 +48,7 @@ const {
 } = require('../src/generators/incremental_graph/database/sync_merge');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubLogger, stubEnvironment } = require('./stubs');
+const { compareMaterializationCandidates, makeMaterializationCandidate } = require('../src/generators/incremental_graph/database/sync_merge_candidates');
 
 jest.setTimeout(20000);
 
@@ -203,6 +204,43 @@ async function mergeAndReopenIfSwitched(capabilities, logger, db, hostname) {
     return await getRootDatabase(capabilities);
 }
 
+
+
+describe('compareMaterializationCandidates', () => {
+    test('newer timestamp dominates identifier', () => {
+        const a = makeMaterializationCandidate(nodeIdentifierFromString('a'), TS2);
+        const z = makeMaterializationCandidate(nodeIdentifierFromString('z'), TS1);
+        expect(Math.sign(compareMaterializationCandidates(a, z))).toBe(1);
+        expect(Math.sign(compareMaterializationCandidates(z, a))).toBe(-1);
+    });
+
+    test('identifier breaks timestamp ties by canonical string order', () => {
+        const nodeA = makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS1);
+        const nodeB = makeMaterializationCandidate(nodeIdentifierFromString('node-b'), TS1);
+        expect(Math.sign(compareMaterializationCandidates(nodeA, nodeB))).toBe(-1);
+        expect(Math.sign(compareMaterializationCandidates(nodeB, nodeA))).toBe(1);
+    });
+
+    test('comparator laws hold for representative triples', () => {
+        const candidates = [
+            makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS1),
+            makeMaterializationCandidate(nodeIdentifierFromString('node-b'), TS1),
+            makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS2),
+        ];
+        for (const left of candidates) {
+            expect(compareMaterializationCandidates(left, left)).toBe(0);
+            for (const right of candidates) {
+                const leftRightSign = Math.sign(compareMaterializationCandidates(left, right));
+                const rightLeftSign = Math.sign(compareMaterializationCandidates(right, left));
+                expect(leftRightSign === 0 ? 0 : leftRightSign).toBe(rightLeftSign === 0 ? 0 : -rightLeftSign);
+            }
+        }
+        expect(compareMaterializationCandidates(candidates[0], candidates[1])).toBeLessThan(0);
+        expect(compareMaterializationCandidates(candidates[1], candidates[2])).toBeLessThan(0);
+        expect(compareMaterializationCandidates(candidates[0], candidates[2])).toBeLessThan(0);
+    });
+});
+
 describe('mergeHostIntoReplica', () => {
     test('throws HostVersionMismatchError when remote version differs from local', async () => {
         const capabilities = getTestCapabilities();
@@ -307,7 +345,7 @@ describe('mergeHostIntoReplica', () => {
         expect(isHostVersionMismatchError(new Error('other'))).toBe(false);
     });
 
-    test('keeps local node when timestamps are equal', async () => {
+    test('keeps exact same-version node when timestamps and identifiers are equal', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -1188,7 +1226,7 @@ describe('mergeHostIntoReplica', () => {
         expect(isIdentifierLookupConflictError(new Error('other'))).toBe(false);
     });
 
-    test('reconciles equal-timestamp same-key different identifiers into one strict storage identity', async () => {
+    test('selects lexicographically greater identifier for equal-timestamp same-key materializations', async () => {
         const capabilities = getTestCapabilities();
         let db;
         try {
@@ -1219,16 +1257,16 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(H, [[hostId, sharedKey], [dependentId, dependentKey]]);
             await H.valid.put(hostId, [dependentId]);
 
-            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(false);
+            expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
             const T = db.getSchemaStorage();
-            expect(await T.values.get(targetId)).toEqual(localValue);
+            expect(await T.values.get(hostId)).toEqual({ value: { id: 'host', type: 'test', description: 'host' }, isDirty: false });
             for (const sublevel of [T.values, T.freshness, T.timestamps]) {
-                expect(await sublevel.get(hostId)).toBeUndefined();
+                expect(await sublevel.get(targetId)).toBeUndefined();
             }
-            const validShared = await T.valid.get(targetId) ?? [];
-            expect(validShared.some(id => String(id) === String(dependentId))).toBe(true);
+            const validShared = await T.valid.get(hostId) ?? [];
+            expect(validShared.some(id => String(id) === String(dependentId))).toBe(false);
             const serialized = await T.global.get(IDENTIFIERS_KEY);
-            expect(serialized).toEqual([[targetId, sharedKey], [dependentId, dependentKey]]);
+            expect(serialized).toEqual([[hostId, sharedKey], [dependentId, dependentKey]]);
         } finally {
             if (db) await db.close();
         }
@@ -3421,9 +3459,9 @@ describe('mergeHostIntoReplica', () => {
             expect(await T.freshness.get(xHost)).toBe('up-to-date');
             // N keeps its own timestamp-tie winner. Opposite ancestry hard-invalidates
             // the selected local N without switching to the host value.
-            expect(await T.values.get(nTarget)).toEqual({ value: 'N local' });
-            expect(await T.freshness.get(nTarget)).toBe('potentially-outdated');
-            const nTs = await T.timestamps.get(nTarget);
+            expect(await T.values.get(nHost)).toEqual({ value: 'N host' });
+            expect(await T.freshness.get(nHost)).toBe('up-to-date');
+            const nTs = await T.timestamps.get(nHost);
             expect(nTs?.modifiedAt).toBe(TS1);
         } finally {
             if (db) await db.close();
@@ -4278,11 +4316,11 @@ describe('mergeHostIntoReplica', () => {
             // B must be up-to-date (not relowered, proofs transported)
             expect(await T.values.get(hostBId)).toEqual({ source: 'B from host' });
             expect(await T.freshness.get(hostBId)).toBe('up-to-date');
-            expect(await T.values.get(targetAId)).toEqual(targetAValue);
-            expect(await T.freshness.get(targetAId)).toBe('up-to-date');
+            expect(await T.values.get(hostAId)).toEqual({ source: 'host A' });
+            expect(await T.freshness.get(hostAId)).toBe('up-to-date');
 
             // Validation: B has incoming validity proof from A
-            const validA = await T.valid.get(targetAId) ?? [];
+            const validA = await T.valid.get(hostAId) ?? [];
             expect(validA.some(d => String(d) === String(hostBId))).toBe(true);
 
             // Open graph on merged state and pull B without invoking computor
@@ -4370,18 +4408,18 @@ describe('mergeHostIntoReplica', () => {
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             const T = db.getSchemaStorage();
-            expect(await T.values.get(targetAId)).toEqual({ source: 'target A' });
-            expect(await T.freshness.get(targetAId)).toBe('up-to-date');
-            expect(await T.values.get(targetBId)).toEqual({ source: 'target B' });
-            expect(await T.freshness.get(targetBId)).toBe('up-to-date');
+            expect(await T.values.get(hostAId)).toEqual({ source: 'host A' });
+            expect(await T.freshness.get(hostAId)).toBe('up-to-date');
+            expect(await T.values.get(hostBId)).toEqual({ source: 'host B' });
+            expect(await T.freshness.get(hostBId)).toBe('up-to-date');
             // D remains up-to-date (not relowered)
             expect(await T.values.get(hostDId)).toEqual({ source: 'D from host' });
             expect(await T.freshness.get(hostDId)).toBe('up-to-date');
 
             // D must have validity proofs from final A and B
-            const validA = await T.valid.get(targetAId) ?? [];
+            const validA = await T.valid.get(hostAId) ?? [];
             expect(validA.some(d => String(d) === String(hostDId))).toBe(true);
-            const validB = await T.valid.get(targetBId) ?? [];
+            const validB = await T.valid.get(hostBId) ?? [];
             expect(validB.some(d => String(d) === String(hostDId))).toBe(true);
         } finally {
             if (db) await db.close();
