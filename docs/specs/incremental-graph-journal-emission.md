@@ -13,15 +13,38 @@ conditions.
 
 Journal emission is always coordinated with the graph storage mutation that caused it: a journal entry MUST NOT be durably committed unless the corresponding graph change is also durably committed.
 
-## Completeness requirement
+## Event origination
 
-Every journal-observable graph transition must emit its required journal event
-atomically with that transition. No ordinary graph or migration transition
-covered by this specification may occur without its journal event.
+Ordinary graph operations and migration originate their required exact events
+atomically with their transitions. Every ordinary graph or migration transition
+covered by this specification must originate its journal event.
 
-Later compaction may remove superseded entries. That does not weaken the
-requirement that the event existed and committed atomically when the transition
-occurred. A removed event was truthful historical evidence when committed.
+## Notification coverage
+
+Synchronization may change graph state in ways that do not originate a new
+event. Synchronization originates exact events only for:
+
+```
+materialized/up-to-date → materialized/potentially-outdated   => invalidate
+materialized → unmaterialized                                   => delete
+```
+
+Other synchronization-induced graph changes MUST be covered by repositioning
+a truthful existing event. See `docs/specs/incremental-graph-journal-sync.md`
+for the `notificationCarrier(K)` rule.
+
+## Terminology
+
+Use the following terms consistently:
+
+- **originate an event**: create a new logical event for an actual transition.
+- **preserve an event**: retain an existing event without changing its physical
+  position.
+- **reposition an event**: move an existing event to a new physical position
+  for notification, preserving its original action, time, creator, and eventId.
+- **provide notification coverage**: ensure that every key requiring notification
+  has a carrier after relevant source watermarks, whether by origination or
+  repositioning.
 
 ---
 
@@ -226,9 +249,15 @@ Successful recomputation that transitions an already materialized node from
 - A cache hit emits nothing (no freshness transition occurred).
 - First materialization emits only `add` (first materialization is not a transition from `potentially-outdated`).
 
-### P6 — Atomic journal+graph write
+### P6 — Historical atomicity
 
-If a journal entry is visible (via `graph.possibleMaybeChanges`), the corresponding graph-state change must also be visible. If a graph-state write fails, no stale journal entry for it must be visible.
+When a logical event is first originated, the event and its historical origin
+transition are durably committed atomically. A failed origin transaction leaves
+neither the event nor the associated transition committed.
+
+Later graph changes, synchronization, and compaction may change current graph
+state or remove or reposition physical event occurrences without invalidating
+that historical atomicity guarantee.
 
 ### P7 — Monotonic last_journal_index
 

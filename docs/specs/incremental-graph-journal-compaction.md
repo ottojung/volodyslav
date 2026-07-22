@@ -16,7 +16,11 @@ Compaction relies on the `logicalJournalView(journal, H)` defined in `incrementa
 view through its fixed bound `H`. Entries outside that view are not returned,
 whether or not physical compaction has removed them.
 
-**Historical truth and compaction.** Every transition was journaled at origin.
+**Historical truth and compaction.** Ordinary graph and migration operations
+originate their events atomically with their transitions. Synchronization
+originates exact `invalidate` and `delete` events; other synchronization
+changes provide notification coverage through repositioned existing events.
+
 Logical compaction may suppress superseded evidence for query purposes. Physical
 compaction may later remove only evidence already suppressed by the logical
 view. Compaction does not turn events into guesses or retroactively weaken

@@ -135,11 +135,13 @@ Journal queries are conservative change notifications.
 
 ### Coverage guarantee
 
-Within the supported cursor domain (same-process session tokens), graph-observable
-changes have no false negatives. Every key whose relevant graph state changed is
-represented by a returned entry positioned strictly after `since`, either as a
-newly originated event or as a repositioned existing event. Consumers re-reading
-current graph state after each returned entry observe the actual graph changes.
+Within the supported cursor domain (same-process session tokens), for semantic
+keys matching the call's `to` filter, graph-observable changes have no false
+negatives. Every matching key requiring notification is represented by a
+retained entry positioned strictly after `since`, either as a newly originated
+event or as a repositioned existing event. Consumers re-reading current graph
+state after each returned entry observe the actual graph changes for their
+filtered set of keys.
 
 REQ-JA-05: A returned `edit` is an existing journal event emitted by graph
 recomputation and possibly copied or repositioned by synchronization. Migration

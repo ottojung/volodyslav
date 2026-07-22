@@ -234,15 +234,34 @@ newly generated sync event. The resulting physical journal equals its own
 
 ### 6. Ensure notification coverage
 
-Every key in GraphDelta must have notification evidence positioned after all
-source watermarks that require notification.
+Every key in GraphDelta must have a notification carrier positioned strictly
+after every source watermark that requires notification.
 
-For keys that received a generated `invalidate` or `delete`, the generated event
-is already the notification carrier. No additional repositioning is needed.
+#### notificationCarrier(K)
 
-For other keys in GraphDelta where no sync-originated event was emitted, the
-existing canonical event may be repositioned to a position strictly above the
-watermarks of sources that require notification.
+For each `K` in GraphDelta, select exactly one carrier in this order:
+
+1. the generated `delete` or `invalidate`, when one exists;
+2. otherwise the final canonical state event;
+3. otherwise the final canonical freshness event;
+4. otherwise fail journal reconciliation with a journal-integrity error because
+   a required notification has no historical evidence.
+
+A generated event is already freshly positioned above both source watermarks.
+No additional repositioning is needed.
+
+For a selected existing carrier E, compute the required notification bound:
+
+```
+notificationBound(E) = max(sourceH of every source requiring notification via E)
+```
+
+If E's greatest surviving occurrence is already strictly greater than
+`notificationBound(E)`, E is sufficient. Otherwise, E MUST be repositioned:
+make every old occurrence absent and queue E for fresh placement above P.
+
+Only the selected carrier needs repositioning for K. Do not reposition both
+categories merely because both exist.
 
 A repositioned event preserves its original:
 
@@ -255,24 +274,8 @@ A repositioned event preserves its original:
 
 It is not newly emitted.
 
-#### Notification bound
-
-For a final canonical event E, compute:
-
-```
-notificationBound(E) = max(sourceH of every source requiring notification via E)
-```
-
-If no source requires notification via E, E has no notification bound.
-
-During normalization, after gathering surviving positions of E:
-
-1. Keep only the greatest surviving position as the initial candidate.
-2. If E has no notification bound, retain that candidate. If no occurrence
-   survived, queue E for fresh placement.
-3. If E has a notification bound T:
-   - if the greatest surviving position is strictly greater than T, retain it;
-   - otherwise make every old occurrence absent and queue E for fresh placement.
+If no source requires notification for E, E has no notification bound and no
+repositioning is required.
 
 ### 7. Reconcile physical positions
 
