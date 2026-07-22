@@ -163,15 +163,6 @@ class UnplannedMissingValidityProofError extends Error {
 }
 
 /**
- * @param {unknown} object
- * @returns {object is UnplannedMissingValidityProofError}
- */
-function isUnplannedMissingValidityProofError(object) {
-    return object instanceof UnplannedMissingValidityProofError;
-}
-
-
-/**
  * Compute transported validity proofs for a final graph from source provenance.
  * @param {object} options
  * @param {SchemaStorage} options.targetSourceStorage
@@ -449,5 +440,4 @@ module.exports = {
     ReplicaBatchWriter,
     buildTransportedValidityPlan,
     UnplannedMissingValidityProofError,
-    isUnplannedMissingValidityProofError,
 };

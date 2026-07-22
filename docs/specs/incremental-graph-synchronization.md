@@ -305,32 +305,22 @@ journal-backed coherent-history rule is tracked by
 https://github.com/ottojung/volodyslav/issues/1521; this section specifies only
 the current conservative pairwise behaviour.
 
-**DEF-SYNC-06 (Selected side):** `selectedSideByKey` records `keep` or `take`
-for every materialized semantic key. It is selected by REQ-SYNC-07 only:
-target-only keeps target, host-only takes host, the greater UTC `modifiedAt`
-wins when both sides are present, and exact timestamp ties keep target/local.
-Ancestor taint never changes this selected side. For a root `A`, competing
-versions use `modifiedAt`; value disagreement alone does not invalidate or
-delete the root.
-
-**DEF-SYNC-07 (Taint propagation):** Keep-taint propagates forward from every
+**DEF-SYNC-06 (Taint propagation):** Keep-taint propagates forward from every
 key where local `modifiedAt` strictly wins. Take-taint propagates forward from
 every key where host `modifiedAt` strictly wins. Taint is ancestry information,
 not a source-selection override. A selected local/target candidate has
 opposite-side ancestry when take-taint reaches it. A selected host candidate has
 opposite-side ancestry when keep-taint reaches it.
 
-**DEF-SYNC-08 (Direct invalidation candidate):** A direct invalidation candidate
+**DEF-SYNC-07 (Direct invalidation candidate):** A direct invalidation candidate
 is a selected cached node whose next required recomputation must invoke the
 computor rather than accept cache-only revalidation. Candidates are produced by:
 
 1. opposite-side ancestry reaching the selected candidate;
 2. direct input relowering;
-3. equal-version stale metadata from REQ-SYNC-08c;
-4. missing transportable direct-input validity proofs discovered during
-   planning.
+3. equal-version stale metadata from REQ-SYNC-08c.
 
-**DEF-SYNC-09 (Direct relowering):** A selected cached node is directly
+**DEF-SYNC-08 (Direct relowering):** A selected cached node is directly
 relowered when at least one distinct semantic direct input used by its source
 materialization does not represent the final selected version of that semantic
 input through the canonical source-version identity relation
@@ -434,24 +424,6 @@ A stale node that cache-revalidates is marked `up-to-date` and returns its store
 
 ## 10. Value Origin and Provenance
 
-**DEF-SYNC-10 (Final value origin rules):** The selected byte source identifies
-which replica supplied the final stored bytes. This is a conceptual provenance
-property, not a separate runtime map:
-
-- Every surviving value (`outcome(key) ≠ delete`) has byte provenance from its
-  selected structural side (`selectedSideByKey`), including hard-invalidated and
-  directly relowered nodes.
-- Source is `target` when `selectedSideByKey = keep`; source is `host` when
-  `selectedSideByKey = take`.
-- Deleted materializations (`outcome = delete`) have no value origin.
-
-**Rationale:** Direct relowering means the cache value cannot remain certified
-against its final inputs and the node becomes a direct invalidation candidate.
-Its incoming validity proofs are removed. However, the retained value itself
-still has known byte provenance because it was preserved byte-for-byte from
-the selected source (identified by `selectedSideByKey`). Deleted nodes have no
-final value and therefore no value origin.
-
 **REQ-SYNC-13 (Equality does not create origin):**
 
 - Equal stored values do not imply same origin.
@@ -471,7 +443,7 @@ the computation histories are interchangeable.
 
 ## 11. Validity Proof Transport
 
-**DEF-SYNC-11 (Source validity proof):** A source-side relation entry
+**DEF-SYNC-09 (Source validity proof):** A source-side relation entry
 `valid[D].has(N)` means that, in that source replica, N's stored value was
 known valid with respect to D's stored value according to the IncrementalGraph
 validity algorithm.
@@ -523,11 +495,12 @@ equal-timestamp copies represent the same temporary semantic versions.
 
 **REQ-SYNC-16 (Required incoming validity for up-to-date nodes):** Every final
 `up-to-date` materialized node must have complete incoming validity proofs for
-all its direct inputs. Missing transported proofs are classified during merge
-planning. Validity reconstruction expects that classification to be complete
-and throws `UnplannedMissingValidityProofError` if a missing proof is
-discovered. Reconstruction does not itself create a new direct invalidation
-root.
+all its direct inputs. Validated source invariants plus source-version identity
+(DEF-SYNC-02) justify complete proof transport for every node that is not a
+direct invalidation candidate. Validity reconstruction expects the planning
+classification to be complete and throws `UnplannedMissingValidityProofError` if
+a missing proof is discovered. Reconstruction does not itself create a new direct
+invalidation root.
 
 **REQ-SYNC-17 (Rebuild, not merge):** The final validity relation must be
 rebuilt from the final lowered graph, not textually merged from source

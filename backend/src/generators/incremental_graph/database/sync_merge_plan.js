@@ -6,7 +6,6 @@ const { IdentifierLookupConflictError } = require('./replica_errors');
 const { GRAPH_SCHEME_KEY, parseGraphScheme, semanticInputKeys } = require('./graph_scheme');
 const { normalizeInputEdges } = require('./input_edges');
 const { sourceRepresentsFinalVersion } = require('./sync_merge_version_identity');
-const { buildTransportedValidityPlan } = require('./sync_merge_validity');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -83,66 +82,6 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
         }
     }
     return deletedMaterializationKeys;
-}
-
-/**
- * Find up-to-date selected nodes whose required direct-input proofs cannot be transported.
- * @param {SchemaStorage} T
- * @param {SchemaStorage} H
- * @param {IdentifierLookup} targetLookup
- * @param {IdentifierLookup} hostLookup
- * @param {Map<NodeKeyString, 'keep' | 'take'>} selectedSideByKey
- * @param {Map<NodeKeyString, NodeKeyString[]>} selectedInputsByKey
- * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
- * @param {Set<NodeKeyString>} equalTimestampKeys
- * @returns {Promise<Set<NodeKeyString>>}
- */
-async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, selectedSideByKey, selectedInputsByKey, finalIdentifierForKey, equalTimestampKeys) {
-    /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
-    const mergedInputsMap = new Map();
-    for (const [nodeKey] of selectedSideByKey) {
-        const finalId = finalIdentifierForKey.get(nodeKey);
-        if (finalId === undefined) continue;
-        const inputIds = [];
-        for (const inputKey of selectedInputsByKey.get(nodeKey) ?? []) {
-            const inputId = finalIdentifierForKey.get(inputKey);
-            if (inputId !== undefined) inputIds.push(inputId);
-        }
-        mergedInputsMap.set(finalId, normalizeInputEdges(inputIds));
-    }
-    const { validMap: transportedProofs } = await buildTransportedValidityPlan({
-        targetSourceStorage: T,
-        hostSourceStorage: H,
-        targetLookup,
-        hostLookup,
-        finalIdentifierForKey,
-        mergedInputsMap,
-        selectedSideByKey,
-        equalTimestampKeys,
-    });
-
-    /** @type {Set<NodeKeyString>} */
-    const missingRoots = new Set();
-    for (const [nodeKey, inputKeys] of selectedInputsByKey) {
-        const finalNodeId = finalIdentifierForKey.get(nodeKey);
-        if (finalNodeId === undefined || inputKeys.length === 0) continue;
-        const side = selectedSideByKey.get(nodeKey);
-        const lookup = side === 'take' ? hostLookup : targetLookup;
-        const storage = side === 'take' ? H : T;
-        const sourceId = lookup.keyToId.get(String(nodeKey));
-        if (sourceId === undefined) continue;
-        if (await storage.freshness.get(sourceId) !== 'up-to-date') continue;
-        for (const inputKey of inputKeys) {
-            const finalInputId = finalIdentifierForKey.get(inputKey);
-            if (finalInputId === undefined) continue;
-            const dependents = transportedProofs.get(String(finalInputId)) ?? [];
-            if (!dependents.some(dependent => String(dependent) === String(finalNodeId))) {
-                missingRoots.add(nodeKey);
-                break;
-            }
-        }
-    }
-    return missingRoots;
 }
 
 /**
@@ -295,23 +234,12 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
     }
 
-    let finalIdentifierForKey = new Map(provisionalIdentifierForKey);
-    /** @type {Set<NodeKeyString>} */
-    let deletedMaterializationKeys = new Set();
-    let changed = true;
-    while (changed) {
-        const missingProofRoots = await findMissingTransportedProofRoots(
-            T, H, targetLookup, hostLookup, selectedSideByKey, selectedInputsByKey, finalIdentifierForKey, equalTimestamps
-        );
-        for (const nodeKey of missingProofRoots) directInvalidationCandidateKeys.add(nodeKey);
-        const deletionRootKeys = findDeletionRoots(directInvalidationCandidateKeys, selectedInputsByKey);
-        deletedMaterializationKeys = expandStructuralDeletionClosure(deletionRootKeys, selectedDependentsByKey);
-        const nextFinalIdentifierForKey = new Map();
-        for (const [nodeKey, identifier] of provisionalIdentifierForKey) {
-            if (!deletedMaterializationKeys.has(nodeKey)) nextFinalIdentifierForKey.set(nodeKey, identifier);
-        }
-        changed = nextFinalIdentifierForKey.size !== finalIdentifierForKey.size;
-        finalIdentifierForKey = nextFinalIdentifierForKey;
+    const deletionRootKeys = findDeletionRoots(directInvalidationCandidateKeys, selectedInputsByKey);
+    const deletedMaterializationKeys = expandStructuralDeletionClosure(deletionRootKeys, selectedDependentsByKey);
+    /** @type {Map<NodeKeyString, NodeIdentifier>} */
+    const finalIdentifierForKey = new Map();
+    for (const [nodeKey, identifier] of provisionalIdentifierForKey) {
+        if (!deletedMaterializationKeys.has(nodeKey)) finalIdentifierForKey.set(nodeKey, identifier);
     }
 
     /** @type {Map<NodeKeyString, 'keep' | 'take' | 'invalidate' | 'delete'>} */
