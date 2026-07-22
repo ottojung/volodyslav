@@ -79,11 +79,11 @@ REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When s
 
 REQ-JA-05: A returned `edit` is an existing journal event emitted by graph
 recomputation and possibly copied or repositioned by synchronization. Migration
-does not emit `edit`; synchronization may copy or reposition an existing edit.
-Synchronization never produces an event. The entry's presence does not guarantee
-that the node's value materially changed from the consumer's perspective.
-Consumers SHOULD re-check the current node value rather than assuming the entry
-describes a visible state transition.
+does not emit `edit`; synchronization may copy, reposition, or preserve an
+existing edit. The entry's presence does not guarantee that the node's value
+materially changed from the consumer's perspective. Consumers SHOULD re-check
+the current node value rather than assuming the entry describes a visible state
+transition.
 
 ---
 

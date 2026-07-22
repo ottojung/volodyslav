@@ -66,7 +66,7 @@ Any quota policy is valid as long as it satisfies the requirements in this docum
 
 ## Entries eligible for removal
 
-For a compaction run with captured bound `H`, compute `logicalJournalView(journal, H)` — the same logical projection used by `possibleMaybeChanges` and synchronization evidence selection.
+For a compaction run with captured bound `H`, compute `logicalJournalView(journal, H)` — the same logical projection used by `possibleMaybeChanges` and journal reconciliation (see `incremental-graph-journal-sync.md`).
 
 ### Logically required entries
 
