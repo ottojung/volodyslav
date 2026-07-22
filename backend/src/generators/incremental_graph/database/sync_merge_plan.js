@@ -35,9 +35,10 @@ function countDistinctSemanticInputs(inputKeys) {
 }
 
 /**
- * Classify direct invalidation candidates under the temporary pairwise policy.
- * Returns a set of keys that should be invalidated (not deleted).
- * Deletion roots are computed separately via arity check.
+ * Find deletion roots among direct invalidation candidates under the temporary
+ * pairwise policy. Candidates with at most one distinct semantic input retain
+ * oldValue (hard invalidation). Candidates with multiple distinct inputs are
+ * deleted.
  *
  * FIXME(#1521): This arity-based invalidate-vs-delete rule is deliberately
  * conservative. The current pairwise database state does not retain exact
@@ -48,21 +49,17 @@ function countDistinctSemanticInputs(inputKeys) {
  *
  * @param {Set<NodeKeyString>} directInvalidationCandidateKeys
  * @param {Map<NodeKeyString, NodeKeyString[]>} selectedInputsByKey
- * @returns {{ hardInvalidationKeys: Set<NodeKeyString>, deletionRootKeys: Set<NodeKeyString> }}
+ * @returns {Set<NodeKeyString>}
  */
-function classifyInvalidationCandidates(directInvalidationCandidateKeys, selectedInputsByKey) {
-    /** @type {Set<NodeKeyString>} */
-    const hardInvalidationKeys = new Set();
+function findDeletionRoots(directInvalidationCandidateKeys, selectedInputsByKey) {
     /** @type {Set<NodeKeyString>} */
     const deletionRootKeys = new Set();
     for (const nodeKey of directInvalidationCandidateKeys) {
         if (countDistinctSemanticInputs(selectedInputsByKey.get(nodeKey) ?? []) > 1) {
             deletionRootKeys.add(nodeKey);
-        } else {
-            hardInvalidationKeys.add(nodeKey);
         }
     }
-    return { hardInvalidationKeys, deletionRootKeys };
+    return deletionRootKeys;
 }
 
 /**
@@ -101,18 +98,11 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
  * @returns {Promise<Set<NodeKeyString>>}
  */
 async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, selectedSideByKey, selectedInputsByKey, finalIdentifierForKey, equalTimestampKeys) {
-    /** @type {Map<NodeKeyString, import('./sync_merge_validity').ValueOrigin>} */
-    const originByKey = new Map();
     /** @type {Map<NodeIdentifier, NodeIdentifier[]>} */
     const mergedInputsMap = new Map();
-    for (const [nodeKey, side] of selectedSideByKey) {
+    for (const [nodeKey] of selectedSideByKey) {
         const finalId = finalIdentifierForKey.get(nodeKey);
         if (finalId === undefined) continue;
-        const lookup = side === 'take' ? hostLookup : targetLookup;
-        const sourceId = lookup.keyToId.get(String(nodeKey));
-        if (sourceId !== undefined) {
-            originByKey.set(nodeKey, { kind: 'source', side: side === 'take' ? 'host' : 'target', sourceId });
-        }
         const inputIds = [];
         for (const inputKey of selectedInputsByKey.get(nodeKey) ?? []) {
             const inputId = finalIdentifierForKey.get(inputKey);
@@ -127,7 +117,6 @@ async function findMissingTransportedProofRoots(T, H, targetLookup, hostLookup, 
         hostLookup,
         finalIdentifierForKey,
         mergedInputsMap,
-        valueOriginByKey: originByKey,
         selectedSideByKey,
         equalTimestampKeys,
     });
@@ -315,8 +304,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             T, H, targetLookup, hostLookup, selectedSideByKey, selectedInputsByKey, finalIdentifierForKey, equalTimestamps
         );
         for (const nodeKey of missingProofRoots) directInvalidationCandidateKeys.add(nodeKey);
-        const classified = classifyInvalidationCandidates(directInvalidationCandidateKeys, selectedInputsByKey);
-        const deletionRootKeys = classified.deletionRootKeys;
+        const deletionRootKeys = findDeletionRoots(directInvalidationCandidateKeys, selectedInputsByKey);
         deletedMaterializationKeys = expandStructuralDeletionClosure(deletionRootKeys, selectedDependentsByKey);
         const nextFinalIdentifierForKey = new Map();
         for (const [nodeKey, identifier] of provisionalIdentifierForKey) {

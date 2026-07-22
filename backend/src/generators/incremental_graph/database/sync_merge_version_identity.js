@@ -3,13 +3,10 @@
  *
  * This module provides the canonical operation that answers whether a
  * source-side materialization represents the final selected semantic value
- * version for a given semantic node key.
- *
- * Actual byte origin (valueOriginByKey) and semantic value-version identity
- * are different concepts. Use valueOriginByKey for identifying where the
- * final stored bytes came from. Use sourceRepresentsFinalVersion for
- * reasoning about dependency histories, direct relowering, validity proofs,
- * and freshness metadata.
+ * version for a given semantic node key. The selected byte source identifies
+ * which replica supplied the final stored bytes. Source-version identity
+ * determines whether source-side dependency histories and validity proofs
+ * apply to the final selected semantic version.
  *
  * FIXME(#1521): Equal modifiedAt is temporarily treated as identity of one
  * replicated semantic value version. Independent recomputations can collide

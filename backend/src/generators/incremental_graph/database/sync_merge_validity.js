@@ -27,17 +27,6 @@ const { topologicalSortFromMap } = require('./topo_sort');
 /** @typedef {'keep' | 'take' | 'invalidate' | 'delete'} MergeOutcome */
 
 /**
- * @typedef {object} SourceValueOrigin
- * @property {'source'} kind
- * @property {'target' | 'host'} side
- * @property {NodeIdentifier} sourceId
- */
-
-/**
- * @typedef {SourceValueOrigin} ValueOrigin
- */
-
-/**
  * Small helper around SchemaStorage.batch() that guarantees batch sizes never
  * exceed RAW_BATCH_CHUNK_SIZE while still allowing callers to build operations
  * incrementally.
@@ -94,48 +83,6 @@ class ReplicaBatchWriter {
         await this._storage.batch(this._pendingOps);
         this._pendingOps = [];
     }
-}
-
-/**
- * Build the valueOriginByKey map from merge plan data.
- *
- * The map describes the provenance of every final stored value:
- * - { kind: "source", side, sourceId } if the final value is a byte-for-byte
- *   copy preserved from that side's source identifier.
- *
- * Every surviving value (outcome !== 'delete') has a source origin from its
- * selected structural side, including hard-invalidated and directly relowered
- * nodes. Only deleted nodes have no value origin.
- * @param {Map<NodeKeyString, 'keep' | 'take'>} selectedSideByKey
- * @param {Map<NodeKeyString, MergeOutcome>} outcomeByKey
- * @param {IdentifierLookup} targetLookup
- * @param {IdentifierLookup} hostLookup
- * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
- * @returns {Promise<Map<NodeKeyString, ValueOrigin>>}
- */
-async function buildValueOriginByKey(
-    selectedSideByKey,
-    outcomeByKey,
-    targetLookup,
-    hostLookup,
-    finalIdentifierForKey
-) {
-    /** @type {Map<NodeKeyString, ValueOrigin>} */
-    const map = new Map();
-
-    for (const [nodeKey, outcome] of outcomeByKey) {
-        if (outcome === 'delete') continue;
-        if (!finalIdentifierForKey.has(nodeKey)) continue;
-        const selectedSide = selectedSideByKey.get(nodeKey);
-        if (selectedSide === undefined) continue;
-        const sourceSide = outcome === 'invalidate' ? selectedSide : outcome;
-        const sourceLookup = sourceSide === 'take' ? hostLookup : targetLookup;
-        const sourceId = sourceLookup.keyToId.get(String(nodeKey));
-        if (sourceId === undefined) continue;
-        map.set(nodeKey, { kind: 'source', side: sourceSide === 'take' ? 'host' : 'target', sourceId });
-    }
-
-    return map;
 }
 
 /**
@@ -233,7 +180,6 @@ function isUnplannedMissingValidityProofError(object) {
  * @param {IdentifierLookup} options.hostLookup
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
- * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
  * @param {Map<NodeKeyString, 'keep' | 'take'>} options.selectedSideByKey
  * @param {Set<NodeKeyString>} options.equalTimestampKeys
  * @returns {Promise<{ validMap: Map<string, NodeIdentifier[]>, depIdCache: Map<string, NodeIdentifier> }>}
@@ -245,11 +191,9 @@ async function buildTransportedValidityPlan({
     hostLookup,
     finalIdentifierForKey: finalIdForKey,
     mergedInputsMap,
-    valueOriginByKey,
     selectedSideByKey,
     equalTimestampKeys,
 }) {
-    void valueOriginByKey;
     /** @type {Map<string, NodeIdentifier[]>} */
     const validMap = new Map();
     /** @type {Map<string, NodeIdentifier>} */
@@ -330,8 +274,11 @@ async function buildTransportedValidityPlan({
  *    and rewritten validity only when they have actually changed.
  *
  * A validity proof valid[D].has(N) is transported from a source side only
- * when D and N both resolve through the same source side and their final values
- * preserve those exact source identifiers.
+ * when both endpoints' source identifiers represent the final version through
+ * the canonical source-version identity relation (sourceRepresentsFinalVersion).
+ * Both endpoints come from the same source replica. Their final stored byte
+ * origins do not need to be that source replica when equal-timestamp copies
+ * represent the same temporary semantic versions.
  * - D is still a structural input of N in the merged graph.
  *
  * @param {object} options
@@ -342,7 +289,6 @@ async function buildTransportedValidityPlan({
  * @param {IdentifierLookup} options.hostLookup
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
- * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
  * @param {Set<NodeIdentifier>} options.directInvalidationRoots
  * @param {Map<NodeKeyString, 'keep' | 'take'>} options.selectedSideByKey
  * @param {Set<NodeKeyString>} options.equalTimestampKeys
@@ -356,7 +302,6 @@ async function rebuildMergedValidity({
     hostLookup,
     finalIdentifierForKey: finalIdForKey,
     mergedInputsMap,
-    valueOriginByKey,
     directInvalidationRoots,
     selectedSideByKey,
     equalTimestampKeys,
@@ -370,7 +315,6 @@ async function rebuildMergedValidity({
         hostLookup,
         finalIdentifierForKey: finalIdForKey,
         mergedInputsMap,
-        valueOriginByKey,
         selectedSideByKey,
         equalTimestampKeys,
     });
@@ -502,7 +446,6 @@ function removeIncomingValidity(mergedInputsMap, validMap, nodeIdentifier) {
 
 module.exports = {
     rebuildMergedValidity,
-    buildValueOriginByKey,
     ReplicaBatchWriter,
     buildTransportedValidityPlan,
     UnplannedMissingValidityProofError,

@@ -81,13 +81,30 @@ as `identifiers_keys_map` in the replica's global sublevel.
 `valid[D].has(N)` means N's stored value is known valid with respect to D's
 current stored value, subject to the main IncrementalGraph validity rules.
 
-**DEF-SYNC-01 (Value origin):** Provenance of a final stored value. An
-internal proof object, not a public API concept:
+**DEF-SYNC-01 (Value origin):** Provenance of a final stored value. A
+conceptual term, not a separate runtime representation:
 
-- `{ kind: "source", side: "target" | "host", sourceId }` means the final
-  stored value is known to have been copied or preserved from exactly that
-  source side and source identifier.
-- Deleted materializations do not appear in the final value-origin map.
+- The selected byte source identifies which replica supplied the final stored
+  bytes. Every surviving value (outcome ≠ delete) has provenance from its
+  selected structural side, including hard-invalidated and directly relowered
+  nodes. Deleted nodes have no final value and therefore no value origin.
+- The runtime representation of byte-source selection is `selectedSideByKey`.
+  No separate value-origin map is maintained.
+
+**DEF-SYNC-02 (Source-version identity):** A source-side materialization
+represents the final selected semantic value version when:
+
+1. it is the actual selected source materialization (its side and identifier
+   match the final selected side and identifier); or
+2. local and host contain the same semantic key and their `modifiedAt`
+   timestamps compare equal under the synchronization timestamp comparison.
+
+This is the canonical `sourceRepresentsFinalVersion()` operation. It
+determines whether source-side dependency histories and validity proofs apply
+to the final selected semantic version. Equal timestamps can collide between
+independent recomputations; this approximation is tracked by #1521 and must be
+replaced with journal-backed value-version identity. ComputedValue equality,
+hashing, or serialization must not be used as identity evidence.
 
 **REQ-SYNC-01 (Value origin from copy, not equality):** Deep equality of
 stored values MUST NOT create a value origin.
@@ -167,7 +184,7 @@ rather than silently dropping materialized values.
 
 ## 5. Semantic Merge Domain
 
-**DEF-SYNC-02 (Semantic merge domain):** Per-host merge operates over semantic
+**DEF-SYNC-03 (Semantic merge domain):** Per-host merge operates over semantic
 node keys, not raw storage identifiers. Let:
 
 - `Keys = keys(L.lookup) ∪ keys(H.lookup)`
@@ -177,14 +194,14 @@ structural source side (target/local or host), selects a final storage
 identifier, derives final dependency edges from the graph scheme, and applies
 the result to T.
 
-**DEF-SYNC-03 (Selected source side):** `selectedSideByKey` records the
+**DEF-SYNC-04 (Selected source side):** `selectedSideByKey` records the
 per-node candidate source side before final outcome classification:
 
 - `selectedSideByKey(key) ∈ { keep, take }`
 - `keep` means the candidate source is the local/target replica.
 - `take` means the candidate source is the host replica.
 
-**DEF-SYNC-04 (Final outcome):** `outcomeByKey` records the canonical final
+**DEF-SYNC-05 (Final outcome):** `outcomeByKey` records the canonical final
 outcome for each semantic key after classification:
 
 - `outcomeByKey(key) ∈ { keep, take, invalidate, delete }`
@@ -288,7 +305,7 @@ journal-backed coherent-history rule is tracked by
 https://github.com/ottojung/volodyslav/issues/1521; this section specifies only
 the current conservative pairwise behaviour.
 
-**DEF-SYNC-05 (Selected side):** `selectedSideByKey` records `keep` or `take`
+**DEF-SYNC-06 (Selected side):** `selectedSideByKey` records `keep` or `take`
 for every materialized semantic key. It is selected by REQ-SYNC-07 only:
 target-only keeps target, host-only takes host, the greater UTC `modifiedAt`
 wins when both sides are present, and exact timestamp ties keep target/local.
@@ -296,14 +313,14 @@ Ancestor taint never changes this selected side. For a root `A`, competing
 versions use `modifiedAt`; value disagreement alone does not invalidate or
 delete the root.
 
-**DEF-SYNC-06 (Taint propagation):** Keep-taint propagates forward from every
+**DEF-SYNC-07 (Taint propagation):** Keep-taint propagates forward from every
 key where local `modifiedAt` strictly wins. Take-taint propagates forward from
 every key where host `modifiedAt` strictly wins. Taint is ancestry information,
 not a source-selection override. A selected local/target candidate has
 opposite-side ancestry when take-taint reaches it. A selected host candidate has
 opposite-side ancestry when keep-taint reaches it.
 
-**DEF-SYNC-07 (Direct invalidation candidate):** A direct invalidation candidate
+**DEF-SYNC-08 (Direct invalidation candidate):** A direct invalidation candidate
 is a selected cached node whose next required recomputation must invoke the
 computor rather than accept cache-only revalidation. Candidates are produced by:
 
@@ -313,11 +330,14 @@ computor rather than accept cache-only revalidation. Candidates are produced by:
 4. missing transportable direct-input validity proofs discovered during
    planning.
 
-**DEF-SYNC-08 (Direct relowering):** A selected cached node is directly
-relowered when the source identifiers of the inputs against which its selected
-source materialization was stored differ from the final selected input
-identifiers. Direct relowering creates a direct invalidation candidate; it is
-not by itself a deletion decision.
+**DEF-SYNC-09 (Direct relowering):** A selected cached node is directly
+relowered when at least one distinct semantic direct input used by its source
+materialization does not represent the final selected version of that semantic
+input through the canonical source-version identity relation
+(DEF-SYNC-02). Different storage identifiers alone do not establish direct
+relowering. Equal-`modifiedAt` copies under different identifiers temporarily
+represent the same version. Direct relowering creates a direct invalidation
+candidate; it is not by itself a deletion decision.
 
 **REQ-SYNC-09 (Distinct semantic input classifier):** The classifier counts
 distinct semantic direct dependency keys. It must not count computor argument
@@ -414,30 +434,23 @@ A stale node that cache-revalidates is marked `up-to-date` and returns its store
 
 ## 10. Value Origin and Provenance
 
-**DEF-SYNC-09 (Final value origin rules):** For each surviving semantic key
-(`outcome(key) ≠ delete`):
+**DEF-SYNC-10 (Final value origin rules):** The selected byte source identifies
+which replica supplied the final stored bytes. This is a conceptual provenance
+property, not a separate runtime map:
 
-- Every surviving value copied or preserved byte-for-byte from a selected source
-  has that exact source origin, including hard-invalidated and directly relowered
-  nodes.
-- Origin is `{ kind: "source", side: "target", sourceId }` if:
-  - the final stored value exists;
-  - it was copied or preserved from the local source replica L;
-  - `sourceId` is the local source identifier for the same semantic key.
-- Origin is `{ kind: "source", side: "host", sourceId }` if:
-  - the final stored value exists;
-  - it was copied or preserved from host source replica H;
-  - `sourceId` is the host source identifier for the same semantic key.
-- Deleted materializations (`outcome = delete`) have no origin entry.
+- Every surviving value (`outcome(key) ≠ delete`) has byte provenance from its
+  selected structural side (`selectedSideByKey`), including hard-invalidated and
+  directly relowered nodes.
+- Source is `target` when `selectedSideByKey = keep`; source is `host` when
+  `selectedSideByKey = take`.
+- Deleted materializations (`outcome = delete`) have no value origin.
 
 **Rationale:** Direct relowering means the cache value cannot remain certified
 against its final inputs and the node becomes a direct invalidation candidate.
 Its incoming validity proofs are removed. However, the retained value itself
-still has known source provenance because it was preserved byte-for-byte from
-the selected source. This distinction is necessary because outgoing proofs
-concerning the retained value may still be transported when their other
-endpoint has matching source provenance. Deleted nodes have no final value
-and therefore no value origin.
+still has known byte provenance because it was preserved byte-for-byte from
+the selected source (identified by `selectedSideByKey`). Deleted nodes have no
+final value and therefore no value origin.
 
 **REQ-SYNC-13 (Equality does not create origin):**
 
@@ -458,7 +471,7 @@ the computation histories are interchangeable.
 
 ## 11. Validity Proof Transport
 
-**DEF-SYNC-10 (Source validity proof):** A source-side relation entry
+**DEF-SYNC-11 (Source validity proof):** A source-side relation entry
 `valid[D].has(N)` means that, in that source replica, N's stored value was
 known valid with respect to D's stored value according to the IncrementalGraph
 validity algorithm.
@@ -482,14 +495,17 @@ only if ALL of the following hold:
    identifier lookup.
 2. Those semantic keys both have final identifiers in
    `finalIdentifierForKey`.
-3. `valueOrigin(finalD)` is exactly `{ kind: "source", side: S, sourceId:
-   sourceD }`.
-4. `valueOrigin(finalN)` is exactly `{ kind: "source", side: S, sourceId:
-   sourceN }`.
+3. `sourceD` represents the final version of D through the canonical
+   source-version identity relation (DEF-SYNC-02).
+4. `sourceN` represents the final version of N through the same relation.
 5. `finalD` is a direct structural input of `finalN` in the final lowered
    graph per `mergedInputsMap`.
 6. The final dependency edge is derived from the final graph scheme and
    semantic inputs, not copied blindly from source storage.
+
+The two endpoints of the source proof must still come from one source replica.
+Their final stored byte origins do not need to be that source replica when
+equal-timestamp copies represent the same temporary semantic versions.
 
 **REQ-SYNC-15 (Negative transport rules):**
 
@@ -501,17 +517,17 @@ only if ALL of the following hold:
 - Proofs whose final edge is no longer a structural dependency MUST NOT be
   transported.
 - Stored value equality MUST NOT be used as a fallback for any endpoint in
-  validity proof transport. A proof is transported only on provenance match,
-  not on extensional value match.
+  validity proof transport. A proof is transported only when both endpoints
+  represent the final selected versions through the canonical identity
+  relation, not on extensional value match.
 
 **REQ-SYNC-16 (Required incoming validity for up-to-date nodes):** Every final
 `up-to-date` materialized node must have complete incoming validity proofs for
-all its direct inputs. Synchronization must not mint a proof that cannot be
-justified through provenance transport. When a required proof cannot be
-transported or justified, the affected node must be classified as a direct
-invalidation root: all its incoming proofs are removed and it is marked
-`potentially-outdated`. This guarantees that its next pull recomputes and
-establishes fresh validity proofs.
+all its direct inputs. Missing transported proofs are classified during merge
+planning. Validity reconstruction expects that classification to be complete
+and throws `UnplannedMissingValidityProofError` if a missing proof is
+discovered. Reconstruction does not itself create a new direct invalidation
+root.
 
 **REQ-SYNC-17 (Rebuild, not merge):** The final validity relation must be
 rebuilt from the final lowered graph, not textually merged from source
