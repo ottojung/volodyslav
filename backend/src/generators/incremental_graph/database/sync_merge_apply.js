@@ -63,7 +63,6 @@ async function applyNodeOutcomes(
         }
 
         const sourceStorage = useHost ? hostStorage : targetStorage;
-        const destinationTimestamp = await targetStorage.timestamps.get(destinationId);
         const sourceTimestamp = await sourceStorage.timestamps.get(sourceId);
         if (sourceTimestamp === undefined) {
             throw new IdentifierLookupConflictError(`Source materialized node ${String(sourceId)} has no timestamps entry`);
@@ -76,7 +75,7 @@ async function applyNodeOutcomes(
             ? 'potentially-outdated'
             : sourceFreshness;
         const finalTimestamps = {
-            createdAt: destinationTimestamp?.createdAt ?? sourceTimestamp.createdAt,
+            createdAt: sourceTimestamp.createdAt,
             modifiedAt: sourceTimestamp.modifiedAt,
         };
 

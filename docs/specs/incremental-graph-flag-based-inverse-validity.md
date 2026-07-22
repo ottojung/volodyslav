@@ -428,8 +428,8 @@ After applying precise merge decisions, the merge flow:
 
 1. Transports compatible `valid` entries from both source sides where provenance, value identity,
    and structural compatibility justify preserving the exact proof.
-2. Identifies **direct invalidation roots**: nodes whose decision is `invalidate`, equal-version
-   staleness, host-only invalidation, or any up-to-date node whose required incoming proof could
+2. Identifies **direct invalidation roots**: nodes whose decision is `invalidate`, same-coordinate
+   freshness staleness, host-only invalidation, or any up-to-date node whose required incoming proof could
    not be transported. All incoming proofs are removed from each direct root.
 3. Propagates stale freshness from each direct root through the transported validity frontier
    without removing traversed validity edges. Descendants reached through propagated staleness
@@ -548,7 +548,7 @@ supports it, and it classifies nodes without a full proof set as direct roots.
    in the merged graph. Removed or relowered inputs do not carry proofs.
 
 3. **Incoming-proof revocation for direct roots**: Every node in the merge plan
-   whose decision is `invalidate`, equal-version staleness, host-only
+   whose decision is `invalidate`, same-coordinate freshness staleness, host-only
    invalidation, or any up-to-date node whose required transported proof could
    not be found has all incoming proofs removed from its inputs' `valid` sets.
    These are the direct invalidation roots.

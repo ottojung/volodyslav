@@ -455,6 +455,7 @@ describe('fingerprint design', () => {
             await H.timestamps.put(HOST_NODE_A, { createdAt: TS1, modifiedAt: TS1 });
             await H.freshness.put(HOST_NODE_A, 'up-to-date');
             await H.values.put(HOST_NODE_A, { value: { id: 'a', type: 'test', description: 'a' }, isDirty: false });
+            await H.global.put('fingerprint', 'remotehostfingerprint');
             await H.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(makeIdentifierLookup([
                 [HOST_NODE_A, '{"head":"event","args":[]}'],
             ])));
@@ -483,6 +484,93 @@ describe('fingerprint design', () => {
 
             // Host's fingerprint should NOT have been adopted.
             expect(persistedFingerprint).not.toBe('remotehostfingerprint');
+        } finally {
+            cleanup(tmpDir);
+        }
+    });
+
+    test('missing host fingerprint fails hard and leaves replicas unchanged', async () => {
+        const { capabilities, tmpDir } = getTestCapabilities();
+        try {
+            db = await getRootDatabase(capabilities);
+            const localFingerprint = db.getFingerprint();
+
+            const hostname = 'missing-fp-host';
+            const appVersionStr = db.getVersion();
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const active = db.schemaStorageForReplica('x');
+            const inactive = db.schemaStorageForReplica('y');
+
+            // Place distinctive sentinel state in both replicas before merge.
+            const activeSentinel = nodeIdentifierFromString('999-active-xxxx');
+            const inactiveSentinel = nodeIdentifierFromString('998-inactive-yyy');
+            const activeKey = '{"head":"A","args":[]}';
+            const inactiveKey = '{"head":"B","args":[]}';
+            const schemeJson = JSON.stringify({ format: 1, nodes: [
+                { head: 'A', arity: 0, inputTemplates: [] },
+                { head: 'B', arity: 0, inputTemplates: [] },
+            ] });
+            await active.global.put(GRAPH_SCHEME_KEY, schemeJson);
+            await active.global.put(IDENTIFIERS_KEY, [[String(activeSentinel), String(activeKey)]]);
+            await active.values.put(activeSentinel, { active: 'sentinel' });
+            await active.freshness.put(activeSentinel, 'up-to-date');
+            await active.timestamps.put(activeSentinel, { createdAt: TS1, modifiedAt: TS1 });
+            await active.valid.put(activeSentinel, []);
+            await active.global.put(LAST_NODE_INDEX_KEY, 7);
+            await active.global.put('fingerprint', localFingerprint);
+            await inactive.global.put(GRAPH_SCHEME_KEY, schemeJson);
+            await inactive.global.put(IDENTIFIERS_KEY, [[String(inactiveSentinel), String(inactiveKey)]]);
+            await inactive.values.put(inactiveSentinel, { inactive: 'sentinel' });
+            await inactive.freshness.put(inactiveSentinel, 'potentially-outdated');
+            await inactive.timestamps.put(inactiveSentinel, { createdAt: TS1, modifiedAt: TS1 });
+            await inactive.valid.put(inactiveSentinel, []);
+            await inactive.global.put(LAST_NODE_INDEX_KEY, 9);
+            await inactive.global.put('fingerprint', localFingerprint);
+
+            // Snapshot both replicas completely.
+            async function snapshot(storage) {
+                const ids = (await storage.global.get(IDENTIFIERS_KEY) ?? []).map(
+                    ([id, key]) => [String(id), String(key)]
+                ).sort((a, b) => a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0);
+                const values = [];
+                const freshness = [];
+                const timestamps = [];
+                const validity = [];
+                for (const [idStr] of ids) {
+                    const id = nodeIdentifierFromString(idStr);
+                    values.push([idStr, await storage.values.get(id)]);
+                    freshness.push([idStr, await storage.freshness.get(id)]);
+                    timestamps.push([idStr, await storage.timestamps.get(id)]);
+                    const deps = (await storage.valid.get(id) ?? []).map(String).sort();
+                    if (deps.length > 0) validity.push([idStr, deps]);
+                }
+                const globalMap = {};
+                for (const key of ['fingerprint', 'graph_scheme', 'last_node_index']) {
+                    globalMap[key] = await storage.global.get(key);
+                }
+                return { identifiers_keys_map: ids, values, freshness, timestamps, validity, ...globalMap };
+            }
+
+            const activeBefore = await snapshot(active);
+            const inactiveBefore = await snapshot(inactive);
+
+            // Deliberately omit fingerprint from host storage.
+            const H = db.hostnameSchemaStorage(hostname);
+            await H.global.put(IDENTIFIERS_KEY, []);
+            await H.global.put(LAST_NODE_INDEX_KEY, 0);
+            await H.global.put(GRAPH_SCHEME_KEY, schemeJson);
+
+            const logger = makeLogger();
+
+            await expect(mergeHostIntoReplica(logger, db, hostname)).rejects.toThrow(
+                /Invalid fingerprint in staged host source fingerprint/
+            );
+
+            expect(db.currentReplicaName()).toBe('x');
+            expect(await snapshot(active)).toEqual(activeBefore);
+            expect(await snapshot(inactive)).toEqual(inactiveBefore);
         } finally {
             cleanup(tmpDir);
         }

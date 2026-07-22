@@ -1,11 +1,13 @@
 const { topologicalSortFromMap } = require('./topo_sort');
-const { compareIsoTimestamps } = require('./sync_merge_timestamps');
 const { makeIdentifierLookup } = require('./identifier_lookup');
 const { IdentifierLookupConflictError } = require('./replica_errors');
 
 const { GRAPH_SCHEME_KEY, parseGraphScheme, semanticInputKeys } = require('./graph_scheme');
 const { normalizeInputEdges } = require('./input_edges');
+const { compareIsoTimestamps } = require('./sync_merge_timestamps');
+const { compareNodeIdentifier } = require('./node_identifier');
 const { sourceRepresentsFinalVersion } = require('./sync_merge_version_identity');
+const { compareMaterializationCandidates, makeMaterializationCandidate } = require('./sync_merge_candidates');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -94,23 +96,23 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
  * - `finalIdentifierLookup`: bijective final lookup
  * - `mergedInputsMap`: final lowered input edges
  * - `hasIdentifierReconciliation`: whether identifiers changed
- * - `equalTimestamps`: set of keys with equal modifiedAt across sides
  *
  * @param {SchemaStorage} T
  * @param {SchemaStorage} H
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
+ * @param {string} targetSourceFingerprint
+ * @param {string} hostSourceFingerprint
  * @returns {Promise<{
  *   selectedSideByKey: Map<NodeKeyString, 'keep' | 'take'>,
  *   outcomeByKey: Map<NodeKeyString, 'keep' | 'take' | 'invalidate' | 'delete'>,
  *   mergedInputsMap: Map<NodeIdentifier, NodeIdentifier[]>,
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
- *   hasIdentifierReconciliation: boolean,
- *   equalTimestamps: Set<NodeKeyString>
- * }>} 
+ *   hasIdentifierReconciliation: boolean
+ * }>}
  */
-async function buildMergePlan(T, H, targetLookup, hostLookup) {
+async function buildMergePlan(T, H, targetLookup, hostLookup, targetSourceFingerprint, hostSourceFingerprint) {
     const targetScheme = parseGraphScheme(await T.global.get(GRAPH_SCHEME_KEY));
     const hostScheme = parseGraphScheme(await H.global.get(GRAPH_SCHEME_KEY));
 
@@ -120,13 +122,14 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     const forceKeepRoots = new Set();
     /** @type {Set<NodeKeyString>} */
     const forceTakeRoots = new Set();
-    /** @type {Set<NodeKeyString>} */
-    const allNodeKeys = new Set();
-    for (const nodeKey of targetLookup.idToKey.values()) allNodeKeys.add(nodeKey);
-    for (const nodeKey of hostLookup.idToKey.values()) allNodeKeys.add(nodeKey);
+    /** @type {NodeKeyString[]} */
+    const allNodeKeys = Array.from(new Set([
+        ...targetLookup.idToKey.values(),
+        ...hostLookup.idToKey.values(),
+    ])).sort();
 
     /** @type {Set<NodeKeyString>} */
-    const equalTimestamps = new Set();
+    const sameTimestampAndIdentifierKeys = new Set();
     for (const nodeKey of allNodeKeys) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
@@ -140,7 +143,14 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         }
         const targetTimestamps = await T.timestamps.get(targetId);
         const hostTimestamps = await H.timestamps.get(hostId);
-        const cmp = compareIsoTimestamps(targetTimestamps?.modifiedAt, hostTimestamps?.modifiedAt);
+        if (targetTimestamps === undefined) throw new IdentifierLookupConflictError(`Target materialized node ${String(targetId)} has no timestamps entry`);
+        if (hostTimestamps === undefined) throw new IdentifierLookupConflictError(`Host materialized node ${String(hostId)} has no timestamps entry`);
+        const sameTimestampAndIdentifier = compareIsoTimestamps(targetTimestamps.modifiedAt, hostTimestamps.modifiedAt) === 0
+            && compareNodeIdentifier(targetId, hostId) === 0;
+        const cmp = compareMaterializationCandidates(
+            makeMaterializationCandidate(targetId, targetTimestamps.modifiedAt, targetSourceFingerprint),
+            makeMaterializationCandidate(hostId, hostTimestamps.modifiedAt, hostSourceFingerprint)
+        );
         if (cmp >= 0) {
             selectedSideByKey.set(nodeKey, 'keep');
             if (cmp > 0) forceKeepRoots.add(nodeKey);
@@ -148,7 +158,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             selectedSideByKey.set(nodeKey, 'take');
             forceTakeRoots.add(nodeKey);
         }
-        if (cmp === 0) equalTimestamps.add(nodeKey);
+        if (sameTimestampAndIdentifier) sameTimestampAndIdentifierKeys.add(nodeKey);
     }
 
     /** @type {Map<NodeKeyString, NodeKeyString[]>} */
@@ -192,7 +202,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     }
 
     /** @type {Map<NodeKeyString, Set<NodeKeyString>>} */
-        const selectedDependentsByKey = new Map();
+    const selectedDependentsByKey = new Map();
     for (const [nodeKey, inputKeys] of selectedInputsByKey) {
         for (const inputKey of inputKeys) {
             const dependents = selectedDependentsByKey.get(inputKey) ?? new Set();
@@ -210,24 +220,24 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
                 directInvalidationCandidateKeys.add(nodeKey);
                 break;
             }
-            if (!sourceRepresentsFinalVersion({ side: selectedSide, sourceId, nodeKey: inputKey, selectedSideByKey, finalIdentifierForKey: provisionalIdentifierForKey, equalTimestampKeys: equalTimestamps })) {
+            if (!sourceRepresentsFinalVersion({ side: selectedSide, sourceId, nodeKey: inputKey, selectedSideByKey, finalIdentifierForKey: provisionalIdentifierForKey })) {
                 directInvalidationCandidateKeys.add(nodeKey);
                 break;
             }
         }
     }
 
-    // FIXME(#1521): Equal modifiedAt is temporarily treated as identity of one
-    // replicated semantic value version. Independent recomputations can collide at
-    // the same timestamp. Replace this approximation with journal-backed stable
-    // value-version identity.
-    for (const nodeKey of equalTimestamps) {
+    // Matching materialization coordinates use conservative freshness: any
+    // stale source prevents the final selected record from remaining up-to-date.
+    for (const nodeKey of sameTimestampAndIdentifierKeys) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
         if (targetId === undefined || hostId === undefined) continue;
-        const finalFreshness = await T.freshness.get(targetId);
-        const otherFreshness = await H.freshness.get(hostId);
-        if (finalFreshness === 'up-to-date' && otherFreshness !== 'up-to-date') {
+        const selectedSide = selectedSideByKey.get(nodeKey);
+        const selectedFreshness = selectedSide === 'take' ? await H.freshness.get(hostId) : await T.freshness.get(targetId);
+        const targetFreshness = await T.freshness.get(targetId);
+        const hostFreshness = await H.freshness.get(hostId);
+        if (selectedFreshness === 'up-to-date' && (targetFreshness !== 'up-to-date' || hostFreshness !== 'up-to-date')) {
             directInvalidationCandidateKeys.add(nodeKey);
         }
     }
@@ -279,7 +289,6 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
-        equalTimestamps,
     };
 }
 
