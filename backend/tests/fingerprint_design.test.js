@@ -489,6 +489,45 @@ describe('fingerprint design', () => {
         }
     });
 
+    test('missing host fingerprint fails hard and leaves replicas unchanged', async () => {
+        const { capabilities, tmpDir } = getTestCapabilities();
+        try {
+            db = await getRootDatabase(capabilities);
+            const localFingerprint = db.getFingerprint();
+
+            const hostname = 'missing-fp-host';
+            const appVersionStr = db.getVersion();
+            await db.setGlobalVersion(appVersionStr);
+            await db.setHostnameGlobal(hostname, 'version', appVersionStr);
+
+            const H = db.hostnameSchemaStorage(hostname);
+            // Deliberately omit fingerprint from host storage.
+            await H.global.put(IDENTIFIERS_KEY, []);
+            await H.global.put(LAST_NODE_INDEX_KEY, 0);
+            await H.global.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
+
+            const localGlobal = db.getSchemaStorage().global;
+            await localGlobal.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
+
+            const logger = makeLogger();
+
+            await expect(mergeHostIntoReplica(logger, db, hostname)).rejects.toThrow(
+                /Invalid fingerprint in staged host source fingerprint/
+            );
+
+            // Active pointer unchanged.
+            expect(db.currentReplicaName()).toBe('x');
+            // Active replica unchanged.
+            const activeGlobal = db.getSchemaStorage().global;
+            expect(await activeGlobal.get('fingerprint')).toBe(localFingerprint);
+            // Inactive replica unchanged (still fresh/empty).
+            const inactiveStorage = db.schemaStorageForReplica('y');
+            expect(await inactiveStorage.global.get('fingerprint')).toBeUndefined();
+        } finally {
+            cleanup(tmpDir);
+        }
+    });
+
     // ── 6. Metadata-only host allocation metadata is ignored ─────────────
 
     test('metadata-only host fingerprint and last_node_index differences are a no-op', async () => {
