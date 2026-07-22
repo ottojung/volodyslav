@@ -1,15 +1,21 @@
 /**
  * Merge validity preservation and reconstruction for incremental-graph merge.
  *
- * After node decisions are applied and the final graph state is assembled,
+ * After node outcomes are applied and the final graph state is assembled,
  * this module rebuilds the valid relation from the final merged inputs and
  * freshness, while transporting provenance-backed validity entries from both the
  * original target replica and the staged host replica.
+ *
+ * Missing transportable proofs are classified during merge planning. Validity
+ * reconstruction expects that classification to be complete. Discovering a
+ * missing proof during reconstruction throws UnplannedMissingValidityProofError.
+ * Reconstruction does not itself create a new direct invalidation root.
  */
 
 
 const { compareNodeIdentifier } = require('./node_identifier');
 const { nodeIdentifierToString } = require('./types');
+const { sourceRepresentsFinalVersion } = require('./sync_merge_version_identity');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
 const { topologicalSortFromMap } = require('./topo_sort');
 
@@ -17,18 +23,8 @@ const { topologicalSortFromMap } = require('./topo_sort');
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
-/** @typedef {'keep' | 'take' | 'invalidate'} MergeDecision */
-
-/**
- * @typedef {object} SourceValueOrigin
- * @property {'source'} kind
- * @property {'target' | 'host'} side
- * @property {NodeIdentifier} sourceId
- */
-
-/**
- * @typedef {SourceValueOrigin | { kind: 'none' }} ValueOrigin
- */
+/** @typedef {import('./types').Freshness} Freshness */
+/** @typedef {'keep' | 'take' | 'invalidate' | 'delete'} MergeOutcome */
 
 /**
  * Small helper around SchemaStorage.batch() that guarantees batch sizes never
@@ -87,84 +83,6 @@ class ReplicaBatchWriter {
         await this._storage.batch(this._pendingOps);
         this._pendingOps = [];
     }
-}
-
-/**
- * Build the valueOriginByKey map from merge plan data.
- *
- * The map describes the provenance of every final stored value:
- * - { kind: "source", side, sourceId } if the final value is a byte-for-byte
- *   copy preserved from that side's source identifier.
- * - { kind: "none" } if the final value is deleted, absent, or not a preserved
- *   copy from either source.
- *
- * @param {Map<NodeKeyString, 'keep' | 'take'>} initialDecisions
- * @param {Map<NodeKeyString, MergeDecision>} decisions
- * @param {IdentifierLookup} targetLookup
- * @param {IdentifierLookup} hostLookup
- * @param {Set<NodeKeyString>} directlyReloweredNodes
- * @param {SchemaStorage} targetStorage
- * @param {SchemaStorage} targetSourceStorage
- * @param {SchemaStorage} hostSourceStorage
- * @param {Map<NodeKeyString, NodeIdentifier>} finalIdentifierForKey
- * @returns {Promise<Map<NodeKeyString, ValueOrigin>>}
- */
-async function buildValueOriginByKey(
-    initialDecisions,
-    decisions,
-    targetLookup,
-    hostLookup,
-    directlyReloweredNodes,
-    targetStorage,
-    targetSourceStorage,
-    hostSourceStorage,
-    finalIdentifierForKey
-) {
-    /** @type {Map<NodeKeyString, ValueOrigin>} */
-    const map = new Map();
-
-    for (const [nodeKey] of decisions) {
-        if (directlyReloweredNodes.has(nodeKey)) {
-            map.set(nodeKey, { kind: 'none' });
-            continue;
-        }
-        const finalId = finalIdentifierForKey.get(nodeKey);
-        if (finalId === undefined || await targetStorage.values.get(finalId) === undefined) {
-            map.set(nodeKey, { kind: 'none' });
-            continue;
-        }
-        const initial = initialDecisions.get(nodeKey);
-        if (initial === undefined) {
-            map.set(nodeKey, { kind: 'none' });
-            continue;
-        }
-        const decision = decisions.get(nodeKey);
-        const sourceSide = decision === 'invalidate' ? initial : decision;
-        const sourceLookup = sourceSide === 'take' ? hostLookup : targetLookup;
-        const sourceStorage = sourceSide === 'take' ? hostSourceStorage : targetSourceStorage;
-        const sourceId = sourceLookup.keyToId.get(String(nodeKey));
-        if (sourceId === undefined || await sourceStorage.values.get(sourceId) === undefined) {
-            map.set(nodeKey, { kind: 'none' });
-            continue;
-        }
-        map.set(nodeKey, { kind: 'source', side: sourceSide === 'take' ? 'host' : 'target', sourceId });
-    }
-
-    return map;
-}
-
-/**
- * Check whether a ValueOrigin matches a specific source side and source identifier.
- * @param {ValueOrigin | undefined} origin
- * @param {'target' | 'host'} side
- * @param {NodeIdentifier} sourceId
- * @returns {boolean}
- */
-function originMatches(origin, side, sourceId) {
-    return origin !== undefined
-        && origin.kind === 'source'
-        && origin.side === side
-        && nodeIdentifierToString(origin.sourceId) === nodeIdentifierToString(sourceId);
 }
 
 /**
@@ -233,43 +151,38 @@ function canonicalValidMapsEqual(left, right) {
     return true;
 }
 
+class UnplannedMissingValidityProofError extends Error {
+    /**
+     * @param {NodeIdentifier} nodeIdentifier
+     */
+    constructor(nodeIdentifier) {
+        super(`Merge planning missed a required validity proof for ${String(nodeIdentifier)}`);
+        this.name = 'UnplannedMissingValidityProofError';
+        this.nodeIdentifier = nodeIdentifier;
+    }
+}
+
 /**
- * Rebuild the valid relation from provenance-based value origin transport.
- *
- * Algorithm:
- * 1. Transport validity entries from both source sides based on source
- *    provenance for both endpoints.
- * 2. Add mandatory flags for every up-to-date node.
- * 3. Clear the existing valid sublevel and write the rebuilt relation.
- *
- * A validity proof valid[D].has(N) is transported from a source side only
- * when D and N both resolve through the same source side and their final values
- * preserve those exact source identifiers.
- * - D is still a structural input of N in the merged graph.
- *
+ * Compute transported validity proofs for a final graph from source provenance.
  * @param {object} options
- * @param {SchemaStorage} options.targetStorage
  * @param {SchemaStorage} options.targetSourceStorage
  * @param {SchemaStorage} options.hostSourceStorage
  * @param {IdentifierLookup} options.targetLookup
  * @param {IdentifierLookup} options.hostLookup
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
  * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
- * @param {Map<NodeKeyString, ValueOrigin>} options.valueOriginByKey
- * @returns {Promise<boolean>} Whether the canonical valid relation changed.
+ * @param {Map<NodeKeyString, 'keep' | 'take'>} options.selectedSideByKey
+ * @returns {Promise<{ validMap: Map<string, NodeIdentifier[]>, depIdCache: Map<string, NodeIdentifier> }>}
  */
-async function rebuildMergedValidity({
-    targetStorage,
+async function buildTransportedValidityPlan({
     targetSourceStorage,
     hostSourceStorage,
     targetLookup,
     hostLookup,
     finalIdentifierForKey: finalIdForKey,
     mergedInputsMap,
-    valueOriginByKey,
+    selectedSideByKey,
 }) {
-    const oldCanonicalValidMap = await readCanonicalValidMap(targetStorage);
-
     /** @type {Map<string, NodeIdentifier[]>} */
     const validMap = new Map();
     /** @type {Map<string, NodeIdentifier>} */
@@ -284,26 +197,36 @@ async function rebuildMergedValidity({
     async function transportValidityFromSide(side, sourceStorage, sourceLookup) {
         for await (const sourceDepId of sourceStorage.valid.keys()) {
             const sourceDependents = await sourceStorage.valid.get(sourceDepId) ?? [];
-
             const depIdStr = nodeIdentifierToString(sourceDepId);
             const depKey = sourceLookup.idToKey.get(depIdStr);
             if (depKey === undefined) continue;
-
             const finalDepId = finalIdForKey.get(depKey);
             if (finalDepId === undefined) continue;
-
-            if (!originMatches(valueOriginByKey.get(depKey), side, sourceDepId)) continue;
+            if (!sourceRepresentsFinalVersion({
+                side: side === 'target' ? 'keep' : 'take',
+                sourceId: sourceDepId,
+                nodeKey: depKey,
+                selectedSideByKey,
+                finalIdentifierForKey: finalIdForKey,
+            })) {
+                continue;
+            }
 
             for (const sourceDependentId of sourceDependents) {
                 const dependentIdStr = nodeIdentifierToString(sourceDependentId);
                 const dependentKey = sourceLookup.idToKey.get(dependentIdStr);
                 if (dependentKey === undefined) continue;
-
                 const finalDependentId = finalIdForKey.get(dependentKey);
                 if (finalDependentId === undefined) continue;
-
-                if (!originMatches(valueOriginByKey.get(dependentKey), side, sourceDependentId)) continue;
-
+                if (!sourceRepresentsFinalVersion({
+                    side: side === 'target' ? 'keep' : 'take',
+                    sourceId: sourceDependentId,
+                    nodeKey: dependentKey,
+                    selectedSideByKey,
+                    finalIdentifierForKey: finalIdForKey,
+                })) {
+                    continue;
+                }
                 const finalInputs = mergedInputsMap.get(finalDependentId) ?? [];
                 if (!containsIdentifier(finalInputs, finalDepId)) continue;
 
@@ -323,80 +246,193 @@ async function rebuildMergedValidity({
 
     await transportValidityFromSide('target', targetSourceStorage, targetLookup);
     await transportValidityFromSide('host', hostSourceStorage, hostLookup);
+    return { validMap, depIdCache };
+}
+/**
+ * Rebuild the valid relation and propagate freshness downgrades from merged inputs.
+ *
+ * Algorithm:
+ * 1. Transport validity entries from both source sides based on source
+ *    provenance for both endpoints.
+ * 2. For every direct invalidation root: remove all incoming validity
+ *    proofs and mark stale. The single topological traversal classifies
+ *    all descendants.
+ * 3. Single roots-to-leaves traversal of surviving up-to-date nodes:
+ *    if a required transported proof is unexpectedly missing, throw an
+ *    implementation inconsistency error. Otherwise if an input is stale, mark
+ *    stale while preserving all proofs.
+ * 4. Compare final validity against stored state. Write dirty freshness
+ *    and rewritten validity only when they have actually changed.
+ *
+ * A validity proof valid[D].has(N) is transported from a source side only
+ * when both endpoints' source identifiers represent the final version through
+ * the canonical source-version identity relation (sourceRepresentsFinalVersion).
+ * Both endpoints come from the same selected source replica.
+ * - D is still a structural input of N in the merged graph.
+ *
+ * @param {object} options
+ * @param {SchemaStorage} options.targetStorage
+ * @param {SchemaStorage} options.targetSourceStorage
+ * @param {SchemaStorage} options.hostSourceStorage
+ * @param {IdentifierLookup} options.targetLookup
+ * @param {IdentifierLookup} options.hostLookup
+ * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} options.mergedInputsMap
+ * @param {Set<NodeIdentifier>} options.directInvalidationRoots
+ * @param {Map<NodeKeyString, 'keep' | 'take'>} options.selectedSideByKey
+ * @returns {Promise<boolean>} Whether the canonical valid relation or any freshness record changed.
+ */
+async function rebuildMergedValidity({
+    targetStorage,
+    targetSourceStorage,
+    hostSourceStorage,
+    targetLookup,
+    hostLookup,
+    finalIdentifierForKey: finalIdForKey,
+    mergedInputsMap,
+    directInvalidationRoots,
+    selectedSideByKey,
+}) {
+    const oldCanonicalValidMap = await readCanonicalValidMap(targetStorage);
 
-    const cachedIds = new Set();
-    for await (const cachedId of targetStorage.values.keys()) {
-        cachedIds.add(nodeIdentifierToString(cachedId));
-    }
+    const { validMap, depIdCache } = await buildTransportedValidityPlan({
+        targetSourceStorage,
+        hostSourceStorage,
+        targetLookup,
+        hostLookup,
+        finalIdentifierForKey: finalIdForKey,
+        mergedInputsMap,
+        selectedSideByKey,
+    });
 
-    // In-memory freshness map that tracks both committed state and pending
-    // downgrades. When the loop queues a freshness downgrade, we update
-    // this map immediately so subsequent iterations see the new state.
-    /** @type {Map<string, string>} */
+    /** @type {Map<string, Freshness>} */
     const finalFreshness = new Map();
+    /** @type {Map<string, NodeIdentifier>} */
+    const finalIdentifierByString = new Map();
     for await (const nodeId of targetStorage.freshness.keys()) {
         const f = await targetStorage.freshness.get(nodeId);
         if (f !== undefined) {
-            finalFreshness.set(nodeIdentifierToString(nodeId), f);
+            const nodeIdStr = nodeIdentifierToString(nodeId);
+            finalFreshness.set(nodeIdStr, f);
+            finalIdentifierByString.set(nodeIdStr, nodeId);
         }
     }
+    for (const nodeIdentifier of mergedInputsMap.keys()) {
+        finalIdentifierByString.set(nodeIdentifierToString(nodeIdentifier), nodeIdentifier);
+    }
 
-    const writer = new ReplicaBatchWriter(targetStorage);
+    // Step 2: Handle direct invalidation roots.
+    // For each directly invalidated root: remove all incoming validity proofs,
+    // mark stale, and let the topological traversal classify all descendants.
+    /** @type {Set<string>} */
+    const dirtyFreshness = new Set();
     let freshnessChanged = false;
+    for (const root of directInvalidationRoots) {
+        const rootIdStr = nodeIdentifierToString(root);
+        if (finalFreshness.get(rootIdStr) !== 'potentially-outdated') {
+            finalFreshness.set(rootIdStr, 'potentially-outdated');
+            dirtyFreshness.add(rootIdStr);
+            freshnessChanged = true;
+        }
+        removeIncomingValidity(mergedInputsMap, validMap, root);
+    }
 
-    // Traverse in topological order (inputs before dependents) so that
-    // freshness downgrades are visible when their dependents are processed.
-    // Only process identifiers that have a cached value in the target.
-    for (const nodeIdentifier of topologicalSortFromMap(mergedInputsMap)) {
+    // Step 3: Propagate staleness and detect unplanned missing proofs.
+    // For every surviving up-to-date node: if an input is stale (propagated
+    // staleness), mark the node stale but preserve all its proofs. If a
+    // required transported proof is unexpectedly missing, throw an
+    // UnplannedMissingValidityProofError — missing-proof classification must
+    // have been handled during merge planning.
+    //
+    // A single roots-to-leaves traversal is sufficient because:
+    // - every input of N has already been processed when N is visited;
+    // - if N becomes stale, every structural dependent of N occurs later;
+    // - removing N's incoming proofs does not change any ancestor's state.
+    const topologicalOrder = topologicalSortFromMap(mergedInputsMap);
+    for (const nodeIdentifier of topologicalOrder) {
         const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
-        if (!cachedIds.has(nodeIdStr)) continue;
-        const freshness = finalFreshness.get(nodeIdStr);
-        if (freshness !== 'up-to-date') continue;
+        if (finalFreshness.get(nodeIdStr) !== 'up-to-date') continue;
 
         const requiredInputs = mergedInputsMap.get(nodeIdentifier) ?? [];
-        const cleanInputs = [];
-        let clean = true;
+        let staleInput = false;
+        let missingProof = false;
         for (const depId of requiredInputs) {
             const depIdStr = nodeIdentifierToString(depId);
-            const depFreshness = finalFreshness.get(depIdStr);
-            if (!cachedIds.has(depIdStr) || depFreshness !== 'up-to-date') {
-                clean = false;
-                break;
+            if (finalFreshness.get(depIdStr) !== 'up-to-date') {
+                staleInput = true;
             }
-            cleanInputs.push(depId);
-        }
-        if (!clean) {
-            await writer.push(targetStorage.freshness.putOp(nodeIdentifier, 'potentially-outdated'));
-            finalFreshness.set(nodeIdStr, 'potentially-outdated');
-            freshnessChanged = true;
-            continue;
-        }
-        for (const depId of cleanInputs) {
-            const depIdStr = nodeIdentifierToString(depId);
-            depIdCache.set(depIdStr, depId);
             const dependents = validMap.get(depIdStr) ?? [];
-            validMap.set(depIdStr, dependents);
             if (!dependents.some(dependent => nodeIdentifierToString(dependent) === nodeIdStr)) {
-                dependents.push(nodeIdentifier);
+                missingProof = true;
             }
+        }
+
+        if (missingProof) {
+            throw new UnplannedMissingValidityProofError(nodeIdentifier);
+        } else if (staleInput) {
+            // Propagated staleness — preserve all proofs
+            finalFreshness.set(nodeIdStr, 'potentially-outdated');
+            dirtyFreshness.add(nodeIdStr);
+            freshnessChanged = true;
         }
     }
 
-    await targetStorage.valid.clear();
-    for (const [depIdStr, dependents] of validMap) {
-        const depId = depIdCache.get(depIdStr);
-        if (depId !== undefined && dependents.length > 0) {
-            dependents.sort(compareNodeIdentifier);
-            await writer.push(targetStorage.valid.putOp(depId, dependents));
+    // Step 4: Preserve only transported proofs for surviving materializations.
+    // Do NOT mint proofs that were not transported. Previously transported
+    // proofs remain in validMap; no mandatory creation is performed.
+
+    // Step 4: Compare final validity against the stored state before mutating.
+    const finalCanonicalValidMap = canonicalizeValidMap(validMap);
+    const validityChanged = !canonicalValidMapsEqual(oldCanonicalValidMap, finalCanonicalValidMap);
+
+    const writer = new ReplicaBatchWriter(targetStorage);
+    for (const nodeIdStr of dirtyFreshness) {
+        const freshness = finalFreshness.get(nodeIdStr);
+        const nodeIdentifier = finalIdentifierByString.get(nodeIdStr);
+        if (freshness !== undefined && nodeIdentifier !== undefined) {
+            await writer.push(targetStorage.freshness.putOp(nodeIdentifier, freshness));
+        }
+    }
+
+    if (validityChanged) {
+        await targetStorage.valid.clear();
+        for (const [depIdStr, dependents] of validMap) {
+            const depId = depIdCache.get(depIdStr);
+            if (depId !== undefined && dependents.length > 0) {
+                dependents.sort(compareNodeIdentifier);
+                await writer.push(targetStorage.valid.putOp(depId, dependents));
+            }
         }
     }
     await writer.flush();
-    const validityChanged = !canonicalValidMapsEqual(oldCanonicalValidMap, canonicalizeValidMap(validMap));
-    return freshnessChanged || validityChanged;
+    return validityChanged || freshnessChanged;
+}
+
+/**
+ * Remove N from every input's validity set.
+ * @param {Map<NodeIdentifier, NodeIdentifier[]>} mergedInputsMap
+ * @param {Map<string, NodeIdentifier[]>} validMap
+ * @param {NodeIdentifier} nodeIdentifier
+ */
+function removeIncomingValidity(mergedInputsMap, validMap, nodeIdentifier) {
+    const nodeIdStr = nodeIdentifierToString(nodeIdentifier);
+    const inputs = mergedInputsMap.get(nodeIdentifier) ?? [];
+    for (const input of inputs) {
+        const inputStr = nodeIdentifierToString(input);
+        const dependents = validMap.get(inputStr);
+        if (dependents === undefined) continue;
+        const filtered = dependents.filter(d => nodeIdentifierToString(d) !== nodeIdStr);
+        if (filtered.length === 0) {
+            validMap.delete(inputStr);
+        } else {
+            validMap.set(inputStr, filtered);
+        }
+    }
 }
 
 module.exports = {
     rebuildMergedValidity,
-    buildValueOriginByKey,
     ReplicaBatchWriter,
+    buildTransportedValidityPlan,
+    UnplannedMissingValidityProofError,
 };

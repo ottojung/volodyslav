@@ -28,20 +28,16 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-09 (NodeValue):** Computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
 
-**TERM-10 (Freshness):** Conceptual state: `"up-to-date" | "potentially-outdated" | "missing"`.
-The storage invariant is: `freshness[id] === "missing"` iff `values[id]`
-is absent for the same `NodeIdentifier`. A `"missing"` node is materialized
-(its identifier exists in the identifier lookup) but has no cached value.
+**TERM-10 (Freshness):** Conceptual state: `"up-to-date" | "potentially-outdated"`.
 
-**TERM-10a (Materialized node):** A node instance whose storage identifier
-exists in the identifier lookup (`identifiers_keys_map`). A materialized node
-may be **cached** (has a stored value) or **missing** (has no stored value).
-
-**TERM-10b (Cached node):** A materialized node with a stored value. A cached
+**TERM-10a (Materialized node):** A node whose identifier exists in
+`identifiers_keys_map`, `values`, `freshness`, and `timestamps`. A materialized
 node's freshness is `"up-to-date"` or `"potentially-outdated"`.
 
-**TERM-10c (Missing node):** A materialized node with no stored value. Its
-freshness is `"missing"`.
+**REQ-MAT-CLOSURE:** Materialized nodes form a dependency-closed set. For every materialized node N, every concrete input of N is materialized. Consequently, materializing N materializes its complete transitive dependency cone first, and removing any materialization requires removing all of its materialized transitive dependents.
+
+A materialization persists across restarts unless an explicit closure-preserving migration or synchronization operation removes it. Stale does not mean structurally incomplete: a potentially-outdated node may lack validity proofs, but it still has every concrete input materialized.
+
 
 **TERM-11 (Computor):** Async function: `(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>`.
 
@@ -114,7 +110,7 @@ The schema implicitly defines infinitely many dependency edges—one set for eac
 The public API requires both the `nodeName` (functor) and bindings to address a specific node:
 
 * `pull(nodeName, bindings)` — Evaluates the node instance identified by `NodeName` and `BindingEnvironment`
-* `invalidate(nodeName, bindings)` — Marks a cached node instance as potentially-outdated, triggering recomputation on next pull; a missing node remains missing
+* `invalidate(nodeName, bindings)` — Marks a materialized node as potentially-outdated, triggering recomputation on next pull
 
 **For arity-0 nodes** (nodes with no arguments like `all_events`):
 * `pull("all_events", [])` and `pull("all_events")` are equivalent
@@ -430,10 +426,8 @@ Implementations MAY use any strategy to achieve property PROP-03 (e.g., memoizat
 
 **Effects:**
 1. Create `NodeKey` from `nodeName@bindings`
-2. If that node has a cached value, preserve the value and mark it
-   `potentially-outdated`; if it is missing, leave it missing
-3. Mark cached materialized transitive dependents as `potentially-outdated`;
-   skip missing dependents, which remain missing
+2. Mark that node instance as `potentially-outdated`
+3. Mark all materialized transitive dependents as `potentially-outdated`
 
 **Important:** `invalidate()` does NOT write a value. Values are provided by computors when nodes are pulled.
 
@@ -496,7 +490,7 @@ interface IncrementalGraph {
   }): Promise<Array<PossibleNodeChange>>;
 
   // Inspection API (read-only)
-  getFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | "missing">;
+  getFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | undefined>;
   getValue(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue | undefined>;
   listMaterializedNodes(): Promise<Array<[NodeName, BindingEnvironment]>>;
   getSchemas(): Array<CompiledNode>;
@@ -512,16 +506,9 @@ interface IncrementalGraph {
 **REQ-IFACE-03:** For compound-expressions (arity > 0), `bindings` MUST be provided with length matching the expression arity.
 
 **REQ-IFACE-04 (Inspection API):** Implementations MUST provide the inspection interface methods:
-* `getFreshness(nodeName, bindings?)` — Returns the freshness state of a
-  specific node instance. It returns `"missing"` both for an unmaterialized
-  semantic key and for a materialized identifier whose cached value is absent.
-* `getValue(nodeName, bindings?)` — Returns the currently stored value without
-  triggering recomputation, or `undefined` for both an unmaterialized key and a
-  materialized node whose cached value is absent.
-* `listMaterializedNodes()` — Returns an array of tuples
-  `[NodeName, BindingEnvironment]` for all identifier-registry entries. It
-  therefore distinguishes a materialized missing node from an unmaterialized
-  semantic key when used with the two inspection methods above.
+* `getFreshness(nodeName, bindings?)` — Returns the freshness state of a specific node instance. Returns `undefined` when no materialization exists for that node.
+* `getValue(nodeName, bindings?)` — Returns the currently stored value for a node instance without triggering recomputation, or `undefined` if the node has never been materialized.
+* `listMaterializedNodes()` — Returns an array of tuples `[NodeName, BindingEnvironment]` for all materialized node instances.
 * `getSchemas()` — Returns the list of compiled node schemas registered with this graph.
 * `getSchemaByHead(nodeName)` — Returns the compiled schema for the given node name, or `null` if no such schema exists.
 * `getDbVersion()` — Returns the version string used for storage namespacing.
@@ -548,9 +535,9 @@ interface IncrementalGraph {
   * identifier reconciliation occurs;
   * dependency identifiers are relowered;
   * a cached value is deleted because the old value is not valid for the final dependency structure;
-  * freshness changes between `up-to-date`, `potentially-outdated`, and `missing`.
+  * freshness changes between `up-to-date` and `potentially-outdated`; no freshness record exists for unmaterialized nodes.
 
-* Migration invalidation (`migration.md`) follows the same invariant: invalidation of a cached node does not change `modifiedAt`. Freshness and validity are the mechanisms for representing uncertainty and recomputation requirements in migration, just as they are in runtime operations.
+* Migration invalidation (`migration.md`) follows the same invariant: invalidation does not change `modifiedAt`. Freshness and validity are the mechanisms for representing uncertainty and recomputation requirements in migration, just as they are in runtime operations.
 
 **REQ-IFACE-09 (MissingTimestampError):** Implementations MUST expose `makeMissingTimestampError(nodeKey)` factory and `isMissingTimestamp(value)` type guard. `MissingTimestampError` MUST have a stable `.name` property of `"MissingTimestampError"` and a `nodeKey: string` field identifying the node for which timestamps are missing.
 
@@ -681,9 +668,8 @@ graph state across host branches is specified in a separate document:
 ### 4.2 Invariants
 
 **INV-01 (Outdated Downstream):** If node instance `N@B` is
-`potentially-outdated`, every cached transitive dependent of `N@B` that has
-been materialized is also `potentially-outdated`. A materialized dependent
-without a cached value remains `missing`.
+`potentially-outdated`, every materialized transitive dependent of `N@B` is
+also `potentially-outdated`.
 
 **INV-02 (Up-to-Date Upstream):** If node instance `N@B` is `up-to-date`, all transitive dependencies of `N@B` are also `up-to-date`.
 
@@ -770,7 +756,7 @@ indexing. This means:
 
 - freshness updates during `invalidate()` are not propagated through dynamically-pulled nodes,
 - dynamically-pulled nodes do not appear in `inputEdges(N)` or `valid`,
-- the cache predicate does not consider dynamically-pulled nodes.
+- validity-proof restoration does not consider dynamically-pulled nodes.
 
 Dynamically-pulled nodes are not part of the flag-based validity algorithm. They are ad-hoc queries
 performed during a computor's execution and do not affect the structural dependency graph.

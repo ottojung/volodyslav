@@ -12,7 +12,7 @@ All journal types follow the existing nominal/opaque typing discipline used by `
 
 ### Purpose
 
-`JournalEventId` provides stable, immutable identity for one logical journal event. All logical journal events are first emitted by an ordinary graph operation or migration.
+`JournalEventId` provides stable, immutable identity for one logical journal event. Logical journal events may be emitted by ordinary graph operations, migration, or synchronization (for `invalidate` and `delete`).
 
 The ID is created during the event's first durable commit:
 
@@ -107,6 +107,18 @@ The `*Class` declarations throughout this document (e.g. `UnixTimestampClass`, `
 
 A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChanges` do not receive `JournalEntry` values. The public API surface uses `PossibleNodeChange`.
 
+### Terminology
+
+```
+logical event       = immutable historical event identified by eventId
+physical occurrence = one storage position containing that event
+notification        = exposure of an event after a cursor
+```
+
+Moving or copying an event creates no new logical event. A synchronization-generated
+`invalidate` or `delete` is a new logical event because an actual corresponding
+local transition occurred.
+
 ### JournalAction
 
 ```js
@@ -116,15 +128,19 @@ A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChan
  */
 ```
 
-- `'add'` — a node became materialized for the first time.
-- `'edit'` — a node's stored value materially changed.
-- `'delete'` — a node deletion event originally emitted by `storage.delete` or
-  another actual deletion operation. Synchronization may copy or reposition an
-  existing delete.
-- `'invalidate'` — a node's freshness changed from `up-to-date` to `potentially-outdated`.
-- `'validate'` — successful recomputation made an already materialized node
-  `up-to-date` from a non-up-to-date state. This includes both
-  `potentially-outdated → up-to-date` and `missing → up-to-date`.
+Each action describes the historical origin transition. The event proves that
+transition occurred atomically with the graph change.
+
+- `'add'` — the node became materialized for the first time.
+- `'edit'` — the node's stored semantic value changed materially.
+- `'delete'` — an actual deletion or unmaterialization transition occurred.
+  Emitted by `storage.delete`, another actual deletion operation, or
+  synchronization (when final graph unmaterializes a previously materialized
+  local node).
+- `'invalidate'` — freshness transitioned from `up-to-date` to
+  `potentially-outdated`.
+- `'validate'` — successful recomputation transitioned an already materialized
+  node from `potentially-outdated` to `up-to-date`.
 
 ---
 
@@ -132,7 +148,7 @@ A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChan
 
 ### Purpose
 
-The logical journal view provides one normative semantic operation shared by `possibleMaybeChanges`, physical compaction, and synchronization evidence selection. It describes which journal entries are logically significant through a fixed watermark, independent of whether redundant physical entries still exist.
+The logical journal view provides one normative semantic operation shared by `possibleMaybeChanges`, physical compaction, and journal reconciliation (see `incremental-graph-journal-sync.md`). It describes which journal entries are logically significant through a fixed watermark, independent of whether redundant physical entries still exist.
 
 This is a semantic definition only: the logical journal view does not create another database, replica, or persisted structure. It is the projection of journal storage through a fixed bound `H`.
 
@@ -226,7 +242,7 @@ REQ-JT-02: The persisted representation of `UnixTimestamp` is a numeric integer 
 
 REQ-JT-03: Implementations SHOULD record journal timestamps using the local system clock at the time of emission. Host clocks are not assumed to be synchronized across hosts.
 
-These timestamps are used by the v1 sync conflict policy. A particular host's wall clock may be incorrect, but this is the best available signal for conflict ordering — the system trusts hosts and does not rely on external time authorities. See `incremental-graph-journal-sync.md` §Conflict resolution.
+Journal timestamps provide human-readable event ordering for consumers. Graph synchronization uses graph `modifiedAt` timestamps, not journal timestamps, for conflict resolution.
 
 ### Nominal typing
 
