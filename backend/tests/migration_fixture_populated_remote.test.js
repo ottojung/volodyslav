@@ -1,6 +1,6 @@
 const path = require("path");
 const { makeInterface } = require("../src/generators/interface");
-const { DATABASE_SUBPATH } = require("../src/generators/incremental_graph/database");
+const { CHECKPOINT_WORKING_PATH } = require("../src/generators/incremental_graph");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubEnvironment, stubDatetime, stubLogger, stubRandomSeed } = require("./stubs");
 const { stubIncrementalDatabaseRemoteBranches } = require("./stub_incremental_database_remote");
@@ -30,25 +30,12 @@ describe("populated rendered fixture migration", () => {
 
         const generators = makeInterface(() => capabilities);
         await generators.ensureInitialized();
-        await generators.synchronizeDatabase();
+        await expect(generators.getAllEvents()).resolves.toHaveLength(26);
 
-        const clonedRemote = await capabilities.creator.createTemporaryDirectory();
-        try {
-            await capabilities.git.call(
-                "clone",
-                `--branch=${capabilities.environment.hostname()}-main`,
-                capabilities.environment.generatorsRepository(),
-                clonedRemote
-            );
-
-            expect(await capabilities.checker.directoryExists(clonedRemote)).toBeTruthy();
-            await assertDirectoriesExactlyEqual(
-                path.join(clonedRemote, DATABASE_SUBPATH),
-                path.join(__dirname, "mock-incremental-database-remote-populated", DATABASE_SUBPATH),
-                new Set(["_meta/current_replica", "r/global/fingerprint", "r/global/last_node_index"])
-            );
-        } finally {
-            await capabilities.deleter.deleteDirectory(clonedRemote);
-        }
+        await assertDirectoriesExactlyEqual(
+            path.join(capabilities.environment.workingDirectory(), CHECKPOINT_WORKING_PATH, "rendered", "r"),
+            path.join(__dirname, "mock-incremental-database-remote-populated", "rendered", "r"),
+            new Set(["global/version"])
+        );
     });
 });

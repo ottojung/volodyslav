@@ -944,17 +944,17 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
             { output: "c", inputs: ["b"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
-        await expect(g.getFreshness("a")).resolves.toBe("missing");
-        await expect(g.getFreshness("b")).resolves.toBe("missing");
-        await expect(g.getFreshness("c")).resolves.toBe("missing");
+        await expect(g.getFreshness("a")).resolves.toBeUndefined();
+        await expect(g.getFreshness("b")).resolves.toBeUndefined();
+        await expect(g.getFreshness("c")).resolves.toBeUndefined();
 
         aCell.value = { s: "a()" };
         await g.pull("a");
         await g.invalidate("a");
 
         await expect(g.getFreshness("a")).resolves.toBe("potentially-outdated");
-        await expect(g.getFreshness("b")).resolves.toBe("missing");
-        await expect(g.getFreshness("c")).resolves.toBe("missing");
+        await expect(g.getFreshness("b")).resolves.toBeUndefined();
+        await expect(g.getFreshness("c")).resolves.toBeUndefined();
 
         const c = await g.pull("c");
         expect(c).toEqual({ s: "c(b(a()))" });
@@ -1021,17 +1021,17 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
             { output: "c", inputs: ["b"], computor: cC.computor, isDeterministic: true, hasSideEffects: false },
         ]);
 
-        await expect(g.getFreshness("a")).resolves.toBe("missing");
-        await expect(g.getFreshness("b")).resolves.toBe("missing");
-        await expect(g.getFreshness("c")).resolves.toBe("missing");
+        await expect(g.getFreshness("a")).resolves.toBeUndefined();
+        await expect(g.getFreshness("b")).resolves.toBeUndefined();
+        await expect(g.getFreshness("c")).resolves.toBeUndefined();
 
         aCell.value = { s: "a()" };
         await g.pull("a");
         await g.invalidate("a");
 
         await expect(g.getFreshness("a")).resolves.toBe("potentially-outdated");
-        await expect(g.getFreshness("b")).resolves.toBe("missing");
-        await expect(g.getFreshness("c")).resolves.toBe("missing");
+        await expect(g.getFreshness("b")).resolves.toBeUndefined();
+        await expect(g.getFreshness("c")).resolves.toBeUndefined();
 
         const c = await g.pull("c");
         expect(c).toEqual({ s: "c(b(a()))" });
@@ -1117,21 +1117,21 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         expect(nc(dC)).toBe(0);
         expect(nc(eC)).toBe(0);
 
-        await expect(fr("a")).resolves.toBe("missing");
-        await expect(fr("b")).resolves.toBe("missing");
-        await expect(fr("c")).resolves.toBe("missing");
-        await expect(fr("d")).resolves.toBe("missing");
-        await expect(fr("e")).resolves.toBe("missing");
+        await expect(fr("a")).resolves.toBeUndefined();
+        await expect(fr("b")).resolves.toBeUndefined();
+        await expect(fr("c")).resolves.toBeUndefined();
+        await expect(fr("d")).resolves.toBeUndefined();
+        await expect(fr("e")).resolves.toBeUndefined();
 
         aCell.value = { s: "a()" };
         await g.invalidate("a");
         await g.pull("a");
 
         await expect(fr("a")).resolves.toBe("up-to-date");
-        await expect(fr("b")).resolves.toBe("missing");
-        await expect(fr("c")).resolves.toBe("missing");
-        await expect(fr("d")).resolves.toBe("missing");
-        await expect(fr("e")).resolves.toBe("missing");
+        await expect(fr("b")).resolves.toBeUndefined();
+        await expect(fr("c")).resolves.toBeUndefined();
+        await expect(fr("d")).resolves.toBeUndefined();
+        await expect(fr("e")).resolves.toBeUndefined();
 
         const c = await g.pull("c");
         expect(c).toEqual({ s: "c(b(a()))" });
@@ -1145,8 +1145,8 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("up-to-date");
         await expect(fr("c")).resolves.toBe("up-to-date");
-        await expect(fr("d")).resolves.toBe("missing");
-        await expect(fr("e")).resolves.toBe("missing");
+        await expect(fr("d")).resolves.toBeUndefined();
+        await expect(fr("e")).resolves.toBeUndefined();
 
         aCell.value = { s: "a()" };
         await g.invalidate("a");
@@ -1155,8 +1155,8 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("potentially-outdated");
         await expect(fr("c")).resolves.toBe("potentially-outdated");
-        await expect(fr("d")).resolves.toBe("missing");
-        await expect(fr("e")).resolves.toBe("missing");
+        await expect(fr("d")).resolves.toBeUndefined();
+        await expect(fr("e")).resolves.toBeUndefined();
 
         const b = await g.pull("b");
         expect(b).toEqual({ s: "b(a())" });
@@ -1170,8 +1170,8 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("up-to-date");
         await expect(fr("c")).resolves.toBe("potentially-outdated");
-        await expect(fr("d")).resolves.toBe("missing");
-        await expect(fr("e")).resolves.toBe("missing");
+        await expect(fr("d")).resolves.toBeUndefined();
+        await expect(fr("e")).resolves.toBeUndefined();
     });
 
     test("unchanged optimization long with skips", async () => {
@@ -1224,21 +1224,21 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         expect(nc(dC)).toBe(0);
         expect(nc(eC)).toBe(0);
 
-        await expect(fr("a")).resolves.toBe("missing");
-        await expect(fr("b")).resolves.toBe("missing");
-        await expect(fr("c")).resolves.toBe("missing");
-        await expect(fr("d")).resolves.toBe("missing");
-        await expect(fr("e")).resolves.toBe("missing");
+        await expect(fr("a")).resolves.toBeUndefined();
+        await expect(fr("b")).resolves.toBeUndefined();
+        await expect(fr("c")).resolves.toBeUndefined();
+        await expect(fr("d")).resolves.toBeUndefined();
+        await expect(fr("e")).resolves.toBeUndefined();
 
         aCell.value = { s: "a()" };
         await g.invalidate("a");
         await g.pull("a");
 
         await expect(fr("a")).resolves.toBe("up-to-date");
-        await expect(fr("b")).resolves.toBe("missing");
-        await expect(fr("c")).resolves.toBe("missing");
-        await expect(fr("d")).resolves.toBe("missing");
-        await expect(fr("e")).resolves.toBe("missing");
+        await expect(fr("b")).resolves.toBeUndefined();
+        await expect(fr("c")).resolves.toBeUndefined();
+        await expect(fr("d")).resolves.toBeUndefined();
+        await expect(fr("e")).resolves.toBeUndefined();
 
         const c = await g.pull("c");
         expect(c).toEqual({ s: "c(b(a()))" });
@@ -1252,8 +1252,8 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("up-to-date");
         await expect(fr("c")).resolves.toBe("up-to-date");
-        await expect(fr("d")).resolves.toBe("missing");
-        await expect(fr("e")).resolves.toBe("missing");
+        await expect(fr("d")).resolves.toBeUndefined();
+        await expect(fr("e")).resolves.toBeUndefined();
 
         aCell.value = { s: "a()" };
         await g.invalidate("a");
@@ -1262,8 +1262,8 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("potentially-outdated");
         await expect(fr("c")).resolves.toBe("potentially-outdated");
-        await expect(fr("d")).resolves.toBe("missing");
-        await expect(fr("e")).resolves.toBe("missing");
+        await expect(fr("d")).resolves.toBeUndefined();
+        await expect(fr("e")).resolves.toBeUndefined();
 
         const b = await g.pull("b");
         expect(b).toEqual({ s: "b(a())" });
@@ -1277,8 +1277,8 @@ describe("Basic operational semantics: invalidate/pull, caching, invalidation", 
         await expect(fr("a")).resolves.toBe("up-to-date");
         await expect(fr("b")).resolves.toBe("up-to-date");
         await expect(fr("c")).resolves.toBe("potentially-outdated");
-        await expect(fr("d")).resolves.toBe("missing");
-        await expect(fr("e")).resolves.toBe("missing");
+        await expect(fr("d")).resolves.toBeUndefined();
+        await expect(fr("e")).resolves.toBeUndefined();
 
         const e1 = await g.pull("e");
         expect(e1).toEqual({ s: "e(d(c(b(a()))))" });
@@ -1480,7 +1480,7 @@ describe("Inspection interface", () => {
 
         // missing before materialization
         const f0 = await g.getFreshness("b");
-        expect(["missing", "up-to-date", "potentially-outdated"]).toContain(f0);
+        expect([undefined, "up-to-date", "potentially-outdated"]).toContain(f0);
 
         aCell.value = { n: 1 };
         await g.invalidate("a");

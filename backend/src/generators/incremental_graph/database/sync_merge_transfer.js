@@ -1,4 +1,6 @@
 const { makeDbToDbAdapter, unifyStores } = require('./unification');
+const { ReplicaStateInvariantError } = require('./sync_merge_validation');
+const { nodeIdentifierToString } = require('./types');
 /** @typedef {import('./root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./root_database').ReplicaName} ReplicaName */
@@ -42,6 +44,8 @@ function buildDeleteNodeOps(targetStorage, identifier) {
  * @param {SchemaStorage} options.sourceStorage
  * @param {NodeIdentifier} options.sourceId
  * @param {NodeIdentifier} options.destinationId
+ * @param {import('./types').Freshness} options.finalFreshness
+ * @param {{createdAt: string, modifiedAt: string}} options.finalTimestamps
  * @returns {Promise<Array<*>>}
  */
 async function copyNodeOps({
@@ -49,25 +53,19 @@ async function copyNodeOps({
     sourceStorage,
     sourceId,
     destinationId,
+    finalFreshness,
+    finalTimestamps,
 }) {
     /** @type {Array<*>} */
     const ops = [];
     const sourceValue = await sourceStorage.values.get(sourceId);
-    ops.push(sourceValue === undefined
-        ? targetStorage.values.delOp(destinationId)
-        : targetStorage.values.putOp(destinationId, sourceValue));
-
-    const sourceFreshness = await sourceStorage.freshness.get(sourceId);
-    ops.push(targetStorage.freshness.putOp(
-        destinationId,
-        sourceValue === undefined ? 'missing' : (sourceFreshness ?? 'potentially-outdated')
-    ));
-
-    const sourceTimestamps = await sourceStorage.timestamps.get(sourceId);
-    if (sourceTimestamps === undefined) {
-        throw new Error(`Cannot copy materialized node ${String(sourceId)} without timestamps`);
+    if (sourceValue === undefined) {
+        throw new ReplicaStateInvariantError('sync merge copy', 'has no cached value', nodeIdentifierToString(sourceId));
     }
-    ops.push(targetStorage.timestamps.putOp(destinationId, sourceTimestamps));
+    ops.push(targetStorage.values.putOp(destinationId, sourceValue));
+
+    ops.push(targetStorage.freshness.putOp(destinationId, finalFreshness));
+    ops.push(targetStorage.timestamps.putOp(destinationId, finalTimestamps));
     return ops;
 }
 

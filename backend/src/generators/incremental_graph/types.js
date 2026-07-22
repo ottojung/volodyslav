@@ -84,6 +84,7 @@
  * @property {Array<NodeKeyString>} inputKeys - Concrete input semantic node keys used for recursive pulls.
  * @property {NodeIdentifier} outputIdentifier - Persisted identifier of the output node.
  * @property {ConcreteNodeComputor} computor - Function that computes the output from inputs and old value.
+ * @property {boolean} alreadyMaterialized - True when the output identifier existed before the pull transaction.
  */
 
 /**
@@ -102,8 +103,8 @@
  */
 
 /**
- * Extended freshness status including missing state.
- * @typedef {'up-to-date' | 'potentially-outdated' | 'missing'} FreshnessStatus
+ * Inspection freshness status for a materialized node; `undefined` means no materialization exists.
+ * @typedef {'up-to-date' | 'potentially-outdated' | undefined} FreshnessStatus
  */
 
 /**

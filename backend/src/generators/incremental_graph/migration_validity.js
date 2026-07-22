@@ -1,16 +1,12 @@
 const {
     compareNodeIdentifier,
-    IDENTIFIERS_KEY,
     nodeIdentifierToString,
     stringToNodeIdentifier,
     stringToNodeKeyString,
-    makeEmptyIdentifierLookup,
-    parseIdentifierLookup,
     deriveInputEdges,
 } = require("./database");
 const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 
-/** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database').ReadableSchemaStorage} ReadableSchemaStorage */
@@ -18,15 +14,11 @@ const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 /** @typedef {import('./migration_storage').Decision} Decision */
 
 /**
- * Collect all materialized node keys from a schema storage.
- * @param {SchemaStorage} storage
- * @returns {Promise<NodeIdentifier[]>}
+ * Collect all materialized node keys from a parsed identifier lookup.
+ * @param {import('./database/identifier_lookup').IdentifierLookup} lookup
+ * @returns {NodeIdentifier[]}
  */
-async function loadMaterializedNodes(storage) {
-    const rawIdentifiers = await storage.global.get(IDENTIFIERS_KEY);
-    const lookup = rawIdentifiers === undefined
-        ? makeEmptyIdentifierLookup()
-        : parseIdentifierLookup(rawIdentifiers, 'migration source replica');
+function loadMaterializedNodes(lookup) {
     return [...lookup.idToKey.keys()]
         .map(stringToNodeIdentifier)
         .sort(compareNodeIdentifier);
@@ -49,21 +41,17 @@ function addToValidSet(validSets, input, dependent) {
 
 /**
  * Build the identifiers_keys_map that reflects all decisions.
- * @param {ReadableMigrationStorage} prevStorage
+ * @param {import('./database/identifier_lookup').IdentifierLookup} oldLookup
  * @param {Map<NodeIdentifier, Decision>} decisions
- * @returns {Promise<Array<[NodeIdentifier, NodeKeyString]>>}
+ * @returns {Array<[NodeIdentifier, NodeKeyString]>}
  */
-async function buildDecisionsMap(prevStorage, decisions) {
-    const oldEntries = await prevStorage.global.get(IDENTIFIERS_KEY);
-
+function buildDecisionsMap(oldLookup, decisions) {
     /** @type {Map<string, NodeKeyString>} */
     const idToKey = new Map();
-    if (Array.isArray(oldEntries)) {
-        for (const [id, nodeKeyJson] of oldEntries) {
-            const decision = decisions.get(stringToNodeIdentifier(String(id)));
-            if (!decision || decision.kind !== "delete") {
-                idToKey.set(String(id), stringToNodeKeyString(String(nodeKeyJson)));
-            }
+    for (const [idString, nodeKeyJson] of oldLookup.idToKey.entries()) {
+        const decision = decisions.get(stringToNodeIdentifier(idString));
+        if (!decision || decision.kind !== "delete") {
+            idToKey.set(idString, stringToNodeKeyString(String(nodeKeyJson)));
         }
     }
 
@@ -82,6 +70,9 @@ async function buildDecisionsMap(prevStorage, decisions) {
     return entries;
 }
 
+
+
+
 /**
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @returns {Set<string>}
@@ -97,16 +88,14 @@ function materializedDecisionStrings(decisions) {
 }
 
 /**
- * @param {ReadableMigrationStorage} prevStorage
+ * @param {ReadableMigrationStorage} _prevStorage
  * @param {Map<NodeIdentifier, Decision>} decisions
  * @param {NodeIdentifier} nodeIdentifier
  * @returns {Promise<boolean>}
  */
-async function isFinalCached(prevStorage, decisions, nodeIdentifier) {
+async function isFinalCached(_prevStorage, decisions, nodeIdentifier) {
     const decision = decisions.get(nodeIdentifier);
-    if (decision === undefined || decision.kind === "delete") return false;
-    if (decision.kind === "create" || decision.kind === "override") return true;
-    return await prevStorage.values.get(nodeIdentifier) !== undefined;
+    return decision !== undefined && decision.kind !== "delete";
 }
 
 /**
@@ -119,12 +108,8 @@ async function finalFreshness(prevStorage, decisions, nodeIdentifier) {
     const decision = decisions.get(nodeIdentifier);
     if (decision === undefined || decision.kind === "delete") return undefined;
     if (decision.kind === "create") return decision.freshness;
-    if (decision.kind === "override") return await prevStorage.freshness.get(nodeIdentifier);
-    if (decision.kind === "invalidate") {
-        return await prevStorage.values.get(nodeIdentifier) === undefined ? "missing" : "potentially-outdated";
-    }
-    if (await prevStorage.values.get(nodeIdentifier) === undefined) return "missing";
-    return await prevStorage.freshness.get(nodeIdentifier) ?? "missing";
+    if (decision.kind === "invalidate") return "potentially-outdated";
+    return await prevStorage.freshness.get(nodeIdentifier);
 }
 
 /**
@@ -143,7 +128,7 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
     const materialized = materializedDecisionStrings(decisions);
 
     for (const [nodeIdentifier, decision] of decisions) {
-        if (decision.kind === "delete" || decision.kind === "invalidate") continue;
+        if (decision.kind === "delete" || (decision.kind === "invalidate" && decision.provenance === "explicit")) continue;
         if (!await isFinalCached(prevStorage, decisions, nodeIdentifier)) continue;
 
         const finalEdges = deriveInputEdges(newScheme, finalLookup, nodeIdentifier);
@@ -153,7 +138,6 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
             }
         }
 
-        const freshness = await finalFreshness(prevStorage, decisions, nodeIdentifier);
         if (decision.kind === "create") {
             if (decision.freshness === "potentially-outdated") continue;
             for (const input of finalEdges) {
@@ -169,20 +153,26 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
             continue;
         }
 
-        if (freshness === "up-to-date") {
-            for (const input of finalEdges) {
-                if (await isFinalCached(prevStorage, decisions, input)) {
-                    addToValidSet(validSets, input, nodeIdentifier);
-                }
-            }
-            continue;
-        }
+        // Preserve old outgoing proofs when the input's stored semantic value
+        // survives — this applies to keep, override, and propagated
+        // invalidations (invalidation changes freshness, not value).
+        // Delete nodes have no surviving value; create nodes have no old proof.
+        // Explicit invalidation is excluded above.
+        //
+        // A preexisting stale node carried through keep or override loses its
+        // incoming proofs: persisted storage does not encode whether its
+        // staleness was explicit or propagated, so we conservatively treat it
+        // as a direct invalidation root.
+        const nodeFreshness = await finalFreshness(prevStorage, decisions, nodeIdentifier);
+        const isKeepOrOverride = decision.kind === "keep" || decision.kind === "override";
+        if (isKeepOrOverride && nodeFreshness === "potentially-outdated") continue;
 
-        if ((decision.kind !== "keep" && decision.kind !== "override") || freshness !== "potentially-outdated") continue;
+        /** @param {import('./migration_storage').Decision | undefined} d @returns {boolean} */
+        const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create";
         const oldEdges = deriveInputEdges(oldScheme, oldLookup, nodeIdentifier);
         for (const input of finalEdges) {
             const inputDecision = decisions.get(input);
-            if (!inputDecision || (inputDecision.kind !== "keep" && inputDecision.kind !== "override")) continue;
+            if (!preservesValue(inputDecision)) continue;
             if (!await isFinalCached(prevStorage, decisions, input)) continue;
             if (!oldEdges.some(edge => nodeIdentifierToString(edge) === nodeIdentifierToString(input))) continue;
             const existingValidForD = await prevStorage.valid.get(input) ?? [];

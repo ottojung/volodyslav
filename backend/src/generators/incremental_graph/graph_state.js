@@ -32,6 +32,7 @@ const {
     txNodeKeyToId,
     serializeTransactionLookup,
     commitTransactionLookup,
+    ReplicaStateInvariantError,
 } = require('./database');
 const {
     darkroomActivity,
@@ -155,8 +156,7 @@ async function appendValidMutationOps(activeSchemaStorage, operations, validMuta
  * @property {<T>(fn: (batch: BatchBuilder) => Promise<T>) => Promise<T>} withBatch - Run atomically against all graph sublevels (no identifier tracking).
  * @property {<T>(fn: (tx: Transaction) => Promise<{value: T}>) => Promise<T>} withTransaction - Run atomically with read-your-writes batching and commit publication.
  * @property {(node: NodeIdentifier, batch: BatchBuilder) => Promise<NodeIdentifier[]>} getValid - Read a node's valid set inside the current batch.
- * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List materialized node identifiers from the identity registry.
- * @property {() => Promise<NodeIdentifier[]>} listCachedNodes - List cached node identifiers from value storage.
+ * @property {() => Promise<NodeIdentifier[]>} listMaterializedNodes - List materialized node identifiers from value storage.
  * @property {<T>(procedure: () => Promise<T>) => Promise<T>} withCommitSnapshot - Run a read while darkroom publication is paused.
  */
 
@@ -308,18 +308,18 @@ function makeGraphStorage(rootDatabase, sleeper) {
      * @returns {Promise<NodeIdentifier[]>}
      */
     async function listMaterializedNodes() {
-        return [...rootDatabase.getActiveIdentifierLookup().idToKey.keys()]
-            .map(nodeIdentifierFromString)
-            .sort(compareNodeIdentifier);
-    }
-
-    /**
-     * @returns {Promise<NodeIdentifier[]>}
-     */
-    async function listCachedNodes() {
+        const lookup = rootDatabase.getActiveIdentifierLookup();
         const nodes = [];
-        for await (const key of rootDatabase.getSchemaStorage().values.keys()) {
-            nodes.push(key);
+        for await (const identifier of rootDatabase.getSchemaStorage().values.keys()) {
+            const identifierString = nodeIdentifierToString(identifier);
+            if (!lookup.idToKey.has(identifierString)) {
+                throw new ReplicaStateInvariantError(
+                    "materialized-node listing",
+                    "has cached value but no identifier lookup entry",
+                    identifierString
+                );
+            }
+            nodes.push(identifier);
         }
         return nodes.sort(compareNodeIdentifier);
     }
@@ -453,7 +453,6 @@ function makeGraphStorage(rootDatabase, sleeper) {
             return (await batch.valid.get(node)) ?? [];
         },
         listMaterializedNodes,
-        listCachedNodes,
         withCommitSnapshot(procedure) {
             return darkroomActivity(sleeper, rootDatabase.currentReplicaName(), procedure);
         },

@@ -17,17 +17,11 @@ The target behavior is:
 4. Observations of the same concrete node must not coexist (telescope
    mutex).
 5. Observations of different concrete nodes may coexist.
-6. Migration, structural synchronization, and replica cutover are exclusive with all graph activity
-   (daytime, nighttime) and also close the garden.
+6. Migration and replica cutover suspend all graph activity (daytime,
+   nighttime, and other exclusive work).
 7. Transaction commits for the same replica are serialized (the commit
    mutex is per-replica, not global, so commits to different replicas
    proceed concurrently).
-8. Journal queries use shared garden access. Multiple journal readers
-   may coexist.
-9. Journal readers coexist with daytime activity, nighttime activity, and
-   ordinary append-only journal growth.
-10. Structural journal maintenance closes the garden, preventing new
-    readers from entering.
 
 ## Sleeper Primitives
 
@@ -55,56 +49,9 @@ This is the right primitive for **global graph phases** where we want
 `nighttime`/`daytime` exclusion without forcing all pulls to serialize with each
 other.
 
-### Garden domain: separate shared/exclusive lock
-
-The garden is a separate concurrency domain, not another `withModeMutex` mode
-alongside `daytime`, `nighttime`, and `holiday`. It is a shared/exclusive lock
-with fairness guarantees, distinct from `withMutex` and `withModeMutex`.
-
-Two scoped helpers are defined:
-
-```
-enterGarden(procedure)
-closeGarden(procedure)
-```
-
-- `enterGarden` acquires shared garden access. Any number of `enterGarden`
-  procedures may execute concurrently. It conflicts with `closeGarden`.
-- `closeGarden` acquires exclusive garden access. It conflicts with all active
-  and queued `enterGarden` access. It waits for existing visitors to leave and
-  prevents new visitors from entering while closure is pending or active. It
-  is used by compaction and every operation that structurally changes
-  established journal positions.
-- Fairness: once `closeGarden` is queued, later `enterGarden` calls MUST NOT
-  overtake it. This prevents structural work from being starved by a continuous
-  stream of readers.
-
-### Darkroom and garden have different responsibilities
-
-- **Darkroom** serializes durable commits to a replica.
-- **Garden** stabilizes established journal structure for readers and structural
-  maintenance.
-
-Ordinary append-only journal growth (pull commits, invalidation entries) still
-uses darkroom as specified. Journal queries use garden, not darkroom.
-
-### Compatibility table
-
-| Activity A | Activity B | May overlap? |
-|---|---|---|
-| `enterGarden` | `enterGarden` | yes |
-| `enterGarden` | `closeGarden` | no |
-| `closeGarden` | `closeGarden` | no |
-| `enterGarden` | daytime activity | yes |
-| `enterGarden` | nighttime activity | yes |
-| `enterGarden` | ordinary journal append | yes |
-| generic `closeGarden` (for example, compaction) | ordinary journal append | yes, except that durable commits remain serialized by darkroom |
-| structural synchronization | ordinary journal append | no; synchronization also holds `holidayActivity` |
-| migration | ordinary journal append | no; migration also holds `holidayActivity` |
-
 ## Lock Keys
 
-The implementation SHOULD derive four lock domains from functor-based factories.
+The implementation derives keys from functor-based factories.
 
 ### 1. Dome activity key
 
@@ -112,18 +59,16 @@ There is exactly one dome key:
 
 - `DOME_ACTIVITY_KEY` — a zero-argument term key instantiated from `makeUniqueFunctor`.
 
-This key is acquired through `withModeMutex`.
-
-Three modes are defined on `DOME_ACTIVITY_KEY`:
+This key is acquired through `withModeMutex`. Three conditions are defined:
 
 - `"daytime"` for `invalidate()` and inspection reads;
 - `"nighttime"` for all pull activity;
-- `"holiday"` for migration, structural synchronization, and replica cutover
-  (exclusive with all other modes).
+- `"holiday"` for migration and replica cutover.
 
-Because same-mode holders are compatible, many invalidates may overlap, and many
-pulls may overlap. Because different modes are incompatible, no pull may overlap
-any invalidate or inspection read. `"holiday"` is exclusive with every other mode.
+Because same-mode holders are compatible, many invalidates may overlap, many
+pulls may overlap, and many holiday operations are serialized via the holiday
+gate. Because different modes are incompatible, no pull may overlap any
+invalidate, inspection read, or holiday operation.
 
 Before acquiring the holiday dome condition, a small `HOLIDAY_GATE_KEY` mutex
 serializes concurrent holiday callers with each other.
@@ -141,25 +86,7 @@ It is used only by pull operations, and only for the concrete node currently
 being pulled. This is what serializes same-node pulls without blocking pulls on
 different nodes.
 
-### 3. Garden access (shared/exclusive lock domain)
-
-The garden is a separate shared/exclusive lock domain. It is NOT a
-`DOME_ACTIVITY_KEY` mode and must not be modeled as one. See §Garden
-domain for the full specification.
-
-- Shared access: `enterGarden` — used by `possibleMaybeChanges`. Multiple
-  callers may hold shared garden access concurrently.
-- Exclusive access: `closeGarden` — used by compaction and structural sync
-  (which structurally mutate established journal positions), and by
-  migration/replica cutover (which close the garden for replica lifecycle
-  safety rather than for journal mutation). Exclusive access conflicts with
-  shared access (and with another exclusive holder).
-
-The garden has no Sleeper key. It is a distinct primitive with its own
-fairness guarantee: once `closeGarden` is queued, later `enterGarden`
-calls MUST NOT overtake it.
-
-### 4. Darkroom key (per-replica finalization)
+### 3. Darkroom key (per-replica finalization)
 
 There is one exclusive mutex per replica, created through the `DARKROOM_FUNCTOR`:
 
@@ -167,7 +94,7 @@ There is one exclusive mutex per replica, created through the `DARKROOM_FUNCTOR`
 
 It serializes the short finalization step where a finished transaction's batch
 and identifier allocations become part of that replica's settled record.
-Commit-stable reads (`listMaterializedNodes()`) also acquire the darkroom
+Commit-snapshot reads (`listMaterializedNodes()`) also acquire the darkroom
 to observe state between commit finalizations.
 
 ## Operation Protocol
@@ -202,107 +129,52 @@ lookup while no darkroom finalization is in progress.
 1. Acquire `nighttimeActivity(...)` (internally
    `withModeMutex(DOME_ACTIVITY_KEY, "nighttime", ...)`).
 2. Acquire `telescopeActivity(nodeKeyString, ...)` (internally
-   `withMutex(PULL_NODE_KEY(nodeKeyString), ...)`).
-3. Open/build the transaction without darkroom. Prepare unindexed journal entries.
-4. Pull dependencies and compute the pending graph changes (values, freshness,
-   journal entries) without holding the darkroom lock. The graph-activity mode
-   lock and per-node mutex remain held throughout.
-5. Acquire `darkroomActivity` for the active replica.
-6. Allocate journal indices from the committed watermark, add the indexed
-   entries and new watermark to the batch, and flush atomically.
-7. Publish volatile committed state and release darkroom.
-8. Release the per-node mutex.
-9. Release the graph-activity mode lock.
+   `withMutex(TELESCOPE_FUNCTOR.instantiate([nodeKeyString]), ...)`).
+3. Inside the telescope, open a transaction — the darkroom is NOT acquired at
+   this point. The transaction body (dependency pulls and computor execution)
+   runs outside the per-replica darkroom lock.
+4. Run dependency pulls and the computor. Each dependency pull is a recursive
+   call to `pullNode` — it acquires its own telescope mutex, creates its own
+   transaction, commits independently under its own darkroom (step 5), and
+   returns the computed value. Dependencies commit before the parent computor
+   runs.
+5. After the transaction body returns, acquire the per-replica darkroom lock
+   **only for the short finalization phase**:
+   - reconcile validity mutations against the current committed state;
+   - prepare identifier-map and allocation-watermark writes;
+   - flush the durable batch (LevelDB `batch` write);
+   - publish the identifier overlay to the volatile committed lookup **only
+     after** the disk flush succeeds.
+6. In the cleanup path, release all identifier reservations owned by the
+   transaction, whether the transaction committed or failed.
+7. Release the per-node telescope mutex.
+8. Release the dome nighttime lock.
 
 The darkroom lock is per-replica, so commits to different replicas never
-contend. Nested pulls (dependencies) reuse the same graph-activity mode
-("nighttime") but acquire their own per-node mutex for each dependency node.
-Each nested pull creates its own Transaction (acquiring its own darkroom
-lock only during finalization) and submits its batch independently. This
-matches the volatile-consistency spec: every call to pullNode is structurally
-identical, whether top-level or nested.
+contend. If a parent computor fails, successfully committed dependency pulls
+remain committed — their darkroom finalizations complete before the parent
+computor is invoked and before the parent transaction finalizes.
 
-### `possibleMaybeChanges({ since, to })`
+Nested pulls (dependencies) share the same dome nighttime activity but acquire
+their own telescope mutex per concrete node and create their own Transaction
+(each with its own darkroom finalization). This matches the volatile-consistency
+spec: every call to pullNode is structurally identical, whether top-level or
+nested.
 
-`possibleMaybeChanges` must observe a consistent journal state through shared garden access. The published-prefix invariant guarantees that ordinary appends do not modify established positions, so the query need only exclude structural changes and read a fixed upper bound.
+### `migration / replica cutover`
 
-**Protocol:**
+1. Acquire `holidayActivity(...)`.
+2. Run the migration or cutover.
+3. Release the holiday lock.
 
-1. Call `enterGarden` to acquire shared garden access.
-2. Select the active replica (while holding `enterGarden`).
-3. Read `last_journal_index = H` from the selected replica, establishing a fixed upper bound.
-4. Scan through the fixed bound `H` and retain, for every matching semantic key:
-   - the greatest-index state entry (`add`, `edit`, or `delete`);
-   - the greatest-index freshness entry (`invalidate` or `validate`).
-5. Sort the retained entries by ascending `JournalIndex`.
-6. Leave the garden.
-7. Return the array.
+The two-step acquisition (`HOLIDAY_GATE_KEY` → `DOME_ACTIVITY_KEY("holiday")`)
+is deadlock-free because nighttime and daytime operations only ever acquire
+`DOME_ACTIVITY_KEY`.
 
-This is the logical-compaction-first semantic: compute `logicalJournalView` through `H`, then restrict to entries whose index exceeds `since` and whose key matches `to`. An equivalent implementation may scan only `(since, H]` and retain only the greatest-index matching entry per key and category.
-
-The linearization point is the read of `last_journal_index = H` after entering the garden. At that point:
-
-- Structural changes are excluded by shared garden access.
-- Every position at or below `H` is finalized with respect to ordinary append-only operations (see published-prefix invariant in `incremental-graph-journal-types.md`).
-- Later ordinary appends receive indices greater than `H` and are outside this query.
-
-`possibleMaybeChanges` does not acquire the `DOME_ACTIVITY_KEY` mode lock or the darkroom lock. Ordinary daytime and nighttime graph operations, including ordinary append-only journal growth, may overlap with journal queries.
-
-### compaction
-
-Compaction structurally mutates established journal positions and must close the garden.
-
-**Protocol:**
-
-1. Call `closeGarden` to acquire exclusive garden access.
-2. Select the active replica.
-3. Read `last_journal_index = H` from the selected replica, establishing a fixed bound for compaction.
-4. Determine deletions only among positions `≤ H`.
-5. Acquire darkroom for the atomic durable deletion batch.
-6. Commit the compaction batch.
-7. Release darkroom.
-8. Reopen the garden.
-
-The important requirements are:
-
-- CloseGarden is held for the entire analysis and durable mutation, not just the final commit.
-- Compaction touches only positions through its captured `H`.
-- It must not modify entries appended after `H`.
-- It must not decrease or overwrite a concurrently advanced `last_journal_index`.
-- Ordinary append-only journal growth may continue while the garden is closed; those appends use indices greater than `H` and are outside the compacted prefix.
-
-### `migration / structural synchronization / replica cutover`
-
-A holiday closes both the dome and the garden. Migration, structural
-synchronization, and replica cutover follow this protocol:
-
-1. Acquire `holidayActivity(...)` (graph activity mode lock, exclusive with
-   all other graph activity).
-2. Call `closeGarden` (exclusive garden access).
-3. Perform migration, or build the inactive synchronization destination, while
-   both locks are held. The destination may be written through multiple
-   durable batches. Each standard transaction finalization acquires the
-   destination darkroom. The darkroom may be acquired and released per durable
-   batch; it is not held for the entire potentially long-running construction.
-4. After all destination records are durable and internally consistent, acquire
-   the finalization darkroom for the remaining durable metadata and active-replica
-   cutover. Volatile active-replica state is published only after the durable
-   cutover succeeds.
-5. Release darkroom.
-6. Reopen the garden.
-7. Release the holiday lock.
-
-Because `possibleMaybeChanges` holds `enterGarden` across replica selection
-and traversal:
-
-- Cutover waits for existing journal readers to leave.
-- Once `closeGarden` is queued, later visitors do not overtake it.
-- No new reader can select the old replica during cutover.
-- The query no longer needs a separate lifecycle lock.
-
-The two-step acquisition (`holidayActivity` → `closeGarden`) is deadlock-free
-because garden is never acquired while holding darkroom, and holiday is never
-acquired while holding garden.
+The computor runs inside the telescope critical section but outside the
+darkroom. This is safe because the critical section is no longer graph-global:
+other pulls may still proceed on other nodes, while invalidates and inspection
+reads are excluded.
 
 ## Why This Matches the Requested Semantics
 
@@ -329,84 +201,21 @@ They contend on the same telescope mutex key, so they serialize.
 They share the compatible global `"nighttime"` mode and use different per-node mutex
 keys, so they may proceed concurrently.
 
-### Journal queries
-
-`possibleMaybeChanges` uses shared garden access (`enterGarden`). It does not acquire the `DOME_ACTIVITY_KEY` mode lock or the darkroom lock, so it does not interfere with ordinary daytime or nighttime graph activity (reads, invalidations, pulls on different nodes, or ordinary append-only journal growth).
-
-Journal queries coexist with daytime activity, nighttime activity, and ordinary append-only journal growth. The published-prefix invariant guarantees that ordinary appends do not modify established positions, so queries need only exclude structural changes (via garden) and read a fixed upper bound.
-
-Garden exclusion prevents a query from observing a partially applied physical compaction, but the query result would be the same before and after the compaction anyway — both use the same `logicalJournalView` through the captured bound.
-
-Structural journal maintenance acquires exclusive garden access (`closeGarden`)
-for operations that mutate established journal positions. Generic garden
-closure, as used by compaction, can overlap ordinary appends. Structural
-synchronization additionally holds `holidayActivity`, so it cannot overlap
-ordinary appends. Replica cutover and migration also hold `holidayActivity` and
-`closeGarden`; migration is append-only and does not structurally mutate
-established journal history.
-
-## Lock ordering and deadlock discipline
+## Deadlock Discipline
 
 The implementation keeps this acquisition discipline:
 
-1. When an operation needs graph activity and garden access, acquire graph
-   activity first.
-2. When an operation needs garden access and darkroom, acquire garden access
-   first.
-3. Never call `enterGarden` or `closeGarden` while holding darkroom.
-4. Acquire the graph activity mode lock before any per-node pull mutexes.
-5. Never acquire `"daytime"` while holding a per-node pull mutex.
+1. acquire the dome mode lock first;
+2. acquire any per-node telescope mutexes after that;
+3. never acquire `"daytime"` while holding a telescope mutex.
 
-There is no cycle because:
-
-- Readers hold only shared garden access.
-- Appenders never wait for garden.
-- Structural work closes the garden before waiting for darkroom.
-- Holiday acquires graph exclusion before closing the garden.
-- No operation holds darkroom and then waits for garden.
-
-Inspection reads and invalidates do not take per-node pull mutexes. Journal
-queries (under `enterGarden`) also do not take per-node pull mutexes. Therefore
-they cannot participate in a node-level pull-lock cycle.
+Inspection reads and invalidates only take the global mode lock, so they cannot
+participate in a node-level cycle.
 
 Pulls may recursively pull dependencies while already holding pull locks. The
 incremental graph is a DAG, so any wait edge from node `A` to node `B` implies
 that `A` depends on `B`. A deadlock cycle would therefore imply a dependency
 cycle, which the graph constructor already rejects.
-
-## Testable concurrency scenarios
-
-### C1 — Concurrent readers
-
-Two `possibleMaybeChanges` calls may execute simultaneously. Both return results according to their independently captured upper watermarks. Because each reader enters the garden (shared access), they coexist freely.
-
-### C2 — Reader overlapping append
-
-If an append commits before the reader captures `H`, the new entry may be included in the returned array. If the append commits after `H` is captured, its index is greater than `H` and it is excluded from the returned array. The reader never observes a torn entry/watermark publication because every journal entry and its watermark advance are committed atomically (REQ-JT-19).
-
-### C3 — Reader overlapping compaction
-
-Compaction calls `closeGarden` (exclusive), which cannot proceed while a reader holds `enterGarden` (shared). The compaction waits for active readers to leave. Once closure is queued, new readers do not overtake it. No reader observes a mixture of pre-compaction and post-compaction established positions.
-
-### C4 — Concurrent compactions
-
-Two compaction operations cannot overlap because each calls `closeGarden`, which is exclusive with itself.
-
-### C5 — Reader overlapping cutover
-
-Cutover acquires `holidayActivity` then `closeGarden`. Because `possibleMaybeChanges` holds `enterGarden` across replica selection and traversal, cutover waits for active readers. No reader changes replicas during traversal. New readers wait once garden closure is pending.
-
-### C6 — Reader overlapping structural sync
-
-Structural sync acquires `holidayActivity` and then calls `closeGarden`, which
-waits for readers and prevents new readers until inactive-destination
-construction and cutover complete. Existing readers complete on their captured
-journal bound (the fixed `H` they read after entering the garden), and ordinary
-appends cannot overlap the synchronization.
-
-### C7 — Compaction overlapping append
-
-New append-only entries may commit while compaction is analyzing the prefix. Compaction touches only positions through its captured `H`. It does not modify entries appended after `H`. It does not overwrite the newer watermark.
 
 ## Why `withoutMutex` Must Not Return
 

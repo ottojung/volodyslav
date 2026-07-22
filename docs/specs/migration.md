@@ -22,7 +22,7 @@ A failed migration never activates the target replica.  Failures before unificat
 
 ### Migration scope `S`
 
-`S` is the set of all nodes materialized in the previous version. A node is materialized if its identifier exists in `identifiers_keys_map`. A cached node is a materialized node with an entry in `values`; a missing node is a materialized node with freshness `"missing"` and no value; a fresh node has freshness `"up-to-date"`; a stale node has freshness `"potentially-outdated"`.
+`S` is the set of all nodes materialized in the previous version. A node is materialized if and only if its identifier exists in `identifiers_keys_map`, `values`, `freshness`, and `timestamps`. A fresh node has freshness `"up-to-date"`; a stale node has freshness `"potentially-outdated"`.
 
 After the user-supplied migration callback returns, **every node in `S` must have exactly one decision**.  Missing decisions cause `UndecidedNodesError`.
 
@@ -83,20 +83,23 @@ Calling the same decision twice (except for `override` and `create`) is allowed 
 
 ### Operation semantics
 
-`keep` preserves the value, freshness, timestamps, and compatible validity.
+`keep` preserves the value, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. A stale node carried through `keep` loses its incoming proofs: persisted storage does not encode whether its staleness was explicit or propagated, so it is conservatively treated as a direct invalidation root.
 
-`override` is a **semantic-preserving representation rewrite**. It changes the stored representation (e.g. on-disk format) while preserving the semantic value as seen by dependents. Because the value is semantically unchanged, `override()` does not propagate invalidation — it inherits freshness, timestamps, and validity from the old record.
+Within a **preexisting stale `keep`/`override` region**, every stale node loses incoming proofs, so validity edges inside the region may disappear. A stale B whose dependent C is also stale loses both `A⇝B` and `B⇝C` during migration, and both nodes must recompute.
+
+**Migration-time propagated invalidation** is different: the migration callback explicitly calls `invalidate()` on a node, and the propagation runs in memory with full provenance. In that case outgoing proofs survive and freshness-only propagation preserves validity edges.
+
+`override` is a **semantic-preserving representation rewrite**. It changes the stored representation (e.g. on-disk format) while preserving the semantic value as seen by dependents. Because the value is semantically unchanged, `override()` does not propagate invalidation — it inherits freshness, timestamps, and validity from the old record. The same stale-node rule applies: a stale node carried through `override` loses its incoming proofs.
 
 `override()` MUST NOT be used when the migration changes the meaning or value of a node. If the value itself changes, use `invalidate()` instead, which triggers downstream recomputation so that dependents observe the new value.
 
 The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
 
-`invalidate` preserves the cached value if it exists, marks cached nodes as
-`"potentially-outdated"`, preserves `modifiedAt`, and does not preserve
-incoming or outgoing valid flags for the invalidated node. A missing node
-remains missing: invalidation does not create a value or rewrite its freshness.
-This is a conservative/hard invalidation: an existing clean-cache claim is
-withdrawn.
+`invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
+
+**Explicit invalidation** removes only the explicitly named node's incoming validity proofs. Its outgoing proofs remain intact because its stored semantic value has not changed.
+
+**Propagated invalidation** (automatic recursive propagation) preserves all validity proofs — both incoming and outgoing. It is freshness-only: downstream nodes are marked stale but retain their complete proof sets.
 
 `create(..., "up-to-date")` is a clean-cache assertion. The migration validates this assertion before writing the migrated state.
 `create(..., "potentially-outdated")` seeds a cached value without claiming it is clean.
@@ -105,20 +108,13 @@ withdrawn.
 
 #### INVALIDATE → propagate INVALIDATE downstream
 
-When a node is invalidated, its cached dependents are automatically marked
-`INVALIDATE` (recursively), unless they are already `DELETE`d. Missing
-dependents are skipped and remain missing; propagation does not create cached
-values for them. If a cached dependent already has a `KEEP` or `OVERRIDE`
-decision, `DecisionConflictError` is thrown immediately.
+When a node is invalidated, all its dependents are automatically marked `INVALIDATE` (recursively), unless they are already `DELETE`d.  If a dependent already has a `KEEP` or `OVERRIDE` decision, `DecisionConflictError` is thrown immediately.
 
-#### DELETE → propagate DELETE downstream (deferred, fan-in strict)
+#### DELETE → propagate DELETE downstream (deferred, dependency-closed)
 
-DELETE propagation runs at finalization (after the callback returns), via a BFS over dependents:
+DELETE propagation runs at finalization (after the callback returns), via a BFS over dependents. One deleted input is sufficient to delete an undecided dependent, and that deletion propagates through every transitive materialized dependent.
 
-* A dependent `D` is auto-deleted only if **all** of `D`'s inputs are deleted.
-* If `D` has some-but-not-all inputs deleted, `PartialDeleteFanInError` is thrown.
-
-This means that to delete a fan-in node `D = f(B, C)`, both `B` and `C` must be deleted (directly or via propagation).
+This preserves the materialization invariant that every materialized node has all of its concrete inputs materialized. If a dependent already has an explicit `KEEP`, `OVERRIDE`, or `INVALIDATE` decision, `DecisionConflictError` is thrown.
 
 ---
 
@@ -130,11 +126,9 @@ This means that to delete a fan-in node `D = f(B, C)`, both `B` and `C` must be 
 | `OverrideConflictError` | `override()` called more than once on the same node. |
 | `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
-| `PartialDeleteFanInError` | DELETE propagation reaches a fan-in node not all of whose inputs are deleted. |
 | `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
 | `InvalidMigrationDecisionError` | `override` or `create` called without the cache-state proof required by its API. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
-| `GetMissingValueError` | `get()` called for a node in `S` with no computed value. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 
 ---
@@ -163,38 +157,13 @@ await runMigration(rootDatabase, newVersionNodeDefs, async (storage) => {
 1. Detect the previous version by examining stored schema namespaces.
 2. Create a `MigrationStorage` backed by the previous version's data.
 3. Execute the callback.
-4. Finalize decisions:
-   - propagate deletes;
-   - check fan-in;
-   - check completeness;
-   - return the finalized decision set.
-5. Derive and validate the desired target state from the finalized decisions.
-6. Gently unify the desired state into the inactive replica.
-7. Durably flush and validate the inactive replica.
-8. Switch the active-replica pointer.
+4. Call `finalize()` internally (propagate deletes, check completeness).
+5. Apply all decisions **atomically** to the new version's storage.
 
 If no previous version is found, the migration is a no-op.
 
 ---
 
-## Atomicity and durability
+## Atomicity guarantee
 
-Decisions are collected in memory during the callback. The desired state is
-unified into the target replica's storage through multiple durable writes, then
-validated with `assertValidFinalMergeState` before the replica pointer is
-switched. A failed migration never activates the target replica. Failures before
-unification leave the target replica untouched. Failures after unification may
-leave the inactive replica written, but the active replica remains unchanged.
-
-Two distinct guarantees apply:
-
-1. **Related-record atomicity:** Related records that form one journal-emitting
-   graph mutation (e.g., the journal entry, the node's value, and the freshness
-   state for one `storage.create`) must be durably coordinated as required by
-   the journal specification — each such set commits in one darkroom batch.
-
-2. **Cutover visibility:** The complete migrated state becomes visible atomically
-   through replica-pointer cutover. The inactive replica may contain partial
-   migration writes before cutover; readers cannot observe it. Only after every
-   required record is durable and the replica is valid does the active pointer
-   switch.
+Decisions are collected in memory during the callback.  The desired state is unified into the target replica's storage, then validated with `assertValidFinalMergeState` before the replica pointer is switched.  A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.

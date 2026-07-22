@@ -12,17 +12,35 @@
  *
  * 1. Verify that `H` was written by the same schema version as the local
  *    database.
- * 2. Copy `L` into `T`.
- * 3. Parse the target/host identifier lookups and reject only the corrupt case
- *    where one identifier names different semantic keys.
- * 4. Build a semantic-node-key merge plan from timestamps and dependencies. Newer
- *    local nodes are kept, newer host nodes are taken, and descendants of both a
- *    local-newer and host-newer ancestor are invalidated so they recompute from
- *    the merged inputs.
- * 5. Choose one final identifier per semantic key, lower all chosen inputs to
- *    those identifiers, apply the plan to `T`, and remove losing target records.
- * 6. Validate and persist the newly constructed lookup and
- *    switch replicas when graph data or identifier reconciliation changed.
+ * 2. Copy `L` into `T` (the inactive replica).
+ * 3. Parse target/host identifier lookups and reject identifiers that map to
+ *    different semantic keys.
+ * 4. Select a candidate source side (keep or take) for each semantic node key
+ *    using UTC modifiedAt. Exact timestamp ties select local.
+ * 5. Propagate taint forward from timestamp winners along the selected
+ *    dependency graph. Taint records ancestry; it does not override source
+ *    selection.
+ * 6. Detect direct invalidation candidates: nodes with opposite-side ancestry,
+ *    direct relowering through source-version identity mismatch, or stale
+ *    equal-version metadata (FIXME(#1521) approximation).
+ * 7. Classify each candidate by distinct semantic input count:
+ *    - 0 or 1 distinct input: hard invalidate (retain cached value as
+ *      oldValue, mark stale, remove incoming proofs).
+ *    - 2+ distinct inputs: delete (oldValue will be undefined, Unchanged not
+ *      legal).
+ * 8. Expand deletion roots through transitive materialized dependents.
+ * 9. Apply final outcomes to T: copy/keep values, freshness, and timestamps
+ *    from the appropriate source; mark hard-invalidated nodes stale; remove
+ *    deleted records.
+ * 10. Rebuild validity and propagated freshness: transport validity proofs
+ *     through source-version identity and final structural edges; mark direct
+ *     invalidation roots stale; propagate staleness forward preserving valid
+ *     proofs; throw UnplannedMissingValidityProofError if planning and proof
+ *     transport disagree.
+ * 11. Validate the final state: every up-to-date node must have up-to-date
+ *     inputs and complete incoming proofs.
+ * 12. Switch the active replica pointer when graph data or identifier
+ *     reconciliation changed.
  *
  * Error handling policy:
  * - Version mismatch throws HostVersionMismatchError.
@@ -47,14 +65,13 @@ const { LAST_NODE_INDEX_KEY } = require('./root_database');
 const { buildMergePlan } = require('./sync_merge_plan');
 const {
     assertValidFinalMergeState,
-    assertLookupCoversMaterializedNodes,
-    assertMaterializedNodesHaveTimestamps,
+    assertValidReplicaMaterializationState,
     FinalMergeStateError,
     isFinalMergeStateError,
 } = require('./sync_merge_validation');
 const { copyReplicaGently } = require('./sync_merge_transfer');
-const { rebuildMergedValidity, buildValueOriginByKey, ReplicaBatchWriter } = require('./sync_merge_validity');
-const { applyNodeDecisions, summarizeDecisions } = require('./sync_merge_apply');
+const { rebuildMergedValidity, ReplicaBatchWriter } = require('./sync_merge_validity');
+const { applyNodeOutcomes, summarizeOutcomes } = require('./sync_merge_apply');
 const {
     assertNoIdentifierCollisions,
     parseIdentifierLookup,
@@ -68,7 +85,7 @@ const {
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').Version} Version */
-/** @typedef {'keep' | 'take' | 'invalidate'} MergeDecision */
+/** @typedef {'keep' | 'take' | 'invalidate' | 'delete'} MergeOutcome */
 
 /**
  * Thrown when the staged host graph was produced by a different schema version
@@ -260,15 +277,14 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         'Starting graph merge for host'
     );
 
+    await assertValidReplicaMaterializationState(hostStorage, hostLookup, 'staged host snapshot');
+
     await copyReplicaGently(rootDatabase, fromReplica, toReplica);
 
     const targetStorage = rootDatabase.schemaStorageForReplica(toReplica);
     const targetLookup = await loadTargetLookup(targetStorage);
     assertNoIdentifierCollisions(targetLookup, hostLookup);
-    await assertLookupCoversMaterializedNodes(hostStorage, hostLookup, 'staged host snapshot');
-    await assertMaterializedNodesHaveTimestamps(hostStorage, hostLookup, 'staged host snapshot');
-    await assertLookupCoversMaterializedNodes(targetStorage, targetLookup, 'merge target replica');
-    await assertMaterializedNodesHaveTimestamps(targetStorage, targetLookup, 'merge target replica');
+    await assertValidReplicaMaterializationState(targetStorage, targetLookup, 'local synchronization source');
 
     const targetSchemeRaw = await targetStorage.global.get(GRAPH_SCHEME_KEY);
     const hostSchemeRaw = await hostStorage.global.get(GRAPH_SCHEME_KEY);
@@ -288,16 +304,13 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     const targetLastNodeIndex = rootDatabase.getLastNodeIndex();
 
     const {
-        initialDecisions,
+        selectedSideByKey,
         mergedInputsMap,
-        decisions,
-        hOnlyNeedsInvalidate,
-        directlyReloweredNodes,
-        reloweringInvalidatedNodes,
-        equalVersionNeedsInvalidation,
+        outcomeByKey,
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
+        equalTimestamps,
     } = await buildMergePlan(
         targetStorage,
         hostStorage,
@@ -305,36 +318,31 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         hostLookup
     );
 
-    await applyNodeDecisions(
+    await applyNodeOutcomes(
         targetStorage,
         hostStorage,
         targetLookup,
         hostLookup,
-        initialDecisions,
-        decisions,
-        hOnlyNeedsInvalidate,
-        directlyReloweredNodes,
-        reloweringInvalidatedNodes,
-        equalVersionNeedsInvalidation,
+        selectedSideByKey,
+        outcomeByKey,
         finalIdentifierForKey
     );
 
-    const summary = summarizeDecisions(decisions.values());
-    const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation || equalVersionNeedsInvalidation.size > 0;
+    const summary = summarizeOutcomes(outcomeByKey.entries(), targetLookup);
+    const hasSemanticChanges = summary.hasChanges || hasIdentifierReconciliation;
     const targetSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
-    const valueOriginByKey = await buildValueOriginByKey(
-        initialDecisions,
-        decisions,
-        targetLookup,
-        hostLookup,
-        directlyReloweredNodes,
-        targetStorage,
-        targetSourceStorage,
-        hostStorage,
-        finalIdentifierForKey
-    );
 
-    const validityChanged = await rebuildMergedValidity({
+    /** @type {Set<NodeIdentifier>} */
+    const directInvalidationRoots = new Set();
+    for (const [nodeKey, outcome] of outcomeByKey) {
+        if (outcome !== 'invalidate') continue;
+        const finalId = finalIdentifierForKey.get(nodeKey);
+        if (finalId !== undefined) {
+            directInvalidationRoots.add(finalId);
+        }
+    }
+
+    const graphStateChanged = await rebuildMergedValidity({
         targetStorage,
         targetSourceStorage,
         hostSourceStorage: hostStorage,
@@ -342,9 +350,11 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         hostLookup,
         finalIdentifierForKey,
         mergedInputsMap,
-        valueOriginByKey,
+        directInvalidationRoots,
+        selectedSideByKey,
+        equalTimestampKeys: equalTimestamps,
     });
-    const hasChanges = hasSemanticChanges || validityChanged;
+    const hasChanges = hasSemanticChanges || graphStateChanged;
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
 
     if (hasChanges) {
@@ -366,6 +376,7 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
             kept: summary.kept,
             taken: summary.taken,
             invalidated: summary.invalidated,
+            deleted: summary.deleted,
             switchedReplica,
         },
         'Graph merge completed for host'

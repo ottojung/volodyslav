@@ -266,7 +266,7 @@ describe("Property 2 — No conflicting concurrent allocations", () => {
             await expect(graph.pull("flush_fail_node")).rejects.toThrow(
                 "batch-fails-intentionally"
             );
-            expect(await graph.getFreshness("flush_fail_node")).toBe("missing");
+            expect(await graph.getFreshness("flush_fail_node")).toBeUndefined();
 
             const lookup = db.cloneActiveIdentifierLookup();
             expect(
@@ -439,7 +439,7 @@ describe("Failed parent does not undo committed dependency", () => {
         // so source IS committed to disk even though derived's computor threw.
         // derived itself was never committed.
         expect(await graph.getFreshness("source")).toBe("up-to-date");
-        expect(await graph.getFreshness("derived")).toBe("missing");
+        expect(await graph.getFreshness("derived")).toBeUndefined();
 
         await db.close();
     });
@@ -623,7 +623,7 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
         // dep's pull (as a dependency of consumer) committed independently,
         // so dep IS committed even though consumer's computor threw.
         expect(await graph.getFreshness("dep")).toBe("up-to-date");
-        expect(await graph.getFreshness("consumer")).toBe("missing");
+        expect(await graph.getFreshness("consumer")).toBeUndefined();
 
         await db.close();
     });
@@ -698,7 +698,7 @@ describe("Supplemental scenario — Read-only lookups do not interfere with allo
         // A read-only getFreshness on "existing" does not interfere.
         expect(await graph.getFreshness("existing")).toBe("up-to-date");
         // "new_node" is not yet pulled.
-        expect(await graph.getFreshness("new_node")).toBe("missing");
+        expect(await graph.getFreshness("new_node")).toBeUndefined();
 
         // Pull "new_node" (allocating a new identifier) after the read-only lookup.
         await graph.pull("new_node");
