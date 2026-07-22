@@ -166,11 +166,14 @@ domain, separate from the main dome. Readers (enterGarden) may proceed
 concurrently with each other and with ordinary graph activity. Structural
 operations (closeGarden) exclude readers.
 
-The acquisition order for operations that close the garden is:
+Lock ordering depends on the operation:
 
-```
-holiday → closeGarden → darkroom
-```
+- **Compaction:** `closeGarden → darkroom`
+- **Structural synchronization and migration/cutover:**
+  `holiday → closeGarden → darkroom`
+
+The second sequence expresses lock ordering when darkroom is required; it does
+not require darkroom to be held for the complete operation.
 
 The detailed concurrency specification is in
 `docs/specs/incremental-graph-locking-design.md`.

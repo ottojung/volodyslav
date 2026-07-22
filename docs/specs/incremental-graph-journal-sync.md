@@ -17,7 +17,9 @@ graph merge.
 ```
 LGraph = pre-sync active local graph
 FGraph = final graph produced by graph synchronization
-GraphDelta = semantic keys requiring journal notification
+GraphDelta = set of semantic keys whose final graph state differs from the
+             pre-sync local graph in a way requiring notification to cursors
+             held by the current local process
 
 LJournal = local established journal
 HJournal = host established journal
@@ -232,10 +234,10 @@ The destination physically contains exactly:
 newly generated sync event. The resulting physical journal equals its own
 `logicalJournalView`.
 
-### 6. Ensure notification coverage
+### 6. Select notification carriers
 
 Every key in GraphDelta must have a notification carrier positioned strictly
-after every source watermark that requires notification.
+after `localH` so that local-process cursors observe the change.
 
 #### notificationCarrier(K)
 
@@ -246,19 +248,6 @@ For each `K` in GraphDelta, select exactly one carrier in this order:
 3. otherwise the final canonical freshness event;
 4. otherwise fail journal reconciliation with a journal-integrity error because
    a required notification has no historical evidence.
-
-A generated event is already freshly positioned above both source watermarks.
-No additional repositioning is needed.
-
-For a selected existing carrier E, compute the required notification bound:
-
-```
-notificationBound(E) = max(sourceH of every source requiring notification via E)
-```
-
-If E's greatest surviving occurrence is already strictly greater than
-`notificationBound(E)`, E is sufficient. Otherwise, E MUST be repositioned:
-make every old occurrence absent and queue E for fresh placement above P.
 
 Only the selected carrier needs repositioning for K. Do not reposition both
 categories merely because both exist.
@@ -273,9 +262,6 @@ A repositioned event preserves its original:
 - `eventId`.
 
 It is not newly emitted.
-
-If no source requires notification for E, E has no notification bound and no
-repositioning is required.
 
 ### 7. Reconcile physical positions
 
@@ -321,9 +307,21 @@ the same `eventId` survives at several physical positions:
 If exactly one occurrence survives, retain it. If none survives, queue that
 event for fresh placement.
 
-### 9. Fresh placement
+### 9. Enforce notification bounds
 
-Final canonical events with no surviving positioned occurrence are allocated
+For each `K` in GraphDelta, let `carrier` be the notification carrier selected
+in step 6.
+
+- If `carrier` is a generated `delete` or `invalidate`, it was queued for fresh
+  placement in step 5. It will be allocated above `P` in step 10, satisfying the
+  `localH` bound.
+- Otherwise `carrier` is an existing event. If its greatest surviving position
+  (after steps 7-8) is strictly greater than `localH`, keep it. Otherwise remove
+  its old occurrences and queue it for fresh placement above `P`.
+
+### 10. Fresh placement
+
+Every event queued for fresh placement during steps 5, 8, and 9 is allocated
 contiguously at:
 
 ```
@@ -333,6 +331,16 @@ P + 1 .. P + n
 The final watermark is `P + n`.
 
 Fresh entries are ordered by:
+
+1. `time` ascending;
+2. `NodeKeyString` ascending;
+3. `creator` ascending;
+4. Action rank: `add < edit < delete < invalidate < validate`;
+5. `NodeIdentifier` ascending.
+
+`NodeIdentifier` values are globally and historically unique.
+
+After allocating `n` queued events, set `last_journal_index = P + n`.
 
 1. `time` ascending;
 2. `NodeKeyString` ascending;

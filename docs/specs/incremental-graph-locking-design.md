@@ -69,7 +69,7 @@ This key is acquired through `withModeMutex`. Three conditions are defined:
 
 - `"daytime"` for `invalidate()` and inspection reads;
 - `"nighttime"` for all pull activity;
-- `"holiday"` for migration and replica cutover.
+- `"holiday"` for migration, structural synchronization, and replica cutover.
 
 Because same-mode holders are compatible, many invalidates may overlap, many
 pulls may overlap, and many holiday operations are serialized via the holiday
@@ -92,7 +92,7 @@ It is used only by pull operations, and only for the concrete node currently
 being pulled. This is what serializes same-node pulls without blocking pulls on
 different nodes.
 
-### 4. Garden domain: separate shared/exclusive lock
+### 3. Garden domain: separate shared/exclusive lock
 
 The garden is a separate concurrency domain, not another `withModeMutex` mode
 alongside `daytime`, `nighttime`, and `holiday`. It is a shared/exclusive lock
@@ -149,7 +149,7 @@ Structural operations (compaction, synchronization) acquire `closeGarden` before
 the per-replica darkroom. Synchronization and migration acquire `holidayActivity`
 before `closeGarden`.
 
-### 3. Darkroom key (per-replica finalization)
+### 4. Darkroom key (per-replica finalization)
 
 There is one exclusive mutex per replica, created through the `DARKROOM_FUNCTOR`:
 
