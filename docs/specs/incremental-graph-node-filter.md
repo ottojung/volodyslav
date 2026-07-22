@@ -146,10 +146,15 @@ REQ-NF-04: A `GroundFilter` MUST NOT match a node key whose arity differs from `
 
 ## Type guards
 
-REQ-NF-05: Implementations MUST expose type guards for use at serialization,
-deserialization, and storage boundaries where untyped `unknown` data is
-converted into the nominal `NodeFilter` type. At internal call sites where the
-type is already known, runtime re-verification is not required.
+REQ-NF-05: Implementations MUST expose type guards where untyped `unknown` data
+enters the `NodeFilter` API or crosses a module boundary. At internal call sites
+where the type is already known, runtime re-verification is not required.
+
+The opaque wildcard singleton is recognized only through module-owned identity
+or nominal branding. Generic serialized data cannot recreate that singleton.
+Serialization and deserialization of filters remain entirely out of scope for
+this specification. A future serialization specification must define an explicit
+encoded representation and decoder that maps back to `makeWildcard()`.
 
 `isWildcard` recognizes the opaque wildcard singleton through nominal branding
 or module-owned identity checks. It MUST NOT match by structural duck-typing

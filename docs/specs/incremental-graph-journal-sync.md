@@ -17,9 +17,9 @@ graph merge.
 ```
 LGraph = pre-sync active local graph
 FGraph = final graph produced by graph synchronization
-GraphDelta = set of semantic keys whose final graph state differs from the
-             pre-sync local graph in a way requiring notification to cursors
-             held by the current local process
+GraphDelta = the exact set defined by
+             docs/specs/incremental-graph-synchronization.md § GraphDelta,
+             computed between LGraph and FGraph
 
 LJournal = local established journal
 HJournal = host established journal
@@ -27,6 +27,13 @@ HJournal = host established journal
 
 Graph synchronization produces FGraph and GraphDelta. Journal reconciliation
 receives LGraph, FGraph, GraphDelta, LJournal, and HJournal.
+
+GraphDelta contains exactly the semantic keys whose public observable state
+differs between LGraph and FGraph. It excludes identifier-only replacements,
+metadata-only changes, and validity-only differences. Journal reconciliation
+must not inspect or compare `ComputedValue`s. See
+`docs/specs/incremental-graph-synchronization.md` for the formal definition of
+`observableState`, `equalObservableState`, and the membership rules.
 
 ---
 

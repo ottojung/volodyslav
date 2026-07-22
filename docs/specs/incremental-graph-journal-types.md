@@ -464,18 +464,28 @@ its internal journal index. This is NOT exposed through the public type.
 ```js
 /**
  * @typedef {object} CursorState
- * @property {IncrementalGraph} ownerGraph
+ * @property {JournalCursorDomain} ownerDomain
  * @property {JournalIndex} index
  */
 ```
+
+One `JournalCursorDomain` belongs to one running graph service/session. It is
+created outside an individual `IncrementalGraph` instance and survives database
+closing, active-replica cutover, root-database reopening, and reconstruction of
+`IncrementalGraph` during normal synchronization. Every graph instance
+constructed for that same running service receives the same domain.
+Independently initialized graph services receive different domains, even within
+the same JavaScript process.
 
 The state is stored in a module-private `WeakMap<PossibleNodeChange, CursorState>`.
 Equivalent module-private storage is acceptable.
 
 - A token is registered only when returned by `possibleMaybeChanges`.
 - `since` lookup verifies that the token is known.
-- Lookup verifies that it belongs to the receiving graph instance.
-- Unknown, forged, or foreign tokens are rejected by one explicit error.
+- Lookup verifies that its stored `ownerDomain` equals the receiving graph's
+  domain.
+- A token from another domain, an unknown token, and a forged token are rejected
+  by one explicit cursor error.
 
 ---
 
@@ -502,20 +512,50 @@ or otherwise immutable: `bindings` and nested `ConstValue` data are an immutable
 snapshot so later caller mutation cannot falsify the historical fields.
 
 ```js
+class PossibleNodeChangeClass {
+    /** @private @type {undefined} */ __brand;
+    constructor() {
+        if (this.__brand !== undefined)
+            throw new Error("PossibleNodeChange cannot be instantiated externally");
+    }
+
+    /** @readonly @type {NodeName} */
+    nodeName;
+
+    /** @readonly @type {ReadonlyArray<ConstValue>} */
+    bindings;
+
+    /** @readonly @type {JournalAction} */
+    action;
+
+    /** @readonly @type {UnixTimestamp} */
+    time;
+}
+
 /**
- * Public projection of a journal entry.
+ * Immutable public projection of a journal entry.
  *
  * The raw journal index is stored in a module-private WeakMap, not
  * as an own property, enumerable property, or symbol property. It is
  * not inspectable through the token.
  *
- * @typedef {object} PossibleNodeChange
- * @property {NodeName} nodeName
- * @property {Array<ConstValue>} bindings
- * @property {JournalAction} action
- * @property {UnixTimestamp} time
+ * @typedef {PossibleNodeChangeClass} PossibleNodeChange
  */
 ```
+
+Construction is a journal-module-internal operation conceptually equivalent to:
+
+```text
+makePossibleNodeChange(entry, index, ownerDomain)
+```
+
+It must:
+
+1. create a fresh public projection with the four public fields;
+2. deeply snapshot and freeze `bindings` and nested `ConstValue` data;
+3. freeze the public token;
+4. register `{ ownerDomain, index }` in the private `WeakMap`;
+5. return the nominally cast public token.
 
 **This PR specifies only same-process, in-memory journal token usage.** A
 `PossibleNodeChange` returned during a process session is valid as `since` for
@@ -527,8 +567,9 @@ process:
   deleted. A later query scans strictly after that index and tolerates absent
   entries (see `incremental-graph-journal-compaction.md`).
 - A `PossibleNodeChange` cursor remains valid across **structural
-  synchronization and active-replica cutover** in the same process. The
-  notification coverage rules in `incremental-graph-journal-sync.md` ensure
+  synchronization and active-replica cutover** in the same process. The token's
+  `ownerDomain` survives database closing and `IncrementalGraph` reconstruction.
+  The notification coverage rules in `incremental-graph-journal-sync.md` ensure
   that any change observable to the cursor is reported through repositioned
   canonical events.
 - A `PossibleNodeChange` cursor is **not portable** to another process or host
@@ -540,47 +581,15 @@ migration/schema boundaries, and the corresponding long-lived validity
 guarantees, are out of scope for this PR and deferred to a future
 computor/cursor-persistence specification.
 
-```js
-class PossibleNodeChangeClass {
-    /** @private @type {undefined} */ __brand;
-    constructor() { if (this.__brand !== undefined) throw new Error("PossibleNodeChange cannot be instantiated externally"); }
+REQ-JT-21: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`,
+and `time` as public read-only fields. Private journal fields (`id`, `key`,
+`creator`, `eventId`, `index`) are not part of the public nominal type. Callers
+MUST NOT depend on fields beyond those listed in the public `PossibleNodeChange`
+type.
 
-    /** @type {NodeName} */
-    nodeName;
-
-    /** @type {Array<ConstValue>} */
-    bindings;
-
-    /** @type {JournalAction} */
-    action;
-
-    /** @type {UnixTimestamp} */
-    time;
-}
-
-/**
- * A real journal-backed possible node change.
- * Returned by `graph.possibleMaybeChanges(...)`.
- *
- * The properties that this type carries are:
- * - The value is derived from a committed journal entry.
- * - `nodeName`, `bindings`, `action`, and `time` accurately describe the
- *   recorded change.
- * - The value may be passed as `since` to `graph.possibleMaybeChanges`.
- *
- * The proof of those properties is guaranteed by:
- * - This type can only be introduced through this operation:
- *   - `graph.possibleMaybeChanges(...)`: satisfies the property because it
- *     only returns PossibleNodeChange values derived from committed journal
- *     entries, and each returned value carries the public fields of that entry.
- *
- * @typedef {PossibleNodeChangeClass} PossibleNodeChange
- */
-```
-
-REQ-JT-21: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`, and `time` as public fields. Private journal fields (`id`, `key`, `creator`, `eventId`, `index`) are not part of the public nominal type. Callers MUST NOT depend on fields beyond those listed in the public `PossibleNodeChange` type.
-
-REQ-JT-22: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST have `nodeName` and `bindings` that correspond to a valid node key in the graph at the time the change was recorded.
+REQ-JT-22: A `PossibleNodeChange` returned by `graph.possibleMaybeChanges` MUST
+have `nodeName` and `bindings` that correspond to a valid node key in the graph
+at the time the change was recorded.
 
 ---
 
@@ -608,7 +617,7 @@ private cursor position using the module-private `WeakMap<PossibleNodeChange, Cu
 /**
  * Journal module only.
  *
- * @typedef {{ kind: 'baseline' } | { kind: 'journal', index: JournalIndex, ownerGraph: IncrementalGraph }} PrivateSincePosition
+ * @typedef {{ kind: 'baseline' } | { kind: 'journal', index: JournalIndex, ownerDomain: JournalCursorDomain }} PrivateSincePosition
  */
 ```
 
@@ -618,9 +627,10 @@ If `since` is `BaselinePossibleNodeChange`, this yields `{ kind: "baseline" }`
 If `since` is `PossibleNodeChange`, the module looks up the token in the
 private `WeakMap`:
 
-- If the token is unknown or forged, throw a single explicit error.
-- If the token belongs to a different graph instance, throw the same error.
-- Otherwise yield `{ kind: "journal", index, ownerGraph }`, scanning strictly
+- If the token is unknown or forged, throw a single explicit cursor error.
+- If the token's stored `ownerDomain` does not equal the receiving graph's
+  domain, throw the same error.
+- Otherwise yield `{ kind: "journal", index, ownerDomain }`, scanning strictly
   after that `index`.
 
 ---
@@ -664,10 +674,6 @@ The conversion directions are:
 └──────────────────────────────────────────────┘
 ```
 
-
-Journal modules maintain internal widening/casting functions that follow the same pattern as `unsafeStringToNodeIdentifier`. Public callers MUST NOT access or depend on the widened representation.
-
----
 
 ## Out of scope
 
