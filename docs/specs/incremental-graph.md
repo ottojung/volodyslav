@@ -426,10 +426,8 @@ Implementations MAY use any strategy to achieve property PROP-03 (e.g., memoizat
 
 **Effects:**
 1. Create `NodeKey` from `nodeName@bindings`
-2. If that node has a cached value, preserve the value and mark it
-   `potentially-outdated`; if it is missing, leave it missing
-3. Mark cached materialized transitive dependents as `potentially-outdated`;
-   skip missing dependents, which remain missing
+2. Mark that node instance as `potentially-outdated`
+3. Mark all materialized transitive dependents as `potentially-outdated`
 
 **Important:** `invalidate()` does NOT write a value. Values are provided by computors when nodes are pulled.
 
@@ -670,9 +668,8 @@ graph state across host branches is specified in a separate document:
 ### 4.2 Invariants
 
 **INV-01 (Outdated Downstream):** If node instance `N@B` is
-`potentially-outdated`, every cached transitive dependent of `N@B` that has
-been materialized is also `potentially-outdated`. A materialized dependent
-without a cached value remains `missing`.
+`potentially-outdated`, every materialized transitive dependent of `N@B` is
+also `potentially-outdated`.
 
 **INV-02 (Up-to-Date Upstream):** If node instance `N@B` is `up-to-date`, all transitive dependencies of `N@B` are also `up-to-date`.
 

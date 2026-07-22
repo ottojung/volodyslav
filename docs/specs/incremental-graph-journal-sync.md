@@ -167,7 +167,7 @@ Use:
 ```
 event.action = "invalidate"
 event.key   = K
-event.id    = finalIdentifierForKey(K)
+event.id    = final materialization identifier of K in FGraph
 ```
 
 #### Delete dominates invalidate
