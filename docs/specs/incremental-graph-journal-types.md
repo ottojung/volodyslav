@@ -456,85 +456,26 @@ REQ-JT-20: Gaps in the journal index sequence are allowed. They may be caused by
 
 ---
 
-## PrivatePossibleNodeChange (internal)
+## Private cursor state (internal)
 
-### Purpose
-
-The journal implementation internally needs a wider representation that pairs a `JournalEntry` with its storage `JournalIndex`. This internal type is NOT exported as public API. Only journal modules may construct, inspect, or cast through this type.
+The journal module owns private cursor state associating a public token with
+its internal journal index. This is NOT exposed through the public type.
 
 ```js
 /**
- * Private journal-module-only representation.
- * This is not exported as public API.
- *
- * Contains both:
- *   - public projection fields (nodeName, bindings, action, time)
- *     that are exposed through PossibleNodeChange,
- *   - private journal fields (id, key, creator, eventId, index) that
- *     are hidden from public callers.
- *
- * nodeName and bindings are derived from `key` when the entry
- * is constructed.  They remain on the runtime object so that
- * `privatePossibleNodeChangeToPossibleNodeChange` can perform a
- * nominal narrowing without constructing a new object.
- *
- * @typedef {object} PrivatePossibleNodeChange
- * @property {JournalAction} action
- * @property {NodeIdentifier} id
- * @property {NodeKey} key
- * @property {UnixTimestamp} time
- * @property {Hostname} creator
- * @property {JournalEventId} eventId
+ * @typedef {object} CursorState
+ * @property {IncrementalGraph} ownerGraph
  * @property {JournalIndex} index
- * @property {NodeName} nodeName
- * @property {Array<ConstValue>} bindings
  */
 ```
 
-`PrivatePossibleNodeChange` extends `JournalEntry` (including `eventId`) with the `index`, `nodeName`, and `bindings` fields. The `nodeName` and `bindings` are the public projection fields derived from `JournalEntry.key`; they are stored on the same runtime value so that `privatePossibleNodeChangeToPossibleNodeChange` is a non-lossy nominal narrowing — NOT a fresh projection or a field-subsetting operation.
+The state is stored in a module-private `WeakMap<PossibleNodeChange, CursorState>`.
+Equivalent module-private storage is acceptable.
 
-### Conversion functions (journal modules only)
-
-```js
-/**
- * Journal module only.
- * Narrowing cast from the private representation to the public nominal token.
- *
- * This is a nominal narrowing of the SAME runtime value. It MUST NOT
- * construct a new object, pick a subset of fields, or discard the
- * private fields (`id`, `key`, `creator`, `eventId`, `index`). The returned
- * `PossibleNodeChange` retains all private journal-module fields at
- * runtime even though the public type only exposes `nodeName`,
- * `bindings`, `action`, and `time`.
- *
- * @param {PrivatePossibleNodeChange} change
- * @returns {PossibleNodeChange}
- */
-function privatePossibleNodeChangeToPossibleNodeChange(change)
-
-/**
- * Journal module only.
- * Unsafe widening from public nominal token back to the private
- * representation. This is valid only because the value was originally
- * created from a `PrivatePossibleNodeChange` by the narrowing operation
- * above.
- *
- * This is allowed only inside the journal implementation.
- *
- * @param {PossibleNodeChange} change
- * @returns {PrivatePossibleNodeChange}
- */
-function possibleNodeChangeToPrivatePossibleNodeChangeUnsafe(change)
-```
-
-The important properties:
-
-- `PossibleNodeChange` is a nominal type, not a fresh structural object.
-- `privatePossibleNodeChangeToPossibleNodeChange` performs a nominal narrowing of the same runtime value. It MUST NOT discard the private fields required for later widening.
-- `possibleNodeChangeToPrivatePossibleNodeChangeUnsafe` reverses that narrowing. It is valid only because values returned by `graph.possibleMaybeChanges` were originally created from `PrivatePossibleNodeChange`.
-- Ordinary public callers MUST NOT inspect or depend on `JournalIndex`, `NodeIdentifier`, or `Hostname`. These fields exist at runtime but are inaccessible through the public type.
-
-The internal widening follows the same pattern as `unsafeStringToNodeIdentifier` in the database types: an unsafe cast that journal modules control at their module boundary. Public callers never see the widened representation.
+- A token is registered only when returned by `possibleMaybeChanges`.
+- `since` lookup verifies that the token is known.
+- Lookup verifies that it belongs to the receiving graph instance.
+- Unknown, forged, or foreign tokens are rejected by one explicit error.
 
 ---
 
@@ -542,13 +483,56 @@ The internal widening follows the same pattern as `unsafeStringToNodeIdentifier`
 
 ### Purpose
 
-`PossibleNodeChange` is the public unit of journal observation. It is returned by `graph.possibleMaybeChanges` and may be passed back as the `since` argument to a later call in the same process session. Every `PossibleNodeChange` is derived from a committed journal entry.
+`PossibleNodeChange` is the public unit of journal observation. It is an
+immutable public projection containing only:
 
-**This PR specifies only same-process, in-memory journal token usage.** A `PossibleNodeChange` returned during a process session is valid as `since` for subsequent calls within that same session. Specifically, within the same process:
+```
+nodeName
+bindings
+action
+time
+```
 
-- A `PossibleNodeChange` cursor remains valid across **physical compaction**. The token's private journal index persists even if its backing entry is physically deleted. A later query scans strictly after that index and tolerates absent entries (see REQ-JC-14 in `incremental-graph-journal-compaction.md`).
-- A `PossibleNodeChange` cursor remains valid across **structural synchronization and active-replica cutover** in the same process. The notification coverage rules (Stage 7a in `incremental-graph-journal-sync.md`) ensure that any change observable to the cursor is reported through repositioned canonical events.
-- A `PossibleNodeChange` cursor is **not portable** to another process or host without additional serialization mechanisms that are not specified by this PR.
+It is returned by `graph.possibleMaybeChanges` and may be passed back as the
+`since` argument to a later call in the same process session. Every
+`PossibleNodeChange` is derived from a committed journal entry.
+
+The public fields are accurate immutable historical data. The value is frozen
+or otherwise immutable: `bindings` and nested `ConstValue` data are an immutable
+snapshot so later caller mutation cannot falsify the historical fields.
+
+```js
+/**
+ * Public projection of a journal entry.
+ *
+ * The raw journal index is stored in a module-private WeakMap, not
+ * as an own property, enumerable property, or symbol property. It is
+ * not inspectable through the token.
+ *
+ * @typedef {object} PossibleNodeChange
+ * @property {NodeName} nodeName
+ * @property {Array<ConstValue>} bindings
+ * @property {JournalAction} action
+ * @property {UnixTimestamp} time
+ */
+```
+
+**This PR specifies only same-process, in-memory journal token usage.** A
+`PossibleNodeChange` returned during a process session is valid as `since` for
+subsequent calls within that same session. Specifically, within the same
+process:
+
+- A `PossibleNodeChange` cursor remains valid across **physical compaction**.
+  The private journal index persists even if its backing entry is physically
+  deleted. A later query scans strictly after that index and tolerates absent
+  entries (see `incremental-graph-journal-compaction.md`).
+- A `PossibleNodeChange` cursor remains valid across **structural
+  synchronization and active-replica cutover** in the same process. The
+  notification coverage rules in `incremental-graph-journal-sync.md` ensure
+  that any change observable to the cursor is reported through repositioned
+  canonical events.
+- A `PossibleNodeChange` cursor is **not portable** to another process or host
+  without additional serialization mechanisms that are not specified by this PR.
 
 Persistence of these tokens across process restarts, synchronization boundaries
 that involve heterogeneous hosts without the notification protocol, or
@@ -617,68 +601,69 @@ When passed as `since`, scanning starts from the first journal entry.
 
 ## Journal-internal since-position encoding
 
-Internally, the journal module converts the public `since` value into a private cursor position:
+Internally, the journal module converts the public `since` value into a
+private cursor position using the module-private `WeakMap<PossibleNodeChange, CursorState>`:
 
 ```js
 /**
  * Journal module only.
  *
- * @typedef {{ kind: 'baseline' } | { kind: 'journal', change: PrivatePossibleNodeChange }} PrivateSincePosition
+ * @typedef {{ kind: 'baseline' } | { kind: 'journal', index: JournalIndex, ownerGraph: IncrementalGraph }} PrivateSincePosition
  */
-
-/**
- * Journal module only.
- * @param {PossibleNodeChange | BaselinePossibleNodeChange} since
- * @returns {PrivateSincePosition}
- */
-function sinceToPrivateSincePosition(since)
 ```
 
-If `since` is `BaselinePossibleNodeChange`, this yields `{ kind: "baseline" }` — a position less than any real journal index.
+If `since` is `BaselinePossibleNodeChange`, this yields `{ kind: "baseline" }`
+— a position less than any real journal index.
 
-If `since` is `PossibleNodeChange`, this widens it to `PrivatePossibleNodeChange` and yields `{ kind: "journal", change: privateChange }`, scanning strictly after its `index`.
+If `since` is `PossibleNodeChange`, the module looks up the token in the
+private `WeakMap`:
+
+- If the token is unknown or forged, throw a single explicit error.
+- If the token belongs to a different graph instance, throw the same error.
+- Otherwise yield `{ kind: "journal", index, ownerGraph }`, scanning strictly
+  after that `index`.
 
 ---
 
 ## Nominal boundary summary
 
-Both `PossibleNodeChange` and `BaselinePossibleNodeChange` are nominal public journal tokens with different public semantics:
+Both `PossibleNodeChange` and `BaselinePossibleNodeChange` are nominal public
+journal tokens with different public semantics:
 
-- `PossibleNodeChange`: journal-backed change token with meaningful public fields (`nodeName`, `bindings`, `action`, `time`). Every `PossibleNodeChange` is derived from a committed journal entry via `privatePossibleNodeChangeToPossibleNodeChange`.
+- `PossibleNodeChange`: immutable public projection of a journal entry with
+  meaningful fields (`nodeName`, `bindings`, `action`, `time`). The raw journal
+  index is stored in a module-private `WeakMap`, not on the token itself.
+- `BaselinePossibleNodeChange`: a position less than any real journal index.
+  It is not derived from a journal entry. `baselinePossibleNodeChange()` may
+  return one immutable singleton. It carries no journal index and is valid for
+  every graph because it always means "before the first entry."
 
-- `BaselinePossibleNodeChange`: a position less than any real journal index. It is not derived from a journal entry.
+The conversion directions are:
 
-The journal implementation internally uses `PrivatePossibleNodeChange` (which includes the `JournalIndex`) and `PrivateSincePosition`. The conversion directions are:
-
-| Direction | Function | Permitted in |
-|-----------|----------|--------------|
-| Private → Public | `privatePossibleNodeChangeToPossibleNodeChange` | Journal modules only |
-| Public → Private | `possibleNodeChangeToPrivatePossibleNodeChangeUnsafe` | Journal modules only |
-| since → PrivateSincePosition | `sinceToPrivateSincePosition` | Journal modules only |
+| Direction | Mechanism | Permitted in |
+|-----------|-----------|--------------|
+| Register | `WeakMap.set(token, state)` when returning from `possibleMaybeChanges` | Journal modules only |
+| Lookup | `WeakMap.get(token)` during `since` resolution | Journal modules only |
 | Public | `graph.possibleMaybeChanges` returns | Public API |
 
 ```
 ┌──────────────────────────────────────────────┐
 │              Public API boundary             │
 │                                              │
- │  graph.possibleMaybeChanges({                │
- │      since,                                  │
- │      to,                                     │
- │  }): Promise<Array<PossibleNodeChange>>     │
+│  graph.possibleMaybeChanges({                │
+│      since,                                  │
+│      to,                                     │
+│  }): Promise<Array<PossibleNodeChange>>     │
 │                                              │
 │  baselinePossibleNodeChange():               │
 │      BaselinePossibleNodeChange              │
 │                                              │
- │  Public fields (PossibleNodeChange):         │
- │      nodeName, bindings, action, time        │
- │  Not part of public API contract:            │
- │      id, key, creator, eventId, index        │
+│  PossibleNodeChange fields:                  │
+│      nodeName, bindings, action, time        │
+│      (immutable, no inspectable index)       │
 └──────────────────────────────────────────────┘
 ```
 
-`privatePossibleNodeChangeToPossibleNodeChange` is a nominal narrowing of the same runtime value. It MUST NOT discard the private fields (`id`, `key`, `creator`, `eventId`, `index`) required for later journal-module widening. The runtime value retains both the public projection fields (`nodeName`, `bindings`, `action`, `time`) and the private journal-module fields.
-
-`possibleNodeChangeToPrivatePossibleNodeChangeUnsafe` reverses this narrowing. It is valid only because values returned by `graph.possibleMaybeChanges` were originally created from `PrivatePossibleNodeChange` via the narrowing operation above.
 
 Journal modules maintain internal widening/casting functions that follow the same pattern as `unsafeStringToNodeIdentifier`. Public callers MUST NOT access or depend on the widened representation.
 

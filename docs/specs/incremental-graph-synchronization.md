@@ -49,11 +49,66 @@ synchronization.
 
 Graph synchronization is fully specified by this document and does not inspect
 or depend on journal state. It produces the final merged graph and an abstract
-notification delta consumed by journal reconciliation.
+notification delta (GraphDelta) consumed by journal reconciliation.
 
-Journal reconciliation runs downstream from the completed graph merge. It may
-record or notify graph transitions, but it cannot alter graph planning or final
-graph state.
+### GraphDelta
+
+Define the public observable state of a semantic key `K`:
+
+```
+observableState(Graph, K) =
+    unmaterialized
+
+    or
+
+    {
+        materialized: true,
+        value: cached ComputedValue,
+        freshness: "up-to-date" | "potentially-outdated",
+    }
+```
+
+Define equality:
+
+```
+equalObservableState(A, B) iff:
+- both are unmaterialized; or
+- both are materialized,
+  isEqual(A.value, B.value),
+  and A.freshness === B.freshness.
+```
+
+Internal details are excluded from observable state:
+
+- `NodeIdentifier`
+- `modifiedAt`
+- allocation metadata
+- validity proofs
+- dependency metadata
+- replica slot
+- physical storage representation
+
+Then define:
+
+```
+GraphDelta = { K | !equalObservableState(
+    observableState(LGraph, K),
+    observableState(FGraph, K)
+) }
+```
+
+Graph synchronization must produce this exact set. Consequences:
+
+- unmaterialized → materialized: included
+- materialized → unmaterialized: included
+- semantic value change: included
+- freshness change: included
+- identifier-only replacement with equal value and equal freshness: excluded
+- metadata-only or validity-only change: excluded
+- no observable change: excluded
+
+Journal reconciliation receives GraphDelta and must not inspect or compare
+`ComputedValue`s itself.
 
 ---
 

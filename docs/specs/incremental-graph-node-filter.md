@@ -25,10 +25,11 @@ A `NodeFilter` is one of the following concrete variants.
 
 ```js
 /**
- * When used as a top-level NodeFilter, matches every node key.
- * When used inside GroundFilter.args, matches one top-level argument value.
+ * Nominal opaque wildcard value. Lies outside the ConstValue domain.
+ * A concrete binding such as { variant: "wildcard" } is an ordinary
+ * ConstValue and can be matched exactly; it is not treated as an
+ * operator.
  * @typedef {object} Wildcard
- * @property {'wildcard'} variant
  */
 ```
 
@@ -37,6 +38,11 @@ A `Wildcard` has two distinct meanings depending on context:
 - **As a top-level `NodeFilter`:** `Wildcard` matches every node key. Passing `makeWildcard()` directly as the `to` parameter of `graph.possibleMaybeChanges` returns possible changes for all nodes.
 
 - **Inside `GroundFilter.args`:** A `Wildcard` at a particular argument position matches any single `ConstValue` at that position. It does not match arbitrary-length or zero-length sequences. It does not match nested structure.
+
+All wildcard values are the same value: `makeWildcard()` returns the shared
+opaque wildcard singleton. Because the wildcard is outside the `ConstValue`
+domain, a `ConstValue` record such as `{ variant: "wildcard" }` is an ordinary
+binding that can be matched exactly by a concrete `GroundFilter` argument.
 
 ### GroundFilter
 
@@ -83,7 +89,10 @@ A `UnionFilter` matches a node key if it is matched by `left` or by `right`.
 function makeWildcard()
 ```
 
-Returns a fresh `Wildcard`.
+Returns the shared opaque wildcard singleton. Every call returns the same
+value. The singleton is outside the `ConstValue` domain: a `ConstValue`
+record such as `{ variant: "wildcard" }` is an ordinary concrete binding,
+not an operator.
 
 ### makeGroundFilter
 
@@ -121,10 +130,10 @@ Returns a `UnionFilter` combining `left` and `right`.
 
 A `NodeFilter` `F` matches a node key `K = (nodeName, bindings)` if and only if:
 
-- `F` is a `Wildcard` — matches every node key unconditionally. This covers the case where `Wildcard` is used as a top-level filter.
+- `F` is a `Wildcard` — matches every node key unconditionally. The `Wildcard` is identified by `isWildcard()` on the opaque singleton, not by structural duck-typing. This covers the case where `Wildcard` is used as a top-level filter.
 - `F` is a `GroundFilter` — `F.head` equals `nodeName` AND `bindings.length` equals `F.args.length` AND for every position `i`, `F.args[i]` matches `bindings[i]`:
-  - If `F.args[i]` is a `ConstValue`: `isEqual(F.args[i], bindings[i])` returns `true`.
-  - If `F.args[i]` is a `Wildcard`: always matches. This covers the case where `Wildcard` is used inside `GroundFilter.args`.
+  - If `F.args[i]` is a `ConstValue` (determined by `!isWildcard(F.args[i])`): `isEqual(F.args[i], bindings[i])` returns `true`.
+  - If `isWildcard(F.args[i])` returns `true`: always matches. This covers the case where `Wildcard` is used inside `GroundFilter.args`.
 - `F` is a `UnionFilter` — `F.left` matches `K` OR `F.right` matches `K`.
 
 REQ-NF-02: A `GroundFilter` with `args = []` matches only arity-0 nodes with the given head.
@@ -137,7 +146,14 @@ REQ-NF-04: A `GroundFilter` MUST NOT match a node key whose arity differs from `
 
 ## Type guards
 
-REQ-NF-05: Implementations MUST expose type guards for use at serialization, deserialization, and storage boundaries where untyped `unknown` data is converted into the nominal `NodeFilter` type. At internal call sites where the type is already known, runtime re-verification is not required.
+REQ-NF-05: Implementations MUST expose type guards for use at serialization,
+deserialization, and storage boundaries where untyped `unknown` data is
+converted into the nominal `NodeFilter` type. At internal call sites where the
+type is already known, runtime re-verification is not required.
+
+`isWildcard` recognizes the opaque wildcard singleton through nominal branding
+or module-owned identity checks. It MUST NOT match by structural duck-typing
+(e.g., `{ variant: "wildcard" }`).
 
 ```js
 /**
@@ -177,7 +193,7 @@ function isUnionFilter(value)
 
 REQ-NF-06: Two `NodeFilter` values are **structurally equal** (as used by the implementation for identity, deduplication, and comparison) if and only if they satisfy the following structural equality rules:
 
-1. All `Wildcard` values are equal to each other. Two freshly constructed `Wildcard` values are always equal.
+1. All `Wildcard` values are equal to each other. Because `makeWildcard()` returns a singleton, this holds by identity.
 2. Two `GroundFilter` values are equal if their `head` values are equal (same `NodeName`) AND their `args` arrays are position-wise equal, where each argument pair is compared as follows:
    - `Wildcard` equals `Wildcard`.
    - `ConstValue` equals `ConstValue` when `isEqual` returns `true`.
@@ -208,3 +224,19 @@ The following are explicitly out of scope for the initial specification:
 - Filter serialization / deserialization.
 
 If future versions need these, they should be added as new filter variant types rather than changing the behavior of existing variants.
+
+---
+
+## Testable scenarios
+
+### S1 — Exact constant record not treated as wildcard
+
+A node key has binding `{ variant: "wildcard" }` at position 0.
+
+A `GroundFilter` with concrete argument `{ variant: "wildcard" }` at position 0
+matches the node key because the record is an ordinary `ConstValue` compared
+by `isEqual`. A `GroundFilter` with `Wildcard` at position 0 also matches.
+
+The record `{ variant: "wildcard" }` is never treated as an operator. Only
+the nominal wildcard singleton obtained from `makeWildcard()` matches as a
+wildcard.
