@@ -208,7 +208,9 @@ async function buildTransportedValidityPlan({
                 nodeKey: depKey,
                 selectedSideByKey,
                 finalIdentifierForKey: finalIdForKey,
-                        })) continue;
+            })) {
+                continue;
+            }
 
             for (const sourceDependentId of sourceDependents) {
                 const dependentIdStr = nodeIdentifierToString(sourceDependentId);
@@ -222,7 +224,9 @@ async function buildTransportedValidityPlan({
                     nodeKey: dependentKey,
                     selectedSideByKey,
                     finalIdentifierForKey: finalIdForKey,
-                                })) continue;
+                })) {
+                    continue;
+                }
                 const finalInputs = mergedInputsMap.get(finalDependentId) ?? [];
                 if (!containsIdentifier(finalInputs, finalDepId)) continue;
 
@@ -299,7 +303,7 @@ async function rebuildMergedValidity({
         finalIdentifierForKey: finalIdForKey,
         mergedInputsMap,
         selectedSideByKey,
-        });
+    });
 
     /** @type {Map<string, Freshness>} */
     const finalFreshness = new Map();
