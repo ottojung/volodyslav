@@ -178,9 +178,9 @@ REQ-JC-13: `graph.possibleMaybeChanges` NEVER reconstructs deleted entries.
 
 ### Cursor semantics after compaction
 
-REQ-JC-14: When the `since` argument is a `PossibleNodeChange`, the journal module widens it to `PrivatePossibleNodeChange` and scans indices strictly greater than the widened private change's `index`. Missing entries are skipped. Deleted entries are not reconstructed. The query continues from the private index embedded in the `since` value, tolerating absent entries.
+REQ-JC-14: When the `since` argument is a `PossibleNodeChange`, the journal module looks up the token in its private `WeakMap<PossibleNodeChange, CursorState>` and scans indices strictly greater than the stored `index`. Missing entries are skipped. Deleted entries are not reconstructed. The query continues from the private index, tolerating absent entries.
 
-A `PossibleNodeChange` cursor may refer to an entry that is later physically deleted by compaction. That is valid because the runtime token retains its private journal index and the next query scans strictly after that index. It does not need the old payload to remain in storage.
+A `PossibleNodeChange` cursor may refer to an entry that is later physically deleted by compaction. That is valid because the private `WeakMap` retains its journal index and the next query scans strictly after that index. It does not need the old payload to remain in storage.
 
 Example:
 

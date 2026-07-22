@@ -177,10 +177,40 @@ event.id    = final materialization identifier of K in FGraph
 When LGraph(K) is materialized and FGraph(K) is unmaterialized, emit only
 `delete`. Do not emit `invalidate` before deletion.
 
+#### FreshPlacementSet
+
+Synchronization maintains a conceptual `FreshPlacementSet` of events awaiting
+index allocation. Each member has a stable identity:
+
+```
+existing event:    ("existing", eventId)
+generated draft:   ("generated", action, NodeKeyString)
+```
+
+Because synchronization creates at most one generated action per semantic key
+after delete-dominates-invalidate resolution, the generated identity is unique.
+
+Define one operation:
+
+```
+enqueueFresh(event)
+```
+
+which is idempotent by the identities above. Calling `enqueueFresh` twice with
+the same event has the same effect as calling it once.
+
+All placement requests from:
+
+- generated-event creation (below);
+- loss of every surviving canonical occurrence (step 8);
+- notification-bound enforcement (step 9);
+
+must call this same operation.
+
 #### Generated event assignment
 
-Every generated event begins unpositioned. It is always queued for fresh
-placement above `P = max(localH, remoteH)`.
+Every generated event begins unpositioned. It is enqueued via
+`enqueueFresh(event)` for placement above `P = max(localH, remoteH)`.
 
 Assign:
 
@@ -304,31 +334,34 @@ the same `eventId` survives at several physical positions:
 - make all lower occurrences absent;
 - do not create another fresh copy.
 
-If exactly one occurrence survives, retain it. If none survives, queue that
-event for fresh placement.
+If exactly one occurrence survives, retain it. If none survives, enqueue it via
+`enqueueFresh(event)`.
 
 ### 9. Enforce notification bounds
 
 For each `K` in GraphDelta, let `carrier` be the notification carrier selected
 in step 6.
 
-- If `carrier` is a generated `delete` or `invalidate`, it was queued for fresh
-  placement in step 5. It will be allocated above `P` in step 10, satisfying the
-  `localH` bound.
+- If `carrier` is a generated `delete` or `invalidate`, it was already enqueued
+  by generated-event assignment. It will be allocated above `P` in step 10.
 - Otherwise `carrier` is an existing event. If its greatest surviving position
   (after steps 7-8) is strictly greater than `localH`, keep it. Otherwise remove
-  its old occurrences and queue it for fresh placement above `P`.
+  its old occurrences and `enqueueFresh(carrier)`.
 
 ### 10. Fresh placement
 
-Every event queued for fresh placement during steps 5, 8, and 9 is allocated
+Step 10 allocates exactly one physical occurrence for each member of
+`FreshPlacementSet`. Every event enqueued during steps 5, 8, and 9 is allocated
 contiguously at:
 
 ```
 P + 1 .. P + n
 ```
 
-The final watermark is `P + n`.
+The final watermark is `P + n`. After allocation, every final canonical logical
+event has exactly one physical occurrence; no event is allocated twice merely
+because several rules requested placement. The resulting physical journal equals
+its own `logicalJournalView`.
 
 Fresh entries are ordered by:
 
@@ -346,7 +379,7 @@ After allocating `n` queued events, set `last_journal_index = P + n`.
 
 When an entry is removed by same-index poisoning or present-versus-absence
 conflict, if that entry is final canonical and has no other surviving position,
-queue it for fresh placement. Otherwise do not queue it.
+call `enqueueFresh(event)`. Otherwise do not queue it.
 
 ---
 
@@ -552,6 +585,21 @@ Remote positions 5 and 6 contain canonical events. They remain at positions
 After compaction removes obsolete entries, synchronization produces the same
 canonical events and same notification behavior, because `logicalJournalView`
 only contains required entries. Graph synchronization is unaffected.
+
+### T15 — Idempotent fresh placement
+
+A canonical source event E is present at position 3 in both sources. The same
+event E is also the notification carrier for a GraphDelta key K. LocalH = 2.
+
+Step 7 (prefix merge): position 3 is canonical in both, preserved at i=3.
+Step 8 (normalize): E survives at position 3.
+Step 9 (enforce bounds): position 3 > localH (3 > 2), so E is sufficient. No
+`enqueueFresh(E)` call.
+
+Scenario: position 3 is poisoned (different event in each source). Step 7
+removes E from position 3. Step 8: no surviving occurrence — enqueueFresh(E).
+Step 9: E is the carrier, no surviving position — enqueueFresh(E) (idempotent,
+no duplicate). Step 10: one copy of E allocated above P.
 
 ---
 
