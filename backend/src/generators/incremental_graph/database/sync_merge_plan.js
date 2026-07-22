@@ -4,6 +4,8 @@ const { IdentifierLookupConflictError } = require('./replica_errors');
 
 const { GRAPH_SCHEME_KEY, parseGraphScheme, semanticInputKeys } = require('./graph_scheme');
 const { normalizeInputEdges } = require('./input_edges');
+const { compareIsoTimestamps } = require('./sync_merge_timestamps');
+const { compareNodeIdentifier } = require('./node_identifier');
 const { sourceRepresentsFinalVersion } = require('./sync_merge_version_identity');
 const { compareMaterializationCandidates, makeMaterializationCandidate } = require('./sync_merge_candidates');
 
@@ -94,12 +96,14 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
  * - `finalIdentifierLookup`: bijective final lookup
  * - `mergedInputsMap`: final lowered input edges
  * - `hasIdentifierReconciliation`: whether identifiers changed
- * - `equalVersions`: set of keys with equal canonical version identity across sides
+ * - `sameTimestampAndIdentifierKeys`: set of keys with matching timestamp and identifier across sides
  *
  * @param {SchemaStorage} T
  * @param {SchemaStorage} H
  * @param {IdentifierLookup} targetLookup
  * @param {IdentifierLookup} hostLookup
+ * @param {string} targetSourceFingerprint
+ * @param {string} hostSourceFingerprint
  * @returns {Promise<{
  *   selectedSideByKey: Map<NodeKeyString, 'keep' | 'take'>,
  *   outcomeByKey: Map<NodeKeyString, 'keep' | 'take' | 'invalidate' | 'delete'>,
@@ -107,10 +111,10 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
  *   hasIdentifierReconciliation: boolean,
- *   equalVersions: Set<NodeKeyString>
+ *   sameTimestampAndIdentifierKeys: Set<NodeKeyString>
  * }>} 
  */
-async function buildMergePlan(T, H, targetLookup, hostLookup) {
+async function buildMergePlan(T, H, targetLookup, hostLookup, targetSourceFingerprint, hostSourceFingerprint) {
     const targetScheme = parseGraphScheme(await T.global.get(GRAPH_SCHEME_KEY));
     const hostScheme = parseGraphScheme(await H.global.get(GRAPH_SCHEME_KEY));
 
@@ -127,7 +131,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
     ])).sort();
 
     /** @type {Set<NodeKeyString>} */
-    const equalVersions = new Set();
+    const sameTimestampAndIdentifierKeys = new Set();
     for (const nodeKey of allNodeKeys) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
@@ -143,9 +147,11 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         const hostTimestamps = await H.timestamps.get(hostId);
         if (targetTimestamps === undefined) throw new IdentifierLookupConflictError(`Target materialized node ${String(targetId)} has no timestamps entry`);
         if (hostTimestamps === undefined) throw new IdentifierLookupConflictError(`Host materialized node ${String(hostId)} has no timestamps entry`);
+        const sameTimestampAndIdentifier = compareIsoTimestamps(targetTimestamps.modifiedAt, hostTimestamps.modifiedAt) === 0
+            && compareNodeIdentifier(targetId, hostId) === 0;
         const cmp = compareMaterializationCandidates(
-            makeMaterializationCandidate(targetId, targetTimestamps.modifiedAt),
-            makeMaterializationCandidate(hostId, hostTimestamps.modifiedAt)
+            makeMaterializationCandidate(targetId, targetTimestamps.modifiedAt, targetSourceFingerprint),
+            makeMaterializationCandidate(hostId, hostTimestamps.modifiedAt, hostSourceFingerprint)
         );
         if (cmp >= 0) {
             selectedSideByKey.set(nodeKey, 'keep');
@@ -154,7 +160,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
             selectedSideByKey.set(nodeKey, 'take');
             forceTakeRoots.add(nodeKey);
         }
-        if (cmp === 0) equalVersions.add(nodeKey);
+        if (sameTimestampAndIdentifier) sameTimestampAndIdentifierKeys.add(nodeKey);
     }
 
     /** @type {Map<NodeKeyString, NodeKeyString[]>} */
@@ -216,16 +222,16 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
                 directInvalidationCandidateKeys.add(nodeKey);
                 break;
             }
-            if (!sourceRepresentsFinalVersion({ side: selectedSide, sourceId, nodeKey: inputKey, selectedSideByKey, finalIdentifierForKey: provisionalIdentifierForKey, equalVersionKeys: equalVersions })) {
+            if (!sourceRepresentsFinalVersion({ side: selectedSide, sourceId, nodeKey: inputKey, selectedSideByKey, finalIdentifierForKey: provisionalIdentifierForKey })) {
                 directInvalidationCandidateKeys.add(nodeKey);
                 break;
             }
         }
     }
 
-    // Exact same-version replicas use conservative freshness: any stale source
-    // prevents the final node from remaining up-to-date.
-    for (const nodeKey of equalVersions) {
+    // Matching materialization coordinates use conservative freshness: any
+    // stale source prevents the final selected record from remaining up-to-date.
+    for (const nodeKey of sameTimestampAndIdentifierKeys) {
         const targetId = targetLookup.keyToId.get(String(nodeKey));
         const hostId = hostLookup.keyToId.get(String(nodeKey));
         if (targetId === undefined || hostId === undefined) continue;
@@ -285,7 +291,7 @@ async function buildMergePlan(T, H, targetLookup, hostLookup) {
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
-        equalVersions,
+        sameTimestampAndIdentifierKeys,
     };
 }
 

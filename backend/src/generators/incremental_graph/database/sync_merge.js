@@ -15,31 +15,35 @@
  * 2. Copy `L` into `T` (the inactive replica).
  * 3. Parse target/host identifier lookups and reject identifiers that map to
  *    different semantic keys.
- * 4. Select a candidate source side (keep or take) for each semantic node key
- *    using UTC modifiedAt. Exact timestamp ties select local.
- * 5. Propagate taint forward from timestamp winners along the selected
+ * 4. Validate that the two source replicas have distinct allocation
+ *    fingerprints.
+ * 5. Select a candidate source side (keep or take) for each semantic node key
+ *    using the canonical `(modifiedAt, NodeIdentifier, sourceFingerprint)`
+ *    tuple. There is no local tie preference; source fingerprint is the final
+ *    tie-breaker.
+ * 6. Propagate taint forward from strict tuple winners along the selected
  *    dependency graph. Taint records ancestry; it does not override source
  *    selection.
- * 6. Detect direct invalidation candidates: nodes with opposite-side ancestry,
- *    direct relowering through source-version identity mismatch, or stale
- *    equal-version metadata (FIXME(#1521) approximation).
- * 7. Classify each candidate by distinct semantic input count:
+ * 7. Detect direct invalidation candidates: nodes with opposite-side ancestry,
+ *    direct relowering through strict selected-source provenance, or stale
+ *    matching-coordinate freshness metadata.
+ * 8. Classify each candidate by distinct semantic input count:
  *    - 0 or 1 distinct input: hard invalidate (retain cached value as
  *      oldValue, mark stale, remove incoming proofs).
  *    - 2+ distinct inputs: delete (oldValue will be undefined, Unchanged not
  *      legal).
- * 8. Expand deletion roots through transitive materialized dependents.
- * 9. Apply final outcomes to T: copy/keep values, freshness, and timestamps
+ * 9. Expand deletion roots through transitive materialized dependents.
+ * 10. Apply final outcomes to T: copy/keep values, freshness, and timestamps
  *    from the appropriate source; mark hard-invalidated nodes stale; remove
  *    deleted records.
- * 10. Rebuild validity and propagated freshness: transport validity proofs
- *     through source-version identity and final structural edges; mark direct
+ * 11. Rebuild validity and propagated freshness: transport validity proofs
+ *     through selected-source provenance and final structural edges; mark direct
  *     invalidation roots stale; propagate staleness forward preserving valid
  *     proofs; throw UnplannedMissingValidityProofError if planning and proof
  *     transport disagree.
- * 11. Validate the final state: every up-to-date node must have up-to-date
+ * 12. Validate the final state: every up-to-date node must have up-to-date
  *     inputs and complete incoming proofs.
- * 12. Switch the active replica pointer when graph data or identifier
+ * 13. Switch the active replica pointer when graph data or identifier
  *     reconciliation changed.
  *
  * Error handling policy:
@@ -62,6 +66,7 @@ const {
 } = require('./identifier_lookup');
 const { GRAPH_SCHEME_KEY } = require('./graph_scheme');
 const { LAST_NODE_INDEX_KEY } = require('./root_database');
+const { requireValidFingerprint } = require('./fingerprint');
 const { buildMergePlan } = require('./sync_merge_plan');
 const {
     assertValidFinalMergeState,
@@ -116,6 +121,33 @@ class HostVersionMismatchError extends Error {
  */
 function isHostVersionMismatchError(object) {
     return object instanceof HostVersionMismatchError;
+}
+
+
+/**
+ * Thrown when a staged host snapshot has the same validated source fingerprint
+ * as the local source replica. Normal cross-host synchronization requires
+ * distinct allocation namespaces.
+ */
+class SameSourceFingerprintSyncMergeError extends Error {
+    /**
+     * @param {string} hostname
+     * @param {string} fingerprint
+     */
+    constructor(hostname, fingerprint) {
+        super(`Cannot merge host '${hostname}': source replicas share fingerprint ${fingerprint}`);
+        this.name = 'SameSourceFingerprintSyncMergeError';
+        this.hostname = hostname;
+        this.fingerprint = fingerprint;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is SameSourceFingerprintSyncMergeError}
+ */
+function isSameSourceFingerprintSyncMergeError(object) {
+    return object instanceof SameSourceFingerprintSyncMergeError;
 }
 
 /**
@@ -194,6 +226,30 @@ async function loadTargetLookup(targetStorage) {
     return targetRawLookup === undefined && targetVersion === undefined
         ? makeEmptyIdentifierLookup()
         : parseIdentifierLookup(targetRawLookup, 'merge target replica');
+}
+
+
+/**
+ * Read and validate a source replica fingerprint for merge planning.
+ * @param {SchemaStorage} storage
+ * @param {string} context
+ * @returns {Promise<string>}
+ */
+async function loadSourceFingerprint(storage, context) {
+    return requireValidFingerprint(await storage.global.get('fingerprint'), context);
+}
+
+/**
+ * Validate that the two merge source replicas have distinct fingerprints.
+ * @param {string} hostname
+ * @param {string} targetSourceFingerprint
+ * @param {string} hostSourceFingerprint
+ * @returns {void}
+ */
+function assertDistinctSourceFingerprints(hostname, targetSourceFingerprint, hostSourceFingerprint) {
+    if (targetSourceFingerprint === hostSourceFingerprint) {
+        throw new SameSourceFingerprintSyncMergeError(hostname, targetSourceFingerprint);
+    }
 }
 
 /**
@@ -286,6 +342,10 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
     assertNoIdentifierCollisions(targetLookup, hostLookup);
     await assertValidReplicaMaterializationState(targetStorage, targetLookup, 'local synchronization source');
 
+    const targetSourceFingerprint = await loadSourceFingerprint(targetStorage, 'local synchronization source fingerprint');
+    const hostSourceFingerprint = await loadSourceFingerprint(hostStorage, 'staged host source fingerprint');
+    assertDistinctSourceFingerprints(hostname, targetSourceFingerprint, hostSourceFingerprint);
+
     const targetSchemeRaw = await targetStorage.global.get(GRAPH_SCHEME_KEY);
     const hostSchemeRaw = await hostStorage.global.get(GRAPH_SCHEME_KEY);
 
@@ -310,12 +370,13 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
-        equalVersions,
     } = await buildMergePlan(
         targetStorage,
         hostStorage,
         targetLookup,
-        hostLookup
+        hostLookup,
+        targetSourceFingerprint,
+        hostSourceFingerprint
     );
 
     await applyNodeOutcomes(
@@ -352,7 +413,6 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
         mergedInputsMap,
         directInvalidationRoots,
         selectedSideByKey,
-        equalVersionKeys: equalVersions,
     });
     const hasChanges = hasSemanticChanges || graphStateChanged;
     await assertValidFinalMergeState(targetStorage, finalIdentifierLookup);
@@ -392,5 +452,7 @@ module.exports = {
     isFinalMergeStateError,
     SyncMergeAggregateError,
     isSyncMergeAggregateError,
+    SameSourceFingerprintSyncMergeError,
+    isSameSourceFingerprintSyncMergeError,
     isTopologicalSortCycleError,
 };

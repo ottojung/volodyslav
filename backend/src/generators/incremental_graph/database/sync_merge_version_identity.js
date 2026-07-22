@@ -3,9 +3,8 @@
  *
  * This module provides the canonical operation that answers whether a
  * source-side materialization represents the final selected semantic value
- * version for a given semantic node key. Complete version identity is the pair
- * `(modifiedAt, NodeIdentifier)`, represented here by selected-source identity
- * or exact-version equality precomputed by merge planning.
+ * record for a given semantic node key. Only the selected source contributes
+ * value provenance, dependency history, and validity proofs.
  */
 
 const { nodeIdentifierToString } = require('./types');
@@ -15,29 +14,20 @@ const { nodeIdentifierToString } = require('./types');
 
 /**
  * Check whether a source-side materialization represents the final selected
- * semantic value version for a given semantic key.
- *
- * True when:
- * 1. The source side is the actual selected source side and the source
- *    identifier is the actual selected source identifier; or
- * 2. Both replicas contain that semantic key with exact version identity:
- *    matching `modifiedAt` and matching canonical `NodeIdentifier`.
+ * semantic value record for a given semantic key.
  *
  * @param {object} options
- * @param {'keep' | 'take'} options.side - The source side being queried
- *   ('keep' for local/target, 'take' for host).
+ * @param {'keep' | 'take'} options.side - The source side being queried.
  * @param {NodeIdentifier} options.sourceId - The source-side identifier.
  * @param {NodeKeyString} options.nodeKey - The semantic key.
  * @param {Map<NodeKeyString, 'keep' | 'take'>} options.selectedSideByKey
  * @param {Map<NodeKeyString, NodeIdentifier>} options.finalIdentifierForKey
- * @param {Set<NodeKeyString>} options.equalVersionKeys
  * @returns {boolean}
  */
-function sourceRepresentsFinalVersion({ side, sourceId, nodeKey, selectedSideByKey, finalIdentifierForKey, equalVersionKeys = new Set() }) {
+function sourceRepresentsFinalVersion({ side, sourceId, nodeKey, selectedSideByKey, finalIdentifierForKey }) {
     const finalId = finalIdentifierForKey.get(nodeKey);
-    if (finalId !== undefined && side === selectedSideByKey.get(nodeKey) && nodeIdentifierToString(sourceId) === nodeIdentifierToString(finalId)) return true;
     return finalId !== undefined
-        && equalVersionKeys.has(nodeKey)
+        && side === selectedSideByKey.get(nodeKey)
         && nodeIdentifierToString(sourceId) === nodeIdentifierToString(finalId);
 }
 
