@@ -45,12 +45,15 @@ synchronization.
 
 ---
 
-## 1a. Relationship to Journal Synchronization
+## 1a. Relationship to Journal Reconciliation
 
 Graph synchronization is fully specified by this document and does not inspect
-or depend on journal state. Journal reconciliation runs downstream from the
-completed graph merge. It may record or notify graph transitions, but it cannot
-alter graph planning or final graph state.
+or depend on journal state. It produces the final merged graph and an abstract
+notification delta consumed by journal reconciliation.
+
+Journal reconciliation runs downstream from the completed graph merge. It may
+record or notify graph transitions, but it cannot alter graph planning or final
+graph state.
 
 ---
 
@@ -113,17 +116,10 @@ identifier matches the final selected identifier.
 
 This is the canonical `sourceRepresentsFinalVersion()` operation. It
 determines whether source-side dependency histories and validity proofs apply
-<<<<<<< HEAD
 to the final selected semantic record. Equal timestamps and equal identifiers do
 not prove equal values because a recomputation preserves the identifier and
 `modifiedAt` has finite resolution. ComputedValue equality, hashing, or
 serialization must not be used as identity evidence.
-=======
-to the final selected semantic version. Equal timestamps can collide between
-independent recomputations; this approximation is a known limitation of the
-timestamp-based approach. ComputedValue equality, hashing, or serialization
-must not be used as identity evidence.
->>>>>>> 326cb5a6 (Remove residual missing-node semantics)
 
 **REQ-SYNC-01 (Value origin from copy, not equality):** Deep equality of
 stored values MUST NOT create a value origin.
@@ -259,28 +255,7 @@ closure guarantees this.
 
 ## 6. Timestamp Conflict Policy
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 **REQ-SYNC-07 (Canonical materialization selection):** For each semantic key:
-=======
-<<<<<<< HEAD
-For journal-aware synchronization, the canonical state event selects the
-candidate identifier and value provenance. The graph synchronization rules in
-this document (value provenance, dependency relowering, conservative value
-removal, validity proof transport, final freshness eligibility, and final-state
-validation) remain authoritative for graph-level correctness. The journal
-synchronization specification (`docs/specs/incremental-graph-journal-sync.md`)
-specifies the exact algorithm for canonical state selection, canonical
-freshness-history selection, event identity integrity, physical journal
-positions, and notification positioning.
-
-**REQ-SYNC-07 (Journal-based canonical state selection):** For each semantic
-key, the canonical state event is selected by:
-=======
-=======
->>>>>>> 1dd19be7 (Resolve merge conflicts in spec files in favor of master graph semantics)
-**REQ-SYNC-07 (Timestamp-based source selection):** For each semantic key:
->>>>>>> 39561ca5 (add docs again)
 
 - If present only in L: select that materialization.
 - If present only in H: select that materialization.
@@ -306,8 +281,6 @@ candidate stored values. They do not by themselves prove that a value is
 correct with respect to final merged inputs. Timestamp order is not a semantic
 proof of freshness.
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 **REQ-SYNC-08d (Selected record timestamp copy):** Candidate selection chooses
 one complete stored materialization record. The final value, `createdAt`, and
 `modifiedAt` are copied from that selected record. Synchronization never
@@ -315,20 +288,10 @@ combines the value from one source with timestamps from another source, never
 uses merge execution time as a materialization timestamp, and never computes a
 minimum or maximum `createdAt` across sources.
 
-=======
->>>>>>> 1dd19be7 (Resolve merge conflicts in spec files in favor of master graph semantics)
 **REQ-SYNC-08a (modifiedAt is a value version, not a merge timestamp):**
 `modifiedAt` records the time at which a node's stored semantic value last
 changed as a result of a computor producing a changed value. Merge decisions
 and metadata transformations produce no new semantic versions.
-<<<<<<< HEAD
-=======
-The canonical state event selects the identifier/value provenance. It does not
-override a graph-synchronization requirement to delete the candidate cached
-value, make the node missing, or downgrade it to potentially-outdated.
->>>>>>> 39561ca5 (add docs again)
-=======
->>>>>>> 1dd19be7 (Resolve merge conflicts in spec files in favor of master graph semantics)
 
 - Taking a value copies its exact existing `modifiedAt` from the host side.
 - Keeping a value preserves its exact existing `modifiedAt`.
@@ -346,8 +309,6 @@ value, make the node missing, or downgrade it to potentially-outdated.
 persistent `mergedAt` field. Sync timing is available through logs and Git
 commits.
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 **REQ-SYNC-08c (Same-coordinate stale freshness):** When both replicas have
 identical `modifiedAt` and identical `NodeIdentifier` for a semantic key, the
 records share a materialization coordinate but not necessarily a value. The
@@ -365,46 +326,17 @@ merge MUST be conservative for freshness only:
   `modifiedAt`, the value selection based on timestamps is authoritative
   and the stale metadata from the older version does not affect the
   newer version's freshness.
-=======
-**REQ-SYNC-08 (State selection is not freshness):** The canonical state event
-selects a candidate stored value and identifier. It does not by itself determine
-final freshness. Freshness is governed by §8 (Freshness Merge Policy) and the
-canonical freshness-history selection in the journal sync spec.
-
-**REQ-SYNC-08a (modifiedAt preservation):** `modifiedAt` records the time at
-which a node's stored semantic value last changed as a result of a computor
-producing a changed value. When a value is preserved in the final state, its
-existing `modifiedAt` is preserved unchanged. Synchronization MUST NOT
-manufacture a new `modifiedAt` during merge. Every final `modifiedAt` must be
-one of the timestamps already present in the merge inputs (L or H).
-
-**REQ-SYNC-08b (No local-source tie bias):** The canonical state event
-selection must not introduce a preference for the local source. The rules in
-REQ-SYNC-07 apply symmetrically: swapping the two source roles produces the
-same canonical event.
->>>>>>> 39561ca5 (add docs again)
-=======
-**REQ-SYNC-08c (Equal-version stale freshness):** When both replicas have
-identical `modifiedAt` for a semantic key, the timestamp alone cannot
-distinguish which side has fresher metadata. The merge MUST be conservative:
-
-* If the selected side's value is `up-to-date` and the non-selected side's
-  freshness is not `up-to-date`, the final node MUST NOT remain `up-to-date`.
-  Set it to `potentially-outdated` without changing `modifiedAt`.
-* If the selected side is already not `up-to-date`, no adjustment is needed.
-* The stale metadata belonging to an older value version (`modifiedAt`)
-  MUST NOT taint a strictly newer value version. If one side has a newer
-  `modifiedAt`, the value selection based on timestamps is authoritative
-  and the stale metadata from the older version does not affect the
-  newer version's freshness.
->>>>>>> 1dd19be7 (Resolve merge conflicts in spec files in favor of master graph semantics)
 
 ---
 
 ## 7. Candidate Selection, Direct Invalidation, and Deletion
 
-The temporary pairwise merge rule separates source selection,
-direct hard invalidation, propagated staleness, and deletion.
+The temporary pairwise merge rule implemented for
+https://github.com/ottojung/volodyslav/issues/1520 separates source selection,
+direct hard invalidation, propagated staleness, and deletion. The future
+journal-backed coherent-history rule is tracked by
+https://github.com/ottojung/volodyslav/issues/1521; this section specifies only
+the current conservative pairwise behaviour.
 
 **DEF-SYNC-06 (Taint propagation):** Keep-taint propagates forward from every
 key where the local candidate strictly wins by the complete canonical tuple.
@@ -439,7 +371,7 @@ distinct semantic inputs.
 
 For every direct invalidation candidate:
 
-- zero or one distinct semantic input: retain the selected stored value,
+- zero or one distinct semantic input: retain the selected cached value,
   preserve its `modifiedAt`, mark it `potentially-outdated`, and remove incoming
   validity proofs so the next pull invokes the computor with the retained value
   as `oldValue`;
@@ -517,19 +449,14 @@ unmaterialized.
 the system does not currently have enough proof to guarantee the stored value
 without verifying it. A stale node pulls all dependencies:
 
-- A **direct invalidation root** has had all incoming proofs removed. Its next
-  pull must invoke its computor.
-- A **propagated stale descendant** retains all incoming and outgoing proofs.
-  Its next pull may cache-revalidate without invoking its computor when every
-  incoming proof remains present.
+- A **direct invalidation root** has had all incoming proofs removed. Its next pull must invoke its computor.
+- A **propagated stale descendant** retains all incoming and outgoing proofs. Its next pull may cache-revalidate without invoking its computor when every incoming proof remains present.
 
-A stale node that cache-revalidates is marked `up-to-date` and returns its
-stored value. A stale node whose cache predicate fails invokes its computor.
+A stale node that cache-revalidates is marked `up-to-date` and returns its stored value. A stale node whose cache predicate fails invokes its computor.
 
 ---
 
-## 9. Value Origin and Provenance
-
+## 10. Value Origin and Provenance
 
 **REQ-SYNC-13 (Equality does not create origin):**
 
@@ -548,7 +475,7 @@ the computation histories are interchangeable.
 
 ---
 
-## 10. Validity Proof Transport
+## 11. Validity Proof Transport
 
 **DEF-SYNC-09 (Source validity proof):** A source-side relation entry
 `valid[D].has(N)` means that, in that source replica, N's stored value was
@@ -616,7 +543,7 @@ conditions above; no bulk textual merge of validity storage is permitted.
 
 ---
 
-## 11. Final-State Invariants
+## 12. Final-State Invariants
 
 **REQ-SYNC-18 (Pre-switch validation):** After building the final merged state
 in T but before switching the active replica pointer, the implementation MUST
@@ -626,11 +553,11 @@ validate the following invariants:
 2. Every freshness key is present in the final identifier lookup.
 3. Every timestamp key is present in the final identifier lookup.
 4. Every validity key is present in the final identifier lookup.
-5. Every validity key is materialized (its identifier exists in the register).
+5. Every validity key is materialized.
 6. Every validity dependent is present in the final identifier lookup.
 7. Every validity dependent is materialized.
 8. Every validity edge is a structural dependency edge in the final graph.
-9. Every final `up-to-date` node is materialized (has a stored value).
+9. Every final `up-to-date` node has a stored value.
 10. Every final `up-to-date` node's direct inputs are known in the final
     identifier lookup.
 11. Every final `up-to-date` node's direct inputs are materialized.
@@ -639,8 +566,6 @@ validate the following invariants:
 14. No discarded or losing storage identifier remains in values, freshness,
     timestamps, or validity storage.
 15. The final identifier lookup is internally consistent and bijective.
-16. The primary persisted domains are equal: every materialized storage
-    identifier appears in values, freshness, and timestamps.
 
 **REQ-SYNC-19 (Validation failure):** If these invariants cannot be
 established, the per-host merge MUST fail and the active replica pointer MUST
@@ -648,7 +573,7 @@ remain unchanged.
 
 ---
 
-## 12. Commit and Active Replica Switching
+## 13. Commit and Active Replica Switching
 
 **REQ-SYNC-20 (Write target isolation):** Per-host merge writes into inactive
 replica T. The active replica pointer switches only after the final state is
@@ -676,7 +601,7 @@ state.
 - A "metadata-only" change, such as importing a valid provenance-backed
   validity proof, is sufficient to switch replicas, because it affects future
   recomputation behavior. Metadata-only changes must obey the provenance rules
-  of §10.
+  of §11.
 
 **REQ-SYNC-22 (Partial failure safety):** The currently active local source
 replica must not be partially mutated by a failed host merge. Failure before
@@ -684,7 +609,7 @@ commit must not leave callers reading from an invalid partial merge target.
 
 ---
 
-## 13. Multi-Host Synchronization
+## 14. Multi-Host Synchronization
 
 **REQ-SYNC-23 (Pairwise commutativity):** For valid source replicas A and B using the same schema, merging A with B and merging B with A produce observably equivalent final IncrementalGraph states. Observable equivalence includes semantic keys, selected identifiers, stored values, freshness, timestamps, lowered inputs, reverse dependencies, validity proofs, deletion outcomes, and invalidation outcomes. It excludes host-local allocator capability metadata: each host intentionally retains its own `fingerprint` and `last_node_index` allocation namespace. It may also ignore local physical details such as temporary paths, logs, replica-slot names, and source-role labels.
 
@@ -695,7 +620,7 @@ replica and advance its state).
 
 **REQ-SYNC-25 (Per-host validation after success):** The implementation MUST
 validate the graph state after every successful per-host merge against the
-invariants in §11 before proceeding to the next host.
+invariants in §12 before proceeding to the next host.
 
 **REQ-SYNC-26 (Host failure isolation):** If one host's merge fails,
 synchronization may continue with remaining hosts and aggregate all failures
@@ -703,7 +628,7 @@ into a single composite error.
 
 **REQ-SYNC-27 (No multi-host order independence guarantee):** This specification requires pairwise commutativity for a single two-replica merge. It does not guarantee associativity across three or more replicas or arbitrary sequential host-order independence unless a future document proves and requires those properties. Correctness is not full CRDT-like convergence.
 The correctness obligation for multi-host synchronization is that each
-individual per-host merge satisfies the invariants of §11 at the moment it
+individual per-host merge satisfies the invariants of §12 at the moment it
 completes, and that the final state after all host merges (successful or
 skipped) is a valid IncrementalGraph state from which all future public
 operations produce results consistent with the main IncrementalGraph spec.
@@ -711,7 +636,7 @@ This is a safety property, not a convergence property.
 
 ---
 
-## 14. Proof Obligations and Specification Labels
+## 15. Proof Obligations and Specification Labels
 
 **TERM-SYNC-19 (Normative labels):** The following label prefixes are used
 throughout this specification:
@@ -731,7 +656,7 @@ the main IncrementalGraph specification given the same schema and the merged
 state.
 
 **PROP-SYNC-02 (Conservative freshness):** Synchronization never marks a node
-`up-to-date` unless the rules in §8 and §10 are satisfied. It may mark nodes
+`up-to-date` unless the rules in §9 and §11 are satisfied. It may mark nodes
 `potentially-outdated` even when a more sophisticated proof might have
 preserved them.
 
