@@ -119,6 +119,52 @@ DELETE propagation runs at finalization (after the callback returns), via a BFS 
 
 This preserves the materialization invariant that every materialized node has all of its concrete inputs materialized. If a dependent already has an explicit `KEEP`, `OVERRIDE`, or `INVALIDATE` decision, `DecisionConflictError` is thrown.
 
+### Journal emission for propagation
+
+Journal emission must describe every actual finalized graph transition, not only
+the explicit callback call.
+
+#### Propagated deletes
+
+For every previously materialized semantic key whose finalized migration decision
+is `DELETE`, emit one `delete`. This includes:
+
+- the explicitly deleted root;
+- every transitive dependent assigned `DELETE` by dependency-closure propagation.
+
+The event uses that node's identifier in the old materialized graph.
+
+Do not emit a `delete` for:
+
+- a node that was not materialized before migration;
+- a node that remains materialized;
+- a merely rejected `create`.
+
+**Ordering:** Emit deletes in reverse dependency-topological order so that
+dependents appear before their dependencies. For unrelated nodes, break ties by
+stable `NodeKeyString` ordering.
+
+For `A → D → E` where all three are deleted:
+
+```
+delete E
+delete D
+delete A
+```
+
+#### Propagated invalidations
+
+For every finalized migration transition `up-to-date → potentially-outdated`,
+emit one `invalidate`, whether the transition was:
+
+- explicitly requested;
+- propagated to a dependent.
+
+Already stale nodes emit nothing.
+
+**Ordering:** Emit invalidations in dependency-topological order (inputs before
+dependents). For unrelated nodes, break ties by stable `NodeKeyString` ordering.
+
 ---
 
 ## Error types
@@ -166,9 +212,11 @@ await runMigration(rootDatabase, newVersionNodeDefs, async (storage) => {
    - check completeness;
    - return the finalized decision set.
 5. Derive and validate the desired target state from the finalized decisions.
-6. Gently unify the desired state into the inactive replica.
-7. Durably flush and validate the inactive replica.
-8. Switch the active-replica pointer.
+6. Emit journal entries for every finalized transition (see journal emission
+   for propagation).
+7. Gently unify the desired state into the inactive replica.
+8. Durably flush and validate the inactive replica.
+9. Switch the active-replica pointer.
 
 If no previous version is found, the migration is a no-op.
 

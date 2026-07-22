@@ -113,9 +113,38 @@ REQ-JM-05: The `add` entry for a `storage.create` operation MUST be emitted in t
 
 Removes a node from the new version entirely.
 
-REQ-JM-06: `storage.delete` MUST emit a `delete` journal entry for the deleted node. The entry's `action` is `"delete"`, and its `time` and `creator` are set to the current migration time and local host respectively.
+REQ-JM-06: `storage.delete` MUST emit a `delete` journal entry for the deleted
+node. The entry's `action` is `"delete"`, and its `time` and `creator` are set
+to the current migration time and local host respectively.
 
-REQ-JM-07: `storage.delete` MUST NOT remove, purge, or otherwise modify any established journal entry for the deleted node (including older `add`, `edit`, `invalidate`, or `validate` entries). The append-only rule applies: the `delete` entry is appended at a fresh index above the current watermark. Older journal entries for the deleted node remain until journal compaction removes them according to the compaction specification.
+REQ-JM-07: `storage.delete` MUST NOT remove, purge, or otherwise modify any
+established journal entry for the deleted node (including older `add`, `edit`,
+`invalidate`, or `validate` entries). The append-only rule applies: the `delete`
+entry is appended at a fresh index above the current watermark. Older journal
+entries for the deleted node remain until journal compaction removes them
+according to the compaction specification.
+
+### Propagated deletes
+
+For every previously materialized semantic key whose finalized migration decision
+is `DELETE`, emit one `delete`. This includes the explicitly deleted root and
+every transitive dependent assigned `DELETE` by dependency-closure propagation.
+The event uses that node's identifier in the old materialized graph.
+
+REQ-JM-06a: Propagated `delete` entries MUST use the deleted node's old
+`NodeIdentifier` and `NodeKey`. Ordering follows reverse dependency-topological
+order: dependents before their dependencies. For unrelated nodes, break ties by
+stable `NodeKeyString` ordering.
+
+### Propagated invalidations
+
+For every finalized migration transition `up-to-date → potentially-outdated`,
+emit one `invalidate`, whether the transition was explicitly requested or
+propagated to a dependent. Already stale nodes emit nothing.
+
+REQ-JM-06b: Propagated `invalidate` entries MUST use the node's identifier and
+key. Ordering follows dependency-topological order: inputs before dependents.
+For unrelated nodes, break ties by stable `NodeKeyString` ordering.
 
 ---
 
@@ -134,6 +163,8 @@ The journal distinguishes migration-originated state from ordinary graph changes
 | `storage.invalidate` | conditional `invalidate` entry | Preserves the stored value and emits only for `up-to-date` → `potentially-outdated`; an already stale node remains unchanged and emits nothing. |
 | `storage.create` | `add` entry | Intentional new node creation |
 | `storage.delete` | `delete` entry | Node deleted by migration |
+| Propagated delete (dependency closure) | `delete` entry per affected node | Dependency-closed deletion propagation; reverse dependency-topological order |
+| Propagated invalidation | `invalidate` entry per affected node | Freshness-only propagation; dependency-topological order |
 | Synchronization | may emit `invalidate` and `delete`; may also copy or reposition existing events | Cross-host reconciliation; never emits `add`, `edit`, or `validate` |
 
 ---
