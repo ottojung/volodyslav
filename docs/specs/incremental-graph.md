@@ -110,7 +110,7 @@ The schema implicitly defines infinitely many dependency edges—one set for eac
 The public API requires both the `nodeName` (functor) and bindings to address a specific node:
 
 * `pull(nodeName, bindings)` — Evaluates the node instance identified by `NodeName` and `BindingEnvironment`
-* `invalidate(nodeName, bindings)` — Marks a cached node instance as potentially-outdated, triggering recomputation on next pull; a missing node remains missing
+* `invalidate(nodeName, bindings)` — Marks a materialized node as potentially-outdated, triggering recomputation on next pull
 
 **For arity-0 nodes** (nodes with no arguments like `all_events`):
 * `pull("all_events", [])` and `pull("all_events")` are equivalent
@@ -539,7 +539,7 @@ interface IncrementalGraph {
   * a cached value is deleted because the old value is not valid for the final dependency structure;
   * freshness changes between `up-to-date` and `potentially-outdated`; no freshness record exists for unmaterialized nodes.
 
-* Migration invalidation (`migration.md`) follows the same invariant: invalidation of a cached node does not change `modifiedAt`. Freshness and validity are the mechanisms for representing uncertainty and recomputation requirements in migration, just as they are in runtime operations.
+* Migration invalidation (`migration.md`) follows the same invariant: invalidation does not change `modifiedAt`. Freshness and validity are the mechanisms for representing uncertainty and recomputation requirements in migration, just as they are in runtime operations.
 
 **REQ-IFACE-09 (MissingTimestampError):** Implementations MUST expose `makeMissingTimestampError(nodeKey)` factory and `isMissingTimestamp(value)` type guard. `MissingTimestampError` MUST have a stable `.name` property of `"MissingTimestampError"` and a `nodeKey: string` field identifying the node for which timestamps are missing.
 

@@ -45,36 +45,12 @@ synchronization.
 
 ---
 
-## 1a. Division of Responsibility with Journal Synchronization
+## 1a. Relationship to Journal Synchronization
 
-The journal synchronization specification
-(`docs/specs/incremental-graph-journal-sync.md`) and this graph synchronization
-specification have distinct responsibilities. This division must be preserved:
-
-### Journal synchronization decides
-
-- Canonical state journal event (which existing `add`, `edit`, or `delete` is
-  the source of truth for the key).
-- Canonical freshness-history event (which `validate` or `invalidate` is
-  retained as journal history).
-- Event identity integrity.
-- Physical journal positions.
-- Which existing events survive or are repositioned.
-- Which journal event is used to notify callers of a synchronization result.
-
-### Graph synchronization decides
-
-- Whether the selected candidate value may remain cached.
-- Whether it must become missing.
-- Whether freshness may remain up to date.
-- Whether it must become potentially outdated.
-- Final validity metadata.
-- Dependency relowering and provenance safety.
-
-The canonical state event selects the candidate identifier/value provenance.
-It does not override a graph-synchronization requirement to delete the candidate
-cached value, make the node missing, or downgrade it to potentially outdated.
-Synchronization still creates no logical journal event.
+Graph synchronization is fully specified by this document and does not inspect
+or depend on journal state. Journal reconciliation runs downstream from the
+completed graph merge. It may record or notify graph transitions, but it cannot
+alter graph planning or final graph state.
 
 ---
 
@@ -137,10 +113,17 @@ identifier matches the final selected identifier.
 
 This is the canonical `sourceRepresentsFinalVersion()` operation. It
 determines whether source-side dependency histories and validity proofs apply
+<<<<<<< HEAD
 to the final selected semantic record. Equal timestamps and equal identifiers do
 not prove equal values because a recomputation preserves the identifier and
 `modifiedAt` has finite resolution. ComputedValue equality, hashing, or
 serialization must not be used as identity evidence.
+=======
+to the final selected semantic version. Equal timestamps can collide between
+independent recomputations; this approximation is a known limitation of the
+timestamp-based approach. ComputedValue equality, hashing, or serialization
+must not be used as identity evidence.
+>>>>>>> 326cb5a6 (Remove residual missing-node semantics)
 
 **REQ-SYNC-01 (Value origin from copy, not equality):** Deep equality of
 stored values MUST NOT create a value origin.
@@ -456,7 +439,7 @@ distinct semantic inputs.
 
 For every direct invalidation candidate:
 
-- zero or one distinct semantic input: retain the selected cached value,
+- zero or one distinct semantic input: retain the selected stored value,
   preserve its `modifiedAt`, mark it `potentially-outdated`, and remove incoming
   validity proofs so the next pull invokes the computor with the retained value
   as `oldValue`;
@@ -647,10 +630,10 @@ validate the following invariants:
 6. Every validity dependent is present in the final identifier lookup.
 7. Every validity dependent is materialized.
 8. Every validity edge is a structural dependency edge in the final graph.
-9. Every final `up-to-date` node is cached (has a stored value).
+9. Every final `up-to-date` node is materialized (has a stored value).
 10. Every final `up-to-date` node's direct inputs are known in the final
     identifier lookup.
-11. Every final `up-to-date` node's direct inputs are cached.
+11. Every final `up-to-date` node's direct inputs are materialized.
 12. Every final `up-to-date` node's direct inputs are `up-to-date`.
 13. Every final `up-to-date` node has validity flags from each direct input.
 14. No discarded or losing storage identifier remains in values, freshness,
