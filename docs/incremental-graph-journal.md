@@ -113,7 +113,14 @@ docs/specs/incremental-graph-journal-emission.md
 
 Synchronization works by reading the current active local replica and the fetched remote replica, constructing the complete merged database in an inactive local replica, and switching the active-replica pointer only after the inactive replica is complete and durable. This is the existing replica-switching architecture; no database-state abstraction beyond the replicas that already exist in the IncrementalGraph design is introduced.
 
-Journal events are only the events that were already emitted by ordinary graph operations, migration operations, explicit freshness transitions, and actual node deletion operations. Synchronization does not invent new logical journal events. Existing events may be copied into the inactive destination, retained at their existing numeric position, made absent by poisoning or absence propagation, moved to a fresh position when their original position cannot survive, deduplicated when the same logical event already survives elsewhere, or removed when superseded according to the settled compaction or freshness rules.
+Synchronization may originate exact `invalidate` and `delete` events for actual
+local transitions (see `docs/specs/incremental-graph-journal-sync.md`). For other
+graph changes requiring notification, synchronization may copy, reposition, or
+retain existing truthful source events. Existing events may be made absent by
+poisoning or absence propagation, moved to a fresh position when their original
+position cannot survive, deduplicated when the same logical event already
+survives elsewhere, or removed when superseded according to the settled
+compaction or freshness rules.
 
 The journal synchronization model defines how existing journal histories are
 compared, copied, repositioned, omitted, and physically compacted during sync.
