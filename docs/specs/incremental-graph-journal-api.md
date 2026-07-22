@@ -43,7 +43,9 @@ The `since` value acts as a cursor: the returned array contains surviving matchi
 
 If `since` is `BaselinePossibleNodeChange`, scanning starts from the first journal entry.
 
-If `since` is `PossibleNodeChange`, the journal module widens it to `PrivatePossibleNodeChange` and scans strictly after its `index`.
+If `since` is `PossibleNodeChange`, the journal module looks up the token in
+its private `WeakMap<PossibleNodeChange, CursorState>` and scans strictly
+after its stored `index`.
 
 **`to: NodeFilter`**
 
