@@ -2,15 +2,22 @@
  * Unit tests for the per-host graph merge algorithm (sync_merge.js).
  *
  * Tests cover:
- *   - keep decision: equal timestamps keep local node
- *   - take decision: remote newer → H data copied to T
- *   - H-only additions: nodes present only in H are taken
- *   - H-only taint propagation: H-only node whose ancestor was force-kept is
- *     taken but freshness overridden to 'potentially-outdated'
- *   - missing timestamps in H: validation rejects del ops (no stale T timestamps survive)
- *   - version mismatch: HostVersionMismatchError thrown
- *   - replica pointer switches only when merge introduces changes
- *   - invalidate: mixed-ancestry conflict marks freshness potentially-outdated
+ *   - source selection by modifiedAt timestamp (keep, take, equal-timestamp tie)
+ *   - identifier reconciliation and conflict errors
+ *   - H-only and T-only node handling
+ *   - taint propagation and mixed-ancestry invalidation
+ *   - direct relowering through source-version identity mismatch
+ *   - equal-version stale-metadata detection
+ *   - single-input hard invalidation (oldValue retained)
+ *   - multi-input deletion (oldValue undefined, deletion closure)
+ *   - propagated staleness with proof preservation
+ *   - validity-proof transport through provenance and structural edges
+ *   - missing untransportable proof detection
+ *   - no-op merge semantics and stale/no-op write optimization
+ *   - final-state validation (freshness, timestamps, canonical validity)
+ *   - active-replica pointer switching
+ *   - host version mismatch and graph-scheme mismatch errors
+ *   - identifier lowering and direct relowering
  */
 
 const {
