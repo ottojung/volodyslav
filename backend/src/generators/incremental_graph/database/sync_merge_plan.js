@@ -109,8 +109,8 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
  *   mergedInputsMap: Map<NodeIdentifier, NodeIdentifier[]>,
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
-  *   hasIdentifierReconciliation: boolean
- * }> } 
+ *   hasIdentifierReconciliation: boolean
+ * }>}
  */
 async function buildMergePlan(T, H, targetLookup, hostLookup, targetSourceFingerprint, hostSourceFingerprint) {
     const targetScheme = parseGraphScheme(await T.global.get(GRAPH_SCHEME_KEY));

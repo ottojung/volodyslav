@@ -236,11 +236,6 @@ describe("synchronizeNoLock", () => {
     });
 
     /**
-     * Write the local graph scheme and return the local database fingerprint.
-     * @param {object} capabilities
-     * @returns {Promise<string>}
-     */
-    /**
      * Return a test fingerprint that is deterministically distinct from the local fingerprint.
      * @param {string} localFingerprint
      * @param {string} preferred
@@ -252,6 +247,11 @@ describe("synchronizeNoLock", () => {
             : preferred;
     }
 
+    /**
+     * Write the local graph scheme and return the local database fingerprint.
+     * @param {object} capabilities
+     * @returns {Promise<string>}
+     */
     async function writeLocalGraphScheme(capabilities) {
         const db = await getRootDatabase(capabilities);
         try {

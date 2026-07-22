@@ -5447,9 +5447,6 @@ describe('mergeHostIntoReplica', () => {
         expect(forward.values).toEqual([[String(identifier), { side: 'z' }]]);
     });
 
-
-
-
     test('swap-invariant mixed ancestry deletes multi-input selected node', async () => {
         const aShared = nodeIdentifierFromString('910-abcdefghi');
         const bLeft = nodeIdentifierFromString('911-abcdefghi');
@@ -5506,7 +5503,7 @@ describe('mergeHostIntoReplica', () => {
         expect(forward.freshness).toEqual([[String(aShared), 'up-to-date'], [String(b), 'potentially-outdated']]);
     });
 
-    test('swap-invariant validity transports only from selected source', async () => {
+    test('swap-invariant proof present on both sources transports from the selected source', async () => {
         const a = nodeIdentifierFromString('930-abcdefghi');
         const b = nodeIdentifierFromString('931-abcdefghi');
         const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
@@ -5533,76 +5530,65 @@ describe('mergeHostIntoReplica', () => {
 
     test('swap-invariant selected-source-only validity proof survives', async () => {
         const aLeft = nodeIdentifierFromString('960-aaaaaaaaa');
-        const aRight = nodeIdentifierFromString('960-zzzzzzzzz');
         const bLeft = nodeIdentifierFromString('961-aaaaaaaaa');
-        const bRight = nodeIdentifierFromString('961-zzzzzzzzz');
+        const aRight = nodeIdentifierFromString('962-zzzzzzzzz');
+        const bRight = nodeIdentifierFromString('963-zzzzzzzzz');
         const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
         const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
         const scheme = { format: 1, nodes: [
             { head: 'A', arity: 0, inputTemplates: [] },
             { head: 'B', arity: 0, inputTemplates: [{ head: 'A', args: [] }] },
         ] };
-        // Both sides have valid[A].has(B) for their own identifier pair.
-        // Right wins via fingerprint tie-breaker. Only the winning source's
-        // proof should be transported since the losing identifiers do not
-        // match the final identifiers.
+        // Selected source (left, 'aaaaaaaaa'): A up-to-date, B up-to-date,
+        // valid[A].has(B) exists.  Losing source (right, 'zzzzzzzzz'):
+        // older timestamps, stale B, no validity entry for the edge.
         const { forward, reverse } = await runSwapMerge(
             { fingerprint: 'aaaaaaaaa', records: [
-                { identifier: aLeft, key: keyA, modifiedAt: TS1, value: { a: 'left' }, valid: [bLeft] },
-                { identifier: bLeft, key: keyB, modifiedAt: TS1, value: { b: 'left' } },
+                { identifier: aLeft, key: keyA, modifiedAt: TS2, value: { a: 'selected' }, valid: [bLeft] },
+                { identifier: bLeft, key: keyB, modifiedAt: TS2, value: { b: 'selected' } },
             ] },
             { fingerprint: 'zzzzzzzzz', records: [
-                { identifier: aRight, key: keyA, modifiedAt: TS1, value: { a: 'right' }, valid: [bRight] },
-                { identifier: bRight, key: keyB, modifiedAt: TS1, value: { b: 'right' } },
+                { identifier: aRight, key: keyA, modifiedAt: TS1, value: { a: 'losing' } },
+                { identifier: bRight, key: keyB, modifiedAt: TS1, value: { b: 'losing' }, freshness: 'potentially-outdated' },
             ] },
             scheme
         );
         expect(forward).toEqual(reverse);
-        // Only the winning source's proof survives (aRight → bRight).
-        expect(forward.validity).toEqual([[String(aRight), [String(bRight)]]]);
-        expect(forward.freshness).toEqual([[String(aRight), 'up-to-date'], [String(bRight), 'up-to-date']]);
+        expect(forward.validity).toEqual([[String(aLeft), [String(bLeft)]]]);
+        expect(forward.freshness).toEqual([[String(aLeft), 'up-to-date'], [String(bLeft), 'up-to-date']]);
+        expect(forward.values).toEqual([[String(aLeft), { a: 'selected' }], [String(bLeft), { b: 'selected' }]]);
     });
 
     test('swap-invariant losing-source-only validity proof does not survive', async () => {
         const aLeft = nodeIdentifierFromString('970-aaaaaaaaa');
-        const aRight = nodeIdentifierFromString('970-zzzzzzzzz');
         const bLeft = nodeIdentifierFromString('971-aaaaaaaaa');
-        const bRight = nodeIdentifierFromString('971-zzzzzzzzz');
+        const aRight = nodeIdentifierFromString('972-zzzzzzzzz');
+        const bRight = nodeIdentifierFromString('973-zzzzzzzzz');
         const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
         const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
         const scheme = { format: 1, nodes: [
             { head: 'A', arity: 0, inputTemplates: [] },
             { head: 'B', arity: 0, inputTemplates: [{ head: 'A', args: [] }] },
         ] };
-        // Left wins A via timestamp, right wins B via identifier tie-break.
-        // B depends on A — mixed ancestry makes B a hard-invalidation root.
-        // Both sides have valid[A].has(B) for their own identifiers, but only
-        // the losing side's proof is in a transportable position. It must not
-        // survive because the losing dependent identifier does not match the
-        // final selected identifier.
+        // Selected source (left, 'aaaaaaaaa'): A selected record, B selected
+        // record / potentially-outdated, no validity entry.  Losing source
+        // (right, 'zzzzzzzzz'): older timestamps, up-to-date B, one proof:
+        // valid[A].has(B) — proof exists literally only on the losing replica.
         const { forward, reverse } = await runSwapMerge(
             { fingerprint: 'aaaaaaaaa', records: [
-                { identifier: aLeft, key: keyA, modifiedAt: TS2, value: { a: 'left' }, valid: [bLeft] },
-                { identifier: bLeft, key: keyB, modifiedAt: TS1, value: { b: 'left' } },
+                { identifier: aLeft, key: keyA, modifiedAt: TS2, value: { a: 'selected' } },
+                { identifier: bLeft, key: keyB, modifiedAt: TS2, value: { b: 'selected' }, freshness: 'potentially-outdated' },
             ] },
             { fingerprint: 'zzzzzzzzz', records: [
-                { identifier: aRight, key: keyA, modifiedAt: TS1, value: { a: 'right' }, valid: [bRight] },
-                { identifier: bRight, key: keyB, modifiedAt: TS1, value: { b: 'right' } },
+                { identifier: aRight, key: keyA, modifiedAt: TS1, value: { a: 'losing' }, valid: [bRight] },
+                { identifier: bRight, key: keyB, modifiedAt: TS1, value: { b: 'losing' } },
             ] },
             scheme
         );
         expect(forward).toEqual(reverse);
-        // No validity proof should be present — losing source proof not
-        // transported (dependent identifier mismatch) and winning source's
-        // proof is removed as part of B's hard-invalidation root processing.
         expect(forward.validity).toEqual([]);
-        // B must be stale (hard invalidation from mixed ancestry).
-        const aFinal = forward.freshness.find(([id]) => id === String(aLeft));
-        const bFinal = forward.freshness.find(([id]) => id.startsWith('971-'));
-        expect(aFinal).toBeDefined();
-        expect(bFinal).toBeDefined();
-        expect(aFinal[1]).toBe('up-to-date');
-        expect(bFinal[1]).toBe('potentially-outdated');
+        expect(forward.freshness).toEqual([[String(aLeft), 'up-to-date'], [String(bLeft), 'potentially-outdated']]);
+        expect(forward.values).toEqual([[String(aLeft), { a: 'selected' }], [String(bLeft), { b: 'selected' }]]);
     });
 
     test('swap-invariant one-sided materialization survives', async () => {
