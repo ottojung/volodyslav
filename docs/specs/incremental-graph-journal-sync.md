@@ -342,16 +342,6 @@ Fresh entries are ordered by:
 
 After allocating `n` queued events, set `last_journal_index = P + n`.
 
-1. `time` ascending;
-2. `NodeKeyString` ascending;
-3. `creator` ascending;
-4. Action rank: `add < edit < delete < invalidate < validate`;
-5. `NodeIdentifier` ascending.
-
-`NodeIdentifier` values are globally and historically unique.
-
-After allocating `n` queued events, set `last_journal_index = P + n`.
-
 ### Evidence preservation rule
 
 When an entry is removed by same-index poisoning or present-versus-absence

@@ -26,8 +26,12 @@ The target behavior is:
    may coexist.
 9. Journal readers coexist with daytime activity, nighttime activity, and
    ordinary append-only journal growth.
-10. Structural journal maintenance closes the garden, preventing new
-    readers from entering. It follows the order: holiday → garden → darkroom.
+10. Structural journal maintenance closes the garden, preventing new readers
+    from entering.
+
+    - Compaction follows: closeGarden → darkroom.
+    - Structural synchronization and migration/cutover follow:
+      holiday → closeGarden → darkroom.
 
 ## Sleeper Primitives
 
