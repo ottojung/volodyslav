@@ -417,6 +417,9 @@ describe('fingerprint design', () => {
             await hostGlobal.put(IDENTIFIERS_KEY, []);
             await hostGlobal.put(LAST_NODE_INDEX_KEY, 0);
             await hostGlobal.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
+            await hostGlobal.put(IDENTIFIERS_KEY, []);
+            await hostGlobal.put(LAST_NODE_INDEX_KEY, 0);
+            await hostGlobal.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
 
             // Local storage also needs graph_scheme for merge validation.
             const localGlobal = db.getSchemaStorage().global;
@@ -455,6 +458,7 @@ describe('fingerprint design', () => {
             await H.timestamps.put(HOST_NODE_A, { createdAt: TS1, modifiedAt: TS1 });
             await H.freshness.put(HOST_NODE_A, 'up-to-date');
             await H.values.put(HOST_NODE_A, { value: { id: 'a', type: 'test', description: 'a' }, isDirty: false });
+            await H.global.put('fingerprint', 'remotehostfingerprint');
             await H.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(makeIdentifierLookup([
                 [HOST_NODE_A, '{"head":"event","args":[]}'],
             ])));
