@@ -269,6 +269,13 @@ candidate stored values. They do not by themselves prove that a value is
 correct with respect to final merged inputs. Timestamp order is not a semantic
 proof of freshness.
 
+**REQ-SYNC-08d (Selected record timestamp copy):** Candidate selection chooses
+one complete stored materialization record. The final value, `createdAt`, and
+`modifiedAt` are copied from that selected record. Synchronization never
+combines the value from one source with timestamps from another source, never
+uses merge execution time as a materialization timestamp, and never computes a
+minimum or maximum `createdAt` across sources.
+
 **REQ-SYNC-08a (modifiedAt is a value version, not a merge timestamp):**
 `modifiedAt` records the time at which a node's stored semantic value last
 changed as a result of a computor producing a changed value. Merge decisions

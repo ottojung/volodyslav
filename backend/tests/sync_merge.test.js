@@ -294,8 +294,19 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, []);
             await writeIdentifierLookup(H, []);
 
+            const inactive = db.schemaStorageForReplica('y');
+            const sentinelId = nodeIdentifierFromString('samefingerprintsentinel');
+            const sentinelKey = stringToNodeKeyString('{"head":"shared","args":[]}');
+            await writeGraphScheme(inactive);
+            await writeNode(inactive, sentinelId, TS1, { sentinel: true });
+            await writeIdentifierLookup(inactive, [[sentinelId, sentinelKey]]);
+            const activeBefore = await normalizeGraphStorage(L);
+            const inactiveBefore = await normalizeGraphStorage(inactive);
+
             await expect(mergeHostIntoReplica(logger, db, hostname)).rejects.toBeInstanceOf(SameSourceFingerprintSyncMergeError);
             expect(db.currentReplicaName()).toBe('x');
+            expect(await normalizeGraphStorage(L)).toEqual(activeBefore);
+            expect(await normalizeGraphStorage(inactive)).toEqual(inactiveBefore);
         } finally {
             if (db) await db.close();
         }
@@ -788,8 +799,8 @@ describe('mergeHostIntoReplica', () => {
             // the repeated-invalidation cycle.
             const bTimestamps = await T.timestamps.get(nodeB);
             expect(bTimestamps?.modifiedAt).toBe(TS2);
-            // createdAt should be preserved from T (not overwritten from H).
-            expect(bTimestamps?.createdAt).toBe(TS1); // T wrote createdAt = TS1
+            // The selected host record supplies the complete timestamp record.
+            expect(bTimestamps?.createdAt).toBe(TS2);
         } finally {
             if (db) await db.close();
         }
@@ -2010,7 +2021,6 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 directInvalidationRoots: new Set(),
                 selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep']]),
-                equalTimestampKeys: new Set(),
             });
 
             const validA = await targetStorage.valid.get(nodeA) ?? [];
@@ -2169,7 +2179,6 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap: new Map([[hostB, [targetA]]]),
                 directInvalidationRoots: new Set(),
                 selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'take']]),
-                equalTimestampKeys: new Set(),
             });
 
             const validA = await targetStorage.valid.get(targetA) ?? [];
@@ -2261,7 +2270,6 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap: new Map([[hostB, [hostA]]]),
                 directInvalidationRoots: new Set(),
                 selectedSideByKey: new Map([[keyA, 'take'], [keyB, 'take']]),
-                equalTimestampKeys: new Set(),
             });
 
             const validA = await targetStorage.valid.get(hostA) ?? [];
@@ -2611,8 +2619,8 @@ describe('mergeHostIntoReplica', () => {
                 [idA, keyA],
                 [idB, keyB],
             ]);
-            await L.values.put(idA, {});
-            await L.values.put(idB, {});
+            await writeNode(L, idA, TS1, {});
+            await writeNode(L, idB, TS1, {});
 
             const H = db.hostnameSchemaStorage(hostname);
             await H.global.put('fingerprint', 'zzzzzzzzz');
@@ -4413,7 +4421,7 @@ describe('mergeHostIntoReplica', () => {
 
             // A_local and A_host both at TS1 → matching timestamps select by canonical tuple
             // B is taken from host, has one distinct input A.
-            // sourceRepresentsFinalVersion matches A_host ≈ A_local → not relowered.
+            // The final A record is the canonically selected host record.
             expect(await mergeHostIntoReplica(logger, db, hostname)).toBe(true);
 
             const T = db.getSchemaStorage();
@@ -4720,7 +4728,6 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 directInvalidationRoots: new Set([nodeB]),
                 selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep'], [keyC, 'keep']]),
-                equalTimestampKeys: new Set(),
             });
 
             expect(await T.freshness.get(nodeB)).toBe('potentially-outdated');
@@ -4784,7 +4791,6 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 directInvalidationRoots: new Set([nodeA]),
                 selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep'], [keyC, 'keep']]),
-                equalTimestampKeys: new Set(),
             });
 
             expect(await T.freshness.get(nodeA)).toBe('potentially-outdated');
@@ -4847,7 +4853,6 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 directInvalidationRoots: new Set([nodeB]),
                 selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'take']]),
-                equalTimestampKeys: new Set(),
             });
 
             const validA = await T.valid.get(nodeA) ?? [];
@@ -4915,7 +4920,6 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 directInvalidationRoots: new Set([nodeN]),
                 selectedSideByKey: new Map([[keyD, 'keep'], [keyE, 'take'], [keyN, 'keep']]),
-                equalTimestampKeys: new Set(),
             });
 
             // D is stale → N has a stale input (propagated staleness).
@@ -5072,7 +5076,6 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 directInvalidationRoots: new Set(),
                 selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep']]),
-                equalTimestampKeys: new Set(),
             });
 
             // No-op merge: no mutations at all
@@ -5091,7 +5094,6 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 directInvalidationRoots: new Set([nodeA]),
                 selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep']]),
-                equalTimestampKeys: new Set(),
             });
 
             // freshness changed (A root stale, B propagated), but validity
@@ -5162,7 +5164,6 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 directInvalidationRoots: new Set([nodeB]),
                 selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep'], [keyC, 'keep']]),
-                equalTimestampKeys: new Set(),
             });
 
             // B is a direct root: valid.clear + one put (valid[B] = [C])
@@ -5231,7 +5232,6 @@ describe('mergeHostIntoReplica', () => {
                 mergedInputsMap,
                 directInvalidationRoots: new Set(),
                 selectedSideByKey: new Map([[keyA, 'keep'], [keyB, 'keep']]),
-                equalTimestampKeys: new Set(),
             })).rejects.toThrow(UnplannedMissingValidityProofError);
         } finally {
             if (db) await db.close();
@@ -5365,7 +5365,7 @@ describe('mergeHostIntoReplica', () => {
     }
 
     /**
-     * @param {Array<{ identifier: import('../src/generators/incremental_graph/database').NodeIdentifier, key: import('../src/generators/incremental_graph/database').NodeKeyString, modifiedAt: string, value: object, freshness?: import('../src/generators/incremental_graph/database').Freshness, valid?: import('../src/generators/incremental_graph/database').NodeIdentifier[] }>} records
+     * @param {Array<{ identifier: import('../src/generators/incremental_graph/database').NodeIdentifier, key: import('../src/generators/incremental_graph/database').NodeKeyString, modifiedAt: string, createdAt?: string, value: object, freshness?: import('../src/generators/incremental_graph/database').Freshness, valid?: import('../src/generators/incremental_graph/database').NodeIdentifier[] }>} records
      * @returns {Array<[import('../src/generators/incremental_graph/database').NodeIdentifier, import('../src/generators/incremental_graph/database').NodeKeyString]>}
      */
     function entriesForRecords(records) {
@@ -5376,7 +5376,7 @@ describe('mergeHostIntoReplica', () => {
      * @param {import('../src/generators/incremental_graph/database/root_database').SchemaStorage} storage
      * @param {string} fingerprint
      * @param {string} schemeStr
-     * @param {Array<{ identifier: import('../src/generators/incremental_graph/database').NodeIdentifier, key: import('../src/generators/incremental_graph/database').NodeKeyString, modifiedAt: string, value: object, freshness?: import('../src/generators/incremental_graph/database').Freshness, valid?: import('../src/generators/incremental_graph/database').NodeIdentifier[] }>} records
+     * @param {Array<{ identifier: import('../src/generators/incremental_graph/database').NodeIdentifier, key: import('../src/generators/incremental_graph/database').NodeKeyString, modifiedAt: string, createdAt?: string, value: object, freshness?: import('../src/generators/incremental_graph/database').Freshness, valid?: import('../src/generators/incremental_graph/database').NodeIdentifier[] }>} records
      * @returns {Promise<void>}
      */
     async function writeSwapReplica(storage, fingerprint, schemeStr, records) {
@@ -5384,6 +5384,9 @@ describe('mergeHostIntoReplica', () => {
         await storage.global.put(GRAPH_SCHEME_KEY, schemeStr);
         for (const record of records) {
             await writeNode(storage, record.identifier, record.modifiedAt, record.value);
+            if (record.createdAt !== undefined) {
+                await storage.timestamps.put(record.identifier, { createdAt: record.createdAt, modifiedAt: record.modifiedAt });
+            }
             await storage.freshness.put(record.identifier, record.freshness ?? 'up-to-date');
             if (record.valid !== undefined) await storage.valid.put(record.identifier, record.valid);
         }
@@ -5393,10 +5396,10 @@ describe('mergeHostIntoReplica', () => {
     /**
      * @param {object} left
      * @param {string} left.fingerprint
-     * @param {Array<{ identifier: import('../src/generators/incremental_graph/database').NodeIdentifier, key: import('../src/generators/incremental_graph/database').NodeKeyString, modifiedAt: string, value: object, freshness?: import('../src/generators/incremental_graph/database').Freshness, valid?: import('../src/generators/incremental_graph/database').NodeIdentifier[] }>} left.records
+     * @param {Array<{ identifier: import('../src/generators/incremental_graph/database').NodeIdentifier, key: import('../src/generators/incremental_graph/database').NodeKeyString, modifiedAt: string, createdAt?: string, value: object, freshness?: import('../src/generators/incremental_graph/database').Freshness, valid?: import('../src/generators/incremental_graph/database').NodeIdentifier[] }>} left.records
      * @param {object} right
      * @param {string} right.fingerprint
-     * @param {Array<{ identifier: import('../src/generators/incremental_graph/database').NodeIdentifier, key: import('../src/generators/incremental_graph/database').NodeKeyString, modifiedAt: string, value: object, freshness?: import('../src/generators/incremental_graph/database').Freshness, valid?: import('../src/generators/incremental_graph/database').NodeIdentifier[] }>} right.records
+     * @param {Array<{ identifier: import('../src/generators/incremental_graph/database').NodeIdentifier, key: import('../src/generators/incremental_graph/database').NodeKeyString, modifiedAt: string, createdAt?: string, value: object, freshness?: import('../src/generators/incremental_graph/database').Freshness, valid?: import('../src/generators/incremental_graph/database').NodeIdentifier[] }>} right.records
      * @param {object} scheme
      * @returns {Promise<{ forward: object, reverse: object }>}
      */
@@ -5442,6 +5445,155 @@ describe('mergeHostIntoReplica', () => {
         );
         expect(forward).toEqual(reverse);
         expect(forward.values).toEqual([[String(identifier), { side: 'z' }]]);
+    });
+
+
+
+
+    test('swap-invariant mixed ancestry deletes multi-input selected node', async () => {
+        const aShared = nodeIdentifierFromString('910-abcdefghi');
+        const bLeft = nodeIdentifierFromString('911-abcdefghi');
+        const bRight = nodeIdentifierFromString('912-abcdefghi');
+        const d = nodeIdentifierFromString('913-abcdefghi');
+        const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+        const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+        const keyD = stringToNodeKeyString('{"head":"D","args":[]}');
+        const scheme = { format: 1, nodes: [
+            { head: 'A', arity: 0, inputTemplates: [] },
+            { head: 'B', arity: 0, inputTemplates: [] },
+            { head: 'D', arity: 0, inputTemplates: [{ head: 'A', args: [] }, { head: 'B', args: [] }] },
+        ] };
+        const { forward, reverse } = await runSwapMerge(
+            { fingerprint: 'aaaaaaaaa', records: [
+                { identifier: aShared, key: keyA, modifiedAt: TS1, value: { a: 'left' }, valid: [d] },
+                { identifier: bLeft, key: keyB, modifiedAt: TS2, value: { b: 'left' }, valid: [d] },
+                { identifier: d, key: keyD, modifiedAt: TS2, value: { d: 'left' } },
+            ] },
+            { fingerprint: 'zzzzzzzzz', records: [
+                { identifier: aShared, key: keyA, modifiedAt: TS1, value: { a: 'right' }, valid: [d] },
+                { identifier: bRight, key: keyB, modifiedAt: TS1, value: { b: 'right' }, valid: [d] },
+                { identifier: d, key: keyD, modifiedAt: TS1, value: { d: 'right' } },
+            ] },
+            scheme
+        );
+        expect(forward).toEqual(reverse);
+        expect(forward.identifiers).toEqual([[String(aShared), String(keyA)], [String(bLeft), String(keyB)]]);
+        expect(forward.freshness).toEqual([[String(aShared), 'up-to-date'], [String(bLeft), 'up-to-date']]);
+    });
+
+    test('swap-invariant direct relowering hard-invalidates one-input dependent', async () => {
+        const aShared = nodeIdentifierFromString('920-abcdefghi');
+        const b = nodeIdentifierFromString('921-abcdefghi');
+        const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+        const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+        const scheme = { format: 1, nodes: [
+            { head: 'A', arity: 0, inputTemplates: [] },
+            { head: 'B', arity: 0, inputTemplates: [{ head: 'A', args: [] }] },
+        ] };
+        const { forward, reverse } = await runSwapMerge(
+            { fingerprint: 'aaaaaaaaa', records: [
+                { identifier: aShared, key: keyA, modifiedAt: TS1, value: { a: 'left' }, valid: [b] },
+                { identifier: b, key: keyB, modifiedAt: TS2, value: { b: 'left' } },
+            ] },
+            { fingerprint: 'zzzzzzzzz', records: [
+                { identifier: aShared, key: keyA, modifiedAt: TS1, value: { a: 'right' }, valid: [b] },
+                { identifier: b, key: keyB, modifiedAt: TS1, value: { b: 'right' } },
+            ] },
+            scheme
+        );
+        expect(forward).toEqual(reverse);
+        expect(forward.values).toEqual([[String(aShared), { a: 'right' }], [String(b), { b: 'left' }]]);
+        expect(forward.freshness).toEqual([[String(aShared), 'up-to-date'], [String(b), 'potentially-outdated']]);
+    });
+
+    test('swap-invariant validity transports only from selected source', async () => {
+        const a = nodeIdentifierFromString('930-abcdefghi');
+        const b = nodeIdentifierFromString('931-abcdefghi');
+        const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+        const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+        const scheme = { format: 1, nodes: [
+            { head: 'A', arity: 0, inputTemplates: [] },
+            { head: 'B', arity: 0, inputTemplates: [{ head: 'A', args: [] }] },
+        ] };
+        const { forward, reverse } = await runSwapMerge(
+            { fingerprint: 'aaaaaaaaa', records: [
+                { identifier: a, key: keyA, modifiedAt: TS1, value: { a: 'left' }, valid: [b] },
+                { identifier: b, key: keyB, modifiedAt: TS1, value: { b: 'left' } },
+            ] },
+            { fingerprint: 'zzzzzzzzz', records: [
+                { identifier: a, key: keyA, modifiedAt: TS1, value: { a: 'right' }, valid: [b] },
+                { identifier: b, key: keyB, modifiedAt: TS1, value: { b: 'right' } },
+            ] },
+            scheme
+        );
+        expect(forward).toEqual(reverse);
+        expect(forward.validity).toEqual([[String(a), [String(b)]]]);
+        expect(forward.values).toEqual([[String(a), { a: 'right' }], [String(b), { b: 'right' }]]);
+    });
+
+    test('swap-invariant one-sided materialization survives', async () => {
+        const only = nodeIdentifierFromString('940-abcdefghi');
+        const key = stringToNodeKeyString('{"head":"Only","args":[]}');
+        const scheme = { format: 1, nodes: [{ head: 'Only', arity: 0, inputTemplates: [] }] };
+        const { forward, reverse } = await runSwapMerge(
+            { fingerprint: 'aaaaaaaaa', records: [] },
+            { fingerprint: 'zzzzzzzzz', records: [{ identifier: only, key, createdAt: '2023-12-29T00:00:00.000Z', modifiedAt: TS2, value: { only: true }, freshness: 'potentially-outdated' }] },
+            scheme
+        );
+        expect(forward).toEqual(reverse);
+        expect(forward.identifiers).toEqual([[String(only), String(key)]]);
+        expect(forward.freshness).toEqual([[String(only), 'potentially-outdated']]);
+        expect(forward.timestamps).toEqual([[String(only), { createdAt: '2023-12-29T00:00:00.000Z', modifiedAt: TS2 }]]);
+    });
+
+    test('swap-invariant deletion closure removes dependent chain', async () => {
+        const a = nodeIdentifierFromString('950-abcdefghi');
+        const b = nodeIdentifierFromString('951-abcdefghi');
+        const d = nodeIdentifierFromString('952-abcdefghi');
+        const e = nodeIdentifierFromString('953-abcdefghi');
+        const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
+        const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
+        const keyD = stringToNodeKeyString('{"head":"D","args":[]}');
+        const keyE = stringToNodeKeyString('{"head":"E","args":[]}');
+        const scheme = { format: 1, nodes: [
+            { head: 'A', arity: 0, inputTemplates: [] },
+            { head: 'B', arity: 0, inputTemplates: [] },
+            { head: 'D', arity: 0, inputTemplates: [{ head: 'A', args: [] }, { head: 'B', args: [] }] },
+            { head: 'E', arity: 0, inputTemplates: [{ head: 'D', args: [] }] },
+        ] };
+        const { forward, reverse } = await runSwapMerge(
+            { fingerprint: 'aaaaaaaaa', records: [
+                { identifier: a, key: keyA, modifiedAt: TS2, value: { a: 'left' }, valid: [d] },
+                { identifier: b, key: keyB, modifiedAt: TS1, value: { b: 'left' }, valid: [d] },
+                { identifier: d, key: keyD, modifiedAt: TS2, value: { d: 'left' }, valid: [e] },
+                { identifier: e, key: keyE, modifiedAt: TS2, value: { e: 'left' } },
+            ] },
+            { fingerprint: 'zzzzzzzzz', records: [
+                { identifier: a, key: keyA, modifiedAt: TS1, value: { a: 'right' }, valid: [d] },
+                { identifier: b, key: keyB, modifiedAt: TS2, value: { b: 'right' }, valid: [d] },
+                { identifier: d, key: keyD, modifiedAt: TS1, value: { d: 'right' }, valid: [e] },
+                { identifier: e, key: keyE, modifiedAt: TS1, value: { e: 'right' } },
+            ] },
+            scheme
+        );
+        expect(forward).toEqual(reverse);
+        expect(forward.identifiers).toEqual([[String(a), String(keyA)], [String(b), String(keyB)]]);
+    });
+
+    test('swap-invariant exact coordinate conflict copies selected createdAt', async () => {
+        const identifier = nodeIdentifierFromString('904-abcdefghi');
+        const key = stringToNodeKeyString('{"head":"shared","args":[]}');
+        const scheme = { format: 1, nodes: [{ head: 'shared', arity: 0, inputTemplates: [] }] };
+        const createdAtA = '2023-12-31T00:00:00.000Z';
+        const createdAtB = '2023-12-30T00:00:00.000Z';
+        const { forward, reverse } = await runSwapMerge(
+            { fingerprint: 'aaaaaaaaa', records: [{ identifier, key, createdAt: createdAtA, modifiedAt: TS1, value: { side: 'a' } }] },
+            { fingerprint: 'zzzzzzzzz', records: [{ identifier, key, createdAt: createdAtB, modifiedAt: TS1, value: { side: 'z' } }] },
+            scheme
+        );
+        expect(forward).toEqual(reverse);
+        expect(forward.values).toEqual([[String(identifier), { side: 'z' }]]);
+        expect(forward.timestamps).toEqual([[String(identifier), { createdAt: createdAtB, modifiedAt: TS1 }]]);
     });
 
     test('swap-invariant exact coordinate freshness disagreement is conservative', async () => {

@@ -12,38 +12,40 @@
  *
  * 1. Verify that `H` was written by the same schema version as the local
  *    database.
- * 2. Copy `L` into `T` (the inactive replica).
- * 3. Parse target/host identifier lookups and reject identifiers that map to
+ * 2. Parse the staged host identifier lookup and validate the active local and
+ *    staged host source replicas.
+ * 3. Validate that the two source replicas have distinct allocation
+ *    fingerprints before touching the inactive replica.
+ * 4. Copy `L` into `T` (the inactive replica).
+ * 5. Parse target/host identifier lookups and reject identifiers that map to
  *    different semantic keys.
- * 4. Validate that the two source replicas have distinct allocation
- *    fingerprints.
- * 5. Select a candidate source side (keep or take) for each semantic node key
+ * 6. Select a candidate source side (keep or take) for each semantic node key
  *    using the canonical `(modifiedAt, NodeIdentifier, sourceFingerprint)`
  *    tuple. There is no local tie preference; source fingerprint is the final
  *    tie-breaker.
- * 6. Propagate taint forward from strict tuple winners along the selected
+ * 7. Propagate taint forward from strict tuple winners along the selected
  *    dependency graph. Taint records ancestry; it does not override source
  *    selection.
- * 7. Detect direct invalidation candidates: nodes with opposite-side ancestry,
+ * 8. Detect direct invalidation candidates: nodes with opposite-side ancestry,
  *    direct relowering through strict selected-source provenance, or stale
  *    matching-coordinate freshness metadata.
- * 8. Classify each candidate by distinct semantic input count:
+ * 9. Classify each candidate by distinct semantic input count:
  *    - 0 or 1 distinct input: hard invalidate (retain cached value as
  *      oldValue, mark stale, remove incoming proofs).
  *    - 2+ distinct inputs: delete (oldValue will be undefined, Unchanged not
  *      legal).
- * 9. Expand deletion roots through transitive materialized dependents.
- * 10. Apply final outcomes to T: copy/keep values, freshness, and timestamps
+ * 10. Expand deletion roots through transitive materialized dependents.
+ * 11. Apply final outcomes to T: copy/keep values, freshness, and timestamps
  *    from the appropriate source; mark hard-invalidated nodes stale; remove
  *    deleted records.
- * 11. Rebuild validity and propagated freshness: transport validity proofs
+ * 12. Rebuild validity and propagated freshness: transport validity proofs
  *     through selected-source provenance and final structural edges; mark direct
  *     invalidation roots stale; propagate staleness forward preserving valid
  *     proofs; throw UnplannedMissingValidityProofError if planning and proof
  *     transport disagree.
- * 12. Validate the final state: every up-to-date node must have up-to-date
+ * 13. Validate the final state: every up-to-date node must have up-to-date
  *     inputs and complete incoming proofs.
- * 13. Switch the active replica pointer when graph data or identifier
+ * 14. Switch the active replica pointer when graph data or identifier
  *     reconciliation changed.
  *
  * Error handling policy:
@@ -335,16 +337,19 @@ async function mergeHostIntoReplica(logger, rootDatabase, hostname) {
 
     await assertValidReplicaMaterializationState(hostStorage, hostLookup, 'staged host snapshot');
 
+    const localSourceStorage = rootDatabase.schemaStorageForReplica(fromReplica);
+    const localSourceLookup = await loadTargetLookup(localSourceStorage);
+    await assertValidReplicaMaterializationState(localSourceStorage, localSourceLookup, 'local synchronization source');
+    const targetSourceFingerprint = await loadSourceFingerprint(localSourceStorage, 'local synchronization source fingerprint');
+    const hostSourceFingerprint = await loadSourceFingerprint(hostStorage, 'staged host source fingerprint');
+    assertDistinctSourceFingerprints(hostname, targetSourceFingerprint, hostSourceFingerprint);
+
     await copyReplicaGently(rootDatabase, fromReplica, toReplica);
 
     const targetStorage = rootDatabase.schemaStorageForReplica(toReplica);
     const targetLookup = await loadTargetLookup(targetStorage);
     assertNoIdentifierCollisions(targetLookup, hostLookup);
     await assertValidReplicaMaterializationState(targetStorage, targetLookup, 'local synchronization source');
-
-    const targetSourceFingerprint = await loadSourceFingerprint(targetStorage, 'local synchronization source fingerprint');
-    const hostSourceFingerprint = await loadSourceFingerprint(hostStorage, 'staged host source fingerprint');
-    assertDistinctSourceFingerprints(hostname, targetSourceFingerprint, hostSourceFingerprint);
 
     const targetSchemeRaw = await targetStorage.global.get(GRAPH_SCHEME_KEY);
     const hostSchemeRaw = await hostStorage.global.get(GRAPH_SCHEME_KEY);
