@@ -45,6 +45,18 @@ synchronization.
 
 ---
 
+## 1a. Relationship to Journal Reconciliation
+
+Graph synchronization is fully specified by this document and does not inspect
+or depend on journal state. It produces the final merged graph and an abstract
+notification delta consumed by journal reconciliation.
+
+Journal reconciliation runs downstream from the completed graph merge. It may
+record or notify graph transitions, but it cannot alter graph planning or final
+graph state.
+
+---
+
 ## 2. Replica State Model
 
 **TERM-SYNC-01 (ReplicaState):** Persisted graph state for one schema version.

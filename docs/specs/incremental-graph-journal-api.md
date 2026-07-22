@@ -77,13 +77,79 @@ REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When s
 
 `graph.possibleMaybeChanges` returns at most two `PossibleNodeChange` values per matching semantic node key: one state/lifecycle entry (`add`, `edit`, or `delete`) and one freshness entry (`invalidate` or `validate`). Older entries for the same key and category are logically suppressed even when still physically present.
 
+### Historical guarantee
+
+Every returned `PossibleNodeChange` comes from a real committed `JournalEntry`.
+The event proves its historical origin transition:
+
+- A returned `add` proves that the node became materialized when the event was
+  originally emitted.
+- A returned `edit` proves that its stored semantic value actually changed
+  materially when the event was originally emitted.
+- A returned `delete` proves that an actual deletion or unmaterialization
+  transition occurred when the event was originally emitted.
+- A returned `invalidate` proves that freshness actually transitioned from
+  `up-to-date` to `potentially-outdated` when the event was originally emitted.
+- A returned `validate` proves that freshness actually transitioned from
+  `potentially-outdated` to `up-to-date` when the event was originally emitted.
+
+The event is committed atomically with the graph transition that caused it.
+
+### Current-state limitation
+
+A returned event does not assert current graph state:
+
+- A returned `add` does not prove the node is currently materialized.
+- A returned `edit` does not prove that value is currently selected.
+- A returned `delete` does not prove current unmaterialization.
+- A returned `invalidate` does not prove current staleness.
+- A returned `validate` does not prove current up-to-date freshness.
+
+Each action prompts the consumer to re-read current graph state.
+
+### Notification overapproximation
+
+A `PossibleNodeChange` returned after `since` may be an older truthful event
+that synchronization repositioned to a newer physical journal position for
+notification.
+
+Therefore:
+
+- appearing after `since` does not prove the event was originally emitted after
+  `since`;
+- the event's `time` remains its original historical time;
+- its `action` describes the original historical transition;
+- it does not assert that the same action happened locally during the latest
+  synchronization;
+- it does not assert current graph state.
+
+The overapproximation must never be described as fabrication or uncertainty
+about whether the original event occurred.
+
+Equivalent wording:
+
+```
+Journal events are exact historical evidence.
+Journal queries are conservative change notifications.
+```
+
+### Coverage guarantee
+
+Within the supported cursor domain (same-process session tokens), for semantic
+keys matching the call's `to` filter, graph-observable changes have no false
+negatives. Every matching key requiring notification is represented by a
+retained entry positioned strictly after `since`, either as a newly originated
+event or as a repositioned existing event. Consumers re-reading current graph
+state after each returned entry observe the actual graph changes for their
+filtered set of keys.
+
 REQ-JA-05: A returned `edit` is an existing journal event emitted by graph
 recomputation and possibly copied or repositioned by synchronization. Migration
-does not emit `edit`; synchronization may copy or reposition an existing edit.
-Synchronization never produces an event. The entry's presence does not guarantee
-that the node's value materially changed from the consumer's perspective.
-Consumers SHOULD re-check the current node value rather than assuming the entry
-describes a visible state transition.
+does not emit `edit`; synchronization may copy, reposition, or preserve an
+existing edit. The entry's presence does not guarantee that the node's value
+materially changed from the consumer's perspective. Consumers SHOULD re-check
+the current node value rather than assuming the entry describes a visible state
+transition.
 
 ---
 

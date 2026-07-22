@@ -16,6 +16,17 @@ Compaction relies on the `logicalJournalView(journal, H)` defined in `incrementa
 view through its fixed bound `H`. Entries outside that view are not returned,
 whether or not physical compaction has removed them.
 
+**Historical truth and compaction.** Ordinary graph and migration operations
+originate their events atomically with their transitions. Synchronization
+originates exact `invalidate` and `delete` events; other synchronization
+changes provide notification coverage through repositioned existing events.
+
+Logical compaction may suppress superseded evidence for query purposes. Physical
+compaction may later remove only evidence already suppressed by the logical
+view. Compaction does not turn events into guesses or retroactively weaken
+their historical truth. A removed event was truthful historical evidence when
+committed.
+
 ---
 
 ## Concurrency: garden and darkroom coordination
@@ -66,7 +77,7 @@ Any quota policy is valid as long as it satisfies the requirements in this docum
 
 ## Entries eligible for removal
 
-For a compaction run with captured bound `H`, compute `logicalJournalView(journal, H)` — the same logical projection used by `possibleMaybeChanges` and synchronization evidence selection.
+For a compaction run with captured bound `H`, compute `logicalJournalView(journal, H)` — the same logical projection used by `possibleMaybeChanges` and journal reconciliation (see `incremental-graph-journal-sync.md`).
 
 ### Logically required entries
 
@@ -104,13 +115,14 @@ one exists) are logically required. See the deleted-key example in C7.
 ### Interaction with synchronization
 
 REQ-JC-09: Compaction MAY remove entries outside `logicalJournalView(journal,
-H)` even when synchronization is pending. Synchronization selects evidence from
-the source logical view and does not use `timestamps` sublevel records as a
-replacement for journal evidence. See `incremental-graph-journal-sync.md`.
+H)` even when synchronization is pending. Journal reconciliation (see
+`incremental-graph-journal-sync.md`) selects source journal events from the
+logical view and does not use `timestamps` sublevel records as a replacement
+for journal evidence.
 
-REQ-JC-10: Compaction is safe for synchronization because it preserves every
-entry in the logical journal view used for conflict selection. Synchronization
-does not require entries outside that view.
+REQ-JC-10: Compaction is safe for journal reconciliation because it preserves
+every entry in `logicalJournalView(journal, H)`. Graph synchronization does not
+read journal state and is unaffected by compaction.
 
 ---
 

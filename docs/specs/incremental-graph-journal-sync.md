@@ -2,18 +2,55 @@
 
 ## Purpose
 
-This document specifies how journal state is reconciled during synchronization between hosts. Synchronization produces one complete merged inactive replica, which replaces the active replica only after it is durable and complete.
+This document specifies how journal state is reconciled after graph
+synchronization has independently produced its final graph state.
 
-Synchronization does **not** create new logical journal events. It works only with journal events that were already emitted by ordinary graph operations, migration operations, freshness transitions, and actual node deletion operations.
+Graph synchronization is fully specified by
+`docs/specs/incremental-graph-synchronization.md` and does not inspect or depend
+on journal state. Journal reconciliation runs downstream from the completed
+graph merge.
 
 ---
 
-## Normative synchronization pipeline
+## Input model
 
-Synchronization applies these stages in order. Physical source redundancy never
-participates in conflict selection.
+```
+LGraph = pre-sync active local graph
+FGraph = final graph produced by graph synchronization
+GraphDelta = set of semantic keys whose final graph state differs from the
+             pre-sync local graph in a way requiring notification to cursors
+             held by the current local process
 
-### Stage 1 — Validate event identity across both committed prefixes
+LJournal = local established journal
+HJournal = host established journal
+```
+
+Graph synchronization produces FGraph and GraphDelta. Journal reconciliation
+receives LGraph, FGraph, GraphDelta, LJournal, and HJournal.
+
+---
+
+## Graph/journal separation
+
+- Journal actions are truthful historical evidence.
+- A retained journal event does not assert current graph state.
+- It is valid for the latest retained journal event to describe an older state
+  than the current final graph.
+- Consumers must always re-read current graph state.
+
+---
+
+## Conceptual reconciliation order
+
+Journal reconciliation follows this conceptual order. Stages that involve
+durable storage use the structural synchronization protocol described below.
+
+### 1. Graph synchronization determines FGraph and GraphDelta
+
+Graph synchronization independently produces the final merged graph. Journal
+reconciliation does not participate in graph planning.
+
+### 2. Validate event identity across both committed prefixes
 
 Event-ID integrity is checked over the union of established occurrences from
 both sources:
@@ -29,18 +66,19 @@ MUST have identical immutable journal payloads. The same `eventId` MUST identify
 the same immutable payload regardless of which source an occurrence resides in.
 Copies may occupy different physical positions.
 
-This is not two isolated per-source checks that might fail to compare an ID
-appearing once in each source. Positions greater than a source's `last_journal_index`
-are not established journal history and MUST NOT participate in identity
-validation, logical-view construction, conflict resolution, or physical
-reconciliation.
+Positions greater than a source's `last_journal_index` are not established
+journal history and MUST NOT participate in identity validation, logical-view
+construction, conflict resolution, or physical reconciliation.
 
 A payload disagreement for one `eventId` within the validated union is a
 journal-integrity error: synchronization aborts, does not switch replicas,
 leaves the old active replica unchanged, and neither poisons the occurrences nor
 chooses a payload.
 
-### Stage 2 — Compute each source logical view from its committed prefix
+The journal payload includes action, key, identifier, time, and creator. It does
+not include any `ComputedValue`.
+
+### 3. Compute each source logical journal view
 
 For each source, compute:
 
@@ -51,17 +89,17 @@ logicalJournalView(sourceJournal, sourceH)
 where `sourceH = source last_journal_index`. Storage above `sourceH` is outside
 the committed prefix and is excluded from the logical view.
 
-For each semantic key this produces at most its source state entry and source
-freshness entry. No physically redundant source event may affect conflict
-resolution.
+For each semantic key this produces at most one source state entry and one
+source freshness entry.
 
-### Stage 3 — Select canonical state
+### 4. Select retained historical journal evidence
 
-The canonical state event selects the identifier/value provenance. Graph-level
-decisions about whether the candidate value may remain cached, must become
-missing, or must be downgraded to potentially-outdated are governed by the
-graph synchronization specification (`docs/specs/incremental-graph-synchronization.md`),
-not by the journal synchronization specification.
+Canonical journal events are the events retained in the final journal for each
+semantic key. They are canonical only for journal retention and notification.
+Selection uses journal-only rules: it does not consult graph state, graph
+identifiers, or graph freshness.
+
+#### Canonical state event
 
 For each semantic key:
 
@@ -71,161 +109,250 @@ For each semantic key:
   differ and times tie) lexicographically greater `NodeIdentifier`, then (when
   identifiers and times tie) lexicographically greater `eventId`.
 
-The winning existing event is canonical. `add` or `edit` materializes the key
-using that event's `NodeIdentifier`; every source satisfying the canonical
-event consistency conditions may contribute to `candidateValueOrigins(K)`.
-`delete` leaves the key nonmaterialized. Synchronization creates no event.
+The winning existing event is canonical. It is retained in the final journal
+as historical notification evidence.
 
-The canonical state event does not override a graph-synchronization requirement
-to delete the candidate cached value, make the node missing, or downgrade it to
-potentially-outdated. Those outcomes are determined by the graph synchronization
-rules (value provenance, dependency relowering, conservative freshness).
+#### Canonical freshness event
 
-### Stage 4 — Validate source graph and freshness consistency
+For each semantic key, compare source freshness events directly. Do not filter
+by canonical state identifier, final graph identifier, current materialization,
+or current graph freshness.
 
-For each source key, let S be its source state entry and F its source freshness
-entry from `logicalJournalView(sourceJournal, sourceH)`.
+- if neither source has a freshness entry, the source canonical freshness event
+  is absent;
+- if only one source has a freshness entry, that existing event is canonical;
+- if both have freshness entries, compare by later `time`, then lexicographically
+  greater `eventId` on a tie.
 
-### Source consistency matrix
+The winner is the source canonical freshness event. It is historical journal
+evidence only: it does not determine final graph freshness or assert current
+graph state. The retained freshness event may refer to an older identifier than
+the retained state event.
 
-For each source semantic key, let:
+### 5. Apply exact generated events from LGraph → FGraph
+
+Synchronization may newly emit only:
+
+- `invalidate`
+- `delete`
+
+It never emits `add`, `edit`, or `validate`.
+
+#### Generated `delete`
+
+Emit one `delete` for semantic key K when:
 
 ```
-S = source latest state entry
-F = source latest freshness entry
-W = source materialized NodeIdentifier (from graph storage)
+LGraph(K) is materialized
+FGraph(K) is unmaterialized
 ```
 
-This matrix is the sole normative source-consistency rule:
+Use:
 
-| Source graph state | Required graph/value shape | Valid freshness-history cases | Invalid cases |
-|---|---|---|---|
-| Cached and `up-to-date` | value present; `S.action` is `add` or `edit`; `S.id === W` | matching `F.id === W` with `F.action === validate`; or no matching F when `S.action === add`; or older-incarnation F when `S.action === add` | matching latest `invalidate`; or `S.action === edit` without matching freshness history |
-| Cached and `potentially-outdated` | value present; `S.action` is `add` or `edit`; `S.id === W` | matching `invalidate`; matching `validate` followed by conservative synchronization downgrade; or no matching F / older-incarnation F when `S.action === add` | `S.action === edit` without matching freshness history |
-| Missing | value absent; freshness is `missing`; `S.action` is `add` or `edit`; `S.id === W` | F is historical only: matching `validate`, matching `invalidate`, older-incarnation F, and no F are all permitted | any violation of the required graph/value shape |
-| Nonmaterialized | no identifier or cached value | if state evidence exists, latest S is `delete`; F is historical only | materialized state evidence without materialized graph state |
-| Orphan freshness | no state event exists for the semantic key | none | any F is invalid |
+```
+event.action = "delete"
+event.key   = K
+event.id    = identifier of the deleted local materialization
+```
 
-In particular, a matching `validate` does not require current graph freshness
-to remain `up-to-date`: synchronization may have conservatively downgraded it.
-Freshness history is retained operation evidence, not a complete record of
-structurally selected current freshness.
+#### Generated `invalidate`
 
-#### On any consistency failure
+Emit one `invalidate` for semantic key K when:
 
-Abort synchronization without applying the prepared target. Do not switch
-replicas. Leave the active replica unchanged. Do not repair the source silently.
-Do not choose graph storage over journal evidence. Do not choose journal
-evidence over graph storage.
+```
+LGraph(K) is materialized and up-to-date
+FGraph(K) is materialized and potentially-outdated
+```
 
-### Candidate value origins
+Use:
 
-For a canonical `add` or `edit` event E for key K, the internal proof set
-`candidateValueOrigins(K)` contains one origin for each source where:
+```
+event.action = "invalidate"
+event.key   = K
+event.id    = final materialization identifier of K in FGraph
+```
 
-- that source's latest state event (from its `logicalJournalView`) is E;
-- its current materialized identifier is `E.id`;
-- it currently has a cached value.
+#### Delete dominates invalidate
 
-A missing source (no cached value) contributes no cached-value origin.
+When LGraph(K) is materialized and FGraph(K) is unmaterialized, emit only
+`delete`. Do not emit `invalidate` before deletion.
 
-#### Cached-value integrity for multiple origins
+#### Generated event assignment
 
-When two sources contribute cached-value origins for the same canonical event:
+Every generated event begins unpositioned. It is always queued for fresh
+placement above `P = max(localH, remoteH)`.
 
-- their cached values must be `isEqual`;
-- differing values are an integrity error;
-- equal values denote the same candidate semantic value.
+Assign:
 
-When one source is cached and the other is missing:
+```
+action   = "invalidate" or "delete"
+key      = K
+id       = as specified above
+time     = current synchronization event time
+creator  = local host
+```
 
-- do not compare the cached value with absence;
-- do not treat absence as corruption;
-- the cached source contributes one candidate origin;
-- the graph provenance and relowering rules decide whether that value may
-  survive.
+After its fresh `JournalIndex` is allocated, assign the ordinary event ID:
 
-When all canonical-event sources are missing:
+```js
+JSON.stringify([
+    hostnameToString(creator),
+    journalIndexToNumber(originIndex),
+])
+```
 
-- the final node is materialized but missing;
-- no cached value is invented.
+No special sync event type or alternate ID format.
 
-#### Value provenance
+#### Final canonical events
 
-Value origin is determined by the graph synchronization specification
-(`docs/specs/incremental-graph-synchronization.md` §9). A surviving cached
-value may be preserved with its source-side origin, downgraded to potentially
-outdated, or removed entirely — but the canonical `eventId` and `NodeIdentifier`
-are never replaced by the losing source's identifier or value.
+For each semantic key, the final canonical events are derived from the source
+canonical events and any generated sync events:
 
-#### Integrity error on divergent cached values
+```
+finalCanonicalStateEvent(K)     = generated delete(K)    if one exists
+                                = sourceCanonicalStateEvent(K)   otherwise
+```
 
-If the cached values are not `isEqual`:
+```
+finalCanonicalFreshnessEvent(K) = generated invalidate(K)    if one exists
+                                = sourceCanonicalFreshnessEvent(K)   otherwise
+```
 
-- fail synchronization with an integrity error;
-- do not choose the local value;
-- do not choose the remote value;
-- do not switch replicas;
-- leave the current active replica unchanged;
-- do not poison the event's positions merely because the graph values disagree.
+A key receiving a generated `delete` receives no generated `invalidate`:
 
-The graph value is not part of `JournalEntry`, `JournalEventId`, or the
-immutable journal-payload serialization.
+```
+finalCanonicalStateEvent(K)     = generated delete(K)
+finalCanonicalFreshnessEvent(K) = sourceCanonicalFreshnessEvent(K) (when one exists)
+```
 
-### Stage 5 — Select canonical freshness history
+The destination physically contains exactly:
 
-This stage selects the canonical freshness event retained in the destination
-journal. The final graph freshness is determined by the graph synchronization
-rules (see `docs/specs/incremental-graph-synchronization.md` §8). The canonical
-freshness history event does not by itself force the graph freshness — a
-retained `validate` permits but does not force `up-to-date`, and a retained
-`invalidate` forbids `up-to-date` unless a later canonical `validate` exists.
+- the final canonical state event for each semantic key, when one exists;
+- the final canonical freshness event for each semantic key, when one exists.
 
-For a canonically materialized key, let the winning identifier be `W`. Consider
-each source freshness entry only when `entry.id === W`; ignore freshness for
-another identifier. Compare candidates by later `time`, then lexicographically
-greater `eventId` on a tie. The winner is the canonical freshness history event.
+"Final canonical" may mean either a retained or repositioned source event or a
+newly generated sync event. The resulting physical journal equals its own
+`logicalJournalView`.
 
-If neither source supplies freshness evidence for `W`, canonical freshness
-history is absent. Graph synchronization alone evaluates candidate origins,
-source cache states, final inputs, and validity proofs to select final graph
-freshness.
+### 6. Select notification carriers
 
-For a canonically deleted key, freshness never sets graph state. Preserve no
-freshness event when neither source has one; preserve the sole entry when only
-one source has one; and when both have entries preserve the winner by later
-`time`, then lexicographically greater `eventId`. That winner is canonical
-journal history only: it neither rematerializes the key nor assigns graph
-freshness.
+Every key in GraphDelta must have a notification carrier positioned strictly
+after `localH` so that local-process cursors observe the change.
 
-### Final graph freshness
+#### notificationCarrier(K)
 
-The retained canonical freshness event does not force the final graph freshness.
-The graph synchronization rules determine:
+For each `K` in GraphDelta, select exactly one carrier in this order:
 
-- If the retained event is `validate`, the graph may still be
-  `potentially-outdated` or `missing` if relowering, provenance requirements,
-  or conservative freshness rules require it.
-- If the retained event is `invalidate`, the graph must not be `up-to-date`
-  unless a later canonical `validate` exists.
-- If the destination must produce a missing node (materialized identifier,
-  no cached value), the canonical freshness event is retained as journal
-  history only; it does not assign graph freshness.
+1. the generated `delete` or `invalidate`, when one exists;
+2. otherwise the final canonical state event;
+3. otherwise the final canonical freshness event;
+4. otherwise fail journal reconciliation with a journal-integrity error because
+   a required notification has no historical evidence.
 
-Graph-level decisions about cached-value removal, freshness downgrade, and
-missing-state production are governed by the graph synchronization
-specification (`docs/specs/incremental-graph-synchronization.md`).
+Only the selected carrier needs repositioning for K. Do not reposition both
+categories merely because both exist.
 
-### Wall-clock resolution
+A repositioned event preserves its original:
 
-A host's wall clock may be incorrect, but it is the available conflict-ordering
-signal. The system trusts hosts and does not rely on an external time authority.
+- action;
+- key;
+- identifier;
+- time;
+- creator;
+- `eventId`.
+
+It is not newly emitted.
+
+### 7. Reconcile physical positions
+
+The merge operates on two source replicas.
+
+**Inputs:**
+
+```
+localH  = local last_journal_index
+remoteH = remote last_journal_index
+P       = max(localH, remoteH)
+```
+
+For every index `i` from `1` through `P`, derive the destination state:
+
+1. **Both replicas have established state at `i`** (i ≤ localH and i ≤ remoteH):
+
+   | local[ i ] | remote[ i ] | target[ i ] |
+   |---|---|---|
+   | entry E | entry E | preserve E at i only when E is final canonical |
+   | absent | absent | preserve absence at i |
+   | entry E | absent | absence at i (see evidence preservation) |
+   | absent | entry E | absence at i (see evidence preservation) |
+   | entry E | entry F (E ≠ F) | poison: absence at i |
+
+2. **Only local has established state at `i`** (i ≤ localH, i > remoteH):
+   Preserve a local entry only when it is final canonical; otherwise establish
+   absence.
+
+3. **Only remote has established state at `i`** (i > localH, i ≤ remoteH):
+   The position is unestablished locally. Preserve a remote entry only when it
+   is final canonical; otherwise establish absence.
+
+### 8. Normalize final canonical occurrences
+
+For every final canonical event, gather its surviving destination positions. If
+the same `eventId` survives at several physical positions:
+
+- retain the occurrence with the greatest `JournalIndex`;
+- make all lower occurrences absent;
+- do not create another fresh copy.
+
+If exactly one occurrence survives, retain it. If none survives, queue that
+event for fresh placement.
+
+### 9. Enforce notification bounds
+
+For each `K` in GraphDelta, let `carrier` be the notification carrier selected
+in step 6.
+
+- If `carrier` is a generated `delete` or `invalidate`, it was queued for fresh
+  placement in step 5. It will be allocated above `P` in step 10, satisfying the
+  `localH` bound.
+- Otherwise `carrier` is an existing event. If its greatest surviving position
+  (after steps 7-8) is strictly greater than `localH`, keep it. Otherwise remove
+  its old occurrences and queue it for fresh placement above `P`.
+
+### 10. Fresh placement
+
+Every event queued for fresh placement during steps 5, 8, and 9 is allocated
+contiguously at:
+
+```
+P + 1 .. P + n
+```
+
+The final watermark is `P + n`.
+
+Fresh entries are ordered by:
+
+1. `time` ascending;
+2. `NodeKeyString` ascending;
+3. `creator` ascending;
+4. Action rank: `add < edit < delete < invalidate < validate`;
+5. `NodeIdentifier` ascending.
+
+`NodeIdentifier` values are globally and historically unique.
+
+After allocating `n` queued events, set `last_journal_index = P + n`.
+
+### Evidence preservation rule
+
+When an entry is removed by same-index poisoning or present-versus-absence
+conflict, if that entry is final canonical and has no other surviving position,
+queue it for fresh placement. Otherwise do not queue it.
 
 ---
 
 ## Structural synchronization protocol
 
-Synchronization uses the existing replica-switching architecture. It does not introduce any database-state abstraction beyond the replicas that already exist in the IncrementalGraph design.
+Synchronization uses the existing replica-switching architecture.
 
 The outer lock scope is:
 
@@ -239,807 +366,216 @@ holidayActivity
 
 ### Protocol steps
 
-1. **Acquire `holidayActivity`.** This excludes daytime activity, nighttime activity, pulls, invalidations, and ordinary journal appends for the complete synchronization.
+1. **Acquire `holidayActivity`.** Excludes ordinary graph activity and journal
+   appends for the complete synchronization.
 
-2. **Acquire `closeGarden`.** This excludes journal queries, compaction, structural synchronization, migration cutover, and other replica lifecycle operations.
+2. **Acquire `closeGarden`.** Excludes journal queries, compaction, structural
+   synchronization, migration cutover, and other replica lifecycle operations.
 
 3. **Select**:
    - the current active local replica as the local source;
    - the fetched remote replica as the remote source;
    - an inactive local replica as the destination.
 
-4. **Clear or recreate the inactive destination** according to the existing replica-management design.
+4. **Clear or recreate the inactive destination** according to the existing
+   replica-management design.
 
-5. **Construct the complete merged graph and journal in that inactive destination.** See §Journal merge rules. The inactive destination may be written through multiple durable batches. Each batch that commits journal entries and associated graph records must keep them atomic with one another. Each standard transaction finalization acquires the destination darkroom. The darkroom may be acquired and released per durable batch; it is not held for the entire potentially long-running destination construction.
+5. **Construct the complete merged graph and journal in that inactive
+   destination.** The inactive destination may be written through multiple
+   durable batches. Each batch that commits journal entries and associated graph
+   records must keep them atomic with one another. Each standard transaction
+   finalization acquires the destination darkroom.
 
-6. **Do not mutate the active local replica** while constructing the destination.
+6. **Do not mutate the active local replica** while constructing the
+   destination.
 
-7. **After all destination records are durable and internally consistent, acquire the destination/finalization darkroom.**
+7. **After all destination records are durable and internally consistent,
+   acquire the destination/finalization darkroom.**
 
-8. **Finish any required final destination metadata and atomically switch the active-replica pointer** to the completed destination. Publish volatile active-replica state only after the durable cutover succeeds.
+8. **Finish any required final destination metadata and atomically switch the
+   active-replica pointer** to the completed destination.
 
 9. **Release locks in reverse order.**
 
-If synchronization fails before cutover:
-- the old active replica remains active and unchanged;
-- the incomplete inactive replica may be discarded or rebuilt later;
-- readers never observe the incomplete replica.
+If synchronization fails before cutover, the old active replica remains active
+and unchanged.
 
 ### Query interaction
 
-Because synchronization holds `closeGarden`, `possibleMaybeChanges` cannot select or traverse a replica during synchronization or cutover. The query continues to use `enterGarden` before selecting the active replica, read one fixed `last_journal_index = H`, scan the selected active replica through `H`, and release the garden afterward.
+Because synchronization holds `closeGarden`, `possibleMaybeChanges` cannot
+select or traverse a replica during synchronization or cutover. The query
+continues to use `enterGarden` before selecting the active replica, read one
+fixed `last_journal_index = H`, scan the selected active replica through `H`,
+and release the garden afterward.
 
 ---
 
-## Why no new sync event is needed
+## Idempotence
 
-`possibleMaybeChanges` reports possible changes, not an exact command log.
+After one synchronization installs FGraph locally, repeating reconciliation
+against the same unchanged host state produces no additional sync-originated
+event when GraphDelta is empty (no key transitions between LGraph and FGraph).
 
-When synchronization changes the graph:
-- the existing canonical event — whether `add`, `edit`, `delete`, `invalidate`, or `validate` — is already journal evidence for the affected key;
-- if that evidence occupies a remote suffix position, it is copied into the same unestablished numeric position;
-- if its old numeric position conflicts with established local state, it is reappended at a fresh position;
-- a caller receiving that event re-reads the current graph state.
-
-Therefore the existing canonical event is sufficient. An additional synthetic notification would duplicate evidence without adding information.
-
-### Identifier conflict
-
-When two identifiers for the same semantic key conflict:
-- determine the graph winner using the existing timestamp and `NodeIdentifier` rules;
-- preserve the canonical state winner and, when one exists, the canonical freshness event;
-- omit the losing state event;
-- omit obsolete freshness events;
-- do not emit a synthetic `delete` or `edit`.
-
-The existing canonical event is sufficient because consumers re-read current graph state. The winner may originate from either source.
-
----
-
-## Journal merge rules
-
-### Physically canonical destination
-
-The completed inactive destination physically contains exactly its logical
-journal view. For each semantic node key it contains at most one state event
-(`add`, `edit`, or `delete`) and at most one freshness event (`invalidate` or
-`validate`). Every noncanonical event is absent. This construction is the
-equivalent of physical compaction and cannot change `possibleMaybeChanges`,
-because noncanonical events are already excluded by `logicalJournalView`.
-
-Synchronization does not preserve obsolete entries merely as physical history,
-and it never reappends a canonical event merely to outrank an obsolete event at
-a greater index. It omits the obsolete event instead.
-
-### Stage 6 — Reconcile physical positions
-
-The merge operates on two source replicas. For the local replica, the established prefix through its committed watermark is finalized. For the remote replica, its established prefix through its committed watermark is finalized.
-
-**Inputs:**
-```
-localH  = local last_journal_index
-remoteH = remote last_journal_index
-P       = max(localH, remoteH)
-```
-
-**Prefix merge:** For every index `i` from `1` through `P`, derive the destination state:
-
-1. **Both replicas have established state at `i`** (i ≤ localH and i ≤ remoteH):
-
-   | local[ i ] | remote[ i ] | target[ i ] |
-   |---|---|---|
-   | entry E | entry E | preserve E at i only when E is canonical |
-   | absent | absent | preserve absence at i |
-   | entry E | absent | absence at i (see evidence preservation) |
-   | absent | entry E | absence at i (see evidence preservation) |
-   | entry E | entry F (E ≠ F) | poison: absence at i |
-
-2. **Only local has established state at `i`** (i ≤ localH, i > remoteH):
-   Preserve a local entry only when it is canonical; otherwise establish
-   absence. Preserve local absence.
-
-3. **Only remote has established state at `i`** (i > localH, i ≤ remoteH):
-   The position is unestablished locally. Preserve a remote entry only when it
-   is canonical; otherwise establish absence. Preserve remote absence.
-
-The entire prefix state through `P` is resolved before fresh entries are allocated.
-
-### Stage 7 — Normalize canonical occurrences
-
-For every canonical event, gather its surviving destination positions. If the
-same `eventId` survives at several physical positions:
-- retain the occurrence with the greatest `JournalIndex`;
-- make all lower occurrences absent;
-- do not create another fresh copy.
-
-If exactly one occurrence survives, retain it. If none survives, queue that same
-event for fresh placement. Thus a positioned canonical event is never queued,
-and every queued event is canonical and has no surviving positioned copy.
-
-### Stage 7a — Notification coverage
-
-A same-process caller may hold a `PossibleNodeChange` cursor from before
-synchronization. If synchronization changes the logical journal winner or the
-graph-observable state for a semantic key, the caller must receive a retained
-canonical event strictly after its old source watermark, so it is prompted to
-re-read the graph state. Synchronization satisfies this by repositioning an
-existing canonical event. It still creates no logical event.
-
-Two separate notification carrier sets are defined per semantic key:
-**state-notification sources** and **freshness-notification sources**. A source
-may appear in neither, one, or both sets depending on how its state and final
-destination diverge.
-
-#### State-notification sources
-
-A source requires state notification via the canonical state event when any of
-these differs between the source and the final destination for the affected
-semantic key:
-
-- Canonical state event (`eventId`);
-- Materialized versus nonmaterialized;
-- Current `NodeIdentifier`;
-- Cached versus missing;
-- Cached semantic value (when both are cached, `isEqual` comparison);
-- Final graph state changed conservatively because of relowering or provenance
-  (even when the canonical state event itself is unchanged).
-
-#### Freshness-notification sources
-
-A source requires freshness notification via the canonical freshness event when
-its latest freshness event differs from the final canonical freshness-history
-event:
-
-- One absent and the other exists;
-- Both exist with different `eventId`.
-
-When final canonical freshness history is absent but a source had freshness
-history, there is no freshness event available to carry that notification; use
-the canonical state event for that source instead.
-
-When graph freshness changes from up-to-date to stale or missing but the
-canonical freshness event itself is unchanged (e.g., conservative downgrade
-after a retained `validate`), use the canonical state event as the notification
-carrier. Do not reposition a `validate` or `invalidate` merely because a value
-or cached/missing state changed.
-
-#### Notification bound computation
-
-For a canonical event E, compute the set of sources that require E as
-notification:
-
-- If E is a state event (`add`, `edit`, `delete`): use the state-notification
-  sources for E's semantic key.
-- If E is a freshness event (`invalidate`, `validate`): use the
-  freshness-notification sources for E's semantic key.
-
-Let:
-
-```
-notificationBound(E) = max(sourceH of every source requiring notification via E)
-```
-
-If no source requires notification via E, E has no notification bound.
-
-#### Notification-aware normalization
-
-During canonical-occurrence normalization, after gathering surviving positions
-of E:
-
-1. Keep only the greatest surviving position as the initial candidate.
-2. If E has no notification bound:
-   - retain that candidate;
-   - if no occurrence survived, queue E for fresh placement.
-3. If E has a notification bound T:
-   - if the greatest surviving position is strictly greater than T, retain it;
-   - otherwise make every old occurrence absent and queue E for fresh placement.
-4. Fresh placement occurs above P (see Stage 8).
-
-This ensures the canonical event ends up at a position strictly greater than
-the watermark of every source that needed notification, prompting callers
-whose cursor was before that watermark to re-read the graph.
-
-#### Determinism and idempotence
-
-The notification rule is symmetric. It depends only on:
-
-- both source watermarks;
-- both source logical views;
-- both source graph states;
-- the deterministic final graph and journal state.
-
-It does not depend on which source is called local.
-
-After the first synchronization, the repositioned canonical event is above the
-watermark of every source that needed notification. When the merged result is
-synchronized again with one of those original sources, the already positioned
-canonical event satisfies that source's notification bound; no further append
-is needed.
-
-### Stage 8 — Fresh placement
-
-Canonical events that have no surviving positioned occurrence (including those
-queued by notification-aware normalization) are allocated at:
-
-```
-P + 1 .. P + n
-```
-
-The final watermark is `P + n`.
-
-#### Fresh-entry ordering
-
-Fresh entries are ordered by:
-
-1. `time` ascending;
-2. `NodeKeyString` ascending;
-3. `creator` ascending;
-4. Action rank: `add < edit < delete < invalidate < validate`;
-5. `NodeIdentifier` ascending.
-
-`NodeIdentifier` values are globally and historically unique. Do not add any further criterion after `NodeIdentifier`.
-
-Allocate the ordered entries contiguously at `P + 1 .. P + n`.
-
-### Destination logical view canonicalization
-
-REQ-JS-07: After physical index reconciliation, the destination physically
-contains exactly:
-
-- the canonical state event for each key;
-- the canonical freshness event for each key, when one exists.
-
-Every obsolete or duplicate occurrence is absent. Fresh placement preserves the
-queued event's exact action, identifier, key, time, creator, and `eventId`.
-After allocating `n` queued events contiguously at `P + 1 .. P + n`, set
-`last_journal_index = P + n`. The completed destination therefore has at most
-one physical occurrence of each `eventId` and physically equals
-`logicalJournalView(journal, P + n)`.
-
-Synchronization still does not create any logical event.
-
-#### Required displaced evidence
-
-REQ-JS-08: Entry-versus-established-absence reconciliation and same-index
-poisoning use one rule. The destination position is absent. If the removed event
-is canonical and has no other surviving position, queue that same event for
-fresh placement. Otherwise do not queue it. This rule covers canonical `add`,
-`edit`, `delete`, `invalidate`, and `validate` events and excludes every obsolete
-event.
-
----
-
-## Physical journal convergence
-
-One synchronization invocation modifies only the local inactive destination and then switches the local active pointer. It does not modify the fetched remote host.
-
-Given the same two stable source replicas, the merge rules produce the same complete destination journal regardless of which source is described first. This deterministic pairwise merge guarantees:
-
-- the same graph winner;
-- the same state for every physical journal position;
-- the same freshness winner;
-- the same fresh-entry ordering;
-- the same final watermark.
-
-A one-sided synchronization run produces that deterministic destination locally. The remote host converges only after it separately obtains and installs equivalent merged data through the broader synchronization mechanism.
-
-### Resolving divergent indices
-
-If the two source replicas have different `JournalEntry` values at the same `JournalIndex` `i`, the destination poisons that index. Both conflicting entries are deleted from index `i` in the destination. A conflicting event is queued above `P` only when it is canonical and has no other surviving position.
-
-### Present-versus-absence conflict
-
-If one source replica has an established journal entry at index `i` and the other has an established absence at the same index `i`, the destination establishes absence at index `i`. The present entry is removed in the destination.
-
-If the removed event is canonical and has no other surviving position, queue the same event for fresh placement. Otherwise do not reappend it. This is the same rule used for same-index poisoning.
-
-### Remote suffix
-
-For `localH < i ≤ remoteH`, the local source has no established state at `i`. A canonical remote event at `i` may remain at `i` in the destination. A noncanonical remote event is omitted. Because synchronization holds `holidayActivity`, there is no concurrent ordinary append that can claim the position.
-
----
-
-## Pairwise synchronization
-
-Specify deterministic pairwise synchronization only. For the same two stable source replicas:
-- the merge rules produce the same merged destination;
-- input direction does not affect graph conflict winners;
-- input direction does not affect physical journal reconciliation;
-- input direction does not affect fresh-entry ordering.
-
-This PR does not specify:
-- general multi-host convergence;
-- associativity;
-- global revision graphs;
-- immutable synchronization results propagated among all hosts;
-- a proof that arbitrary repeated pairwise ordering terminates;
-- three-host conformance scenarios.
-
-A future specification may address general multi-host convergence.
+Do not query previous journal events to determine idempotence.
 
 ---
 
 ## Interaction with compaction
 
-Sync operates on each source's `logicalJournalView` at sync time. A conforming
-physical compaction may have removed entries outside that view, but it preserves
-every entry inside it, so source conflict selection is identical before and
-after compaction. Synchronization MUST NOT fall back to graph `timestamps`
-sublevel records as replacement journal evidence.
+Synchronization operates on each source's `logicalJournalView` at sync time. A
+conforming physical compaction may have removed entries outside that view, but
+it preserves every entry inside it, so source event selection is identical
+before and after compaction.
+
+Graph synchronization does not read journal state, so compaction cannot affect
+graph synchronization correctness.
 
 ---
 
 ## Host identity and journal consumers
 
-Callers of `graph.possibleMaybeChanges` MUST NOT be required to understand or inspect host identities (`Hostname` values) or raw journal indices (`JournalIndex` values). Host identity is a journal-internal concern used only during synchronization.
+Callers of `graph.possibleMaybeChanges` MUST NOT be required to understand or
+inspect host identities (`Hostname` values) or raw journal indices
+(`JournalIndex` values). Host identity is a journal-internal concern used only
+during synchronization.
 
-The `PossibleNodeChange` type intentionally excludes `Hostname` and `JournalIndex` from its public fields. Consumers see only `nodeName`, `bindings`, `action`, and `time`.
-
----
-
-## Sync order
-
-Sync SHOULD process remote journal entries in ascending `JournalIndex` order for deterministic traversal. `JournalIndex` order is not a global causal order across hosts. Divergent same-index entries are handled by the poisoned-index rule.
+The `PossibleNodeChange` type intentionally excludes `Hostname` and
+`JournalIndex` from its public fields. Consumers see only `nodeName`,
+`bindings`, `action`, and `time`.
 
 ---
 
 ## Testable scenarios
 
-### T1 — Stored freshness contradicts invalidate
+### T1 — Journal integrity: conflicting payload
 
-Source:
-```
-state: materialized W, stored freshness = up-to-date
-journal logical view: state = edit W, freshness = invalidate W
-```
+Source A: eventId "[\"h1\",3]" with payload edit W1
+Source B: eventId "[\"h1\",3]" with payload edit W2
 
-Synchronization fails with an integrity error. It must not silently make the
-node stale or ignore the event.
+Synchronization aborts. Different payloads for the same eventId are an
+integrity error.
 
-### T2 — Validate history with conservative downgrade
+### T2 — Generated invalidate becomes final freshness event
 
-Source:
-```
-state: materialized W, stored freshness = potentially-outdated
-journal logical view: state = edit W, freshness = validate W
-```
+Source canonical: state = edit W, freshness = validate W
+GraphDelta contains K, L up-to-date → F stale
 
-This is a valid conservative-downgrade scenario. The retained `validate`
-permits up-to-date but does not force it. Graph synchronization may
-conservatively produce `potentially-outdated` when relowering or provenance
-rules require it. The canonical freshness history (validate W) is retained
-in the journal; the graph freshness is potentially-outdated.
-
-
-### T3 — Stale migration creation
-
-Source:
-```
-state: materialized W, stored freshness = potentially-outdated
-journal logical view: state = add W, no matching freshness event
-```
-
-This is valid. The `add` without matching freshness evidence uses its
-associated stored initial freshness, which is `potentially-outdated`.
-Graph synchronization evaluates that cached origin and may preserve stale
-freshness or conservatively make the node missing.
-
-### T3a — Missing freshness after edit
-
-Source:
-```
-state: materialized W, stored freshness = potentially-outdated (or up-to-date)
-journal logical view: state = edit W, no matching freshness event
-```
-
-Synchronization fails. A conforming edit must have matching `validate`
-evidence. An `edit` incarnation without freshness evidence cannot establish
-its stored freshness.
-
-### T3b — Fresh creation
-
-Source:
-```
-state: materialized W, stored freshness = up-to-date
-journal logical view: state = add W, no matching freshness event
-```
-
-This is valid. Freshness is `up-to-date`.
-
-### T4 — First materialization
-
-Source:
-```
-state: materialized W, stored freshness = up-to-date
-journal logical view: state = add W, no matching freshness event
-```
-
-This is valid. The `add` supplies the node incarnation's initial freshness
-(up-to-date in this case). First materialization emits `add` but not
-`validate`.
-
-### T5 — Old-incarnation freshness
-
-Source:
-```
-state: materialized W2, stored freshness = up-to-date
-journal logical view: state = add W2, freshness = invalidate W1
-```
-
-This is valid source history. The `invalidate W1` belongs to an older
-incarnation and does not make `W2` stale.
-
-### T5a — Override preserves fresh state
+Generated: invalidate(K, finalIdentifier)
 
 ```
-Before override:
-    W is up-to-date
-    latest freshness event = validate W
-
-After storage.override:
-    W is up-to-date (freshness inherited)
-    existing validate W remains latest freshness evidence
-    no new journal event emitted
+finalCanonicalStateEvent(K)     = edit W (source retained)
+finalCanonicalFreshnessEvent(K) = generated invalidate(K)
 ```
 
-Override preserves freshness unchanged and emits no journal entry.
+### T3 — Generated delete becomes final state event
 
-### T5b — Override preserves stale state
+Source canonical: state = edit W, freshness = validate W
+L materialized, F unmaterialized
 
-```
-Before override:
-    W is potentially-outdated
-    latest freshness event = invalidate W
-
-After storage.override:
-    W remains potentially-outdated (freshness inherited)
-    existing invalidate W remains latest freshness evidence
-    no new journal event emitted
-```
-
-Override preserves freshness unchanged and emits no journal entry.
-
-### T5c — Same add event, different initial freshness (valid)
-
-Both sources contain the same `add` event (same `eventId`, same immutable
-payload, same cached value) and no matching freshness event. Source A stores
-`W` as `up-to-date`. Source B stores `W` as `potentially-outdated` after a
-prior conservative synchronization.
-
-This is valid. Cross-source current-freshness equality is not an integrity
-rule — two conforming sources may contain the same `add` event with no
-matching freshness event while one is up to date and the other is potentially
-outdated. The canonical freshness history is absent; final graph freshness
-is selected conservatively by graph synchronization from both source cache
-states, candidate origins, final inputs, and validity proofs. If either
-source's graph-observable result differs from the final result, the canonical
-state event is its notification carrier.
-
-### T5d — Identical state event, consistent freshness
-
-Both sources contain the same `add` event with no matching freshness event.
-Both store `W` as `up-to-date`. Synchronization succeeds; `W` is up to date.
-
-### T5e — Same event, divergent graph values
+Generated: delete(K, localIdentifier)
 
 ```
-Source A:
-  state event E: action = edit, eventId = X
-  stored graph value for node: value A
-
-Source B:
-  state event E: action = edit, eventId = X (same eventId, same immutable payload)
-  stored graph value for node: value B
-
-isEqual(value A, value B) === false
+finalCanonicalStateEvent(K)     = generated delete(K)
+finalCanonicalFreshnessEvent(K) = validate W (source retained)
 ```
 
-Synchronization fails with an integrity error. The active replica remains
-unchanged. The event occurrences are not poisoned or arbitrarily assigned a
-value. The journal payload is identical — the divergence is in the associated
-graph value, which is not part of the immutable journal payload.
+### T4 — Delete dominates invalidate
 
-### T5f — Same event, equal graph values
+L: K up-to-date
+F: K unmaterialized
 
-```
-Source A:
-  state event E: action = add, eventId = X
-  stored graph value for node: value A
+Emit only `delete`. No `invalidate`.
 
-Source B:
-  state event E: action = add, eventId = X (same eventId, same immutable payload)
-  stored graph value for node: value B
+### T5 — Already stale emits nothing
 
-isEqual(value A, value B) === true
-```
+L: K potentially-outdated
+F: K potentially-outdated
 
-Synchronization succeeds and produces the same canonical graph value regardless
-of which source is described first. The canonical event is unambiguous; the
-canonical graph value is that common semantic value.
+No generated event.
 
-### T5g — Same event, equal values, different initial freshness (valid)
+### T6 — Host-only rejected node emits nothing
 
-Both sources contain the same `add` event (same `eventId`, same payload).
-Graph values are `isEqual`. Source A stores `up-to-date` and source B stores
-`potentially-outdated` as the initial freshness (after conservative
-downgrade). This is not corruption. Graph-value equality and initial-freshness
-agreement are independent concerns — the journal does not enforce cross-source
-freshness equality. Graph synchronization selects final freshness
-conservatively; the canonical state event provides notification to each source
-whose graph-observable result differs.
+L: K unmaterialized
+H: K materialized
+F: K unmaterialized
 
-### T5h — Missing and cached copies of the same event
+No generated event. No local transition occurred.
 
-```
-Source A:
-  latest state = E (add W)
-  cached value V
+### T7 — Identifier replacement emits no add or delete
 
-Source B:
-  latest state = E (add W)
-  missing (no cached value)
-```
+L: K1 materializes K
+F: K2 materializes K
 
-No value-integrity failure occurs. Only source A contributes a cached-value
-origin to `candidateValueOrigins(W)`. The cached source's value is the
-candidate; absence is not compared. Graph provenance and relowering rules
-decide whether V survives in the destination. If no cached origin survives,
-the final node is materialized but missing.
+No delete, no add, no invalidate (unless freshness also changed). If freshness
+changed up-to-date → stale, emit one invalidate using K2.
 
-### T6 — Self-synchronization stability
+### T8 — Repeated sync emits nothing
 
-An already conforming, physically canonical source synchronized with an
-identical copy. Expected result:
+First sync: K up-to-date → stale, emits invalidate(K).
+Second sync: L now stale, F still stale. No transition, no event.
 
-- identical graph value;
-- identical graph freshness;
-- identical canonical state event;
-- identical canonical freshness event;
-- identical event positions;
-- no fresh append;
-- unchanged watermark.
+### T9 — Freshness history independent of state identifier
 
-This verifies that valid freshness evidence cannot silently change graph
-freshness during synchronization.
+Source A: state = edit W1, freshness = invalidate W2
+Source B: state = edit W1, freshness = invalidate W2
 
-### T7 — Remote suffix preserved at same index (no race)
+The canonical freshness event `invalidate W2` is retained even though
+W2 !== W1. No filtering by identifier.
 
-Assuming E is canonical:
+### T10 — Notification repositioning
 
-```
-local H = 5
-remote H = 6, remote[6] = E
+Key K was in GraphDelta. Source watermark = 5. The canonical state event
+was at position 3. It is repositioned to position 7 (above watermark 5)
+so the cursor holder re-reads graph state.
 
-sync constructs inactive destination
-index 6 is unestablished locally (6 > 5)
-sync replicates E at index 6 in the inactive destination
-sync commits H = 6
-```
+### T11 — Cursor continuity without notification
 
-The remote entry is preserved at its original numeric position because it was unestablished locally. A noncanonical remote suffix event is omitted.
+Key K was NOT in GraphDelta. The canonical state event remains at its
+original position. No repositioning.
 
-### T8 — Pre-sync same-index conflict
+### T12 — Poisoned index
 
-An ordinary append commits `F` at local index 6 before synchronization acquires
-`holidayActivity`; the remote source has `E` at index 6. Synchronization poisons
-index 6. No ordinary append overlaps synchronization after the holiday begins.
+Source A position 4: delete X
+Source B position 4: edit X
 
-#### Same semantic key and category
+Destination position 4 is absent. The winning canonical event is queued
+for fresh placement above P.
 
-When `E` and `F` are state events for the same semantic key, only the Stage 3
-winner is canonical. Only that winner is freshly placed above `P`, preserving
-its `eventId`; the loser is omitted.
+### T13 — Remote suffix preservation
 
-#### Different semantic keys or categories
+localH = 3, remoteH = 7
+Remote positions 5 and 6 contain canonical events. They remain at positions
+5 and 6 in the destination because they are above localH.
 
-When `E` and `F` belong to different semantic keys, or are canonical entries in
-different categories, both may be canonical. Both are freshly placed above `P`
-in the Stage 8 canonical ordering. Their exact positions cannot be stated unless
-all ordering fields are supplied.
+### T14 — Compaction independence
 
-### T9 — Present-versus-absent propagation
+After compaction removes obsolete entries, synchronization produces the same
+canonical events and same notification behavior, because `logicalJournalView`
+only contains required entries. Graph synchronization is unaffected.
 
-```
-Host A: index 5 = E
-Host B: index 5 = absent (compacted)
-```
+---
 
-Absence wins at index 5. If E is canonical and has no other surviving position, exactly one copy is freshly placed at index 6. Otherwise E is omitted.
+## Normative labels
 
-### T10 — Sparse remote suffix
+| Prefix | Category |
+|--------|----------|
+| PROP-JS- | Correctness properties |
 
-Assuming E is canonical:
+**PROP-JS-01 (Downstream journal reconciliation):** Journal reconciliation never
+alters final graph state. It records and notifies graph transitions determined
+by graph synchronization.
 
-```
-Local H = 5
-Remote H = 100, indices 6..99 absent, index 100 = E
-```
+**PROP-JS-02 (No ComputedValue inspection):** Journal reconciliation never
+inspects, compares, hashes, or serializes `ComputedValue`s. The only integrity
+check is `eventId` payload match.
 
-Canonical prefix: indices 6..99 = absence, index 100 = E, H = 100.
+**PROP-JS-03 (Historical-only notification):** A `PossibleNodeChange` reported
+by journal reconciliation is historical notification evidence. It does not
+assert current graph state.
 
-If E is noncanonical, index 100 is absent in the physically canonical destination.
+**PROP-JS-04 (Sync emission idempotence):** After one synchronization installs
+FGraph locally, repeating reconciliation against the same unchanged host state
+produces no duplicate sync-originated event when GraphDelta is empty.
 
-### T11 — Fresh entry ordering
-
-Two displaced entries: E1 (time=100) and E2 (time=200). Order by time ascending, then by the other canonical fields. Assign contiguous positions above P.
-
-### T12 — Duplicate event at several retained positions
-
-```
-index 3 = event X (eventId = "...")
-index 8 = event X (eventId = "...")
-```
-
-Canonical result: index 3 = absent, index 8 = event X. The greatest position survives.
-
-### T13 — Event ID integrity violation
-
-```
-Host A: eventId X with payload E
-Host B: eventId X with payload F (different)
-```
-
-Synchronization fails with integrity error. No journal or graph mutation is committed. The entries are not poisoned or deduplicated.
-
-### T14 — No synthetic sync event
-
-A remote edit wins graph conflict. The destination preserves or reappends the original remote edit event. The number of logical events does not increase merely because synchronization occurred.
-
-### T15 — Sync freshness conflict (winning identifier)
-
-```
-Host A:
-  index 2 = add A1
-  index 5 = validate A1, time 100
-  canonical value candidate id = A1
-  logical-view freshness entry for A1 = index 5 (validate)
-
-Host B:
-  index 3 = add B1
-  index 4 = invalidate A1 (losing identifier), time 150
-  index 6 = validate B1, time 200
-  winning value candidate id = B1
-  logical-view freshness entry for B1 = index 6 (validate)
-
-Graph winner: B1
-```
-
-Only freshness evidence for B1 participates. The `invalidate` for A1
-cannot make B1 stale. Merged inactive destination:
-- B1 enters the destination journal with `validate B1` as its canonical
-  freshness history. Assuming all graph-level provenance, relowering,
-  dependency, and validity eligibility requirements are satisfied (see
-  `docs/specs/incremental-graph-synchronization.md` §8), B1's final
-  graph freshness is up to date. Otherwise `validate B1` remains canonical
-  journal history while the final graph state may be stale or missing.
-- only the `validate` event for B1 survives as freshness evidence;
-- the `invalidate` for A1 is removed as obsolete;
-- no new event is created.
-
-### T16 — Replica-switch failure
-
-Synchronization fails while constructing the inactive destination. The old active replica remains selected. The old active graph and journal remain unchanged. The incomplete inactive destination is never visible.
-
-### T17 — Replica cutover
-
-After the inactive destination is complete:
-- `closeGarden` prevents readers from selecting a replica during cutover;
-- the active pointer switches;
-- later readers select only the new replica.
-
-### T19 — Canonical freshness displaced by absence
-
-The winning `validate` event is physically displaced during reconciliation (the source that provides it has established absence at that index on the other side). The destination reappends that same event above `P`, preserving its `eventId`.
-
-### T20 — No obsolete reappend
-
-An older noncanonical `edit` event for a key is displaced during physical reconciliation (e.g., its position is poisoned). It is NOT reappended merely because it existed. Only canonical state and canonical freshness events are preserved.
-
-
-### T21 — One-sided state
-
-Source A has `add X`. Source B has no state event and no graph record for X. The
-existing `add` is canonical and materializes X.
-
-### T22 — Deleted freshness comparison
-
-Source A's latest freshness is `invalidate X` at time 100. Source B's is
-`validate X` at time 200, and canonical graph state is deleted. The destination
-preserves only `validate X` as canonical journal history. It does not
-rematerialize X or assign graph freshness.
-
-### T23 — Canonical duplicate
-
-```
-index 5 = canonical event E
-index 9 = same eventId E
-```
-
-The destination preserves E at index 9, makes index 5 absent, and does not append
-a third copy.
-
-### T24 — Canonical event physically displaced
-
-A canonical `validate`, `delete`, `add`, or `edit` loses every old position
-through established absence or same-index poisoning. Synchronization places
-exactly one fresh copy above `P`, preserving its `eventId` and complete payload.
-The same rule applies to canonical `invalidate`.
-
-### T25 — Repeated synchronization
-
-A completed destination is synchronized again with either original source. The
-same canonical state and freshness events remain. Positioned canonical events
-survive normalization, so no additional copies are appended.
-
-### T26 — Synchronization notification: canonical event repositioned
-
-```
-Source A: H = 5, state event E at index 5, E.time = 200
-Source B: H = 8, state event F at index 8, F.time = 100
-
-E wins under Stage 3 (later time).
-```
-
-E at index 5 is not after B's watermark (8). The notification bound for E is
-max(5, 8) = 8. The greatest surviving position of E is 5, which is not strictly
-greater than 8. E is queued for fresh placement:
-
-```
-Destination:
-  index 5 = absent
-  index 8 = absent (F loses, omitted)
-  index 9 = E (preserving original eventId)
-  H = 9
-```
-
-A caller on B's source with `since = F@8` now receives `E@9` and re-reads the
-graph.
-
-### T27 — Repeated sync notification idempotence
-
-Synchronize the destination from T26 with Source B again:
-
-```
-Merged: H = 9, E at 9
-Source B: H = 8, F at 8
-```
-
-E at 9 is already strictly after Source B's watermark (8). The notification
-bound for E is satisfied. The destination retains E at 9. It does not append E
-again. No new logical event is created.
-
-### T28 — Conservative missing-state notification
-
-```
-Source A: localH = 5, E at index 5
-Source B: remoteH = 5, E at index 5 (same canonical event)
-```
-
-Both sources contain the same canonical state event E at index 5 and cached
-graph values. Graph synchronization determines that dependency relowering makes
-the final cached value unsafe and removes it:
-
-```
-Final:
-  materialized identifier preserved
-  value absent
-  freshness = missing
-```
-
-The final graph state differs from both source graph states. E at index 5 is
-not after either source watermark (5). Notification bound for E is
-max(5, 5) = 5. E's greatest surviving position (5) is not strictly greater
-than 5. E is queued for fresh placement. P = max(5, 5) = 5, so the fresh
-position is P + 1 = 6:
-
-```
-Destination:
-  index 5 = absent
-  index 6 = E (preserving original eventId)
-  H = 6
-```
-
-No new logical event is created. A later query after either source's old cursor
-receives E@6 and re-reads the now-missing node. On repeated synchronization
-with an original source whose H is 5, E@6 already provides notification and is
-not moved again.
+**PROP-JS-05 (Graph sync independence):** Graph synchronization correctness
+does not depend on journal state, journal retention, or journal compaction.

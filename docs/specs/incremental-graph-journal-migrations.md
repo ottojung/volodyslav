@@ -91,15 +91,13 @@ nothing in either case.
 
 ### `storage.invalidate`
 
-Marks a cached node for recomputation in the new version by preserving its
-value and setting its freshness to `potentially-outdated`. A missing node
-remains missing.
+Marks a node for recomputation in the new version by preserving its
+value and setting its freshness to `potentially-outdated`.
 
 REQ-JM-03: `storage.invalidate` MUST emit an `invalidate` journal entry when it
-causes a cached node in the target migrated state to transition from
-`up-to-date` to `potentially-outdated`. It preserves that cached value. If the
-node was already `potentially-outdated`, or if it was missing, no journal entry
-is emitted and its state is unchanged.
+causes a node to transition from `up-to-date` to `potentially-outdated`. If the
+node was already `potentially-outdated`, no journal entry is emitted and its
+freshness is unchanged.
 
 ### `storage.create`
 
@@ -115,9 +113,38 @@ REQ-JM-05: The `add` entry for a `storage.create` operation MUST be emitted in t
 
 Removes a node from the new version entirely.
 
-REQ-JM-06: `storage.delete` MUST emit a `delete` journal entry for the deleted node. The entry's `action` is `"delete"`, and its `time` and `creator` are set to the current migration time and local host respectively.
+REQ-JM-06: `storage.delete` MUST emit a `delete` journal entry for the deleted
+node. The entry's `action` is `"delete"`, and its `time` and `creator` are set
+to the current migration time and local host respectively.
 
-REQ-JM-07: `storage.delete` MUST NOT remove, purge, or otherwise modify any established journal entry for the deleted node (including older `add`, `edit`, `invalidate`, or `validate` entries). The append-only rule applies: the `delete` entry is appended at a fresh index above the current watermark. Older journal entries for the deleted node remain until journal compaction removes them according to the compaction specification.
+REQ-JM-07: `storage.delete` MUST NOT remove, purge, or otherwise modify any
+established journal entry for the deleted node (including older `add`, `edit`,
+`invalidate`, or `validate` entries). The append-only rule applies: the `delete`
+entry is appended at a fresh index above the current watermark. Older journal
+entries for the deleted node remain until journal compaction removes them
+according to the compaction specification.
+
+### Propagated deletes
+
+For every previously materialized semantic key whose finalized migration decision
+is `DELETE`, emit one `delete`. This includes the explicitly deleted root and
+every transitive dependent assigned `DELETE` by dependency-closure propagation.
+The event uses that node's identifier in the old materialized graph.
+
+REQ-JM-06a: Propagated `delete` entries MUST use the deleted node's old
+`NodeIdentifier` and `NodeKey`. Ordering follows reverse dependency-topological
+order: dependents before their dependencies. For unrelated nodes, break ties by
+stable `NodeKeyString` ordering.
+
+### Propagated invalidations
+
+For every finalized migration transition `up-to-date → potentially-outdated`,
+emit one `invalidate`, whether the transition was explicitly requested or
+propagated to a dependent. Already stale nodes emit nothing.
+
+REQ-JM-06b: Propagated `invalidate` entries MUST use the node's identifier and
+key. Ordering follows dependency-topological order: inputs before dependents.
+For unrelated nodes, break ties by stable `NodeKeyString` ordering.
 
 ---
 
@@ -130,14 +157,15 @@ The journal distinguishes migration-originated state from ordinary graph changes
 | `pull` (first materialization) | `add` entry | New graph node |
 | `pull` (value change) | `edit` + `validate` entries | Graph recomputation changed value + freshness restored |
 | `pull` (unchanged recomputation) | `validate` entry | Freshness restored, value unchanged |
-| `pull` (missing-node recomputation) | contiguous `edit` + `validate` entries | Cached value established for the existing identifier, then freshness restored |
 | `invalidate` (standalone) | `invalidate` entry | Freshness downgrade |
 | `storage.keep` | no entry | Identity-preserving copy |
 | `storage.override` | no entry | Semantic-preserving representation rewrite; preserves freshness and does not emit a journal entry |
-| `storage.invalidate` | conditional `invalidate` entry | Preserves a cached value and emits only for `up-to-date` → `potentially-outdated`; an already stale cached node or a missing node remains unchanged and emits nothing. |
+| `storage.invalidate` | conditional `invalidate` entry | Preserves the stored value and emits only for `up-to-date` → `potentially-outdated`; an already stale node remains unchanged and emits nothing. |
 | `storage.create` | `add` entry | Intentional new node creation |
 | `storage.delete` | `delete` entry | Node deleted by migration |
-| Synchronization | existing events copied/reappended | Cross-host reconciliation (no new events created) |
+| Propagated delete (dependency closure) | `delete` entry per affected node | Dependency-closed deletion propagation; reverse dependency-topological order |
+| Propagated invalidation | `invalidate` entry per affected node | Freshness-only propagation; dependency-topological order |
+| Synchronization | may emit `invalidate` and `delete`; may also copy or reposition existing events | Cross-host reconciliation; never emits `add`, `edit`, or `validate` |
 
 ---
 

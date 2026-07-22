@@ -4,27 +4,61 @@
 
 This document specifies when journal entries are created — the rules for `add`,
 `edit`, `delete`, `invalidate`, and `validate` emissions triggered by
-IncrementalGraph operations and migration. Synchronization only copies,
-repositions, or omits existing events.
+IncrementalGraph operations, migration, and synchronization.
+
+Synchronization may emit `invalidate` and `delete`; it may also copy,
+reposition, or omit existing events. See
+`docs/specs/incremental-graph-journal-sync.md` for the exact pre/post
+conditions.
 
 Journal emission is always coordinated with the graph storage mutation that caused it: a journal entry MUST NOT be durably committed unless the corresponding graph change is also durably committed.
+
+## Event origination
+
+Ordinary graph operations and migration originate their required exact events
+atomically with their transitions. Every ordinary graph or migration transition
+covered by this specification must originate its journal event.
+
+## Notification coverage
+
+Synchronization may change graph state in ways that do not originate a new
+event. Synchronization originates exact events only for:
+
+```
+materialized/up-to-date → materialized/potentially-outdated   => invalidate
+materialized → unmaterialized                                   => delete
+```
+
+Other synchronization-induced graph changes MUST be covered by repositioning
+a truthful existing event. See `docs/specs/incremental-graph-journal-sync.md`
+for the `notificationCarrier(K)` rule.
+
+## Terminology
+
+Use the following terms consistently:
+
+- **originate an event**: create a new logical event for an actual transition.
+- **preserve an event**: retain an existing event without changing its physical
+  position.
+- **reposition an event**: move an existing event to a new physical position
+  for notification, preserving its original action, time, creator, and eventId.
+- **provide notification coverage**: ensure that every key requiring notification
+  has a carrier after relevant source watermarks, whether by origination or
+  repositioning.
 
 ---
 
 ## Freshness emission invariant
 
 Every ordinary graph or migration operation that transitions an existing
-cached node from `up-to-date` to `potentially-outdated` emits `invalidate`.
-Every successful graph recomputation that transitions an already materialized
-node from a non-up-to-date state to `up-to-date` emits `validate`. The latter
-includes both `potentially-outdated → up-to-date` and
-`missing → up-to-date`.
+materialized node from `up-to-date` to `potentially-outdated` emits
+`invalidate`. Every successful graph recomputation that transitions an already
+materialized node from `potentially-outdated` to `up-to-date` emits `validate`.
 
-Structural synchronization may conservatively select a different final
-freshness or remove a cached value without emitting a logical event. It uses
-notification-aware repositioning of an existing canonical event instead. The
-journal is authoritative evidence of operation-emitted freshness transitions;
-it is not a complete command log of synchronization-selected graph freshness.
+Synchronization may emit `invalidate` and `delete` under the conditions
+specified in `docs/specs/incremental-graph-journal-sync.md`. When no
+sync-originated event applies, synchronization uses notification-aware
+repositioning of an existing canonical event instead.
 
 ---
 
@@ -61,6 +95,7 @@ REQ-JE-07: When a node's freshness changes from `up-to-date` to `potentially-out
 
 - An explicit `invalidate(nodeName, bindings)` call.
 - Cascading invalidation from an invalidated dependency.
+- Synchronization, under the conditions specified in `incremental-graph-journal-sync.md`.
 - Any other system path that transitions a node's freshness from `up-to-date` to `potentially-outdated`.
 
 REQ-JE-07a: The `invalidate` entry MUST be emitted in the same durable transaction as the freshness state change.
@@ -70,22 +105,21 @@ REQ-JE-07b: An `invalidate` entry is NOT a value change — it signals that the 
 ### Freshness transition: `validate`
 
 REQ-JE-07c: When successful graph recomputation makes an already materialized
-node `up-to-date` from any non-up-to-date state, the system MUST emit a journal
-entry with `action: "validate"`. This includes both
-`potentially-outdated → up-to-date` and `missing → up-to-date`. The
-transition may occur through:
+node `up-to-date` from `potentially-outdated`, the system MUST emit a journal
+entry with `action: "validate"`. The transition may occur through:
 
-- A `pull(nodeName, bindings)` that recomputes a node and returns an unchanged value (recalculating does not change the value, but the freshness transition from `potentially-outdated` to `up-to-date` is a real event).
-- A `pull(nodeName, bindings)` that recomputes a node and returns a changed value: this emits both an `edit` and a `validate` (see below for the ordering).
-- Explicit validation paths that transition a node from `potentially-outdated` to `up-to-date` outside the ordinary pull path.
-- A successful pull of a missing materialized node, which emits `edit` followed
-  contiguously by `validate`.
+- A `pull(nodeName, bindings)` that recomputes a node and returns an unchanged
+  value (recalculating does not change the value, but the freshness transition
+  from `potentially-outdated` to `up-to-date` is a real event).
+- A `pull(nodeName, bindings)` that recomputes a node and returns a changed
+  value: this emits both an `edit` and a `validate` (see below for the
+  ordering).
+- Explicit validation paths that transition a node from `potentially-outdated`
+  to `up-to-date` outside the ordinary pull path.
 
 REQ-JE-07d: A `validate` entry is NOT by itself a value change — it signals
-that an already materialized node's freshness has been restored from a
-non-up-to-date state. The preceding contiguous `edit` establishes the cached
-value when the old state was missing; `validate` records the restoration to
-`up-to-date`. The `NodeIdentifier` is unchanged.
+that an already materialized node's freshness has been restored from
+`potentially-outdated` to `up-to-date`. The `NodeIdentifier` is unchanged.
 
 REQ-JE-07e: The `validate` entry MUST be emitted in the same durable transaction as the freshness state change.
 
@@ -100,32 +134,6 @@ Both entries are committed in the same durable transaction as the new value, cou
 
 REQ-JE-07g: When a recomputation returns an unchanged value but the node was `potentially-outdated`, the system emits only `validate`. No `edit` is emitted.
 
-### Missing-node recomputation
-
-REQ-JE-07k: When a `pull` successfully computes a value for a **missing** node
-(a materialized node with no cached value), the system emits, in this order:
-
-```
-edit
-validate
-```
-
-Both entries are committed in the same durable transaction as the new cached
-value, the freshness transition to `up-to-date`, counter updates, and timestamps.
-Their indices are contiguous, with `edit` receiving the lower index and
-`validate` the higher index.
-
-A missing node cannot validly return `Unchanged`, because it has no old cached
-value against which to compare. If it does, `pull` MAY throw an error.
-
-REQ-JE-07l: Operations that preserve missingness — invalidating an already
-missing node, or migration `storage.invalidate` on a missing node — MUST NOT
-emit a freshness event. Missing nodes are not `up-to-date` and cannot transition
-to `potentially-outdated`.
-
-REQ-JE-07m: `storage.override` on a missing node is not defined. A missing node
-has no old value representation to override.
-
 REQ-JE-07h: When a `pull` encounters an up-to-date node (cache hit), the system MUST NOT emit `validate`. No freshness transition occurred.
 
 REQ-JE-07i: When a node is materialized for the first time, the system emits only `add`. No `validate` is emitted because first materialization is not a transition from `potentially-outdated` to `up-to-date`.
@@ -137,13 +145,13 @@ REQ-JE-07j: Repeating an operation that leaves freshness unchanged emits nothing
 ### Deletion: `delete`
 
 REQ-JE-08: A `delete` journal entry represents an actual node deletion. The
-following operation produces `delete` entries:
+following operations produce `delete` entries:
 
 - **Actual deletion operations**: `storage.delete` and any future graph deletion
   operation emit a `delete` for the node they delete.
-
-Synchronization may copy or reposition an existing `delete`; it never emits
-one. See `incremental-graph-journal-sync.md`.
+- **Synchronization**: Synchronization emits a `delete` when the final graph
+  unmaterializes a previously materialized local node. See
+  `incremental-graph-journal-sync.md`.
 
 REQ-JE-09: Ordinary graph operations (`pull`, `invalidate`, recomputation) MUST NOT emit `delete` entries unless and until the IncrementalGraph system implements a general node deletion API. This specification does not assume such an API exists.
 
@@ -157,9 +165,9 @@ Migration actions have their own journal-emission rules, specified fully in `inc
 - `storage.keep` produces no journal entry.
 - `storage.override` produces no journal entry. It is a semantic-preserving representation rewrite that inherits freshness from the old record and does not propagate invalidation.
 - `storage.delete` emits a `delete` journal entry for the deleted node (but does not remove older journal entries—see `incremental-graph-journal-migrations.md`).
-- `storage.invalidate` preserves a cached value and emits `invalidate` only for
-  `up-to-date → potentially-outdated`. An already stale cached node and a
-  missing node remain unchanged and emit nothing.
+- `storage.invalidate` preserves the stored value and emits `invalidate` only
+  for `up-to-date → potentially-outdated`. An already stale node remains
+  unchanged and emits nothing.
 
 ---
 
@@ -233,28 +241,23 @@ Transitioning a node's freshness from `up-to-date` to `potentially-outdated` pro
 
 ### P5a — Entry on freshness transition (validate)
 
-Successful recomputation that transitions an already materialized node from a
-non-up-to-date state to `up-to-date` produces a journal entry with
+Successful recomputation that transitions an already materialized node from
+`potentially-outdated` to `up-to-date` produces a journal entry with
 `action: "validate"`. This occurs when:
 - An unchanged recomputation returns the existing value (only `validate` emitted).
 - A changed recomputation emits `edit` and `validate` in that order (contiguous indices).
-- A missing-node recomputation emits `edit` and `validate` in that order
-  (contiguous indices); the missing node cannot return `Unchanged`.
 - A cache hit emits nothing (no freshness transition occurred).
 - First materialization emits only `add` (first materialization is not a transition from `potentially-outdated`).
 
-### P5b — Missing-node recomputation
+### P6 — Historical atomicity
 
-Pulling a missing node that successfully computes a value produces `edit` and
-`validate` in that order (contiguous indices). The entries are committed in the
-same transaction as the new cached value and freshness transition.
+When a logical event is first originated, the event and its historical origin
+transition are durably committed atomically. A failed origin transaction leaves
+neither the event nor the associated transition committed.
 
-Pulling a missing node that fails or is not pulled emits no journal entry.
-The node remains missing.
-
-### P6 — Atomic journal+graph write
-
-If a journal entry is visible (via `graph.possibleMaybeChanges`), the corresponding graph-state change must also be visible. If a graph-state write fails, no stale journal entry for it must be visible.
+Later graph changes, synchronization, and compaction may change current graph
+state or remove or reposition physical event occurrences without invalidating
+that historical atomicity guarantee.
 
 ### P7 — Monotonic last_journal_index
 
@@ -272,7 +275,8 @@ If a transaction prepares an unindexed entry, but then fails during darkroom fin
 
 ### P9 — Event ID assigned atomically
 
-A new ordinary or migration event assigned initial position `7` receives:
+A new ordinary, migration, or synchronization event assigned initial position
+`7` receives:
 
 ```
 eventId = JSON.stringify([hostnameToString(host), 7])

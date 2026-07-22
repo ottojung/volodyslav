@@ -17,11 +17,21 @@ The target behavior is:
 4. Observations of the same concrete node must not coexist (telescope
    mutex).
 5. Observations of different concrete nodes may coexist.
-6. Migration and replica cutover suspend all graph activity (daytime,
+6. Migration, structural synchronization, and replica cutover suspend all graph activity (daytime,
    nighttime, and other exclusive work).
 7. Transaction commits for the same replica are serialized (the commit
    mutex is per-replica, not global, so commits to different replicas
    proceed concurrently).
+8. Journal queries use shared garden access. Multiple journal readers
+   may coexist.
+9. Journal readers coexist with daytime activity, nighttime activity, and
+   ordinary append-only journal growth.
+10. Structural journal maintenance closes the garden, preventing new readers
+    from entering.
+
+    - Compaction follows: closeGarden → darkroom.
+    - Structural synchronization and migration/cutover follow:
+      holiday → closeGarden → darkroom.
 
 ## Sleeper Primitives
 
@@ -63,7 +73,7 @@ This key is acquired through `withModeMutex`. Three conditions are defined:
 
 - `"daytime"` for `invalidate()` and inspection reads;
 - `"nighttime"` for all pull activity;
-- `"holiday"` for migration and replica cutover.
+- `"holiday"` for migration, structural synchronization, and replica cutover.
 
 Because same-mode holders are compatible, many invalidates may overlap, many
 pulls may overlap, and many holiday operations are serialized via the holiday
@@ -86,7 +96,64 @@ It is used only by pull operations, and only for the concrete node currently
 being pulled. This is what serializes same-node pulls without blocking pulls on
 different nodes.
 
-### 3. Darkroom key (per-replica finalization)
+### 3. Garden domain: separate shared/exclusive lock
+
+The garden is a separate concurrency domain, not another `withModeMutex` mode
+alongside `daytime`, `nighttime`, and `holiday`. It is a shared/exclusive lock
+with fairness guarantees, distinct from `withMutex` and `withModeMutex`.
+
+Two scoped helpers are defined:
+
+```
+enterGarden(procedure)
+closeGarden(procedure)
+```
+
+- `enterGarden` acquires shared garden access. Any number of `enterGarden`
+  procedures may execute concurrently. It conflicts with `closeGarden`.
+- `closeGarden` acquires exclusive garden access. It conflicts with all active
+  and queued `enterGarden` access. It waits for existing visitors to leave and
+  prevents new visitors from entering while closure is pending or active. It
+  is used by compaction and every operation that structurally changes
+  established journal positions.
+- Fairness: once `closeGarden` is queued, later `enterGarden` calls MUST NOT
+  overtake it. This prevents structural work from being starved by a continuous
+  stream of readers.
+
+#### Darkroom and garden have different responsibilities
+
+- **Darkroom** serializes durable commits to a replica.
+- **Garden** stabilizes established journal structure for readers and structural
+  maintenance.
+
+Ordinary append-only journal growth (pull commits, invalidation entries) still
+uses darkroom as specified. Journal queries use garden, not darkroom.
+
+#### Compatibility table
+
+| Activity A | Activity B | May overlap? |
+|---|---|---|
+| `enterGarden` | `enterGarden` | yes |
+| `enterGarden` | `closeGarden` | no |
+| `closeGarden` | `closeGarden` | no |
+| `enterGarden` | daytime activity | yes |
+| `enterGarden` | nighttime activity | yes |
+| `enterGarden` | ordinary journal append | yes |
+| generic `closeGarden` (for example, compaction) | ordinary journal append | yes, except that durable commits remain serialized by darkroom |
+| structural synchronization | ordinary journal append | no; synchronization also holds `holidayActivity` |
+| migration | ordinary journal append | no; migration also holds `holidayActivity` |
+
+#### Acquisition order
+
+```
+holiday → closeGarden → darkroom
+```
+
+Structural operations (compaction, synchronization) acquire `closeGarden` before
+the per-replica darkroom. Synchronization and migration acquire `holidayActivity`
+before `closeGarden`.
+
+### 4. Darkroom key (per-replica finalization)
 
 There is one exclusive mutex per replica, created through the `DARKROOM_FUNCTOR`:
 
