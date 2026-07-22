@@ -104,13 +104,14 @@ one exists) are logically required. See the deleted-key example in C7.
 ### Interaction with synchronization
 
 REQ-JC-09: Compaction MAY remove entries outside `logicalJournalView(journal,
-H)` even when synchronization is pending. Synchronization selects evidence from
-the source logical view and does not use `timestamps` sublevel records as a
-replacement for journal evidence. See `incremental-graph-journal-sync.md`.
+H)` even when synchronization is pending. Journal reconciliation (see
+`incremental-graph-journal-sync.md`) selects source journal events from the
+logical view and does not use `timestamps` sublevel records as a replacement
+for journal evidence.
 
-REQ-JC-10: Compaction is safe for synchronization because it preserves every
-entry in the logical journal view used for conflict selection. Synchronization
-does not require entries outside that view.
+REQ-JC-10: Compaction is safe for journal reconciliation because it preserves
+every entry in `logicalJournalView(journal, H)`. Graph synchronization does not
+read journal state and is unaffected by compaction.
 
 ---
 

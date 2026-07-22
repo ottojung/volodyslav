@@ -12,7 +12,7 @@ All journal types follow the existing nominal/opaque typing discipline used by `
 
 ### Purpose
 
-`JournalEventId` provides stable, immutable identity for one logical journal event. All logical journal events are first emitted by an ordinary graph operation or migration.
+`JournalEventId` provides stable, immutable identity for one logical journal event. Logical journal events may be emitted by ordinary graph operations, migration, or synchronization (for `invalidate` and `delete`).
 
 The ID is created during the event's first durable commit:
 
@@ -123,8 +123,7 @@ A `JournalEntry` is an internal type. Ordinary users of `graph.possibleMaybeChan
   a previously materialized local node).
 - `'invalidate'` — a node's freshness changed from `up-to-date` to `potentially-outdated`.
 - `'validate'` — successful recomputation made an already materialized node
-  `up-to-date` from a non-up-to-date state. This includes both
-  `potentially-outdated → up-to-date`.
+  `up-to-date` from `potentially-outdated`.
 
 ---
 

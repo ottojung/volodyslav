@@ -77,6 +77,19 @@ REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When s
 
 `graph.possibleMaybeChanges` returns at most two `PossibleNodeChange` values per matching semantic node key: one state/lifecycle entry (`add`, `edit`, or `delete`) and one freshness entry (`invalidate` or `validate`). Older entries for the same key and category are logically suppressed even when still physically present.
 
+### Historical meaning of returned entries
+
+`PossibleNodeChange` is historical notification evidence. It does not assert
+current graph state. Consumers must always re-read current graph state.
+
+- A returned `add` does not prove the node is currently materialized.
+- A returned `edit` does not prove that value is currently selected.
+- A returned `delete` does not prove current unmaterialization.
+- A returned `invalidate` does not prove current staleness.
+- A returned `validate` does not prove current up-to-date freshness.
+
+Each action prompts the consumer to re-read current graph state.
+
 REQ-JA-05: A returned `edit` is an existing journal event emitted by graph
 recomputation and possibly copied or repositioned by synchronization. Migration
 does not emit `edit`; synchronization may copy, reposition, or preserve an
