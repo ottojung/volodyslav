@@ -50,7 +50,7 @@ All methods are `async`.
 | `override(nodeIdentifier, value)` | Rewrite an existing cached value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`), while preserving its cache-state proof envelope. |
 | `invalidate(nodeIdentifier)` | Mark the node for recomputation. |
 | `delete(nodeIdentifier)` | Remove the node from the new version entirely. |
-| `create(nodeKeyString, value, freshness)` | Create a new materialized node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `freshness` must be `"up-to-date"` or `"potentially-outdated"`. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
+| `create(nodeKeyString, value, freshness)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `freshness` must be `"up-to-date"` or `"potentially-outdated"`. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
 
 ### Traversal methods
 
@@ -95,7 +95,7 @@ Within a **preexisting stale `keep`/`override` region**, every stale node loses 
 
 The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
 
-`invalidate` preserves the stored value, marks the node as `"potentially-outdated"`, and preserves `modifiedAt`.
+`invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 
 **Explicit invalidation** removes only the explicitly named node's incoming validity proofs. Its outgoing proofs remain intact because its stored semantic value has not changed.
 
@@ -108,62 +108,13 @@ The intended use case is format migration: the database version changes the seri
 
 #### INVALIDATE → propagate INVALIDATE downstream
 
-When a node is invalidated, all its materialized dependents are automatically
-marked `INVALIDATE` (recursively), unless they are already `DELETE`d.
-If a dependent already has a `KEEP` or `OVERRIDE` decision,
-`DecisionConflictError` is thrown immediately.
+When a node is invalidated, all its dependents are automatically marked `INVALIDATE` (recursively), unless they are already `DELETE`d.  If a dependent already has a `KEEP` or `OVERRIDE` decision, `DecisionConflictError` is thrown immediately.
 
 #### DELETE → propagate DELETE downstream (deferred, dependency-closed)
 
 DELETE propagation runs at finalization (after the callback returns), via a BFS over dependents. One deleted input is sufficient to delete an undecided dependent, and that deletion propagates through every transitive materialized dependent.
 
 This preserves the materialization invariant that every materialized node has all of its concrete inputs materialized. If a dependent already has an explicit `KEEP`, `OVERRIDE`, or `INVALIDATE` decision, `DecisionConflictError` is thrown.
-
-### Journal emission for propagation
-
-Journal emission must describe every actual finalized graph transition, not only
-the explicit callback call.
-
-#### Propagated deletes
-
-For every previously materialized semantic key whose finalized migration decision
-is `DELETE`, emit one `delete`. This includes:
-
-- the explicitly deleted root;
-- every transitive dependent assigned `DELETE` by dependency-closure propagation.
-
-The event uses that node's identifier in the old materialized graph.
-
-Do not emit a `delete` for:
-
-- a node that was not materialized before migration;
-- a node that remains materialized;
-- a merely rejected `create`.
-
-**Ordering:** Emit deletes in reverse dependency-topological order so that
-dependents appear before their dependencies. For unrelated nodes, break ties by
-stable `NodeKeyString` ordering.
-
-For `A → D → E` where all three are deleted:
-
-```
-delete E
-delete D
-delete A
-```
-
-#### Propagated invalidations
-
-For every finalized migration transition `up-to-date → potentially-outdated`,
-emit one `invalidate`, whether the transition was:
-
-- explicitly requested;
-- propagated to a dependent.
-
-Already stale nodes emit nothing.
-
-**Ordering:** Emit invalidations in dependency-topological order (inputs before
-dependents). For unrelated nodes, break ties by stable `NodeKeyString` ordering.
 
 ---
 
@@ -206,40 +157,25 @@ await runMigration(rootDatabase, newVersionNodeDefs, async (storage) => {
 1. Detect the previous version by examining stored schema namespaces.
 2. Create a `MigrationStorage` backed by the previous version's data.
 3. Execute the callback.
-4. Finalize decisions:
-   - propagate deletes;
-   - check fan-in;
-   - check completeness;
-   - return the finalized decision set.
-5. Derive and validate the desired target state from the finalized decisions.
-6. Emit journal entries for every finalized transition (see journal emission
-   for propagation).
-7. Gently unify the desired state into the inactive replica.
-8. Durably flush and validate the inactive replica.
-9. Switch the active-replica pointer.
+4. Call `finalize()` internally (propagate deletes, check completeness).
+5. Apply all decisions **atomically** to the new version's storage.
 
 If no previous version is found, the migration is a no-op.
 
 ---
 
-## Atomicity and durability
+## Journal interaction
 
-Decisions are collected in memory during the callback. The desired state is
-unified into the target replica's storage through multiple durable writes, then
-validated with `assertValidFinalMergeState` before the replica pointer is
-switched. A failed migration never activates the target replica. Failures before
-unification leave the target replica untouched. Failures after unification may
-leave the inactive replica written, but the active replica remains unchanged.
+Migration has limited interaction with the journal system. The detailed rules
+are defined in `docs/specs/incremental-graph-journal-migrations.md`.
 
-Two distinct guarantees apply:
+- Finalized `CREATE` produces an `add` journal entry.
+- Finalized `DELETE` produces a `delete` entry for every deleted materialization.
+- Fresh-to-stale finalized transitions produce an `invalidate` entry.
+- `KEEP` and semantic-preserving `OVERRIDE` produce no journal entry.
+- Journal entries are emitted atomically with their corresponding graph
+  transitions.
 
-1. **Related-record atomicity:** Related records that form one journal-emitting
-   graph mutation (e.g., the journal entry, the node's value, and the freshness
-   state for one `storage.create`) must be durably coordinated as required by
-   the journal specification — each such set commits in one darkroom batch.
+## Atomicity guarantee
 
-2. **Cutover visibility:** The complete migrated state becomes visible atomically
-   through replica-pointer cutover. The inactive replica may contain partial
-   migration writes before cutover; readers cannot observe it. Only after every
-   required record is durable and the replica is valid does the active pointer
-   switch.
+Decisions are collected in memory during the callback.  The desired state is unified into the target replica's storage, then validated with `assertValidFinalMergeState` before the replica pointer is switched.  A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.

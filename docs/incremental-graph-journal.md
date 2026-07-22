@@ -161,48 +161,19 @@ docs/specs/incremental-graph-journal-compaction.md
 
 ## Garden concurrency domain
 
-`possibleMaybeChanges` operates under a separate shared/exclusive **garden** concurrency domain, not the graph activity mode lock or the darkroom lock.
+`possibleMaybeChanges` operates under a shared/exclusive **garden** concurrency
+domain, separate from the main dome. Readers (enterGarden) may proceed
+concurrently with each other and with ordinary graph activity. Structural
+operations (closeGarden) exclude readers.
 
-The journal is a garden separate from the main dome. Many visitors may enter the garden concurrently. Ordinary append-only journal growth may continue while visitors are present. Structural work that removes, poisons, or compacts established journal positions requires closing the garden. New evidence is always appended at fresh positions.
-
-Two scoped helpers are defined:
+The acquisition order for operations that close the garden is:
 
 ```
-enterGarden(procedure)   — shared access for journal readers
-closeGarden(procedure)   — exclusive access for structural maintenance
+holiday → closeGarden → darkroom
 ```
 
-### `possibleMaybeChanges`
-
-`possibleMaybeChanges({ since, to })` MUST call `enterGarden` to acquire shared garden access before selecting the active replica. The linearization point is the read of `last_journal_index = H` after entering the garden. At that point, structural changes are excluded by shared garden access, and every position at or below `H` is finalized with respect to ordinary append-only operations.
-
-The returned array reflects the logically compacted journal through `H`: for each matching semantic node key, at most its latest state entry and its latest freshness entry, restricted to indices strictly greater than `since`, ordered by ascending `JournalIndex`, projected to `PossibleNodeChange`.
-
-### Structural journal operations
-
-Compaction and structural synchronization MUST call `closeGarden` to acquire
-exclusive garden access. Compaction may overlap ordinary appends. Structural
-synchronization is a holiday operation: it first acquires `holidayActivity`,
-then `closeGarden`, builds the inactive destination, and acquires the destination
-darkroom for final metadata and cutover before releasing locks in reverse order.
-
-### Lifecycle exclusion
-
-Migration and replica cutover close the garden because of replica lifecycle safety, not because migration structurally mutates journal history. Migration is append-only: it preserves all established journal entries and absences exactly and may only append fresh entries. It must not delete, fill, replace, or rewrite an already established journal position. Migration closes the garden so that `possibleMaybeChanges` does not traverse a replica while it is being replaced. Two guarantees apply: every emitted journal event is atomic with the graph and freshness mutation that caused it, and the complete inactive destination remains invisible until durable cutover.
-
-### Replica cutover
-
-A holiday closes both the dome and the garden. Migration, structural
-synchronization, and replica cutover acquire `holidayActivity` (graph activity
-exclusion) and then `closeGarden` (garden exclusion). This prevents ordinary
-appends from overlapping these operations and prevents new journal readers from
-selecting the old replica during cutover.
-
-### Compatibility
-
-`possibleMaybeChanges` does not block ordinary daytime/nighttime graph activity globally. Journal readers coexist with daytime activity, nighttime activity, and ordinary append-only journal growth.
-
-The full concurrency specification is in `docs/specs/incremental-graph-journal-api.md` and `docs/specs/incremental-graph-locking-design.md`.
+The detailed concurrency specification is in
+`docs/specs/incremental-graph-locking-design.md`.
 
 ## Related specifications
 
