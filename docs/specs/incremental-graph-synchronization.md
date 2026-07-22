@@ -110,32 +110,11 @@ entries. Corresponds to `NodeIdentifier` from the volatile-consistency spec.
 identifiers and semantic node keys for materialized nodes. Persisted
 as `identifiers_keys_map` in the replica's global sublevel.
 
-<<<<<<< HEAD
-**TERM-SYNC-09 (Materialized node):** A node whose storage identifier exists in
-the identifier lookup (`identifiers_keys_map`). A materialized node may be
-cached or missing.
-
-**TERM-SYNC-09a (Cached node):** A materialized node with a stored value in the
-`values` sublevel. A cached node's freshness is `"up-to-date"` or
-=======
 **TERM-SYNC-09 (Materialized node):** A node whose identifier exists in
 `identifiers_keys_map`, `values`, `freshness`, and `timestamps`.
 
 **TERM-SYNC-11 (Freshness):** Freshness state of a node: `"up-to-date"` or
->>>>>>> origin/master
 `"potentially-outdated"`.
-
-**TERM-SYNC-09b (Missing node):** A materialized node whose identifier exists in
-the identifier lookup but has no stored value in `values`. Its freshness is
-`"missing"`.
-
-**TERM-SYNC-10 (Known node, deprecated):** A node present in the final
-identifier lookup, whether or not it currently has a stored value. Use
-"materialized node" (TERM-SYNC-09) instead; the two definitions are equivalent.
-
-**TERM-SYNC-11 (Freshness):** Freshness state of a node: `"up-to-date"`,
-`"potentially-outdated"`, or `"missing"`. The invariant is:
-`freshness[id] === "missing"` iff `values[id]` is absent.
 
 **TERM-SYNC-12 (Validity relation):** Inverse validity flags. The entry
 `valid[D].has(N)` means N's stored value is known valid with respect to D's
@@ -246,13 +225,6 @@ node keys, not raw storage identifiers. Let:
 
 - `Keys = keys(L.lookup) ∪ keys(H.lookup)`
 
-<<<<<<< HEAD
-Each key in Keys is considered exactly once. For each key, the canonical state
-event (selected by the journal synchronization specification per §6) determines
-the final storage identifier and whether the key is materialized or
-nonmaterialized. Final dependency edges are derived from the graph scheme and
-applied to T.
-=======
 Each key in Keys is considered exactly once. For each key, the merge chooses a
 structural source side (target/local or host), selects a final storage
 identifier, derives final dependency edges from the graph scheme, and applies
@@ -279,7 +251,6 @@ outcome for each semantic key after classification:
   freshness, timestamps, validity entries, or value origin. Multi-input direct
   invalidation roots are deleted. `delete` is an internal merge result, not a
   request to delete the semantic node family from the graph schema.
->>>>>>> origin/master
 
 **TERM-SYNC-15 (finalIdentifierForKey):** A partial map from semantic node keys
 to their final storage identifiers:
@@ -303,8 +274,9 @@ closure guarantees this.
 
 ---
 
-## 6. Journal-Based State Selection
+## 6. Timestamp Conflict Policy
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 **REQ-SYNC-07 (Canonical materialization selection):** For each semantic key:
 =======
@@ -322,6 +294,8 @@ positions, and notification positioning.
 **REQ-SYNC-07 (Journal-based canonical state selection):** For each semantic
 key, the canonical state event is selected by:
 =======
+=======
+>>>>>>> 1dd19be7 (Resolve merge conflicts in spec files in favor of master graph semantics)
 **REQ-SYNC-07 (Timestamp-based source selection):** For each semantic key:
 >>>>>>> 39561ca5 (add docs again)
 
@@ -343,17 +317,13 @@ key, the canonical state event is selected by:
   justify an `up-to-date` final node. It may reject the host or merge
   conservatively invalidate affected nodes, but it must not silently create an
   `up-to-date` value whose timestamp provenance is broken.
->>>>>>> origin/master
 
-1. If only one source has a state entry in its logical journal view, that
-   existing event is canonical.
-2. If both sources have state entries, compare:
-   * later journal-event `time`;
-   * if times tie and identifiers differ, lexicographically greater
-     `NodeIdentifier`;
-   * if times and identifiers tie, lexicographically greater `eventId`.
-3. If neither source has a state entry, the destination has none.
+**REQ-SYNC-08 (Timestamps are not freshness proofs):** Timestamps select
+candidate stored values. They do not by themselves prove that a value is
+correct with respect to final merged inputs. Timestamp order is not a semantic
+proof of freshness.
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 **REQ-SYNC-08d (Selected record timestamp copy):** Candidate selection chooses
 one complete stored materialization record. The final value, `createdAt`, and
@@ -362,23 +332,38 @@ combines the value from one source with timestamps from another source, never
 uses merge execution time as a materialization timestamp, and never computes a
 minimum or maximum `createdAt` across sources.
 
+=======
+>>>>>>> 1dd19be7 (Resolve merge conflicts in spec files in favor of master graph semantics)
 **REQ-SYNC-08a (modifiedAt is a value version, not a merge timestamp):**
 `modifiedAt` records the time at which a node's stored semantic value last
 changed as a result of a computor producing a changed value. Merge decisions
 and metadata transformations produce no new semantic versions.
+<<<<<<< HEAD
 =======
 The canonical state event selects the identifier/value provenance. It does not
 override a graph-synchronization requirement to delete the candidate cached
 value, make the node missing, or downgrade it to potentially-outdated.
 >>>>>>> 39561ca5 (add docs again)
+=======
+>>>>>>> 1dd19be7 (Resolve merge conflicts in spec files in favor of master graph semantics)
 
-`modifiedAt` is preserved graph metadata:
+- Taking a value copies its exact existing `modifiedAt` from the host side.
+- Keeping a value preserves its exact existing `modifiedAt`.
+- Invalidating freshness or rebuilding validity does not change `modifiedAt`.
+- Identifier reconciliation, input-edge relowering, and freshness changes do
+  not change `modifiedAt`.
+- Synchronization MUST NOT manufacture a new `modifiedAt` during merge.
+  Every final `modifiedAt` must be one of the timestamps already present in
+  the merge inputs (L or H).
+- Consequently, merging two fixed database snapshots is independent of
+  merge execution time. The result would be identical if the merge ran at
+  any future or past time.
 
-- It is not rewritten by synchronization.
-- It is not a journal-evidence fallback.
-- It does not select the canonical state event.
-- It must not introduce a local-source tie bias.
+**REQ-SYNC-08b (No mergedAt field):** Synchronization MUST NOT introduce a
+persistent `mergedAt` field. Sync timing is available through logs and Git
+commits.
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 **REQ-SYNC-08c (Same-coordinate stale freshness):** When both replicas have
 identical `modifiedAt` and identical `NodeIdentifier` for a semantic key, the
@@ -415,52 +400,28 @@ selection must not introduce a preference for the local source. The rules in
 REQ-SYNC-07 apply symmetrically: swapping the two source roles produces the
 same canonical event.
 >>>>>>> 39561ca5 (add docs again)
+=======
+**REQ-SYNC-08c (Equal-version stale freshness):** When both replicas have
+identical `modifiedAt` for a semantic key, the timestamp alone cannot
+distinguish which side has fresher metadata. The merge MUST be conservative:
+
+* If the selected side's value is `up-to-date` and the non-selected side's
+  freshness is not `up-to-date`, the final node MUST NOT remain `up-to-date`.
+  Set it to `potentially-outdated` without changing `modifiedAt`.
+* If the selected side is already not `up-to-date`, no adjustment is needed.
+* The stale metadata belonging to an older value version (`modifiedAt`)
+  MUST NOT taint a strictly newer value version. If one side has a newer
+  `modifiedAt`, the value selection based on timestamps is authoritative
+  and the stale metadata from the older version does not affect the
+  newer version's freshness.
+>>>>>>> 1dd19be7 (Resolve merge conflicts in spec files in favor of master graph semantics)
 
 ---
 
-<<<<<<< HEAD
-## 7. Identifier Reconciliation and Edge Lowering
-
-**REQ-SYNC-09 (Final identifier selection):** The final identifier for a
-semantic key is determined by the canonical state event selected by the journal
-synchronization specification:
-
-- If the canonical state event is `add` or `edit`, its `NodeIdentifier` is the
-  final materialized identifier for the key.
-- If the canonical state event is `delete`, the semantic key is nonmaterialized
-  and has no final identifier.
-
-The final identifier lookup maps final storage identifiers to semantic keys.
-It must be bijective.
-
-**DEF-SYNC-08 (Direct relowering):** A candidate value origin is directly
-relowered when the dependency identifiers used by that source's cached value
-differ from the canonical final identifiers in the lowered graph. Relowering is
-evaluated independently for every member of `candidateValueOrigins(K)`.
-
-**REQ-SYNC-10 (Direct relowering rules):**
-
-1. A directly relowered origin is removed from the candidate's surviving
-   origin set and cannot support final freshness or validity proofs.
-2. If no valid origin remains, the candidate cached value MUST be removed and
-   its canonical identifier becomes a materialized missing node.
-3. If another valid origin for the same canonical event remains, that origin
-   may preserve the shared candidate semantic value subject to all other graph
-   eligibility rules.
-4. Materialized descendants lacking valid proofs after relowering become
-   `potentially-outdated` when cached or `missing` when no safe cached value can
-   be retained.
-5. Synchronization MUST NOT invoke computors to repair directly relowered
-   nodes.
-=======
 ## 7. Candidate Selection, Direct Invalidation, and Deletion
 
-The temporary pairwise merge rule implemented for
-https://github.com/ottojung/volodyslav/issues/1520 separates source selection,
-direct hard invalidation, propagated staleness, and deletion. The future
-journal-backed coherent-history rule is tracked by
-https://github.com/ottojung/volodyslav/issues/1521; this section specifies only
-the current conservative pairwise behaviour.
+The temporary pairwise merge rule separates source selection,
+direct hard invalidation, propagated staleness, and deletion.
 
 **DEF-SYNC-06 (Taint propagation):** Keep-taint propagates forward from every
 key where the local candidate strictly wins by the complete canonical tuple.
@@ -547,108 +508,46 @@ The final identifier lookup maps final storage identifiers to semantic keys for
 surviving materializations only. It must be bijective between final identifiers
 and `FinalKeys = { key ∈ Keys | outcome(key) ≠ delete }`. Deleted keys must
 not remain in the lookup.
->>>>>>> origin/master
 
 ---
 
-## 8. Freshness Merge Policy
-
-The canonical freshness-history event is selected by the journal
-synchronization specification (Stage 5 in
-`docs/specs/incremental-graph-journal-sync.md`). That selection determines
-which `validate` or `invalidate` event is retained as journal history.
-
-Final graph freshness is determined by the graph synchronization rules in this
-section. The canonical freshness history event does not by itself force the
-graph freshness — synchronization may conservatively produce
-`potentially-outdated` or `missing` even when retained freshness history is
-`validate`.
+## 9. Freshness Merge Policy
 
 **REQ-SYNC-11a (Up-to-date eligibility):** A final node may be `up-to-date`
 only if all of the following hold:
 
-1. It is **cached** in the final state (has a stored value).
+1. It has a stored value in the final state.
 2. Every direct input (per the graph scheme) is known in the final identifier
    lookup.
-3. Every direct input is cached (has a stored value).
+3. Every direct input is materialized (has a stored value).
 4. Every direct input is itself `up-to-date`.
 5. Every direct input has a validity flag for this node in the final validity
    relation.
 6. The stored value's provenance and final dependency structure justify
-   preserving it (at least one candidate source origin survives relowering).
-7. No applicable latest `invalidate` exists for the winning identifier.
-   Either:
-   * the canonical freshness history for the winning identifier is `validate`;
-     or
-   * there is no matching freshness history and the canonical state is `add`
-     with initial up-to-date freshness.
+   preserving it (the node was not invalidated by conflict propagation or
+   relowering).
 
-If any of these do not hold, the node MUST be `potentially-outdated`,
-`missing`, or nonmaterialized.
+If any of these do not hold, the node MUST be `potentially-outdated` or
+unmaterialized.
 
-<<<<<<< HEAD
-**REQ-SYNC-12 (Meaning of potentially-outdated):** `potentially-outdated` does
-not mean the stored value is wrong. It means the system does not currently have
-enough proof to return the stored value without recomputation. A
-potentially-outdated node may still carry useful validity proofs about parts of
-its dependency relation, subject to the validity proof transport rules of §10.
-
-**REQ-SYNC-12a (Missing state after sync):** Synchronization may produce a
-`missing` node — a materialized identifier with no cached value. This occurs
-when the canonical state event selects a materialized identifier but the graph
-synchronization rules require removal of the cached value (for example, after
-direct relowering). The identifier remains materialized; a later `pull` may
-recompute a value and emit `edit` + `validate`.
-
-**REQ-SYNC-12b (A retained `validate` does not force up-to-date):** A retained
-canonical `validate` event permits an up-to-date result (when all eligibility
-conditions are satisfied) but does not force one. Synchronization may
-conservatively produce `potentially-outdated` or `missing` even when the
-retained freshness history is `validate`.
-
-**REQ-SYNC-12c (A retained `invalidate` forbids up-to-date):** A retained
-canonical `invalidate` event for the winning identifier forbids an up-to-date
-result unless a later canonical `validate` exists. Synchronization must not
-upgrade an invalidated node to `up-to-date` without a real later `validate`
-event.
-=======
 **REQ-SYNC-12 (Meaning of potentially-outdated):** `potentially-outdated` means
 the system does not currently have enough proof to guarantee the stored value
 without verifying it. A stale node pulls all dependencies:
 
-- A **direct invalidation root** has had all incoming proofs removed. Its next pull must invoke its computor.
-- A **propagated stale descendant** retains all incoming and outgoing proofs. Its next pull may cache-revalidate without invoking its computor when every incoming proof remains present.
+- A **direct invalidation root** has had all incoming proofs removed. Its next
+  pull must invoke its computor.
+- A **propagated stale descendant** retains all incoming and outgoing proofs.
+  Its next pull may cache-revalidate without invoking its computor when every
+  incoming proof remains present.
 
-A stale node that cache-revalidates is marked `up-to-date` and returns its stored value. A stale node whose cache predicate fails invokes its computor.
->>>>>>> origin/master
+A stale node that cache-revalidates is marked `up-to-date` and returns its
+stored value. A stale node whose cache predicate fails invokes its computor.
 
 ---
 
 ## 9. Value Origin and Provenance
 
-<<<<<<< HEAD
-**DEF-SYNC-09 (Candidate and surviving value origins):** For every final
-semantic key K whose canonical state event is `add` or `edit`,
-`candidateValueOrigins(K)` is the internal, nonpersisted proof set defined in
-`incremental-graph-journal-sync.md`: it contains one source origin for each
-source whose latest state event is that exact canonical event, whose current
-identifier is the event's identifier, and which has a cached value.
 
-`survivingValueOrigins(K)` is the subset whose source dependency identifiers
-match the canonical final identifiers and whose provenance remains eligible
-under all graph rules. The set may contain the target origin, the host origin,
-both origins, or no origin. It is not persisted.
-
-When both sources contribute candidates, their cached values must be
-`isEqual`; otherwise synchronization fails with an integrity error. Equal
-values denote the same candidate semantic value, but equality does not create
-an origin. A missing source contributes no origin and is not compared with the
-cached value. If every canonical-event source is missing, or if no candidate
-origin survives, the canonical identifier remains materialized but missing;
-no cached value is invented and no losing state event or identifier is chosen.
-
-=======
->>>>>>> origin/master
 **REQ-SYNC-13 (Equality does not create origin):**
 
 - Equal stored values do not imply same origin.
@@ -692,16 +591,9 @@ only if ALL of the following hold:
    identifier lookup.
 2. Those semantic keys both have final identifiers in
    `finalIdentifierForKey`.
-<<<<<<< HEAD
-3. `survivingValueOrigins(key(finalD))` contains the exact origin
-   `{ kind: "source", side: S, sourceId: sourceD }`.
-4. `survivingValueOrigins(key(finalN))` contains the exact origin
-   `{ kind: "source", side: S, sourceId: sourceN }`.
-=======
 3. `sourceD` represents the final version of D through the canonical
    source-version identity relation (DEF-SYNC-02).
 4. `sourceN` represents the final version of N through the same relation.
->>>>>>> origin/master
 5. `finalD` is a direct structural input of `finalN` in the final lowered
    graph per `mergedInputsMap`.
 6. The final dependency edge is derived from the final graph scheme and
@@ -764,8 +656,8 @@ validate the following invariants:
 14. No discarded or losing storage identifier remains in values, freshness,
     timestamps, or validity storage.
 15. The final identifier lookup is internally consistent and bijective.
-16. The storage invariant holds: `freshness[id] === "missing"` iff
-    `values[id]` is absent, for every materialized storage identifier.
+16. The primary persisted domains are equal: every materialized storage
+    identifier appears in values, freshness, and timestamps.
 
 **REQ-SYNC-19 (Validation failure):** If these invariants cannot be
 established, the per-host merge MUST fail and the active replica pointer MUST

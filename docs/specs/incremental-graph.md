@@ -28,20 +28,11 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-09 (NodeValue):** Computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
 
-**TERM-10 (Freshness):** Conceptual state: `"up-to-date" | "potentially-outdated" | "missing"`.
-The storage invariant is: `freshness[id] === "missing"` iff `values[id]`
-is absent for the same `NodeIdentifier`. A `"missing"` node is materialized
-(its identifier exists in the identifier lookup) but has no cached value.
+**TERM-10 (Freshness):** Conceptual state: `"up-to-date" | "potentially-outdated"`.
 
-**TERM-10a (Materialized node):** A node instance whose storage identifier
-exists in the identifier lookup (`identifiers_keys_map`). A materialized node
-may be **cached** (has a stored value) or **missing** (has no stored value).
-
-**TERM-10b (Cached node):** A materialized node with a stored value. A cached
+**TERM-10a (Materialized node):** A node whose identifier exists in
+`identifiers_keys_map`, `values`, `freshness`, and `timestamps`. A materialized
 node's freshness is `"up-to-date"` or `"potentially-outdated"`.
-
-**TERM-10c (Missing node):** A materialized node with no stored value. Its
-freshness is `"missing"`.
 
 **REQ-MAT-CLOSURE:** Materialized nodes form a dependency-closed set. For every materialized node N, every concrete input of N is materialized. Consequently, materializing N materializes its complete transitive dependency cone first, and removing any materialization requires removing all of its materialized transitive dependents.
 
@@ -517,22 +508,9 @@ interface IncrementalGraph {
 **REQ-IFACE-03:** For compound-expressions (arity > 0), `bindings` MUST be provided with length matching the expression arity.
 
 **REQ-IFACE-04 (Inspection API):** Implementations MUST provide the inspection interface methods:
-<<<<<<< HEAD
-* `getFreshness(nodeName, bindings?)` — Returns the freshness state of a
-  specific node instance. It returns `"missing"` both for an unmaterialized
-  semantic key and for a materialized identifier whose cached value is absent.
-* `getValue(nodeName, bindings?)` — Returns the currently stored value without
-  triggering recomputation, or `undefined` for both an unmaterialized key and a
-  materialized node whose cached value is absent.
-* `listMaterializedNodes()` — Returns an array of tuples
-  `[NodeName, BindingEnvironment]` for all identifier-registry entries. It
-  therefore distinguishes a materialized missing node from an unmaterialized
-  semantic key when used with the two inspection methods above.
-=======
 * `getFreshness(nodeName, bindings?)` — Returns the freshness state of a specific node instance. Returns `undefined` when no materialization exists for that node.
 * `getValue(nodeName, bindings?)` — Returns the currently stored value for a node instance without triggering recomputation, or `undefined` if the node has never been materialized.
 * `listMaterializedNodes()` — Returns an array of tuples `[NodeName, BindingEnvironment]` for all materialized node instances.
->>>>>>> origin/master
 * `getSchemas()` — Returns the list of compiled node schemas registered with this graph.
 * `getSchemaByHead(nodeName)` — Returns the compiled schema for the given node name, or `null` if no such schema exists.
 * `getDbVersion()` — Returns the version string used for storage namespacing.
