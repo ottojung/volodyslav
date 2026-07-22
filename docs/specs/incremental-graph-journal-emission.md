@@ -235,7 +235,8 @@ If a transaction prepares an unindexed entry, but then fails during darkroom fin
 
 ### P9 — Event ID assigned atomically
 
-A new ordinary or migration event assigned initial position `7` receives:
+A new ordinary, migration, or synchronization event assigned initial position
+`7` receives:
 
 ```
 eventId = JSON.stringify([hostnameToString(host), 7])
