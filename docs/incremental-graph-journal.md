@@ -90,12 +90,12 @@ docs/specs/incremental-graph-journal-types.md
 
 ## Journal emission
 
-Journal entries are produced by ordinary graph and migration operations under
-the emission rules. `validate` records successful recomputation of an already
-materialized node from a non-up-to-date state, including restoration of a
-missing cached value. Structural synchronization may select stale or missing
-graph state without creating a logical event; it repositions existing
-canonical events when cursor notification is required.
+Journal entries are produced by ordinary graph, migration, and synchronization
+operations under the emission rules. `validate` records successful recomputation
+of an already materialized node from `potentially-outdated` to `up-to-date`.
+Synchronization may emit `invalidate` and `delete` for actual graph transitions;
+it repositions existing canonical events when cursor notification is required
+and no sync-originated event was emitted.
 
 The journal emission rules define which IncrementalGraph operations create
 journal changes and how those changes are coordinated with graph storage
