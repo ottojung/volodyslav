@@ -96,7 +96,6 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
  * - `finalIdentifierLookup`: bijective final lookup
  * - `mergedInputsMap`: final lowered input edges
  * - `hasIdentifierReconciliation`: whether identifiers changed
- * - `sameTimestampAndIdentifierKeys`: set of keys with matching timestamp and identifier across sides
  *
  * @param {SchemaStorage} T
  * @param {SchemaStorage} H
@@ -110,9 +109,8 @@ function expandStructuralDeletionClosure(deletionRootKeys, dependentsByKey) {
  *   mergedInputsMap: Map<NodeIdentifier, NodeIdentifier[]>,
  *   finalIdentifierForKey: Map<NodeKeyString, NodeIdentifier>,
  *   finalIdentifierLookup: IdentifierLookup,
- *   hasIdentifierReconciliation: boolean,
- *   sameTimestampAndIdentifierKeys: Set<NodeKeyString>
- * }>} 
+  *   hasIdentifierReconciliation: boolean
+ * }> } 
  */
 async function buildMergePlan(T, H, targetLookup, hostLookup, targetSourceFingerprint, hostSourceFingerprint) {
     const targetScheme = parseGraphScheme(await T.global.get(GRAPH_SCHEME_KEY));
@@ -291,7 +289,6 @@ async function buildMergePlan(T, H, targetLookup, hostLookup, targetSourceFinger
         finalIdentifierForKey,
         finalIdentifierLookup,
         hasIdentifierReconciliation,
-        sameTimestampAndIdentifierKeys,
     };
 }
 
