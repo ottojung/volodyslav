@@ -12,20 +12,10 @@ All journal types follow the existing nominal/opaque typing discipline used by `
 
 ### Purpose
 
-`JournalEventId` provides stable, immutable identity for one logical journal event. Logical journal events may be emitted by ordinary graph operations, migration, or synchronization (for `invalidate` and `delete`).
+`JournalEventId` provides stable, immutable identity for one logical journal event. Logical journal events may be emitted by ordinary graph operations, migration (as ordinary host events), or synchronization (sync-derived `invalidate` and `delete` events).
 
-The ID is created during the event's first durable commit:
-
-```js
-const eventId = JSON.stringify([
-    hostnameToString(creator),
-    journalIndexToNumber(originIndex),
-]);
-```
-
-Use exactly the fixed-order `[creator, originIndex]` tuple passed to
-`JSON.stringify`. No version tag, custom serialization format, multiple
-event-ID variants, or optional event-ID fields.
+There are exactly two event-ID variants, chosen so the formats are structurally
+unambiguous: the ordinary host event and the sync-derived event.
 
 ```js
 /**
@@ -35,15 +25,135 @@ event-ID variants, or optional event-ID fields.
  */
 ```
 
-### Semantics
+#### Ordinary host event
 
-- `creator` is the host that originally emitted the event.
-- `originIndex` is the first physical journal position assigned to the event.
-- The event ID is assigned atomically with that first position.
+An ordinary event originated by one host is identified by:
+
+```js
+const eventId = JSON.stringify([
+    "host",
+    hostnameToString(creator),
+    journalIndexToNumber(originIndex),
+]);
+```
+
+Use exactly this tagged fixed-order tuple passed to `JSON.stringify`. No other
+host-event format, version tag, custom serialization format, or optional
+event-ID fields.
+
+#### Sync-derived event
+
+A sync-derived event must be identified from the exact unordered source
+revisions and the semantic event identity, so that either side of a pairwise
+merge derives the same event ID. Introduce an opaque source revision
+identifier corresponding to the exact Git revision/checkpoint from which each
+synchronized source snapshot was staged:
+
+```js
+/**
+ * @typedef {object} SyncSourceRevision
+ * @property {Hostname} hostname - One participating source host.
+ * @property {SourceRevisionId} revision - Exact source snapshot revision.
+ */
+```
+
+`SourceRevisionId` identifies the exact revision/checkpoint of a synchronized
+source snapshot. It is not the database allocation fingerprint: a host
+fingerprint identifies an allocation namespace and can remain unchanged across
+many different snapshots, so it cannot serve as snapshot identity.
+
+Canonicalize the two source revisions by ordering the `(hostname, revision)`
+pairs first by `hostnameToString(hostname)`, then by
+`sourceRevisionIdToString(revision)`, using deterministic JavaScript code-unit
+ordering.
+
+The sync event ID is:
+
+```js
+const eventId = JSON.stringify([
+    "sync",
+    canonicalSourceRevisions.map(({ hostname, revision }) => [
+        hostnameToString(hostname),
+        sourceRevisionIdToString(revision),
+    ]),
+    action,
+    nodeKeyToString(key),
+]);
+```
+
+Consequences:
+
+- reversing the two source revisions produces the same event ID;
+- independently reconciling the same two exact snapshots produces the same
+  event ID;
+- reconciling later revisions from the same two hosts produces a different
+  event ID;
+- repeated placement of the same sync event is deduplicated by `eventId`;
+- one `eventId` still identifies exactly one immutable payload;
+- if the same sync event ID is encountered with different payloads,
+  synchronization fails as a journal-integrity error.
+
+A sync event ID must not depend on:
+
+- the host executing reconciliation;
+- local versus remote naming;
+- local wall-clock execution time;
+- the new physical journal index assigned during placement.
+
+### SourceRevisionId (nominal)
+
+```js
+/**
+ * The properties that this type carries are:
+ * - The value identifies the exact revision/checkpoint from which a synchronized
+ *   source snapshot was staged.
+ *
+ * The proof of those properties is guaranteed by:
+ * - This typedef cannot enforce the property by construction.
+ * - Therefore every function that returns this type is part of the proof.
+ * - The current return site is:
+ *   - the synchronization staging layer: satisfies the property because it
+ *     derives the revision identifier from the exact staged checkpoint/revision
+ *     of a source snapshot and refuses to stage otherwise.
+ */
+class SourceRevisionIdClass {
+    /** @private @type {undefined} */ __brand;
+    constructor() { if (this.__brand !== undefined) throw new Error("SourceRevisionId cannot be instantiated"); }
+}
+
+/** @typedef {SourceRevisionIdClass} SourceRevisionId */
+```
+
+Conversion functions:
+
+```js
+/**
+ * Unsafe cast: wraps a string as a SourceRevisionId.
+ * Caller MUST ensure value is the exact source revision identifier
+ * derived from a staged checkpoint/revision.
+ *
+ * @param {string} value
+ * @returns {SourceRevisionId}
+ */
+function unsafeStringToSourceRevisionId(value)
+
+/**
+ * Render a SourceRevisionId to its string persisted representation.
+ *
+ * @param {SourceRevisionId} revision
+ * @returns {string}
+ */
+function sourceRevisionIdToString(revision)
+```
+
+### Semantics (shared)
+
+- An event's immutable payload is fixed at its first durable commit.
 - Copying an event preserves its event ID.
 - Reappending an event preserves its event ID.
 - Moving an event does not change the encoded `originIndex`.
-- Two events created by the same host cannot have the same origin index.
+- Two ordinary events created by the same host cannot have the same origin
+  index.
 - Hostnames are unique within the synchronization mesh.
 
 ### Integrity
@@ -58,7 +168,7 @@ JSON.stringify([
     nodeIdentifierToString(entry.id),
     nodeKeyToString(entry.key),
     unixTimestampToNumber(entry.time),
-    hostnameToString(entry.creator),
+    journalCreatorToString(entry.creator),
     entry.eventId,
 ])
 ```
@@ -97,8 +207,10 @@ If the same event already survives at a positioned target entry, remove its queu
  * @property {JournalAction} action - The kind of change recorded.
  * @property {NodeIdentifier} id - The node identifier of the affected node.
  * @property {NodeKey} key - The semantic node key at the time of the change.
- * @property {UnixTimestamp} time - When the change was recorded.
- * @property {Hostname} creator - The host that originally emitted the logical event.
+ * @property {UnixTimestamp} time - Event provenance and ordering metadata.
+ * @property {JournalCreator} creator - The creator of the logical event: a
+ *   `Hostname` for ordinary host-originated events, or a `Sync` set for
+ *   sync-derived events.
  * @property {JournalEventId} eventId - Stable identity of this event.
  */
 ```
@@ -115,9 +227,10 @@ physical occurrence = one storage position containing that event
 notification        = exposure of an event after a cursor
 ```
 
-Moving or copying an event creates no new logical event. A synchronization-generated
-`invalidate` or `delete` is a new logical event because an actual corresponding
-local transition occurred.
+Moving or copying an event creates no new logical event. A sync-derived
+`invalidate` or `delete` is a new logical event representing a synchronized
+merge fact; it does not assert that any single host locally experienced the
+transition.
 
 ### JournalAction
 
@@ -128,19 +241,29 @@ local transition occurred.
  */
 ```
 
-Each action describes the historical origin transition. The event proves that
-transition occurred atomically with the graph change.
+The action records the reason or category under which the notification was
+originated. It is not an exact-once assertion and does not assert current graph
+state. Journal coverage has no false negatives for supported graph changes, but
+may contain conservative or duplicate notifications.
 
-- `'add'` — the node became materialized for the first time.
-- `'edit'` — the node's stored semantic value changed materially.
-- `'delete'` — an actual deletion or unmaterialization transition occurred.
-  Emitted by `storage.delete`, another actual deletion operation, or
-  synchronization (when final graph unmaterializes a previously materialized
-  local node).
-- `'invalidate'` — freshness transitioned from `up-to-date` to
-  `potentially-outdated`.
-- `'validate'` — successful recomputation transitioned an already materialized
-  node from `potentially-outdated` to `up-to-date`.
+- `'add'` — originated when the node became materialized for the first time.
+- `'edit'` — originated when the node's stored semantic value changed
+  materially, or provides notification coverage for a possible value change.
+- `'delete'` — originated when an actual deletion or unmaterialization
+  transition occurred, or derived by synchronization when the merged result
+  does not materialize a key that at least one synchronized source
+  materialized.
+- `'invalidate'` — originated when freshness transitioned from `up-to-date` to
+  `potentially-outdated`, or derived by synchronization when the merged result
+  is `potentially-outdated` for a key that at least one synchronized source
+  considered `up-to-date`.
+- `'validate'` — originated when successful recomputation transitioned an
+  already materialized node from `potentially-outdated` to `up-to-date`.
+
+A returned action does not necessarily prove that exactly one unique state
+transition corresponding to that action occurred. Extra, duplicate, or
+redundant entries are permitted; logical compaction suppresses redundant
+entries for query purposes (see `incremental-graph-journal-api.md`).
 
 ---
 
@@ -240,7 +363,24 @@ REQ-JT-01: The unit of `UnixTimestamp` MUST be integer milliseconds. Fractional 
 
 REQ-JT-02: The persisted representation of `UnixTimestamp` is a numeric integer (JavaScript `number`).
 
-REQ-JT-03: Implementations SHOULD record journal timestamps using the local system clock at the time of emission. Host clocks are not assumed to be synchronized across hosts.
+REQ-JT-03: Implementations SHOULD record journal timestamps for ordinary host
+events using the local system clock at the time of emission. Host clocks are
+not assumed to be synchronized across hosts. Sync-derived events MUST NOT use
+the wall clock of the host executing synchronization; their `time` is derived
+deterministically from source journal evidence (see
+`incremental-graph-journal-sync.md`).
+
+### Unified public meaning of `time`
+
+`time` is event provenance and ordering metadata:
+
+- For an ordinary host event, it is the host wall-clock time at origination.
+- For a sync-derived event, it is deterministic provenance time derived from
+  the source journal evidence for the semantic key. It is not the wall-clock
+  instant at which a particular host executed synchronization.
+
+Because `creator` is not exposed through `PossibleNodeChange`, public consumers
+must not assume that every returned `time` is an exact local occurrence time.
 
 Journal timestamps provide human-readable event ordering for consumers. Graph synchronization uses graph `modifiedAt` timestamps, not journal timestamps, for conflict resolution.
 
@@ -286,6 +426,9 @@ function unixTimestampToNumber(timestamp)
 
 A `Hostname` is a string that uniquely identifies a host within the synchronization mesh. The specific source of the value (e.g., machine hostname, configured name, stable UUID) is implementation-defined, but the value MUST be stable across restarts of the same host.
 
+Arbitrary strings must not automatically count as `Hostname`; the nominal
+type is produced only through the controlled conversion functions below.
+
 REQ-JT-04: A `Hostname` MUST be stable for a given host across process restarts and reboots.
 
 REQ-JT-05: Two distinct hosts in the synchronization mesh MUST have different `Hostname` values. Because event identity depends on `Hostname`, duplicate host identity is invalid configuration. Synchronization MUST reject a mesh containing two distinct hosts with the same `Hostname`.
@@ -326,6 +469,102 @@ function unsafeStringToHostname(value)
  * @returns {string}
  */
 function hostnameToString(hostname)
+```
+
+---
+
+## Sync
+
+`Sync` is a nominal immutable set of participating `Hostname` values. It is the
+`creator` of sync-derived events: the set describes the hosts whose exact source
+snapshots participated in deriving the event. It does not identify one host as
+the actor.
+
+Although it is conceptually a set, its runtime iteration and persisted
+serialization order must be deterministic:
+
+1. remove duplicates;
+2. sort by `hostnameToString` using deterministic JavaScript code-unit
+   ordering;
+3. insert or serialize in that canonical order;
+4. prohibit mutation after construction.
+
+```js
+/**
+ * The properties that this type carries are:
+ * - The value is an immutable set of participating source hostnames.
+ * - Iteration and persisted serialization are in deterministic canonical order:
+ *   deduplicated, then sorted by `hostnameToString` using deterministic
+ *   JavaScript code-unit ordering.
+ *
+ * The proof of those properties is guaranteed by:
+ * - `makeSync(hostnames)`: deduplicates the input hostnames and sorts them into
+ *   canonical order before constructing the value, and the resulting structure
+ *   is immutable.
+ * - No mutation operation is exposed on `Sync` values.
+ */
+class SyncClass {
+    /** @private @type {undefined} */ __brand;
+    constructor() { if (this.__brand !== undefined) throw new Error("Sync cannot be instantiated"); }
+}
+
+/** @typedef {SyncClass} Sync */
+```
+
+Conversion functions:
+
+```js
+/**
+ * Construct a Sync set from hostnames.
+ * Deduplicates and sorts into canonical order by hostnameToString.
+ * The result is immutable.
+ *
+ * @param {Array<Hostname>} hostnames
+ * @returns {Sync}
+ */
+function makeSync(hostnames)
+
+/**
+ * Return the hostnames of a Sync set in canonical order.
+ *
+ * @param {Sync} sync
+ * @returns {Array<Hostname>}
+ */
+function syncToHostnames(sync)
+```
+
+For one pairwise merge of snapshots owned by hosts A and B, a generated sync
+event has `creator = Sync{A, B}`.
+
+---
+
+## JournalCreator
+
+```js
+/**
+ * The creator of a logical journal event.
+ * A `Hostname` for ordinary host-originated events; a `Sync` set for
+ * sync-derived events.
+ *
+ * @typedef {Hostname | Sync} JournalCreator
+ */
+```
+
+A `JournalCreator` is never exposed through the public `PossibleNodeChange`
+type. It is journal-internal provenance used during synchronization.
+
+Rendering:
+
+```js
+/**
+ * Render a JournalCreator to its deterministic string persisted representation.
+ * For a Hostname, the hostname string. For a Sync set, the canonical
+ * JSON array of its hostname strings in canonical order.
+ *
+ * @param {JournalCreator} creator
+ * @returns {string}
+ */
+function journalCreatorToString(creator)
 ```
 
 ---
@@ -557,7 +796,7 @@ It must:
 4. register `{ ownerDomain, index }` in the private `WeakMap`;
 5. return the nominally cast public token.
 
-**This PR specifies only same-process, in-memory journal token usage.** A
+**This specification covers only same-process, in-memory journal token usage.** A
 `PossibleNodeChange` returned during a process session is valid as `since` for
 subsequent calls within that same session. Specifically, within the same
 process:
@@ -573,12 +812,13 @@ process:
   that any change observable to the cursor is reported through repositioned
   canonical events.
 - A `PossibleNodeChange` cursor is **not portable** to another process or host
-  without additional serialization mechanisms that are not specified by this PR.
+  without additional serialization mechanisms that are not specified by this
+  specification.
 
 Persistence of these tokens across process restarts, synchronization boundaries
 that involve heterogeneous hosts without the notification protocol, or
 migration/schema boundaries, and the corresponding long-lived validity
-guarantees, are out of scope for this PR and deferred to a future
+guarantees, are out of scope for this specification and deferred to a future
 computor/cursor-persistence specification.
 
 REQ-JT-21: `PossibleNodeChange` MUST expose `nodeName`, `bindings`, `action`,
@@ -677,7 +917,7 @@ The conversion directions are:
 
 ## Out of scope
 
-This PR does not specify:
+This specification does not cover:
 
 - Persistence/serialization of public journal tokens.
 - Long-lived cursor validity policies.
