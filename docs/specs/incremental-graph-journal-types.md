@@ -33,13 +33,79 @@ An ordinary event originated by one host is identified by:
 const eventId = JSON.stringify([
     "host",
     hostnameToString(creator),
+    hostEventNamespaceIdToString(namespaceId),
     journalIndexToNumber(originIndex),
 ]);
 ```
 
+`namespaceId` is the host event namespace active when the event's original
+index was allocated. The namespace scopes host event identity so that two
+journal lineages installed on the same host cannot reuse an `originIndex`
+under the same event ID.
+
 Use exactly this tagged fixed-order tuple passed to `JSON.stringify`. No other
 host-event format, version tag, custom serialization format, or optional
 event-ID fields.
+
+### Host event namespace (nominal)
+
+`HostEventNamespaceId` is an opaque nominal identifier for one host event
+namespace.
+
+- A fresh namespace is generated when a host journal is initialized and after
+  a successful `reset-to-hostname` (see `Journal lineage`).
+- Existing events preserve their original namespace.
+- Normal pairwise synchronization and migration preserve the current local
+  namespace.
+- Because host event identity is `["host", hostname, hostEventNamespaceId,
+  originIndex]`, the lineage is present in the event ID; two lineages installed
+  on the same host cannot collide even when the new lineage reuses numeric
+  indices.
+
+```js
+/**
+ * The properties that this type carries are:
+ * - The value identifies one host event namespace, fresh on host journal
+ *   initialization and on successful reset-to-hostname, and otherwise
+ *   preserved.
+ *
+ * The proof of those properties is guaranteed by:
+ * - This typedef cannot enforce the property by construction.
+ * - Therefore every function that returns this type is part of the proof.
+ * - The current return sites are:
+ *   - host journal initialization, which allocates a fresh namespace;
+ *   - successful reset-to-hostname, which allocates a fresh namespace for the
+ *     newly installed lineage.
+ */
+class HostEventNamespaceIdClass {
+    /** @private @type {undefined} */ __brand;
+    constructor() { if (this.__brand !== undefined) throw new Error("HostEventNamespaceId cannot be instantiated"); }
+}
+
+/** @typedef {HostEventNamespaceIdClass} HostEventNamespaceId */
+```
+
+Conversion functions:
+
+```js
+/**
+ * Unsafe cast: wraps a string as a HostEventNamespaceId.
+ * The function is defined only for a namespace identifier generated as
+ * described above.
+ *
+ * @param {string} value
+ * @returns {HostEventNamespaceId}
+ */
+function unsafeStringToHostEventNamespaceId(value)
+
+/**
+ * Render a HostEventNamespaceId to its string persisted representation.
+ *
+ * @param {HostEventNamespaceId} namespaceId
+ * @returns {string}
+ */
+function hostEventNamespaceIdToString(namespaceId)
+```
 
 #### Sync-derived event
 
@@ -142,9 +208,10 @@ function sourceRevisionIdToString(revision)
 - An event's immutable payload is fixed at its first durable commit.
 - Copying an event preserves its event ID.
 - Reappending an event preserves its event ID.
-- Moving an event does not change the encoded `originIndex`.
-- Two ordinary events created by the same host cannot have the same origin
-  index.
+- Moving an event does not change its encoded `originIndex` or its host event
+  namespace.
+- Two ordinary events created by the same host within the same host event
+  namespace cannot have the same origin index.
 - Hostnames are unique within the synchronization mesh.
 
 ### Integrity
@@ -227,8 +294,8 @@ Conversion functions:
 ```js
 /**
  * Unsafe cast: wraps a string as a SourceSnapshotId.
- * The function is defined only for a checkpoint or merge source-snapshot ID
- * derived as described below.
+ * The function is defined only for a checkpoint or merge source-snapshot
+ * digest (64 lowercase hexadecimal characters) derived as described below.
  *
  * @param {string} value
  * @returns {SourceSnapshotId}
@@ -237,6 +304,7 @@ function unsafeStringToSourceSnapshotId(value)
 
 /**
  * Render a SourceSnapshotId to its string persisted representation.
+ * The representation is the fixed-size digest.
  *
  * @param {SourceSnapshotId} snapshotId
  * @returns {string}
@@ -246,35 +314,45 @@ function sourceSnapshotIdToString(snapshotId)
 
 ### Base checkpoint identity
 
-A snapshot directly staged from a host revision receives an identity
-equivalent to:
+A snapshot directly staged from a host revision receives an identity equivalent
+to:
 
-```js
-JSON.stringify([
+```text
+sha256(encode([
+    "snapshot-v1",
     "checkpoint",
     hostnameToString(hostname),
     sourceRevisionIdToString(revision),
-])
+]))
 ```
 
 ### Derived merge identity
 
 A deterministic merge output receives an identity equivalent to:
 
-```js
-JSON.stringify([
+```text
+sha256(encode([
+    "snapshot-v1",
     "merge",
     versionToString(schemaVersion),
     canonicalPair([
         sourceSnapshotIdToString(left),
         sourceSnapshotIdToString(right),
     ]),
-])
+]))
 ```
 
-`canonicalPair` sorts the two snapshot-ID strings using deterministic
-JavaScript code-unit ordering. `schemaVersion` is the graph schema/version
-identity used for storage namespacing.
+`sha256` is the SHA-256 digest of the canonical byte encoding `encode`, rendered
+as 64 lowercase hexadecimal characters. `encode` serializes the array
+element-wise: a 64-bit big-endian byte-length prefix followed by the UTF-8 bytes
+of each element's canonical string form, prefixed by a 64-bit big-endian element
+count. `canonicalPair` sorts the two input snapshot-ID strings using
+deterministic JavaScript code-unit ordering. `schemaVersion` is the graph
+schema/version identity used for storage namespacing.
+
+Because each snapshot ID is a fixed-size digest, the representation does not
+grow with merge depth: a merge ID is always exactly one digest, and event IDs
+embed only fixed-size digests.
 
 Consequences:
 
@@ -282,8 +360,10 @@ Consequences:
 - different derived source states do not inherit the same identity merely
   because they originated on the same physical host;
 - a derived output can safely become an input to another merge;
-- the derivation structure is retained, so two distinct merge derivations are
-  not falsely assigned one identity.
+- the derivation structure is retained in the digest, so two distinct merge
+  derivations are not falsely assigned one identity;
+- if strict collision handling is desired, associate each digest with its
+  canonical preimage and reject a digest/preimage mismatch.
 
 ### SourceSnapshotProvenance
 
@@ -310,6 +390,22 @@ For a merge result:
 id           = merge source-snapshot ID
 contributors = union(left.contributors, right.contributors)
 ```
+
+A `SourceSnapshotProvenance` describes one exact snapshot. Any ordinary graph
+or journal mutation (for example a `pull` or `invalidate`) makes existing
+exact-snapshot provenance inapplicable to the resulting mutable replica: the
+replica is no longer the exact snapshot the provenance identifies. Provenance
+for a mutable replica is established only by freezing/checkpointing that
+replica into an exact source snapshot and deriving fresh provenance for the
+exact frozen state.
+
+At the beginning of synchronization, while graph activity is excluded, the
+exact local source is frozen/checkpointed and fresh checkpoint provenance is
+derived for that precise local snapshot; this provenance is used as the local
+source's provenance for the first per-host merge.
+
+Each derived merge output receives persisted merge provenance before it can
+become the next local source.
 
 The merged destination's provenance must be durably established before that
 destination can become active or be used as the source of a later per-host
@@ -456,13 +552,30 @@ function isSyncJournalEntry(value)
 
 /**
  * @param {unknown} value
- * @returns {value is JournalEntry}
+ * @returns {value is
+ *     AddJournalEntry |
+ *     EditJournalEntry |
+ *     HostDeleteJournalEntry |
+ *     HostInvalidateJournalEntry |
+ *     ValidateJournalEntry}
  */
 function isHostJournalEntry(value)
+
+/**
+ * Authoritative boundary validator for persisted entries.
+ * Recognizes only the concrete JournalEntry variants and rejects invalid
+ * action/creator combinations.
+ *
+ * @param {unknown} value
+ * @returns {value is JournalEntry}
+ */
+function isJournalEntry(value)
 ```
 
 A sync entry is exactly `SyncDeleteJournalEntry | SyncInvalidateJournalEntry`.
-`isSyncJournalEntry` must not recognize invalid sync/action combinations.
+`isSyncJournalEntry` and `isHostJournalEntry` must not recognize invalid
+sync/action combinations. Persisted-entry deserialization uses `isJournalEntry`
+as the boundary validator before accepting an entry.
 
 The `*Class` declarations throughout this document (e.g. `UnixTimestampClass`, `JournalIndexClass`, `HostnameClass`, `PossibleNodeChangeClass`, `BaselinePossibleNodeChangeClass`) are nominal JSDoc brands. They do not imply that values are constructed with these classes at runtime. As with `NodeIdentifier`, the runtime representation may be a plain value/object that is treated as the branded type only through controlled casts.
 
@@ -799,9 +912,11 @@ function makeSync(hostnames)
 
 /**
  * Return the hostnames of a Sync set in canonical order.
+ * Returns an immutable snapshot or a fresh detached array; mutating the
+ * returned value must not be able to mutate the Sync set.
  *
  * @param {Sync} sync
- * @returns {Array<Hostname>}
+ * @returns {ReadonlyArray<Hostname>}
  */
 function syncToHostnames(sync)
 ```
@@ -1014,6 +1129,9 @@ the old lineage.
 - The reset journal adopts the selected snapshot's journal and watermark
   exactly. The new watermark may be numerically lower than the old lineage's
   watermark.
+- A successful reset generates a fresh host event namespace (see
+  `Host event namespace`), so numeric index reuse in the new lineage cannot
+  collide with old-lineage host event IDs.
 - No journal-notification continuity is specified across reset.
 - The old and new journal positions are not one shared index namespace.
 
@@ -1028,13 +1146,15 @@ A successful reset must create and publish a fresh `JournalCursorDomain`:
 2. Complete and durably validate the destination.
 3. Atomically switch the active replica.
 4. Publish a fresh cursor domain for the newly installed lineage.
-5. Reject every `PossibleNodeChange` token registered in the old domain.
+5. Publish a fresh host event namespace for the newly installed lineage.
+6. Reject every `PossibleNodeChange` token registered in the old domain.
 
 A failed reset preserves:
 
 - the previous active replica;
 - the previous journal lineage;
 - the previous cursor domain;
+- the previous host event namespace;
 - the validity of existing same-process tokens under the old state.
 
 Normal pairwise synchronization preserves the existing cursor domain. Only a
@@ -1317,4 +1437,3 @@ This specification does not cover:
 - Persistence/serialization of public journal tokens.
 - Long-lived cursor validity policies.
 - Checkpoint/lease-based compaction safety.
-- Type guards for storage/deserialization boundaries.
