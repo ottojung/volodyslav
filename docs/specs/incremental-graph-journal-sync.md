@@ -654,11 +654,20 @@ event namespace.
 A successful reset must create and publish a fresh `JournalCursorDomain`:
 
 1. Keep the old domain active while constructing the reset destination.
-2. Complete and durably validate the destination.
-3. Atomically switch the active replica.
-4. Publish a fresh cursor domain for the newly installed lineage.
-5. Publish a fresh host event namespace for the newly installed lineage.
+2. Construct the destination to contain its journal, watermark, source
+   provenance where applicable, and a fresh host event namespace, all durably
+   stored inside the destination replica.
+3. Complete and durably validate the destination.
+4. Atomically switch the active replica. The pointer switch selects a
+   destination that already contains its fresh host event namespace.
+5. Publish the fresh cursor domain and the in-memory cache of the new host
+   event namespace.
 6. Reject every `PossibleNodeChange` token registered in the old domain.
+
+Only volatile state — the in-memory namespace cache and the new cursor domain —
+is published after the pointer switch. The durable namespace is part of the
+destination, so a crash after cutover cannot leave the newly active lineage
+with an old or missing namespace.
 
 A failed reset preserves the previous active replica, journal lineage, cursor
 domain, host event namespace, and the validity of existing same-process tokens
@@ -728,8 +737,8 @@ of the public API. The `PossibleNodeChange` type intentionally excludes them.
 
 ### T1 — Journal integrity: conflicting payload
 
-Source A: eventId "[\"host\",\"h1\",3]" with payload edit W1
-Source B: eventId "[\"host\",\"h1\",3]" with payload edit W2
+Source A: eventId "[\"host\",\"h1\",\"namespace-1\",3]" with payload edit W1
+Source B: eventId "[\"host\",\"h1\",\"namespace-1\",3]" with payload edit W2
 
 Synchronization aborts. Different payloads for the same eventId are an
 integrity error.
@@ -922,10 +931,15 @@ Merging checkpoint snapshots `A` and `B` produces a destination whose
 `SourceSnapshotProvenance.id` is the derived merge snapshot digest:
 
 ```
-sha256(encode(["snapshot-v1", "merge",
+const [lowerId, upperId] = canonicalPair([
+    sourceSnapshotIdToString(A.provenance.id),
+    sourceSnapshotIdToString(B.provenance.id),
+])
+
+sha256(encode(["snapshot-v2", "merge",
+               graphAndJournalMergeProtocolVersion,
                versionToString(schemaVersion),
-               canonicalPair([sourceSnapshotIdToString(A.provenance.id),
-                              sourceSnapshotIdToString(B.provenance.id)])]))
+               lowerId, upperId]))
 ```
 
 The result is a fixed-size digest regardless of merge depth.

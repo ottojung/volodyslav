@@ -100,12 +100,22 @@ REQ-JE-06: If a `pull` encounters an up-to-date node and returns its stored valu
 
 ### Freshness transition: `invalidate`
 
-REQ-JE-07: When a node's freshness changes from `up-to-date` to `potentially-outdated`, the system MUST emit a `HostInvalidateJournalEntry` (`action: "invalidate"`, `creator: Hostname`). This transition may occur through:
+REQ-JE-07: When a host-local graph or migration transition changes a node's
+freshness from `up-to-date` to `potentially-outdated`, the system MUST emit a
+`HostInvalidateJournalEntry` (`action: "invalidate"`, `creator: Hostname`).
+This transition may occur through:
 
 - An explicit `invalidate(nodeName, bindings)` call.
 - Cascading invalidation from an invalidated dependency.
-- Synchronization, under the conditions specified in `incremental-graph-journal-sync.md`.
-- Any other system path that transitions a node's freshness from `up-to-date` to `potentially-outdated`.
+- Migration `storage.invalidate` (see `incremental-graph-journal-migrations.md`).
+- Any other host-local path that transitions a node's freshness from
+  `up-to-date` to `potentially-outdated`.
+
+Synchronization is NOT a trigger for REQ-JE-07. Synchronization invalidation is
+governed exclusively by the symmetric predicate in
+`incremental-graph-journal-sync.md` and originates a
+`SyncInvalidateJournalEntry` (`creator: Sync`), never a
+`HostInvalidateJournalEntry`.
 
 REQ-JE-07a: The `invalidate` entry MUST be emitted in the same durable transaction as the freshness state change.
 
