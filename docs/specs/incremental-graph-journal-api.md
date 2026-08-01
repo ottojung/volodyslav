@@ -4,6 +4,8 @@
 
 This document specifies the public journal query method `possibleMaybeChanges` on `IncrementalGraph`, its parameters, return semantics, ordering guarantees, and the baseline-token convention.
 
+This document specifies API behavior. It does not prescribe how an external client uses returned possible changes.
+
 See `docs/specs/incremental-graph-journal-types.md` for the `PossibleNodeChange`, `BaselinePossibleNodeChange`, `NodeFilter`, `JournalIndex`, and related type definitions.
 
 See `docs/specs/incremental-graph-node-filter.md` for the `NodeFilter` construction and matching specification.
@@ -63,7 +65,7 @@ REQ-JA-01: The returned array is finite. For each matching semantic node key, it
 
 REQ-JA-02: Returned `PossibleNodeChange` values MUST be ordered by ascending journal index (physical insertion order).
 
-REQ-JA-03: If multiple returned entries have equal timestamps, their relative order is still determined by journal-index order. Consumers MUST NOT depend on timestamp order for correctness.
+REQ-JA-03: If multiple returned entries have equal timestamps, their relative order is still determined by journal-index order. No timestamp-order guarantee is provided; return ordering is determined by `JournalIndex`.
 
 ---
 
@@ -103,13 +105,15 @@ transition corresponding to that action occurred:
 - A returned `edit` was originated when the node's stored semantic value changed
   materially, or when notification coverage for a possible value change required
   an existing event.
-- A returned `delete` was originated when an actual deletion or unmaterialization
-  transition occurred, or by synchronization when the merged result does not
-  materialize a key that at least one synchronized source materialized.
+- A returned `delete` was originated when an actual host-local deletion or
+  unmaterialization transition occurred (`HostDeleteJournalEntry`), or by
+  synchronization when the merged result does not materialize a key that at
+  least one synchronized source materialized (`SyncDeleteJournalEntry`).
 - A returned `invalidate` was originated when freshness transitioned to
-  `potentially-outdated`, or by synchronization when the merged result is
-  `potentially-outdated` for a key that at least one synchronized source
-  considered `up-to-date`.
+  `potentially-outdated` (`HostInvalidateJournalEntry`), or by synchronization
+  when the merged result is `potentially-outdated` for a key that at least one
+  synchronized source considered `up-to-date`
+  (`SyncInvalidateJournalEntry`).
 - A returned `validate` was originated when successful recomputation restored an
   already materialized node's freshness to `up-to-date`.
 
@@ -129,7 +133,9 @@ A returned event does not assert current graph state:
 - A returned `invalidate` does not prove current staleness.
 - A returned `validate` does not prove current up-to-date freshness.
 
-Each action prompts the consumer to re-read current graph state.
+REQ-JA-09: No requirement in this specification depends on the external client
+inspecting graph state after receiving a returned event. The returned array of
+`PossibleNodeChange` values is the complete API result.
 
 ### Notification overapproximation
 
@@ -164,17 +170,14 @@ Within the supported cursor domain (same-process session tokens), for semantic
 keys matching the call's `to` filter, graph-observable changes have no false
 negatives. Every matching key requiring notification is represented by a
 retained entry positioned strictly after `since`, either as a newly originated
-event or as a repositioned existing event. Consumers re-reading current graph
-state after each returned entry observe the actual graph changes for their
-filtered set of keys.
+event or as a repositioned existing event.
 
 REQ-JA-05: A returned `edit` is an existing journal event emitted by graph
 recomputation and possibly copied or repositioned by synchronization. Migration
 does not emit `edit`; synchronization may copy, reposition, or preserve an
-existing edit. The entry's presence does not guarantee that the node's value
-materially changed from the consumer's perspective. Consumers SHOULD re-check
-the current node value rather than assuming the entry describes a visible state
-transition.
+existing edit. The presence of an `edit` entry does not guarantee that the
+node's value materially changed; it provides notification coverage for a
+possible value change.
 
 ---
 
@@ -238,10 +241,7 @@ The logical winner is selected through the complete fixed prefix ending at `H`. 
 
 **Note on freshness events and graph state:** A returned `validate` entry was
 originated for a freshness transition to `up-to-date` (or provides notification
-coverage for it). However, the current graph state may differ from what the
-journal entry records — a later synchronization or invalidation may have changed
-the graph freshness after the event was emitted. Consumers MUST re-read the
-current graph state rather than assuming the journal event describes current
+coverage for it). A returned freshness entry does not determine current graph
 freshness.
 
 Example:
@@ -282,7 +282,7 @@ For `since = index 12, H = 12`, return neither entry for X.
 
 ## Initial and baseline tokens
 
-Callers following the typical incremental pattern need an initial value to pass as `since` on the first call.
+A baseline position is the initial `since` value for the first query.
 
 REQ-JA-06: The system MUST expose a standalone function to obtain a baseline position:
 
@@ -361,5 +361,4 @@ running and may retain the references supplied to the filter at construction.
 Mutating the filter or any structure reachable through it (its argument array,
 its union branches, or nested `ConstValue` data) during or after an asynchronous
 query is undefined behavior. The API provides no result-consistency guarantee for
-a mutated filter. See `incremental-graph-node-filter.md` for the caller
-obligation.
+a mutated filter. See `incremental-graph-node-filter.md`.
