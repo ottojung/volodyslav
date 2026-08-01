@@ -15,35 +15,42 @@ Journal emission is always coordinated with the graph storage mutation that caus
 
 ## Event origination
 
-Ordinary graph operations and migration originate their required exact events
+Ordinary graph operations and migration originate their required events
 atomically with their transitions. Every ordinary graph or migration transition
 covered by this specification must originate its journal event.
 
 ## Notification coverage
 
+Journal coverage has no false negatives for supported graph changes, but may
+contain conservative or duplicate notifications. The action of an entry records
+the reason or category under which the notification was originated; it is not an
+exact-once assertion and does not assert current graph state.
+
 Synchronization may change graph state in ways that do not originate a new
-event. Synchronization originates exact events only for:
+event. Synchronization originates sync-derived events only for the symmetric
+predicates defined in `docs/specs/incremental-graph-journal-sync.md`:
 
 ```
-materialized/up-to-date → materialized/potentially-outdated   => invalidate
-materialized → unmaterialized                                   => delete
+F(K) is unmaterialized and at least one source materializes K        => delete
+F(K) is potentially-outdated and at least one source is up-to-date   => invalidate
 ```
 
 Other synchronization-induced graph changes MUST be covered by repositioning
-a truthful existing event. See `docs/specs/incremental-graph-journal-sync.md`
-for the `notificationCarrier(K)` rule.
+an existing event. See `docs/specs/incremental-graph-journal-sync.md` for the
+`notificationCarrier(K)` rule.
 
 ## Terminology
 
 Use the following terms consistently:
 
-- **originate an event**: create a new logical event for an actual transition.
+- **originate an event**: create a new logical event for an actual transition
+  or a sync-derived merge fact.
 - **preserve an event**: retain an existing event without changing its physical
   position.
 - **reposition an event**: move an existing event to a new physical position
   for notification, preserving its original action, time, creator, and eventId.
 - **provide notification coverage**: ensure that every key requiring notification
-  has a carrier after relevant source watermarks, whether by origination or
+  has a carrier after the relevant watermarks, whether by origination or
   repositioning.
 
 ---
@@ -57,7 +64,7 @@ materialized node from `potentially-outdated` to `up-to-date` emits `validate`.
 
 Synchronization may emit `invalidate` and `delete` under the conditions
 specified in `docs/specs/incremental-graph-journal-sync.md`. When no
-sync-originated event applies, synchronization uses notification-aware
+sync-derived event applies, synchronization uses notification-aware
 repositioning of an existing canonical event instead.
 
 ---
@@ -142,6 +149,44 @@ REQ-JE-07j: Repeating an operation that leaves freshness unchanged emits nothing
 - `potentially-outdated → potentially-outdated`: emit nothing
 - `up-to-date → up-to-date`: emit nothing
 
+#### Concurrent invalidations
+
+Two invalidations may begin while a node is up-to-date and both may prepare and
+commit an `invalidate` entry. This is allowed even though, viewed as state
+transitions, the pair is equivalent to a single invalidation.
+
+```
+initially: N is up-to-date
+
+invalidate A observes N as up-to-date
+invalidate B observes N as up-to-date
+
+A commits invalidate(N)
+B commits invalidate(N)
+```
+
+The journal may contain two `invalidate` entries.
+
+This is safe because:
+
+- invalidations use compatible daytime activity;
+- pulls and recomputations use incompatible nighttime activity;
+- migration and structural synchronization use holiday activity;
+- therefore `add`, `edit`, or `validate` cannot interleave between those
+  concurrent invalidations;
+- both notifications require the same consumer response: re-read the current
+  state of `N`;
+- logical journal compaction retains only the latest freshness-category entry
+  for `N`.
+
+REQ-JE-07k: The implementation MUST NOT add commit-time freshness
+deduplication to suppress the concurrent-invalidation duplicate case.
+
+A sequential invalidation that begins after the node is already stale may still
+emit nothing, as specified by REQ-JE-07j. The duplicate allowance covers
+duplicates caused by overlapping operations and conservative notification
+behavior.
+
 ### Deletion: `delete`
 
 REQ-JE-08: A `delete` journal entry represents an actual node deletion. The
@@ -200,16 +245,19 @@ REQ-JE-17: The `last_journal_index` stored in `rendered/r/global/last_journal_in
 
 ### JournalEventId assignment during first commit
 
-REQ-JE-18: During darkroom finalization, after assigning the event its initial `JournalIndex` `i`, the implementation MUST compute the event's `JournalEventId` as:
+REQ-JE-18: During darkroom finalization, after assigning an ordinary host event
+its initial `JournalIndex` `i`, the implementation MUST compute the event's
+`JournalEventId` as:
 
 ```
 const eventId = JSON.stringify([
+    "host",
     hostnameToString(entry.creator),
     journalIndexToNumber(i),
 ]);
 ```
 
-The entry, `eventId`, physical index `i`, graph mutation, and final watermark MUST be committed in the same atomic durable batch.
+The entry, `eventId`, physical index `i`, graph mutation, and final watermark MUST be committed in the same atomic durable batch. Sync-derived events are not assigned an ID from the physical index; their `eventId` derives from the exact source revisions, the action, and the key (see `incremental-graph-journal-sync.md`).
 
 REQ-JE-19: For an existing event being replicated or reappended (not newly created), the implementation MUST NOT assign a new event ID. It MUST preserve the original `eventId` string unchanged. Only the physical storage position changes.
 
@@ -249,15 +297,15 @@ Successful recomputation that transitions an already materialized node from
 - A cache hit emits nothing (no freshness transition occurred).
 - First materialization emits only `add` (first materialization is not a transition from `potentially-outdated`).
 
-### P6 — Historical atomicity
+### P6 — Origin atomicity
 
-When a logical event is first originated, the event and its historical origin
-transition are durably committed atomically. A failed origin transaction leaves
-neither the event nor the associated transition committed.
+When a logical event is first originated, the event and its associated
+transition or merge fact are durably committed atomically. A failed origin
+transaction leaves neither the event nor the associated change committed.
 
 Later graph changes, synchronization, and compaction may change current graph
 state or remove or reposition physical event occurrences without invalidating
-that historical atomicity guarantee.
+that atomicity guarantee.
 
 ### P7 — Monotonic last_journal_index
 
@@ -287,3 +335,10 @@ Entry, event ID, graph writes, and watermark `7` commit atomically. A reader tha
 ### P10 — Replication preserves event ID
 
 An event reappended or replicated to another host retains its original `eventId` string unchanged. The `eventId` remains the same across all copies, even though the physical storage index differs.
+
+### P11 — Duplicate concurrent invalidations
+
+Two invalidations that begin while node `N` is `up-to-date` may both commit an
+`invalidate` entry. The journal may contain two `invalidate` entries for `N`.
+Logical compaction still returns at most one freshness-category entry for `N`,
+and the implementation performs no commit-time freshness deduplication.
