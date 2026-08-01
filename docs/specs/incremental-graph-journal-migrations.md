@@ -115,7 +115,12 @@ Removes a node from the new version entirely.
 
 REQ-JM-06: `storage.delete` MUST emit a `delete` journal entry for the deleted
 node. The entry's `action` is `"delete"`, and its `time` and `creator` are set
-to the current migration time and local host respectively.
+to the current migration time and local `Hostname` respectively.
+
+Migration-generated events are ordinary host-created events: their `creator` is
+a `Hostname`, not a `Sync` set. A `Sync` creator is used only for events
+derived by synchronization. Migration is not part of synchronization; it is a
+host-local storage transformation between schema versions.
 
 REQ-JM-07: `storage.delete` MUST NOT remove, purge, or otherwise modify any
 established journal entry for the deleted node (including older `add`, `edit`,
@@ -288,4 +293,4 @@ REQ-JM-15: Because `possibleMaybeChanges` holds `enterGarden` across replica sel
 
 ## Out of scope
 
-The interaction of stored journal tokens with schema-boundary invalidation is deferred to a future specification. This PR does not specify token validity across migration boundaries.
+The interaction of stored journal tokens with schema-boundary invalidation is deferred to a future specification. This specification does not define token validity across migration boundaries.
