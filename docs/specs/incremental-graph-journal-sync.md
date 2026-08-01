@@ -65,6 +65,15 @@ merge. The provenance must survive the root-database reopen that occurs between
 successive per-host merges. A failed merge must not publish the destination
 provenance.
 
+A `SourceSnapshotProvenance` describes one exact snapshot. Ordinary graph or
+journal activity after the snapshot was taken makes the provenance inapplicable
+to the resulting mutable replica. At the beginning of synchronization, while
+graph activity is excluded, the exact local source is frozen/checkpointed and
+fresh checkpoint provenance is derived for that precise local snapshot; this
+provenance is used as the local source's provenance for the first per-host
+merge. Each derived merge output receives persisted merge provenance before it
+can become the next local source.
+
 For a sync-derived event created while merging source snapshots `A` and `B`:
 
 ```
@@ -632,7 +641,13 @@ selected host snapshot and does not perform pairwise journal reconciliation.
 - The reset journal adopts the selected snapshot's journal and watermark
   exactly. The new watermark may be numerically lower than the old lineage's
   watermark.
+- A successful reset also generates a fresh host event namespace, so numeric
+  index reuse in the new lineage cannot collide with old-lineage host event
+  IDs (see `incremental-graph-journal-types.md` § Host event namespace).
 - No journal-notification continuity is specified across reset.
+
+Normal pairwise synchronization and migration preserve the current local host
+event namespace.
 
 ### Cursor domain rotation
 
@@ -642,10 +657,12 @@ A successful reset must create and publish a fresh `JournalCursorDomain`:
 2. Complete and durably validate the destination.
 3. Atomically switch the active replica.
 4. Publish a fresh cursor domain for the newly installed lineage.
-5. Reject every `PossibleNodeChange` token registered in the old domain.
+5. Publish a fresh host event namespace for the newly installed lineage.
+6. Reject every `PossibleNodeChange` token registered in the old domain.
 
 A failed reset preserves the previous active replica, journal lineage, cursor
-domain, and the validity of existing same-process tokens under the old state.
+domain, host event namespace, and the validity of existing same-process tokens
+under the old state.
 
 Normal pairwise synchronization preserves the existing cursor domain; only a
 successful wholesale reset rotates it. `BaselinePossibleNodeChange` remains the
@@ -902,13 +919,16 @@ event ID differs.
 ### T21 — First per-host merge produces a derived snapshot ID
 
 Merging checkpoint snapshots `A` and `B` produces a destination whose
-`SourceSnapshotProvenance.id` is the derived merge snapshot ID:
+`SourceSnapshotProvenance.id` is the derived merge snapshot digest:
 
 ```
-["merge", versionToString(schemaVersion),
- canonicalPair([sourceSnapshotIdToString(A.provenance.id),
-                sourceSnapshotIdToString(B.provenance.id)])]
+sha256(encode(["snapshot-v1", "merge",
+               versionToString(schemaVersion),
+               canonicalPair([sourceSnapshotIdToString(A.provenance.id),
+                              sourceSnapshotIdToString(B.provenance.id)])]))
 ```
+
+The result is a fixed-size digest regardless of merge depth.
 
 ### T22 — Derived snapshot becomes a later merge input
 
@@ -967,8 +987,26 @@ index namespace.
 ### T31 — Sync event ID carries no physical index
 
 A `SyncDeleteJournalEntry` or `SyncInvalidateJournalEntry` event ID is derived
-from the exact source-snapshot identities, the action, and the key. It does not
+from the exact source-snapshot identities, the action, and the key. The
+embedded snapshot identities are fixed-size digests. The event ID does not
 depend on the destination physical journal index.
+
+### T32 — Local activity invalidates source provenance
+
+After a merge produces derived snapshot `D`, ordinary local `pull` or
+`invalidate` activity mutates the graph and journal. The stored provenance no
+longer describes the exact local state. A second synchronization run begins by
+freezing/checkpointing the exact local source and deriving fresh checkpoint
+provenance for that precise snapshot, so the second run's local source snapshot
+ID differs from `D`'s merge ID.
+
+### T33 — Host event namespace prevents reuse across lineages
+
+Host A's old lineage contains `eventId = ["host","A",ns1,21]`. A resets and
+installs a new lineage with a fresh host event namespace `ns2`; after eleven
+appends the new lineage reaches index 21 with
+`eventId = ["host","A",ns2,21]`. The two event IDs differ, so later
+synchronization cannot confuse the two payloads.
 
 ---
 
