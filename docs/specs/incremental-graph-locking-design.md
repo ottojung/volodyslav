@@ -153,6 +153,15 @@ Structural operations (compaction, synchronization) acquire `closeGarden` before
 the per-replica darkroom. Synchronization and migration acquire `holidayActivity`
 before `closeGarden`.
 
+#### Lock patterns at a glance
+
+| Operation | Locks |
+|---|---|
+| ordinary append (pull commit, invalidation entry) | `darkroom` |
+| journal query (`possibleMaybeChanges`) | `enterGarden` |
+| compaction | `closeGarden → darkroom` |
+| migration / structural synchronization / replica cutover | `holiday → closeGarden → darkroom` |
+
 ### 4. Darkroom key (per-replica finalization)
 
 There is one exclusive mutex per replica, created through the `DARKROOM_FUNCTOR`:
@@ -228,11 +237,26 @@ their own telescope mutex per concrete node and create their own Transaction
 spec: every call to pullNode is structurally identical, whether top-level or
 nested.
 
-### `migration / replica cutover`
+### `migration / structural synchronization / replica cutover`
 
 1. Acquire `holidayActivity(...)`.
-2. Run the migration or cutover.
-3. Release the holiday lock.
+2. Acquire `closeGarden` (garden exclusion). This excludes journal queries,
+   compaction, and other structural journal maintenance for the complete
+   lifecycle operation.
+3. Construct or modify the inactive destination replica. The destination may be
+   written through multiple durable batches. Each durable finalization acquires
+   the destination darkroom and releases it after the batch commits; the darkroom
+   is not held for the complete potentially long-running operation.
+4. After all destination records are durable and internally consistent, acquire
+   the finalization darkroom.
+5. Finish any required final destination metadata and atomically switch the
+   active-replica pointer.
+6. Release the finalization darkroom, then `closeGarden`, then
+   `holidayActivity` (reverse order).
+
+The complete lock order is `holiday → closeGarden → darkroom`. There is no
+`darkroom → closeGarden` path: the garden is always acquired before any
+per-replica darkroom.
 
 The two-step acquisition (`HOLIDAY_GATE_KEY` → `DOME_ACTIVITY_KEY("holiday")`)
 is deadlock-free because nighttime and daytime operations only ever acquire
