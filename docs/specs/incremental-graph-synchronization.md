@@ -48,8 +48,8 @@ synchronization.
 ## 1a. Relationship to Journal Reconciliation
 
 Graph synchronization is fully specified by this document and does not inspect
-or depend on journal state. It produces the final merged graph and an abstract
-notification delta (GraphDelta) consumed by journal reconciliation.
+or depend on journal state. It produces the final merged graph and defines the
+observable-state abstraction used by journal reconciliation.
 
 ### GraphDelta
 
@@ -107,8 +107,23 @@ Graph synchronization must produce this exact set. Consequences:
 - metadata-only or validity-only change: excluded
 - no observable change: excluded
 
-Journal reconciliation receives GraphDelta and must not inspect or compare
-`ComputedValue`s itself.
+Journal reconciliation does not consume the directional `GraphDelta` directly.
+It requires the symmetric journal synchronization delta `SyncDelta` defined in
+`docs/specs/incremental-graph-journal-sync.md`:
+
+```
+SyncDelta = {
+    K |
+    !equalObservableState(A(K), F(K))
+    ||
+    !equalObservableState(B(K), F(K))
+}
+```
+
+where `A` and `B` are the two exact source snapshots and `F` is the
+deterministic commutative merge result. A key is in `SyncDelta` whenever
+installing `F` changes its public observable state relative to either source.
+Journal reconciliation must not inspect or compare `ComputedValue`s itself.
 
 ---
 
