@@ -30,15 +30,56 @@ bH = B.last_journal_index
 P  = max(aH, bH)
 ```
 
-Each source snapshot is staged from an exact revision/checkpoint and carries a
-`SourceRevisionId` (see `incremental-graph-journal-types.md`).
+Each source snapshot carries a `SourceSnapshotProvenance` — a
+`SourceSnapshotId` and a contributor `Sync` set (see
+`incremental-graph-journal-types.md` § Source snapshot provenance). A snapshot
+directly staged from a host revision receives a checkpoint snapshot ID; a
+deterministic pairwise merge output receives a derived merge snapshot ID.
 
 Graph synchronization produces `F` and the symmetric journal synchronization
 delta `SyncDelta` defined below. Journal reconciliation receives `A`, `B`, `F`,
 `SyncDelta`, and the two source journals. It must not inspect or compare
 `ComputedValue`s itself.
 
-### Symmetric notification delta
+## Source snapshot provenance
+
+Every synchronization input and output snapshot carries a
+`SourceSnapshotProvenance`:
+
+```js
+/**
+ * @typedef {object} SourceSnapshotProvenance
+ * @property {SourceSnapshotId} id
+ * @property {Sync} contributors
+ */
+```
+
+- A checkpoint leaf staged from a host revision receives a checkpoint
+  source-snapshot ID and `contributors = Sync{source hostname}`.
+- A deterministic merge result receives a merge source-snapshot ID and
+  `contributors = union(left.contributors, right.contributors)`.
+
+The merged destination's provenance must be durably established before that
+destination can become active or be used as the source of a later per-host
+merge. The provenance must survive the root-database reopen that occurs between
+successive per-host merges. A failed merge must not publish the destination
+provenance.
+
+For a sync-derived event created while merging source snapshots `A` and `B`:
+
+```
+creator = union(A.provenance.contributors,
+                B.provenance.contributors)
+```
+
+Therefore later multi-host synchronization may legitimately produce
+`creator = Sync{A, B, C}`: the creator is the set of contributing source hosts
+represented by the two merge inputs, not necessarily just the two physical
+machines involved in the latest network exchange.
+
+---
+
+## Symmetric notification delta
 
 Define `observableState` and `equalObservableState` as in
 `docs/specs/incremental-graph-synchronization.md` § GraphDelta. Then:
@@ -53,8 +94,8 @@ SyncDelta = {
 ```
 
 A key is in `SyncDelta` whenever installing `F` changes its public observable
-state relative to either source. This ensures that journal consumers following
-either source receive notification coverage.
+state relative to either source. This ensures notification coverage for process
+cursors that have been following either source.
 
 Consequences:
 
@@ -76,10 +117,9 @@ is locally active.
 
 - Journal actions record the reason or category under which a notification was
   originated. They are not exact-once assertions.
-- A retained journal event does not assert current graph state.
+- A retained journal event does not determine current graph state.
 - It is valid for the latest retained journal event to describe an older state
   than the current final graph.
-- Consumers must always re-read current graph state.
 
 ---
 
@@ -175,13 +215,14 @@ state event.
 
 ### 5. Generate sync-derived events symmetrically
 
-Synchronization may newly originate only sync-derived events with action
-`invalidate` or `delete`. It never originates `add`, `edit`, or `validate`.
-All predicates below are independent of source ordering.
+Synchronization may newly originate only sync-derived entries: a
+`SyncDeleteJournalEntry` or a `SyncInvalidateJournalEntry`. It never originates
+`add`, `edit`, or `validate`. All predicates below are independent of source
+ordering.
 
 #### Generated `delete`
 
-Generate one sync-derived `delete` for semantic key `K` exactly when:
+Generate one `SyncDeleteJournalEntry` for semantic key `K` exactly when:
 
 ```
 F(K) is unmaterialized
@@ -221,7 +262,7 @@ It does not claim that every participating host locally experienced a deletion.
 
 #### Generated `invalidate`
 
-Generate one sync-derived `invalidate` for semantic key `K` exactly when:
+Generate one `SyncInvalidateJournalEntry` for semantic key `K` exactly when:
 
 ```
 F(K) is materialized and potentially-outdated
@@ -264,9 +305,9 @@ eventId
 ```
 
 Because a sync-derived event's `eventId` is determined by the exact source
-revisions, the action, and the key, the generated identity is stable across both
+snapshots, the action, and the key, the generated identity is stable across both
 merge directions and across hosts. An existing event that is already a
-sync-derived event from the same source revisions shares that `eventId`.
+sync-derived event from the same source snapshots shares that `eventId`.
 
 Define one operation:
 
@@ -297,23 +338,23 @@ action   = "invalidate" or "delete"
 key      = K
 id       = as specified above
 time     = deterministic sync event time (see below)
-creator  = Sync{A, B}
+creator  = union(A.provenance.contributors, B.provenance.contributors)
 ```
 
-`Sync{A, B}` is the nominal set of the two participating source hostnames,
-canonically ordered (see `incremental-graph-journal-types.md`). The creator
-describes the hosts whose exact source snapshots participated in deriving the
-event; it does not identify one host as the actor.
+The creator is the set of contributing source hosts represented by the two
+merge inputs, canonically ordered (see `incremental-graph-journal-types.md`).
+It does not identify one host as the actor, and it is not necessarily just the
+two physical machines involved in the latest network exchange.
 
-After the source revisions, action, and key are fixed, assign the sync event
+After the source snapshots, action, and key are fixed, assign the sync event
 ID:
 
 ```js
 JSON.stringify([
     "sync",
-    canonicalSourceRevisions.map(({ hostname, revision }) => [
-        hostnameToString(hostname),
-        sourceRevisionIdToString(revision),
+    canonicalPair([
+        sourceSnapshotIdToString(A.provenance.id),
+        sourceSnapshotIdToString(B.provenance.id),
     ]),
     action,
     nodeKeyToString(key),
@@ -454,17 +495,32 @@ positioned target entry, remove any queued fresh copy of the same `eventId`.
 ### 9. Enforce notification bounds
 
 For each `K` in `SyncDelta`, let `carrier` be the notification carrier selected
-in step 6.
+in step 6. The carrier must end with exactly one occurrence strictly above `P`.
 
-- If `carrier` is a generated `delete` or `invalidate`, it was already enqueued
-  by generated-event assignment. It will be allocated above `P` in step 10.
-- Otherwise `carrier` is an existing event. If its greatest surviving position
-  (after steps 7-8) is strictly greater than `P`, keep it. Otherwise remove
-  its old occurrences and `enqueueFresh(carrier)`.
+- If `carrier` is a generated `SyncDeleteJournalEntry` or
+  `SyncInvalidateJournalEntry` and has no surviving positioned occurrence, it
+  is already in `FreshPlacementSet` from generated-event assignment; it will be
+  allocated above `P` in step 10.
+- Otherwise `carrier` has a surviving positioned occurrence (it is an existing
+  canonical event, or a previously derived sync event from the same snapshots).
+  Remove every surviving old occurrence of that carrier and
+  `enqueueFresh(carrier)`.
+
+Every established occurrence in `A` is at an index `≤ aH ≤ P`, and every
+established occurrence in `B` is at an index `≤ bH ≤ P`. Therefore, before
+fresh placement, an existing source event cannot already have a surviving
+occurrence strictly greater than `P`. A carrier with any surviving occurrence
+is always freshly placed above `P`.
+
+`enqueueFresh` remains idempotent by `eventId`, and the carrier is placed
+exactly once above `P`.
+
+This does not mean every canonical event is repositioned. Only the selected
+notification carrier for keys in `SyncDelta` is forced above `P`.
 
 The bound is `P = max(aH, bH)`, not the watermark of whichever source is
-locally active. This guarantees notification coverage for consumers that have
-been following either source.
+locally active. This guarantees notification coverage for process cursors that
+have been following either source.
 
 ### 10. Fresh placement
 
@@ -537,12 +593,14 @@ holidayActivity
    destination.** The inactive destination may be written through multiple
    durable batches. Each batch that commits journal entries and associated graph
    records must keep them atomic with one another. Each standard transaction
-   finalization acquires the destination darkroom.
+   finalization acquires the destination darkroom. The destination's
+   `SourceSnapshotProvenance` is durably established before cutover.
 
 6. **Do not mutate the source replicas** while constructing the destination.
 
-7. **After all destination records are durable and internally consistent,
-   acquire the destination/finalization darkroom.**
+7. **After all destination records, including the destination
+   `SourceSnapshotProvenance`, are durable and internally consistent, acquire
+   the destination/finalization darkroom.**
 
 8. **Finish any required final destination metadata and atomically switch the
    active-replica pointer** to the completed destination.
@@ -562,6 +620,43 @@ and release the garden afterward.
 
 ---
 
+## Reset-to-hostname
+
+`reset-to-hostname` (see `incremental-graph-synchronization.md`) is not a
+pairwise merge. It replaces the whole installed graph-and-journal state with a
+selected host snapshot and does not perform pairwise journal reconciliation.
+
+- A successful reset ends the currently installed journal lineage and installs
+  the selected snapshot as a new local lineage (see
+  `incremental-graph-journal-types.md` § Journal lineage).
+- The reset journal adopts the selected snapshot's journal and watermark
+  exactly. The new watermark may be numerically lower than the old lineage's
+  watermark.
+- No journal-notification continuity is specified across reset.
+
+### Cursor domain rotation
+
+A successful reset must create and publish a fresh `JournalCursorDomain`:
+
+1. Keep the old domain active while constructing the reset destination.
+2. Complete and durably validate the destination.
+3. Atomically switch the active replica.
+4. Publish a fresh cursor domain for the newly installed lineage.
+5. Reject every `PossibleNodeChange` token registered in the old domain.
+
+A failed reset preserves the previous active replica, journal lineage, cursor
+domain, and the validity of existing same-process tokens under the old state.
+
+Normal pairwise synchronization preserves the existing cursor domain; only a
+successful wholesale reset rotates it. `BaselinePossibleNodeChange` remains the
+baseline sentinel and is not tied to one cursor domain.
+
+Reset-to-hostname uses the same structural protocol
+(`holiday → closeGarden → darkroom`) and publishes the fresh cursor domain as
+part of the cutover.
+
+---
+
 ## Commutativity
 
 Journal reconciliation is pairwise commutative. For two exact source snapshots
@@ -570,7 +665,7 @@ Journal reconciliation is pairwise commutative. For two exact source snapshots
 - `SyncDelta` is symmetric by definition;
 - the generated-event predicates are symmetric;
 - sync creators, event IDs, timestamps, and identifier selection are derived
-  symmetrically from source evidence;
+  symmetrically from source snapshot provenance and source journal evidence;
 - carrier placement is enforced above `P = max(aH, bH)`, which is symmetric;
 - all fresh-placement ordering keys are symmetric.
 
@@ -581,7 +676,7 @@ the same fresh-placement sequence.
 
 ## Idempotence
 
-Reconciling the same two exact source revisions again produces no new logical
+Reconciling the same two exact source snapshots again produces no new logical
 sync event. If the same sync-derived event is generated again, its `eventId` is
 identical, so placement deduplicates by `eventId` and no second logical event is
 created.
@@ -602,17 +697,13 @@ graph synchronization correctness.
 
 ---
 
-## Host identity and journal consumers
+## Host identity and the public API
 
-Callers of `graph.possibleMaybeChanges` MUST NOT be required to understand or
-inspect host identities (`Hostname` values), sync creator sets (`Sync` values),
-source revision identifiers, or raw journal indices (`JournalIndex` values).
-Host identity, source revisions, and creator sets are journal-internal concerns
-used only during synchronization.
-
-The `PossibleNodeChange` type intentionally excludes `Hostname`, `Sync`,
-`SourceRevisionId`, and `JournalIndex` from its public fields. Consumers see
-only `nodeName`, `bindings`, `action`, and `time`.
+The public `PossibleNodeChange` fields are exactly `nodeName`, `bindings`,
+`action`, and `time`. Host identities (`Hostname` values), sync creator sets
+(`Sync` values), source snapshot identities (`SourceSnapshotId` values), and
+raw journal indices (`JournalIndex` values) are journal-internal and not part
+of the public API. The `PossibleNodeChange` type intentionally excludes them.
 
 ---
 
@@ -681,8 +772,8 @@ to have materialized K, and neither source did.
 
 (The former "host-only rejected node" case — one source materialized, the other
 not, final unmaterialized — is not a no-event case. It satisfies the symmetric
-generated-delete predicate and emits a `delete` so that consumers following the
-materializing source are notified.)
+generated-delete predicate and emits a `delete`, so the transition away from
+the materializing source is covered by notification.)
 
 ### T7 — Identifier replacement emits no add or delete
 
@@ -696,7 +787,7 @@ changed up-to-date → stale, emit one invalidate using the final identifier.
 ### T8 — Repeated sync emits nothing new
 
 First sync: A up-to-date, B stale, F stale, emits invalidate(K).
-Second sync with the same source revisions: the same invalidate is generated
+Second sync with the same source snapshots: the same invalidate is generated
 again with the same eventId; placement deduplicates and no second logical event
 is created.
 
@@ -711,8 +802,8 @@ W2 !== W1. No filtering by identifier.
 ### T10 — Notification repositioning
 
 Key K is in SyncDelta. `aH = 3`, `bH = 4`, so `P = 4`. The canonical state event
-was at position 3. It is repositioned to position 6 (above P) so a cursor
-holder on either source re-reads graph state.
+was at position 3. It is repositioned to position 6 (above P), so the
+notification is placed strictly after the bound.
 
 ### T11 — Cursor continuity without notification
 
@@ -741,18 +832,25 @@ only contains required entries. Graph synchronization is unaffected.
 
 ### T15 — Idempotent fresh placement
 
-A canonical source event E is present at position 3 in both sources. The same
-event E is also the notification carrier for a SyncDelta key K. `P = 2`.
+```
+aH = 3
+bH = 3
+P  = 3
 
-Step 7 (prefix merge): position 3 is canonical in both, preserved at i=3.
-Step 8 (normalize): E survives at position 3.
-Step 9 (enforce bounds): position 3 > P (3 > 2), so E is sufficient. No
-`enqueueFresh(E)` call.
+A[3] = canonical event E
+B[3] = conflicting event F
+```
 
-Scenario: position 3 is poisoned (different event in each source). Step 7
-removes E from position 3. Step 8: no surviving occurrence — enqueueFresh(E).
-Step 9: E is the carrier, no surviving position — enqueueFresh(E) (idempotent,
-no duplicate). Step 10: one copy of E allocated above P.
+`E` is also the selected notification carrier for a `SyncDelta` key `K`.
+
+1. Step 7 (prefix merge): same-index poisoning removes both occurrences at
+   index 3.
+2. Step 8 (canonical-occurrence normalization): no surviving occurrence of `E`,
+   so `enqueueFresh(E)`.
+3. Step 9 (notification-bound enforcement): `E` is the carrier and has no
+   surviving position, so `enqueueFresh(E)`.
+4. `FreshPlacementSet` contains `E` only once because it is keyed by `eventId`.
+5. `E` receives exactly one new position above `P`.
 
 ### T16 — Fresh versus stale (commutativity)
 
@@ -785,21 +883,92 @@ creator `Sync{A, B}`, deterministic time, event ID, and fresh position above P.
 
 ### T18 — Independent execution times
 
-Host A and host B independently reconcile the same source revisions at different
+Host A and host B independently reconcile the same source snapshots at different
 wall-clock times. The generated journal results must still be identical. Local
 synchronization execution time must not enter the event payload or event ID.
 
 ### T19 — Repeated reconciliation
 
-Reconciling the same source revisions again must not create a second logical
+Reconciling the same source snapshots again must not create a second logical
 sync event with a different identity. A regenerated sync event has the same
 eventId and deduplicates against any surviving occurrence.
 
-### T20 — New source revisions
+### T20 — New source snapshots
 
-A later pair of source revisions from the same host set may generate a new
-event because the source revision identities differ, and therefore the sync
+A later pair of source snapshots from the same host set may generate a new
+event because the source-snapshot identities differ, and therefore the sync
 event ID differs.
+
+### T21 — First per-host merge produces a derived snapshot ID
+
+Merging checkpoint snapshots `A` and `B` produces a destination whose
+`SourceSnapshotProvenance.id` is the derived merge snapshot ID:
+
+```
+["merge", versionToString(schemaVersion),
+ canonicalPair([sourceSnapshotIdToString(A.provenance.id),
+                sourceSnapshotIdToString(B.provenance.id)])]
+```
+
+### T22 — Derived snapshot becomes a later merge input
+
+After the first per-host merge, the derived output becomes the local source for
+a second per-host merge. Its identity is its merge snapshot ID, not the
+checkpoint ID of either input.
+
+### T23 — Second merge generates a deterministic sync event ID
+
+The second merge (derived snapshot `D` plus a new checkpoint `C`) generates a
+sync event whose ID is:
+
+```
+["sync", canonicalPair([sourceSnapshotIdToString(D.provenance.id),
+                       sourceSnapshotIdToString(C.provenance.id)]),
+ action, nodeKeyToString(key)]
+```
+
+### T24 — Reversal produces the same merged snapshot ID
+
+Merging `A` with `B` and merging `B` with `A` produce the same merge snapshot
+ID, because `canonicalPair` sorts the two input IDs.
+
+### T25 — Distinct derivations do not share an ID
+
+Two different derived source states do not share one `SourceSnapshotId`, even
+when they reside on the same physical host. A later derivation produces a
+different merge snapshot ID.
+
+### T26 — Contributor sets union across successive merges
+
+Merging leaf snapshots `A` and `B` yields `contributors = Sync{A, B}`. Merging
+that derived snapshot with leaf `C` yields `contributors = Sync{A, B, C}`.
+
+### T27 — Successful reset rotates the cursor domain
+
+A successful `reset-to-hostname` publishes a fresh `JournalCursorDomain` for
+the newly installed lineage.
+
+### T28 — Pre-reset token rejected after reset
+
+A `PossibleNodeChange` token registered in the old cursor domain is rejected as
+a `since` argument after a successful reset.
+
+### T29 — Failed reset preserves the old state
+
+A failed reset leaves the previous active replica, journal lineage, cursor
+domain, and existing same-process token validity unchanged.
+
+### T30 — Reset may lower the watermark
+
+A successful reset may install a numerically lower `last_journal_index` because
+it starts a new journal lineage; the old and new positions are not one shared
+index namespace.
+
+### T31 — Sync event ID carries no physical index
+
+A `SyncDeleteJournalEntry` or `SyncInvalidateJournalEntry` event ID is derived
+from the exact source-snapshot identities, the action, and the key. It does not
+depend on the destination physical journal index.
 
 ---
 
@@ -822,7 +991,7 @@ by journal reconciliation is historical notification evidence. It does not
 assert current graph state.
 
 **PROP-JS-04 (Sync emission idempotence):** Reconciling the same two exact
-source revisions again produces no second logical sync event. A regenerated
+source snapshots again produces no second logical sync event. A regenerated
 sync event has an identical eventId and is deduplicated.
 
 **PROP-JS-05 (Graph sync independence):** Graph synchronization correctness
@@ -832,6 +1001,6 @@ does not depend on journal state, journal retention, or journal compaction.
 the same canonical journal and the same fresh-placement sequence.
 
 **PROP-JS-07 (Deterministic sync events):** Sync-derived events depend only on
-the exact source revisions and the source journal evidence. They do not depend
+the exact source snapshots and the source journal evidence. They do not depend
 on which source is locally active, on the host executing reconciliation, or on
 the wall-clock time of merge execution.
