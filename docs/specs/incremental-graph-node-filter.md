@@ -129,11 +129,9 @@ Returns a `UnionFilter` combining `left` and `right`.
 `NodeFilter` constructors are not required to copy or deeply freeze their
 inputs. The implementation may retain references supplied to constructors.
 
-After construction, a `NodeFilter` and every structure reachable through it
-must not be mutated. Mutating a filter, its argument array, its union branches,
-or nested `ConstValue` data after construction is undefined behavior.
-
-This applies to:
+`NodeFilter` behavior is specified only while the filter and every structure
+reachable through it remain unmodified. Use after mutation is undefined
+behavior; this covers:
 
 - `GroundFilter.args`;
 - nested `ConstValue` data;
@@ -149,10 +147,7 @@ asynchronous query.
 REQ-NF-08: Implementations MUST NOT be required to defensively copy or freeze
 filter inputs, and MUST NOT be required to detect or report mutation.
 
-The behavior of a `NodeFilter` is defined only while the filter and every
-structure reachable through it remain unmodified. Mutation after construction
-places subsequent use of that filter outside the specified behavior. The
-equality and normalization rules in this document describe the behavior of
+The equality and normalization rules in this document describe the behavior of
 non-mutated filters. They do not imply that mutable filters are safely
 snapshotted.
 
