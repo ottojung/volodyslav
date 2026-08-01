@@ -82,7 +82,7 @@ The journal defines a **logical compaction projection** — the semantically sig
 
 `possibleMaybeChanges` exposes this logically compacted view: latest state entry and latest freshness entry per matching semantic key, with cursor and filter applied afterward.
 
-The exact representation of journal entries, timestamps, node keys, node identifiers, host information, the logical journal view, and index/cursor behavior is specified in:
+The exact representation of journal entries, timestamps, node keys, node identifiers, creator information, the logical journal view, and index/cursor behavior is specified in:
 
 ```text
 docs/specs/incremental-graph-journal-types.md
@@ -91,11 +91,17 @@ docs/specs/incremental-graph-journal-types.md
 ## Journal emission
 
 Journal entries are produced by ordinary graph, migration, and synchronization
-operations under the emission rules. `validate` records successful recomputation
-of an already materialized node from `potentially-outdated` to `up-to-date`.
-Synchronization may emit `invalidate` and `delete` for actual graph transitions;
-it repositions existing canonical events when cursor notification is required
-and no sync-originated event was emitted.
+operations under the emission rules. `validate` is originated by successful
+recomputation of an already materialized node from `potentially-outdated` to
+`up-to-date`. Synchronization may originate sync-derived `invalidate` and
+`delete` events under the symmetric predicates in the synchronization
+specification; it repositions existing canonical events when cursor notification
+is required and no sync-derived event was originated.
+
+Journal notification is conservative: coverage has no false negatives for
+supported graph changes, but the journal may contain conservative or duplicate
+notifications, and a returned action does not assert current graph state.
+Consumers must always re-read current graph state.
 
 The journal emission rules define which IncrementalGraph operations create
 journal changes and how those changes are coordinated with graph storage
@@ -111,21 +117,28 @@ docs/specs/incremental-graph-journal-emission.md
 
 ## Synchronization
 
-Synchronization works by reading the current active local replica and the fetched remote replica, constructing the complete merged database in an inactive local replica, and switching the active-replica pointer only after the inactive replica is complete and durable. This is the existing replica-switching architecture; no database-state abstraction beyond the replicas that already exist in the IncrementalGraph design is introduced.
+Synchronization works by reading two exact source snapshots, constructing the
+complete merged database in an inactive replica, and switching the
+active-replica pointer only after the inactive replica is complete and durable.
+This is the existing replica-switching architecture; no database-state
+abstraction beyond the replicas that already exist in the IncrementalGraph
+design is introduced.
 
-Synchronization may originate exact `invalidate` and `delete` events for actual
-local transitions (see `docs/specs/incremental-graph-journal-sync.md`). For other
-graph changes requiring notification, synchronization may copy, reposition, or
-retain existing truthful source events. Existing events may be made absent by
-poisoning or absence propagation, moved to a fresh position when their original
-position cannot survive, deduplicated when the same logical event already
-survives elsewhere, or removed when superseded according to the settled
-compaction or freshness rules.
+Journal reconciliation is pairwise commutative: reversing the two source
+snapshots produces the same journal result. Synchronization may originate
+sync-derived `invalidate` and `delete` events under symmetric predicates (see
+`docs/specs/incremental-graph-journal-sync.md`). For other graph changes
+requiring notification, synchronization may copy, reposition, or retain
+existing source events. Existing events may be made absent by poisoning or
+absence propagation, moved to a fresh position when their original position
+cannot survive, deduplicated when the same logical event already survives
+elsewhere, or removed when superseded according to the settled compaction or
+freshness rules.
 
 The journal synchronization model defines how existing journal histories are
 compared, copied, repositioned, omitted, and physically compacted during sync.
-It also defines how timestamps and host identities participate in conflict
-resolution.
+It also defines how source revisions, journal creators, and deterministic event
+identity and timestamps participate in conflict resolution.
 
 The detailed synchronization behavior is specified in:
 
@@ -192,6 +205,7 @@ docs/specs/incremental-graph-journal-emission.md
 docs/specs/incremental-graph-journal-sync.md
 docs/specs/incremental-graph-journal-migrations.md
 docs/specs/incremental-graph-journal-compaction.md
+docs/specs/incremental-graph-synchronization.md
 docs/specs/incremental-graph-locking-design.md
 ```
 
