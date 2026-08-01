@@ -278,8 +278,9 @@ including derived pairwise merge results. It is not:
  * - The current return sites are:
  *   - the synchronization staging layer, which derives a checkpoint snapshot
  *     ID from the exact staged checkpoint/revision of a snapshot;
- *   - pairwise merge, which derives a merge snapshot ID from the schema
- *     version and the canonical pair of input snapshot IDs.
+ *   - pairwise merge, which derives a merge snapshot ID from the merge
+ *     protocol version, the schema version, and the canonical pair of input
+ *     snapshot IDs.
  */
 class SourceSnapshotIdClass {
     /** @private @type {undefined} */ __brand;
@@ -319,7 +320,7 @@ to:
 
 ```text
 sha256(encode([
-    "snapshot-v1",
+    "snapshot-v2",
     "checkpoint",
     hostnameToString(hostname),
     sourceRevisionIdToString(revision),
@@ -331,24 +332,40 @@ sha256(encode([
 A deterministic merge output receives an identity equivalent to:
 
 ```text
+const [lowerId, upperId] = canonicalPair([
+    sourceSnapshotIdToString(left),
+    sourceSnapshotIdToString(right),
+])
+
 sha256(encode([
-    "snapshot-v1",
+    "snapshot-v2",
     "merge",
+    graphAndJournalMergeProtocolVersion,
     versionToString(schemaVersion),
-    canonicalPair([
-        sourceSnapshotIdToString(left),
-        sourceSnapshotIdToString(right),
-    ]),
+    lowerId,
+    upperId,
 ]))
 ```
 
+Every encoded element is an explicitly defined string; the tuple is flattened
+so no nested array needs an encoding of its own. `canonicalPair` sorts the two
+input snapshot-ID strings using deterministic JavaScript code-unit ordering and
+is applied before encoding, not inside the encoded tuple.
+
+`graphAndJournalMergeProtocolVersion` is a deterministic string naming the
+merge-protocol semantics. It MUST change whenever graph synchronization or
+journal reconciliation semantics can change the derived output. A digest
+therefore identifies both the exact inputs and the exact merge algorithm that
+produced the result; two runs of different merge algorithms on the same inputs
+must not receive the same snapshot ID. Merging is compatible only when both
+inputs share the same `graphAndJournalMergeProtocolVersion` and schema version.
+
 `sha256` is the SHA-256 digest of the canonical byte encoding `encode`, rendered
 as 64 lowercase hexadecimal characters. `encode` serializes the array
-element-wise: a 64-bit big-endian byte-length prefix followed by the UTF-8 bytes
-of each element's canonical string form, prefixed by a 64-bit big-endian element
-count. `canonicalPair` sorts the two input snapshot-ID strings using
-deterministic JavaScript code-unit ordering. `schemaVersion` is the graph
-schema/version identity used for storage namespacing.
+element-wise: a 64-bit big-endian element count, followed for each element by a
+64-bit big-endian byte-length prefix and the UTF-8 bytes of that element's
+string form. `versionToString(schemaVersion)` is the graph schema/version
+identity used for storage namespacing.
 
 Because each snapshot ID is a fixed-size digest, the representation does not
 grow with merge depth: a merge ID is always exactly one digest, and event IDs
@@ -1143,11 +1160,20 @@ within each lineage individually.
 A successful reset must create and publish a fresh `JournalCursorDomain`:
 
 1. Keep the old domain active while constructing the reset destination.
-2. Complete and durably validate the destination.
-3. Atomically switch the active replica.
-4. Publish a fresh cursor domain for the newly installed lineage.
-5. Publish a fresh host event namespace for the newly installed lineage.
+2. Construct the destination to contain its journal, watermark, source
+   provenance where applicable, and a fresh host event namespace, all durably
+   stored inside the destination replica.
+3. Complete and durably validate the destination.
+4. Atomically switch the active replica. The pointer switch selects a
+   destination that already contains its fresh host event namespace.
+5. Publish the fresh cursor domain and the in-memory cache of the new host
+   event namespace.
 6. Reject every `PossibleNodeChange` token registered in the old domain.
+
+Only volatile state — the in-memory namespace cache and the new cursor domain —
+is published after the pointer switch. The durable namespace is part of the
+destination, so a crash after cutover cannot leave the newly active lineage
+with an old or missing namespace.
 
 A failed reset preserves:
 
