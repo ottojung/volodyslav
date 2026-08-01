@@ -124,6 +124,38 @@ Returns a `UnionFilter` combining `left` and `right`.
 
 ---
 
+## Mutation is undefined behavior
+
+`NodeFilter` constructors are not required to copy or deeply freeze their
+inputs. The implementation may retain references supplied to constructors.
+
+After construction, a `NodeFilter` and every structure reachable through it
+must not be mutated. Mutating a filter, its argument array, its union branches,
+or nested `ConstValue` data after construction is undefined behavior.
+
+This applies to:
+
+- `GroundFilter.args`;
+- nested `ConstValue` data;
+- `UnionFilter.left`;
+- `UnionFilter.right`;
+- any reused object reachable through the filter.
+
+Because `graph.possibleMaybeChanges` is asynchronous and the implementation may
+apply the filter while the query is running, the API provides no
+result-consistency guarantee when a filter is mutated during or after an
+asynchronous query.
+
+REQ-NF-08: Implementations MUST NOT be required to defensively copy or freeze
+filter inputs, and MUST NOT be required to detect or report mutation. Callers
+bear the obligation not to mutate filters.
+
+The equality and normalization rules in this document describe the behavior of
+non-mutated filters. They do not imply that mutable filters are safely
+snapshotted.
+
+---
+
 ## Matching
 
 ### DEF-NF-MATCH-01 (NodeFilter Match)
