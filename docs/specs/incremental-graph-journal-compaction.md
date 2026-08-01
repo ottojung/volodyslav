@@ -10,7 +10,7 @@ Physical compaction reduces storage usage. It may also reduce scan work internal
 
 Compaction relies on the `logicalJournalView(journal, H)` defined in `incremental-graph-journal-types.md`. Physical compaction removes entries that are not logically required through its captured bound, never entries that are.
 
-**Compaction scope and stored-cursor safety.** This PR specifies only same-process, in-memory journal tokens (see `incremental-graph-journal-types.md`). Since tokens are not persisted across process restarts, compaction does not need to guarantee long-lived cursor validity. A future spec may define checkpoint/lease-based compaction safety for persistent stored cursors; this PR does not specify such a mechanism.
+**Compaction scope and stored-cursor safety.** This specification covers only same-process, in-memory journal tokens (see `incremental-graph-journal-types.md`). Since tokens are not persisted across process restarts, compaction does not need to guarantee long-lived cursor validity. A future spec may define checkpoint/lease-based compaction safety for persistent stored cursors; this specification does not define such a mechanism.
 
 **Baseline scans and compaction.** A baseline scan returns the logical journal
 view through its fixed bound `H`. Entries outside that view are not returned,
@@ -18,14 +18,16 @@ whether or not physical compaction has removed them.
 
 **Historical truth and compaction.** Ordinary graph and migration operations
 originate their events atomically with their transitions. Synchronization
-originates exact `invalidate` and `delete` events; other synchronization
-changes provide notification coverage through repositioned existing events.
+originates sync-derived `invalidate` and `delete` events under the symmetric
+predicates in `incremental-graph-journal-sync.md`; other synchronization changes
+provide notification coverage through repositioned existing events.
 
-Logical compaction may suppress superseded evidence for query purposes. Physical
-compaction may later remove only evidence already suppressed by the logical
-view. Compaction does not turn events into guesses or retroactively weaken
-their historical truth. A removed event was truthful historical evidence when
-committed.
+Journal coverage has no false negatives for supported graph changes, but may
+contain conservative or duplicate notifications. Logical compaction may suppress
+redundant entries for query purposes. Physical compaction may later remove only
+entries already suppressed by the logical view. Removing an entry does not turn
+an event into a guess: the entry's immutable payload was fixed at first durable
+commit and is simply no longer returned.
 
 ---
 
@@ -207,13 +209,15 @@ REQ-JC-17: Compaction MUST NOT rewrite or reinterpret the `time` field of surviv
 
 REQ-JC-18: Compaction MUST NOT change the `action` field of surviving journal entries.
 
-REQ-JC-19: Compaction MUST NOT merge entries from different `creator` hosts for the same node key. Each surviving entry retains its original `creator`.
+REQ-JC-19: Compaction MUST NOT merge entries with different `creator`
+(`JournalCreator`) values for the same node key. Each surviving entry retains
+its original `creator`.
 
 ---
 
 ## Out of scope
 
-A future spec may define checkpoint/lease-based compaction safety for long-lived stored cursors. This PR does not specify such a mechanism.
+A future spec may define checkpoint/lease-based compaction safety for long-lived stored cursors. This specification does not define such a mechanism.
 
 A conforming compaction cannot remove a deleted key's latest state entry or its
 latest freshness entry when one exists, because either removal would change
