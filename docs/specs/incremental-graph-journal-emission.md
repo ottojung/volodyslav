@@ -31,8 +31,10 @@ event. Synchronization originates sync-derived events only for the symmetric
 predicates defined in `docs/specs/incremental-graph-journal-sync.md`:
 
 ```
-F(K) is unmaterialized and at least one source materializes K        => delete
-F(K) is potentially-outdated and at least one source is up-to-date   => invalidate
+F(K) is unmaterialized and at least one source materializes K
+    => SyncDeleteJournalEntry
+F(K) is potentially-outdated and at least one source is up-to-date
+    => SyncInvalidateJournalEntry
 ```
 
 Other synchronization-induced graph changes MUST be covered by repositioning
@@ -73,7 +75,7 @@ repositioning of an existing canonical event instead.
 
 ### First materialization: `add`
 
-REQ-JE-01: When a node becomes materialized for the first time (i.e., a new `NodeIdentifier` is allocated and the node's value is written to storage), the system MUST emit a journal entry with `action: "add"`.
+REQ-JE-01: When a node becomes materialized for the first time (i.e., a new `NodeIdentifier` is allocated and the node's value is written to storage), the system MUST emit an `AddJournalEntry` (`action: "add"`, `creator: Hostname`).
 
 First materialization occurs during:
 
@@ -84,7 +86,7 @@ REQ-JE-02: The `add` entry MUST be emitted in the same durable transaction as th
 
 ### Value change: `edit`
 
-REQ-JE-03: When a node's stored value changes materially (i.e., the new computed value is not `isEqual` to the old stored value), the system MUST emit a journal entry with `action: "edit"`.
+REQ-JE-03: When a node's stored value changes materially (i.e., the new computed value is not `isEqual` to the old stored value), the system MUST emit an `EditJournalEntry` (`action: "edit"`, `creator: Hostname`).
 
 REQ-JE-04: The `edit` entry MUST be emitted in the same durable transaction as the value write and counter increment.
 
@@ -98,7 +100,7 @@ REQ-JE-06: If a `pull` encounters an up-to-date node and returns its stored valu
 
 ### Freshness transition: `invalidate`
 
-REQ-JE-07: When a node's freshness changes from `up-to-date` to `potentially-outdated`, the system MUST emit a journal entry with `action: "invalidate"`. This transition may occur through:
+REQ-JE-07: When a node's freshness changes from `up-to-date` to `potentially-outdated`, the system MUST emit a `HostInvalidateJournalEntry` (`action: "invalidate"`, `creator: Hostname`). This transition may occur through:
 
 - An explicit `invalidate(nodeName, bindings)` call.
 - Cascading invalidation from an invalidated dependency.
@@ -112,8 +114,9 @@ REQ-JE-07b: An `invalidate` entry is NOT a value change — it signals that the 
 ### Freshness transition: `validate`
 
 REQ-JE-07c: When successful graph recomputation makes an already materialized
-node `up-to-date` from `potentially-outdated`, the system MUST emit a journal
-entry with `action: "validate"`. The transition may occur through:
+node `up-to-date` from `potentially-outdated`, the system MUST emit a
+`ValidateJournalEntry` (`action: "validate"`, `creator: Hostname`). The
+transition may occur through:
 
 - A `pull(nodeName, bindings)` that recomputes a node and returns an unchanged
   value (recalculating does not change the value, but the freshness transition
@@ -174,8 +177,7 @@ This is safe because:
 - migration and structural synchronization use holiday activity;
 - therefore `add`, `edit`, or `validate` cannot interleave between those
   concurrent invalidations;
-- both notifications require the same consumer response: re-read the current
-  state of `N`;
+- both entries are notifications for the same key;
 - logical journal compaction retains only the latest freshness-category entry
   for `N`.
 
@@ -189,14 +191,17 @@ behavior.
 
 ### Deletion: `delete`
 
-REQ-JE-08: A `delete` journal entry represents an actual node deletion. The
-following operations produce `delete` entries:
+REQ-JE-08: A `delete` journal entry has two concrete variants. The
+`HostDeleteJournalEntry` represents an actual host-local deletion. The
+`SyncDeleteJournalEntry` records that at least one synchronized source
+materialized the key while the merged result does not. The following operations
+produce `delete` entries:
 
 - **Actual deletion operations**: `storage.delete` and any future graph deletion
-  operation emit a `delete` for the node they delete.
-- **Synchronization**: Synchronization emits a `delete` when the final graph
-  unmaterializes a previously materialized local node. See
-  `incremental-graph-journal-sync.md`.
+  operation emit a `HostDeleteJournalEntry` for the node they delete.
+- **Synchronization**: Synchronization originates a `SyncDeleteJournalEntry`
+  when the merged result does not materialize a key that at least one source
+  materialized. See `incremental-graph-journal-sync.md`.
 
 REQ-JE-09: Ordinary graph operations (`pull`, `invalidate`, recomputation) MUST NOT emit `delete` entries unless and until the IncrementalGraph system implements a general node deletion API. This specification does not assume such an API exists.
 
@@ -257,7 +262,7 @@ const eventId = JSON.stringify([
 ]);
 ```
 
-The entry, `eventId`, physical index `i`, graph mutation, and final watermark MUST be committed in the same atomic durable batch. Sync-derived events are not assigned an ID from the physical index; their `eventId` derives from the exact source revisions, the action, and the key (see `incremental-graph-journal-sync.md`).
+The entry, `eventId`, physical index `i`, graph mutation, and final watermark MUST be committed in the same atomic durable batch. Sync-derived events are not assigned an ID from the physical index; their `eventId` derives from the exact source snapshots, the action, and the key (see `incremental-graph-journal-sync.md`).
 
 REQ-JE-19: For an existing event being replicated or reappended (not newly created), the implementation MUST NOT assign a new event ID. It MUST preserve the original `eventId` string unchanged. Only the physical storage position changes.
 
@@ -321,16 +326,31 @@ A failed journal-emitting transaction:
 
 If a transaction prepares an unindexed entry, but then fails during darkroom finalization (or before), no trace of the failed entry remains in the journal index sequence.
 
-### P9 — Event ID assigned atomically
+### P9 — Host-originated event identity
 
-A new ordinary, migration, or synchronization event assigned initial position
+A new ordinary or migration host-originated entry assigned initial position
 `7` receives:
 
 ```
-eventId = JSON.stringify([hostnameToString(host), 7])
+eventId = JSON.stringify(["host", hostnameToString(host), 7])
 ```
 
-Entry, event ID, graph writes, and watermark `7` commit atomically. A reader that sees the entry at index 7 also sees its complete `eventId`. A reader that does not see index 7 sees no part of the event.
+This applies to `AddJournalEntry`, `EditJournalEntry`,
+`HostDeleteJournalEntry`, `HostInvalidateJournalEntry`, and
+`ValidateJournalEntry`. The entry, event ID, graph mutation, journal position,
+and watermark commit atomically. A reader that sees the entry at index 7 also
+sees its complete `eventId`. A reader that does not see index 7 sees no part of
+the event.
+
+### P9a — Sync-derived event identity
+
+A `SyncDeleteJournalEntry` or `SyncInvalidateJournalEntry` derives its event ID
+from the exact source-snapshot identities, the action, and the key (see
+`incremental-graph-journal-sync.md`). The ID is independent of the destination
+physical journal index and exists conceptually before fresh physical placement.
+The sync event, the destination graph records associated with the merge result,
+the physical journal position, and the destination watermark must be durably
+consistent before cutover.
 
 ### P10 — Replication preserves event ID
 
