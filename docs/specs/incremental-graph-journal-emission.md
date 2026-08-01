@@ -258,11 +258,13 @@ its initial `JournalIndex` `i`, the implementation MUST compute the event's
 const eventId = JSON.stringify([
     "host",
     hostnameToString(entry.creator),
+    hostEventNamespaceIdToString(namespaceId),
     journalIndexToNumber(i),
 ]);
 ```
 
-The entry, `eventId`, physical index `i`, graph mutation, and final watermark MUST be committed in the same atomic durable batch. Sync-derived events are not assigned an ID from the physical index; their `eventId` derives from the exact source snapshots, the action, and the key (see `incremental-graph-journal-sync.md`).
+`namespaceId` is the host event namespace active in the current journal
+lineage. The entry, `eventId`, physical index `i`, graph mutation, and final watermark MUST be committed in the same atomic durable batch. Sync-derived events are not assigned an ID from the physical index; their `eventId` derives from the exact source snapshots, the action, and the key (see `incremental-graph-journal-sync.md`).
 
 REQ-JE-19: For an existing event being replicated or reappended (not newly created), the implementation MUST NOT assign a new event ID. It MUST preserve the original `eventId` string unchanged. Only the physical storage position changes.
 
@@ -329,10 +331,11 @@ If a transaction prepares an unindexed entry, but then fails during darkroom fin
 ### P9 — Host-originated event identity
 
 A new ordinary or migration host-originated entry assigned initial position
-`7` receives:
+`7` in the current host event namespace receives:
 
 ```
-eventId = JSON.stringify(["host", hostnameToString(host), 7])
+eventId = JSON.stringify(["host", hostnameToString(host),
+                          hostEventNamespaceIdToString(ns), 7])
 ```
 
 This applies to `AddJournalEntry`, `EditJournalEntry`,

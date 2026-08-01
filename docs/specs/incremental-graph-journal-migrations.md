@@ -120,7 +120,10 @@ to the current migration time and local `Hostname` respectively.
 Migration-generated events are ordinary host-created events: their `creator` is
 a `Hostname`, not a `Sync` set. A `Sync` creator is used only for events
 derived by synchronization. Migration is not part of synchronization; it is a
-host-local storage transformation between schema versions.
+host-local storage transformation between schema versions. Migration preserves
+the current local host event namespace, so appended host events share the
+lineage's namespace (see `incremental-graph-journal-types.md` § Host event
+namespace).
 
 REQ-JM-07: `storage.delete` MUST NOT remove, purge, or otherwise modify any
 established journal entry for the deleted node (including older `add`, `edit`,
