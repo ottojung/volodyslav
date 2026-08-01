@@ -79,23 +79,45 @@ REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When s
 
 `graph.possibleMaybeChanges` returns at most two `PossibleNodeChange` values per matching semantic node key: one state/lifecycle entry (`add`, `edit`, or `delete`) and one freshness entry (`invalidate` or `validate`). Older entries for the same key and category are logically suppressed even when still physically present.
 
+Duplicate entries for the same key and category may exist physically. For
+example, two overlapping invalidations may each commit an `invalidate` entry
+(see `incremental-graph-journal-emission.md`). Logical compaction returns only
+the latest retained entry per category; it does not return duplicates.
+
 ### Historical guarantee
 
-Every returned `PossibleNodeChange` comes from a real committed `JournalEntry`.
-The event proves its historical origin transition:
+Every returned `PossibleNodeChange` is derived from a real committed
+`JournalEntry`. The journal never fabricates an event: an entry's immutable
+payload is fixed at first durable commit, and one `eventId` never identifies two
+different payloads.
 
-- A returned `add` proves that the node became materialized when the event was
-  originally emitted.
-- A returned `edit` proves that its stored semantic value actually changed
-  materially when the event was originally emitted.
-- A returned `delete` proves that an actual deletion or unmaterialization
-  transition occurred when the event was originally emitted.
-- A returned `invalidate` proves that freshness actually transitioned from
-  `up-to-date` to `potentially-outdated` when the event was originally emitted.
-- A returned `validate` proves that freshness actually transitioned from
-  `potentially-outdated` to `up-to-date` when the event was originally emitted.
+Journal coverage has no false negatives for supported graph changes, but may
+contain conservative or duplicate notifications. The action records the reason
+or category under which the notification was originated. It is not an
+exact-once assertion and does not assert current graph state.
 
-The event is committed atomically with the graph transition that caused it.
+A returned action does not necessarily prove that exactly one unique state
+transition corresponding to that action occurred:
+
+- A returned `add` was originated when the node became materialized.
+- A returned `edit` was originated when the node's stored semantic value changed
+  materially, or when notification coverage for a possible value change required
+  an existing event.
+- A returned `delete` was originated when an actual deletion or unmaterialization
+  transition occurred, or by synchronization when the merged result does not
+  materialize a key that at least one synchronized source materialized.
+- A returned `invalidate` was originated when freshness transitioned to
+  `potentially-outdated`, or by synchronization when the merged result is
+  `potentially-outdated` for a key that at least one synchronized source
+  considered `up-to-date`.
+- A returned `validate` was originated when successful recomputation restored an
+  already materialized node's freshness to `up-to-date`.
+
+Extra, duplicate, or redundant entries are permitted. Duplicate entries may
+result from overlapping operations (for example, concurrent invalidations) or
+from conservative synchronization notification. Logical compaction suppresses
+redundant entries for query purposes, but a returned entry may still be one of
+several occurrences of the same logical event.
 
 ### Current-state limitation
 
@@ -111,27 +133,28 @@ Each action prompts the consumer to re-read current graph state.
 
 ### Notification overapproximation
 
-A `PossibleNodeChange` returned after `since` may be an older truthful event
+A `PossibleNodeChange` returned after `since` may be an older existing event
 that synchronization repositioned to a newer physical journal position for
-notification.
+notification, or one of several conservative or duplicate notifications.
 
 Therefore:
 
 - appearing after `since` does not prove the event was originally emitted after
   `since`;
-- the event's `time` remains its original historical time;
-- its `action` describes the original historical transition;
+- the event's `time` remains its original provenance time;
+- its `action` records the category under which the notification was originated;
 - it does not assert that the same action happened locally during the latest
   synchronization;
 - it does not assert current graph state.
 
-The overapproximation must never be described as fabrication or uncertainty
-about whether the original event occurred.
+The overapproximation must not be described as corruption, fabrication, or
+invalid history. The event's immutable payload was fixed at first durable
+commit, and the journal never invents events without a real committed entry.
 
 Equivalent wording:
 
 ```
-Journal events are exact historical evidence.
+Journal events are immutable provenance records.
 Journal queries are conservative change notifications.
 ```
 
@@ -213,12 +236,13 @@ The normative meaning remains logical compaction through `H`, followed by cursor
 
 The logical winner is selected through the complete fixed prefix ending at `H`. It is returned only when its retained index is greater than `since`.
 
-**Note on freshness events and graph state:** A returned `validate` entry means
-a freshness transition to `up-to-date` was recorded in the journal. However,
-the current graph state may differ from what the journal entry records — a
-later synchronization or invalidation may have changed the graph freshness
-after the event was emitted. Consumers MUST re-read the current graph state
-rather than assuming the journal event describes current freshness.
+**Note on freshness events and graph state:** A returned `validate` entry was
+originated for a freshness transition to `up-to-date` (or provides notification
+coverage for it). However, the current graph state may differ from what the
+journal entry records — a later synchronization or invalidation may have changed
+the graph freshness after the event was emitted. Consumers MUST re-read the
+current graph state rather than assuming the journal event describes current
+freshness.
 
 Example:
 
@@ -329,3 +353,13 @@ REQ-JA-CONC-04: `possibleMaybeChanges` does not acquire the graph activity mode 
 ### Replica cutover serialization
 
 REQ-JA-CONC-05: Replica cutover is serialized with journal queries through the garden. Replica cutover acquires `holidayActivity` and then `closeGarden`. Because `possibleMaybeChanges` holds `enterGarden` across replica selection and traversal, cutover waits for existing journal readers to leave. Once `closeGarden` is queued, new readers do not overtake it. No new reader can select the old replica during cutover.
+
+### Filter mutation
+
+REQ-JA-CONC-06: The implementation may apply the `to` filter while the query is
+running and may retain the references supplied to the filter at construction.
+Mutating the filter or any structure reachable through it (its argument array,
+its union branches, or nested `ConstValue` data) during or after an asynchronous
+query is undefined behavior. The API provides no result-consistency guarantee for
+a mutated filter. See `incremental-graph-node-filter.md` for the caller
+obligation.
