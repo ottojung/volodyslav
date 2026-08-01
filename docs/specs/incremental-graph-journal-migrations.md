@@ -94,7 +94,7 @@ nothing in either case.
 Marks a node for recomputation in the new version by preserving its
 value and setting its freshness to `potentially-outdated`.
 
-REQ-JM-03: `storage.invalidate` MUST emit an `invalidate` journal entry when it
+REQ-JM-03: `storage.invalidate` MUST emit a `HostInvalidateJournalEntry` when it
 causes a node to transition from `up-to-date` to `potentially-outdated`. If the
 node was already `potentially-outdated`, no journal entry is emitted and its
 freshness is unchanged.
@@ -103,7 +103,7 @@ freshness is unchanged.
 
 Creates a new node (not present in the previous version) and assigns it an initial value and freshness.
 
-REQ-JM-04: `storage.create` MUST create an `add` journal entry for the new node. This mirrors REQ-JE-01 for first materialization during normal graph operation.
+REQ-JM-04: `storage.create` MUST create an `AddJournalEntry` for the new node. This mirrors REQ-JE-01 for first materialization during normal graph operation.
 
 REQ-JM-04a: `storage.create` accepts an initial freshness of `"up-to-date"` or `"potentially-outdated"` (as defined in `docs/specs/migration.md`). The `add` entry carries no freshness event of its own — the initial freshness is recorded in the node's graph state, not as a journal entry. The `add` is the state/lifecycle entry; a freshness entry (`invalidate` or `validate`) is only emitted later by a real freshness transition.
 
@@ -113,7 +113,7 @@ REQ-JM-05: The `add` entry for a `storage.create` operation MUST be emitted in t
 
 Removes a node from the new version entirely.
 
-REQ-JM-06: `storage.delete` MUST emit a `delete` journal entry for the deleted
+REQ-JM-06: `storage.delete` MUST emit a `HostDeleteJournalEntry` for the deleted
 node. The entry's `action` is `"delete"`, and its `time` and `creator` are set
 to the current migration time and local `Hostname` respectively.
 
@@ -132,24 +132,25 @@ according to the compaction specification.
 ### Propagated deletes
 
 For every previously materialized semantic key whose finalized migration decision
-is `DELETE`, emit one `delete`. This includes the explicitly deleted root and
-every transitive dependent assigned `DELETE` by dependency-closure propagation.
-The event uses that node's identifier in the old materialized graph.
+is `DELETE`, emit one `HostDeleteJournalEntry`. This includes the explicitly
+deleted root and every transitive dependent assigned `DELETE` by
+dependency-closure propagation. The event uses that node's identifier in the old
+materialized graph.
 
-REQ-JM-06a: Propagated `delete` entries MUST use the deleted node's old
-`NodeIdentifier` and `NodeKey`. Ordering follows reverse dependency-topological
-order: dependents before their dependencies. For unrelated nodes, break ties by
-stable `NodeKeyString` ordering.
+REQ-JM-06a: Propagated `HostDeleteJournalEntry` entries MUST use the deleted
+node's old `NodeIdentifier` and `NodeKey`. Ordering follows reverse
+dependency-topological order: dependents before their dependencies. For
+unrelated nodes, break ties by stable `NodeKeyString` ordering.
 
 ### Propagated invalidations
 
 For every finalized migration transition `up-to-date → potentially-outdated`,
-emit one `invalidate`, whether the transition was explicitly requested or
-propagated to a dependent. Already stale nodes emit nothing.
+emit one `HostInvalidateJournalEntry`, whether the transition was explicitly
+requested or propagated to a dependent. Already stale nodes emit nothing.
 
-REQ-JM-06b: Propagated `invalidate` entries MUST use the node's identifier and
-key. Ordering follows dependency-topological order: inputs before dependents.
-For unrelated nodes, break ties by stable `NodeKeyString` ordering.
+REQ-JM-06b: Propagated `HostInvalidateJournalEntry` entries MUST use the node's
+identifier and key. Ordering follows dependency-topological order: inputs before
+dependents. For unrelated nodes, break ties by stable `NodeKeyString` ordering.
 
 ---
 

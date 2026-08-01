@@ -147,10 +147,12 @@ result-consistency guarantee when a filter is mutated during or after an
 asynchronous query.
 
 REQ-NF-08: Implementations MUST NOT be required to defensively copy or freeze
-filter inputs, and MUST NOT be required to detect or report mutation. Callers
-bear the obligation not to mutate filters.
+filter inputs, and MUST NOT be required to detect or report mutation.
 
-The equality and normalization rules in this document describe the behavior of
+The behavior of a `NodeFilter` is defined only while the filter and every
+structure reachable through it remain unmodified. Mutation after construction
+places subsequent use of that filter outside the specified behavior. The
+equality and normalization rules in this document describe the behavior of
 non-mutated filters. They do not imply that mutable filters are safely
 snapshotted.
 
