@@ -33,6 +33,8 @@ subsequent calls within that same session. Within the same process, a cursor
 remains valid across compaction (the private index survives physical deletion
 of its backing entry) and across structural synchronization and cutover
 (notification coverage reports changes through repositioned canonical events).
+Normal pairwise synchronization preserves the cursor domain; a successful
+`reset-to-hostname` rotates it and rejects tokens registered in the old domain.
 Persistence of these tokens across process restarts, synchronization boundaries
 involving heterogeneous hosts, or migration/schema boundaries, and the
 corresponding long-lived validity guarantees, are outside this journal's token
@@ -101,7 +103,6 @@ is required and no sync-derived event was originated.
 Journal notification is conservative: coverage has no false negatives for
 supported graph changes, but the journal may contain conservative or duplicate
 notifications, and a returned action does not assert current graph state.
-Consumers must always re-read current graph state.
 
 The journal emission rules define which IncrementalGraph operations create
 journal changes and how those changes are coordinated with graph storage
@@ -137,8 +138,11 @@ freshness rules.
 
 The journal synchronization model defines how existing journal histories are
 compared, copied, repositioned, omitted, and physically compacted during sync.
-It also defines how source revisions, journal creators, and deterministic event
-identity and timestamps participate in conflict resolution.
+It also defines how source snapshot provenance, journal creators, and
+deterministic event identity and timestamps participate in conflict resolution.
+
+`reset-to-hostname` is a journal discontinuity: it installs a new journal
+lineage, may adopt a numerically lower watermark, and rotates the cursor domain.
 
 The detailed synchronization behavior is specified in:
 
