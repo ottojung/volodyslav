@@ -185,8 +185,11 @@ entire migration is not required to be one enormous database batch.
 Two distinct guarantees apply:
 
 1. **Emitted-event atomicity:** Every emitted journal event is committed in the
-   same atomic durable batch as the graph and freshness mutation that caused
-   it. No reader can observe one without the other.
+   same atomic durable batch as the graph mutation, the merge-basis candidate
+   and evidence mutations, and the freshness mutation that caused it. No reader
+   can observe one without the other. Migration create/delete/invalidate
+   operations create or remove candidates per `incremental-graph-journal-types.md`
+   § Merge-basis maintenance.
 
 2. **Destination invisibility until cutover:** The complete inactive destination
    remains invisible to readers until the durable active-replica cutover
@@ -196,18 +199,19 @@ Two distinct guarantees apply:
 REQ-JM-08: While holding `holidayActivity` and `closeGarden`, the inactive
 destination may be written through multiple durable batches. Each batch that
 commits journal entries and associated graph records must keep them atomic with
-one another. Each standard transaction finalization acquires the destination
-darkroom. The darkroom may be acquired and released per durable batch; it is not
-held for the complete potentially long-running migration.
+one another and with the corresponding merge-basis mutations. Each standard
+transaction finalization acquires the destination darkroom. The darkroom may be
+acquired and released per durable batch; it is not held for the complete
+potentially long-running migration.
 
 REQ-JM-09: Journal indices and the destination watermark MUST remain internally
 consistent at every intermediate state. `last_journal_index` must accurately
 reflect every committed journal entry.
 
-REQ-JM-10: All inactive-destination records — graph state, journal entries,
-metadata, and watermark — MUST be durable before cutover. After all destination
-records are durable and internally consistent, the finalization darkroom
-finishes the remaining durable metadata and atomically switches the
+REQ-JM-10: All inactive-destination records — graph state, merge basis, journal
+entries, metadata, and watermark — MUST be durable before cutover. After all
+destination records are durable and internally consistent, the finalization
+darkroom finishes the remaining durable metadata and atomically switches the
 active-replica pointer.
 
 REQ-JM-11: No reader MUST observe the destination replica before cutover. The
