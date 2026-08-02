@@ -208,88 +208,262 @@ basis** that is closed under merge. Exported snapshots include the merge basis
 or a canonical equivalent. The causal frontier summarizes which host
 contributions are included, but it does not substitute for the merge basis.
 
-Conceptually, each semantic key's merge basis retains a set of
-`MaterializationCandidate` records:
+### CandidateId
+
+`CandidateId` is the globally unambiguous, reproducible identity of one
+host-originated candidate for one semantic key. It is a fixed-size digest,
+never an implementation-selected UUID or unspecified string:
+
+```text
+CandidateId = sha256(encode([
+    "candidate-v1",
+    hostnameToString(hostname),
+    hostInstanceIdToString(instanceId),
+    hostStateVersionToNumber(version),
+    nodeKeyToString(semanticKey),
+]))
+```
+
+where `(hostname, instanceId, version)` is the origin coordinate of the
+originating host contribution. It is reproducible from the originating host
+contribution alone (the origin coordinate and the semantic key), and it is
+immutable. Because a host's version advances once per durable transaction, one
+transaction authors at most one candidate per semantic key.
+
+### Candidate types
 
 ```js
 /**
- * One candidate materialization or tombstone for a semantic key.
+ * The tuple that deterministically orders candidate state.
  *
- * @typedef {object} MaterializationCandidate
- * @property {string} candidateId - Immutable, globally unambiguous within the
- *   synchronization mesh.
- * @property {HostStateCoordinate} origin - The host-originated state that
- *   introduced this candidate.
- * @property {NodeKey} semanticKey
- * @property {"materialized" | "tombstone"} kind
- * @property {ComputedValue | undefined} value - When materialized.
- * @property {{ createdAt: UnixTimestamp, modifiedAt: UnixTimestamp } | undefined} timestamps
- * @property {NodeIdentifier | undefined} identifier - When materialized.
- * @property {ReadonlyArray<string>} inputCandidateIds - The exact selected
- *   input candidate IDs against which this value is valid.
- * @property {object} freshnessEvidence - Monotonically combined freshness and
- *   conflict evidence.
- * @property {object} validityEvidence - Validity-proof evidence carried by this
- *   candidate.
- * @property {object} comparisonMetadata - Deterministic comparison metadata
- *   (for example modifiedAt, identifier, fingerprint for candidate selection).
+ * @typedef {object} CandidateComparisonKey
+ * @property {UnixTimestamp} modifiedAt
+ * @property {NodeIdentifier} nodeIdentifier
+ * @property {string} sourceFingerprint
  */
 ```
 
-Rules:
+Candidates (materialized and tombstone) are totally ordered by the canonical
+comparison tuple: newer `modifiedAt` wins; on tie, the lexicographically
+greater canonical `NodeIdentifier`; on tie, the lexicographically greater
+`sourceFingerprint`.
 
-- `candidateId` is immutable and globally unambiguous within the synchronization
-  mesh.
-- A recomputed or authoritatively imported value records the exact selected
-  input candidate IDs against which it is valid.
-- A deletion is represented by an ordered tombstone candidate, never by missing
-  storage alone.
-- Freshness and conflict evidence is combined monotonically across joins.
-- Once a candidate is provably dominated and can never affect a future join,
-  the specification may define safe removal; information needed by later merges
-  must never be silently discarded.
-- A derived replica persists the resulting merge basis, and exported snapshots
-  include it.
-
-### joinMergeBasis
-
-```text
-joinMergeBasis(A, B)
+```js
+/**
+ * A reference to the exact input candidate a value was computed against.
+ *
+ * @typedef {object} InputCandidateReference
+ * @property {NodeKey} semanticKey
+ * @property {CandidateId} candidateId
+ */
 ```
 
-is the commutative, associative, and idempotent union of the two input merge
-bases. For each semantic key, the joined basis retains:
+```js
+/**
+ * One host-originated materialization of a semantic key.
+ *
+ * @typedef {object} MaterializedCandidate
+ * @property {CandidateId} candidateId
+ * @property {{ hostname: Hostname, instanceId: HostInstanceId, version: HostStateVersion }} origin
+ * @property {NodeKey} semanticKey
+ * @property {"materialized"} kind
+ * @property {ComputedValue} value
+ * @property {{ createdAt: UnixTimestamp, modifiedAt: UnixTimestamp }} timestamps
+ * @property {NodeIdentifier} identifier
+ * @property {ReadonlyArray<InputCandidateReference>} inputCandidateIds
+ *   - The exact selected input candidate IDs against which this value is valid.
+ * @property {"up-to-date" | "potentially-outdated"} freshness
+ * @property {CandidateComparisonKey} comparisonKey
+ */
+```
 
-- the union of all candidate records that could still affect a future join
-  (the canonical winner, its input candidates, and any not-yet-dominated
-  tombstones or evidence), and
-- monotonically combined freshness and conflict evidence.
+```js
+/**
+ * One host-originated deletion tombstone of a semantic key.
+ *
+ * A deletion is represented by an ordered tombstone candidate, never by missing
+ * storage alone.
+ *
+ * @typedef {object} TombstoneCandidate
+ * @property {CandidateId} candidateId
+ * @property {{ hostname: Hostname, instanceId: HostInstanceId, version: HostStateVersion }} origin
+ * @property {NodeKey} semanticKey
+ * @property {"tombstone"} kind
+ * @property {UnixTimestamp} deletionTime
+ * @property {CandidateComparisonKey} comparisonKey
+ */
+```
 
-The exact per-key retention rule is the closed semilattice of candidate
-evidence: a candidate is retained while it (or its evidence) could influence
-candidate selection, direct invalidation, dependency relowering, deletion
-closure, freshness, or validity reconstruction of a future join.
+A tombstone's `comparisonKey` uses `modifiedAt = deletionTime`, a canonical
+deletion `NodeIdentifier` derived from the origin, and the origin's
+`sourceFingerprint`. A tombstone with a later `deletionTime` supersedes an
+earlier materialized candidate; a materialized candidate with a later
+`modifiedAt` supersedes an earlier tombstone.
+
+```js
+/**
+ * @typedef {MaterializedCandidate | TombstoneCandidate} Candidate
+ */
+```
+
+### Canonical serialization and equality
+
+Every type in this section has a canonical byte encoding: the record's fields
+are sorted by a fixed field order, each field is encoded by its canonical
+form, and the resulting byte sequence is the type's canonical serialization.
+Record equality is byte equality of the canonical serialization. A record is
+authored exactly once at its construction site (its origin transaction) and is
+immutable thereafter; a join never mutates a record, it unions deduplicated
+copies. This is what lets the canonical serialization participate in
+`LogicalSnapshotId` hashing and in the integrity comparison of transported
+merge bases.
+
+### Evidence types
+
+```js
+/**
+ * A monotonic freshness fact about a semantic key.
+ *
+ * @typedef {object} FreshnessFact
+ * @property {{ hostname: Hostname, instanceId: HostInstanceId, version: HostStateVersion }} origin
+ * @property {"up-to-date" | "potentially-outdated"} tone
+ * @property {UnixTimestamp} time
+ */
+```
+
+`FreshnessEvidence(key)` is a set of `FreshnessFact`s. Its join is set union:
+`joinFreshnessEvidence(E1, E2) = E1 ∪ E2`, which is commutative, associative,
+and idempotent by construction (sets are unordered and deduplicated). The
+projected freshness is `potentially-outdated` if any fact is
+`potentially-outdated` or any direct input is projected stale; otherwise
+`up-to-date` (conservative monotonic combination).
+
+```js
+/**
+ * Validity evidence of one materialized candidate: the transported proofs are
+ * the input candidate references themselves. A value is valid only against
+ * the exact input candidate IDs it records.
+ *
+ * @typedef {ReadonlyArray<InputCandidateReference>} ValidityEvidence
+ */
+```
+
+`joinValidityEvidence` unions two evidence sets and is commutative,
+associative, and idempotent by construction. Validity transport is performed
+only when the candidate's recorded input candidate IDs equal the final selected
+input candidate IDs.
+
+```js
+/**
+ * Conflict evidence for a semantic key: the candidate comparison facts that
+ * could still affect a future join.
+ *
+ * @typedef {object} ConflictEvidence
+ * @property {ReadonlyArray<Candidate>} candidates
+ * @property {ReadonlyArray<FreshnessFact>} stalenessFacts
+ */
+```
+
+`joinConflictEvidence(C1, C2)` is the union of the two candidate sets and the
+two staleness-fact sets, pruned by the dominance rule below. It is
+commutative, associative, and idempotent by construction.
+
+### Semilattice operations
+
+```text
+joinCandidateSets(S1, S2)      = the union of the two candidate sets, pruned by
+                                 candidate dominance
+
+joinFreshnessEvidence(E1, E2)  = E1 ∪ E2
+
+joinValidityEvidence(V1, V2)   = V1 ∪ V2
+
+joinConflictEvidence(C1, C2)   = (candidates(S1 ∪ S2) pruned,
+                                  stalenessFacts(E1 ∪ E2))
+
+joinMergeBasis(A, B)           = per-key:
+                                   candidates  = joinCandidateSets
+                                   freshness   = joinFreshnessEvidence
+                                   validity    = joinValidityEvidence
+                                   conflicts   = joinConflictEvidence
+```
+
+Each operation is the union of an unordered, deduplicated set and is therefore
+commutative, associative, and idempotent by construction — not merely by
+declaration.
+
+### Candidate dominance and safe pruning
+
+A candidate `c1` is **dominated** by a retained candidate `c2` for the same
+semantic key when `c2.comparisonKey > c1.comparisonKey` (the total comparison
+tuple) and `c1` is not referenced as an input by any retained materialized
+candidate and `c2`'s evidence absorbs `c1`'s evidence.
+
+Safe pruning: a candidate that is dominated by a retained candidate, is not
+referenced as an input, and whose freshness/validity evidence is absorbed by
+retained evidence may be removed. A candidate that could still win a future
+selection (its comparison key is not exceeded by a retained candidate), that is
+referenced as an input by a retained materialized candidate, or whose evidence
+has not been absorbed MUST be retained. Information needed by later merges must
+never be silently discarded.
 
 ### projectGraph
 
-```text
-projectGraph(joinedMergeBasis)
-```
+`projectGraph(joinedMergeBasis)` is the deterministic projection to the
+installed graph state, computed in this order:
 
-is the deterministic projection from the joined merge basis to the installed
-graph state:
-
-- the canonical winning materialization per key (candidate selection by the
-  comparison tuple);
-- freshness from the monotonically combined evidence;
-- dependency and validity edges lowered from the input candidate IDs to the
-  final identifiers;
-- deletion closure from tombstones;
-- identifier lookup from the surviving materializations.
+1. **Determine the winning candidate or tombstone for every semantic key**:
+   take the maximum by `CandidateComparisonKey` among the key's retained
+   candidates (a tombstone may win, superseding all materialized candidates).
+2. **Identify the selected input candidate IDs**: the winning
+   materialized candidate's `inputCandidateIds`.
+3. **Determine whether the selected value was computed against the final
+   selected inputs**: for every direct input, compare the recorded input
+   candidate ID against the final selected candidate ID for that input.
+4. **Determine direct invalidation**: a key is a direct invalidation candidate
+   when its winning value was not computed against the final selected inputs
+   (direct input relowering), or a same-coordinate stale freshness fact
+   applies. This replaces the pairwise source-fidelity notion with an exact
+   candidate-input comparison.
+5. **Apply the zero/one-input versus multi-input policy**: a direct
+   invalidation candidate with zero or one distinct semantic inputs is retained
+   and hard-invalidated (value kept, freshness `potentially-outdated`, incoming
+   proofs removed); with more than one distinct input it is deleted (its winner
+   is replaced by a derived tombstone).
+6. **Apply deletion closure**: any materialized key with a deleted direct input
+   is deleted transitively.
+7. **Derive final freshness**: a surviving materialization is `up-to-date` only
+   if it is not a direct invalidation candidate, every direct input is
+   materialized and `up-to-date`, and the freshness evidence contains no stale
+   fact for it; otherwise `potentially-outdated`.
+8. **Reconstruct validity**: a surviving `up-to-date` materialization receives
+   incoming validity edges from each final direct input whose candidate ID
+   matches the value's recorded input candidate ID.
+9. **Assign final identifiers and dependency edges**: the surviving
+   materializations form the final identifier lookup and lowered dependency
+   edges.
 
 Candidate selection, direct invalidation, dependency relowering, deletion
 closure, freshness, and validity reconstruction are all computable from the
-joined merge basis.
+joined merge basis; the merge basis is the single algorithm, and there is no
+separate pairwise implementation.
+
+### Tombstone semantics
+
+- A tombstone is created by any host-originated deletion: a host-local graph
+  deletion, a migration `storage.delete`, or a bulk reset deletion. Its
+  `deletionTime` is the deletion transaction's time and its origin is the
+  deleting host's contribution coordinate.
+- Synchronization-derived deletion does not create a new tombstone per merge
+  grouping: it projects deletion from the retained evidence by selecting the
+  tombstone candidate that wins `projectGraph` step 1 and applying steps 5-6.
+  A tombstone introduced by any host is retained and deduplicated by
+  `CandidateId`.
+- A later materialization supersedes a tombstone when the materialized
+  candidate's comparison key exceeds the tombstone's (a later `modifiedAt` on a
+  value beats an earlier `deletionTime`), and vice versa.
+- Older candidates and tombstones may be discarded only by the safe-pruning
+  rule above.
 
 ---
 
@@ -336,27 +510,21 @@ as `identifiers_keys_map` in the replica's global sublevel.
 `valid[D].has(N)` means N's stored value is known valid with respect to D's
 current stored value, subject to the main IncrementalGraph validity rules.
 
-**DEF-SYNC-01 (Value origin):** Provenance of a final stored value. A
-conceptual term, not a separate runtime representation:
+**DEF-SYNC-01 (Value origin):** Provenance of a final stored value. The origin
+of a final value is the `MaterializedCandidate` whose `CandidateId` is selected
+by `projectGraph` step 1. Every surviving value (outcome ≠ delete) has
+provenance from its selected candidate. Deleted nodes have no final value and
+therefore no value origin. The merge basis is the single retained
+representation of value origin; no separate origin map is maintained.
 
-- The selected byte source identifies which replica supplied the final stored
-  bytes. Every surviving value (outcome ≠ delete) has provenance from its
-  selected structural side, including hard-invalidated and directly relowered
-  nodes. Deleted nodes have no final value and therefore no value origin.
-- The runtime representation of byte-source selection is `selectedSideByKey`.
-  No separate value-origin map is maintained.
-
-**DEF-SYNC-02 (Source-version identity):** A source-side materialization
-represents the final selected semantic value record only when it is the actual
-selected source materialization: its side matches `selectedSideByKey` and its
-identifier matches the final selected identifier.
-
-This is the canonical `sourceRepresentsFinalVersion()` operation. It
-determines whether source-side dependency histories and validity proofs apply
-to the final selected semantic record. Equal timestamps and equal identifiers do
-not prove equal values because a recomputation preserves the identifier and
-`modifiedAt` has finite resolution. ComputedValue equality, hashing, or
-serialization must not be used as identity evidence.
+**DEF-SYNC-02 (Candidate-input identity):** A materialized value is valid only
+against the exact input candidate IDs it records. The final selected value
+carries its validity proofs exactly when its recorded input candidate IDs equal
+the final selected input candidate IDs for each direct input (`projectGraph`
+steps 2-3). Equal timestamps and equal identifiers do not prove equal values
+because a recomputation preserves the identifier and `modifiedAt` has finite
+resolution. ComputedValue equality, hashing, or serialization must not be used
+as identity evidence.
 
 **REQ-SYNC-01 (Value origin from copy, not equality):** Deep equality of
 stored values MUST NOT create a value origin.
@@ -458,84 +626,65 @@ rather than silently dropping materialized values.
 
 ## 5. Semantic Merge Domain
 
-**DEF-SYNC-03 (Semantic merge domain):** Per-host merge operates over semantic
-node keys, not raw storage identifiers. Let:
+The merge operates over the joined merge basis, not over raw storage
+identifiers or source sides.
 
-- `Keys = keys(L.lookup) ∪ keys(H.lookup)`
+**DEF-SYNC-03 (Semantic merge domain):** The join operates over semantic node
+keys. For each key, `projectGraph(joinedMergeBasis)` (see § 1c) determines the
+final candidate, identifier, freshness, validity, and dependency edges; the
+result is applied to the target replica T. There is no per-key source-side
+selection.
 
-Each key in Keys is considered exactly once. For each key, the merge chooses a
-structural source side (target/local or host), selects a final storage
-identifier, derives final dependency edges from the graph scheme, and applies
-the result to T.
+**DEF-SYNC-05 (Final outcome):** For each semantic key, the final outcome is
+derived from `projectGraph`:
 
-**DEF-SYNC-04 (Selected source side):** `selectedSideByKey` records the
-per-node candidate source side before final outcome classification:
+- `materialized` — a winning `MaterializedCandidate` survives with its value,
+  freshness, timestamps, identifier, validity, and dependencies;
+- `invalidate` — the winning materialized candidate survives but is
+  `potentially-outdated` with incoming proofs removed (the zero/one-input
+  direct invalidation policy);
+- `delete` — a winning `TombstoneCandidate`, a multi-input direct invalidation
+  root, or a dependent of a deleted key; the key has no final identifier,
+  value, freshness, timestamps, validity entries, or value origin.
 
-- `selectedSideByKey(key) ∈ { keep, take }`
-- `keep` means the candidate source is the local/target replica.
-- `take` means the candidate source is the host replica.
-
-**DEF-SYNC-05 (Final outcome):** `outcomeByKey` records the canonical final
-outcome for each semantic key after classification:
-
-- `outcomeByKey(key) ∈ { keep, take, invalidate, delete }`
-- `keep` means preserve or copy from the local target source.
-- `take` means copy from the host source.
-- `invalidate` means the node is marked potentially-outdated regardless of
-  which side provides its structural data. One-input direct invalidation roots
-  are invalidated; their value is retained.
-- `delete` means the semantic key's materialization is omitted from the final
-  replica. A deleted materialization has no final identifier, cached value,
-  freshness, timestamps, validity entries, or value origin. Multi-input direct
-  invalidation roots are deleted. `delete` is an internal merge result, not a
-  request to delete the semantic node family from the graph schema.
-
-**TERM-SYNC-15 (finalIdentifierForKey):** A partial map from semantic node keys
-to their final storage identifiers:
-
-```
-finalIdentifierForKey:
-    { key ∈ Keys | outcomeByKey(key) ≠ delete } → NodeIdentifier
-```
-
-- `keep` maps to the local source identifier.
-- `take` maps to the host source identifier.
-- `invalidate` maps to the identifier selected by `selectedSideByKey`.
-- `delete` has no final identifier and is absent from the map.
+**TERM-SYNC-15 (finalIdentifierForKey):** The partial map from semantic node
+keys to their final storage identifiers, derived from the surviving
+`MaterializedCandidate` records (each candidate's `identifier`); deleted keys
+are absent from the map.
 
 **TERM-SYNC-16 (mergedInputsMap):** The map from each surviving final storage
-identifier to the list of its final dependency storage identifiers, derived from
-the graph scheme and lowered through `finalIdentifierForKey`. Defined only for
-materializations whose outcome is not `delete`. Every dependency of a surviving
-materialization also survives and has a final identifier; the delete-propagation
-closure guarantees this.
+identifier to its final dependency storage identifiers, lowered through
+`finalIdentifierForKey` from the candidate `inputCandidateIds`. Every dependency
+of a surviving materialization also survives and has a final identifier; the
+delete-propagation closure guarantees this.
 
 ---
 
 ## 6. Timestamp Conflict Policy
 
-**REQ-SYNC-07 (Canonical materialization selection):** For each semantic key,
-the merge selects one canonical candidate over the complete set of candidate
-materializations contributed by all snapshots being joined:
+**REQ-SYNC-07 (Canonical candidate selection):** For each semantic key,
+`projectGraph` step 1 selects one canonical candidate over the key's retained
+candidate set:
 
 - If only one candidate exists, select it.
-- If several candidates exist, compare them by the fixed tuple
-  `(modifiedAt, NodeIdentifier, sourceFingerprint)` and select the maximum:
+- If several candidates exist, compare them by the fixed
+  `CandidateComparisonKey` tuple `(modifiedAt, NodeIdentifier,
+  sourceFingerprint)` and select the maximum:
   1. the newer `modifiedAt` wins;
   2. on equal `modifiedAt`, the lexicographically greater canonical
      `NodeIdentifier` string wins using deterministic JavaScript code-unit
      ordering;
   3. on equal `modifiedAt` and `NodeIdentifier`, the lexicographically greater
-     validated source replica fingerprint wins using deterministic JavaScript
-     code-unit ordering.
+     validated source fingerprint wins using deterministic JavaScript code-unit
+     ordering.
 
 The maximum is a deterministic function of the candidate set, so the selection
 is independent of the grouping or order of the join (§ 1b).
-- The comparison MUST NOT prefer a candidate because it is named local, host,
-  keep, take, current, or target.
+- The comparison MUST NOT prefer a candidate because of its hostname, storage
+  instance, or source role.
 - Missing timestamps for materialized values are invalid or corrupt state under
   the main graph spec. Synchronization MUST NOT use missing timestamps to
-  justify an `up-to-date` final node. It may reject the host or merge
+  justify an `up-to-date` final node. It may reject the source or merge
   conservatively invalidate affected nodes, but it must not silently create an
   `up-to-date` value whose timestamp provenance is broken.
 
@@ -545,49 +694,49 @@ correct with respect to final merged inputs. Timestamp order is not a semantic
 proof of freshness.
 
 **REQ-SYNC-08d (Selected record timestamp copy):** Candidate selection chooses
-one complete stored materialization record. The final value, `createdAt`, and
+one complete `MaterializedCandidate` record. The final value, `createdAt`, and
 `modifiedAt` are copied from that selected record. Synchronization never
-combines the value from one source with timestamps from another source, never
-uses merge execution time as a materialization timestamp, and never computes a
-minimum or maximum `createdAt` across sources.
+combines the value from one candidate with timestamps from another, never uses
+merge execution time as a materialization timestamp, and never computes a
+minimum or maximum `createdAt` across candidates.
 
 **REQ-SYNC-08a (modifiedAt is a value version, not a merge timestamp):**
 `modifiedAt` records the time at which a node's stored semantic value last
 changed as a result of a computor producing a changed value. Merge decisions
 and metadata transformations produce no new semantic versions.
 
-- Taking a value copies its exact existing `modifiedAt` from the host side.
-- Keeping a value preserves its exact existing `modifiedAt`.
+- The final `modifiedAt` is the winning candidate's `modifiedAt`.
 - Invalidating freshness or rebuilding validity does not change `modifiedAt`.
 - Identifier reconciliation, input-edge relowering, and freshness changes do
   not change `modifiedAt`.
 - Synchronization MUST NOT manufacture a new `modifiedAt` during merge.
   Every final `modifiedAt` must be one of the timestamps already present in
-  the merge inputs (L or H).
-- Consequently, merging two fixed database snapshots is independent of
-  merge execution time. The result would be identical if the merge ran at
-  any future or past time.
+  the merged candidates.
+- Consequently, merging two fixed logical snapshots is independent of merge
+  execution time. The result would be identical if the merge ran at any
+  future or past time.
 
 **REQ-SYNC-08b (No mergedAt field):** Synchronization MUST NOT introduce a
 persistent `mergedAt` field. Sync timing is available through logs.
 
-**REQ-SYNC-08c (Same-coordinate stale freshness):** When both replicas have
-identical `modifiedAt` and identical `NodeIdentifier` for a semantic key, the
-records share a materialization coordinate but not necessarily a value. The
-merge MUST be conservative for freshness only:
+**REQ-SYNC-08c (Same-coordinate stale freshness):** When two retained
+candidates have identical `modifiedAt` and identical `NodeIdentifier` for a
+semantic key, the records share a materialization coordinate but not
+necessarily a value. The merge MUST be conservative for freshness only:
 
-* If the selected side's value is `up-to-date` and the non-selected side's
-  freshness is not `up-to-date`, the final node MUST NOT remain `up-to-date`.
-  Set it to `potentially-outdated` without changing `modifiedAt` or the selected
-  value.
-* If the selected side is already not `up-to-date`, no adjustment is needed.
+* If the winning candidate's value is `up-to-date` and a same-coordinate
+  candidate's freshness is not `up-to-date`, the final node MUST NOT remain
+  `up-to-date`. Set it to `potentially-outdated` without changing `modifiedAt`
+  or the winning value.
+* If the winning candidate is already not `up-to-date`, no adjustment is
+  needed.
 * This same-coordinate relation MUST NOT create value provenance, dependency
-  history, or validity-proof transport for the non-selected source.
+  history, or validity-proof transport for the non-winning candidate.
 * The stale metadata belonging to an older value version (`modifiedAt`)
-  MUST NOT taint a strictly newer value version. If one side has a newer
-  `modifiedAt`, the value selection based on timestamps is authoritative
-  and the stale metadata from the older version does not affect the
-  newer version's freshness.
+  MUST NOT taint a strictly newer value version. If one candidate has a newer
+  `modifiedAt`, the value selection based on timestamps is authoritative and
+  the stale metadata from the older version does not affect the newer
+  version's freshness.
 
 ---
 
@@ -595,16 +744,14 @@ merge MUST be conservative for freshness only:
 
 The merge selects one canonical candidate per semantic key and then decides
 freshness, invalidation, and deletion. Every decision below is a deterministic
-function of the complete set of candidate materializations, so the result is
-independent of the grouping or order in which snapshots were merged (§ 1b).
+function of the joined merge basis, so the result is independent of the
+grouping or order in which snapshots were merged (§ 1b and § 1c).
 
-**DEF-SYNC-06 (Source fidelity):** A source materialization `m` of semantic key
-`K` in snapshot `S` **faithfully represents** the final `K` when, for every
-direct semantic input `D` of `K`, the final selected version of `D` is provided
-by `S` — that is, `S`'s candidate for `D` is the canonical winner for `D`, and
-`S`'s materialization of `D` is that winner's materialization. Fidelity is a
-property of a single snapshot and the final selection; it does not depend on
-grouping.
+**DEF-SYNC-06 (Candidate-input consistency):** A materialized candidate's value
+is consistent with the final inputs exactly when its recorded `inputCandidateIds`
+equal the final selected candidate IDs for each direct semantic input
+(`projectGraph` step 3). This is a property of the candidate record and the
+final selection; it does not depend on grouping.
 
 **DEF-SYNC-07 (Direct invalidation candidate):** A selected cached node `K` is a
 direct invalidation candidate when its stored value's proof does not carry to
@@ -612,24 +759,18 @@ the final state, so its next required recomputation must invoke the computor
 rather than accept cache-only revalidation. A key is a direct invalidation
 candidate when at least one of:
 
-1. no single source faithfully represents the final `K` — in particular when
-   the canonical winner's snapshot does not provide the final selected versions
-   of every direct input. This replaces the pairwise notion of opposite-side
-   ancestry: a selected candidate is tainted exactly when its own snapshot does
-   not represent the final inputs, which is a property of the candidate set
-   rather than of a merge direction;
-2. the final dependency structure of `K` differs from the winning source's
-   dependency structure (direct relowering below);
+1. the winning candidate's recorded `inputCandidateIds` do not equal the final
+   selected input candidate IDs (direct input relowering below);
+2. the final dependency structure of `K` differs from the winning candidate's
+   recorded structure;
 3. same-coordinate stale freshness metadata from REQ-SYNC-08c applies.
 
 **DEF-SYNC-08 (Direct relowering):** A selected cached node is directly
-relowered when at least one distinct semantic direct input used by its source
-materialization does not represent the final selected version of that semantic
-input through the canonical source-version identity relation
-(DEF-SYNC-02). Different storage identifiers, equal timestamps, or equal stored
-values do not make a non-selected source represent the selected source. Direct
-relowering creates a direct invalidation candidate; it is not by itself a
-deletion decision.
+relowered when at least one distinct semantic direct input used by its winning
+`MaterializedCandidate` is not the final selected candidate for that semantic
+input. Different storage identifiers, equal timestamps, or equal stored values
+do not make a non-matching candidate equivalent. Direct relowering creates a
+direct invalidation candidate; it is not by itself a deletion decision.
 
 **REQ-SYNC-09 (Distinct semantic input classifier):** The classifier counts
 distinct semantic direct dependency keys. It must not count computor argument
@@ -639,7 +780,7 @@ distinct semantic inputs.
 
 For every direct invalidation candidate:
 
-- zero or one distinct semantic input: retain the selected cached value,
+- zero or one distinct semantic input: retain the winning candidate's value,
   preserve its `modifiedAt`, mark it `potentially-outdated`, and remove incoming
   validity proofs so the next pull invokes the computor with the retained value
   as `oldValue`;
@@ -658,7 +799,7 @@ direct relowering
 
 Thus `A → B` may hard-invalidate `B` when synchronization ambiguity prevents
 `B` from remaining current, but it does not delete `B`. For `A,B → D`, once `D`
-requires direct hard invalidation, the temporary policy deletes `D`.
+requires direct hard invalidation, the policy deletes `D`.
 
 **REQ-SYNC-10 (Structural deletion closure):** Deletion roots expand through
 transitive materialized dependents in the selected semantic dependency graph. If
@@ -668,9 +809,9 @@ materializations such as `U` survive. The closure follows structural semantic
 dependencies, not only validity edges, and synchronization never invokes
 computors while applying it. Deleted nodes have no final identifier, cached
 value, freshness, timestamps, validity entries, or value origin. The deletion
-root set is a deterministic function of the candidate set (§ 1b), and the
-closure over the final materialized graph is deterministic, so the resulting
-deleted-key set is independent of grouping.
+root set is a deterministic function of the joined merge basis (§ 1b, § 1c),
+and the closure over the final materialized graph is deterministic, so the
+resulting deleted-key set is independent of grouping.
 
 **TERM-SYNC-17 (Propagated staleness):** A node can become
 `potentially-outdated` because one of its inputs is stale. That is propagated
@@ -682,18 +823,14 @@ multiple inputs.
 
 ## 8. Identifier Reconciliation and Edge Lowering
 
-**REQ-SYNC-11 (Final identifier selection):** For each semantic key whose
-outcome is not `delete`, the final identifier is selected from
-`selectedSideByKey`:
-
-- `keep` → local source identifier.
-- `take` → host source identifier.
-- `invalidate` → the source identifier selected by `selectedSideByKey`.
+**REQ-SYNC-11 (Final identifier selection):** For each semantic key whose final
+outcome is not `delete`, the final identifier is the winning
+`MaterializedCandidate`'s `identifier` (`projectGraph` step 9).
 
 The final identifier lookup maps final storage identifiers to semantic keys for
 surviving materializations only. It must be bijective between final identifiers
-and `FinalKeys = { key ∈ Keys | outcome(key) ≠ delete }`. Deleted keys must
-not remain in the lookup.
+and the set of keys whose final outcome is not `delete`. Deleted keys must not
+remain in the lookup.
 
 ---
 
@@ -748,64 +885,50 @@ the computation histories are interchangeable.
 
 ## 11. Validity Proof Transport
 
-**DEF-SYNC-09 (Source validity proof):** A source-side relation entry
-`valid[D].has(N)` means that, in that source replica, N's stored value was
-known valid with respect to D's stored value according to the IncrementalGraph
-validity algorithm.
+**DEF-SYNC-09 (Candidate validity proof):** A materialized candidate's
+`inputCandidateIds` record the exact input candidate IDs against which its value
+is valid. A final validity edge `valid[finalD].has(finalN)` is transported from
+the winning `MaterializedCandidate` of `N` when that candidate's recorded input
+candidate reference for `D` equals the final selected candidate ID for `D`
+(`projectGraph` step 8).
 
-**REQ-SYNC-14 (Validity proof transport conditions):** A source proof from
-side `S ∈ { target, host }`:
+**REQ-SYNC-14 (Validity proof transport conditions):** A validity proof is
+transported only when ALL of the following hold:
 
-```
-valid[sourceD].has(sourceN)
-```
-
-may be transported to final:
-
-```
-valid[finalD].has(finalN)
-```
-
-only if ALL of the following hold:
-
-1. `sourceD` and `sourceN` both have semantic keys in the source side's
-   identifier lookup.
-2. Those semantic keys both have final identifiers in
-   `finalIdentifierForKey`.
-3. `sourceD` represents the final version of D through the canonical
-   source-version identity relation (DEF-SYNC-02).
-4. `sourceN` represents the final version of N through the same relation.
-5. `finalD` is a direct structural input of `finalN` in the final lowered
-   graph per `mergedInputsMap`.
-6. The final dependency edge is derived from the final graph scheme and
+1. The winning candidate of `N` records an `InputCandidateReference` for
+   semantic input `D`.
+2. The recorded reference equals the final selected candidate ID for `D`.
+3. `D` and `N` both have final identifiers in `finalIdentifierForKey`.
+4. `finalD` is a direct structural input of `finalN` in the final lowered graph
+   per `mergedInputsMap`.
+5. The final dependency edge is derived from the final graph scheme and
    semantic inputs, not copied blindly from source storage.
 
-The two endpoints of the source proof must still come from one source replica.
-Their final stored byte origins do not need to be that source replica when
-equal-timestamp copies represent the same temporary semantic versions.
+The two endpoints of a transported proof come from one materialized candidate
+record. Their final stored byte origins do not need to be the same when
+equal-timestamp candidates represent the same temporary semantic versions.
 
 **REQ-SYNC-15 (Negative transport rules):**
 
-- The source side must match for both endpoints. Cross-side mixed proofs MUST
-  NOT be transported.
-- Proofs involving deleted or discarded identifiers MUST NOT be transported.
+- A proof is transported only when the winning candidate's recorded input
+  candidate IDs match the final selection; otherwise no proof is transported.
+- Proofs involving deleted or discarded candidates MUST NOT be transported.
 - Proofs involving unknown semantic keys MUST NOT be transported.
 - Proofs involving non-materialized final endpoints MUST NOT be transported.
 - Proofs whose final edge is no longer a structural dependency MUST NOT be
   transported.
 - Stored value equality MUST NOT be used as a fallback for any endpoint in
-  validity proof transport. A proof is transported only when both endpoints
-  represent the final selected versions through the canonical identity
-  relation, not on extensional value match.
+  validity proof transport. A proof is transported only through an exact
+  candidate-ID match, not on extensional value match.
 
 **REQ-SYNC-16 (Required incoming validity for up-to-date nodes):** Every final
 `up-to-date` materialized node must have complete incoming validity proofs for
-all its direct inputs. Validated source invariants plus source-version identity
-(DEF-SYNC-02) justify complete proof transport for every node that is not a
-direct invalidation candidate. Validity reconstruction expects the planning
+all its direct inputs. The winning candidate's recorded input candidate IDs plus
+the final selection justify complete proof transport for every node that is not
+a direct invalidation candidate. Validity reconstruction expects the planning
 classification to be complete and throws `UnplannedMissingValidityProofError` if
-a missing proof is discovered. Reconstruction does not itself create a new direct
-invalidation root.
+a missing proof is discovered. Reconstruction does not itself create a new
+direct invalidation root.
 
 **REQ-SYNC-17 (Rebuild, not merge):** The final validity relation must be
 rebuilt from the final lowered graph, not textually merged from source
@@ -851,10 +974,9 @@ replica T. The active replica pointer switches only after the final state is
 built, validated, and committed.
 
 **TERM-SYNC-18 (Merge summary):** After each per-host merge, the implementation
-records counts of outcomes:
+records counts of `projectGraph` outcomes:
 
-- `kept`: number of semantic keys whose final outcome is `keep`.
-- `taken`: number of semantic keys whose final outcome is `take`.
+- `materialized`: number of semantic keys whose final outcome is `materialized`.
 - `invalidated`: number of semantic keys whose final outcome is `invalidate`.
 - `deleted`: number of semantic keys whose final outcome is `delete`.
 
@@ -1050,64 +1172,108 @@ new snapshot first, the new contribution propagates exactly once to every
 replica, and the mesh reaches a new fixed point
 `{ A: {IA, vA}, B: {IB, vB}, C: {IC, vC+1} }`.
 
-### G10 — Detailed merge-basis trace: join(join(A,B),C) versus join(A,join(B,C))
+### G10 — Fully enumerated merge-basis trace: join(join(A,B),C) versus join(A,join(B,C))
 
-This trace shows the persisted intermediate merge basis and demonstrates that
-the second join has every fact required to produce the same result.
+Setup. Three snapshots over keys `K` and `D` (`D` depends on `K`):
 
-Setup: `A` originates key `K` at value `v1` (origin `{ A: {IA, 1} }`), `B`
-originates `K` at value `v2` (origin `{ B: {IB, 1} }`), and `C` originates a
-related key `D` whose value depends on `K`.
+- `A` originates `K = v1` at origin `a = (A, IA, 1)`, so
+  `candA = MaterializedCandidate{ candidateId: id(a,K), origin: a, semanticKey: K,
+  kind: "materialized", value: v1, timestamps: (t1,t1), identifier: n1,
+  inputCandidateIds: [], freshness: "up-to-date", comparisonKey: (t1,n1,fA) }`.
+- `B` originates `K = v2` at origin `b = (B, IB, 1)`, so
+  `candB = MaterializedCandidate{ candidateId: id(b,K), origin: b, semanticKey: K,
+  kind: "materialized", value: v2, timestamps: (t2,t2), identifier: n2,
+  inputCandidateIds: [], freshness: "up-to-date", comparisonKey: (t2,n2,fB) }`,
+  with `(t2,n2,fB) > (t1,n1,fA)`.
+- `C` originates `D = w` at origin `c = (C, IC, 1)`, computed against `K = v2`,
+  so
+  `candC = MaterializedCandidate{ candidateId: id(c,D), origin: c, semanticKey: D,
+  kind: "materialized", value: w, timestamps: (t3,t3), identifier: n3,
+  inputCandidateIds: [ { semanticKey: K, candidateId: id(b,K) } ],
+  freshness: "up-to-date", comparisonKey: (t3,n3,fC) }`.
 
 **First grouping — `join(join(A, B), C)`.**
 
-`M1 = joinMergeBasis(A, B)`. The persisted basis for key `K` retains both
-candidate records `candA(K, v1)` and `candB(K, v2)` with their comparison
-metadata (`modifiedAt`/`identifier`/`fingerprint`), the monotonic freshness
-evidence from both origins, and their input candidate IDs. `projectGraph(M1)`
-selects the canonical winner (say `v2` from `B`); because `B`'s candidate does
-not faithfully represent the final inputs of `K` (or `D`'s inputs), `D` is a
-direct-invalidation candidate.
+`M1 = joinMergeBasis(A, B)` persists exactly:
 
-`M2 = joinMergeBasis(M1, C)`. The basis still contains `candA` and `candB`
-(either may yet affect a future join), plus `C`'s candidate for `D` with its
-exact input candidate IDs pointing into the basis (for example `candB(K)`),
-plus any tombstone evidence. `projectGraph(M2)` computes the final
-materializations, invalidation, deletion closure, and validity reconstruction.
+```
+key K: candidates = { candA, candB }
+       freshness  = { FreshnessFact{origin: a, tone: up-to-date, time: t1},
+                      FreshnessFact{origin: b, tone: up-to-date, time: t2} }
+       conflicts  = { candA, candB }
+key D: (empty)
+```
+
+`projectGraph(M1)`: `K`'s winner is `candB` (its comparison key is larger).
+`candB` has no input candidate references, so it is consistent with the final
+inputs; `K` is `up-to-date`.
+
+`M2 = joinMergeBasis(M1, C)` persists:
+
+```
+key K: candidates = { candA, candB }
+       freshness  = { a: up-to-date@t1, b: up-to-date@t2 }
+key D: candidates = { candC }
+       freshness  = { c: up-to-date@t3 }
+       conflicts  = { candC }
+```
+
+`projectGraph(M2)`: `D`'s winner is `candC`; its recorded input candidate for
+`K` is `id(b,K)`, which equals the final selected `K` candidate (`candB`), so
+`D` is consistent, not a direct invalidation candidate, and is `up-to-date`.
 
 **Second grouping — `join(A, join(B, C))`.**
 
-`N1 = joinMergeBasis(B, C)`. Its basis contains `candB(K, v2)` and `C`'s
-candidate for `D` (which records `candB(K)` as its input candidate ID).
+`N1 = joinMergeBasis(B, C)` persists:
 
-`N2 = joinMergeBasis(A, N1)`. When joining `A` into `N1`, the basis contains
-`candA(K, v1)`, `candB(K, v2)`, and `C`'s `D` candidate. The join needs to
-determine that `v2` still wins over `v1`, that `C`'s `D` value was computed
-against `candB(K)` (the winning `K` input), and that `A`'s contribution does
-not change that. All of these facts are present in `N1`'s persisted basis:
-`candA` is not needed inside `N1`, but `N1` retains `candB` (the winner) and
-`C`'s candidate with its input candidate IDs, so joining `A` re-derives the same
-winner and the same freshness/validity decisions.
+```
+key K: candidates = { candB }
+       freshness  = { b: up-to-date@t2 }
+key D: candidates = { candC }
+       freshness  = { c: up-to-date@t3 }
+       conflicts  = { candC }
+```
 
-Because `joinMergeBasis` is the closed semilattice union of candidate evidence,
-`M2` and `N2` retain the same candidate facts, and `projectGraph(M2)` equals
-`projectGraph(N2)`. This trace covers:
+`N1` retains `candB` (the `K` winner and the input of `candC`) and `candC` with
+its exact input candidate reference `id(b,K)`. `candA` is not present, which is
+correct: it has not been introduced.
 
-- **Conflicting values:** `candA` versus `candB` are both retained and compared
-  by the same canonical tuple in both groupings.
-- **Winning value whose inputs come from different hosts:** `C`'s `D` candidate
-  records the exact input candidate IDs, so the join knows which `K` candidate
-  it was valid against even when the winner came from another host.
-- **One-input hard invalidation:** `D` with one distinct input that is not
-  faithfully represented is retained and invalidated in both groupings.
-- **Multi-input deletion:** a candidate with two distinct inputs that cannot be
-  faithfully represented yields a deletion tombstone in both groupings.
-- **Deletion tombstones:** deletions are ordered tombstone candidates in the
-  basis, never missing storage.
-- **Validity proof transport:** validity evidence is carried by the candidate
-  whose input candidate IDs match the final selection.
-- **Stale evidence:** older, now-dominated evidence is retained while it could
-  affect a future join, and combined monotonically.
+`N2 = joinMergeBasis(A, N1)` joins `candA` into `N1`:
+
+```
+key K: candidates = { candA, candB }
+       freshness  = { a: up-to-date@t1, b: up-to-date@t2 }
+key D: candidates = { candC }
+       freshness  = { c: up-to-date@t3 }
+       conflicts  = { candC }
+```
+
+`projectGraph(N2)` selects `candB` for `K` (larger comparison key), verifies
+`candC`'s recorded input candidate `id(b,K)` matches the final `K` winner, and
+produces the same graph as `projectGraph(M2)`.
+
+`M2` and `N2` persist the identical candidate, freshness, validity, and conflict
+evidence, so `projectGraph(M2) = projectGraph(N2)` and the two groupings yield
+the same merge basis, the same projected graph, and the same `LogicalSnapshotId`.
+
+This trace covers:
+
+- **Conflicting values:** `candA` versus `candB` are both retained in `M2` and
+  `N2` and compared by the same canonical tuple.
+- **Winning value whose inputs come from different hosts:** `candC`'s value was
+  computed against `candB` (host B), and the join retains that exact input
+  candidate reference so the consistency check is possible in either grouping.
+- **One-input hard invalidation:** had `candC`'s recorded input candidate not
+  matched the final `K` winner, `D` (one distinct input) would be hard-invalidated
+  in both groupings.
+- **Multi-input deletion:** a direct invalidation candidate with two distinct
+  inputs would yield a derived tombstone in both groupings.
+- **Deletion tombstones:** deletions are ordered `TombstoneCandidate` records in
+  the basis, never missing storage.
+- **Validity proof transport:** a proof is transported only when the candidate's
+  recorded input candidate ID matches the final selection.
+- **Stale evidence:** a host-originated stale `FreshnessFact` is retained while
+  it could affect a future join and combined monotonically.
 - **Compaction-independent journal evidence:** journal events are retained as
   immutable payloads in the logical journal view, independent of physical
   compaction.
