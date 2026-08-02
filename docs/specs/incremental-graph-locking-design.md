@@ -218,9 +218,15 @@ lookup while no darkroom finalization is in progress.
    **only for the short finalization phase**:
    - reconcile validity mutations against the current committed state;
    - prepare identifier-map and allocation-watermark writes;
-   - flush the durable batch (LevelDB `batch` write);
-   - publish the identifier overlay to the volatile committed lookup **only
-     after** the disk flush succeeds.
+   - allocate the successor `HostStateVersion` (read the committed version,
+     allocate its unique successor; serialized by the darkroom lock so
+     concurrent transactions cannot receive the same successor or publish out
+     of version order);
+   - flush the durable batch (LevelDB `batch` write), committing the graph
+     mutations, journal entries, watermark, and successor host version
+     atomically;
+   - publish the identifier overlay and volatile next-version state to the
+     volatile committed lookup **only after** the disk flush succeeds.
 6. In the cleanup path, release all identifier reservations owned by the
    transaction, whether the transaction committed or failed.
 7. Release the per-node telescope mutex.

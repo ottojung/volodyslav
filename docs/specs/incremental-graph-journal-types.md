@@ -222,6 +222,59 @@ state, persisting synchronization metadata, learning that another host has
 advanced, merging an unchanged remote snapshot, updating the causal frontier,
 or any other synchronization-only activity.
 
+### Local host-state coordinate (persisted metadata)
+
+The local host's current state coordinate is persisted in canonical replica
+metadata:
+
+```text
+localHostStateCoordinate = {
+    lineageId,
+    version,
+}
+```
+
+This coordinate is the local hostname's entry in every exported causal
+frontier. A freshly initialized lineage begins at `HostStateVersion = 0`.
+
+### Durable commit rules
+
+**One successful host-originated durable transaction advances `HostStateVersion`
+exactly once.** A transaction may originate several journal entries (for example
+`edit` followed by `validate`) but advances the version only once for the
+complete atomic state transition.
+
+During darkroom finalization:
+
+1. Read the currently committed `HostStateVersion`.
+2. Allocate its unique successor.
+3. Allocate journal indices and construct host event IDs as already specified.
+4. Add the graph mutations, journal entries, watermark, and successor host
+   version to the same durable batch.
+5. Commit the batch atomically.
+6. Publish volatile counters only after the durable commit succeeds.
+
+A failed batch must leave all of the following unchanged: graph state; journal
+state; `last_journal_index`; `HostStateVersion`; and volatile next-version
+state.
+
+No-op operations must not advance the version:
+
+- cache-hit pull;
+- repeated invalidation of an already stale node;
+- failed recomputation;
+- failed transaction;
+- export;
+- compaction;
+- synchronization-only changes;
+- replica reopening or switching.
+
+Concurrent host-originated transactions MUST serialize version allocation
+through the same finalization discipline, so they cannot receive the same
+successor or publish changes out of version order. This rule makes the following
+failure impossible: new graph or journal state becomes durable while the
+exported causal frontier still advertises the old host version.
+
 ```js
 /**
  * The properties that this type carries are:
@@ -418,42 +471,145 @@ function unsafeStringToReplicaSnapshotId(value)
 function replicaSnapshotIdToString(snapshotId)
 ```
 
-### Canonical digest
+### Canonical snapshot encoding
 
-`ReplicaSnapshotId` is a fixed-size digest of the complete logical snapshot
-state, equivalent to:
+`ReplicaSnapshotId` is the SHA-256 digest of one normative canonical byte
+encoding of the complete logical snapshot state. The encoding is a cross-host
+protocol identity: its byte layout is normative, not implementation-defined. A
+conforming implementation MUST be able to produce the canonical bytes without
+implementation-specific choices.
+
+The canonical-encoding version is bound to the merge protocol: a change to the
+canonical encoding requires a new `graphAndJournalMergeProtocolVersion`. There
+is no fallback parsing or dual identity format.
+
+#### Primitive encoding
+
+Let `bytes(s)` be the UTF-8 bytes of string `s`. Define:
+
+- `len(s)` = 8-byte big-endian unsigned count of bytes(s).
+- `string(s)` = `len(s) || bytes(s)`.
+- `u64(n)` = 8-byte big-endian unsigned integer; valid range `[0, 2^64-1]`.
+- `bool(b)` = one byte: `0x00` false, `0x01` true.
+- `array(items)` = `u64(count) || item_1 || ... || item_count`.
+- `map(entries)` = `u64(count) || entry_1 || ... || entry_count`, where entries
+  are sorted by the byte lexicographic order of their canonical key encodings.
+- `set(items)` = `array` of distinct items sorted by canonical byte encoding.
+
+#### Scalar type tags
+
+A tagged scalar is `tag || payload`:
+
+- `0x01` string: `string(s)`.
+- `0x02` boolean: `bool(b)`.
+- `0x03` number: 8-byte IEEE-754 binary64 big-endian; `-0` and `+0` both encode
+  as `+0`; NaN encodes as the single canonical bit pattern `0x7FF8000000000000`
+  and no other NaN pattern is produced.
+- `0x04` array: `array(elements)`.
+- `0x05` record: `array(entries)` where each entry is `string(key) || value`
+  and entries are sorted by UTF-8 key bytes.
+
+#### ConstValue encoding
+
+A `ConstValue` (a `SimpleValue`) encodes as its tagged scalar. `undefined`,
+`null`, functions, and symbols are not `SimpleValue` values and have no
+encoding.
+
+#### Nominal identifier encodings
+
+- `NodeName`: `string(nodeName)`.
+- `NodeKey`: `string(nodeKey)` (the canonical key derived from
+  `(nodeName, bindings)`).
+- `NodeIdentifier`: `string(nodeIdentifier)`.
+
+#### Number domain
+
+All numeric values are IEEE-754 binary64 values. Counters and indices encoded
+as `u64` MUST be integers within `[0, 2^53-1]`.
+
+#### Graph state encoding
+
+Graph state encodes as a map of sublevel records, each sorted by key:
 
 ```text
-sha256(encode([
-    "replica-snapshot-v1",
-    versionToString(schemaVersion),
-    graphAndJournalMergeProtocolVersion,
-    canonicalGraphState(graphState),
-    canonicalJournalState(journalState),
-    journalIndexToNumber(lastJournalIndex),
-    causalFrontierToString(causalFrontier),
-    lineageTransitionsToString(lineageTransitions),
-]))
+graphState = map([
+    "values"       -> map(nodeKey -> taggedConstValue)
+    "freshness"    -> map(nodeKey -> 0x01 | 0x02)   // up-to-date | potentially-outdated
+    "timestamps"   -> map(nodeKey -> (createdAtMs: u64, modifiedAtMs: u64))
+    "validity"     -> map(nodeKey -> set(nodeKey))  // outgoing validity edges, sorted
+    "dependencies" -> map(nodeKey -> set(nodeKey))  // direct inputs, sorted
+    "identifiers"  -> map(nodeKey -> nodeIdentifier)  // the identifier lookup
+])
 ```
 
-`sha256` is the SHA-256 digest of the canonical byte encoding `encode`, rendered
-as 64 lowercase hexadecimal characters. `encode` serializes the array
-element-wise: a 64-bit big-endian element count, followed for each element by a
-64-bit big-endian byte-length prefix and the UTF-8 bytes of that element's
-string form. `versionToString(schemaVersion)` is the graph schema/version
-identity used for storage namespacing.
+#### Journal state encoding
 
-`canonicalGraphState` and `canonicalJournalState` are deterministic canonical
-serializations of the graph's synchronization-relevant state and of the journal
-entries and established absences. Their exact byte layout is implementation-
-defined, but they MUST be canonical: the same logical state always produces the
-same bytes, and logically different states produce different bytes.
+```text
+journalState = (
+    lastJournalIndex: u64,
+    presentEntries: array(
+        (index: u64,
+         action: u64,             // 0=add 1=edit 2=delete 3=invalidate 4=validate
+         nodeIdentifier: string,
+         nodeKey: string,
+         timeMs: u64,
+         creator: string,         // journalCreatorToString tagged form
+         eventId: string)
+    )
+)
+```
 
-Because the identity is a digest of the exact logical state, it does not depend
-on how the snapshot was produced. A locally computed state, an exported state, a
-state produced by synchronization, and the same state transported over different
-adapters all receive the same identity. The `encode` input contains no transport
-revision, branch, path, remote, or repository data.
+`presentEntries` is sorted by `index`. Established absences are the indices in
+`1 .. lastJournalIndex` not present in `presentEntries`; they are implicitly
+determined by `lastJournalIndex` together with the present set.
+
+#### Causal frontier encoding
+
+```text
+causalFrontier = map(hostname -> (lineageId: string, version: u64))
+```
+
+sorted by the UTF-8 bytes of `hostnameToString(hostname)`.
+
+#### Lineage-transition encoding
+
+```text
+lineageTransitions = array(
+    (hostname: string,
+     predecessorLineage: string, predecessorVersion: u64,
+     successorLineage: string, successorVersion: u64,
+     kind: u64)                   // 0=reset
+)
+```
+
+sorted by `(hostname, predecessorLineage, predecessorVersion,
+successorLineage, successorVersion)`.
+
+#### Top-level encoding
+
+```text
+canonicalSnapshotBytes(snapshot) =
+    array([
+        string("replica-snapshot"),
+        u64(1),                    // canonical-encoding version
+        string(schemaVersion),
+        string(mergeProtocolVersion),
+        graphStateBytes,
+        journalStateBytes,
+        causalFrontierBytes,
+        lineageTransitionsBytes,
+    ])
+
+ReplicaSnapshotId = sha256(canonicalSnapshotBytes(snapshot))
+```
+
+Because the top-level format tag, every field order, every type tag, and every
+sort order are normative, two conforming implementations produce identical
+bytes for the same logical state and different bytes for any one-field
+difference. The encoding contains no transport revision, branch, path, remote,
+or repository data. The schema and merge-protocol versions are part of the
+identity, so two otherwise identical snapshots interpreted under different
+schema or merge-protocol versions receive different IDs.
 
 ### HostStateCoordinate (nominal)
 
@@ -1957,6 +2113,71 @@ The two event IDs differ, so later synchronization cannot confuse the two
 payloads. The same lineage value also appears in the frontier coordinate
 `{ A: { LA2, 0 } }`, so host-event identity and frontier coordinates share one
 canonical lineage representation.
+
+### Canonical-encoding test vectors
+
+### C1 — Minimal empty or fresh replica
+
+A fresh replica with no materialized nodes, no journal entries, `last_journal_index
+= 0`, frontier `{ A: { LA, 0 } }`, and no transitions encodes to exactly the
+bytes of `array(["replica-snapshot", u64(1), schemaVersion, protocolVersion,
+emptyGraph, emptyJournal, frontierBytes, emptyTransitions])`. Its
+`ReplicaSnapshotId` is the SHA-256 of those bytes.
+
+### C2 — One materialized node
+
+Adding one materialized node with a value, freshness, timestamps, and an
+identifier changes exactly the `values`, `freshness`, `timestamps`, and
+`identifiers` maps; the canonical bytes differ from C1 in exactly those
+positions.
+
+### C3 — Nested ConstValue data
+
+A node value `{ record: { deep: [1, "x", true] } }` encodes as a nested tagged
+record whose nested arrays and records use the same tags and sort order at every
+depth.
+
+### C4 — Map entries in different physical orders
+
+Two implementations that insert the same map entries in different physical
+orders produce identical canonical bytes, because every map is sorted by key
+before encoding.
+
+### C5 — Journal entries plus established absences
+
+A journal with `last_journal_index = 5`, entries at indices 1 and 5, and
+established absences at 2, 3, and 4 encodes `presentEntries` as the sorted list
+of indices 1 and 5; the absences are implicit. Two journals that differ only in
+which indices are absent produce different canonical bytes.
+
+### C6 — Causal frontier with several hosts
+
+A frontier `{ A: { LA, 1 }, B: { LB, 2 }, C: { LC, 0 } }` encodes as a map
+sorted by hostname; a different insertion order produces the same bytes.
+
+### C7 — A reset lineage transition
+
+A transition
+`{ hostname: A, predecessor: { LA1, 1 }, successor: { LA2, 0 }, kind: "reset" }`
+encodes as one sorted transition entry.
+
+### C8 — Independent implementations produce identical bytes and digest
+
+Two independent implementations of the canonical encoding, given the same
+logical snapshot, produce the same canonical bytes and therefore the same
+`ReplicaSnapshotId`.
+
+### C9 — One-field changes produce different bytes and IDs
+
+Changing any single field of the logical state — one value, one timestamp, one
+freshness, one journal entry, one absence, one frontier coordinate, or one
+transition — changes the canonical bytes and therefore the `ReplicaSnapshotId`.
+
+### C10 — Different schema or merge-protocol versions produce different IDs
+
+Two otherwise identical snapshots that differ only in `schemaVersion` or only in
+`graphAndJournalMergeProtocolVersion` produce different canonical bytes and
+different `ReplicaSnapshotId`s.
 
 ---
 

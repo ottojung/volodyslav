@@ -223,8 +223,25 @@ REQ-JM-12a: A successful migration cutover publishes a fresh
 in the old domain. A failed migration preserves the old cursor domain and the
 validity of existing same-process tokens under the old state. Migration
 preserves the established journal lineage and the current local host lineage;
-it rotates only the cursor domain (see
-`incremental-graph-journal-types.md` § Journal lineage).
+it rotates only the cursor domain (see `incremental-graph-journal-types.md` §
+Journal lineage).
+
+### HostStateVersion advance on migration
+
+A migration destination is invisible until cutover. Use one version advance for
+the complete successful migration when it produces host-originated
+synchronization-relevant state:
+
+- The successor version is derived from the previously active replica.
+- It is persisted in the completed inactive destination and published only
+  through successful active-replica cutover.
+- A failed migration preserves the old coordinate.
+- A migration that is entirely synchronization-neutral and produces no
+  host-originated logical change must not advance the version.
+- Migration-generated `add`, `delete`, and `invalidate` entries belong to that
+  one migration version advance (see `incremental-graph-journal-types.md` §
+  Durable commit rules and `incremental-graph-journal-emission.md` §
+  HostStateVersion advance).
 
 ---
 

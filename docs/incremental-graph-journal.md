@@ -141,13 +141,19 @@ causal frontier: for every hostname that contributed to the snapshot, the
 latest host-state coordinate already incorporated — the pair of the host
 lineage and the host's transport-independent logical state version. A newly
 initialized host starts with its own coordinate (its lineage and initial
-version) in the frontier; a pairwise merge unions the two frontiers (retaining
-the later comparable coordinate for a hostname present in both within the same
-lineage, resolving different-lineage coordinates through validated lineage
-transitions, and rejecting unresolvable conflicts); an export after ordinary
-activity preserves remote entries and updates only the local hostname's
-coordinate, advancing it only when the host actually originated new logical
-state.
+version `0`) in the frontier; a pairwise merge unions the two frontiers
+(retaining the later comparable coordinate for a hostname present in both
+within the same lineage, resolving different-lineage coordinates through
+validated lineage transitions, and rejecting unresolvable conflicts); an export
+after ordinary activity preserves remote entries and updates only the local
+hostname's coordinate, advancing it exactly once per host-originated durable
+transaction and never for synchronization-only activity.
+
+The complete graph-and-journal merge is a canonical logical join: it is
+commutative, associative, and idempotent, so the result is determined by the
+represented host-originated logical states and not by the grouping or order in
+which snapshots were merged (see `incremental-graph-synchronization.md` § 1b
+Logical join).
 
 Host lineage is the one canonical host-lineage identifier: the same
 `HostLineageId` value scopes ordinary host-event identity, appears in every host

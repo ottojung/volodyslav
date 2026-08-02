@@ -241,6 +241,39 @@ REQ-JE-13: The volatile journal state (in-memory next-index counter) MUST be upd
 
 ---
 
+## HostStateVersion advance
+
+One successful host-originated durable transaction advances `HostStateVersion`
+exactly once. A transaction may originate several journal entries (for example
+`edit` followed by `validate`) but advances the version only once for the
+complete atomic state transition. The version, the graph mutations, the journal
+entries, the indices, the host event IDs, and the watermark are committed in
+one atomic durable batch during darkroom finalization (see
+`incremental-graph-journal-types.md` § Durable commit rules).
+
+REQ-JE-20: During darkroom finalization, the implementation MUST read the
+currently committed `HostStateVersion`, allocate its unique successor, and add
+that successor to the same durable batch as the graph mutations, journal
+entries, indices, event IDs, and watermark. Volatile next-version state is
+published only after the durable commit succeeds.
+
+REQ-JE-21: A failed batch MUST leave graph state, journal state,
+`last_journal_index`, `HostStateVersion`, and volatile next-version state all
+unchanged.
+
+REQ-JE-22: No-op operations MUST NOT advance the version: cache-hit pull,
+repeated invalidation of an already stale node, failed recomputation, failed
+transaction, export, compaction, synchronization-only changes, and replica
+reopening or switching.
+
+REQ-JE-23: Concurrent host-originated transactions MUST serialize version
+allocation through the same finalization discipline, so they cannot receive the
+same successor or publish changes out of version order. This makes the
+following failure impossible: new graph or journal state becomes durable while
+the exported causal frontier still advertises the old host version.
+
+---
+
 ## Journal index allocation
 
 JournalIndex allocation MUST happen during darkroom finalization, atomically with the durable batch commit. This ensures the published-prefix invariant (REQ-JT-17 through REQ-JT-18): once `last_journal_index = H` is published, no later ordinary append can ever fill, replace, or change a position at or below `H`.
@@ -377,3 +410,68 @@ Two invalidations that begin while node `N` is `up-to-date` may both commit an
 `invalidate` entry. The journal may contain two `invalidate` entries for `N`.
 Logical compaction still returns at most one freshness-category entry for `N`,
 and the implementation performs no commit-time freshness deduplication.
+
+### V1 — Successful changed pull: one version advance
+
+A pull that recomputes a node and changes its value commits graph mutation,
+`edit` (and `validate`) journal entries, the new watermark, and one successor
+`HostStateVersion` in the same atomic batch. The exported causal frontier
+advertises exactly the successor version, never the old version with the new
+state.
+
+### V2 — Changed recomputation emitting edit and validate: one version advance
+
+A recomputation that changes a value emits `edit` then `validate` (two journal
+entries) but advances `HostStateVersion` exactly once for the complete atomic
+state transition.
+
+### V3 — Unchanged recomputation emitting only validate: one version advance
+
+A recomputation that returns an unchanged value for a `potentially-outdated`
+node emits only `validate` and advances `HostStateVersion` exactly once (the
+freshness transition to `up-to-date` is host-originated state).
+
+### V4 — Cache hit: no advance
+
+A pull that encounters an up-to-date node emits no journal entry and advances
+no version.
+
+### V5 — Two concurrent invalidations: distinct successive versions
+
+Two overlapping invalidations of the same node commit two `invalidate` entries
+in two transactions; version allocation is serialized through the same
+finalization discipline, so the two transactions receive two distinct successive
+versions.
+
+### V6 — Failed transaction before durable flush: no advance
+
+A transaction that fails before the durable batch commits leaves graph state,
+journal state, `last_journal_index`, `HostStateVersion`, and volatile
+next-version state unchanged.
+
+### V7 — Crash cannot expose new graph state under an old coordinate
+
+Because the graph mutations, journal entries, watermark, and the successor
+version commit in one atomic durable batch, a crash can never leave new graph
+or journal state durable while the exported causal frontier still advertises
+the old host version.
+
+### V8 — Successful state-changing migration: one cutover advance
+
+A successful migration that produces host-originated synchronization-relevant
+state derives the successor version from the previously active replica,
+persists it in the completed inactive destination, and publishes it only
+through successful active-replica cutover. Migration-generated `add`, `delete`,
+and `invalidate` entries belong to that one migration version advance.
+
+### V9 — Failed migration: no advance
+
+A failed migration preserves the previously active coordinate; the destination
+is discarded or rebuilt and never publishes a version.
+
+### V10 — Fresh initialization and reset both start at version 0
+
+A freshly initialized host lineage begins at `HostStateVersion = 0`, and a
+successful reset initializes the new lineage at version 0; the reset operation
+is represented by the new lineage and its transition record, not by incrementing
+the old lineage.
