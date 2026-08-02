@@ -33,13 +33,13 @@ An ordinary event originated by one host is identified by:
 const eventId = JSON.stringify([
     "host",
     hostnameToString(creator),
-    hostEventNamespaceIdToString(namespaceId),
+    hostLineageIdToString(lineageId),
     journalIndexToNumber(originIndex),
 ]);
 ```
 
-`namespaceId` is the host event namespace active when the event's original
-index was allocated. The namespace scopes host event identity so that two
+`lineageId` is the host lineage active when the event's original
+index was allocated. The lineage scopes host event identity so that two
 journal lineages installed on the same host cannot reuse an `originIndex`
 under the same event ID.
 
@@ -47,17 +47,23 @@ Use exactly this tagged fixed-order tuple passed to `JSON.stringify`. No other
 host-event format, version tag, custom serialization format, or optional
 event-ID fields.
 
-### Host event namespace (nominal)
+### Host lineage (nominal)
 
-`HostEventNamespaceId` is an opaque nominal identifier for one host event
-namespace.
+`HostLineageId` is the one canonical host-lineage identifier for a host. It is
+used consistently for:
 
-- A fresh namespace is generated when a host journal is initialized and after
+- ordinary host-event identity (the `lineageId` in the host event ID above);
+- host revision coordinates in the incorporation frontier (see
+  `HostRevisionCoordinate` and `Incorporation frontier`);
+- detecting reset discontinuities (two coordinates of the same hostname with
+  different lineage IDs are incomparable regardless of Git ancestry).
+
+- A fresh lineage is generated when a host journal is initialized and after
   a successful `reset-to-hostname` (see `Journal lineage`).
-- Existing events preserve their original namespace.
+- Existing events preserve their original lineage.
 - Normal pairwise synchronization and migration preserve the current local
-  namespace.
-- Because host event identity is `["host", hostname, hostEventNamespaceId,
+  lineage.
+- Because host event identity is `["host", hostname, hostLineageId,
   originIndex]`, the lineage is present in the event ID; two lineages installed
   on the same host cannot collide even when the new lineage reuses numeric
   indices.
@@ -65,46 +71,49 @@ namespace.
 ```js
 /**
  * The properties that this type carries are:
- * - The value identifies one host event namespace, fresh on host journal
+ * - The value identifies one host lineage, fresh on host journal
  *   initialization and on successful reset-to-hostname, and otherwise
  *   preserved.
+ * - It is the single canonical representation of host lineage: the same value
+ *   is used for host-event identity, for the incorporation frontier's host
+ *   revision coordinates, and for detecting reset discontinuities.
  *
  * The proof of those properties is guaranteed by:
  * - This typedef cannot enforce the property by construction.
  * - Therefore every function that returns this type is part of the proof.
  * - The current return sites are:
- *   - host journal initialization, which allocates a fresh namespace;
- *   - successful reset-to-hostname, which allocates a fresh namespace for the
- *     newly installed lineage.
+ *   - host journal initialization, which allocates a fresh lineage;
+ *   - successful reset-to-hostname, which allocates a fresh lineage for the
+ *     newly installed journal.
  */
-class HostEventNamespaceIdClass {
+class HostLineageIdClass {
     /** @private @type {undefined} */ __brand;
-    constructor() { if (this.__brand !== undefined) throw new Error("HostEventNamespaceId cannot be instantiated"); }
+    constructor() { if (this.__brand !== undefined) throw new Error("HostLineageId cannot be instantiated"); }
 }
 
-/** @typedef {HostEventNamespaceIdClass} HostEventNamespaceId */
+/** @typedef {HostLineageIdClass} HostLineageId */
 ```
 
 Conversion functions:
 
 ```js
 /**
- * Unsafe cast: wraps a string as a HostEventNamespaceId.
- * The function is defined only for a namespace identifier generated as
+ * Unsafe cast: wraps a string as a HostLineageId.
+ * The function is defined only for a lineage identifier generated as
  * described above.
  *
  * @param {string} value
- * @returns {HostEventNamespaceId}
+ * @returns {HostLineageId}
  */
-function unsafeStringToHostEventNamespaceId(value)
+function unsafeStringToHostLineageId(value)
 
 /**
- * Render a HostEventNamespaceId to its string persisted representation.
+ * Render a HostLineageId to its string persisted representation.
  *
- * @param {HostEventNamespaceId} namespaceId
+ * @param {HostLineageId} lineageId
  * @returns {string}
  */
-function hostEventNamespaceIdToString(namespaceId)
+function hostLineageIdToString(lineageId)
 ```
 
 #### Sync-derived event
@@ -211,10 +220,10 @@ function sourceRevisionIdToString(revision)
 - An event's immutable payload is fixed at its first durable commit.
 - Copying an event preserves its event ID.
 - Reappending an event preserves its event ID.
-- Moving an event does not change its encoded `originIndex` or its host event
-  namespace.
-- Two ordinary events created by the same host within the same host event
-  namespace cannot have the same origin index.
+- Moving an event does not change its encoded `originIndex` or its host
+  lineage.
+- Two ordinary events created by the same host within the same host lineage
+  cannot have the same origin index.
 - Hostnames are unique within the synchronization mesh.
 
 ### Integrity
@@ -266,7 +275,7 @@ the identified state. It is not:
 - a database allocation fingerprint (a fingerprint identifies an allocation
   namespace and can remain unchanged across many different snapshots);
 - the local hostname;
-- the current local host event namespace;
+- the current local host lineage;
 - the cursor domain;
 - a physical replica slot;
 - the active/inactive designation;
@@ -395,21 +404,59 @@ Consequences:
 - if strict collision handling is desired, associate each digest with its
   canonical preimage and reject a digest/preimage mismatch.
 
+### HostRevisionCoordinate
+
+One host's position in an incorporation frontier is a **revision coordinate**:
+the pair of the host lineage the revision belongs to and the exact host
+revision.
+
+```js
+/**
+ * The properties that this type carries are:
+ * - `lineageId` is the host lineage the revision belongs to.
+ * - `revision` is the exact host revision of that lineage.
+ *
+ * The proof of those properties is guaranteed by:
+ * - This typedef cannot enforce the property by construction.
+ * - Therefore every function that returns this type is part of the proof.
+ * - The current return sites are:
+ *   - host journal initialization, which records the host's own lineage and
+ *     current revision;
+ *   - a successful `reset-to-hostname`, which records a fresh lineage and the
+ *     reset commit revision;
+ *   - `unionIncorporationFrontiers`, which retains a descendant coordinate
+ *     within one lineage;
+ *   - `localCheckpointIncorporationFrontier`, which advances only the local
+ *     hostname's coordinate within its current lineage.
+ */
+class HostRevisionCoordinateClass {
+    /** @private @type {undefined} */ __brand;
+
+    /** @readonly @type {HostLineageId} */
+    lineageId;
+
+    /** @readonly @type {SourceRevisionId} */
+    revision;
+}
+
+/** @typedef {HostRevisionCoordinateClass} HostRevisionCoordinate */
+```
+
 ### Incorporation frontier (nominal)
 
 `IncorporationFrontier` is the per-host incorporation frontier of one source
 snapshot. It is a canonical immutable mapping conceptually equivalent to:
 
 ```
-Map<Hostname, SourceRevisionId>
+Map<Hostname, HostRevisionCoordinate>
 ```
 
 For every hostname that contributed to the snapshot, the frontier records the
-exact host revision of that hostname that the snapshot has incorporated. The
-frontier is persisted as part of `SourceSnapshotProvenance` and is included in
-the exact synchronization-relevant state that a `SourceSnapshotId` identifies:
-two snapshots with different frontiers are different exact states and receive
-different snapshot identities.
+exact host revision coordinate of that hostname that the snapshot has
+incorporated. The frontier is persisted as part of `SourceSnapshotProvenance`
+and is included in the exact synchronization-relevant state that a
+`SourceSnapshotId` identifies: two snapshots with different frontiers are
+different exact states and receive different snapshot identities.
 
 The frontier is the single source of the contributor set of a snapshot. The
 contributor set of a source snapshot is derived from the frontier's hostname
@@ -420,22 +467,24 @@ disagree.
 /**
  * The properties that this type carries are:
  * - The value is an immutable mapping from each contributing hostname to the
- *   exact host revision of that hostname already incorporated by the snapshot.
+ *   exact host revision coordinate of that hostname already incorporated by
+ *   the snapshot.
  * - Iteration and persisted serialization are in deterministic canonical order:
  *   hostnames sorted by `hostnameToString` using deterministic JavaScript
  *   code-unit ordering.
  *
  * The proof of those properties is guaranteed by:
- * - `makeInitialIncorporationFrontier(ownHostname, ownRevision)`: constructs
- *   the frontier `{ ownHostname: ownRevision }` for a freshly initialized host.
- * - `localCheckpointIncorporationFrontier(frontier, ownHostname, ownRevision)`:
- *   preserves every remote entry of `frontier` and replaces only the
- *   `ownHostname` entry; it is used for a local checkpoint taken after ordinary
- *   graph activity.
+ * - `makeInitialIncorporationFrontier(ownHostname, ownLineageId, ownRevision)`:
+ *   constructs the frontier `{ ownHostname: { lineageId, revision } }` for a
+ *   freshly initialized host.
+ * - `localCheckpointIncorporationFrontier(frontier, ownHostname, ownLineageId,
+ *   ownRevision)`: preserves every remote entry of `frontier` and replaces only
+ *   the `ownHostname` entry with the local host's current lineage and revision;
+ *   it is used for a local checkpoint taken after ordinary graph activity.
  * - `unionIncorporationFrontiers(left, right)`: computes the union of two
- *   frontiers, retaining the known descendant revision for any hostname present
- *   in both and rejecting the operation when the two revisions are
- *   incomparable.
+ *   frontiers, retaining the known descendant coordinate for any hostname
+ *   present in both within the same lineage and rejecting the operation when
+ *   the two coordinates belong to different lineages (incomparable).
  * - No mutation operation is exposed on `IncorporationFrontier` values.
  */
 class IncorporationFrontierClass {
@@ -451,34 +500,43 @@ Conversion functions:
 ```js
 /**
  * Construct the incorporation frontier of a freshly initialized host.
- * The frontier contains exactly `{ ownHostname: ownRevision }`.
+ * The frontier contains exactly `{ ownHostname: { lineageId: ownLineageId,
+ * revision: ownRevision } }`.
  *
  * @param {Hostname} ownHostname
+ * @param {HostLineageId} ownLineageId
  * @param {SourceRevisionId} ownRevision
  * @returns {IncorporationFrontier}
  */
-function makeInitialIncorporationFrontier(ownHostname, ownRevision)
+function makeInitialIncorporationFrontier(ownHostname, ownLineageId, ownRevision)
 
 /**
  * Derive the incorporation frontier of a local checkpoint taken after ordinary
  * graph activity. Every remote entry of `frontier` is preserved exactly; only
- * the `ownHostname` entry is replaced with `ownRevision`.
+ * the `ownHostname` entry is replaced with the local host's current lineage
+ * (`ownLineageId`) and revision (`ownRevision`). Ordinary graph activity does
+ * not change the local host's lineage; only initialization and a successful
+ * `reset-to-hostname` do.
  *
  * @param {IncorporationFrontier} frontier
  * @param {Hostname} ownHostname
+ * @param {HostLineageId} ownLineageId
  * @param {SourceRevisionId} ownRevision
  * @returns {IncorporationFrontier}
  */
-function localCheckpointIncorporationFrontier(frontier, ownHostname, ownRevision)
+function localCheckpointIncorporationFrontier(frontier, ownHostname, ownLineageId, ownRevision)
 
 /**
  * Union two incorporation frontiers. For a hostname present in only one
  * frontier, its entry is retained. For a hostname present in both:
- * - equal revisions are retained;
- * - when one revision is a known descendant of the other, the descendant is
- *   retained;
- * - otherwise the two revisions are incomparable and the operation MUST reject
- *   rather than guess a winner.
+ * - equal coordinates are retained;
+ * - when the two coordinates have the same lineage and one revision is a known
+ *   descendant of the other, the descendant coordinate is retained;
+ * - otherwise the two coordinates are incomparable (in particular, when their
+ *   lineage IDs differ) and the operation MUST reject rather than guess a
+ *   winner. Git ancestry MUST NEVER override a lineage mismatch: two revisions
+ *   with different lineage IDs are incomparable even when one is a Git
+ *   descendant of the other.
  *
  * The union is commutative: `unionIncorporationFrontiers(left, right)` and
  * `unionIncorporationFrontiers(right, left)` produce the same frontier or the
@@ -491,12 +549,12 @@ function localCheckpointIncorporationFrontier(frontier, ownHostname, ownRevision
 function unionIncorporationFrontiers(left, right)
 
 /**
- * Return the revision recorded for a hostname, or `undefined` when the
- * frontier does not contain the hostname.
+ * Return the revision coordinate recorded for a hostname, or `undefined` when
+ * the frontier does not contain the hostname.
  *
  * @param {IncorporationFrontier} frontier
  * @param {Hostname} hostname
- * @returns {SourceRevisionId | undefined}
+ * @returns {HostRevisionCoordinate | undefined}
  */
 function incorporationFrontierGet(frontier, hostname)
 
@@ -511,16 +569,23 @@ function incorporationFrontierGet(frontier, hostname)
 function incorporationFrontierHostnames(frontier)
 ```
 
-A host revision graph is the per-host history of revisions (for example, the
-commits of the host's branch in the shared repository). Two revisions of the
-same hostname are comparable through that graph: one may be an ancestor of the
-other, or they may be equal. A revision is the **known descendant** of another
-when the host revision graph proves the ancestry relationship. Two revisions of
-the same hostname are **incomparable** when neither is an ancestor of the other
-and they are not equal; this is the normal shape of revisions from different
-journal lineages of the same hostname (for example, across a
-`reset-to-hostname`). Normal synchronization MUST reject incomparable revisions
-rather than guess a winner.
+A host revision graph is the per-host history of revisions within one host
+lineage (for example, the commits of the host's branch in the shared
+repository that belong to that lineage). Two revisions of the same hostname are
+comparable only when they belong to the **same host lineage**: within one
+lineage one may be an ancestor of the other, or they may be equal. A revision
+is the **known descendant** of another when the host revision graph proves the
+ancestry relationship within that lineage.
+
+Two revisions of the same hostname with **different lineage IDs** are
+**incomparable regardless of Git ancestry**. This is the normal shape of
+revisions from different journal lineages of the same hostname across a
+`reset-to-hostname`: the supported reset implementation creates the reset
+commit as a child of the old local head, so the reset revision *is* a Git
+descendant of the pre-reset revision, yet the fresh lineage makes the two
+coordinates incomparable. Normal synchronization MUST reject incomparable
+coordinates rather than guess a winner, and MUST NOT let Git ancestry override
+a lineage mismatch.
 
 ### SourceSnapshotProvenance
 
@@ -542,8 +607,9 @@ For a checkpoint leaf staged directly from a host revision:
 id                         = checkpoint source-snapshot ID
 incorporatedRevisions      = the host's incorporation frontier at the staged
                              revision: it maps the hostname to exactly that
-                             staged revision and preserves every remote
-                             revision the host had already incorporated
+                             staged coordinate (the host's current lineage and
+                             the staged revision) and preserves every remote
+                             coordinate the host had already incorporated
 graphAndJournalMergeProtocolVersion = the currently advertised protocol version
 schemaVersion              = the source's schema version
 ```
@@ -559,7 +625,7 @@ schemaVersion              = preserved from the inputs
 ```
 
 The frontier union rejects a merge whose two inputs record incomparable
-revisions for a common hostname. This is the rejection rule for a regressed or
+coordinates for a common hostname. This is the rejection rule for a regressed or
 incomparable host revision during normal synchronization; see
 `incremental-graph-journal-sync.md` § Incorporation frontier and no-op per-host
 merges.
@@ -1320,9 +1386,17 @@ the old lineage.
 - The reset journal adopts the selected snapshot's journal and watermark
   exactly. The new watermark may be numerically lower than the old lineage's
   watermark.
-- A successful reset generates a fresh host event namespace (see
-  `Host event namespace`), so numeric index reuse in the new lineage cannot
-  collide with old-lineage host event IDs.
+- A successful reset generates a fresh local `HostLineageId` (see
+  `Host lineage`), so numeric index reuse in the new lineage cannot
+  collide with old-lineage host event IDs. Newly originated host events after
+  the reset use that same fresh lineage.
+- A successful reset replaces the resetting hostname's frontier coordinate with
+  the fresh lineage and the reset commit revision, and preserves the
+  applicable coordinates of other hosts from the selected snapshot (see
+  `incremental-graph-journal-sync.md` § Reset-to-hostname). The reset commit is
+  a child of the old local head in the host revision graph, but the fresh
+  lineage makes the new coordinate incomparable with the old coordinate;
+  Git ancestry does not override that lineage mismatch.
 - No journal-notification continuity is specified across reset.
 - The old and new journal positions are not one shared index namespace.
 
@@ -1335,26 +1409,26 @@ A successful reset must create and publish a fresh `JournalCursorDomain`:
 
 1. Keep the old domain active while constructing the reset destination.
 2. Construct the destination to contain its journal, watermark, source
-   provenance where applicable, and a fresh host event namespace, all durably
+   provenance where applicable, and a fresh host lineage, all durably
    stored inside the destination replica.
 3. Complete and durably validate the destination.
 4. Atomically switch the active replica. The pointer switch selects a
-   destination that already contains its fresh host event namespace.
+   destination that already contains its fresh host lineage.
 5. Publish the fresh cursor domain and the in-memory cache of the new host
-   event namespace.
+   lineage.
 6. Reject every `PossibleNodeChange` token registered in the old domain.
 
-Only volatile state — the in-memory namespace cache and the new cursor domain —
-is published after the pointer switch. The durable namespace is part of the
+Only volatile state — the in-memory lineage cache and the new cursor domain —
+is published after the pointer switch. The durable lineage is part of the
 destination, so a crash after cutover cannot leave the newly active lineage
-with an old or missing namespace.
+with an old or missing lineage.
 
 A failed reset preserves:
 
 - the previous active replica;
 - the previous journal lineage;
 - the previous cursor domain;
-- the previous host event namespace;
+- the previous host lineage;
 - the validity of existing same-process tokens under the old state.
 
 ### Cursor domain rotation on migration
@@ -1369,9 +1443,9 @@ successful migration cutover publishes a fresh `JournalCursorDomain`:
 5. Reject every `PossibleNodeChange` token registered in the old domain.
 
 A failed migration preserves the previous active replica, journal lineage,
-cursor domain, host event namespace, and the validity of existing same-process
+cursor domain, host lineage, and the validity of existing same-process
 tokens under the old state. Migration preserves the established journal
-lineage and the current local host event namespace; it rotates only the cursor
+lineage and the current local host lineage; it rotates only the cursor
 domain.
 
 Normal pairwise synchronization preserves the existing cursor domain.
@@ -1668,23 +1742,57 @@ be confused even though host and revision match.
 
 ### E7 — Frontier descendant retention and incomparability
 
-Host H has a linear revision history `r1 → r2 → r3`.
+Host H has a linear revision history within lineage `L`: `r1 → r2 → r3`.
 
-- Frontier `F1 = { H: r1 }` and `F2 = { H: r3 }` union to `{ H: r3 }`: `r3` is a
-  known descendant of `r1`, so the descendant is retained.
-- Frontier `F1 = { H: r1 }` and `F3 = { H: r1 }` union to `{ H: r1 }`: equal
-  revisions are retained.
-- Frontier `F1 = { H: r1 }` and `F4 = { H: r' }`, where `r'` is from a
-  different lineage of H (for example, after a reset) and is incomparable with
-  `r1`: `unionIncorporationFrontiers(F1, F4)` rejects rather than guessing a
-  winner.
+- Frontier `F1 = { H: { L, r1 } }` and `F2 = { H: { L, r3 } }` union to
+  `{ H: { L, r3 } }`: same lineage, and `r3` is a known descendant of `r1`, so
+  the descendant coordinate is retained.
+- Frontier `F1 = { H: { L, r1 } }` and `F3 = { H: { L, r1 } }` union to
+  `{ H: { L, r1 } }`: equal coordinates are retained.
+- Frontier `F1 = { H: { L, r1 } }` and `F4 = { H: { L', r' } }`, where `L'`
+  is a different lineage of H (for example, after a reset) and `r'` is the
+  reset commit: even when `r'` is a Git descendant of `r1`, the two coordinates
+  have different lineage IDs and are incomparable.
+  `unionIncorporationFrontiers(F1, F4)` rejects rather than guessing a winner.
+  Git ancestry never overrides a lineage mismatch.
 
 ### E8 — Contributor set derives from the frontier
 
-A snapshot whose frontier is `{ A: rA, B: rB, C: rC }` has contributor set
-`makeSync(incorporationFrontierHostnames(frontier)) = Sync{A, B, C}`. The
-contributor set is never stored independently, so it cannot disagree with the
-frontier.
+A snapshot whose frontier is `{ A: {LA, rA}, B: {LB, rB}, C: {LC, rC} }` has
+contributor set `makeSync(incorporationFrontierHostnames(frontier)) =
+Sync{A, B, C}`. The contributor set is never stored independently, so it cannot
+disagree with the frontier.
+
+### E9 — Frontier coordinate resolution rules
+
+For a staged coordinate `{ Ls, rs }` compared against a frontier coordinate
+`{ Lf, rf }` for the same hostname:
+
+- same lineage (`Ls === Lf`) and equal revision (`rs === rf`): already
+  incorporated, complete no-op;
+- same lineage and `rs` a known descendant of `rf`: normal advancement, merge;
+- same lineage and `rs` a known ancestor of `rf`: regression, reject;
+- different lineage (`Ls !== Lf`): incomparable regardless of Git ancestry,
+  reject.
+
+### E10 — Host event identity uses the canonical host lineage
+
+Host A in lineage `LA` emits an event at index 21:
+
+```
+eventId = JSON.stringify(["host", "A", hostLineageIdToString(LA), 21])
+```
+
+After a reset, host A's new lineage `LA2` reaches index 21 with
+
+```
+eventId = JSON.stringify(["host", "A", hostLineageIdToString(LA2), 21])
+```
+
+The two event IDs differ, so later synchronization cannot confuse the two
+payloads. The same lineage value also appears in the frontier coordinate
+`{ A: { LA2, rA } }`, so host-event identity and frontier coordinates share one
+canonical lineage representation.
 
 ---
 
