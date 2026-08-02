@@ -60,20 +60,22 @@ Every synchronization input and output snapshot carries a
 
 - A checkpoint leaf staged from a host revision receives a checkpoint
   source-snapshot ID, an `incorporatedRevisions` frontier that maps that
-  hostname to exactly the staged revision and preserves every remote revision
-  the host had already incorporated, the currently advertised merge protocol
-  version, and the source's schema version.
+  hostname to exactly the staged coordinate (the host's current lineage and the
+  staged revision) and preserves every remote coordinate the host had already
+  incorporated, the currently advertised merge protocol version, and the
+  source's schema version.
 - A deterministic merge result receives a merge source-snapshot ID, an
   `incorporatedRevisions` frontier equal to the union of the two input
-  frontiers (retaining the known descendant revision for any hostname present
-  in both; rejecting the merge when a common hostname's revisions are
-  incomparable), and preserves the inputs' merge protocol and schema versions.
+  frontiers (retaining the known descendant coordinate for any hostname present
+  in both within the same lineage; rejecting the merge when a common
+  hostname's coordinates are incomparable — in particular when their lineage
+  IDs differ), and preserves the inputs' merge protocol and schema versions.
 
 The protocol and schema versions are persisted as explicit compatibility
 metadata, stored separately even though they are also hashed into derived
 snapshot IDs. Pairwise merge rejects inputs with mismatching merge protocol or
 schema versions before graph or journal reconciliation. The frontier union
-additionally rejects inputs whose frontiers record incomparable revisions for a
+additionally rejects inputs whose frontiers record incomparable coordinates for a
 common hostname; see § Incorporation frontier and no-op per-host merges.
 
 The merged destination's provenance must be durably established before that
@@ -91,7 +93,8 @@ fresh checkpoint provenance is derived for that precise local snapshot; this
 provenance is used as the local source's provenance for the first per-host
 merge. A local checkpoint derives its frontier with
 `localCheckpointIncorporationFrontier`: it preserves every remote entry of the
-previous frontier and updates only the local hostname's revision. Each derived
+previous frontier and updates only the local hostname's coordinate (keeping
+the local host's lineage, which ordinary activity does not change). Each derived
 merge output receives persisted merge provenance before it can become the next
 local source.
 
@@ -118,34 +121,43 @@ never disagree.
 ## Incorporation frontier and no-op per-host merges
 
 The incorporation frontier makes synchronization a fixed point for an
-unchanged host and prevents repeated re-notification.
+unchanged host and prevents repeated re-notification. The frontier maps each
+contributing hostname to a `HostRevisionCoordinate`: the pair of the host
+lineage and the exact host revision already incorporated (see
+`incremental-graph-journal-types.md` § HostRevisionCoordinate and §
+Incorporation frontier).
 
-### Staged-host revision check
+### Staged-host coordinate check
 
-Before merging a staged host snapshot whose revision is `r` for hostname `H`,
-the implementation MUST consult the local source's `incorporatedRevisions`
-frontier:
+Before merging a staged host snapshot whose coordinate is `{ Ls, r }` (lineage
+`Ls`, revision `r`) for hostname `H`, the implementation MUST consult the local
+source's `incorporatedRevisions` frontier:
 
 - If the frontier does not contain `H`, the host has not been incorporated
   before; proceed with a normal per-host merge.
-- If `frontier[H]` equals `r`, the exact revision is already incorporated. The
-  per-host merge is a **complete no-op**: no destination is constructed, no
-  journal event is appended or repositioned, no notification is emitted, the
-  watermark is not increased, no new provenance is published, and the
-  active-replica pointer MUST remain unchanged.
-- If `frontier[H]` is a known descendant of `r`, the staged revision is a
-  regression (an ancestor of a revision already incorporated). Normal
+- If `frontier[H]` equals `{ Ls, r }` — the exact lineage and revision are
+  already incorporated — the per-host merge is a **complete no-op**: no
+  destination is constructed, no journal event is appended or repositioned, no
+  notification is emitted, the watermark is not increased, no new provenance is
+  published, and the active-replica pointer MUST remain unchanged.
+- If the frontier contains `H` with the same lineage `Ls` and `frontier[H]`
+  is a known descendant of `r`, the staged revision is a regression (an
+  ancestor of a revision already incorporated in the same lineage). Normal
   synchronization MUST reject the merge rather than guess or re-incorporate.
-- If `r` is a known descendant of `frontier[H]`, the staged revision is newer;
-  proceed with a normal per-host merge.
-- If `r` and `frontier[H]` are incomparable (neither is an ancestor of the
-  other), normal synchronization MUST reject the merge rather than guess a
-  winner.
+- If the frontier contains `H` with the same lineage `Ls` and `r` is a known
+  descendant of `frontier[H]`, the staged revision is newer within the same
+  lineage; proceed with a normal per-host merge.
+- If the frontier contains `H` with a **different lineage** (`frontier[H].
+  lineageId !== Ls`), the staged coordinate is incomparable with the recorded
+  coordinate **regardless of Git ancestry**. Even when `r` is a Git descendant
+  of `frontier[H].revision`, the different lineage makes the two coordinates
+  incomparable; normal synchronization MUST reject the merge rather than guess
+  a winner. Git ancestry must never override a lineage mismatch.
 
 ### Absorption property
 
-Let `D = merge(A, B)`. If `B` has not advanced — its staged host revision
-equals the revision recorded for `B`'s hostname in `D`'s frontier — then:
+Let `D = merge(A, B)`. If `B` has not advanced — its staged host coordinate
+equals the coordinate recorded for `B`'s hostname in `D`'s frontier — then:
 
 ```
 merge(D, B) = D
@@ -170,18 +182,27 @@ journal.
 
 A local checkpoint taken after ordinary graph activity (pulls, invalidations,
 ordinary journal appends) preserves every remote frontier entry and updates
-only the local hostname's revision. Therefore ordinary local activity does not
-by itself make an unchanged remote host "new": if the exact staged revision is
-already incorporated, the per-host merge remains a no-op. A remote host becomes
-a genuine new input only when its revision advances to a descendant revision
-not yet recorded in the frontier.
+only the local hostname's coordinate — the local host's revision within its
+current lineage. Ordinary graph activity does not change the local host's
+lineage; only initialization and a successful `reset-to-hostname` do. Therefore
+ordinary local activity does not by itself make an unchanged remote host "new":
+if the exact staged coordinate is already incorporated, the per-host merge
+remains a no-op. A remote host becomes a genuine new input only when its
+revision advances to a descendant revision (within the same lineage) not yet
+recorded in the frontier.
 
 ### Reset-to-hostname
 
 A successful `reset-to-hostname` replaces the installed graph-and-journal state
-and therefore also replaces the installed frontier with the selected snapshot's
-frontier. The old lineage's frontier does not carry across a reset; revisions
-of the same hostname from before and after the reset are normally incomparable.
+and therefore also replaces the installed frontier: the reset installs the
+selected snapshot, generates a fresh local `HostLineageId`, replaces the
+resetting hostname's frontier coordinate with the fresh lineage and the reset
+commit revision, and preserves the applicable coordinates of other hosts from
+the selected snapshot (see § Reset-to-hostname below). The old lineage's
+frontier does not carry across a reset. Because the resetting hostname's
+coordinate changes lineage, revisions of the same hostname from before and after
+the reset are incomparable even though the reset commit is a Git descendant of
+the old local head.
 
 ---
 
@@ -780,24 +801,44 @@ and release the garden afterward.
 pairwise merge. It replaces the whole installed graph-and-journal state with a
 selected host snapshot and does not perform pairwise journal reconciliation.
 
+A successful `reset-to-hostname` MUST:
+
+1. install the selected graph and journal snapshot;
+2. generate a fresh local `HostLineageId`;
+3. use that same fresh lineage for newly originated host event IDs;
+4. replace the resetting hostname's frontier coordinate with the fresh lineage
+   and the reset commit revision;
+5. preserve the applicable coordinates of other hosts from the selected
+   snapshot;
+6. rotate the cursor domain as specified below.
+
+In detail:
+
 - A successful reset ends the currently installed journal lineage and installs
   the selected snapshot as a new local lineage (see
   `incremental-graph-journal-types.md` § Journal lineage).
 - The reset journal adopts the selected snapshot's journal and watermark
   exactly. The new watermark may be numerically lower than the old lineage's
   watermark.
-- A successful reset also generates a fresh host event namespace, so numeric
+- A successful reset also generates a fresh local `HostLineageId`, so numeric
   index reuse in the new lineage cannot collide with old-lineage host event
-  IDs (see `incremental-graph-journal-types.md` § Host event namespace).
-- A successful reset replaces the installed incorporation frontier with the
-  selected snapshot's frontier. The old lineage's frontier does not carry
-  across a reset, so revisions of the same hostname from before and after the
-  reset are normally incomparable (see § Incorporation frontier and no-op
-  per-host merges).
+  IDs. Newly originated host events after the reset use that same fresh lineage
+  (see `incremental-graph-journal-types.md` § Host lineage).
+- A successful reset replaces the installed incorporation frontier: the
+  resetting hostname's coordinate becomes the fresh lineage paired with the
+  reset commit revision, while the applicable coordinates of other hosts are
+  preserved from the selected snapshot. The old lineage's frontier does not
+  carry across a reset. Because the resetting hostname's coordinate changes
+  lineage, revisions of the same hostname from before and after the reset are
+  incomparable even though the reset commit is a Git descendant of the old
+  local head (see § Incorporation frontier and no-op per-host merges).
+- Normal synchronization MUST NOT merge two coordinates for the same hostname
+  when their lineage IDs differ. The explicit reset operation, not ordinary
+  pairwise merge, is the mechanism for crossing that boundary.
 - No journal-notification continuity is specified across reset.
 
 Normal pairwise synchronization and migration preserve the current local host
-event namespace.
+lineage.
 
 ### Cursor domain rotation
 
@@ -805,22 +846,22 @@ A successful reset must create and publish a fresh `JournalCursorDomain`:
 
 1. Keep the old domain active while constructing the reset destination.
 2. Construct the destination to contain its journal, watermark, source
-   provenance where applicable, and a fresh host event namespace, all durably
+   provenance where applicable, and a fresh host lineage, all durably
    stored inside the destination replica.
 3. Complete and durably validate the destination.
 4. Atomically switch the active replica. The pointer switch selects a
-   destination that already contains its fresh host event namespace.
+   destination that already contains its fresh host lineage.
 5. Publish the fresh cursor domain and the in-memory cache of the new host
-   event namespace.
+   lineage.
 6. Reject every `PossibleNodeChange` token registered in the old domain.
 
-Only volatile state — the in-memory namespace cache and the new cursor domain —
-is published after the pointer switch. The durable namespace is part of the
+Only volatile state — the in-memory lineage cache and the new cursor domain —
+is published after the pointer switch. The durable lineage is part of the
 destination, so a crash after cutover cannot leave the newly active lineage
-with an old or missing namespace.
+with an old or missing lineage.
 
 A failed reset preserves the previous active replica, journal lineage, cursor
-domain, host event namespace, and the validity of existing same-process tokens
+domain, host lineage, and the validity of existing same-process tokens
 under the old state.
 
 Normal pairwise synchronization preserves the existing cursor domain; a
@@ -856,8 +897,9 @@ the same fresh-placement sequence.
 ## Absorption (fixed point)
 
 Synchronization is a fixed point for an unchanged host. Let `D = merge(A, B)`.
-If `B` has not advanced — the revision staged for `B`'s hostname equals the
-revision recorded in `D`'s incorporation frontier — then `merge(D, B) = D`.
+If `B` has not advanced — the coordinate staged for `B`'s hostname (its lineage
+and revision) equals the coordinate recorded in `D`'s incorporation frontier —
+then `merge(D, B) = D`.
 
 The second merge must not:
 
@@ -920,8 +962,8 @@ of the public API. The `PossibleNodeChange` type intentionally excludes them.
 
 ### T1 — Journal integrity: conflicting payload
 
-Source A: eventId "[\"host\",\"h1\",\"namespace-1\",3]" with payload edit W1
-Source B: eventId "[\"host\",\"h1\",\"namespace-1\",3]" with payload edit W2
+Source A: eventId "[\"host\",\"h1\",\"lineage-1\",3]" with payload edit W1
+Source B: eventId "[\"host\",\"h1\",\"lineage-1\",3]" with payload edit W2
 
 Synchronization aborts. Different payloads for the same eventId are an
 integrity error.
@@ -1170,10 +1212,11 @@ different merge snapshot ID.
 
 ### T26 — Contributor sets union across successive merges
 
-Freshly initialized leaf snapshots `A`, `B`, and `C` have frontiers `{A}`,
-`{B}`, and `{C}`. Merging `A` and `B` yields a frontier `{A, B}` and a
-contributor set `Sync{A, B}` (derived from the frontier's hostnames). Merging
-that derived snapshot with leaf `C` yields a frontier `{A, B, C}` and a
+Freshly initialized leaf snapshots `A`, `B`, and `C` have frontiers
+`{ A: { LA, rA } }`, `{ B: { LB, rB } }`, and `{ C: { LC, rC } }`. Merging `A`
+and `B` yields a frontier `{ A: { LA, rA }, B: { LB, rB } }` and a contributor
+set `Sync{A, B}` (derived from the frontier's hostnames). Merging that derived
+snapshot with leaf `C` yields a frontier with hostnames `{A, B, C}` and a
 contributor set `Sync{A, B, C}`. The contributor set is never stored
 independently of the frontier.
 
@@ -1214,52 +1257,64 @@ freezing/checkpointing the exact local source and deriving fresh checkpoint
 provenance for that precise snapshot, so the second run's local source snapshot
 ID differs from `D`'s merge ID. The local checkpoint derives its frontier with
 `localCheckpointIncorporationFrontier`: remote entries are preserved and only
-the local hostname's revision is updated.
+the local hostname's coordinate is updated (its revision within its current
+lineage).
 
-### T33 — Host event namespace prevents reuse across lineages
+### T33 — Host lineage prevents reuse across lineages
 
-Host A's old lineage contains `eventId = ["host","A",ns1,21]`. A resets and
-installs a new lineage with a fresh host event namespace `ns2`; after eleven
-appends the new lineage reaches index 21 with
-`eventId = ["host","A",ns2,21]`. The two event IDs differ, so later
-synchronization cannot confuse the two payloads.
+Host A's old lineage `LB1` contains `eventId = ["host","A","LB1",21]`. A resets
+and installs a new lineage `LB2`; after eleven appends the new lineage reaches
+index 21 with `eventId = ["host","A","LB2",21]`. The two event IDs differ, so
+later synchronization cannot confuse the two payloads. Events created before
+the reset use `LB1`; events created after the reset use `LB2`. Reused numeric
+journal indices cannot collide because the lineage is part of the event ID. The
+same `LB2` value also appears in A's new frontier coordinate
+`{ A: { LB2, rA } }`, so event identity and frontier coordinates share one
+canonical lineage.
 
 ### T34 — Fixed point: unchanged B is a no-op
 
-Host A incorporates host B at revision `rB` in a first merge:
-`D = merge(A, B)`, and `D`'s frontier records `{B: rB}`. B has not advanced; a
-second synchronization stages the same revision `rB`. The staged-host revision
-check finds `frontier[B] == rB`, so the per-host merge is a complete no-op:
-no journal event is appended or repositioned, no notification is emitted, the
-watermark is unchanged, no new provenance is published, and the active replica
-pointer does not change. `merge(D, B) = D` in every component listed in
-§ Absorption (fixed point).
+Host A incorporates host B at coordinate `{ LB, rB }` in a first merge:
+`D = merge(A, B)`, and `D`'s frontier records `{B: { LB, rB }}`. B has not
+advanced; a second synchronization stages the same coordinate
+`{ LB, rB }`. The staged-host coordinate check finds `frontier[B] ==
+{ LB, rB }`, so the per-host merge is a complete no-op: no journal event is
+appended or repositioned, no notification is emitted, the watermark is
+unchanged, no new provenance is published, and the active replica pointer does
+not change. `merge(D, B) = D` in every component listed in § Absorption (fixed
+point).
 
 ### T35 — Local pulls do not break the fixed point
 
 After `D = merge(A, B)`, host A performs ordinary local pulls and invalidations
-and checkpoints. The local checkpoint preserves `{B: rB}` and updates only
-`{A: newRevision}`. B is still at `rB`. The staged-host revision check finds
-`frontier[B] == rB`, so merging with unchanged B remains a complete no-op.
+and checkpoints. The local checkpoint preserves `{B: { LB, rB }}` and updates
+only `{A: { LA, newRevision }}`, keeping A's lineage `LA`. B is still at
+`{ LB, rB }`. The staged-host coordinate check finds `frontier[B] ==
+{ LB, rB }`, so merging with unchanged B remains a complete no-op.
 
-### T36 — B advancing to a descendant revision is merged normally
+### T36 — Ordinary advancement within a lineage is merged normally
 
-Host B advances from `rB` to `rB2` (a descendant). The staged-host revision
-check finds `rB2` is a known descendant of `frontier[B] = rB`, so the per-host
-merge proceeds normally. The resulting destination frontier records
-`{B: rB2}`.
+Host B advances from `b1` to `b2` within the same lineage `LB` (`b2` is a known
+Git descendant of `b1`). The staged coordinate is `{ LB, b2 }` against a
+frontier coordinate `{ LB, b1 }`: same lineage, and `b2` is a known descendant
+of `b1`, so the per-host merge proceeds normally. The resulting destination
+frontier records `{B: { LB, b2 }}`.
 
-### T37 — Regressed or incomparable B revision is rejected
+### T37 — Regression and lineage mismatch are rejected
 
 - If host B's branch regresses to `rB0`, an ancestor of the incorporated
-  revision `rB`, the staged-host revision check finds `frontier[B]` is a known
-  descendant of `rB0`; normal synchronization rejects the merge.
-- If host B resets and its new revision `rB'` is incomparable with `frontier[B]
-  = rB` (neither is an ancestor of the other), normal synchronization rejects
-  the merge rather than guessing a winner.
+  revision `rB` within the same lineage `LB`, the staged-host coordinate check
+  finds `frontier[B] = { LB, rB }` is a known descendant of `{ LB, rB0 }`;
+  normal synchronization rejects the merge.
+- If host B resets and its new coordinate is `{ LB2, b2 }` with a fresh lineage
+  `LB2`, while the frontier records `{ LB1, b1 }`, the two coordinates have
+  different lineage IDs and are incomparable **even when `b2` is a Git
+  descendant of `b1`** (the reset commit is a child of the old head). Normal
+  synchronization rejects the merge rather than guessing a winner. Git ancestry
+  never overrides a lineage mismatch.
 - The same rejection applies when a pairwise merge's two frontiers record
-  incomparable revisions for a common hostname: `unionIncorporationFrontiers`
-  rejects the merge.
+  incomparable coordinates for a common hostname:
+  `unionIncorporationFrontiers` rejects the merge.
 
 ### T38 — Reversed sources produce the same first-merge frontier
 
@@ -1267,6 +1322,48 @@ merge proceeds normally. The resulting destination frontier records
 `unionIncorporationFrontiers(Fb, Fa)` produce the same frontier (or the same
 rejection). Therefore `merge(A, B)` and `merge(B, A)` record the same
 `incorporatedRevisions` and produce the same contributor set.
+
+### T38a — Actual integration trace: the reset commit is a child of the old head
+
+This scenario mirrors the behavior asserted by
+`backend/tests/working_repository.reset_mode.test.js` for the supported reset
+implementation.
+
+Host A is the local host running the reset; its branch head is `aOld` in
+lineage `LA1`. Host A runs a `reset-to-hostname` selecting host B's snapshot,
+whose branch head is `b1`. The reset implementation checks out A's hostname
+branch, replaces its tree with B's content using `git read-tree --reset`, and
+commits the replacement tree normally. The new commit `aReset` therefore has
+exactly one parent: `aOld`, the old local head (the test verifies
+`rev-list --parents -n 1 HEAD` returns two commits including `aOld`).
+
+Git ancestry alone therefore cannot distinguish this reset from an ordinary
+advancement: `aReset` is a Git descendant of `aOld`. The discontinuity is
+detected by the explicit lineage identifier:
+
+- The reset installs B's graph and journal snapshot, generates a fresh local
+  lineage `LA2`, and replaces A's own frontier coordinate with
+  `{ A: { LA2, aReset } }`.
+- The applicable coordinates of other hosts are preserved from B's selected
+  snapshot (for example, B's own coordinate `{ B: { LB1, b1 } }` when B's
+  snapshot records one).
+- A's old coordinate `{ A: { LA1, aOld } }` (from before the reset) and the new
+  coordinate `{ A: { LA2, aReset } }` are incomparable even though `aReset` is
+  a Git descendant of `aOld`. Git ancestry does not override the lineage
+  mismatch.
+- When another host later stages A's new snapshot, the staged coordinate has
+  lineage `LA2` while the other host's frontier records an `LA1` coordinate for
+  A; normal synchronization rejects the merge instead of treating it as an
+  ordinary advancement. Crossing the boundary requires an explicit reset, not a
+  pairwise merge.
+
+The `working_repository.reset_mode.test.js` behavior — the reset commit has the
+old head as its parent, and a subsequent normal synchronize succeeds — is
+consistent with this: after the reset, A's own coordinate is
+`{ A: { LA2, aReset } }`, so A's later normal synchronization against an
+unchanged peer is governed by the peer's preserved coordinate and the
+absorption property, not by a reinterpretation of `aReset` as an ordinary
+advancement of `aOld`.
 
 ### T39 — Identical noncanonical entries at the same index
 
