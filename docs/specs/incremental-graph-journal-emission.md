@@ -358,12 +358,12 @@ the event.
 ### P9a — Sync-derived event identity
 
 A `SyncDeleteJournalEntry` or `SyncInvalidateJournalEntry` derives its event ID
-from the exact source-snapshot identities, the action, and the key (see
-`incremental-graph-journal-sync.md`). The ID is independent of the destination
-physical journal index and exists conceptually before fresh physical placement.
-The sync event, the destination graph records associated with the merge result,
-the physical journal position, and the destination watermark must be durably
-consistent before cutover.
+from the merge protocol version, the exact source-snapshot identities, the
+action, and the key (see `incremental-graph-journal-sync.md`). The ID is
+independent of the destination physical journal index and exists conceptually
+before fresh physical placement. The sync event, the destination graph records
+associated with the merge result, the physical journal position, and the
+destination watermark must be durably consistent before cutover.
 
 ### P10 — Replication preserves event ID
 

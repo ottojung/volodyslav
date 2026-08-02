@@ -51,13 +51,22 @@ Every synchronization input and output snapshot carries a
  * @typedef {object} SourceSnapshotProvenance
  * @property {SourceSnapshotId} id
  * @property {Sync} contributors
+ * @property {string} graphAndJournalMergeProtocolVersion
+ * @property {Version} schemaVersion
  */
 ```
 
 - A checkpoint leaf staged from a host revision receives a checkpoint
-  source-snapshot ID and `contributors = Sync{source hostname}`.
-- A deterministic merge result receives a merge source-snapshot ID and
-  `contributors = union(left.contributors, right.contributors)`.
+  source-snapshot ID, `contributors = Sync{source hostname}`, the currently
+  advertised merge protocol version, and the source's schema version.
+- A deterministic merge result receives a merge source-snapshot ID,
+  `contributors = union(left.contributors, right.contributors)`, and preserves
+  the inputs' merge protocol and schema versions.
+
+The protocol and schema versions are persisted as explicit compatibility
+metadata, stored separately even though they are also hashed into derived
+snapshot IDs. Pairwise merge rejects inputs with mismatching merge protocol or
+schema versions before graph or journal reconciliation.
 
 The merged destination's provenance must be durably established before that
 destination can become active or be used as the source of a later per-host
@@ -359,18 +368,26 @@ After the source snapshots, action, and key are fixed, assign the sync event
 ID:
 
 ```js
+const [lowerId, upperId] = canonicalPair([
+    sourceSnapshotIdToString(A.provenance.id),
+    sourceSnapshotIdToString(B.provenance.id),
+])
+
 JSON.stringify([
-    "sync",
-    canonicalPair([
-        sourceSnapshotIdToString(A.provenance.id),
-        sourceSnapshotIdToString(B.provenance.id),
-    ]),
+    "sync-v2",
+    graphAndJournalMergeProtocolVersion,
+    lowerId,
+    upperId,
     action,
     nodeKeyToString(key),
 ])
 ```
 
-No special sync event type or alternate ID format.
+No special sync event type or alternate ID format. The merge protocol version
+is the protocol under which the merge produced the event (see
+`incremental-graph-journal-types.md` § SourceSnapshotId); two different
+protocols producing different sync events for the same snapshots receive
+different event IDs.
 
 #### Deterministic sync-event time
 
@@ -956,10 +973,14 @@ The second merge (derived snapshot `D` plus a new checkpoint `C`) generates a
 sync event whose ID is:
 
 ```
-["sync", canonicalPair([sourceSnapshotIdToString(D.provenance.id),
-                       sourceSnapshotIdToString(C.provenance.id)]),
+["sync-v2", graphAndJournalMergeProtocolVersion,
+ sourceSnapshotIdToString(lower), sourceSnapshotIdToString(upper),
  action, nodeKeyToString(key)]
 ```
+
+where `lower` and `upper` are `D.provenance.id` and `C.provenance.id` sorted by
+`canonicalPair`, and the protocol version is the version under which the second
+merge ran.
 
 ### T24 — Reversal produces the same merged snapshot ID
 
@@ -1001,9 +1022,9 @@ index namespace.
 ### T31 — Sync event ID carries no physical index
 
 A `SyncDeleteJournalEntry` or `SyncInvalidateJournalEntry` event ID is derived
-from the exact source-snapshot identities, the action, and the key. The
-embedded snapshot identities are fixed-size digests. The event ID does not
-depend on the destination physical journal index.
+from the merge protocol version, the exact source-snapshot identities, the
+action, and the key. The embedded snapshot identities are fixed-size digests.
+The event ID does not depend on the destination physical journal index.
 
 ### T32 — Local activity invalidates source provenance
 
