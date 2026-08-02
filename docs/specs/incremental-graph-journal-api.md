@@ -6,7 +6,7 @@ This document specifies the public journal query method `possibleMaybeChanges` o
 
 This document specifies API behavior. It does not prescribe how an external client uses returned possible changes.
 
-See `docs/specs/incremental-graph-journal-types.md` for the `PossibleNodeChange`, `BaselinePossibleNodeChange`, `NodeFilter`, `JournalIndex`, and related type definitions.
+See `docs/specs/incremental-graph-journal-types.md` for the `PossibleNodeChange`, `BaselinePossibleNodeChange`, `JournalScanCursor`, `NodeFilter`, `JournalIndex`, and related type definitions.
 
 See `docs/specs/incremental-graph-node-filter.md` for the `NodeFilter` construction and matching specification.
 
@@ -19,13 +19,13 @@ See `docs/specs/incremental-graph-node-filter.md` for the `NodeFilter` construct
 ```js
 class IncrementalGraph {
     /**
-     * Query possible node changes since a previously observed change,
+     * Query possible node changes since a previously observed position,
      * restricted to nodes matching the given filter.
      *
      * @param {object} params
-     * @param {PossibleNodeChange | BaselinePossibleNodeChange} params.since - The cursor-like reference point.
+     * @param {PossibleNodeChange | BaselinePossibleNodeChange | JournalScanCursor} params.since - The cursor-like reference point.
      * @param {NodeFilter} params.to - Restricts results to nodes matching this filter.
-     * @returns {Promise<Array<PossibleNodeChange>>}
+     * @returns {Promise<{ changes: Array<PossibleNodeChange>, cursor: JournalScanCursor }>}
      */
     possibleMaybeChanges({ since, to })
 }
@@ -37,17 +37,18 @@ The API design intentionally uses `{ since, to }` as an object-parameter form ra
 
 ### Parameters
 
-**`since: PossibleNodeChange | BaselinePossibleNodeChange`**
+**`since: PossibleNodeChange | BaselinePossibleNodeChange | JournalScanCursor`**
 
-A previously observed `PossibleNodeChange` (obtained from a prior call to `graph.possibleMaybeChanges`) or a `BaselinePossibleNodeChange` (obtained from `baselinePossibleNodeChange()`).
+A previously observed `PossibleNodeChange` or `JournalScanCursor` (obtained from a prior call to `graph.possibleMaybeChanges`) or a `BaselinePossibleNodeChange` (obtained from `baselinePossibleNodeChange()`).
 
-The `since` value acts as a cursor: the returned array contains surviving matching entries strictly after the journal position referenced by `since`. The `since` value itself is NOT included in the returned array.
+The `since` value acts as a cursor: the returned `changes` array contains surviving matching entries strictly after the journal position referenced by `since`. The `since` value itself is NOT included in the returned changes.
 
 If `since` is `BaselinePossibleNodeChange`, scanning starts from the first journal entry.
 
-If `since` is `PossibleNodeChange`, the journal module looks up the token in
-its private `WeakMap<PossibleNodeChange, CursorState>` and scans strictly
-after its stored `index`.
+If `since` is `PossibleNodeChange` or `JournalScanCursor`, the journal module
+looks up the token in its private `WeakMap` and scans strictly after its stored
+`index`. For a `JournalScanCursor`, the stored index is the captured bound of
+the query that returned it.
 
 **`to: NodeFilter`**
 
@@ -55,17 +56,20 @@ Restricts the returned possible changes to nodes whose keys match the filter. Se
 
 ### Return value
 
-`graph.possibleMaybeChanges` returns `Promise<Array<PossibleNodeChange>>`. The returned array contains, for each matching semantic node key, at most its latest state entry (`add`, `edit`, or `delete`) and its latest freshness entry (`invalidate` or `validate`) from the logically compacted journal through the fixed bound `H`, provided those entries' journal indices are strictly greater than `since`.
+`graph.possibleMaybeChanges` returns `Promise<{ changes, cursor }>`.
 
-REQ-JA-01: The returned array is finite. For each matching semantic node key, it contains at most its latest state entry and latest freshness entry from the logically compacted journal through the fixed bound `H`, provided their indices are strictly greater than `since`. Compacted-away entries are not reconstructed.
+- `changes` is a finite array of `PossibleNodeChange` values. For each matching semantic node key, it contains at most its latest state entry (`add`, `edit`, or `delete`) and its latest freshness entry (`invalidate` or `validate`) from the logically compacted journal through the fixed bound `H`, provided those entries' journal indices are strictly greater than `since`.
+- `cursor` is a `JournalScanCursor` representing the captured bound `H`. It is valid as `since` for the next call in the same process session and cursor domain, advancing the scan to strictly after `H`. It is returned whether or not `changes` is empty, so a caller can advance past an empty or unmatched suffix.
+
+REQ-JA-01: The `changes` array is finite. For each matching semantic node key, it contains at most its latest state entry and latest freshness entry from the logically compacted journal through the fixed bound `H`, provided their indices are strictly greater than `since`. Compacted-away entries are not reconstructed.
 
 ---
 
 ## Ordering
 
-REQ-JA-02: Returned `PossibleNodeChange` values MUST be ordered by ascending journal index (physical insertion order).
+REQ-JA-02: The `PossibleNodeChange` values in `changes` MUST be ordered by ascending journal index (physical insertion order).
 
-REQ-JA-03: If multiple returned entries have equal timestamps, their relative order is still determined by journal-index order. No timestamp-order guarantee is provided; return ordering is determined by `JournalIndex`.
+REQ-JA-03: If multiple entries in `changes` have equal timestamps, their relative order is still determined by journal-index order. No timestamp-order guarantee is provided; return ordering is determined by `JournalIndex`.
 
 ---
 
@@ -73,13 +77,13 @@ REQ-JA-03: If multiple returned entries have equal timestamps, their relative or
 
 Journal storage may contain gaps because of compaction, reconciliation, or other structural deletion. These gaps manifest as missing journal entries at certain `JournalIndex` values.
 
-REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When scanning forward from `since`, missing indices MUST NOT cause errors or aborted iteration. Missing positions are skipped. The next surviving entry is considered for logical-view selection; it is returned only if it is the retained state or freshness entry for its semantic key and category.
+REQ-JA-04: `graph.possibleMaybeChanges` MUST skip absent journal entries. When scanning forward from `since`, missing indices MUST NOT cause errors or aborted iteration. Missing positions are skipped. The next surviving entry is considered for logical-view selection; it is included in `changes` only if it is the retained state or freshness entry for its semantic key and category.
 
 ---
 
 ## Multiple entries for the same node
 
-`graph.possibleMaybeChanges` returns at most two `PossibleNodeChange` values per matching semantic node key: one state/lifecycle entry (`add`, `edit`, or `delete`) and one freshness entry (`invalidate` or `validate`). Older entries for the same key and category are logically suppressed even when still physically present.
+The `changes` array contains at most two `PossibleNodeChange` values per matching semantic node key: one state/lifecycle entry (`add`, `edit`, or `delete`) and one freshness entry (`invalidate` or `validate`). Older entries for the same key and category are logically suppressed even when still physically present.
 
 Duplicate entries for the same key and category may exist physically. For
 example, two overlapping invalidations may each commit an `invalidate` entry
@@ -88,7 +92,7 @@ the latest retained entry per category; it does not return duplicates.
 
 ### Historical guarantee
 
-Every returned `PossibleNodeChange` is derived from a real committed
+Every `PossibleNodeChange` in `changes` is derived from a real committed
 `JournalEntry`. The journal never fabricates an event: an entry's immutable
 payload is fixed at first durable commit, and one `eventId` never identifies two
 different payloads.
@@ -134,8 +138,8 @@ A returned event does not assert current graph state:
 - A returned `validate` does not prove current up-to-date freshness.
 
 REQ-JA-09: No requirement in this specification depends on the external client
-inspecting graph state after receiving a returned event. The returned array of
-`PossibleNodeChange` values is the complete API result.
+inspecting graph state after receiving a returned event. The `changes` array
+and the `cursor` together are the complete API result.
 
 ### Notification overapproximation
 
@@ -190,8 +194,9 @@ The normative conceptual order for `possibleMaybeChanges` is:
 3. Restrict to entries whose journal index is strictly greater than `since`
 4. Apply `NodeFilter` to the retained entries
 5. Order by ascending `JournalIndex`
-6. Project to `PossibleNodeChange`
-7. Leave garden and return the finite array
+6. Project to `changes`
+7. Register a `JournalScanCursor` for the captured bound `H`
+8. Leave garden and return `{ changes, cursor }`
 
 The defining property is:
 
@@ -208,23 +213,23 @@ iterate raw physical entries after the cursor
 
 ### Exact result contract
 
-For every semantic node key matching `to`, the query returns at most:
+For every semantic node key matching `to`, the `changes` array contains at most:
 
 - its latest state entry (`add`, `edit`, or `delete`) through `H`, if that entry's index is greater than `since`;
 - its latest freshness entry (`invalidate` or `validate`) through `H`, if that entry's index is greater than `since`.
 
-The final array is sorted by ascending physical `JournalIndex`.
+The `changes` array is sorted by ascending physical `JournalIndex`.
 
-REQ-JA-01a: `possibleMaybeChanges` MUST NOT return entries whose action is `add`, `edit`, or `delete` when a later-index entry of the same category exists for the same semantic key through `H`. The latest state entry per key is returned; older state entries within the prefix are suppressed by logical compaction.
+REQ-JA-01a: `possibleMaybeChanges` MUST NOT include entries in `changes` whose action is `add`, `edit`, or `delete` when a later-index entry of the same category exists for the same semantic key through `H`. The latest state entry per key is included; older state entries within the prefix are suppressed by logical compaction.
 
-REQ-JA-01b: `possibleMaybeChanges` MUST NOT return entries whose action is `invalidate` or `validate` when a later-index entry of the same category exists for the same semantic key through `H`. The latest freshness entry per key is returned; older freshness entries within the prefix are suppressed by logical compaction.
+REQ-JA-01b: `possibleMaybeChanges` MUST NOT include entries in `changes` whose action is `invalidate` or `validate` when a later-index entry of the same category exists for the same semantic key through `H`. The latest freshness entry per key is included; older freshness entries within the prefix are suppressed by logical compaction.
 
 ### Equivalent implementation
 
 The implementation does not need to scan entries before `since`. For each key and category:
 
 - If the retained winner through `H` is greater than `since`, it is also the greatest-index entry in that category within `(since, H]`;
-- If no entry in that category exists in `(since, H]`, the retained winner is not returned.
+- If no entry in that category exists in `(since, H]`, the retained winner is not included in `changes`.
 
 Therefore an implementation may scan only `(since, H]` and retain, per matching semantic key:
 
@@ -237,7 +242,7 @@ The normative meaning remains logical compaction through `H`, followed by cursor
 
 ### Cursor semantics
 
-The logical winner is selected through the complete fixed prefix ending at `H`. It is returned only when its retained index is greater than `since`.
+The logical winner is selected through the complete fixed prefix ending at `H`. It is included in `changes` only when its retained index is greater than `since`.
 
 **Note on freshness events and graph state:** A returned `validate` entry was
 originated for a freshness transition to `up-to-date` (or provides notification
@@ -254,29 +259,41 @@ index 10 = invalidate X
 index 12 = validate X
 ```
 
-For a baseline query through `H = 12`, return:
+For a baseline query through `H = 12`, `changes` is:
 
 ```
 index 8  = edit X
 index 12 = validate X
 ```
 
-Do not return indices 2, 5, or 10, even if they still physically exist.
+Do not include indices 2, 5, or 10, even if they still physically exist.
 
-For `since = index 6, H = 12`, return the same two entries:
+For `since = index 6, H = 12`, `changes` is the same two entries:
 
 ```
 index 8  = edit X
 index 12 = validate X
 ```
 
-For `since = index 9, H = 12`, return only:
+For `since = index 9, H = 12`, `changes` is only:
 
 ```
 index 12 = validate X
 ```
 
-For `since = index 12, H = 12`, return neither entry for X.
+For `since = index 12, H = 12`, `changes` is empty for X.
+
+In every case the returned `cursor` represents `H = 12`, so the next query with
+`since = cursor` scans strictly after index 12.
+
+### Empty scans
+
+A query may capture bound `H` and produce an empty `changes` array. The
+returned `cursor` still represents `H`, so the next query with
+`since = cursor` scans strictly after `H`. This advances past the unmatched
+suffix even when `changes` is empty; re-scanning the same suffix is not
+required. The `cursor` therefore allows a caller to make progress against a
+growing journal regardless of whether any matching events were returned.
 
 ---
 
@@ -299,7 +316,7 @@ function baselinePossibleNodeChange()
 
 REQ-JA-07: `baselinePossibleNodeChange()` MUST be callable at any time. It MUST NOT require a prior call to `graph.possibleMaybeChanges`.
 
-REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` MUST return the `PossibleNodeChange` values for every matching semantic node key's latest state entry and latest freshness entry from the logical journal view through the fixed bound `H`. This yields at most two entries per matching key.
+REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to })` MUST return, in `changes`, the `PossibleNodeChange` values for every matching semantic node key's latest state entry and latest freshness entry from the logical journal view through the fixed bound `H`, plus a `cursor` representing `H`. This yields at most two entries per matching key.
 
 ---
 
@@ -307,15 +324,16 @@ REQ-JA-08: `graph.possibleMaybeChanges({ since: baselinePossibleNodeChange(), to
 
 ### Correctness requirement
 
-REQ-JA-CONC-01: `possibleMaybeChanges({ since, to })` MUST observe a consistent journal state through shared garden access. There must exist a linearization point during the call such that the returned array is exactly the result of:
+REQ-JA-CONC-01: `possibleMaybeChanges({ since, to })` MUST observe a consistent journal state through shared garden access. There must exist a linearization point during the call such that the returned `changes` array and `cursor` are exactly the result of:
 
 1. Constructing `logicalJournalView` through the captured bound `H`;
 2. Restricting to entries whose journal index is strictly greater than the position referenced by `since`;
 3. Applying `NodeFilter`;
 4. Ordering by ascending `JournalIndex`;
-5. Projecting to `PossibleNodeChange`.
+5. Projecting to `changes`;
+6. Registering a `JournalScanCursor` for the captured bound `H`.
 
-The returned array contains, for each matching semantic node key: at most its latest state entry and its latest freshness entry through `H`, when those entries' indices exceed `since`.
+The `changes` array contains, for each matching semantic node key: at most its latest state entry and its latest freshness entry through `H`, when those entries' indices exceed `since`.
 
 ### Shared garden access
 
