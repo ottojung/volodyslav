@@ -29,13 +29,13 @@ data, conceptually equivalent to:
  * A transport-neutral logical snapshot exchanged between hosts.
  *
  * @typedef {object} ReplicaSnapshot
- * @property {ReplicaSnapshotId} snapshotId
+ * @property {LogicalSnapshotId} snapshotId
  * @property {Version} schemaVersion
  * @property {string} mergeProtocolVersion
  * @property {object} graphState
  * @property {object} journalState
  * @property {CausalFrontier} causalFrontier
- * @property {ReadonlyArray<HostLineageTransition>} lineageTransitions
+ * @property {object} mergeBasis
  */
 ```
 
@@ -74,88 +74,81 @@ An ordinary event originated by one host is identified by:
 const eventId = JSON.stringify([
     "host",
     hostnameToString(creator),
-    hostLineageIdToString(lineageId),
+    hostInstanceIdToString(instanceId),
     journalIndexToNumber(originIndex),
 ]);
 ```
 
-`lineageId` is the host lineage active when the event's original
-index was allocated. The lineage scopes host event identity so that two
-journal lineages installed on the same host cannot reuse an `originIndex`
-under the same event ID.
+`instanceId` is the immutable `HostInstanceId` of the storage instance active
+when the event's original index was allocated. The instance identity
+disambiguates event and version sequences if the same hostname later
+initializes unrelated storage; within one storage instance the journal has a
+single monotonic index namespace, so no index is reused under the same event
+ID.
 
 Use exactly this tagged fixed-order tuple passed to `JSON.stringify`. No other
 host-event format, version tag, custom serialization format, or optional
 event-ID fields.
 
-### Host lineage (nominal)
+### HostInstanceId (nominal)
 
-`HostLineageId` is the one canonical host-lineage identifier for a host. It is
-used consistently for:
+`HostInstanceId` is the immutable identity of one local IncrementalGraph
+storage instance.
 
-- ordinary host-event identity (the `lineageId` in the host event ID above);
-- host state coordinates in the causal frontier (see `HostStateCoordinate` and
-  `Causal frontier`);
-- detecting reset discontinuities (two coordinates of the same hostname with
-  different lineage IDs are ordered only through a validated
-  `HostLineageTransition`).
-
-- A fresh lineage is generated when a host journal is initialized and after
-  a successful `reset-to-hostname` (see `Journal lineage`).
-- Existing events preserve their original lineage.
-- Normal pairwise synchronization and migration preserve the current local
-  lineage.
-- Because host event identity is `["host", hostname, hostLineageId,
-  originIndex]`, the lineage is present in the event ID; two lineages installed
-  on the same host cannot collide even when the new lineage reuses numeric
-  indices.
+- It is generated only when a genuinely new local storage instance is
+  initialized.
+- It is stable for the lifetime of that storage instance.
+- It is unchanged by reset, migration, synchronization, compaction, and replica
+  cutover.
+- It disambiguates event and version sequences if the same hostname later
+  initializes unrelated storage.
+- Because host event identity is `["host", hostname, hostInstanceId,
+  originIndex]`, two unrelated storage instances of the same hostname cannot
+  collide even when they reuse numeric indices.
 
 ```js
 /**
  * The properties that this type carries are:
- * - The value identifies one host lineage, fresh on host journal
- *   initialization and on successful reset-to-hostname, and otherwise
- *   preserved.
- * - It is the single canonical representation of host lineage: the same value
- *   is used for host-event identity, for the causal frontier's host state
- *   coordinates, and for detecting reset discontinuities.
+ * - The value identifies one immutable local IncrementalGraph storage instance.
+ * - It is generated only when a genuinely new storage instance is initialized
+ *   and is stable for that instance's lifetime; it never changes on reset,
+ *   migration, synchronization, compaction, or replica cutover.
  *
  * The proof of those properties is guaranteed by:
  * - This typedef cannot enforce the property by construction.
  * - Therefore every function that returns this type is part of the proof.
- * - The current return sites are:
- *   - host journal initialization, which allocates a fresh lineage;
- *   - successful reset-to-hostname, which allocates a fresh lineage for the
- *     newly installed journal.
+ * - The current return site is:
+ *   - local storage-instance initialization, which allocates a fresh
+ *     HostInstanceId and never regenerates it.
  */
-class HostLineageIdClass {
+class HostInstanceIdClass {
     /** @private @type {undefined} */ __brand;
-    constructor() { if (this.__brand !== undefined) throw new Error("HostLineageId cannot be instantiated"); }
+    constructor() { if (this.__brand !== undefined) throw new Error("HostInstanceId cannot be instantiated"); }
 }
 
-/** @typedef {HostLineageIdClass} HostLineageId */
+/** @typedef {HostInstanceIdClass} HostInstanceId */
 ```
 
 Conversion functions:
 
 ```js
 /**
- * Unsafe cast: wraps a string as a HostLineageId.
- * The function is defined only for a lineage identifier generated as
- * described above.
+ * Unsafe cast: wraps a string as a HostInstanceId.
+ * The function is defined only for a storage-instance identifier generated at
+ * local initialization.
  *
  * @param {string} value
- * @returns {HostLineageId}
+ * @returns {HostInstanceId}
  */
-function unsafeStringToHostLineageId(value)
+function unsafeStringToHostInstanceId(value)
 
 /**
- * Render a HostLineageId to its string persisted representation.
+ * Render a HostInstanceId to its string persisted representation.
  *
- * @param {HostLineageId} lineageId
+ * @param {HostInstanceId} instanceId
  * @returns {string}
  */
-function hostLineageIdToString(lineageId)
+function hostInstanceIdToString(instanceId)
 ```
 
 #### Sync-derived event
@@ -163,7 +156,7 @@ function hostLineageIdToString(lineageId)
 A sync-derived event must be identified from the exact unordered source
 snapshots and the semantic event identity, so that either side of a pairwise
 merge derives the same event ID. Each source snapshot carries a
-`SourceSnapshotProvenance` whose `id` is a `ReplicaSnapshotId` (see
+`SourceSnapshotProvenance` whose `id` is a `LogicalSnapshotId` (see
 `Logical snapshot provenance`).
 
 The sync event ID is:
@@ -172,14 +165,14 @@ The sync event ID is:
 const eventId = JSON.stringify([
     "sync-v2",
     graphAndJournalMergeProtocolVersion,
-    lowerReplicaSnapshotId,
-    upperReplicaSnapshotId,
+    lowerLogicalSnapshotId,
+    upperLogicalSnapshotId,
     action,
     nodeKeyToString(key),
 ]);
 ```
 
-`lowerReplicaSnapshotId` and `upperReplicaSnapshotId` are the two
+`lowerLogicalSnapshotId` and `upperLogicalSnapshotId` are the two
 replica-snapshot-ID strings sorted by `canonicalPair` (deterministic JavaScript
 code-unit ordering). The event ID includes
 `graphAndJournalMergeProtocolVersion` so that two different merge protocols
@@ -211,7 +204,7 @@ A sync event ID must not depend on:
 ### HostStateVersion (nominal)
 
 `HostStateVersion` is a transport-independent monotonically increasing logical
-version scoped to one `(Hostname, HostLineageId)` pair. It is a non-negative
+version scoped to one `(Hostname, HostInstanceId)` pair. It is a non-negative
 integer drawn from an explicitly ordered logical sequence. It must not be a
 hash, a repository revision, a timestamp, or a storage-layer identifier.
 
@@ -229,13 +222,14 @@ metadata:
 
 ```text
 localHostStateCoordinate = {
-    lineageId,
+    instanceId,
     version,
 }
 ```
 
 This coordinate is the local hostname's entry in every exported causal
-frontier. A freshly initialized lineage begins at `HostStateVersion = 0`.
+frontier. A freshly initialized storage instance begins at
+`HostStateVersion = 0`.
 
 ### Durable commit rules
 
@@ -279,13 +273,13 @@ exported causal frontier still advertises the old host version.
 /**
  * The properties that this type carries are:
  * - The value is a transport-independent, monotonically increasing logical
- *   version of one (Hostname, HostLineageId) pair.
+ *   version of one (Hostname, HostInstanceId) pair.
  * - It advances exactly when the host originates a durable graph or journal
  *   contribution; it never advances for synchronization-only activity.
  *
  * The proof of those properties is guaranteed by:
  * - `makeInitialHostStateVersion()`: returns version 0 for a freshly
- *   initialized host lineage.
+ *   initialized storage instance.
  * - `advanceHostStateVersion(version)`: returns the unique successor version
  *   for a host-originated contribution.
  * - HostStateVersion values are never produced from hashes, repository
@@ -303,7 +297,7 @@ Conversion functions:
 
 ```js
 /**
- * The initial HostStateVersion of a freshly initialized host lineage.
+ * The initial HostStateVersion of a freshly initialized storage instance.
  *
  * @returns {HostStateVersion}
  */
@@ -321,7 +315,7 @@ function advanceHostStateVersion(version)
 /**
  * Unsafe cast: wraps a non-negative integer as a HostStateVersion.
  * The function is defined only for non-negative integers that came from the
- * logical version sequence of a (Hostname, HostLineageId) pair.
+ * logical version sequence of a (Hostname, HostInstanceId) pair.
  *
  * @param {number} value
  * @returns {HostStateVersion}
@@ -342,9 +336,9 @@ function hostStateVersionToNumber(version)
 - An event's immutable payload is fixed at its first durable commit.
 - Copying an event preserves its event ID.
 - Reappending an event preserves its event ID.
-- Moving an event does not change its encoded `originIndex` or its host
-  lineage.
-- Two ordinary events created by the same host within the same host lineage
+- Moving an event does not change its encoded `originIndex` or its storage
+  instance.
+- Two ordinary events created by the same host within the same storage instance
   cannot have the same origin index.
 - Hostnames are unique within the synchronization mesh.
 
@@ -387,27 +381,26 @@ If the same event already survives at a positioned target entry, remove its queu
 
 ## Logical snapshot provenance
 
-### ReplicaSnapshotId (nominal)
+### LogicalSnapshotId (nominal)
 
-`ReplicaSnapshotId` identifies the complete synchronization-relevant logical
+`LogicalSnapshotId` identifies the complete synchronization-relevant logical
 state of one frozen logical snapshot. It is a transport-neutral exact identity:
 it is not a repository hash, a wrapper around a transport revision, or a
 derivation that depends on how the snapshot was produced or stored.
 
 It is computed deterministically from a canonical encoding of:
 
-- the graph's synchronization-relevant state;
-- journal entries and established absences;
-- `last_journal_index`;
+- the graph's synchronization-relevant projection;
+- the canonical retained merge basis;
+- the logical journal view (immutable retained events);
 - the causal frontier;
-- accepted lineage-transition records;
 - graph schema version;
 - graph-and-journal merge protocol version;
 - all other logical metadata that can affect synchronization behavior.
 
 It excludes:
 
-- the `ReplicaSnapshotId` field itself;
+- the `LogicalSnapshotId` field itself;
 - physical replica slot names;
 - database allocation namespaces;
 - local filesystem paths;
@@ -417,7 +410,7 @@ It excludes:
 - wall-clock checkpoint time.
 
 The same exact logical snapshot under the same schema and protocol receives the
-same `ReplicaSnapshotId` regardless of which host computed it, which transport
+same `LogicalSnapshotId` regardless of which host computed it, which transport
 stored it, whether it was created by local operations or by synchronization, or
 the order in which physically equivalent storage records were read. Different
 synchronization-relevant states receive different identities. The merge
@@ -434,49 +427,52 @@ interpreted under different merge protocols do not share an ID.
  *   different identities.
  *
  * The proof of those properties is guaranteed by:
- * - `computeReplicaSnapshotId(...)`: hashes a canonical encoding of the full
+ * - `computeLogicalSnapshotId(...)`: hashes a canonical encoding of the full
  *   synchronization-relevant logical state (see `Canonical digest`); the
  *   encoding is deterministic, so equal logical state yields equal input bytes.
- * - ReplicaSnapshotId values are never produced from repository hashes,
+ * - LogicalSnapshotId values are never produced from repository hashes,
  *   transport revisions, timestamps, or storage identifiers.
  */
-class ReplicaSnapshotIdClass {
+class LogicalSnapshotIdClass {
     /** @private @type {undefined} */ __brand;
-    constructor() { if (this.__brand !== undefined) throw new Error("ReplicaSnapshotId cannot be instantiated"); }
+    constructor() { if (this.__brand !== undefined) throw new Error("LogicalSnapshotId cannot be instantiated"); }
 }
 
-/** @typedef {ReplicaSnapshotIdClass} ReplicaSnapshotId */
+/** @typedef {LogicalSnapshotIdClass} LogicalSnapshotId */
 ```
 
 Conversion functions:
 
 ```js
 /**
- * Unsafe cast: wraps a string as a ReplicaSnapshotId.
+ * Unsafe cast: wraps a string as a LogicalSnapshotId.
  * The function is defined only for a replica-snapshot digest produced by
- * `computeReplicaSnapshotId` (64 lowercase hexadecimal characters).
+ * `computeLogicalSnapshotId` (64 lowercase hexadecimal characters).
  *
  * @param {string} value
- * @returns {ReplicaSnapshotId}
+ * @returns {LogicalSnapshotId}
  */
-function unsafeStringToReplicaSnapshotId(value)
+function unsafeStringToLogicalSnapshotId(value)
 
 /**
- * Render a ReplicaSnapshotId to its string persisted representation.
+ * Render a LogicalSnapshotId to its string persisted representation.
  * The representation is the fixed-size digest.
  *
- * @param {ReplicaSnapshotId} snapshotId
+ * @param {LogicalSnapshotId} snapshotId
  * @returns {string}
  */
-function replicaSnapshotIdToString(snapshotId)
+function logicalSnapshotIdToString(snapshotId)
 ```
 
-### Canonical snapshot encoding
+### Logical snapshot identity encoding
 
-`ReplicaSnapshotId` is the SHA-256 digest of one normative canonical byte
-encoding of the complete logical snapshot state. The encoding is a cross-host
-protocol identity: its byte layout is normative, not implementation-defined. A
-conforming implementation MUST be able to produce the canonical bytes without
+`LogicalSnapshotId` is the SHA-256 digest of one normative canonical byte
+encoding of the **logical** snapshot state. The encoding is a cross-host
+protocol identity: its byte layout is normative, not implementation-defined,
+and it is independent of physical journal placement. Compaction and
+notification-carrier repositioning never change `LogicalSnapshotId`.
+
+A conforming implementation MUST be able to produce the canonical bytes without
 implementation-specific choices.
 
 The canonical-encoding version is bound to the merge protocol: a change to the
@@ -521,15 +517,18 @@ encoding.
 - `NodeKey`: `string(nodeKey)` (the canonical key derived from
   `(nodeName, bindings)`).
 - `NodeIdentifier`: `string(nodeIdentifier)`.
+- `HostInstanceId`: `string(hostInstanceId)`.
 
 #### Number domain
 
 All numeric values are IEEE-754 binary64 values. Counters and indices encoded
 as `u64` MUST be integers within `[0, 2^53-1]`.
 
-#### Graph state encoding
+#### Logical graph projection encoding
 
-Graph state encodes as a map of sublevel records, each sorted by key:
+The graph projection is the installed graph state after
+`projectGraph(joinedMergeBasis)` (see `incremental-graph-synchronization.md` §
+Merge basis). It encodes as a map of sublevel records, each sorted by key:
 
 ```text
 graphState = map([
@@ -542,65 +541,57 @@ graphState = map([
 ])
 ```
 
-#### Journal state encoding
+#### Merge basis encoding
+
+The canonical retained merge basis (see `incremental-graph-synchronization.md`
+§ Merge basis) encodes as a map from `candidateId` to the candidate record,
+sorted by `candidateId`. Each candidate record encodes its origin coordinate,
+semantic key, materialized-or-tombstone discriminant, value and timestamps when
+materialized, identifier provenance, exact direct-input candidate IDs, and
+freshness/validity evidence, in the field order defined there.
+
+#### Logical journal view encoding
+
+The logical journal view is the set of immutable retained journal events
+expressed as event payloads, sorted by a placement-independent logical key:
 
 ```text
-journalState = (
-    lastJournalIndex: u64,
-    presentEntries: array(
-        (index: u64,
-         action: u64,             // 0=add 1=edit 2=delete 3=invalidate 4=validate
-         nodeIdentifier: string,
-         nodeKey: string,
-         timeMs: u64,
-         creator: string,         // journalCreatorToString tagged form
-         eventId: string)
-    )
+logicalJournalView = set(
+    (semanticKey: string,
+     category: u64,               // 0=state 1=freshness
+     eventId: string)
 )
 ```
 
-`presentEntries` is sorted by `index`. Established absences are the indices in
-`1 .. lastJournalIndex` not present in `presentEntries`; they are implicitly
-determined by `lastJournalIndex` together with the present set.
+`semanticKey` is the canonical `NodeKey` of the event, `category` is its
+logical-view category, and `eventId` is the immutable event identity. The
+encoding never includes `JournalIndex`, `last_journal_index`, established gaps
+or absences, physical duplicate occurrences, or carrier positions.
 
 #### Causal frontier encoding
 
 ```text
-causalFrontier = map(hostname -> (lineageId: string, version: u64))
+causalFrontier = map(hostname -> (instanceId: string, version: u64))
 ```
 
 sorted by the UTF-8 bytes of `hostnameToString(hostname)`.
 
-#### Lineage-transition encoding
-
-```text
-lineageTransitions = array(
-    (hostname: string,
-     predecessorLineage: string, predecessorVersion: u64,
-     successorLineage: string, successorVersion: u64,
-     kind: u64)                   // 0=reset
-)
-```
-
-sorted by `(hostname, predecessorLineage, predecessorVersion,
-successorLineage, successorVersion)`.
-
 #### Top-level encoding
 
 ```text
-canonicalSnapshotBytes(snapshot) =
+logicalSnapshotBytes(snapshot) =
     array([
-        string("replica-snapshot"),
+        string("logical-snapshot"),
         u64(1),                    // canonical-encoding version
         string(schemaVersion),
         string(mergeProtocolVersion),
         graphStateBytes,
-        journalStateBytes,
+        mergeBasisBytes,
+        logicalJournalViewBytes,
         causalFrontierBytes,
-        lineageTransitionsBytes,
     ])
 
-ReplicaSnapshotId = sha256(canonicalSnapshotBytes(snapshot))
+LogicalSnapshotId = sha256(logicalSnapshotBytes(snapshot))
 ```
 
 Because the top-level format tag, every field order, every type tag, and every
@@ -611,37 +602,52 @@ or repository data. The schema and merge-protocol versions are part of the
 identity, so two otherwise identical snapshots interpreted under different
 schema or merge-protocol versions receive different IDs.
 
+### EncodedSnapshotDigest (optional, transport-level)
+
+A transport-level value may be defined separately to detect corruption or to
+cache exact encoded bytes:
+
+```text
+EncodedSnapshotDigest = sha256(exactEncodedSnapshotBytes(snapshot))
+```
+
+`exactEncodedSnapshotBytes` MAY include physical journal positions, the
+watermark, physical duplicate occurrences, carrier positions, and compaction
+layout, encoded however the snapshot encoding or the transport adapter chooses.
+`EncodedSnapshotDigest` has no role in causal merging, logical equality, or
+journal event identity; it is used only for corruption detection or transport
+caching.
+
 ### HostStateCoordinate (nominal)
 
 One host's position in a causal frontier is a **host-state coordinate**: the
-pair of the host lineage and the host's logical state version within that
-lineage.
+pair of the storage-instance identity and the host's logical state version
+within that instance.
 
 ```js
 /**
  * The properties that this type carries are:
- * - `lineageId` is the host lineage the coordinate belongs to.
+ * - `instanceId` is the immutable storage-instance identity the coordinate
+ *   belongs to.
  * - `version` is the transport-independent logical state version of that host
- *   within that lineage.
+ *   within that instance.
  *
  * The proof of those properties is guaranteed by:
  * - This typedef cannot enforce the property by construction.
  * - Therefore every function that returns this type is part of the proof.
  * - The current return sites are:
- *   - host journal initialization, which records the host's own lineage and
- *     initial version;
- *   - a successful `reset-to-hostname`, which records the fresh lineage and
- *     the initial version of the new lineage;
- *   - `unionCausalFrontiers`, which resolves coordinates within one lineage or
- *     through a validated lineage transition;
+ *   - local storage-instance initialization, which records the host's own
+ *     instance and initial version 0;
+ *   - `unionCausalFrontiers`, which retains the later coordinate for a hostname
+ *     and instance;
  *   - `localExportCausalFrontier`, which advances only the local hostname's
  *     coordinate when the host originated new content.
  */
 class HostStateCoordinateClass {
     /** @private @type {undefined} */ __brand;
 
-    /** @readonly @type {HostLineageId} */
-    lineageId;
+    /** @readonly @type {HostInstanceId} */
+    instanceId;
 
     /** @readonly @type {HostStateVersion} */
     version;
@@ -650,11 +656,11 @@ class HostStateCoordinateClass {
 /** @typedef {HostStateCoordinateClass} HostStateCoordinate */
 ```
 
-Two coordinates are **comparable** only when they belong to the same
-`HostLineageId`, in which case they are ordered by their `HostStateVersion`
-(`4 < 7`), or when one is connected to the other by a validated
-`HostLineageTransition` (see `Host lineage transition`). Coordinates in
-unrelated lineages are not ordered.
+Two coordinates of the same `Hostname` and `HostInstanceId` are ordered by
+their `HostStateVersion` (`4 < 7`). A coordinate with a different
+`HostInstanceId` for the same hostname represents unrelated reinitialization of
+that hostname's storage and is an explicit administrative conflict, not a
+comparison: the synchronization gate rejects it rather than ordering it.
 
 ### Causal frontier (nominal)
 
@@ -668,14 +674,16 @@ Map<Hostname, HostStateCoordinate>
 For every hostname whose host-originated state the snapshot has incorporated,
 the frontier records that hostname's latest accepted `HostStateCoordinate`. The
 frontier is persisted as part of `SourceSnapshotProvenance` and is included in
-the exact synchronization-relevant state that a `ReplicaSnapshotId` identifies:
+the exact synchronization-relevant state that a `LogicalSnapshotId` identifies:
 two snapshots with different frontiers are different exact states and receive
 different snapshot identities.
 
 The frontier is the single source of the contributor set of a snapshot. The
 contributor set of a logical snapshot is derived from the frontier's hostname
 keys; no independent contributor value is maintained, so the two can never
-disagree.
+disagree. The frontier summarizes which host contributions are included; it
+does not substitute for the merge basis (see `incremental-graph-synchronization.md`
+§ Merge basis).
 
 ```js
 /**
@@ -688,18 +696,17 @@ disagree.
  *   code-unit ordering.
  *
  * The proof of those properties is guaranteed by:
- * - `makeInitialCausalFrontier(ownHostname, ownLineageId, ownVersion)`:
- *   constructs the frontier `{ ownHostname: { lineageId, version } }` for a
- *   freshly initialized host.
- * - `localExportCausalFrontier(frontier, ownHostname, ownLineageId,
+ * - `makeInitialCausalFrontier(ownHostname, ownInstanceId, ownVersion)`:
+ *   constructs the frontier `{ ownHostname: { instanceId, version } }` for a
+ *   freshly initialized storage instance.
+ * - `localExportCausalFrontier(frontier, ownHostname, ownInstanceId,
  *   ownVersion)`: preserves every remote entry of `frontier` and replaces only
  *   the `ownHostname` entry; the caller supplies the host's current version,
  *   which advances only when the host originated new content.
- * - `unionCausalFrontiers(left, right, leftTransitions, rightTransitions)`:
- *   computes the union of two frontiers, retaining the later comparable
- *   coordinate for any hostname present in both, resolving different-lineage
- *   coordinates through validated lineage transitions, and rejecting
- *   unresolvable conflicts.
+ * - `unionCausalFrontiers(left, right)`: computes the union of two frontiers,
+ *   retaining the later coordinate for any hostname and instance present in
+ *   both and rejecting a coordinate whose `HostInstanceId` differs for the same
+ *   hostname (an administrative conflict).
  * - No mutation operation is exposed on `CausalFrontier` values.
  */
 class CausalFrontierClass {
@@ -712,84 +719,80 @@ class CausalFrontierClass {
 
 #### Frontier ordering
 
-For two coordinates of the same hostname and lineage, the later `HostStateVersion`
-is greater:
+For two coordinates of the same hostname and instance, the later
+`HostStateVersion` is greater:
 
 ```text
-{ lineageId: L, version: 4 } < { lineageId: L, version: 7 }
+{ instanceId: I, version: 4 } < { instanceId: I, version: 7 }
 ```
 
-because `4 < 7`. Coordinates in unrelated lineages are not ordered unless
-connected by a validated lineage transition.
+because `4 < 7`. A coordinate of the same hostname with a different
+`HostInstanceId` is unrelated storage and is an administrative conflict, never a
+comparison.
 
 #### Frontier dominance
 
 `frontier A dominates frontier B` when, for every hostname represented by `B`,
-`A` contains an equal-or-later accepted coordinate for that hostname (using
-lineage-transition resolution for different-lineage coordinates). Dominance is
-the complete novelty check: a staged frontier that is dominated by the local
-frontier contains no host-originated logical contribution that is new to the
-local replica.
+`A` contains an equal-or-later accepted coordinate for that hostname (same
+`HostInstanceId`, equal-or-later `HostStateVersion`). Dominance is the complete
+novelty check: a staged frontier that is dominated by the local frontier
+contains no host-originated logical contribution that is new to the local
+replica. It is sound only because the merge is a closed join over the persisted
+merge basis (see `incremental-graph-synchronization.md` § Logical join and §
+Merge basis).
 
 #### Frontier functions
 
 ```js
 /**
- * Construct the causal frontier of a freshly initialized host.
- * The frontier contains exactly `{ ownHostname: { lineageId: ownLineageId,
+ * Construct the causal frontier of a freshly initialized storage instance.
+ * The frontier contains exactly `{ ownHostname: { instanceId: ownInstanceId,
  * version: ownVersion } }`.
  *
  * @param {Hostname} ownHostname
- * @param {HostLineageId} ownLineageId
+ * @param {HostInstanceId} ownInstanceId
  * @param {HostStateVersion} ownVersion
  * @returns {CausalFrontier}
  */
-function makeInitialCausalFrontier(ownHostname, ownLineageId, ownVersion)
+function makeInitialCausalFrontier(ownHostname, ownInstanceId, ownVersion)
 
 /**
  * Derive the causal frontier of an exported logical snapshot taken after
  * ordinary local activity. Every remote entry of `frontier` is preserved
  * exactly; only the `ownHostname` entry is replaced with the local host's
- * current lineage (`ownLineageId`) and version (`ownVersion`). The caller
+ * current instance (`ownInstanceId`) and version (`ownVersion`). The caller
  * passes an advanced `ownVersion` only when the host actually originated new
  * logical graph or journal state since the prior export; a frontier-only
- * acknowledgement must not advance the local coordinate. Ordinary local
- * activity does not change the local host's lineage; only initialization and a
- * successful `reset-to-hostname` do.
+ * acknowledgement must not advance the local coordinate. The local
+ * `HostInstanceId` never changes after initialization.
  *
  * @param {CausalFrontier} frontier
  * @param {Hostname} ownHostname
- * @param {HostLineageId} ownLineageId
+ * @param {HostInstanceId} ownInstanceId
  * @param {HostStateVersion} ownVersion
  * @returns {CausalFrontier}
  */
-function localExportCausalFrontier(frontier, ownHostname, ownLineageId, ownVersion)
+function localExportCausalFrontier(frontier, ownHostname, ownInstanceId, ownVersion)
 
 /**
- * Union two causal frontiers, resolving coordinates using the union of the two
- * snapshots' lineage-transition records. For a hostname present in only one
- * frontier, its entry is retained. For a hostname present in both:
+ * Union two causal frontiers. For a hostname present in only one frontier, its
+ * entry is retained. For a hostname present in both:
  * - equal coordinates are retained;
- * - when the two coordinates have the same lineage, the later `HostStateVersion`
- *   is retained;
- * - when the coordinates have different lineages, the union resolves them
- *   through a validated lineage transition when exactly one valid direct
- *   successor chain connects them;
- * - otherwise the two coordinates are incomparable (or two competing successor
- *   lineages claim the same predecessor) and the operation MUST reject rather
- *   than guess a winner.
+ * - when the two coordinates have the same `HostInstanceId`, the later
+ *   `HostStateVersion` is retained;
+ * - when the two coordinates have different `HostInstanceId` values for the
+ *   same hostname, the union rejects the input as an administrative conflict
+ *   rather than guessing a winner.
  *
- * The union is commutative: `unionCausalFrontiers(left, right, Lt, Rt)` and
- * `unionCausalFrontiers(right, left, Rt, Lt)` produce the same frontier or the
- * same rejection.
+ * The union is commutative: `unionCausalFrontiers(left, right)` and
+ * `unionCausalFrontiers(right, left)` produce the same frontier or the same
+ * rejection.
  *
  * @param {CausalFrontier} left
  * @param {CausalFrontier} right
- * @param {ReadonlyArray<HostLineageTransition>} leftTransitions
- * @param {ReadonlyArray<HostLineageTransition>} rightTransitions
  * @returns {CausalFrontier}
  */
-function unionCausalFrontiers(left, right, leftTransitions, rightTransitions)
+function unionCausalFrontiers(left, right)
 
 /**
  * Return the host-state coordinate recorded for a hostname, or `undefined` when
@@ -814,7 +817,7 @@ function causalFrontierHostnames(frontier)
 /**
  * Render a CausalFrontier to its deterministic string persisted representation,
  * used for storage, integrity comparison, and hashing into snapshot identities.
- * The representation is a canonical JSON array of `[hostname, lineageId,
+ * The representation is a canonical JSON array of `[hostname, instanceId,
  * version]` tuples sorted by `hostnameToString` using deterministic JavaScript
  * code-unit ordering.
  *
@@ -825,75 +828,15 @@ function causalFrontierToString(frontier)
 
 /**
  * True when `local` dominates `staged`: for every hostname represented by
- * `staged`, `local` contains an equal-or-later accepted coordinate (resolving
- * different-lineage coordinates through the given lineage transitions). This is
- * the complete novelty check for the synchronization gate.
+ * `staged`, `local` contains an equal-or-later accepted coordinate (same
+ * HostInstanceId, equal-or-later HostStateVersion). This is the complete
+ * novelty check for the synchronization gate.
  *
  * @param {CausalFrontier} local
  * @param {CausalFrontier} staged
- * @param {ReadonlyArray<HostLineageTransition>} transitions
  * @returns {boolean}
  */
-function dominatesCausalFrontier(local, staged, transitions)
-```
-
-### Host lineage transition (nominal)
-
-A `HostLineageTransition` is a transport-neutral logical record declaring that a
-hostname moved from one lineage to a successor lineage. It is created by the
-IncrementalGraph reset operation, not inferred from transport history.
-
-```js
-/**
- * @typedef {object} HostLineageTransition
- * @property {Hostname} hostname - The host that reset.
- * @property {HostStateCoordinate} predecessor - The coordinate before the reset.
- * @property {HostStateCoordinate} successor - The fresh lineage and its initial
- *   logical version after the reset.
- * @property {"reset"} kind - The transition kind.
- */
-```
-
-Transition rules:
-
-- a coordinate may have at most one accepted direct successor lineage;
-- replaying the same transition is idempotent;
-- a peer that knows the predecessor lineage may accept the declared successor;
-- a peer may accept the transition when its known predecessor coordinate is
-  equal to or earlier than the transition's predecessor coordinate;
-- a peer whose known state is later than the declared predecessor must reject
-  the reset as conflicting or stale;
-- two different successor lineages claiming the same predecessor are a
-  conflict and MUST be rejected;
-- unrelated lineages without a valid transition chain remain incomparable;
-- transition-history union is commutative and deterministic.
-
-Accepting a host's reset changes only that hostname's coordinate and the
-transition history. It does not force the accepting peer to reset or to replace
-its own lineage.
-
-```js
-/**
- * Construct the reset lineage transition for a successful reset-to-hostname.
- *
- * @param {Hostname} hostname
- * @param {HostStateCoordinate} predecessor
- * @param {HostStateCoordinate} successor
- * @returns {HostLineageTransition}
- */
-function makeResetLineageTransition(hostname, predecessor, successor)
-
-/**
- * Render a lineage-transition list to its deterministic string persisted
- * representation, used for storage, integrity comparison, and hashing into
- * snapshot identities. The representation is a canonical JSON array sorted by
- * `(hostname, predecessor lineage, predecessor version, successor lineage,
- * successor version)`.
- *
- * @param {ReadonlyArray<HostLineageTransition>} transitions
- * @returns {string}
- */
-function lineageTransitionsToString(transitions)
+function dominatesCausalFrontier(local, staged)
 ```
 
 ### SourceSnapshotProvenance
@@ -904,9 +847,8 @@ equivalent to:
 ```js
 /**
  * @typedef {object} SourceSnapshotProvenance
- * @property {ReplicaSnapshotId} id
+ * @property {LogicalSnapshotId} id
  * @property {CausalFrontier} causalFrontier
- * @property {ReadonlyArray<HostLineageTransition>} lineageTransitions
  * @property {string} graphAndJournalMergeProtocolVersion
  * @property {Version} schemaVersion
  */
@@ -915,12 +857,11 @@ equivalent to:
 For an exported logical snapshot staged from a host:
 
 ```text
-id                         = ReplicaSnapshotId of the exact logical snapshot
+id                         = LogicalSnapshotId of the exact logical snapshot
 causalFrontier             = the host's causal frontier at export: it maps the
-                             hostname to its own current coordinate (lineage and
+                             hostname to its own current coordinate (instance and
                              logical version) and preserves every remote
                              coordinate the host had already incorporated
-lineageTransitions         = the reset lineage transitions the snapshot carries
 graphAndJournalMergeProtocolVersion = the currently advertised protocol version
 schemaVersion              = the source's schema version
 ```
@@ -928,25 +869,24 @@ schemaVersion              = the source's schema version
 For a merge result:
 
 ```text
-id                         = ReplicaSnapshotId of the merged exact logical state
+id                         = LogicalSnapshotId of the merged exact logical state
 causalFrontier             = unionCausalFrontiers(left.causalFrontier,
-                             right.causalFrontier, left.lineageTransitions,
-                             right.lineageTransitions)
-lineageTransitions         = the deterministic union of the two inputs'
-                             transition histories
+                             right.causalFrontier)
 graphAndJournalMergeProtocolVersion = preserved from the inputs
 schemaVersion              = preserved from the inputs
 ```
 
 The frontier union rejects a merge whose two inputs record unresolvable
-coordinates for a common hostname. This is the rejection rule for a regressed,
-conflicting, or incomparable host coordinate during normal synchronization; see
+coordinates for a common hostname — in particular, a coordinate whose
+`HostInstanceId` differs for the same hostname, which is an administrative
+conflict. This is the rejection rule for a regressed or conflicting host
+coordinate during normal synchronization; see
 `incremental-graph-journal-sync.md` § Causal frontier and the synchronization
 gate.
 
 The protocol and schema versions are persisted as explicit compatibility
 metadata with every synchronization source, stored separately even though they
-are also hashed into the `ReplicaSnapshotId`. Pairwise merge rejects inputs with
+are also hashed into the `LogicalSnapshotId`. Pairwise merge rejects inputs with
 mismatching protocol or schema versions before graph or journal reconciliation.
 
 A `SourceSnapshotProvenance` describes one exact synchronization-relevant
@@ -1673,95 +1613,24 @@ REQ-JT-20: Gaps in the journal index sequence are allowed. They may be caused by
 
 ---
 
-## Journal lineage
+## Journal namespace
 
-The established-position invariants and watermark monotonicity (REQ-JT-11
-through REQ-JT-20) hold within one journal lineage. A journal lineage is the
-installed graph-and-journal state produced by a sequence of ordinary operations:
+The journal of one storage instance has a single monotonic index namespace. The
+established-position invariants and watermark monotonicity (REQ-JT-11 through
+REQ-JT-20) hold for the entire storage instance; there is no reset-specific
+journal lineage or discontinuity. Reset is an ordinary bulk graph operation
+that preserves every established journal position and absence, appends only
+above the current watermark, and never decreases `last_journal_index` (see
+`incremental-graph-journal-emission.md` § Bulk reset).
 
-- ordinary journal append;
-- compaction;
-- migration preserving the established prefix;
-- normal pairwise journal reconciliation;
-- ordinary active-replica cutover associated with those operations.
+### Cursor domain continuity
 
-### Reset-to-hostname discontinuity
-
-`reset-to-hostname` (see `incremental-graph-synchronization.md`) is different.
-It replaces the whole installed graph-and-journal state with a selected
-snapshot and is not modeled as mutation of individual established positions in
-the old lineage.
-
-- A successful reset ends the currently installed lineage and installs the
-  selected snapshot as a new local journal lineage.
-- The reset journal adopts the selected snapshot's journal and watermark
-  exactly. The new watermark may be numerically lower than the old lineage's
-  watermark.
-- A successful reset generates a fresh local `HostLineageId` (see
-  `Host lineage`), so numeric index reuse in the new lineage cannot
-  collide with old-lineage host event IDs. Newly originated host events after
-  the reset use that same fresh lineage.
-- A successful reset replaces the resetting hostname's frontier coordinate with
-  the fresh lineage and its initial logical version, preserves the applicable
-  coordinates of other hosts from the selected snapshot, and records a durable
-  `HostLineageTransition` from the previous coordinate to the new one (see
-  `incremental-graph-journal-sync.md` § Reset-to-hostname and
-  `HostLineageTransition` in this document). The transition is the logical proof
-  of succession; it is not inferred from transport history.
-- No journal-notification continuity is specified across reset.
-- The old and new journal positions are not one shared index namespace.
-
-Watermark monotonicity and the established-position invariants continue to hold
-within each lineage individually.
-
-### Cursor domain rotation on reset
-
-A successful reset must create and publish a fresh `JournalCursorDomain`:
-
-1. Keep the old domain active while constructing the reset destination.
-2. Construct the destination to contain its journal, watermark, source
-   provenance where applicable, and a fresh host lineage, all durably
-   stored inside the destination replica.
-3. Complete and durably validate the destination.
-4. Atomically switch the active replica. The pointer switch selects a
-   destination that already contains its fresh host lineage.
-5. Publish the fresh cursor domain and the in-memory cache of the new host
-   lineage.
-6. Reject every `PossibleNodeChange` token registered in the old domain.
-
-Only volatile state — the in-memory lineage cache and the new cursor domain —
-is published after the pointer switch. The durable lineage is part of the
-destination, so a crash after cutover cannot leave the newly active lineage
-with an old or missing lineage.
-
-A failed reset preserves:
-
-- the previous active replica;
-- the previous journal lineage;
-- the previous cursor domain;
-- the previous host lineage;
-- the validity of existing same-process tokens under the old state.
-
-### Cursor domain rotation on migration
-
-Migration is a schema change performed through an active-replica cutover. A
-successful migration cutover publishes a fresh `JournalCursorDomain`:
-
-1. Keep the old domain active while constructing the migration destination.
-2. Complete and durably validate the destination.
-3. Atomically switch the active replica.
-4. Publish a fresh cursor domain.
-5. Reject every `PossibleNodeChange` token registered in the old domain.
-
-A failed migration preserves the previous active replica, journal lineage,
-cursor domain, host lineage, and the validity of existing same-process
-tokens under the old state. Migration preserves the established journal
-lineage and the current local host lineage; it rotates only the cursor
-domain.
-
-Normal pairwise synchronization preserves the existing cursor domain.
-Successful reset and migration cutovers rotate it. `BaselinePossibleNodeChange`
-remains the baseline sentinel and is not tied to one cursor domain.
+The `JournalCursorDomain` belongs to one running graph service/session and is
+not rotated by a reset. A successful reset preserves the existing cursor
+domain and keeps existing `PossibleNodeChange` cursors valid; a cursor obtained
+before reset observes reset-generated events afterward. Migration cutover may
+publish a fresh cursor domain as a schema-change lifecycle step (see
+`incremental-graph-journal-migrations.md`).
 
 ---
 
@@ -1784,9 +1653,10 @@ closing, active-replica cutover, root-database reopening, and reconstruction of
 `IncrementalGraph` during normal synchronization. Every graph instance
 constructed for that same running service receives the same domain.
 Independently initialized graph services receive different domains, even within
-the same JavaScript process. A successful `reset-to-hostname` or successful
-migration cutover publishes a fresh domain and rejects tokens registered in the
-old domain (see `Journal lineage`).
+the same JavaScript process. A reset preserves the existing domain and keeps
+existing tokens valid (see `Journal namespace`); a successful migration cutover
+may publish a fresh domain as a schema-change lifecycle step (see
+`incremental-graph-journal-migrations.md`).
 
 The state is stored in a module-private `WeakMap<PossibleNodeChange, CursorState>`.
 Equivalent module-private storage is acceptable.
@@ -1884,9 +1754,9 @@ process:
   `IncrementalGraph` reconstruction. The notification coverage rules in
   `incremental-graph-journal-sync.md` ensure that any change observable to the
   cursor is reported through repositioned canonical events. Normal pairwise
-  synchronization preserves the cursor domain; a wholesale `reset-to-hostname`
-  rotates the domain and rejects tokens registered in the old domain (see
-  `Journal lineage`).
+  synchronization preserves the cursor domain; a reset is an ordinary bulk
+  graph operation that also preserves the domain and keeps existing tokens
+  valid (see `Journal namespace`).
 - A `PossibleNodeChange` cursor is **not portable** to another process or host
   without additional serialization mechanisms that are not specified by this
   specification.
@@ -1897,9 +1767,9 @@ migration/schema boundaries, and the corresponding long-lived validity
 guarantees, are out of scope for this specification and deferred to a future
 computor/cursor-persistence specification.
 
-A successful migration cutover publishes a fresh cursor domain and rejects
+A successful migration cutover may publish a fresh cursor domain and reject
 tokens registered in the old domain; a failed migration preserves the old
-domain (see `Journal lineage`).
+domain (see `incremental-graph-journal-migrations.md`).
 
 REQ-JT-21: The public `PossibleNodeChange` API consists exactly of `nodeName`,
 `bindings`, `action`, and `time` as public read-only fields. Private journal
@@ -2037,16 +1907,16 @@ while `Sync{Hostname("a"), Hostname("b")}` serializes to:
 
 The tagged representations are distinct, so the two creators never collide.
 
-### E6 — ReplicaSnapshotId includes the schema and protocol versions
+### E6 — LogicalSnapshotId includes the schema and protocol versions
 
 Two exact logical snapshots `S` and `S'` that differ only in schema version
-receive different `ReplicaSnapshotId`s, because `versionToString(schemaVersion)`
+receive different `LogicalSnapshotId`s, because `versionToString(schemaVersion)`
 differs. Two snapshots that differ only in
 `graphAndJournalMergeProtocolVersion` also receive different IDs: otherwise
 identical state interpreted under two merge protocols must not share an
 identity.
 
-### E6a — ReplicaSnapshotId includes the causal frontier
+### E6a — LogicalSnapshotId includes the causal frontier
 
 Host A exports two logical snapshots with the same graph and journal state but
 different causal frontiers:
@@ -2062,74 +1932,76 @@ using one snapshot cannot receive the same sync event ID as a merge using the
 other: the snapshot IDs embedded in the sync event ID differ, so the creator
 (derived from the frontier) can never be paired with the wrong event identity.
 
-### E7 — Frontier ordering and lineage-transition resolution
+### E7 — Frontier ordering and administrative conflict
 
-Host H has coordinates `{ L, 4 }` and `{ L, 7 }` in the same lineage `L`.
+Host H has coordinates `{ I, 4 }` and `{ I, 7 }` in the same storage instance
+`I`.
 
-- Frontier `F1 = { H: { L, 4 } }` and `F2 = { H: { L, 7 } }` union to
-  `{ H: { L, 7 } }`: same lineage, and `7 > 4`, so the later coordinate is
+- Frontier `F1 = { H: { I, 4 } }` and `F2 = { H: { I, 7 } }` union to
+  `{ H: { I, 7 } }`: same instance, and `7 > 4`, so the later coordinate is
   retained.
-- Frontier `F1 = { H: { L, 4 } }` and `F3 = { H: { L, 4 } }` union to
-  `{ H: { L, 4 } }`: equal coordinates are retained.
-- Frontier `F1 = { H: { L, 4 } }` and `F4 = { H: { L', 0 } }`, where `L'` is a
-  different lineage of H, resolve through a validated `HostLineageTransition`
-  when exactly one valid successor chain connects them; otherwise the union
-  rejects rather than guessing a winner.
+- Frontier `F1 = { H: { I, 4 } }` and `F3 = { H: { I, 4 } }` union to
+  `{ H: { I, 4 } }`: equal coordinates are retained.
+- Frontier `F1 = { H: { I, 4 } }` and `F4 = { H: { I', 0 } }`, where `I'` is a
+  different storage-instance identity for the same hostname H, represents
+  unrelated reinitialization of H's storage; the union rejects it as an
+  administrative conflict rather than ordering or guessing a winner.
 
 ### E8 — Contributor set derives from the frontier
 
-A snapshot whose frontier is `{ A: {LA, 1}, B: {LB, 2}, C: {LC, 1} }` has
+A snapshot whose frontier is `{ A: {IA, 1}, B: {IB, 2}, C: {IC, 1} }` has
 contributor set `makeSync(causalFrontierHostnames(frontier)) =
 Sync{A, B, C}`. The contributor set is never stored independently, so it cannot
 disagree with the frontier.
 
 ### E9 — Frontier coordinate resolution rules
 
-For a staged coordinate `{ Ls, vs }` compared against a frontier coordinate
-`{ Lf, vf }` for the same hostname:
+For a staged coordinate `{ Is, vs }` compared against a frontier coordinate
+`{ If, vf }` for the same hostname:
 
-- same lineage (`Ls === Lf`) and equal version (`vs === vf`): already
+- same instance (`Is === If`) and equal version (`vs === vf`): already
   incorporated, complete no-op;
-- same lineage and `vs > vf`: later logical state, normal advancement, merge;
-- same lineage and `vs < vf`: regression, reject;
-- different lineage (`Ls !== Lf`): resolvable only through a validated
-  `HostLineageTransition`; otherwise incomparable, reject.
+- same instance and `vs > vf`: later logical state, normal advancement, merge;
+- same instance and `vs < vf`: regression, reject;
+- different instance (`Is !== If`): unrelated storage reinitialization,
+  administrative conflict, reject.
 
-### E10 — Host event identity uses the canonical host lineage
+### E10 — Host event identity uses the storage-instance identity
 
-Host A in lineage `LA` emits an event at index 21:
-
-```
-eventId = JSON.stringify(["host", "A", hostLineageIdToString(LA), 21])
-```
-
-After a reset, host A's new lineage `LA2` reaches index 21 with
+Host A in storage instance `IA` emits an event at index 21:
 
 ```
-eventId = JSON.stringify(["host", "A", hostLineageIdToString(LA2), 21])
+eventId = JSON.stringify(["host", "A", hostInstanceIdToString(IA), 21])
 ```
 
-The two event IDs differ, so later synchronization cannot confuse the two
-payloads. The same lineage value also appears in the frontier coordinate
-`{ A: { LA2, 0 } }`, so host-event identity and frontier coordinates share one
-canonical lineage representation.
+A later unrelated reinitialization of host A creates a new storage instance
+`IA2`; events there use
+
+```
+eventId = JSON.stringify(["host", "A", hostInstanceIdToString(IA2), 21])
+```
+
+The two event IDs differ, so synchronization cannot confuse the two payloads.
+The same instance value also appears in the frontier coordinate
+`{ A: { IA2, 0 } }`, so host-event identity and frontier coordinates share one
+canonical instance representation.
 
 ### Canonical-encoding test vectors
 
 ### C1 — Minimal empty or fresh replica
 
-A fresh replica with no materialized nodes, no journal entries, `last_journal_index
-= 0`, frontier `{ A: { LA, 0 } }`, and no transitions encodes to exactly the
-bytes of `array(["replica-snapshot", u64(1), schemaVersion, protocolVersion,
-emptyGraph, emptyJournal, frontierBytes, emptyTransitions])`. Its
-`ReplicaSnapshotId` is the SHA-256 of those bytes.
+A fresh storage instance with no materialized nodes, no journal events, frontier
+`{ A: { I, 0 } }`, and an empty merge basis encodes to exactly the bytes of
+`array(["logical-snapshot", u64(1), schemaVersion, protocolVersion, emptyGraph,
+emptyBasis, emptyJournalView, frontierBytes])`. Its `LogicalSnapshotId` is the
+SHA-256 of those bytes.
 
 ### C2 — One materialized node
 
-Adding one materialized node with a value, freshness, timestamps, and an
-identifier changes exactly the `values`, `freshness`, `timestamps`, and
-`identifiers` maps; the canonical bytes differ from C1 in exactly those
-positions.
+Adding one materialized node with a value, freshness, timestamps, an
+identifier, and a merge-basis candidate changes exactly the `values`,
+`freshness`, `timestamps`, `identifiers`, and merge-basis maps; the canonical
+bytes differ from C1 in exactly those positions.
 
 ### C3 — Nested ConstValue data
 
@@ -2143,41 +2015,43 @@ Two implementations that insert the same map entries in different physical
 orders produce identical canonical bytes, because every map is sorted by key
 before encoding.
 
-### C5 — Journal entries plus established absences
+### C5 — Logical journal view is placement-independent
 
-A journal with `last_journal_index = 5`, entries at indices 1 and 5, and
-established absences at 2, 3, and 4 encodes `presentEntries` as the sorted list
-of indices 1 and 5; the absences are implicit. Two journals that differ only in
-which indices are absent produce different canonical bytes.
+Two journals with the same retained logical events placed at different physical
+indices, or with different compaction-removed absences, produce identical
+logical-journal-view bytes and therefore the same `LogicalSnapshotId`.
+`JournalIndex`, `last_journal_index`, established gaps, and physical duplicate
+occurrences are excluded from the logical identity.
 
 ### C6 — Causal frontier with several hosts
 
-A frontier `{ A: { LA, 1 }, B: { LB, 2 }, C: { LC, 0 } }` encodes as a map
+A frontier `{ A: { I1, 1 }, B: { I2, 2 }, C: { I3, 0 } }` encodes as a map
 sorted by hostname; a different insertion order produces the same bytes.
 
-### C7 — A reset lineage transition
+### C7 — Compaction and carrier repositioning do not change the identity
 
-A transition
-`{ hostname: A, predecessor: { LA1, 1 }, successor: { LA2, 0 }, kind: "reset" }`
-encodes as one sorted transition entry.
+Two snapshots that differ only in compacted physical layout or notification-
+carrier positions produce the same `LogicalSnapshotId`; they may produce
+different `EncodedSnapshotDigest` values, which is their only transport-level
+role.
 
 ### C8 — Independent implementations produce identical bytes and digest
 
 Two independent implementations of the canonical encoding, given the same
 logical snapshot, produce the same canonical bytes and therefore the same
-`ReplicaSnapshotId`.
+`LogicalSnapshotId`.
 
 ### C9 — One-field changes produce different bytes and IDs
 
-Changing any single field of the logical state — one value, one timestamp, one
-freshness, one journal entry, one absence, one frontier coordinate, or one
-transition — changes the canonical bytes and therefore the `ReplicaSnapshotId`.
+Changing any single logical field — one value, one timestamp, one freshness, one
+retained journal event, one merge-basis candidate, one frontier coordinate —
+changes the canonical bytes and therefore the `LogicalSnapshotId`.
 
 ### C10 — Different schema or merge-protocol versions produce different IDs
 
 Two otherwise identical snapshots that differ only in `schemaVersion` or only in
 `graphAndJournalMergeProtocolVersion` produce different canonical bytes and
-different `ReplicaSnapshotId`s.
+different `LogicalSnapshotId`s.
 
 ---
 
