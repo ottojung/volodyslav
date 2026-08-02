@@ -107,7 +107,9 @@ function makeGroundFilter(head, args)
 
 Returns a `GroundFilter` with the given head and argument list.
 
-`args` MUST NOT contain values other than values satisfying the `ConstValue` definition or `Wildcard` values. Implementations SHOULD validate this at construction and throw if the array contains invalid elements.
+`makeGroundFilter` is defined for argument arrays whose elements are
+`ConstValue` or `Wildcard` values. Other arrays are outside its input domain.
+Implementations should reject values outside that domain at construction.
 
 ### makeUnionFilter
 

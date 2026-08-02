@@ -126,10 +126,12 @@ installing `F` changes its public observable state relative to either source.
 Journal reconciliation must not inspect or compare `ComputedValue`s itself.
 
 Each synchronized source snapshot and merged destination carries a
-`SourceSnapshotProvenance` (a `SourceSnapshotId` and a contributor `Sync` set,
-see `incremental-graph-journal-types.md` § Source snapshot provenance), which
-journal reconciliation uses to derive sync event identity and contributor
-sets. The merged destination's provenance is durably established before the
+`SourceSnapshotProvenance` — a `SourceSnapshotId`, a contributor `Sync` set,
+the merge protocol version, and the schema version (see
+`incremental-graph-journal-types.md` § Source snapshot provenance) — which
+journal reconciliation uses to derive sync event identity and contributor sets.
+Pairwise merge rejects inputs with mismatching merge protocol or schema
+versions. The merged destination's provenance is durably established before the
 destination becomes active or is used as the source of a later per-host merge.
 
 ---
