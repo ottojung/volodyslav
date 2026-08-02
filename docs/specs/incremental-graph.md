@@ -485,9 +485,9 @@ interface IncrementalGraph {
 
   // Journal API (read-only)
   possibleMaybeChanges({ since, to }: {
-    since: PossibleNodeChange | BaselinePossibleNodeChange,
+    since: PossibleNodeChange | BaselinePossibleNodeChange | JournalScanCursor,
     to: NodeFilter,
-  }): Promise<Array<PossibleNodeChange>>;
+  }): Promise<{ changes: Array<PossibleNodeChange>, cursor: JournalScanCursor }>;
 
   // Inspection API (read-only)
   getFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | undefined>;
@@ -626,7 +626,7 @@ type Computor = (
 
 The IncrementalGraph journal records graph changes to support incremental graph maintenance, synchronization, and migration. The public journal API consists of:
 
-- `graph.possibleMaybeChanges({ since, to })` — Queries possible node changes since a previously observed position, restricted to nodes matching the given filter. Returns `Promise<Array<PossibleNodeChange>>`. The `since` parameter accepts `PossibleNodeChange | BaselinePossibleNodeChange`; the `to` parameter is a `NodeFilter`. See `docs/specs/incremental-graph-journal-api.md` for the full specification.
+- `graph.possibleMaybeChanges({ since, to })` — Queries possible node changes since a previously observed position, restricted to nodes matching the given filter. Returns `Promise<{ changes, cursor }>` where `changes` is the matching `PossibleNodeChange` array and `cursor` is a `JournalScanCursor` representing the scanned bound. The `since` parameter accepts `PossibleNodeChange | BaselinePossibleNodeChange | JournalScanCursor`; the `to` parameter is a `NodeFilter`. See `docs/specs/incremental-graph-journal-api.md` for the full specification.
 
 - `baselinePossibleNodeChange()` — Returns a `BaselinePossibleNodeChange` sentinel (a position less than any real journal index). When passed as `since` to `graph.possibleMaybeChanges`, scanning starts from the first journal entry. This is a standalone function, not an `IncrementalGraph` method.
 

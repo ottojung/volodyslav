@@ -10,10 +10,13 @@ The journal is primarily exposed through a change-query operation:
 graph.possibleMaybeChanges({
     since,
     to,
-}): Promise<Array<PossibleNodeChange>>
+}): Promise<{
+    changes: Array<PossibleNodeChange>,
+    cursor: JournalScanCursor,
+}>
 ```
 
-A caller provides a `PossibleNodeChange | BaselinePossibleNodeChange` as a cursor-like reference point and a `NodeFilter` describing the portion of the graph it cares about. The result is a finite array of later possible changes relevant to that filter, ordered by ascending journal index.
+A caller provides a `PossibleNodeChange | BaselinePossibleNodeChange | JournalScanCursor` as a cursor-like reference point and a `NodeFilter` describing the portion of the graph it cares about. The result contains a finite array of later possible changes relevant to that filter, ordered by ascending journal index, together with an opaque `JournalScanCursor` representing the scanned bound so the caller can advance past empty or unmatched suffixes.
 
 The method takes its arguments as a single object parameter with `since` and `to` fields.
 
@@ -34,14 +37,14 @@ remains valid across compaction (the private index survives physical deletion
 of its backing entry) and across normal pairwise synchronization and its
 associated active-replica cutover (notification coverage reports changes
 through repositioned canonical events). Normal pairwise synchronization
-preserves the cursor domain; a successful `reset-to-hostname` rotates it and
-rejects tokens registered in the old domain.
+preserves the cursor domain; a successful `reset-to-hostname` or successful
+migration cutover rotates it and rejects tokens registered in the old domain.
 Persistence of these tokens across process restarts, synchronization boundaries
 involving heterogeneous hosts, or migration/schema boundaries, and the
 corresponding long-lived validity guarantees, are outside this journal's token
 contract.
 
-The journal is designed for incremental graph maintenance. A caller can pass a previously observed `PossibleNodeChange` as the `since` argument, or use `baselinePossibleNodeChange()` (a position less than any real journal index) to start from the beginning of the journal.
+The journal is designed for incremental graph maintenance. A caller can pass a previously observed `PossibleNodeChange` or a returned `JournalScanCursor` as the `since` argument, or use `baselinePossibleNodeChange()` (a position less than any real journal index) to start from the beginning of the journal.
 
 The detailed public meaning of `PossibleNodeChange` and `possibleMaybeChanges` is specified in:
 
@@ -54,10 +57,13 @@ docs/specs/incremental-graph-journal-api.md
 The main query interface is:
 
 ```js
-graph.possibleMaybeChanges({ since, to }): Promise<Array<PossibleNodeChange>>
+graph.possibleMaybeChanges({ since, to }): Promise<{
+    changes: Array<PossibleNodeChange>,
+    cursor: JournalScanCursor,
+}>
 ```
 
-The operation computes the logical journal view through a fixed upper bound `H`, restricts to entries strictly after `since`, applies the `to` filter, and returns the result in ascending index order. The `since` argument accepts `PossibleNodeChange | BaselinePossibleNodeChange`; `baselinePossibleNodeChange()` returns a position less than any real journal index.
+The operation computes the logical journal view through a fixed upper bound `H`, restricts to entries strictly after `since`, applies the `to` filter, returns the matching entries in ascending index order as `changes`, and returns a `JournalScanCursor` representing `H`. The `since` argument accepts `PossibleNodeChange | BaselinePossibleNodeChange | JournalScanCursor`; `baselinePossibleNodeChange()` returns a position less than any real journal index.
 
 The detailed scan order, initial value behavior, filtering behavior, and result semantics are specified in:
 

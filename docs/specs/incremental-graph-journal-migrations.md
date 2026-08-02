@@ -219,6 +219,14 @@ REQ-JM-12: If migration fails before cutover, the old active replica MUST
 remain selected and unchanged. The incomplete inactive replica may be discarded
 or rebuilt.
 
+REQ-JM-12a: A successful migration cutover publishes a fresh
+`JournalCursorDomain` for the newly installed lineage and rejects every
+`PossibleNodeChange` token registered in the old domain. A failed migration
+preserves the old cursor domain and the validity of existing same-process
+tokens under the old state. Migration preserves the current local host event
+namespace; only the cursor domain is rotated (see
+`incremental-graph-journal-types.md` § Journal lineage).
+
 ---
 
 ## Testable scenarios
@@ -282,6 +290,8 @@ new namespace is an ordinary graph operation, not a migration emission.
 1. An existing `possibleMaybeChanges` reader completes on the old active replica before cutover.
 2. Once `closeGarden` is queued, no new reader selects the old replica.
 3. After cutover, new readers see the preserved journal prefix plus fresh migration entries.
+4. After cutover, the cursor domain is rotated: a `PossibleNodeChange` token
+   registered before migration is rejected as a `since` argument.
 
 The reader that started before cutover observes a consistent journal state of the old replica's journal. New readers observe the new replica's journal state (preserved prefix + migration appends).
 
