@@ -10,13 +10,10 @@ The journal is primarily exposed through a change-query operation:
 graph.possibleMaybeChanges({
     since,
     to,
-}): Promise<{
-    changes: Array<PossibleNodeChange>,
-    cursor: JournalScanCursor,
-}>
+}): Promise<Array<PossibleNodeChange>>
 ```
 
-A caller provides a `PossibleNodeChange | BaselinePossibleNodeChange | JournalScanCursor` as a cursor-like reference point and a `NodeFilter` describing the portion of the graph it cares about. The result contains a finite array of later possible changes relevant to that filter, ordered by ascending journal index, together with an opaque `JournalScanCursor` representing the scanned bound so the caller can advance past empty or unmatched suffixes.
+A caller provides a `PossibleNodeChange | BaselinePossibleNodeChange` as a cursor-like reference point and a `NodeFilter` describing the portion of the graph it cares about. The result is a finite array of later possible changes relevant to that filter, ordered by ascending journal index.
 
 The method takes its arguments as a single object parameter with `since` and `to` fields.
 
@@ -44,7 +41,7 @@ involving heterogeneous hosts, or migration/schema boundaries, and the
 corresponding long-lived validity guarantees, are outside this journal's token
 contract.
 
-The journal is designed for incremental graph maintenance. A caller can pass a previously observed `PossibleNodeChange` or a returned `JournalScanCursor` as the `since` argument, or use `baselinePossibleNodeChange()` (a position less than any real journal index) to start from the beginning of the journal.
+The journal is designed for incremental graph maintenance. A caller can pass a previously observed `PossibleNodeChange` as the `since` argument, or use `baselinePossibleNodeChange()` (a position less than any real journal index) to start from the beginning of the journal.
 
 The detailed public meaning of `PossibleNodeChange` and `possibleMaybeChanges` is specified in:
 
@@ -57,13 +54,10 @@ docs/specs/incremental-graph-journal-api.md
 The main query interface is:
 
 ```js
-graph.possibleMaybeChanges({ since, to }): Promise<{
-    changes: Array<PossibleNodeChange>,
-    cursor: JournalScanCursor,
-}>
+graph.possibleMaybeChanges({ since, to }): Promise<Array<PossibleNodeChange>>
 ```
 
-The operation computes the logical journal view through a fixed upper bound `H`, restricts to entries strictly after `since`, applies the `to` filter, returns the matching entries in ascending index order as `changes`, and returns a `JournalScanCursor` representing `H`. The `since` argument accepts `PossibleNodeChange | BaselinePossibleNodeChange | JournalScanCursor`; `baselinePossibleNodeChange()` returns a position less than any real journal index.
+The operation computes the logical journal view through a fixed upper bound `H`, restricts to entries strictly after `since`, applies the `to` filter, and returns the result in ascending index order. The `since` argument accepts `PossibleNodeChange | BaselinePossibleNodeChange`; `baselinePossibleNodeChange()` returns a position less than any real journal index.
 
 The detailed scan order, initial value behavior, filtering behavior, and result semantics are specified in:
 

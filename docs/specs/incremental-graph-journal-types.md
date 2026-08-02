@@ -1218,17 +1218,18 @@ successful migration cutover publishes a fresh `JournalCursorDomain`:
 1. Keep the old domain active while constructing the migration destination.
 2. Complete and durably validate the destination.
 3. Atomically switch the active replica.
-4. Publish a fresh cursor domain for the newly installed lineage.
+4. Publish a fresh cursor domain.
 5. Reject every `PossibleNodeChange` token registered in the old domain.
 
 A failed migration preserves the previous active replica, journal lineage,
 cursor domain, host event namespace, and the validity of existing same-process
-tokens under the old state. Migration preserves the current local host event
-namespace; only the cursor domain is rotated.
+tokens under the old state. Migration preserves the established journal
+lineage and the current local host event namespace; it rotates only the cursor
+domain.
 
-Normal pairwise synchronization preserves the existing cursor domain. Only a
-successful wholesale reset rotates it. `BaselinePossibleNodeChange` remains the
-baseline sentinel and is not tied to one cursor domain.
+Normal pairwise synchronization preserves the existing cursor domain.
+Successful reset and migration cutovers rotate it. `BaselinePossibleNodeChange`
+remains the baseline sentinel and is not tied to one cursor domain.
 
 ---
 
@@ -1252,15 +1253,13 @@ closing, active-replica cutover, root-database reopening, and reconstruction of
 constructed for that same running service receives the same domain.
 Independently initialized graph services receive different domains, even within
 the same JavaScript process. A successful `reset-to-hostname` or successful
-migration cutover publishes a fresh domain for the newly installed lineage and
-rejects tokens registered in the old domain (see `Journal lineage`).
+migration cutover publishes a fresh domain and rejects tokens registered in the
+old domain (see `Journal lineage`).
 
 The state is stored in a module-private `WeakMap<PossibleNodeChange, CursorState>`.
-Equivalent module-private storage is acceptable; `JournalScanCursor` tokens are
-registered in the same style.
+Equivalent module-private storage is acceptable.
 
-- A `PossibleNodeChange` or `JournalScanCursor` token is registered only when
-  returned by `possibleMaybeChanges`.
+- A token is registered only when returned by `possibleMaybeChanges`.
 - `since` lookup verifies that the token is known.
 - Lookup verifies that its stored `ownerDomain` equals the receiving graph's
   domain.
@@ -1398,34 +1397,6 @@ When passed as `since`, scanning starts from the first journal entry.
 
 ---
 
-## JournalScanCursor (public)
-
-`JournalScanCursor` is an opaque scan position returned by
-`graph.possibleMaybeChanges` alongside its `changes` array. It represents the
-captured journal bound `H` of that query and may be passed as `since` to the
-next query in the same process session and cursor domain. The next query scans
-strictly after `H`, so a caller can advance past an empty or unmatched suffix
-even when the previous `changes` array was empty.
-
-```js
-class JournalScanCursorClass {
-    /** @private @type {undefined} */ __brand;
-    constructor() {
-        if (this.__brand !== undefined)
-            throw new Error("JournalScanCursor cannot be instantiated externally");
-    }
-}
-
-/** @typedef {JournalScanCursorClass} JournalScanCursor */
-```
-
-A `JournalScanCursor` is registered in the module-private
-`WeakMap<JournalScanCursor, CursorState>` when a query returns it, storing its
-`ownerDomain` and the captured bound `H`. Domain, forgery, and rotation checks
-apply exactly as they do for `PossibleNodeChange`: a token from another
-domain, an unknown token, a forged token, or a token invalidated by cursor
-domain rotation is rejected by one explicit cursor error.
-
 ## Journal-internal since-position encoding
 
 Internally, the journal module converts the public `since` value into a
@@ -1442,8 +1413,8 @@ private cursor position using the module-private `WeakMap<PossibleNodeChange, Cu
 If `since` is `BaselinePossibleNodeChange`, this yields `{ kind: "baseline" }`
 — a position less than any real journal index.
 
-If `since` is `PossibleNodeChange` or `JournalScanCursor`, the module looks up
-the token in the private `WeakMap`:
+If `since` is `PossibleNodeChange`, the module looks up the token in the
+private `WeakMap`:
 
 - If the token is unknown or forged, throw a single explicit cursor error.
 - If the token's stored `ownerDomain` does not equal the receiving graph's
@@ -1451,15 +1422,12 @@ the token in the private `WeakMap`:
 - Otherwise yield `{ kind: "journal", index, ownerDomain }`, scanning strictly
   after that `index`.
 
-For a `JournalScanCursor`, the stored `index` is the captured bound `H` of the
-query that returned it, so the next scan starts strictly after `H`.
-
 ---
 
 ## Nominal boundary summary
 
-`PossibleNodeChange`, `BaselinePossibleNodeChange`, and `JournalScanCursor`
-are nominal public journal tokens with different public semantics:
+`PossibleNodeChange` and `BaselinePossibleNodeChange` are nominal public
+journal tokens with different public semantics:
 
 - `PossibleNodeChange`: immutable public projection of a journal entry with
   meaningful fields (`nodeName`, `bindings`, `action`, `time`). The raw journal
@@ -1468,9 +1436,6 @@ are nominal public journal tokens with different public semantics:
   It is not derived from a journal entry. `baselinePossibleNodeChange()` may
   return one immutable singleton. It carries no journal index and is valid for
   every graph because it always means "before the first entry."
-- `JournalScanCursor`: an opaque scan position equal to the captured bound `H`
-  of the query that returned it. It carries no public fields; its owner domain
-  and index are stored in a module-private `WeakMap`.
 
 The conversion directions are:
 
@@ -1487,10 +1452,7 @@ The conversion directions are:
 │  graph.possibleMaybeChanges({                │
 │      since,                                  │
 │      to,                                     │
-│  }): Promise<{                              │
-│      changes: Array<PossibleNodeChange>,    │
-│      cursor: JournalScanCursor,             │
-│  }>                                         │
+│  }): Promise<Array<PossibleNodeChange>>     │
 │                                              │
 │  baselinePossibleNodeChange():               │
 │      BaselinePossibleNodeChange              │

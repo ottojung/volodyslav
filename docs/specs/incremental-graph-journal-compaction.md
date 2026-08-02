@@ -136,11 +136,7 @@ REQ-JC-11: Let `S` be a journal state and let `C(S)` be any result of a conformi
 possibleMaybeChanges(S, since, to) = possibleMaybeChanges(C(S), since, to)
 ```
 
-The `changes` arrays must contain the same logical entries in the same order,
-and the returned `cursor` must be identical (compaction does not change
-`last_journal_index`, so the captured bound is the same). The only externally
-observable effect of physical compaction is reduced storage usage. It may also
-reduce scan work internally, but it must not alter journal-query semantics.
+The returned arrays must contain the same logical entries in the same order. The only externally observable effect of physical compaction is reduced storage usage. It may also reduce scan work internally, but it must not alter journal-query semantics.
 
 This is an immediate consequence of both compaction and `possibleMaybeChanges` using the same `logicalJournalView(journal, H)`. The query already suppresses every entry that compaction is permitted to remove.
 
@@ -177,8 +173,8 @@ This is the main reason `possibleMaybeChanges` must perform logical compaction i
 
 REQ-JC-12: `graph.possibleMaybeChanges` skips absent entries. An entry physically
 deleted by conforming compaction was already outside the logical journal view,
-was not included in `changes` before deletion, and is not reconstructed after
-deletion. Therefore its removal does not change the returned `changes` array.
+was not returned before deletion, and is not reconstructed after deletion.
+Therefore its removal does not change the returned array.
 
 REQ-JC-13: `graph.possibleMaybeChanges` NEVER reconstructs deleted entries.
 
