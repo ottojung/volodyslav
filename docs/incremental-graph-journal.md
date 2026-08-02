@@ -31,10 +31,11 @@ The journal specifies only same-process, in-memory token usage. A
 `PossibleNodeChange` returned during a process session is valid as `since` for
 subsequent calls within that same session. Within the same process, a cursor
 remains valid across compaction (the private index survives physical deletion
-of its backing entry) and across structural synchronization and cutover
-(notification coverage reports changes through repositioned canonical events).
-Normal pairwise synchronization preserves the cursor domain; a successful
-`reset-to-hostname` rotates it and rejects tokens registered in the old domain.
+of its backing entry) and across normal pairwise synchronization and its
+associated active-replica cutover (notification coverage reports changes
+through repositioned canonical events). Normal pairwise synchronization
+preserves the cursor domain; a successful `reset-to-hostname` rotates it and
+rejects tokens registered in the old domain.
 Persistence of these tokens across process restarts, synchronization boundaries
 involving heterogeneous hosts, or migration/schema boundaries, and the
 corresponding long-lived validity guarantees, are outside this journal's token
