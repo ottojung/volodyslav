@@ -49,6 +49,7 @@ data, conceptually equivalent to:
  * @property {string} mergeProtocolVersion
  * @property {LogicalGraphState} graphState
  * @property {LogicalJournalView} journalState
+ * @property {JournalMergeBasis} journalBasis
  * @property {CausalFrontier} causalFrontier
  * @property {MergeBasis} mergeBasis
  */
@@ -173,38 +174,47 @@ evidence and the semantic event identity, so that every grouping of the same
 host contributions derives the same event ID. The event identity is a canonical
 function of the evidence, not of the two immediate source snapshots.
 
-The sync event ID is a canonical function of the complete joined journal
-evidence, independent of the two immediate source snapshots:
+The sync event ID is a fixed-size digest of the **complete immutable payload**,
+so that a payload can never change under a fixed event ID:
 
 ```js
-const eventId = JSON.stringify([
+const payload = [
     "sync-v2",
     graphAndJournalMergeProtocolVersion,
-    action,
+    action,                          // "delete" | "invalidate"
     nodeKeyToString(key),
-    unixTimestampToNumber(derivedTime),
-]);
+    nodeIdentifierToString(identifier),
+    unixTimestampToNumber(time),
+    journalCreatorToString(creator),
+];
+
+const eventId = "sync-v2:" + sha256Hex(canonicalBytes(payload));
 ```
 
-`derivedTime` is the canonical sync event time derived from the joined evidence
+`time` is the canonical derived time from the joined evidence
 (`incremental-graph-journal-sync.md` § Derive sync-derived merge facts). The
-event ID includes `graphAndJournalMergeProtocolVersion` and the derived time so
-that different protocols or different accumulated evidence produce different
-event IDs, and the ID never depends on which two snapshots performed the join.
-The identity applies only to `SyncDeleteJournalEntry` and
+`creator` is `makeSync` over the origins of the evidence relevant to that
+semantic key — the hostnames of the retained facts for `key` in the joined
+journal basis — not every hostname in the global frontier. This single format
+is authoritative; no alternate sync-event-ID tuple exists anywhere in these
+specifications. The identity applies only to `SyncDeleteJournalEntry` and
 `SyncInvalidateJournalEntry`.
 
 Consequences:
 
 - the same represented host contributions produce the same event ID regardless
   of pairwise grouping or order;
-- a recomputed fact with a larger derived time receives a new event ID and the
-  earlier fact is logically superseded;
+- a recomputed fact with a changed payload (a larger derived time, a changed
+  identifier, or newly relevant evidence origins) receives a new event ID and
+  the earlier fact is logically superseded;
 - repeated placement of the same sync event is deduplicated by `eventId`;
-- one `eventId` still identifies exactly one immutable payload (the ID encodes
-  the derived time, so a payload cannot change under a fixed ID);
+- one `eventId` identifies exactly one immutable payload by construction (the
+  ID is a digest of the payload; a payload change implies a different ID);
 - if the same sync event ID is encountered with different payloads,
-  synchronization fails as a journal-integrity error.
+  synchronization fails as a journal-integrity error;
+- unrelated host contributions that add no evidence for the key do not rewrite
+  an existing event, because the creator covers only the key's relevant
+  origins.
 
 A sync event ID must not depend on:
 
@@ -292,39 +302,49 @@ with an old graph or frontier coordinate.
 The merge basis (see `incremental-graph-synchronization.md` § 1c) is
 synchronization-critical state and is updated atomically whenever host-originated
 graph state changes. The durable batch that commits a host-originated change
-also commits the corresponding candidate and evidence mutations.
+also commits the corresponding candidate and status/evidence mutations.
+Candidates and tombstones are ordered by causal precedence
+(`incremental-graph-synchronization.md` § Causal precedence): a later
+`HostStateVersion` from the same storage instance always supersedes an earlier
+contribution from that instance.
 
 Per operation:
 
 - **First materialization**: creates one `MaterializedCandidate` for the key
-  (with its value, timestamps, identifier, empty input candidate references, and
-  `up-to-date` freshness), plus an `up-to-date` `FreshnessFact`.
+  (value, timestamps, identifier, the exact input candidate IDs the value was
+  computed against — never empty for a node with direct dependencies) and one
+  `up-to-date` `CandidateStatus` revision with the same input candidate IDs.
 - **Changed recomputation**: creates a new `MaterializedCandidate` (new origin,
-  new value/timestamps) for the key, recording the exact input candidate IDs
-  the new value was computed against, plus an `up-to-date` `FreshnessFact`.
+  new value/timestamps) for the key, recording the exact input candidate IDs the
+  new value was computed against, plus one `up-to-date` `CandidateStatus`
+  revision.
 - **Unchanged recomputation that validates freshness**: creates no new
-  candidate; adds an `up-to-date` `FreshnessFact` only.
-- **Invalidation**: creates no new candidate; adds a `potentially-outdated`
-  `FreshnessFact` only.
-- **Host-local deletion**: creates a `TombstoneCandidate` (ordered by deletion
-  time) and, if a value was replaced, a `potentially-outdated` `FreshnessFact`;
-  the tombstone is the durable deletion evidence.
+  candidate; publishes one new `up-to-date` `CandidateStatus` revision for the
+  existing candidate, recording the newly validated input candidate IDs. The
+  new revision is causally later and therefore supersedes an earlier
+  invalidation by the same host instance.
+- **Invalidation**: creates no new candidate; publishes one
+  `potentially-outdated` `CandidateStatus` revision only.
+- **Host-local deletion**: creates a `TombstoneCandidate` (its origin version
+  supersedes earlier contributions from the same host instance) and, if a value
+  was replaced, a `potentially-outdated` `CandidateStatus` revision; the
+  tombstone is the durable deletion evidence.
 - **Migration create/delete/invalidate**: creates or removes candidates as a
   first materialization, deletion, or invalidation respectively, all within the
   one migration version advance.
 - **Bulk reset add/edit/delete/invalidate/validate**: creates or removes
   candidates per the transition-to-event matrix
   (`incremental-graph-journal-emission.md` § Transition-to-event matrix),
-  including tombstones for reset deletions, all within the one reset version
-  advance.
+  including tombstones for reset deletions and the corresponding status
+  revisions, all within the one reset version advance.
 
 Operations that do not create a new candidate: unchanged recomputation,
 invalidation, cache-hit pull, export, compaction, and synchronization-only
 changes. Operations that only add monotonic evidence: unchanged recomputation
-(adds an `up-to-date` fact), invalidation (adds a stale fact). The merge basis
-and the exported causal frontier are committed together, so a crash can never
-expose new graph state with a stale merge basis, or new merge-basis evidence
-with an old graph or frontier coordinate.
+(adds an `up-to-date` status revision), invalidation (adds a stale status
+revision). The merge basis and the exported causal frontier are committed
+together, so a crash can never expose new graph state with a stale merge basis,
+or new merge-basis evidence with an old graph or frontier coordinate.
 
 ```js
 /**
@@ -448,8 +468,9 @@ derivation that depends on how the snapshot was produced or stored.
 It is computed deterministically from a canonical encoding of:
 
 - the graph's synchronization-relevant projection;
-- the canonical retained merge basis;
-- the logical journal view (immutable retained events);
+- the canonical retained graph merge basis;
+- the canonical retained journal merge basis;
+- the logical journal view projection (derived from the journal merge basis);
 - the causal frontier;
 - graph schema version;
 - graph-and-journal merge protocol version;
@@ -633,6 +654,95 @@ bytes and therefore different `LogicalSnapshotId`s. The encoding never includes
 `JournalIndex`, `last_journal_index`, established gaps or absences, physical
 duplicate occurrences, or carrier positions.
 
+#### Journal merge basis encoding
+
+The **journal merge basis** is the persisted, merge-closed evidence behind the
+public journal. The public journal (its logical view) is a projection of this
+basis; the basis is never reduced to the projection, because recomputing
+sync-derived facts requires the host-originated evidence that the projection
+drops (see `incremental-graph-journal-sync.md` § Journal evidence and the
+journal semilattice).
+
+```js
+/**
+ * One host-originated canonical state event retained as journal evidence.
+ *
+ * @typedef {object} JournalStateFact
+ * @property {string} factId - sha256 over (origin, semanticKey, "state",
+ *   eventId); reproducible and globally unambiguous.
+ * @property {{ hostname: Hostname, instanceId: HostInstanceId, version: HostStateVersion }} origin
+ * @property {CausalFrontier} causalContext - The frontier of the origin
+ *   contribution.
+ * @property {NodeKey} semanticKey
+ * @property {"add" | "edit" | "delete"} action
+ * @property {NodeIdentifier} nodeIdentifier
+ * @property {UnixTimestamp} time
+ * @property {JournalCreator} creator
+ * @property {string} eventId
+ */
+```
+
+```js
+/**
+ * One host-originated canonical freshness event retained as journal evidence.
+ *
+ * @typedef {object} JournalFreshnessFact
+ * @property {string} factId - sha256 over (origin, semanticKey, "freshness",
+ *   eventId); reproducible and globally unambiguous.
+ * @property {{ hostname: Hostname, instanceId: HostInstanceId, version: HostStateVersion }} origin
+ * @property {CausalFrontier} causalContext - The frontier of the origin
+ *   contribution.
+ * @property {NodeKey} semanticKey
+ * @property {"up-to-date" | "potentially-outdated"} tone
+ * @property {NodeIdentifier} nodeIdentifier
+ * @property {UnixTimestamp} time
+ * @property {JournalCreator} creator
+ * @property {string} eventId
+ */
+```
+
+The basis is a map from each semantic key to its two fact sets:
+
+```text
+journalBasis = map(
+    semanticKey -> {
+        stateFacts:     set of JournalStateFact,
+        freshnessFacts: set of JournalFreshnessFact,
+    }
+)
+```
+
+The join is set union per fact set, deduplicated by `factId`:
+
+```text
+joinJournalBasis(B1, B2) = per key:
+    stateFacts     = stateFacts(B1) ∪ stateFacts(B2)
+    freshnessFacts = freshnessFacts(B1) ∪ freshnessFacts(B2)
+```
+
+Set union is commutative, associative, and idempotent by construction. Facts
+are ordered causally by the same precedence as graph contributions
+(`incremental-graph-synchronization.md` § Causal precedence): a later
+`HostStateVersion` from the same storage instance supersedes an earlier fact
+from that instance, so a causally later `validate` supersedes an earlier
+`invalidate` by the same host.
+
+The canonical journal for a key is a projection of the basis
+(`incremental-graph-journal-sync.md` § Final canonical events): the final
+canonical state event is the derived `delete` fact when one is derived,
+otherwise the causally-latest state fact (among concurrent, maximum by
+`(time, nodeIdentifier, eventId)`); the final canonical freshness event is the
+derived `invalidate` fact when one is derived, otherwise the causally-latest
+freshness fact (among concurrent, maximum by `(time, eventId)`).
+
+Safe pruning: a fact may be removed only when its removal changes no derivation
+and no canonical event. The basis MUST retain, per key, the causally-latest
+state fact, the causally-latest freshness fact, the maximum-time fact in each
+category, at least one `up-to-date` freshness fact when one exists, and at
+least one materialized (`add`/`edit`) state fact when one exists. This
+canonical subset preserves `derivedTime` and both derivation predicates, and
+pruning commutes with `joinJournalBasis`, so associativity is preserved.
+
 #### Causal frontier encoding
 
 ```text
@@ -647,11 +757,12 @@ sorted by the UTF-8 bytes of `hostnameToString(hostname)`.
 logicalSnapshotBytes(snapshot) =
     array([
         string("logical-snapshot"),
-        u64(1),                    // canonical-encoding version
+        u64(2),                    // canonical-encoding version
         string(schemaVersion),
         string(mergeProtocolVersion),
         graphStateBytes,
         mergeBasisBytes,
+        journalBasisBytes,
         logicalJournalViewBytes,
         causalFrontierBytes,
     ])

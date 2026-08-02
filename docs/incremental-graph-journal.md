@@ -177,11 +177,13 @@ remote host "new"; only a later logical version within the same storage
 instance does. A regressed coordinate or an administrative conflict is rejected
 by normal synchronization rather than guessed.
 
-Journal reconciliation is pairwise commutative: reversing the two source
-snapshots produces the same journal result, the same exact logical state and
-`LogicalSnapshotId`, the same causal frontier, and the same merge basis.
+Journal reconciliation is commutative and associative: reversing the two
+source snapshots, or re-grouping the same host contributions, produces the
+same journal result, the same exact logical state and `LogicalSnapshotId`, the
+same causal frontier, and the same graph and journal merge bases.
 Synchronization may originate
-sync-derived `invalidate` and `delete` events under symmetric predicates (see
+sync-derived `invalidate` and `delete` events as canonical projections of the
+persisted journal basis under symmetric predicates (see
 `docs/specs/incremental-graph-journal-sync.md`). For other graph changes
 requiring notification, synchronization may copy, reposition, or retain
 existing source events. Existing events may be made absent by the

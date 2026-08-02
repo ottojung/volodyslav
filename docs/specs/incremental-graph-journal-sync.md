@@ -302,54 +302,66 @@ source freshness entry.
 ### 4. Journal evidence and the journal semilattice
 
 Sync-derived events are canonical logical merge facts derived from the complete
-joined journal evidence, not from the two immediate source snapshots. The
-journal evidence for each semantic key `K` is an unordered, deduplicated set of
-immutable facts:
+joined journal evidence, not from the two immediate source snapshots. Each
+source snapshot carries its persisted **journal basis**
+(`incremental-graph-journal-types.md` § Journal merge basis): the unordered,
+deduplicated set of host-originated facts behind its public journal. The basis
+is distinct from and never reduced to the public journal projection, because
+recomputing sync facts requires the host-originated evidence that the
+projection drops.
 
-- **State facts** — the canonical state events contributed by each source
-  (`add`, `edit`, `delete` host events) and any retained sync-derived `delete`
-  fact.
-- **Freshness facts** — the canonical freshness events contributed by each
-  source (`invalidate`, `validate` host events), each with a tone
-  (`potentially-outdated` for `invalidate`, `up-to-date` for `validate`), and
-  any retained sync-derived `invalidate` fact.
+For each semantic key `K`, the evidence is the source's two fact sets:
 
-The journal evidence join is set union:
+- **State facts** — the host-originated canonical state events (`add`, `edit`,
+  `delete`) from every source ever merged.
+- **Freshness facts** — the host-originated canonical freshness events
+  (`validate`, `invalidate`), each with a tone (`up-to-date` for `validate`,
+  `potentially-outdated` for `invalidate`).
+
+The journal evidence join is `joinJournalBasis`, set union per fact set,
+deduplicated by `factId`:
 
 ```
-joinJournalEvidence(E1, E2) = E1 ∪ E2
+joinJournalBasis(B1, B2) = per key:
+    stateFacts     = stateFacts(B1) ∪ stateFacts(B2)
+    freshnessFacts = freshnessFacts(B1) ∪ freshnessFacts(B2)
 ```
 
 which is commutative, associative, and idempotent by construction (sets are
-unordered and deduplicated by fact identity). The merged frontier is the
-frontier union; the merged graph is `projectGraph(joinMergeBasis(...))`.
+unordered and deduplicated). Facts are ordered causally by
+`incremental-graph-synchronization.md` § Causal precedence: a later
+`HostStateVersion` from the same storage instance supersedes an earlier fact,
+so a causally later `validate` supersedes an earlier `invalidate` by the same
+host. The merged frontier is the frontier union; the merged graph is
+`projectGraph(joinMergeBasis(...))`.
 
 ### 5. Derive sync-derived merge facts
 
-Sync-derived events are canonical projections of the complete joined evidence
-`E`, recomputed from the full evidence at every join. They are never one-shot
-pairwise events.
+Sync-derived events are canonical projections of the complete joined journal
+basis `B`, recomputed from the full basis at every join. They are never
+one-shot pairwise events and never retained as evidence themselves; only the
+host-originated facts are retained, and the derived facts are recomputed.
 
 #### Derived `delete`
 
-Derive one sync `delete` fact for `K` from `E` exactly when:
+Derive one sync `delete` fact for `K` from `B` exactly when:
 
 ```
-projectGraph(joinedMergeBasis(E)).K is unmaterialized
+projectGraph(joinedMergeBasis).K is unmaterialized
 and
 the state evidence for K contains at least one materialized state fact
 ```
 
 The fact's node identifier is the identifier of the materialized state fact
-selected by the canonical state-fact ordering (max by
-`(time, NodeIdentifier, eventId)`).
+selected by the canonical state-fact ordering (causally latest; among
+concurrent, maximum by `(time, NodeIdentifier, eventId)`).
 
 #### Derived `invalidate`
 
-Derive one sync `invalidate` fact for `K` from `E` exactly when:
+Derive one sync `invalidate` fact for `K` from `B` exactly when:
 
 ```
-projectGraph(joinedMergeBasis(E)).K is materialized and potentially-outdated
+projectGraph(joinedMergeBasis).K is materialized and potentially-outdated
 and
 the freshness evidence for K contains at least one `up-to-date` host fact
 ```
@@ -369,63 +381,68 @@ Both derived facts use:
 action   = "delete" | "invalidate"
 key      = K
 id       = as specified above
-time     = derivedTime(K, E)
-creator  = makeSync(causalFrontierHostnames(joinedFrontier(E)))
-eventId  = ["sync-delete" | "sync-invalidate",
-            graphAndJournalMergeProtocolVersion,
-            nodeKeyToString(K),
-            unixTimestampToNumber(derivedTime)]
+time     = derivedTime(K, B)
+creator  = makeSync(hostnames of the origins of the retained facts for K in B)
+eventId  = digest of the complete payload, see
+           incremental-graph-journal-types.md § Sync-derived event
 ```
 
-`derivedTime(K, E)` is the deterministic, canonical sync event time:
+`derivedTime(K, B)` is the deterministic, canonical sync event time:
 
 ```
-derivedTime(K, E) =
-    maximum { time(f) | f is a retained state or freshness fact for K in E }
+derivedTime(K, B) =
+    maximum { time(f) | f is a retained state or freshness fact for K in B }
 ```
 
-It is a monotone canonical function of the complete joined evidence: it never
+It is a monotone canonical function of the complete joined basis: it never
 decreases as evidence is added, and it is identical for every grouping of the
-same represented host contributions. The `eventId` embeds `derivedTime`, so a
-recomputed fact with a larger time receives a new event ID and the earlier fact
-is logically superseded. Two payload-distinct sources can never share an event
-ID, and the event ID is independent of the two immediate source snapshots.
+same represented host contributions. The `creator` covers only the origins that
+contributed evidence for `K`, not every hostname in the global frontier, so an
+unrelated host that adds no evidence for `K` never rewrites an existing event.
+The `eventId` is a digest of the complete payload (protocol, action, key,
+identifier, time, creator), so a payload change implies a new event ID and the
+earlier fact is logically superseded; two payload-distinct sources can never
+share an event ID, and the event ID is independent of the two immediate source
+snapshots.
 
 The derived fact is valid only when sufficient source journal evidence exists.
-If the projected graph requires a derived fact but the joined evidence contains
-no materialized state fact (for `delete`) or no host freshness fact (for
+If the projected graph requires a derived fact but the joined basis contains no
+materialized state fact (for `delete`) or no host freshness fact (for
 `invalidate`) for `K`, treat this as a journal-integrity error rather than
 consulting the local wall clock.
 
 The predicate, the time, the identifier, the creator, and the event ID are all
-canonical functions of the evidence set. Therefore the same represented host
+canonical functions of the joined basis. Therefore the same represented host
 contributions produce the same derived facts regardless of pairwise grouping,
-and joining an already derived fact with another snapshot recomputes the fact
-from the enlarged evidence rather than replacing it by a grouping-dependent
+and joining an already derived snapshot with another recomputes the fact from
+the enlarged basis rather than replacing it by a grouping-dependent
 comparison.
 
 ### 6. Final canonical events
 
-For each semantic key, the final canonical events are the maxima of the joined
-evidence, with derived facts included:
+For each semantic key, the final canonical events are projections of the joined
+basis, with derived facts included:
 
 ```
 finalCanonicalStateEvent(K) =
     the derived delete fact for K, if one exists;
-    else the maximal host state fact by (time, NodeIdentifier, eventId)
+    else the causally-latest host state fact
+    (among concurrent, maximum by (time, NodeIdentifier, eventId))
 ```
 
 ```
 finalCanonicalFreshnessEvent(K) =
     the derived invalidate fact for K, if one exists;
-    else the maximal host freshness fact by (time, eventId)
+    else the causally-latest host freshness fact
+    (among concurrent, maximum by (time, eventId))
 ```
 
 A key receiving a derived `delete` receives no derived `invalidate`:
 
 ```
 finalCanonicalStateEvent(K)     = derived delete(K)
-finalCanonicalFreshnessEvent(K) = the maximal host freshness fact (when one exists)
+finalCanonicalFreshnessEvent(K) = the causally-latest host freshness fact
+                                  (when one exists)
 ```
 
 The destination physically contains exactly:
@@ -434,7 +451,9 @@ The destination physically contains exactly:
 - the final canonical freshness event for each semantic key, when one exists.
 
 "Final canonical" is a retained host event or a derived sync fact. The resulting
-physical journal equals its own `logicalJournalView`.
+physical journal equals its own `logicalJournalView`, and the destination
+persists the joined journal basis (the union of the two source bases), so the
+evidence is never discarded by the projection.
 
 #### FreshPlacementSet
 
@@ -997,9 +1016,10 @@ Merging logical snapshots `A` and `B` produces a destination whose
 `SourceSnapshotProvenance.id` is the `LogicalSnapshotId` of the merged exact
 logical state (see `incremental-graph-journal-types.md` § Logical snapshot
 identity). The identity is a deterministic digest of the logical state — graph
-projection, merge basis, logical journal view, causal frontier, schema version,
-and merge protocol version — and never encodes how the state was produced or
-transported, nor physical journal placement.
+projection, graph merge basis, journal merge basis, the logical journal view
+projection, causal frontier, schema version, and merge protocol version — and
+never encodes how the state was produced or transported, nor physical journal
+placement.
 
 ### T22 — Derived snapshot becomes a later merge input
 
@@ -1010,14 +1030,10 @@ logical state.
 ### T23 — Second merge derives a deterministic sync event ID
 
 The second merge (derived snapshot `D` plus a new logical snapshot `C`)
-derives a sync event whose ID is a canonical function of the joined evidence:
-
-```
-["sync-v2", graphAndJournalMergeProtocolVersion, action,
- nodeKeyToString(key), unixTimestampToNumber(derivedTime)]
-```
-
-It never references the two immediate source snapshots' identities.
+derives a sync event whose ID is a digest of the complete immutable payload
+(`incremental-graph-journal-types.md` § Sync-derived event): protocol, action,
+key, identifier, time, and creator. It never references the two immediate
+source snapshots' identities.
 
 ### T24 — Reversal produces the same snapshot identity
 
@@ -1050,11 +1066,11 @@ cutover. Two unrelated reinitializations of the same hostname produce different
 
 ### T28 — Sync event ID carries no physical index
 
-A `SyncDeleteJournalEntry` or `SyncInvalidateJournalEntry` event ID is derived
-from the merge protocol version, the action, the key, and the canonical derived
-time of the joined journal evidence. The derived time is a fixed-size digest
-source; the event ID does not depend on the two immediate source snapshots, the
-destination physical journal index, compaction layout, or carrier positions.
+A `SyncDeleteJournalEntry` or `SyncInvalidateJournalEntry` event ID is a digest
+of the complete immutable payload: protocol, action, key, identifier, time, and
+creator, with the time derived from the joined journal basis. The event ID does
+not depend on the two immediate source snapshots, the destination physical
+journal index, compaction layout, or carrier positions.
 
 ### T29 — Local activity invalidates source provenance
 
@@ -1182,12 +1198,16 @@ Three snapshots over key `K`:
 - `B`: `K` materialized and `potentially-outdated`; canonical freshness event time 20.
 - `C`: `K` materialized and `potentially-outdated`; canonical freshness event time 30.
 
-The projected graph is stale in every grouping. The journal evidence for `K`
-contains host freshness facts `{A: up-to-date@10, B: stale@20, C: stale@30}`.
+The projected graph is stale in every grouping. Each snapshot's journal basis
+retains its host freshness fact; the basis of any grouping is
+`{A: up-to-date@10, B: stale@20, C: stale@30}` regardless of order, because the
+basis is persisted and merged by set union, never reduced to the public
+projection.
 
-- `merge(merge(A, B), C)`: `join(A,B)` derives one sync `invalidate` fact
-  (`derivedTime = max(10,20) = 20`); joining `C` recomputes the fact from the
-  enlarged evidence with `derivedTime = max(10,20,30) = 30`.
+- `merge(merge(A, B), C)`: the first merge derives one sync `invalidate` fact
+  (`derivedTime = max(10,20) = 20`), but the destination basis keeps `A`'s
+  `up-to-date` fact. Joining `C` recomputes the fact from the enlarged basis
+  with `derivedTime = max(10,20,30) = 30`.
 - `merge(A, merge(B, C))`: `join(B,C)` derives no fact (no up-to-date fact);
   joining `A` derives the same sync `invalidate` fact with
   `derivedTime = max(10,20,30) = 30`.
@@ -1211,30 +1231,64 @@ exactly one sync `delete` fact with `derivedTime = max(10,20) = 20`, the same
 event ID, creator, and identifier, and the same canonical journal and
 `LogicalSnapshotId`.
 
-### T46 — Generated deletes and invalidates are evidence functions
+### T46 — Derived deletes and invalidates are basis projections
 
 A scenario that derives a sync `delete` or `invalidate` fact derives the same
 fact (same action, key, identifier, time, creator, and event ID) from the same
-joined evidence regardless of how that evidence was assembled; recomputation
-from a superset of evidence either keeps the fact (unchanged derived time) or
-supersedes it with a new fact whose derived time is larger.
+joined journal basis regardless of how that basis was assembled; recomputation
+from a superset of basis facts either keeps the fact (unchanged derived time) or
+supersedes it with a new fact whose derived time is larger. The derived fact is
+never retained as evidence itself; the next merge recomputes it from the
+host-originated facts.
 
-### T47 — Pre-existing sync-derived events join associatively
+### T47 — Pre-existing derived events join associatively
 
-A source that already contains a derived sync fact contributes that fact to the
-evidence. Joining it with additional evidence recomputes the derivation from
-the unioned evidence; two groupings over the same total evidence produce the
-same final canonical events and `LogicalSnapshotId`, and the retained fact is
-never replaced merely because one grouping performs the freshness or
-materialization comparison later.
+A source whose public journal already contains a derived sync fact carries the
+underlying host-originated facts in its journal basis (the derived fact is a
+projection, not retained evidence). Joining it with additional evidence
+recomputes the derivation from the unioned basis; two groupings over the same
+total basis produce the same final canonical events and `LogicalSnapshotId`,
+and the fact is never replaced merely because one grouping performs the
+freshness or materialization comparison later.
 
 ### T48 — Equal frontiers after different arrival orders
 
 Hosts `A`, `B`, and `C` reach equal causal frontiers after receiving snapshots
-in different orders. Because the journal evidence and the derived facts are
+in different orders. Because the journal basis and the derived facts are
 canonical functions of the represented host contributions, the canonical
 journal and the `LogicalSnapshotId` are equal; frontier dominance may then skip
 reconciliation.
+
+### T49 — Causally later validation supersedes invalidation
+
+One host instance materializes `K`, invalidates it, then recomputes successfully
+(higher `HostStateVersion` each step). The later `validate` supersedes the
+earlier `invalidate` by the causal-precedence rule, so the projected freshness
+returns to `up-to-date` (when the validated input candidate IDs match the final
+selection) and no sync `invalidate` is derived for the completed trace.
+
+### T50 — Same-host version supersedes across clock rollback
+
+A host instance deletes `K` at a later `HostStateVersion` but a wall-clock
+`deletionTime` earlier than the materialization's `modifiedAt`. The deletion
+still wins selection by causal precedence, so `projectGraph` does not resurrect
+the locally deleted state.
+
+### T51 — Creator covers only key-relevant origins
+
+A and B derive an `invalidate` for `K` (creator `{A, B}`). An unrelated host `C`
+is later joined, contributing no evidence for `K`. Because the creator is
+derived from the origins of `K`'s retained facts only, the event ID and payload
+are unchanged and no event is rewritten. If `C` does contribute a `K` fact, the
+creator and hence the event ID change and the earlier fact is superseded.
+
+### T52 — Rejoining a derived snapshot does not lose evidence
+
+`D = merge(A, B)` is derived, then exported and merged with `C`. Because `D`'s
+snapshot carries the persisted journal basis (not just the public projection),
+the derivation over `merge(D, C)` uses the same complete evidence as
+`merge(A, merge(B, C))` and produces the same canonical journal and
+`LogicalSnapshotId`.
 
 ---
 
@@ -1278,7 +1332,7 @@ logical state and `LogicalSnapshotId`, the same causal frontier, and the same
 merge basis.
 
 **PROP-JS-07 (Deterministic sync events):** Sync-derived events are canonical
-functions of the complete joined journal evidence and the joined merge basis.
+functions of the complete joined journal basis and the joined merge basis.
 They do not depend on the two immediate source snapshots, on which source is
 locally active, on the host executing reconciliation, on the wall-clock time of
 merge execution, or on any transport revision or storage location.
