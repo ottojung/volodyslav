@@ -40,9 +40,10 @@ A `Wildcard` has two distinct meanings depending on context:
 - **Inside `GroundFilter.args`:** A `Wildcard` at a particular argument position matches any single `ConstValue` at that position. It does not match arbitrary-length or zero-length sequences. It does not match nested structure.
 
 All wildcard values are the same value: `makeWildcard()` returns the shared
-opaque wildcard singleton. Because the wildcard is outside the `ConstValue`
-domain, a `ConstValue` record such as `{ variant: "wildcard" }` is an ordinary
-binding that can be matched exactly by a concrete `GroundFilter` argument.
+opaque wildcard singleton, which is frozen. Because the wildcard is outside the
+`ConstValue` domain, a `ConstValue` record such as `{ variant: "wildcard" }` is
+an ordinary binding that can be matched exactly by a concrete `GroundFilter`
+argument.
 
 ### GroundFilter
 
@@ -50,10 +51,15 @@ binding that can be matched exactly by a concrete `GroundFilter` argument.
 /**
  * Matches concrete node keys: an exact head plus an argument list.
  * Each argument position is either a concrete ConstValue or a Wildcard.
+ *
+ * `args` is a read-only deep snapshot taken at construction. Mutating the
+ * original argument array or any nested `ConstValue` data after construction
+ * cannot change the filter. See § Immutability.
+ *
  * @typedef {object} GroundFilter
  * @property {'ground'} variant
  * @property {NodeName} head
- * @property {Array<ConstValue | Wildcard>} args
+ * @property {ReadonlyArray<ConstValue | Wildcard>} args
  */
 ```
 
@@ -67,6 +73,9 @@ A `GroundFilter` matches node keys whose `NodeName` equals `head` and whose bind
 ```js
 /**
  * Matches the union of two NodeFilter sets.
+ * Both branches are themselves immutable filters; the union is immutable.
+ * See § Immutability.
+ *
  * @typedef {object} UnionFilter
  * @property {'union'} variant
  * @property {NodeFilter} left
@@ -89,27 +98,32 @@ A `UnionFilter` matches a node key if it is matched by `left` or by `right`.
 function makeWildcard()
 ```
 
-Returns the shared opaque wildcard singleton. Every call returns the same
-value. The singleton is outside the `ConstValue` domain: a `ConstValue`
-record such as `{ variant: "wildcard" }` is an ordinary concrete binding,
-not an operator.
+Returns the shared opaque wildcard singleton, which is frozen. Every call
+returns the same value. The singleton is outside the `ConstValue` domain: a
+`ConstValue` record such as `{ variant: "wildcard" }` is an ordinary concrete
+binding, not an operator.
 
 ### makeGroundFilter
 
 ```js
 /**
  * @param {NodeName} head
- * @param {Array<ConstValue | Wildcard>} args
+ * @param {ReadonlyArray<ConstValue | Wildcard>} args
  * @returns {GroundFilter}
  */
 function makeGroundFilter(head, args)
 ```
 
-Returns a `GroundFilter` with the given head and argument list.
+Returns an immutable `GroundFilter` with the given head and argument list.
 
 `makeGroundFilter` is defined for argument arrays whose elements are
 `ConstValue` or `Wildcard` values. Other arrays are outside its input domain.
 Implementations should reject values outside that domain at construction.
+
+`makeGroundFilter` snapshots `args` into a private immutable representation and
+deeply snapshots all nested `ConstValue` data. Mutating the original `args`
+array or any nested `ConstValue` object after construction MUST NOT change the
+filter.
 
 ### makeUnionFilter
 
@@ -122,36 +136,45 @@ Implementations should reject values outside that domain at construction.
 function makeUnionFilter(left, right)
 ```
 
-Returns a `UnionFilter` combining `left` and `right`.
+Returns an immutable `UnionFilter` combining `left` and `right`. Both branches
+are already immutable; the union holds them as-is and is itself frozen or
+otherwise impossible to mutate.
 
 ---
 
-## Mutation is undefined behavior
+## Immutability
 
-`NodeFilter` constructors are not required to copy or deeply freeze their
-inputs. The implementation may retain references supplied to constructors.
+Every `NodeFilter` value is immutable. A filter is a frozen snapshot of its
+construction inputs: once constructed, neither the filter itself nor any
+structure reachable through it can be mutated, and mutating an array or object
+originally passed to a constructor cannot change the filter.
 
-`NodeFilter` behavior is specified only while the filter and every structure
-reachable through it remain unmodified. Use after mutation is undefined
-behavior; this covers:
+REQ-NF-08: `makeWildcard()` MUST return a frozen singleton. Every call returns
+the same frozen value, and the singleton is outside the `ConstValue` domain.
 
-- `GroundFilter.args`;
-- nested `ConstValue` data;
-- `UnionFilter.left`;
-- `UnionFilter.right`;
-- any reused object reachable through the filter.
+REQ-NF-09: `makeGroundFilter(head, args)` MUST snapshot `args` into a private
+immutable representation and MUST deeply snapshot all nested `ConstValue` data
+into that representation. Mutating the original `args` array or any nested
+`ConstValue` object after construction MUST NOT change the filter. The filter's
+public `args` projection is a read-only deep snapshot detached from the input.
 
-Because `graph.possibleMaybeChanges` is asynchronous and the implementation may
-apply the filter while the query is running, the API provides no
-result-consistency guarantee when a filter is mutated during or after an
-asynchronous query.
+REQ-NF-10: `makeUnionFilter(left, right)` MUST construct and return an
+immutable union of immutable filters. `left` and `right` are themselves
+immutable, and the resulting union is frozen or otherwise impossible to mutate.
 
-REQ-NF-08: Implementations MUST NOT be required to defensively copy or freeze
-filter inputs, and MUST NOT be required to detect or report mutation.
+REQ-NF-10a: Returned filters and all publicly reachable structures MUST be
+frozen or otherwise impossible to mutate. This covers `GroundFilter.args`,
+nested `ConstValue` data, and `UnionFilter.left` / `UnionFilter.right`.
 
-The equality and normalization rules in this document describe the behavior of
-non-mutated filters. They do not imply that mutable filters are safely
-snapshotted.
+REQ-NF-10b: Because every filter is immutable, an asynchronous
+`graph.possibleMaybeChanges` call observes one stable filter value for its
+complete execution. Reusing one filter across concurrent asynchronous queries
+is deterministic: all queries observe the same immutable filter. No
+mutation-during-query caveat applies.
+
+The equality and normalization rules in this document describe behavior that is
+stable for the complete lifetime of a filter, because filters cannot be mutated
+after construction.
 
 ---
 
@@ -276,3 +299,58 @@ by `isEqual`. A `GroundFilter` with `Wildcard` at position 0 also matches.
 The record `{ variant: "wildcard" }` is never treated as an operator. Only
 the nominal wildcard singleton obtained from `makeWildcard()` matches as a
 wildcard.
+
+### S2 — Mutating the original args array has no effect
+
+```
+const args = [constValue("a"), constValue("b")];
+const filter = makeGroundFilter("X", args);
+
+args[0] = constValue("z");          // mutate the original array
+args.length = 0;                    // even truncate it
+
+filter still matches exactly "X(a, b)".
+```
+
+`makeGroundFilter` snapshots `args`; the filter's private representation and its
+public `args` projection are unaffected by later mutation of the input array.
+
+### S3 — Mutating nested original ConstValue data has no effect
+
+```
+const nested = { record: { deep: "a" } };
+const args = [nested];
+const filter = makeGroundFilter("X", args);
+
+nested.record.deep = "changed";     // mutate nested ConstValue data
+
+filter still matches exactly the original nested value "a".
+```
+
+`makeGroundFilter` deeply snapshots nested `ConstValue` data, so mutating the
+original objects cannot change the filter.
+
+### S4 — Reuse across concurrent asynchronous queries is deterministic
+
+```
+const filter = makeGroundFilter("X", [constValue("a")]);
+const [r1, r2] = await Promise.all([
+    graph.possibleMaybeChanges({ since: s1, to: filter }),
+    graph.possibleMaybeChanges({ since: s2, to: filter }),
+]);
+```
+
+Both queries observe the same immutable filter value for their complete
+execution. The filter is never mutated, so the two results are each exactly the
+logical journal view restricted by the same stable filter.
+
+### S5 — Structural equality is stable for the filter's lifetime
+
+```
+const f1 = makeGroundFilter("X", [constValue("a")]);
+const f2 = makeGroundFilter("X", [constValue("a")]);
+```
+
+`f1` and `f2` are structurally equal at construction and remain equal
+indefinitely, because no construction input can be mutated after construction
+and the filters themselves cannot be mutated.

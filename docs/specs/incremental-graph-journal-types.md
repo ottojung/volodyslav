@@ -395,6 +395,133 @@ Consequences:
 - if strict collision handling is desired, associate each digest with its
   canonical preimage and reject a digest/preimage mismatch.
 
+### Incorporation frontier (nominal)
+
+`IncorporationFrontier` is the per-host incorporation frontier of one source
+snapshot. It is a canonical immutable mapping conceptually equivalent to:
+
+```
+Map<Hostname, SourceRevisionId>
+```
+
+For every hostname that contributed to the snapshot, the frontier records the
+exact host revision of that hostname that the snapshot has incorporated. The
+frontier is persisted as part of `SourceSnapshotProvenance` and is included in
+the exact synchronization-relevant state that a `SourceSnapshotId` identifies:
+two snapshots with different frontiers are different exact states and receive
+different snapshot identities.
+
+The frontier is the single source of the contributor set of a snapshot. The
+contributor set of a source snapshot is derived from the frontier's hostname
+keys; no independent contributor value is maintained, so the two can never
+disagree.
+
+```js
+/**
+ * The properties that this type carries are:
+ * - The value is an immutable mapping from each contributing hostname to the
+ *   exact host revision of that hostname already incorporated by the snapshot.
+ * - Iteration and persisted serialization are in deterministic canonical order:
+ *   hostnames sorted by `hostnameToString` using deterministic JavaScript
+ *   code-unit ordering.
+ *
+ * The proof of those properties is guaranteed by:
+ * - `makeInitialIncorporationFrontier(ownHostname, ownRevision)`: constructs
+ *   the frontier `{ ownHostname: ownRevision }` for a freshly initialized host.
+ * - `localCheckpointIncorporationFrontier(frontier, ownHostname, ownRevision)`:
+ *   preserves every remote entry of `frontier` and replaces only the
+ *   `ownHostname` entry; it is used for a local checkpoint taken after ordinary
+ *   graph activity.
+ * - `unionIncorporationFrontiers(left, right)`: computes the union of two
+ *   frontiers, retaining the known descendant revision for any hostname present
+ *   in both and rejecting the operation when the two revisions are
+ *   incomparable.
+ * - No mutation operation is exposed on `IncorporationFrontier` values.
+ */
+class IncorporationFrontierClass {
+    /** @private @type {undefined} */ __brand;
+    constructor() { if (this.__brand !== undefined) throw new Error("IncorporationFrontier cannot be instantiated"); }
+}
+
+/** @typedef {IncorporationFrontierClass} IncorporationFrontier */
+```
+
+Conversion functions:
+
+```js
+/**
+ * Construct the incorporation frontier of a freshly initialized host.
+ * The frontier contains exactly `{ ownHostname: ownRevision }`.
+ *
+ * @param {Hostname} ownHostname
+ * @param {SourceRevisionId} ownRevision
+ * @returns {IncorporationFrontier}
+ */
+function makeInitialIncorporationFrontier(ownHostname, ownRevision)
+
+/**
+ * Derive the incorporation frontier of a local checkpoint taken after ordinary
+ * graph activity. Every remote entry of `frontier` is preserved exactly; only
+ * the `ownHostname` entry is replaced with `ownRevision`.
+ *
+ * @param {IncorporationFrontier} frontier
+ * @param {Hostname} ownHostname
+ * @param {SourceRevisionId} ownRevision
+ * @returns {IncorporationFrontier}
+ */
+function localCheckpointIncorporationFrontier(frontier, ownHostname, ownRevision)
+
+/**
+ * Union two incorporation frontiers. For a hostname present in only one
+ * frontier, its entry is retained. For a hostname present in both:
+ * - equal revisions are retained;
+ * - when one revision is a known descendant of the other, the descendant is
+ *   retained;
+ * - otherwise the two revisions are incomparable and the operation MUST reject
+ *   rather than guess a winner.
+ *
+ * The union is commutative: `unionIncorporationFrontiers(left, right)` and
+ * `unionIncorporationFrontiers(right, left)` produce the same frontier or the
+ * same rejection.
+ *
+ * @param {IncorporationFrontier} left
+ * @param {IncorporationFrontier} right
+ * @returns {IncorporationFrontier}
+ */
+function unionIncorporationFrontiers(left, right)
+
+/**
+ * Return the revision recorded for a hostname, or `undefined` when the
+ * frontier does not contain the hostname.
+ *
+ * @param {IncorporationFrontier} frontier
+ * @param {Hostname} hostname
+ * @returns {SourceRevisionId | undefined}
+ */
+function incorporationFrontierGet(frontier, hostname)
+
+/**
+ * Return the hostnames of a frontier in canonical order. The contributor set of
+ * a snapshot is derived from this set:
+ * `makeSync(incorporationFrontierHostnames(frontier))`.
+ *
+ * @param {IncorporationFrontier} frontier
+ * @returns {ReadonlyArray<Hostname>}
+ */
+function incorporationFrontierHostnames(frontier)
+```
+
+A host revision graph is the per-host history of revisions (for example, the
+commits of the host's branch in the shared repository). Two revisions of the
+same hostname are comparable through that graph: one may be an ancestor of the
+other, or they may be equal. A revision is the **known descendant** of another
+when the host revision graph proves the ancestry relationship. Two revisions of
+the same hostname are **incomparable** when neither is an ancestor of the other
+and they are not equal; this is the normal shape of revisions from different
+journal lineages of the same hostname (for example, across a
+`reset-to-hostname`). Normal synchronization MUST reject incomparable revisions
+rather than guess a winner.
+
 ### SourceSnapshotProvenance
 
 Each source replica used by synchronization carries provenance equivalent to:
@@ -403,17 +530,20 @@ Each source replica used by synchronization carries provenance equivalent to:
 /**
  * @typedef {object} SourceSnapshotProvenance
  * @property {SourceSnapshotId} id
- * @property {Sync} contributors
+ * @property {IncorporationFrontier} incorporatedRevisions
  * @property {string} graphAndJournalMergeProtocolVersion
  * @property {Version} schemaVersion
  */
 ```
 
-For a checkpoint leaf:
+For a checkpoint leaf staged directly from a host revision:
 
 ```text
 id                         = checkpoint source-snapshot ID
-contributors               = Sync{source hostname}
+incorporatedRevisions      = the host's incorporation frontier at the staged
+                             revision: it maps the hostname to exactly that
+                             staged revision and preserves every remote
+                             revision the host had already incorporated
 graphAndJournalMergeProtocolVersion = the currently advertised protocol version
 schemaVersion              = the source's schema version
 ```
@@ -422,10 +552,17 @@ For a merge result:
 
 ```text
 id                         = merge source-snapshot ID
-contributors               = union(left.contributors, right.contributors)
+incorporatedRevisions      = unionIncorporationFrontiers(left.incorporatedRevisions,
+                             right.incorporatedRevisions)
 graphAndJournalMergeProtocolVersion = preserved from the inputs
 schemaVersion              = preserved from the inputs
 ```
+
+The frontier union rejects a merge whose two inputs record incomparable
+revisions for a common hostname. This is the rejection rule for a regressed or
+incomparable host revision during normal synchronization; see
+`incremental-graph-journal-sync.md` § Incorporation frontier and no-op per-host
+merges.
 
 The protocol and schema versions are persisted as explicit compatibility
 metadata with every synchronization source, stored separately even though they
@@ -910,6 +1047,13 @@ function hostnameToString(hostname)
 snapshots participated in deriving the event. It does not identify one host as
 the actor.
 
+The contributor set of a source snapshot is derived from that snapshot's
+incorporation frontier and is never maintained as an independent value: for a
+snapshot whose frontier is `F`, the contributor set is
+`makeSync(incorporationFrontierHostnames(F))` (see `Incorporation frontier`).
+Because a merge unions the two input frontiers, the merged contributor set is
+exactly the union of the two input contributor sets.
+
 Although it is conceptually a set, its runtime iteration and persisted
 serialization order must be deterministic:
 
@@ -1101,9 +1245,12 @@ present entry → absent
 ```
 
 This transition is allowed only for these specifically authorized structural operations:
-- **Compaction**: may delete entries while holding `closeGarden` (see `incremental-graph-journal-compaction.md`).
-- **Synchronization poisoning**: may delete divergent entries while holding `closeGarden` (see `incremental-graph-journal-sync.md`).
-- **Synchronization absence propagation**: may remove an entry when a synchronized host has established absence at the same index (see `incremental-graph-journal-sync.md`).
+- **Compaction**: may delete entries outside `logicalJournalView(journal, H)` while holding `closeGarden` (see `incremental-graph-journal-compaction.md`).
+- **Synchronization normalization**: the named journal-reconciliation phase that produces the physically canonical destination journal may delete established entries while holding `closeGarden`. Its permitted deletions are exactly the five kinds specified in `incremental-graph-journal-sync.md` § Synchronization normalization: same-index poisoning, established-absence propagation, logical-view pruning, duplicate occurrence normalization, and carrier repositioning.
+
+No other deletion of an established entry is permitted. In particular, ordinary
+appends, migration, and any synchronization activity outside the
+synchronization-normalization phase MUST NOT delete an established entry.
 
 The following transitions are forbidden globally, even under `closeGarden`:
 
@@ -1145,7 +1292,7 @@ REQ-JT-19: The new journal entry and the advancement of `last_journal_index` MUS
 
 It must never observe a watermark that exposes a not-yet-committed ordinary append.
 
-REQ-JT-20: Gaps in the journal index sequence are allowed. They may be caused by compaction, sync poisoning, or structural maintenance. Gaps caused by failed transactions are NOT possible under the commit-time allocation model, because index allocation occurs only during the durable commit, which either succeeds or fails atomically. Once a later watermark publishes a prefix containing a gap, ordinary appenders MUST NEVER fill that gap.
+REQ-JT-20: Gaps in the journal index sequence are allowed. They may be caused by compaction or by the synchronization-normalization phase (same-index poisoning, established-absence propagation, logical-view pruning, duplicate occurrence normalization, and carrier repositioning; see `incremental-graph-journal-sync.md` § Synchronization normalization). Gaps caused by failed transactions are NOT possible under the commit-time allocation model, because index allocation occurs only during the durable commit, which either succeeds or fails atomically. Once a later watermark publishes a prefix containing a gap, ordinary appenders MUST NEVER fill that gap.
 
 ---
 
@@ -1518,6 +1665,26 @@ sha256(encode(["snapshot-v2", "checkpoint",
 The same revision R staged for schema V2 receives a different checkpoint ID,
 because `versionToString(V2) ≠ versionToString(V1)`. The two snapshots cannot
 be confused even though host and revision match.
+
+### E7 — Frontier descendant retention and incomparability
+
+Host H has a linear revision history `r1 → r2 → r3`.
+
+- Frontier `F1 = { H: r1 }` and `F2 = { H: r3 }` union to `{ H: r3 }`: `r3` is a
+  known descendant of `r1`, so the descendant is retained.
+- Frontier `F1 = { H: r1 }` and `F3 = { H: r1 }` union to `{ H: r1 }`: equal
+  revisions are retained.
+- Frontier `F1 = { H: r1 }` and `F4 = { H: r' }`, where `r'` is from a
+  different lineage of H (for example, after a reset) and is incomparable with
+  `r1`: `unionIncorporationFrontiers(F1, F4)` rejects rather than guessing a
+  winner.
+
+### E8 — Contributor set derives from the frontier
+
+A snapshot whose frontier is `{ A: rA, B: rB, C: rC }` has contributor set
+`makeSync(incorporationFrontierHostnames(frontier)) = Sync{A, B, C}`. The
+contributor set is never stored independently, so it cannot disagree with the
+frontier.
 
 ---
 

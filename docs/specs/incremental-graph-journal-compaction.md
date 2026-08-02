@@ -81,6 +81,20 @@ Any quota policy is valid as long as it satisfies the requirements in this docum
 
 For a compaction run with captured bound `H`, compute `logicalJournalView(journal, H)` — the same logical projection used by `possibleMaybeChanges` and journal reconciliation (see `incremental-graph-journal-sync.md`).
 
+**Legal deletion sources.** Compaction and the synchronization-normalization
+phase (see `incremental-graph-journal-sync.md` § Synchronization normalization)
+are the only two operations authorized to delete established journal entries
+(see the global established-position invariant in
+`incremental-graph-journal-types.md`). Compaction performs **logical-view
+pruning** — removing entries outside `logicalJournalView(journal, H)`. The
+synchronization-normalization phase performs its five kinds, one of which is the
+same logical-view pruning applied to the reconciled destination. The documents
+therefore describe the same set of legal transitions:
+`incremental-graph-journal-types.md`, `incremental-graph-journal-sync.md`, and
+this document agree that an established position may become absent only through
+compaction's logical-view pruning or through one of the five
+synchronization-normalization deletions.
+
 ### Logically required entries
 
 REQ-JC-06: Physical compaction MUST preserve every entry that is in `logicalJournalView(journal, H)`. An entry is logically required when its semantic key and category make it a retained entry through `H`.

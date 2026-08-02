@@ -31,11 +31,12 @@ P  = max(aH, bH)
 ```
 
 Each source snapshot carries a `SourceSnapshotProvenance` whose `id` identifies
-its exact synchronization-relevant source state, together with a contributor
-`Sync` set, the merge protocol version, and the schema version (see
-`incremental-graph-journal-types.md` § Source snapshot provenance). A snapshot
-directly staged from a host revision receives a checkpoint snapshot ID; a
-deterministic pairwise merge output receives a derived merge snapshot ID.
+its exact synchronization-relevant source state, together with a per-host
+incorporation frontier (`incorporatedRevisions`), the merge protocol version,
+and the schema version (see `incremental-graph-journal-types.md` § Source
+snapshot provenance). A snapshot directly staged from a host revision receives
+a checkpoint snapshot ID; a deterministic pairwise merge output receives a
+derived merge snapshot ID.
 
 Graph synchronization produces `F` and the symmetric journal synchronization
 delta `SyncDelta` defined below. Journal reconciliation receives `A`, `B`, `F`,
@@ -51,23 +52,29 @@ Every synchronization input and output snapshot carries a
 /**
  * @typedef {object} SourceSnapshotProvenance
  * @property {SourceSnapshotId} id
- * @property {Sync} contributors
+ * @property {IncorporationFrontier} incorporatedRevisions
  * @property {string} graphAndJournalMergeProtocolVersion
  * @property {Version} schemaVersion
  */
 ```
 
 - A checkpoint leaf staged from a host revision receives a checkpoint
-  source-snapshot ID, `contributors = Sync{source hostname}`, the currently
-  advertised merge protocol version, and the source's schema version.
-- A deterministic merge result receives a merge source-snapshot ID,
-  `contributors = union(left.contributors, right.contributors)`, and preserves
-  the inputs' merge protocol and schema versions.
+  source-snapshot ID, an `incorporatedRevisions` frontier that maps that
+  hostname to exactly the staged revision and preserves every remote revision
+  the host had already incorporated, the currently advertised merge protocol
+  version, and the source's schema version.
+- A deterministic merge result receives a merge source-snapshot ID, an
+  `incorporatedRevisions` frontier equal to the union of the two input
+  frontiers (retaining the known descendant revision for any hostname present
+  in both; rejecting the merge when a common hostname's revisions are
+  incomparable), and preserves the inputs' merge protocol and schema versions.
 
 The protocol and schema versions are persisted as explicit compatibility
 metadata, stored separately even though they are also hashed into derived
 snapshot IDs. Pairwise merge rejects inputs with mismatching merge protocol or
-schema versions before graph or journal reconciliation.
+schema versions before graph or journal reconciliation. The frontier union
+additionally rejects inputs whose frontiers record incomparable revisions for a
+common hostname; see § Incorporation frontier and no-op per-host merges.
 
 The merged destination's provenance must be durably established before that
 destination can become active or be used as the source of a later per-host
@@ -82,20 +89,99 @@ to the resulting mutable replica. At the beginning of synchronization, while
 graph activity is excluded, the exact local source is frozen/checkpointed and
 fresh checkpoint provenance is derived for that precise local snapshot; this
 provenance is used as the local source's provenance for the first per-host
-merge. Each derived merge output receives persisted merge provenance before it
-can become the next local source.
+merge. A local checkpoint derives its frontier with
+`localCheckpointIncorporationFrontier`: it preserves every remote entry of the
+previous frontier and updates only the local hostname's revision. Each derived
+merge output receives persisted merge provenance before it can become the next
+local source.
 
 For a sync-derived event created while merging source snapshots `A` and `B`:
 
 ```
-creator = union(A.provenance.contributors,
-                B.provenance.contributors)
+creator = makeSync(incorporationFrontierHostnames(unionIncorporationFrontiers(
+    A.provenance.incorporatedRevisions,
+    B.provenance.incorporatedRevisions)))
 ```
 
-Therefore later multi-host synchronization may legitimately produce
-`creator = Sync{A, B, C}`: the creator is the set of contributing source hosts
-represented by the two merge inputs, not necessarily just the two physical
-machines involved in the latest network exchange.
+The union of the two frontiers is the merged frontier, so the creator is
+exactly the contributor set of the merged snapshot: the set of contributing
+source hosts represented by the two merge inputs. Because a merge unions the
+two input frontiers, later multi-host synchronization may legitimately produce
+`creator = Sync{A, B, C}`: the creator is the set of hostnames present in the
+merged frontier, not necessarily just the two physical machines involved in the
+latest network exchange. The contributor set is derived from the frontier's
+hostname keys and is never maintained as an independent value, so the two can
+never disagree.
+
+---
+
+## Incorporation frontier and no-op per-host merges
+
+The incorporation frontier makes synchronization a fixed point for an
+unchanged host and prevents repeated re-notification.
+
+### Staged-host revision check
+
+Before merging a staged host snapshot whose revision is `r` for hostname `H`,
+the implementation MUST consult the local source's `incorporatedRevisions`
+frontier:
+
+- If the frontier does not contain `H`, the host has not been incorporated
+  before; proceed with a normal per-host merge.
+- If `frontier[H]` equals `r`, the exact revision is already incorporated. The
+  per-host merge is a **complete no-op**: no destination is constructed, no
+  journal event is appended or repositioned, no notification is emitted, the
+  watermark is not increased, no new provenance is published, and the
+  active-replica pointer MUST remain unchanged.
+- If `frontier[H]` is a known descendant of `r`, the staged revision is a
+  regression (an ancestor of a revision already incorporated). Normal
+  synchronization MUST reject the merge rather than guess or re-incorporate.
+- If `r` is a known descendant of `frontier[H]`, the staged revision is newer;
+  proceed with a normal per-host merge.
+- If `r` and `frontier[H]` are incomparable (neither is an ancestor of the
+  other), normal synchronization MUST reject the merge rather than guess a
+  winner.
+
+### Absorption property
+
+Let `D = merge(A, B)`. If `B` has not advanced — its staged host revision
+equals the revision recorded for `B`'s hostname in `D`'s frontier — then:
+
+```
+merge(D, B) = D
+```
+
+Equality here covers the complete installed result:
+
+- graph state;
+- journal entries and journal absences;
+- `last_journal_index`;
+- `SourceSnapshotProvenance` (including `incorporatedRevisions`);
+- notification behavior;
+- the replica-switch decision.
+
+The second synchronization must not append or reposition an event, increase the
+watermark, publish new provenance, notify consumers again, or switch the active
+replica. This is the property periodic synchronization relies on: repeatedly
+synchronizing with a host that has not changed cannot keep churning the
+journal.
+
+### Local activity preserves remote frontier entries
+
+A local checkpoint taken after ordinary graph activity (pulls, invalidations,
+ordinary journal appends) preserves every remote frontier entry and updates
+only the local hostname's revision. Therefore ordinary local activity does not
+by itself make an unchanged remote host "new": if the exact staged revision is
+already incorporated, the per-host merge remains a no-op. A remote host becomes
+a genuine new input only when its revision advances to a descendant revision
+not yet recorded in the frontier.
+
+### Reset-to-hostname
+
+A successful `reset-to-hostname` replaces the installed graph-and-journal state
+and therefore also replaces the installed frontier with the selected snapshot's
+frontier. The old lineage's frontier does not carry across a reset; revisions
+of the same hostname from before and after the reset are normally incomparable.
 
 ---
 
@@ -359,13 +445,16 @@ action   = "invalidate" or "delete"
 key      = K
 id       = as specified above
 time     = deterministic sync event time (see below)
-creator  = union(A.provenance.contributors, B.provenance.contributors)
+creator  = makeSync(incorporationFrontierHostnames(mergedFrontier))
 ```
 
-The creator is the set of contributing source hosts represented by the two
-merge inputs, canonically ordered (see `incremental-graph-journal-types.md`).
-It does not identify one host as the actor, and it is not necessarily just the
-two physical machines involved in the latest network exchange.
+`mergedFrontier` is
+`unionIncorporationFrontiers(A.provenance.incorporatedRevisions,
+B.provenance.incorporatedRevisions)`: the creator is the set of contributing
+source hosts represented by the merged frontier, canonically ordered (see
+`incremental-graph-journal-types.md`). It does not identify one host as the
+actor, and it is not necessarily just the two physical machines involved in the
+latest network exchange.
 
 After the source snapshots, action, and key are fixed, assign the sync event
 ID:
@@ -476,6 +565,42 @@ A repositioned event preserves its original:
 
 It is not newly emitted.
 
+### Synchronization normalization
+
+Steps 7 through 9 collectively form the **synchronization-normalization
+phase**: the journal-reconciliation phase that turns the two source prefixes
+into the physically canonical destination journal. This phase is the only
+synchronization operation authorized to turn an established `present` journal
+position into `absent` (see the global established-position invariant in
+`incremental-graph-journal-types.md`). Its permitted deletions are exactly the
+following five kinds:
+
+1. **Same-index poisoning** (step 7): when two different established entries
+   occupy the same index, both entries are removed and the position becomes
+   absent.
+2. **Established-absence propagation** (step 7): when one source has an
+   established entry and the other has established absence at the same index,
+   absence wins and the entry is removed.
+3. **Logical-view pruning** (step 7): an established entry that is not part of
+   the final canonical logical view — not the final canonical state or
+   freshness event for its semantic key — is removed. This covers identical
+   but noncanonical entries and noncanonical source-suffix entries.
+4. **Duplicate occurrence normalization** (step 8): when the same `eventId`
+   survives at several positions, every lower occurrence is removed, retaining
+   the greatest position.
+5. **Carrier repositioning** (step 9): the old physical occurrences of a
+   selected notification carrier are removed before the carrier is freshly
+   placed above `P`.
+
+`logicalJournalView` is the canonical definition of which events are retained:
+an entry is a legitimate synchronization-normalization deletion only when its
+removal produces a destination whose physical journal equals its own
+`logicalJournalView` (or moves a required canonical event above `P`). Every
+deletion performed by the phase is one of the five kinds above. No other
+established-position deletion is permitted by synchronization, and an operation
+attempting an unclassified deletion of an established position is rejected by
+this specification.
+
 ### 7. Reconcile physical positions
 
 The merge operates on two source replicas.
@@ -583,9 +708,9 @@ After allocating `n` queued events, set `last_journal_index = P + n`.
 
 ### Evidence preservation rule
 
-When an entry is removed by same-index poisoning or present-versus-absence
-conflict, if that entry is final canonical and has no other surviving position,
-call `enqueueFresh(event)`. Otherwise do not queue it.
+When an entry is removed by same-index poisoning or established-absence
+propagation, if that entry is final canonical and has no other surviving
+position, call `enqueueFresh(event)`. Otherwise do not queue it.
 
 ---
 
@@ -664,6 +789,11 @@ selected host snapshot and does not perform pairwise journal reconciliation.
 - A successful reset also generates a fresh host event namespace, so numeric
   index reuse in the new lineage cannot collide with old-lineage host event
   IDs (see `incremental-graph-journal-types.md` § Host event namespace).
+- A successful reset replaces the installed incorporation frontier with the
+  selected snapshot's frontier. The old lineage's frontier does not carry
+  across a reset, so revisions of the same hostname from before and after the
+  reset are normally incomparable (see § Incorporation frontier and no-op
+  per-host merges).
 - No journal-notification continuity is specified across reset.
 
 Normal pairwise synchronization and migration preserve the current local host
@@ -711,6 +841,8 @@ Journal reconciliation is pairwise commutative. For two exact source snapshots
 
 - `SyncDelta` is symmetric by definition;
 - the generated-event predicates are symmetric;
+- the frontier union is symmetric: `unionIncorporationFrontiers` produces the
+  same merged frontier (or the same rejection) in either input order;
 - sync creators, event IDs, timestamps, and identifier selection are derived
   symmetrically from source snapshot provenance and source journal evidence;
 - carrier placement is enforced above `P = max(aH, bH)`, which is symmetric;
@@ -721,14 +853,33 @@ the same fresh-placement sequence.
 
 ---
 
-## Idempotence
+## Absorption (fixed point)
 
-Reconciling the same two exact source snapshots again produces no new logical
-sync event. If the same sync-derived event is generated again, its `eventId` is
-identical, so placement deduplicates by `eventId` and no second logical event is
-created.
+Synchronization is a fixed point for an unchanged host. Let `D = merge(A, B)`.
+If `B` has not advanced — the revision staged for `B`'s hostname equals the
+revision recorded in `D`'s incorporation frontier — then `merge(D, B) = D`.
 
-Do not query previous journal events to determine idempotence.
+The second merge must not:
+
+- append a journal event;
+- reposition an existing journal event;
+- notify consumers again (no new notification, no fresh placement above `P`);
+- increase `last_journal_index`;
+- publish new provenance (the `SourceSnapshotProvenance`, including the
+  incorporation frontier, is unchanged);
+- switch the active replica.
+
+This is not merely idempotence for "the same two exact source snapshots". The
+absorption property is what periodic synchronization relies on: after `A` has
+incorporated `B` at a revision, re-synchronizing with `B` while it is unchanged
+is a complete no-op even though the local source is now the derived merge `D`,
+not the original snapshot `A`. Ordinary local graph activity preserves remote
+frontier entries, so it does not make an unchanged remote host "new"; only an
+advance to a not-yet-incorporated descendant revision does.
+
+Do not query previous journal events to determine absorption. The no-op
+decision comes from the persisted incorporation frontier before any journal
+reconciliation runs.
 
 ---
 
@@ -741,6 +892,17 @@ before and after compaction.
 
 Graph synchronization does not read journal state, so compaction cannot affect
 graph synchronization correctness.
+
+Compaction and the synchronization-normalization phase are the only two
+operations authorized to delete established journal entries (see the global
+established-position invariant in `incremental-graph-journal-types.md` and
+`incremental-graph-journal-compaction.md`). Compaction performs logical-view
+pruning — removing entries outside `logicalJournalView(journal, H)`. The
+synchronization-normalization phase performs the five deletion kinds defined in
+§ Synchronization normalization, one of which is the same logical-view pruning
+applied to the reconciled destination. The operations remain distinct:
+compaction never repositions or reappends events, and synchronization
+normalization never runs as a storage-quota operation.
 
 ---
 
@@ -834,9 +996,15 @@ changed up-to-date → stale, emit one invalidate using the final identifier.
 ### T8 — Repeated sync emits nothing new
 
 First sync: A up-to-date, B stale, F stale, emits invalidate(K).
-Second sync with the same source snapshots: the same invalidate is generated
-again with the same eventId; placement deduplicates and no second logical event
-is created.
+
+If the same two exact source snapshots were reconciled again (a case the
+incorporation-frontier no-op of § Absorption (fixed point) normally prevents,
+because the local source has advanced to the derived merge `D`), the same
+invalidate is generated again with the same eventId; placement deduplicates and
+no second logical event is created. In normal operation, re-synchronizing with
+unchanged B after the first merge is a complete no-op (T34); this scenario
+documents the internal emission-deduplication property that holds independently
+of that no-op.
 
 ### T9 — Freshness history independent of state identifier
 
@@ -936,9 +1104,12 @@ synchronization execution time must not enter the event payload or event ID.
 
 ### T19 — Repeated reconciliation
 
-Reconciling the same source snapshots again must not create a second logical
-sync event with a different identity. A regenerated sync event has the same
-eventId and deduplicates against any surviving occurrence.
+If the same two exact source snapshots are reconciled a second time (a case the
+incorporation-frontier no-op normally prevents in per-host synchronization), a
+regenerated sync event has the same eventId as the first and deduplicates
+against any surviving occurrence, so no second logical sync event with a
+different identity is created. This is an internal event-identity property; the
+operational fixed point is the absorption property (PROP-JS-04a).
 
 ### T20 — New source snapshots
 
@@ -999,8 +1170,12 @@ different merge snapshot ID.
 
 ### T26 — Contributor sets union across successive merges
 
-Merging leaf snapshots `A` and `B` yields `contributors = Sync{A, B}`. Merging
-that derived snapshot with leaf `C` yields `contributors = Sync{A, B, C}`.
+Freshly initialized leaf snapshots `A`, `B`, and `C` have frontiers `{A}`,
+`{B}`, and `{C}`. Merging `A` and `B` yields a frontier `{A, B}` and a
+contributor set `Sync{A, B}` (derived from the frontier's hostnames). Merging
+that derived snapshot with leaf `C` yields a frontier `{A, B, C}` and a
+contributor set `Sync{A, B, C}`. The contributor set is never stored
+independently of the frontier.
 
 ### T27 — Successful reset rotates the cursor domain
 
@@ -1037,7 +1212,9 @@ After a merge produces derived snapshot `D`, ordinary local `pull` or
 longer describes the exact local state. A second synchronization run begins by
 freezing/checkpointing the exact local source and deriving fresh checkpoint
 provenance for that precise snapshot, so the second run's local source snapshot
-ID differs from `D`'s merge ID.
+ID differs from `D`'s merge ID. The local checkpoint derives its frontier with
+`localCheckpointIncorporationFrontier`: remote entries are preserved and only
+the local hostname's revision is updated.
 
 ### T33 — Host event namespace prevents reuse across lineages
 
@@ -1046,6 +1223,84 @@ installs a new lineage with a fresh host event namespace `ns2`; after eleven
 appends the new lineage reaches index 21 with
 `eventId = ["host","A",ns2,21]`. The two event IDs differ, so later
 synchronization cannot confuse the two payloads.
+
+### T34 — Fixed point: unchanged B is a no-op
+
+Host A incorporates host B at revision `rB` in a first merge:
+`D = merge(A, B)`, and `D`'s frontier records `{B: rB}`. B has not advanced; a
+second synchronization stages the same revision `rB`. The staged-host revision
+check finds `frontier[B] == rB`, so the per-host merge is a complete no-op:
+no journal event is appended or repositioned, no notification is emitted, the
+watermark is unchanged, no new provenance is published, and the active replica
+pointer does not change. `merge(D, B) = D` in every component listed in
+§ Absorption (fixed point).
+
+### T35 — Local pulls do not break the fixed point
+
+After `D = merge(A, B)`, host A performs ordinary local pulls and invalidations
+and checkpoints. The local checkpoint preserves `{B: rB}` and updates only
+`{A: newRevision}`. B is still at `rB`. The staged-host revision check finds
+`frontier[B] == rB`, so merging with unchanged B remains a complete no-op.
+
+### T36 — B advancing to a descendant revision is merged normally
+
+Host B advances from `rB` to `rB2` (a descendant). The staged-host revision
+check finds `rB2` is a known descendant of `frontier[B] = rB`, so the per-host
+merge proceeds normally. The resulting destination frontier records
+`{B: rB2}`.
+
+### T37 — Regressed or incomparable B revision is rejected
+
+- If host B's branch regresses to `rB0`, an ancestor of the incorporated
+  revision `rB`, the staged-host revision check finds `frontier[B]` is a known
+  descendant of `rB0`; normal synchronization rejects the merge.
+- If host B resets and its new revision `rB'` is incomparable with `frontier[B]
+  = rB` (neither is an ancestor of the other), normal synchronization rejects
+  the merge rather than guessing a winner.
+- The same rejection applies when a pairwise merge's two frontiers record
+  incomparable revisions for a common hostname: `unionIncorporationFrontiers`
+  rejects the merge.
+
+### T38 — Reversed sources produce the same first-merge frontier
+
+`unionIncorporationFrontiers(Fa, Fb)` and
+`unionIncorporationFrontiers(Fb, Fa)` produce the same frontier (or the same
+rejection). Therefore `merge(A, B)` and `merge(B, A)` record the same
+`incorporatedRevisions` and produce the same contributor set.
+
+### T39 — Identical noncanonical entries at the same index
+
+Sources A and B both have an identical non-final-canonical entry `E` at the
+same index `i`. Step 7 preserves an entry at `i` only when it is final
+canonical, so `E` is pruned by logical-view pruning and `i` becomes absent.
+
+### T40 — Noncanonical source suffix is pruned
+
+Host B's suffix positions above `aH` contain entries that are not final
+canonical. Step 7 case 3 preserves a B entry only when it is final canonical;
+every noncanonical suffix entry is pruned and its position becomes an
+established absence.
+
+### T41 — Duplicate occurrences of one eventId
+
+A final canonical event `E` survives at positions 3 and 8 in the destination
+prefix. Step 8 retains position 8 and makes position 3 absent. No fresh copy is
+created because a later surviving copy exists.
+
+### T42 — Carrier removal and fresh placement
+
+Key K is in `SyncDelta` and its canonical state event `E` is the selected
+carrier at position 5 with `P = 5`. Step 9 removes the old occurrence at
+position 5 and enqueues `E` for fresh placement; `E` receives exactly one new
+occurrence above `P` in step 10, preserving its original `eventId`.
+
+### T43 — Unclassified established-position deletion is rejected
+
+Synchronization has no authority to delete an established entry outside the
+synchronization-normalization phase's five permitted kinds. An operation that
+attempts, for example, to replace an established entry, fill an established
+absence, or delete an established entry for reasons other than the five kinds
+is rejected by this specification.
 
 ---
 
@@ -1067,17 +1322,34 @@ check is `eventId` payload match.
 by journal reconciliation is historical notification evidence. It does not
 assert current graph state.
 
-**PROP-JS-04 (Sync emission idempotence):** Reconciling the same two exact
-source snapshots again produces no second logical sync event. A regenerated
-sync event has an identical eventId and is deduplicated.
+**PROP-JS-04 (Sync emission idempotence):** A regenerated sync-derived event for
+the same snapshots under the same protocol has an identical eventId and is
+deduplicated; no second logical sync event is created by the same two exact
+source snapshots.
+
+**PROP-JS-04a (Absorption / fixed point):** Let `D = merge(A, B)`. If `B` has
+not advanced — its staged revision equals the revision recorded in `D`'s
+incorporation frontier — then `merge(D, B) = D`: the graph state, journal
+entries and absences, `last_journal_index`, `SourceSnapshotProvenance`,
+notification behavior, and replica-switch decision are all unchanged. The
+second merge does not append or reposition an event, increase the watermark,
+publish new provenance, notify consumers again, or switch the active replica.
 
 **PROP-JS-05 (Graph sync independence):** Graph synchronization correctness
 does not depend on journal state, journal retention, or journal compaction.
 
 **PROP-JS-06 (Pairwise commutativity):** `merge(A, B)` and `merge(B, A)` produce
-the same canonical journal and the same fresh-placement sequence.
+the same canonical journal, the same fresh-placement sequence, and the same
+incorporation frontier.
 
 **PROP-JS-07 (Deterministic sync events):** Sync-derived events depend only on
 the exact source snapshots and the source journal evidence. They do not depend
 on which source is locally active, on the host executing reconciliation, or on
 the wall-clock time of merge execution.
+
+**PROP-JS-08 (Deletion taxonomy closed):** Synchronization deletes an
+established journal entry only through the synchronization-normalization phase
+and only for one of its five permitted kinds: same-index poisoning,
+established-absence propagation, logical-view pruning, duplicate occurrence
+normalization, or carrier repositioning. Any other deletion of an established
+entry is rejected by this specification.

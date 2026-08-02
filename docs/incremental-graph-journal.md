@@ -71,7 +71,15 @@ Journal queries are restricted by `NodeFilter`.
 
 A `NodeFilter` describes a set of node keys. It allows a journal consumer to ask only about changes to the part of the graph it depends on.
 
-The filter system is an object API rather than a string language. Construction, matching, wildcard behavior, composition, and equality of filters are specified in:
+The filter system is an object API rather than a string language. Filters are
+immutable: `makeWildcard()` returns a frozen singleton, `makeGroundFilter`
+snapshots its argument array and nested `ConstValue` data, and
+`makeUnionFilter` builds an immutable union. An asynchronous
+`possibleMaybeChanges` call therefore observes one stable filter value for its
+complete execution.
+
+Construction, matching, wildcard behavior, composition, immutability, and
+equality of filters are specified in:
 
 ```text
 docs/specs/incremental-graph-node-filter.md
@@ -126,21 +134,46 @@ This is the existing replica-switching architecture; no database-state
 abstraction beyond the replicas that already exist in the IncrementalGraph
 design is introduced.
 
+Each source snapshot carries a `SourceSnapshotProvenance` that includes a
+per-host incorporation frontier: for every hostname that contributed to the
+snapshot, the exact host revision already incorporated. A newly initialized
+host starts with its own current revision in the frontier; a pairwise merge
+unions the two frontiers (retaining the known descendant revision for a
+hostname present in both, and rejecting incomparable revisions); a local
+checkpoint after ordinary activity preserves remote entries and updates only
+the local hostname's revision.
+
+Because the frontier records the exact revision already incorporated,
+synchronization is a fixed point for an unchanged host: if the staged host
+revision is already recorded in the frontier, the per-host merge is a complete
+no-op. Let `D = merge(A, B)`; if `B` has not advanced, then `merge(D, B) = D` —
+no event is appended or repositioned, the watermark is unchanged, no new
+provenance is published, consumers are not notified again, and the active
+replica is not switched. Ordinary local graph activity preserves remote
+frontier entries, so it does not make an unchanged remote host "new"; only an
+advance to a not-yet-incorporated descendant revision does. A regressed or
+incomparable host revision is rejected by normal synchronization rather than
+guessed.
+
 Journal reconciliation is pairwise commutative: reversing the two source
-snapshots produces the same journal result. Synchronization may originate
+snapshots produces the same journal result and the same frontier.
+Synchronization may originate
 sync-derived `invalidate` and `delete` events under symmetric predicates (see
 `docs/specs/incremental-graph-journal-sync.md`). For other graph changes
 requiring notification, synchronization may copy, reposition, or retain
-existing source events. Existing events may be made absent by poisoning or
-absence propagation, moved to a fresh position when their original position
+existing source events. Existing events may be made absent by the
+synchronization-normalization phase (same-index poisoning, established-absence
+propagation, logical-view pruning, duplicate occurrence normalization, or
+carrier repositioning), moved to a fresh position when their original position
 cannot survive, deduplicated when the same logical event already survives
 elsewhere, or removed when superseded according to the settled compaction or
 freshness rules.
 
 The journal synchronization model defines how existing journal histories are
 compared, copied, repositioned, omitted, and physically compacted during sync.
-It also defines how source snapshot provenance, journal creators, and
-deterministic event identity and timestamps participate in conflict resolution.
+It also defines how source snapshot provenance (including the incorporation
+frontier), journal creators, and deterministic event identity and timestamps
+participate in conflict resolution.
 
 `reset-to-hostname` is a journal discontinuity: it installs a new journal
 lineage, may adopt a numerically lower watermark, and rotates the cursor domain.

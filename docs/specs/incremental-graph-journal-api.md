@@ -363,11 +363,11 @@ REQ-JA-CONC-04: `possibleMaybeChanges` does not acquire the graph activity mode 
 
 REQ-JA-CONC-05: Replica cutover is serialized with journal queries through the garden. Replica cutover acquires `holidayActivity` and then `closeGarden`. Because `possibleMaybeChanges` holds `enterGarden` across replica selection and traversal, cutover waits for existing journal readers to leave. Once `closeGarden` is queued, new readers do not overtake it. No new reader can select the old replica during cutover.
 
-### Filter mutation
+### Filter immutability
 
-REQ-JA-CONC-06: The implementation may apply the `to` filter while the query is
-running and may retain the references supplied to the filter at construction.
-Mutating the filter or any structure reachable through it (its argument array,
-its union branches, or nested `ConstValue` data) during or after an asynchronous
-query is undefined behavior. The API provides no result-consistency guarantee for
-a mutated filter. See `incremental-graph-node-filter.md`.
+REQ-JA-CONC-06: `NodeFilter` values are immutable. `graph.possibleMaybeChanges`
+observes one stable filter value for its complete execution, even when the
+query is asynchronous and even when the same filter is reused across concurrent
+queries. Mutating an array or object originally passed to a `NodeFilter`
+constructor cannot change the filter. See `incremental-graph-node-filter.md` §
+Immutability.

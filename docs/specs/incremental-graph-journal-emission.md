@@ -250,9 +250,11 @@ REQ-JE-14: Each emitted journal entry MUST be assigned a unique, monotonically i
 REQ-JE-15: A transaction MUST prepare unindexed journal entries during its unlocked body. Only once the transaction enters darkroom does it allocate a fresh contiguous range strictly above the current committed watermark, add those indexed entries and the new watermark to the same batch, and commit them atomically. This prevents the trace where one transaction allocates an index, a later transaction commits at a higher index and publishes the watermark, and the original transaction later fills a gap below the published watermark.
 
 REQ-JE-16: Gaps in the journal index sequence are acceptable. They may be caused by:
-- Compaction removing entries.
-- Sync poisoning of divergent indices.
-- Structural maintenance (poisoning or deleting entries while holding `closeGarden`).
+- Compaction removing entries (logical-view pruning).
+- The synchronization-normalization phase: same-index poisoning,
+  established-absence propagation, logical-view pruning, duplicate occurrence
+  normalization, or carrier repositioning (see
+  `incremental-graph-journal-sync.md` § Synchronization normalization).
 
 Gaps caused by failed transactions are NOT possible under this allocation model, because index allocation occurs only during the durable commit, which either succeeds or fails atomically.
 

@@ -51,6 +51,13 @@ Graph synchronization is fully specified by this document and does not inspect
 or depend on journal state. It produces the final merged graph and defines the
 observable-state abstraction used by journal reconciliation.
 
+"Journal state" here means journal entries, journal absences, and
+`last_journal_index`. Graph synchronization does read one piece of provenance
+metadata — the `SourceSnapshotProvenance.incorporatedRevisions` frontier — but
+only as the per-host merge gate of REQ-SYNC-02a (skip a staged host whose exact
+revision is already incorporated; reject a regressed or incomparable revision).
+It never inspects journal entries to plan the graph merge.
+
 ### GraphDelta
 
 Define the public observable state of a semantic key `K`:
@@ -126,13 +133,15 @@ installing `F` changes its public observable state relative to either source.
 Journal reconciliation must not inspect or compare `ComputedValue`s itself.
 
 Each synchronized source snapshot and merged destination carries a
-`SourceSnapshotProvenance` — a `SourceSnapshotId`, a contributor `Sync` set,
-the merge protocol version, and the schema version (see
+`SourceSnapshotProvenance` — a `SourceSnapshotId`, a per-host incorporation
+frontier, the merge protocol version, and the schema version (see
 `incremental-graph-journal-types.md` § Source snapshot provenance) — which
 journal reconciliation uses to derive sync event identity and contributor sets.
 Pairwise merge rejects inputs with mismatching merge protocol or schema
-versions. The merged destination's provenance is durably established before the
-destination becomes active or is used as the source of a later per-host merge.
+versions, and the frontier union rejects inputs whose frontiers record
+incomparable revisions for a common hostname. The merged destination's
+provenance is durably established before the destination becomes active or is
+used as the source of a later per-host merge.
 
 ---
 
@@ -224,6 +233,21 @@ steps in order:
    succeeded or failed).
 9. Failures are recorded per host. Synchronization may continue with remaining
    hosts and aggregate failures into a single error report.
+
+**REQ-SYNC-02a (Incorporated-host skip):** Before a staged host snapshot is
+merged, the implementation MUST compare the staged host's revision against the
+local source's incorporation frontier (see `incremental-graph-journal-types.md`
+§ Incorporation frontier). If the local frontier records the exact staged
+revision for that hostname, the per-host merge is a **complete no-op**: no
+destination is constructed, no journal event is appended or repositioned, no
+notification is emitted, the watermark is not increased, no new provenance is
+published, and the active-replica pointer MUST remain unchanged. If the staged
+revision is a regression of, or incomparable with, the recorded revision,
+synchronization for that host MUST fail with a host-version mismatch or
+revision-conflict error. The frontier's remote entries are preserved by any
+local checkpoint taken after ordinary graph activity, so this skip is stable
+across runs while the remote host is unchanged. This is what makes
+synchronization a fixed point for an unchanged host.
 
 **TERM-SYNC-13 (Reset-to-hostname mode):** A synchronization mode that is NOT
 a graph merge. It synchronizes to a chosen hostname snapshot by replacing the
@@ -681,7 +705,7 @@ following differ from the currently active replica:
 - journal entries or established journal absences;
 - `last_journal_index`;
 - `SourceSnapshotProvenance` (the destination's source-snapshot ID,
-  contributors, merge protocol version, and schema version);
+  incorporation frontier, merge protocol version, and schema version);
 - any other durable journal or provenance metadata.
 
 The active pointer remains unchanged only when the complete installed state
@@ -694,6 +718,12 @@ This installs the reconciled journal and its watermark, so that no future local
 index allocation can reuse or overwrite a position another synchronized host has
 already established or retired, and so that the derived merge provenance can
 become the source of the next per-host merge.
+
+When the staged-host revision check of REQ-SYNC-02a makes the per-host merge a
+complete no-op, no destination is constructed and the active-replica pointer
+MUST remain unchanged: the installed state already matches, and no reconciled
+destination exists to switch to. In particular, the switch rule MUST NOT switch
+the active replica for an already incorporated unchanged host.
 
 A "metadata-only" change, such as importing a valid provenance-backed
 validity proof, is sufficient to switch replicas, because it affects future
