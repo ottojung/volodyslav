@@ -10,10 +10,11 @@ Graph synchronization is fully specified by
 on journal state. Journal reconciliation runs downstream from the completed
 graph merge.
 
-Journal reconciliation is pairwise commutative: given two exact source
+Journal reconciliation is commutative and associative: given two exact source
 snapshots `A` and `B`, it must derive the same result from `merge(A, B)` and
-`merge(B, A)`. The result must not depend on which source is called local,
-host, keep, take, current, or remote.
+`merge(B, A)`, and every grouping of the same host contributions produces the
+same result (T44 through T48). The result must not depend on which source is
+called local, remote, current, or host.
 
 ---
 
@@ -138,9 +139,11 @@ logical join over a persisted, merge-closed basis — commutative, associative,
 and idempotent (see `incremental-graph-synchronization.md` § 1b Logical join and
 § Merge basis). When the local frontier dominates a staged frontier, the staged
 snapshot contributes no host-originated logical state that is not already
-represented locally, so the join is unchanged. Two replicas with equal frontiers
-therefore have equal logical merge state, even though their physical storage may
-differ.
+represented locally, so the join is unchanged. Equal causal frontiers imply
+equal logical merge state before the gate is allowed to skip reconciliation: the
+same host contributions produce the same merge basis, the same projected graph,
+the same canonical journal, and the same `LogicalSnapshotId` regardless of merge
+ordering or grouping (T44 through T48), even though physical storage may differ.
 
 - If the local frontier dominates the staged frontier, the staged snapshot
   contains no host-originated logical contribution that is new to the local
@@ -167,6 +170,7 @@ merge(D, S) = D
 Equality here covers the complete installed result:
 
 - graph state;
+- the merge basis;
 - journal entries and journal absences;
 - `last_journal_index`;
 - `SourceSnapshotProvenance` (including `causalFrontier`);
@@ -295,139 +299,147 @@ is outside the committed prefix and is excluded from the logical view.
 For each semantic key this produces at most one source state entry and one
 source freshness entry.
 
-### 4. Select retained historical journal evidence
+### 4. Journal evidence and the journal semilattice
 
-Canonical journal events are the events retained in the final journal for each
-semantic key. They are canonical only for journal retention and notification.
-Selection uses journal-only rules: it does not consult graph state, graph
-identifiers, or graph freshness.
+Sync-derived events are canonical logical merge facts derived from the complete
+joined journal evidence, not from the two immediate source snapshots. The
+journal evidence for each semantic key `K` is an unordered, deduplicated set of
+immutable facts:
 
-#### Canonical state event
+- **State facts** — the canonical state events contributed by each source
+  (`add`, `edit`, `delete` host events) and any retained sync-derived `delete`
+  fact.
+- **Freshness facts** — the canonical freshness events contributed by each
+  source (`invalidate`, `validate` host events), each with a tone
+  (`potentially-outdated` for `invalidate`, `up-to-date` for `validate`), and
+  any retained sync-derived `invalidate` fact.
 
-For each semantic key:
-
-- if neither source has a state entry, the destination has none;
-- if only one source has a state entry, that existing event is canonical;
-- if both have state entries, compare later `time`, then (when identifiers
-  differ and times tie) lexicographically greater `NodeIdentifier`, then (when
-  identifiers and times tie) lexicographically greater `eventId`.
-
-The winning existing event is canonical. It is retained in the final journal
-as historical notification evidence.
-
-#### Canonical freshness event
-
-For each semantic key, compare source freshness events directly. Do not filter
-by canonical state identifier, final graph identifier, current materialization,
-or current graph freshness.
-
-- if neither source has a freshness entry, the canonical freshness event is
-  absent;
-- if only one source has a freshness entry, that existing event is canonical;
-- if both have freshness entries, compare by later `time`, then lexicographically
-  greater `eventId` on a tie.
-
-The winner is the canonical freshness event. It is historical journal evidence
-only: it does not determine final graph freshness or assert current graph state.
-The retained freshness event may refer to an older identifier than the retained
-state event.
-
-### 5. Generate sync-derived events symmetrically
-
-Synchronization may newly originate only sync-derived entries: a
-`SyncDeleteJournalEntry` or a `SyncInvalidateJournalEntry`. It never originates
-`add`, `edit`, or `validate`. All predicates below are independent of source
-ordering.
-
-#### Generated `delete`
-
-Generate one `SyncDeleteJournalEntry` for semantic key `K` exactly when:
+The journal evidence join is set union:
 
 ```
-F(K) is unmaterialized
+joinJournalEvidence(E1, E2) = E1 ∪ E2
+```
+
+which is commutative, associative, and idempotent by construction (sets are
+unordered and deduplicated by fact identity). The merged frontier is the
+frontier union; the merged graph is `projectGraph(joinMergeBasis(...))`.
+
+### 5. Derive sync-derived merge facts
+
+Sync-derived events are canonical projections of the complete joined evidence
+`E`, recomputed from the full evidence at every join. They are never one-shot
+pairwise events.
+
+#### Derived `delete`
+
+Derive one sync `delete` fact for `K` from `E` exactly when:
+
+```
+projectGraph(joinedMergeBasis(E)).K is unmaterialized
 and
-at least one of A(K) or B(K) is materialized
+the state evidence for K contains at least one materialized state fact
 ```
 
-This predicate is independent of source ordering.
+The fact's node identifier is the identifier of the materialized state fact
+selected by the canonical state-fact ordering (max by
+`(time, NodeIdentifier, eventId)`).
 
-The event's node identifier is selected symmetrically:
+#### Derived `invalidate`
 
-- if only one source materializes `K`, use that source's identifier for `K`;
-- if both sources materialize `K`, choose the identifier belonging to the
-  deterministic winning source materialization according to the symmetric
-  materialization comparison tuple `(modifiedAt, NodeIdentifier,
-  sourceFingerprint)` from `docs/specs/incremental-graph-synchronization.md`
-  REQ-SYNC-07;
-- never choose an identifier because it belongs to the source currently called
-  local.
-
-Use:
+Derive one sync `invalidate` fact for `K` from `E` exactly when:
 
 ```
-event.action = "delete"
-event.key   = K
-event.id    = identifier selected above
-```
-
-A generated `delete` claims:
-
-```
-At least one synchronized source materialized K, while the deterministic
-merged result does not materialize K.
-```
-
-It does not claim that every participating host locally experienced a deletion.
-
-#### Generated `invalidate`
-
-Generate one `SyncInvalidateJournalEntry` for semantic key `K` exactly when:
-
-```
-F(K) is materialized and potentially-outdated
+projectGraph(joinedMergeBasis(E)).K is materialized and potentially-outdated
 and
-at least one of A(K) or B(K) is materialized and up-to-date
+the freshness evidence for K contains at least one `up-to-date` host fact
 ```
 
-This predicate is independent of source ordering.
-
-Use:
-
-```
-event.action = "invalidate"
-event.key   = K
-event.id    = final materialization identifier of K in F
-```
-
-A generated `invalidate` claims:
-
-```
-At least one synchronized source considered K up-to-date, while the
-deterministic merged result retains K as potentially-outdated.
-```
-
-It does not claim that every participating host locally experienced an
-invalidation.
+The fact's node identifier is the final materialization identifier of `K` in
+the projected graph.
 
 #### Delete dominates invalidate
 
-When the generated-delete predicate applies, generate only `delete`. Do not
-generate `invalidate` before deletion.
+When the delete derivation applies, derive only `delete`.
+
+#### Derived fact payload
+
+Both derived facts use:
+
+```
+action   = "delete" | "invalidate"
+key      = K
+id       = as specified above
+time     = derivedTime(K, E)
+creator  = makeSync(causalFrontierHostnames(joinedFrontier(E)))
+eventId  = ["sync-delete" | "sync-invalidate",
+            graphAndJournalMergeProtocolVersion,
+            nodeKeyToString(K),
+            unixTimestampToNumber(derivedTime)]
+```
+
+`derivedTime(K, E)` is the deterministic, canonical sync event time:
+
+```
+derivedTime(K, E) =
+    maximum { time(f) | f is a retained state or freshness fact for K in E }
+```
+
+It is a monotone canonical function of the complete joined evidence: it never
+decreases as evidence is added, and it is identical for every grouping of the
+same represented host contributions. The `eventId` embeds `derivedTime`, so a
+recomputed fact with a larger time receives a new event ID and the earlier fact
+is logically superseded. Two payload-distinct sources can never share an event
+ID, and the event ID is independent of the two immediate source snapshots.
+
+The derived fact is valid only when sufficient source journal evidence exists.
+If the projected graph requires a derived fact but the joined evidence contains
+no materialized state fact (for `delete`) or no host freshness fact (for
+`invalidate`) for `K`, treat this as a journal-integrity error rather than
+consulting the local wall clock.
+
+The predicate, the time, the identifier, the creator, and the event ID are all
+canonical functions of the evidence set. Therefore the same represented host
+contributions produce the same derived facts regardless of pairwise grouping,
+and joining an already derived fact with another snapshot recomputes the fact
+from the enlarged evidence rather than replacing it by a grouping-dependent
+comparison.
+
+### 6. Final canonical events
+
+For each semantic key, the final canonical events are the maxima of the joined
+evidence, with derived facts included:
+
+```
+finalCanonicalStateEvent(K) =
+    the derived delete fact for K, if one exists;
+    else the maximal host state fact by (time, NodeIdentifier, eventId)
+```
+
+```
+finalCanonicalFreshnessEvent(K) =
+    the derived invalidate fact for K, if one exists;
+    else the maximal host freshness fact by (time, eventId)
+```
+
+A key receiving a derived `delete` receives no derived `invalidate`:
+
+```
+finalCanonicalStateEvent(K)     = derived delete(K)
+finalCanonicalFreshnessEvent(K) = the maximal host freshness fact (when one exists)
+```
+
+The destination physically contains exactly:
+
+- the final canonical state event for each semantic key, when one exists;
+- the final canonical freshness event for each semantic key, when one exists.
+
+"Final canonical" is a retained host event or a derived sync fact. The resulting
+physical journal equals its own `logicalJournalView`.
 
 #### FreshPlacementSet
 
 Synchronization maintains a conceptual `FreshPlacementSet` of complete immutable
 events awaiting index allocation. Each member is identified by its `eventId`.
-
-```
-eventId
-```
-
-Because a sync-derived event's `eventId` is determined by the merge protocol
-version, the canonical source-snapshot IDs, the action, and the key, the
-generated identity is stable across both merge directions and across hosts. An
-existing event that is already a sync-derived event from the same source
-snapshots under the same protocol shares that `eventId`.
 
 Define one operation:
 
@@ -438,119 +450,16 @@ enqueueFresh(event)
 which is idempotent by `eventId`: calling `enqueueFresh` twice with the same
 `eventId` has the same effect as calling it once.
 
-All placement requests from:
+Every derived fact begins unpositioned and is enqueued via `enqueueFresh(event)`
+for placement above `P = max(aH, bH)`. All placement requests from:
 
-- generated-event creation (below);
-- loss of every surviving canonical occurrence (step 8);
-- notification-bound enforcement (step 9);
+- derived-fact creation (step 5);
+- loss of every surviving canonical occurrence (step 9);
+- notification-bound enforcement (step 10);
 
 must call this same operation.
 
-#### Sync-derived event assignment
-
-Every generated event begins unpositioned. It is enqueued via
-`enqueueFresh(event)` for placement above `P = max(aH, bH)`.
-
-Assign:
-
-```
-action   = "invalidate" or "delete"
-key      = K
-id       = as specified above
-time     = deterministic sync event time (see below)
-creator  = makeSync(causalFrontierHostnames(mergedFrontier))
-```
-
-`mergedFrontier` is
-`unionCausalFrontiers(A.provenance.causalFrontier,
-B.provenance.causalFrontier)`: the creator is the set of contributing
-source hosts represented by the merged frontier, canonically ordered (see
-`incremental-graph-journal-types.md`). It does not identify one host as the
-actor, and it is not necessarily just the two hosts involved in the latest
-exchange.
-
-After the source snapshots, action, and key are fixed, assign the sync event
-ID:
-
-```js
-const [lowerId, upperId] = canonicalPair([
-    logicalSnapshotIdToString(A.provenance.id),
-    logicalSnapshotIdToString(B.provenance.id),
-])
-
-JSON.stringify([
-    "sync-v2",
-    graphAndJournalMergeProtocolVersion,
-    lowerId,
-    upperId,
-    action,
-    nodeKeyToString(key),
-])
-```
-
-No special sync event type or alternate ID format. The merge protocol version
-is the protocol under which the merge produced the event (see
-`incremental-graph-journal-types.md` § LogicalSnapshotId); two different
-protocols producing different sync events for the same snapshots receive
-different event IDs. The event ID embeds only exact logical snapshot identities
-and never the physical journal placement allocated by the merge.
-
-#### Deterministic sync-event time
-
-A sync-derived event must not use the wall clock of the host executing
-reconciliation. Otherwise two hosts independently reconciling the same
-snapshots at different times would produce different immutable payloads for the
-same logical event.
-
-The `time` is derived deterministically from source journal evidence for the
-semantic key:
-
-```
-syncEvent.time =
-    maximum time among the canonical source journal events for K
-    participating in reconciliation
-```
-
-Include both the canonical state event and the canonical freshness event for
-`K` when they exist (step 4).
-
-A generated sync event is only valid when sufficient source journal evidence
-exists. If graph state requires a generated event but no source journal evidence
-exists for the materialized key, treat this as a journal-integrity error rather
-than consulting the local wall clock.
-
-#### Final canonical events
-
-For each semantic key, the final canonical events are derived from the source
-canonical events and any generated sync events:
-
-```
-finalCanonicalStateEvent(K)     = generated delete(K)    if one exists
-                                = sourceCanonicalStateEvent(K)   otherwise
-```
-
-```
-finalCanonicalFreshnessEvent(K) = generated invalidate(K)    if one exists
-                                = sourceCanonicalFreshnessEvent(K)   otherwise
-```
-
-A key receiving a generated `delete` receives no generated `invalidate`:
-
-```
-finalCanonicalStateEvent(K)     = generated delete(K)
-finalCanonicalFreshnessEvent(K) = sourceCanonicalFreshnessEvent(K) (when one exists)
-```
-
-The destination physically contains exactly:
-
-- the final canonical state event for each semantic key, when one exists;
-- the final canonical freshness event for each semantic key, when one exists.
-
-"Final canonical" may mean either a retained or repositioned source event or a
-newly generated sync event. The resulting physical journal equals its own
-`logicalJournalView`.
-
-### 6. Select notification carriers
+### 7. Select notification carriers
 
 Every key in `SyncDelta` must have a notification carrier positioned strictly
 after `P` so that process cursors observing either source notice the change.
@@ -581,7 +490,7 @@ It is not newly emitted.
 
 ### Synchronization normalization
 
-Steps 7 through 9 collectively form the **synchronization-normalization
+Steps 8 through 10 collectively form the **synchronization-normalization
 phase**: the journal-reconciliation phase that turns the two source prefixes
 into the physically canonical destination journal. This phase is the only
 synchronization operation authorized to turn an established `present` journal
@@ -589,20 +498,20 @@ position into `absent` (see the global established-position invariant in
 `incremental-graph-journal-types.md`). Its permitted deletions are exactly the
 following five kinds:
 
-1. **Same-index poisoning** (step 7): when two different established entries
+1. **Same-index poisoning** (step 8): when two different established entries
    occupy the same index, both entries are removed and the position becomes
    absent.
-2. **Established-absence propagation** (step 7): when one source has an
+2. **Established-absence propagation** (step 8): when one source has an
    established entry and the other has established absence at the same index,
    absence wins and the entry is removed.
-3. **Logical-view pruning** (step 7): an established entry that is not part of
+3. **Logical-view pruning** (step 8): an established entry that is not part of
    the final canonical logical view — not the final canonical state or
    freshness event for its semantic key — is removed. This covers identical
    but noncanonical entries and noncanonical source-suffix entries.
-4. **Duplicate occurrence normalization** (step 8): when the same `eventId`
+4. **Duplicate occurrence normalization** (step 9): when the same `eventId`
    survives at several positions, every lower occurrence is removed, retaining
    the greatest position.
-5. **Carrier repositioning** (step 9): the old physical occurrences of a
+5. **Carrier repositioning** (step 10): the old physical occurrences of a
    selected notification carrier are removed before the carrier is freshly
    placed above `P`.
 
@@ -615,7 +524,7 @@ established-position deletion is permitted by synchronization, and an operation
 attempting an unclassified deletion of an established position is rejected by
 this specification.
 
-### 7. Reconcile physical positions
+### 8. Reconcile physical positions
 
 The merge operates on two source replicas.
 
@@ -647,7 +556,7 @@ For every index `i` from `1` through `P`, derive the destination state:
    The position is unestablished in A. Preserve a B entry only when it is
    final canonical; otherwise establish absence.
 
-### 8. Normalize final canonical occurrences
+### 9. Normalize final canonical occurrences
 
 For every final canonical event, gather its surviving destination positions. If
 the same `eventId` survives at several physical positions:
@@ -660,17 +569,17 @@ If exactly one occurrence survives, retain it. If none survives, enqueue it via
 `enqueueFresh(event)`. If a final canonical event already survives at a
 positioned target entry, remove any queued fresh copy of the same `eventId`.
 
-### 9. Enforce notification bounds
+### 10. Enforce notification bounds
 
 For each `K` in `SyncDelta`, let `carrier` be the notification carrier selected
-in step 6. The carrier must end with exactly one occurrence strictly above `P`.
+in step 7. The carrier must end with exactly one occurrence strictly above `P`.
 
-- If `carrier` is a generated `SyncDeleteJournalEntry` or
+- If `carrier` is a derived `SyncDeleteJournalEntry` or
   `SyncInvalidateJournalEntry` and has no surviving positioned occurrence, it
-  is already in `FreshPlacementSet` from generated-event assignment; it will be
-  allocated above `P` in step 10.
+  is already in `FreshPlacementSet` from derived-fact derivation; it will be
+  allocated above `P` in step 11.
 - Otherwise `carrier` has a surviving positioned occurrence (it is an existing
-  canonical event, or a previously derived sync event from the same snapshots).
+  canonical event, or a previously derived sync event from the same evidence).
   Remove every surviving old occurrence of that carrier and
   `enqueueFresh(carrier)`.
 
@@ -690,10 +599,10 @@ The bound is `P = max(aH, bH)`, not the watermark of whichever source is
 locally active. This guarantees notification coverage for process cursors that
 have been following either source.
 
-### 10. Fresh placement
+### 11. Fresh placement
 
 Step 10 allocates exactly one physical occurrence for each member of
-`FreshPlacementSet`. Every event enqueued during steps 5, 8, and 9 is allocated
+`FreshPlacementSet`. Every event enqueued during steps 5, 9, and 10 is allocated
 contiguously at:
 
 ```
@@ -788,26 +697,30 @@ and release the garden afterward.
 
 ---
 
-## Commutativity
+## Commutativity and associativity
 
-Journal reconciliation is pairwise commutative. For two valid merge inputs `A`
-and `B`:
+Journal reconciliation is commutative and associative over the journal
+semilattice. For two valid merge inputs `A` and `B`:
 
 - `SyncDelta` is symmetric by definition;
-- the generated-event predicates are symmetric;
+- the derived-fact predicates are canonical functions of the joined evidence,
+  hence symmetric;
 - the frontier union is symmetric: `unionCausalFrontiers` produces the same
   merged frontier (or the same rejection) in either input order;
-- the merge-basis join is symmetric: `joinMergeBasis(A, B)` and
+- the merge-basis join is a set semilattice: `joinMergeBasis(A, B)` and
   `joinMergeBasis(B, A)` produce the same basis (see
   `incremental-graph-synchronization.md` § Merge basis);
-- sync creators, event IDs, timestamps, and identifier selection are derived
-  symmetrically from logical snapshot provenance and source journal evidence;
+- the journal evidence join is a set semilattice:
+  `joinJournalEvidence(E1, E2) = E1 ∪ E2`;
+- sync creators, event IDs, timestamps, and identifier selection are canonical
+  functions of the joined evidence;
 - carrier placement is enforced above `P = max(aH, bH)`, which is symmetric;
 - all fresh-placement ordering keys are symmetric.
 
 Therefore `merge(A, B)` and `merge(B, A)` produce the same canonical journal,
 the same logical snapshot identity, the same causal frontier, the same merge
-basis, and the same fresh-placement sequence.
+basis, and the same fresh-placement sequence; and every grouping of the same
+host contributions produces the same result (T44 through T48).
 
 ---
 
@@ -908,7 +821,7 @@ identical under `merge(A, B)` and `merge(B, A)`.
 Source canonical: state = edit W, freshness = validate W
 A materialized, B unmaterialized, F unmaterialized
 
-Generated: delete(K, identifier of the winning source materialization)
+Derived: delete(K, identifier of the winning materialized state fact)
 
 ```
 finalCanonicalStateEvent(K)     = generated delete(K)
@@ -958,14 +871,13 @@ changed up-to-date → stale, emit one invalidate using the final identifier.
 
 First sync: A up-to-date, B stale, F stale, emits invalidate(K).
 
-If the same two exact logical snapshots were reconciled again (a case the
-causal-frontier gate of § Absorption (fixed point) normally prevents, because
-the local source has advanced to the derived merge `D`), the same invalidate is
-generated again with the same eventId; placement deduplicates and no second
-logical event is created. In normal operation, re-synchronizing with unchanged
-B after the first merge is a complete no-op (T34); this scenario documents the
-internal emission-deduplication property that holds independently of that
-no-op.
+If the same total evidence were reconciled again (a case the causal-frontier
+gate of § Absorption (fixed point) normally prevents, because the local source
+has advanced to the derived merge `D`), the same invalidate is recomputed with
+the same eventId; placement deduplicates and no second logical event is
+created. In normal operation, re-synchronizing with unchanged B after the first
+merge is a complete no-op (T34); this scenario documents the internal
+emission-deduplication property that holds independently of that no-op.
 
 ### T9 — Freshness history independent of state identifier
 
@@ -1065,18 +977,19 @@ synchronization execution time must not enter the event payload or event ID.
 
 ### T19 — Repeated reconciliation
 
-If the same two exact logical snapshots are reconciled a second time (a case the
-causal-frontier gate normally prevents in per-host synchronization), a
-regenerated sync event has the same eventId as the first and deduplicates
-against any surviving occurrence, so no second logical sync event with a
-different identity is created. This is an internal event-identity property; the
-operational fixed point is the absorption property (PROP-JS-04a).
+If a source already retains a derived sync fact and is reconciled again with the
+same total evidence, the derivation recomputes the same fact (same action, key,
+identifier, derived time, creator, and event ID) and deduplicates against any
+surviving occurrence, so no second logical sync event with a different identity
+is created. This is an internal event-identity property; the operational fixed
+point is the absorption property (PROP-JS-04a).
 
-### T20 — New logical snapshots
+### T20 — New evidence produces a new derived fact
 
-A later pair of logical snapshots with different exact state may generate a new
-event because the `LogicalSnapshotId`s differ, and therefore the sync event ID
-differs.
+A later merge that adds evidence to a semantic key may recompute a derived fact
+with a larger `derivedTime`, producing a new event ID; the earlier fact is
+logically superseded. The derivation is a canonical function of the complete
+joined evidence, never of the source snapshot pair.
 
 ### T21 — A merge output receives the exact-state identity
 
@@ -1094,20 +1007,17 @@ After the first per-host merge, the derived output becomes the local source for
 a second per-host merge. Its identity is the `LogicalSnapshotId` of its exact
 logical state.
 
-### T23 — Second merge generates a deterministic sync event ID
+### T23 — Second merge derives a deterministic sync event ID
 
 The second merge (derived snapshot `D` plus a new logical snapshot `C`)
-generates a sync event whose ID is:
+derives a sync event whose ID is a canonical function of the joined evidence:
 
 ```
-["sync-v2", graphAndJournalMergeProtocolVersion,
- logicalSnapshotIdToString(lower), logicalSnapshotIdToString(upper),
- action, nodeKeyToString(key)]
+["sync-v2", graphAndJournalMergeProtocolVersion, action,
+ nodeKeyToString(key), unixTimestampToNumber(derivedTime)]
 ```
 
-where `lower` and `upper` are `D.provenance.id` and `C.provenance.id` sorted by
-`canonicalPair`, and the protocol version is the version under which the second
-merge ran.
+It never references the two immediate source snapshots' identities.
 
 ### T24 — Reversal produces the same snapshot identity
 
@@ -1141,10 +1051,10 @@ cutover. Two unrelated reinitializations of the same hostname produce different
 ### T28 — Sync event ID carries no physical index
 
 A `SyncDeleteJournalEntry` or `SyncInvalidateJournalEntry` event ID is derived
-from the merge protocol version, the exact source-snapshot identities, the
-action, and the key. The embedded snapshot identities are fixed-size digests of
-the logical state. The event ID does not depend on the destination physical
-journal index, compaction layout, or carrier positions.
+from the merge protocol version, the action, the key, and the canonical derived
+time of the joined journal evidence. The derived time is a fixed-size digest
+source; the event ID does not depend on the two immediate source snapshots, the
+destination physical journal index, compaction layout, or carrier positions.
 
 ### T29 — Local activity invalidates source provenance
 
@@ -1254,7 +1164,7 @@ created because a later surviving copy exists.
 Key K is in `SyncDelta` and its canonical state event `E` is the selected
 carrier at position 5 with `P = 5`. Step 9 removes the old occurrence at
 position 5 and enqueues `E` for fresh placement; `E` receives exactly one new
-occurrence above `P` in step 10, preserving its original `eventId`.
+occurrence above `P` in step 11, preserving its original `eventId`.
 
 ### T43 — Unclassified established-position deletion is rejected
 
@@ -1263,6 +1173,68 @@ synchronization-normalization phase's five permitted kinds. An operation that
 attempts, for example, to replace an established entry, fill an established
 absence, or delete an established entry for reasons other than the five kinds
 is rejected by this specification.
+
+### T44 — Three-source fresh/stale/stale associativity
+
+Three snapshots over key `K`:
+
+- `A`: `K` materialized and `up-to-date`; canonical freshness event time 10.
+- `B`: `K` materialized and `potentially-outdated`; canonical freshness event time 20.
+- `C`: `K` materialized and `potentially-outdated`; canonical freshness event time 30.
+
+The projected graph is stale in every grouping. The journal evidence for `K`
+contains host freshness facts `{A: up-to-date@10, B: stale@20, C: stale@30}`.
+
+- `merge(merge(A, B), C)`: `join(A,B)` derives one sync `invalidate` fact
+  (`derivedTime = max(10,20) = 20`); joining `C` recomputes the fact from the
+  enlarged evidence with `derivedTime = max(10,20,30) = 30`.
+- `merge(A, merge(B, C))`: `join(B,C)` derives no fact (no up-to-date fact);
+  joining `A` derives the same sync `invalidate` fact with
+  `derivedTime = max(10,20,30) = 30`.
+
+Both groupings produce the same canonical freshness event (the derived sync
+`invalidate` at time 30 with the same event ID, creator, and identifier), the
+same canonical journal, and the same `LogicalSnapshotId`. All six processing
+orders of `A`, `B`, and `C` produce the same result.
+
+### T45 — Materialized/materialized/unmaterialized associativity
+
+Three snapshots over key `K`:
+
+- `A`: `K` materialized, state event time 10.
+- `B`: `K` materialized, state event time 20.
+- `C`: `K` unmaterialized (no state event).
+
+The projected graph is unmaterialized in every grouping. The state evidence for
+`K` contains `{A: materialized@10, B: materialized@20}`. Every grouping derives
+exactly one sync `delete` fact with `derivedTime = max(10,20) = 20`, the same
+event ID, creator, and identifier, and the same canonical journal and
+`LogicalSnapshotId`.
+
+### T46 — Generated deletes and invalidates are evidence functions
+
+A scenario that derives a sync `delete` or `invalidate` fact derives the same
+fact (same action, key, identifier, time, creator, and event ID) from the same
+joined evidence regardless of how that evidence was assembled; recomputation
+from a superset of evidence either keeps the fact (unchanged derived time) or
+supersedes it with a new fact whose derived time is larger.
+
+### T47 — Pre-existing sync-derived events join associatively
+
+A source that already contains a derived sync fact contributes that fact to the
+evidence. Joining it with additional evidence recomputes the derivation from
+the unioned evidence; two groupings over the same total evidence produce the
+same final canonical events and `LogicalSnapshotId`, and the retained fact is
+never replaced merely because one grouping performs the freshness or
+materialization comparison later.
+
+### T48 — Equal frontiers after different arrival orders
+
+Hosts `A`, `B`, and `C` reach equal causal frontiers after receiving snapshots
+in different orders. Because the journal evidence and the derived facts are
+canonical functions of the represented host contributions, the canonical
+journal and the `LogicalSnapshotId` are equal; frontier dominance may then skip
+reconciliation.
 
 ---
 
@@ -1284,32 +1256,32 @@ check is `eventId` payload match.
 by journal reconciliation is historical notification evidence. It does not
 assert current graph state.
 
-**PROP-JS-04 (Sync emission idempotence):** A regenerated sync-derived event for
-the same logical snapshots under the same protocol has an identical eventId and
-is deduplicated; no second logical sync event is created by the same two exact
-logical snapshots.
+**PROP-JS-04 (Sync emission idempotence):** A derived sync fact recomputed from
+the same total joined evidence under the same protocol has an identical eventId
+and is deduplicated; no second logical sync event is created for the same
+represented host contributions.
 
 **PROP-JS-04a (Absorption / fixed point):** Let `D = merge(A, B)`. If a staged
 logical snapshot `S`'s complete causal frontier is dominated by `D`'s frontier,
-then `merge(D, S) = D`: the graph state, journal entries and absences,
-`last_journal_index`, `SourceSnapshotProvenance`, notification behavior, and
-replica-switch decision are all unchanged. The repeated merge does not append
-or reposition an event, increase the watermark, publish new provenance, notify
-consumers again, or switch the active replica.
+then `merge(D, S) = D`: the graph state, merge basis, journal entries and
+absences, `last_journal_index`, `SourceSnapshotProvenance`, notification
+behavior, and replica-switch decision are all unchanged. The repeated merge does
+not append or reposition an event, increase the watermark, publish new
+provenance, notify consumers again, or switch the active replica.
 
 **PROP-JS-05 (Graph sync independence):** Graph synchronization correctness
 does not depend on journal state, journal retention, or journal compaction.
 
-**PROP-JS-06 (Pairwise commutativity):** `merge(A, B)` and `merge(B, A)` produce
+**PROP-JS-06 (Commutativity):** `merge(A, B)` and `merge(B, A)` produce
 the same canonical journal, the same fresh-placement sequence, the same exact
 logical state and `LogicalSnapshotId`, the same causal frontier, and the same
 merge basis.
 
-**PROP-JS-07 (Deterministic sync events):** Sync-derived events depend only on
-the exact logical snapshots and the source journal evidence. They do not depend
-on which source is locally active, on the host executing reconciliation, on the
-wall-clock time of merge execution, or on any transport revision or storage
-location.
+**PROP-JS-07 (Deterministic sync events):** Sync-derived events are canonical
+functions of the complete joined journal evidence and the joined merge basis.
+They do not depend on the two immediate source snapshots, on which source is
+locally active, on the host executing reconciliation, on the wall-clock time of
+merge execution, or on any transport revision or storage location.
 
 **PROP-JS-08 (Deletion taxonomy closed):** Synchronization deletes an
 established journal entry only through the synchronization-normalization phase

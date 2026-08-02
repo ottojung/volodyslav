@@ -26,16 +26,31 @@ data, conceptually equivalent to:
 
 ```js
 /**
+ * The canonical logical graph projection carried by a snapshot. It is the
+ * deterministic `projectGraph` result over the snapshot's merge basis
+ * (incremental-graph-synchronization.md § 1c).
+ *
+ * @typedef {object} LogicalGraphState
+ * @property {NodeIdentifierLookup} identifierLookup
+ * @property {NodeValueStore} nodeValues
+ * @property {FreshnessMarkers} freshnessMarkers
+ * @property {ValidityRelation} validity
+ * @property {DependencyEdges} dependencyEdges
+ */
+```
+
+```js
+/**
  * A transport-neutral logical snapshot exchanged between hosts.
  *
  * @typedef {object} ReplicaSnapshot
  * @property {LogicalSnapshotId} snapshotId
  * @property {Version} schemaVersion
  * @property {string} mergeProtocolVersion
- * @property {object} graphState
- * @property {object} journalState
+ * @property {LogicalGraphState} graphState
+ * @property {LogicalJournalView} journalState
  * @property {CausalFrontier} causalFrontier
- * @property {object} mergeBasis
+ * @property {MergeBasis} mergeBasis
  */
 ```
 
@@ -153,48 +168,47 @@ function hostInstanceIdToString(instanceId)
 
 #### Sync-derived event
 
-A sync-derived event must be identified from the exact unordered source
-snapshots and the semantic event identity, so that either side of a pairwise
-merge derives the same event ID. Each source snapshot carries a
-`SourceSnapshotProvenance` whose `id` is a `LogicalSnapshotId` (see
-`Logical snapshot provenance`).
+A sync-derived event must be identified from the complete joined journal
+evidence and the semantic event identity, so that every grouping of the same
+host contributions derives the same event ID. The event identity is a canonical
+function of the evidence, not of the two immediate source snapshots.
 
-The sync event ID is:
+The sync event ID is a canonical function of the complete joined journal
+evidence, independent of the two immediate source snapshots:
 
 ```js
 const eventId = JSON.stringify([
     "sync-v2",
     graphAndJournalMergeProtocolVersion,
-    lowerLogicalSnapshotId,
-    upperLogicalSnapshotId,
     action,
     nodeKeyToString(key),
+    unixTimestampToNumber(derivedTime),
 ]);
 ```
 
-`lowerLogicalSnapshotId` and `upperLogicalSnapshotId` are the two
-replica-snapshot-ID strings sorted by `canonicalPair` (deterministic JavaScript
-code-unit ordering). The event ID includes
-`graphAndJournalMergeProtocolVersion` so that two different merge protocols
-producing different sync events for the same snapshots and action receive
-different event IDs. It embeds only the exact logical snapshot identities and
-never the physical journal placement allocated by the merge. The identity
-applies only to `SyncDeleteJournalEntry` and `SyncInvalidateJournalEntry`.
+`derivedTime` is the canonical sync event time derived from the joined evidence
+(`incremental-graph-journal-sync.md` § Derive sync-derived merge facts). The
+event ID includes `graphAndJournalMergeProtocolVersion` and the derived time so
+that different protocols or different accumulated evidence produce different
+event IDs, and the ID never depends on which two snapshots performed the join.
+The identity applies only to `SyncDeleteJournalEntry` and
+`SyncInvalidateJournalEntry`.
 
 Consequences:
 
-- reversing the two source snapshots produces the same event ID;
-- independently reconciling the same two exact logical snapshots under the same
-  merge protocol produces the same event ID;
-- a different merge protocol or a different logical snapshot produces a
-  different event ID;
+- the same represented host contributions produce the same event ID regardless
+  of pairwise grouping or order;
+- a recomputed fact with a larger derived time receives a new event ID and the
+  earlier fact is logically superseded;
 - repeated placement of the same sync event is deduplicated by `eventId`;
-- one `eventId` still identifies exactly one immutable payload;
+- one `eventId` still identifies exactly one immutable payload (the ID encodes
+  the derived time, so a payload cannot change under a fixed ID);
 - if the same sync event ID is encountered with different payloads,
   synchronization fails as a journal-integrity error.
 
 A sync event ID must not depend on:
 
+- the two immediate source snapshots;
 - the host executing reconciliation;
 - local versus remote naming;
 - local wall-clock execution time;
@@ -243,16 +257,18 @@ During darkroom finalization:
 1. Read the currently committed `HostStateVersion`.
 2. Allocate its unique successor.
 3. Allocate journal indices and construct host event IDs as already specified.
-4. Add the graph mutations, journal entries, watermark, and successor host
-   version to the same durable batch.
+4. Add the graph mutations, the merge-basis candidate/evidence mutations, the
+   journal entries, the journal watermark, and the successor host version to
+   the same durable batch.
 5. Commit the batch atomically.
 6. Publish volatile counters only after the durable commit succeeds.
 
-A failed batch must leave all of the following unchanged: graph state; journal
-state; `last_journal_index`; `HostStateVersion`; and volatile next-version
-state.
+A failed batch must leave all of the following unchanged: graph state; the
+merge basis; journal state; `last_journal_index`; `HostStateVersion`; and
+volatile next-version state.
 
-No-op operations must not advance the version:
+No-op operations must not advance the version and must not mutate the merge
+basis:
 
 - cache-hit pull;
 - repeated invalidation of an already stale node;
@@ -266,8 +282,49 @@ No-op operations must not advance the version:
 Concurrent host-originated transactions MUST serialize version allocation
 through the same finalization discipline, so they cannot receive the same
 successor or publish changes out of version order. This rule makes the following
-failure impossible: new graph or journal state becomes durable while the
-exported causal frontier still advertises the old host version.
+failures impossible: new graph or journal state becomes durable while the
+exported causal frontier still advertises the old host version; new graph state
+is published with a stale merge basis; and new merge-basis evidence is published
+with an old graph or frontier coordinate.
+
+### Merge-basis maintenance
+
+The merge basis (see `incremental-graph-synchronization.md` § 1c) is
+synchronization-critical state and is updated atomically whenever host-originated
+graph state changes. The durable batch that commits a host-originated change
+also commits the corresponding candidate and evidence mutations.
+
+Per operation:
+
+- **First materialization**: creates one `MaterializedCandidate` for the key
+  (with its value, timestamps, identifier, empty input candidate references, and
+  `up-to-date` freshness), plus an `up-to-date` `FreshnessFact`.
+- **Changed recomputation**: creates a new `MaterializedCandidate` (new origin,
+  new value/timestamps) for the key, recording the exact input candidate IDs
+  the new value was computed against, plus an `up-to-date` `FreshnessFact`.
+- **Unchanged recomputation that validates freshness**: creates no new
+  candidate; adds an `up-to-date` `FreshnessFact` only.
+- **Invalidation**: creates no new candidate; adds a `potentially-outdated`
+  `FreshnessFact` only.
+- **Host-local deletion**: creates a `TombstoneCandidate` (ordered by deletion
+  time) and, if a value was replaced, a `potentially-outdated` `FreshnessFact`;
+  the tombstone is the durable deletion evidence.
+- **Migration create/delete/invalidate**: creates or removes candidates as a
+  first materialization, deletion, or invalidation respectively, all within the
+  one migration version advance.
+- **Bulk reset add/edit/delete/invalidate/validate**: creates or removes
+  candidates per the transition-to-event matrix
+  (`incremental-graph-journal-emission.md` § Transition-to-event matrix),
+  including tombstones for reset deletions, all within the one reset version
+  advance.
+
+Operations that do not create a new candidate: unchanged recomputation,
+invalidation, cache-hit pull, export, compaction, and synchronization-only
+changes. Operations that only add monotonic evidence: unchanged recomputation
+(adds an `up-to-date` fact), invalidation (adds a stale fact). The merge basis
+and the exported causal frontier are committed together, so a crash can never
+expose new graph state with a stale merge basis, or new merge-basis evidence
+with an old graph or frontier coordinate.
 
 ```js
 /**
@@ -553,20 +610,28 @@ freshness/validity evidence, in the field order defined there.
 #### Logical journal view encoding
 
 The logical journal view is the set of immutable retained journal events
-expressed as event payloads, sorted by a placement-independent logical key:
+expressed as complete immutable payloads, sorted by a placement-independent
+logical key. Because host event IDs are not content hashes, the payload itself
+must be part of the identity:
 
 ```text
 logicalJournalView = set(
-    (semanticKey: string,
-     category: u64,               // 0=state 1=freshness
+    (action: u64,                  // 0=add 1=edit 2=delete 3=invalidate 4=validate
+     nodeIdentifier: string,
+     semanticKey: string,
+     timeMs: u64,
+     creator: string,              // journalCreatorToString tagged form
      eventId: string)
 )
 ```
 
-`semanticKey` is the canonical `NodeKey` of the event, `category` is its
-logical-view category, and `eventId` is the immutable event identity. The
-encoding never includes `JournalIndex`, `last_journal_index`, established gaps
-or absences, physical duplicate occurrences, or carrier positions.
+The set is sorted by the placement-independent tuple `(semanticKey, category,
+eventId)`, where `category` is derived from the action (`0`=state for
+add/edit/delete, `1`=freshness for invalidate/validate). Two events with the
+same `eventId` but different payloads produce different logical-journal-view
+bytes and therefore different `LogicalSnapshotId`s. The encoding never includes
+`JournalIndex`, `last_journal_index`, established gaps or absences, physical
+duplicate occurrences, or carrier positions.
 
 #### Causal frontier encoding
 
@@ -1426,8 +1491,10 @@ function makeSync(hostnames)
 function syncToHostnames(sync)
 ```
 
-For one pairwise merge of snapshots owned by hosts A and B, a generated sync
-event has `creator = Sync{A, B}`.
+For a sync-derived event, `creator = makeSync(causalFrontierHostnames(joined
+frontier))`: the set of contributing source hosts represented by the merged
+frontier, canonically ordered. It does not identify one host as the actor and
+is not limited to the hosts involved in the latest exchange.
 
 ---
 
@@ -1876,8 +1943,8 @@ An `AddJournalEntry` has `action: "add"` and `creator: Hostname`. No
 ### E2 — Sync delete entry is sync-derived
 
 A `SyncDeleteJournalEntry` has `action: "delete"` and `creator: Sync`. Its
-`eventId` derives from the exact source-snapshot identities, the action, and
-the key.
+`eventId` derives from the merge protocol version, the action, the key, and the
+canonical derived time of the joined journal evidence.
 
 ### E3 — Sync-derived add is rejected
 
@@ -2052,6 +2119,36 @@ changes the canonical bytes and therefore the `LogicalSnapshotId`.
 Two otherwise identical snapshots that differ only in `schemaVersion` or only in
 `graphAndJournalMergeProtocolVersion` produce different canonical bytes and
 different `LogicalSnapshotId`s.
+
+### C11 — Same event ID and key, different timestamp
+
+Two journal views that retain an event with the same `eventId` and `semanticKey`
+but different `timeMs` produce different logical-journal-view bytes and
+different `LogicalSnapshotId`s.
+
+### C12 — Same event ID and key, different identifier
+
+Two journal views that retain an event with the same `eventId` and `semanticKey`
+but different `nodeIdentifier` produce different bytes and IDs.
+
+### C13 — Same event ID and key, `add` versus `edit`
+
+Two journal views that retain an event with the same `eventId` and `semanticKey`
+but actions `add` and `edit` produce different bytes and IDs (the action and the
+derived category differ).
+
+### C14 — Same event ID and key, `edit` versus `delete`
+
+Two journal views that retain an event with the same `eventId` and `semanticKey`
+but actions `edit` and `delete` produce different bytes and IDs.
+
+### C15 — Same event ID, different creator payload
+
+Two journal views that retain an event with the same `eventId` but different
+canonical creator encodings produce different bytes and IDs. A payload that
+claims a `Sync` creator for a host-originated action is malformed and MUST be
+rejected before its `LogicalSnapshotId` is accepted. Two payload-distinct
+sources can therefore never generate the same downstream sync event identity.
 
 ---
 
