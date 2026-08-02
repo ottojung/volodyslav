@@ -220,11 +220,11 @@ remain selected and unchanged. The incomplete inactive replica may be discarded
 or rebuilt.
 
 REQ-JM-12a: A successful migration cutover publishes a fresh
-`JournalCursorDomain` for the newly installed lineage and rejects every
-`PossibleNodeChange` token registered in the old domain. A failed migration
-preserves the old cursor domain and the validity of existing same-process
-tokens under the old state. Migration preserves the current local host event
-namespace; only the cursor domain is rotated (see
+`JournalCursorDomain` and rejects every `PossibleNodeChange` token registered
+in the old domain. A failed migration preserves the old cursor domain and the
+validity of existing same-process tokens under the old state. Migration
+preserves the established journal lineage and the current local host event
+namespace; it rotates only the cursor domain (see
 `incremental-graph-journal-types.md` § Journal lineage).
 
 ---
@@ -307,4 +307,7 @@ REQ-JM-15: Because `possibleMaybeChanges` holds `enterGarden` across replica sel
 
 ## Out of scope
 
-The interaction of stored journal tokens with schema-boundary invalidation is deferred to a future specification. This specification does not define token validity across migration boundaries.
+Persistence or serialization of public journal tokens across process restarts
+remains out of scope. Within one process, a successful migration cutover
+deterministically rejects tokens registered in the old cursor domain (see
+REQ-JM-12a); a failed migration preserves them.

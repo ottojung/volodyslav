@@ -693,9 +693,10 @@ A failed reset preserves the previous active replica, journal lineage, cursor
 domain, host event namespace, and the validity of existing same-process tokens
 under the old state.
 
-Normal pairwise synchronization preserves the existing cursor domain; only a
-successful wholesale reset rotates it. `BaselinePossibleNodeChange` remains the
-baseline sentinel and is not tied to one cursor domain.
+Normal pairwise synchronization preserves the existing cursor domain; a
+successful wholesale reset or successful migration cutover rotates it.
+`BaselinePossibleNodeChange` remains the baseline sentinel and is not tied to
+one cursor domain.
 
 Reset-to-hostname uses the same structural protocol
 (`holiday → closeGarden → darkroom`) and publishes the fresh cursor domain as
