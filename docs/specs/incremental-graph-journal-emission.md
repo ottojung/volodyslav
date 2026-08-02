@@ -253,17 +253,17 @@ one atomic durable batch during darkroom finalization (see
 
 REQ-JE-20: During darkroom finalization, the implementation MUST read the
 currently committed `HostStateVersion`, allocate its unique successor, and add
-that successor to the same durable batch as the graph mutations, the merge-basis
-candidate/evidence mutations (see `incremental-graph-journal-types.md` §
-Merge-basis maintenance), the journal entries, indices, event IDs, and
-watermark. Volatile next-version state is published only after the durable
-commit succeeds.
+that successor to the same durable batch as the graph mutations, the graph-basis
+candidate/status mutations, the journal-basis fact mutations (see
+`incremental-graph-journal-types.md` § Durable commit rules and § Merge-basis
+maintenance), the journal entries, indices, event IDs, and watermark. Volatile
+next-version state is published only after the durable commit succeeds.
 
-REQ-JE-21: A failed batch MUST leave graph state, the merge basis, journal
-state, `last_journal_index`, `HostStateVersion`, and volatile next-version
-state all unchanged.
+REQ-JE-21: A failed batch MUST leave graph state, the graph basis, the journal
+basis, journal state, `last_journal_index`, `HostStateVersion`, and volatile
+next-version state all unchanged.
 
-REQ-JE-22: No-op operations MUST NOT advance the version or mutate the merge
+REQ-JE-22: No-op operations MUST NOT advance the version or mutate either
 basis: cache-hit pull, repeated invalidation of an already stale node, failed
 recomputation, failed transaction, export, compaction, synchronization-only
 changes, and replica reopening or switching.
@@ -273,8 +273,8 @@ allocation through the same finalization discipline, so they cannot receive the
 same successor or publish changes out of version order. This makes the
 following failures impossible: new graph or journal state becomes durable while
 the exported causal frontier still advertises the old host version; new graph
-state is published with a stale merge basis; and new merge-basis evidence is
-published with an old graph or frontier coordinate.
+state is published with a stale graph or journal basis; and new basis evidence
+is published with an old graph, journal, or frontier coordinate.
 
 ---
 
@@ -394,9 +394,10 @@ const eventId = JSON.stringify([
 instance. The entry, `eventId`, physical index `i`, graph mutation, merge-basis
 candidate and evidence mutations, and final watermark MUST be committed in the
 same atomic durable batch. Sync-derived events are not assigned an ID from the
-physical index; their `eventId` derives from the merge protocol version, the
-action, the key, and the canonical derived time of the joined journal evidence
-(see `incremental-graph-journal-sync.md`).
+physical index; their `eventId` is a digest of the complete immutable payload —
+protocol, action, key, identifier, time, and the key-relevant creator (see
+`incremental-graph-journal-sync.md` and `incremental-graph-journal-types.md` §
+Sync-derived event).
 
 REQ-JE-19: For an existing event being replicated or reappended (not newly created), the implementation MUST NOT assign a new event ID. It MUST preserve the original `eventId` string unchanged. Only the physical storage position changes.
 
@@ -479,10 +480,11 @@ the event.
 
 ### P9a — Sync-derived event identity
 
-A `SyncDeleteJournalEntry` or `SyncInvalidateJournalEntry` derives its event ID
-from the merge protocol version, the action, the key, and the canonical derived
-time of the joined journal evidence, never from the two immediate source
-snapshots (see `incremental-graph-journal-sync.md`). The ID is
+A `SyncDeleteJournalEntry` or `SyncInvalidateJournalEntry` event ID is a digest
+of the complete immutable payload — protocol, action, key, identifier, time, and
+the key-relevant creator — never a tuple of the two immediate source snapshots
+(see `incremental-graph-journal-sync.md` § Derive sync-derived merge facts and
+`incremental-graph-journal-types.md` § Sync-derived event). The ID is
 independent of the destination physical journal index and exists conceptually
 before fresh physical placement. The sync event, the destination graph records
 associated with the merge result, the physical journal position, and the

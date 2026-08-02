@@ -174,8 +174,10 @@ watermark is unchanged, no new provenance is published, consumers are not
 notified again, and the active replica is not switched. Ordinary local graph
 activity preserves remote frontier entries, so it does not make an unchanged
 remote host "new"; only a later logical version within the same storage
-instance does. A regressed coordinate or an administrative conflict is rejected
-by normal synchronization rather than guessed.
+instance does. An older staged coordinate within the same storage instance is
+an ordinary dominated no-op (harmless replay); only a coordinate whose
+`HostInstanceId` differs for the same hostname is rejected as an administrative
+conflict rather than guessed.
 
 Journal reconciliation is commutative and associative: reversing the two
 source snapshots, or re-grouping the same host contributions, produces the
@@ -279,3 +281,33 @@ docs/specs/incremental-graph-locking-design.md
 ```
 
 Together, these documents define the role of the journal, its public API, its storage behavior, and its interactions with the rest of IncrementalGraph.
+
+## Cross-document invariants
+
+The specifications are constrained by two cross-document invariants. No
+document may relax them or introduce a compatibility alias, dual encoding,
+optional legacy field, or alternate protocol path that bypasses them.
+
+**Invariant 1 — Grouping independence.** The same represented host
+contributions produce, regardless of merge ordering or grouping:
+
+```text
+same host contributions
+    -> same normalized graph basis
+    -> same normalized journal basis
+    -> same projected graph
+    -> same canonical journal
+    -> same LogicalSnapshotId
+```
+
+**Invariant 2 — Atomic publication.** One host-originated transaction produces
+exactly one successor `HostStateVersion` and publishes every artifact in one
+atomic batch:
+
+```text
+one host-originated transaction
+    -> one successor HostStateVersion
+    -> atomic graph basis + journal basis + graph + journal publication
+```
+
+A failed or interrupted transaction leaves all of the above unchanged.

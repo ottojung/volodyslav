@@ -97,22 +97,19 @@ state since the prior export (the local `HostInstanceId` never changes). Each
 derived merge output receives persisted provenance before it can become the
 next local source.
 
-For a sync-derived event created while merging source snapshots `A` and `B`:
+For a sync-derived event for semantic key `K`:
 
 ```
-creator = makeSync(causalFrontierHostnames(unionCausalFrontiers(
-    A.provenance.causalFrontier,
-    B.provenance.causalFrontier)))
+creator = makeSync(hostnames of the origins of the canonical retained
+                   journal facts relevant to K)
 ```
 
-The union of the two frontiers is the merged frontier, so the creator is
-exactly the contributor set of the merged snapshot: the set of contributing
-source hosts represented by the two merge inputs. Because a merge unions the
-two input frontiers, later multi-host synchronization may legitimately produce
-`creator = Sync{A, B, C}`: the creator is the set of hostnames present in the
-merged frontier, not necessarily just the two hosts involved in the latest
-exchange. The contributor set is derived from the frontier's hostname keys and
-is never maintained as an independent value, so the two can never disagree.
+The creator is exactly the set of hostnames that contributed evidence for `K`
+in the joined journal basis — the origins of the retained state and freshness
+facts for `K`. An unrelated host whose frontier is present in the merged
+frontier but that contributed no fact for `K` never enters the creator. The
+creator is derived from the retained facts and is never maintained as an
+independent value, so it cannot disagree with them.
 
 ---
 
@@ -144,6 +141,20 @@ equal logical merge state before the gate is allowed to skip reconciliation: the
 same host contributions produce the same merge basis, the same projected graph,
 the same canonical journal, and the same `LogicalSnapshotId` regardless of merge
 ordering or grouping (T44 through T48), even though physical storage may differ.
+
+The gate classifies every shared-hostname coordinate exactly one way:
+
+- same `HostInstanceId`, staged version equal to local: already incorporated;
+- same `HostInstanceId`, staged version greater than local: new contribution,
+  normal advancement;
+- same `HostInstanceId`, staged version less than local: an older staged
+  snapshot whose coordinate is already dominated — an ordinary dominated
+  no-op, never an error (this supports harmless replay of old snapshots and
+  makes dominance a conventional partial-order gate);
+- different `HostInstanceId`: unrelated storage reinitialization — the one
+  administrative conflict.
+
+Then:
 
 - If the local frontier dominates the staged frontier, the staged snapshot
   contains no host-originated logical contribution that is new to the local
@@ -452,8 +463,11 @@ The destination physically contains exactly:
 
 "Final canonical" is a retained host event or a derived sync fact. The resulting
 physical journal equals its own `logicalJournalView`, and the destination
-persists the joined journal basis (the union of the two source bases), so the
-evidence is never discarded by the projection.
+persists the joined journal basis (the union of the two source bases,
+normalized), so the evidence is never discarded by the projection. Both the
+graph basis and the journal basis are normalized before publication, export, and
+hashing (`incremental-graph-synchronization.md` § Normalization and
+`incremental-graph-journal-types.md` § Normalization).
 
 #### FreshPlacementSet
 
@@ -729,8 +743,9 @@ semilattice. For two valid merge inputs `A` and `B`:
 - the merge-basis join is a set semilattice: `joinMergeBasis(A, B)` and
   `joinMergeBasis(B, A)` produce the same basis (see
   `incremental-graph-synchronization.md` § Merge basis);
-- the journal evidence join is a set semilattice:
-  `joinJournalEvidence(E1, E2) = E1 ∪ E2`;
+- the journal basis join is a set semilattice:
+  `joinJournalBasis(B1, B2)` is set union per fact set (see
+  `incremental-graph-journal-types.md` § Journal merge basis encoding);
 - sync creators, event IDs, timestamps, and identifier selection are canonical
   functions of the joined evidence;
 - carrier placement is enforced above `P = max(aH, bH)`, which is symmetric;
@@ -831,9 +846,10 @@ finalCanonicalStateEvent(K)     = edit W (source retained)
 finalCanonicalFreshnessEvent(K) = generated invalidate(K)
 ```
 
-The generated invalidate has creator `Sync{A, B}`, a deterministic `time`
-derived from the canonical source events for K, and a sync event ID that is
-identical under `merge(A, B)` and `merge(B, A)`.
+The generated invalidate has creator `Sync{A, B}` (the key-relevant origins:
+both sources contribute K freshness evidence), a deterministic `time`
+derived from the joined journal basis, and a sync event ID (a digest of the
+complete payload) that is identical under `merge(A, B)` and `merge(B, A)`.
 
 ### T3 — Generated delete becomes final state event
 
@@ -972,7 +988,7 @@ Both `merge(A, B)` and `merge(B, A)` must generate the same `invalidate` event:
 - same `action`;
 - same key;
 - same final identifier;
-- same `Sync{A, B}` creator;
+- same key-relevant creator (both sources contribute K evidence, so `Sync{A, B}`);
 - same deterministic time;
 - same event ID;
 - same fresh position above `max(aH, bH)`.
@@ -986,7 +1002,8 @@ F: K is unmaterialized
 ```
 
 Both merge directions must generate the same `delete` with the same identifier,
-creator `Sync{A, B}`, deterministic time, event ID, and fresh position above P.
+the same key-relevant creator `Sync{A, B}` (both sources contribute K state
+evidence), deterministic time, event ID, and fresh position above P.
 
 ### T18 — Independent execution times
 
@@ -1047,15 +1064,14 @@ Two different synchronization-relevant logical states do not share one
 `LogicalSnapshotId`, even when they reside on the same physical host or are
 transported by the same adapter.
 
-### T26 — Contributor sets union across successive merges
+### T26 — Frontier unions; creators derive from key-relevant origins
 
-Freshly initialized leaf snapshots `A`, `B`, and `C` begin at version 0 and
-have frontiers `{ A: { IA, 0 } }`, `{ B: { IB, 0 } }`, and `{ C: { IC, 0 } }`.
-Merging `A` and `B` yields a frontier `{ A: { IA, 0 }, B: { IB, 0 } }` and a
-contributor set `Sync{A, B}` (derived from the frontier's hostnames). Merging
-that derived snapshot with leaf `C` yields a frontier with hostnames `{A, B, C}`
-and a contributor set `Sync{A, B, C}`. The contributor set is never stored
-independently of the frontier.
+Merging snapshots unions the causal frontier, so a derived snapshot's frontier
+contains every contributing hostname. The creator of a sync-derived event for a
+key `K` derives only from the origins of the retained journal facts for `K`: a
+host whose frontier coordinate is present but that contributed no fact for `K`
+never enters `K`'s creator. The creator is derived from the retained facts and
+is never stored independently of them.
 
 ### T27 — HostInstanceId is stable across reset and cutover
 
@@ -1138,11 +1154,12 @@ stages it; A's frontier `{ A: { IA, 1 }, B: { IB, 1 } }` does not dominate
 `{ A: { IA, 1 }, B: { IB, 2 } }`. Subsequent periodic exchanges are again
 complete no-ops.
 
-### T34 — Regression and administrative conflict are rejected
+### T34 — Older staged snapshots are no-ops; instance conflicts are rejected
 
-- If host B's coordinate regresses within the same storage instance — the staged
-  version is earlier than the incorporated version — normal synchronization
-  rejects the merge.
+- If a staged snapshot's coordinate for a hostname is earlier than the local
+  coordinate within the same `HostInstanceId`, the local frontier dominates it
+  and the synchronization attempt is an ordinary dominated **no-op** (harmless
+  replay of an older snapshot; no rejection and no merge).
 - If a staged snapshot carries a coordinate for a hostname whose `HostInstanceId`
   differs from the recorded instance, the two coordinates represent unrelated
   storage reinitialization; normal synchronization rejects the input as an
@@ -1152,9 +1169,9 @@ complete no-ops.
 
 `unionCausalFrontiers(Fa, Fb)` and `unionCausalFrontiers(Fb, Fa)` produce the
 same frontier (or the same rejection), and `joinMergeBasis(A, B)` and
-`joinMergeBasis(B, A)` produce the same merge basis. Therefore `merge(A, B)` and
-`merge(B, A)` record the same causal frontier, the same merge basis, and the
-same contributor set.
+`joinMergeBasis(B, A)` produce the same graph basis and the same journal basis.
+Therefore `merge(A, B)` and `merge(B, A)` record the same causal frontier, the
+same bases, the same canonical journal, and the same `LogicalSnapshotId`.
 
 ### T39 — Identical noncanonical entries at the same index
 
@@ -1289,6 +1306,24 @@ snapshot carries the persisted journal basis (not just the public projection),
 the derivation over `merge(D, C)` uses the same complete evidence as
 `merge(A, merge(B, C))` and produces the same canonical journal and
 `LogicalSnapshotId`.
+
+### T53 — Normalization is mandatory and deterministic
+
+Key `K` facts retained in the journal basis:
+
+```
+A up-to-date @ 10
+B stale      @ 30
+C stale      @ 20
+```
+
+Every conforming implementation MUST retain all three facts (retain-all
+normalization); none MAY optionally remove `C` while another keeps it. Every
+implementation therefore derives the same creator (`Sync{A, B, C}`, since all
+three hosts contribute `K` evidence), the same derived `invalidate` payload
+(`derivedTime = 30`), the same event ID, the same normalized basis bytes, and
+the same `LogicalSnapshotId`. The retained basis is byte-equal across
+implementations and across merge groupings.
 
 ---
 
