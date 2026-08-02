@@ -17,7 +17,7 @@ The target behavior is:
 4. Observations of the same concrete node must not coexist (telescope
    mutex).
 5. Observations of different concrete nodes may coexist.
-6. Migration, structural synchronization, replica cutover, and reset-to-hostname suspend all graph activity (daytime,
+6. Migration, structural synchronization, replica cutover, and reset suspend all graph activity (daytime,
    nighttime, and other exclusive work).
 7. Transaction commits for the same replica are serialized (the commit
    mutex is per-replica, not global, so commits to different replicas
@@ -73,7 +73,7 @@ This key is acquired through `withModeMutex`. Three conditions are defined:
 
 - `"daytime"` for `invalidate()` and inspection reads;
 - `"nighttime"` for all pull activity;
-- `"holiday"` for migration, structural synchronization, replica cutover, and reset-to-hostname.
+- `"holiday"` for migration, structural synchronization, replica cutover, and reset (as a bulk graph operation).
 
 Because same-mode holders are compatible, many invalidates may overlap, many
 pulls may overlap, and many holiday operations are serialized via the holiday
@@ -160,7 +160,8 @@ before `closeGarden`.
 | ordinary append (pull commit, invalidation entry) | `darkroom` |
 | journal query (`possibleMaybeChanges`) | `enterGarden` |
 | compaction | `closeGarden → darkroom` |
-| migration / structural synchronization / replica cutover / reset-to-hostname | `holiday → closeGarden → darkroom` |
+| migration / structural synchronization / replica cutover | `holiday → closeGarden → darkroom` |
+| reset (bulk graph replacement) | single-replica bulk: `holiday → darkroom`; inactive-replica build and cutover: `holiday → closeGarden → darkroom` |
 
 ### 4. Darkroom key (per-replica finalization)
 
@@ -243,7 +244,7 @@ their own telescope mutex per concrete node and create their own Transaction
 spec: every call to pullNode is structurally identical, whether top-level or
 nested.
 
-### `migration / structural synchronization / replica cutover / reset-to-hostname`
+### `migration / structural synchronization / replica cutover`
 
 1. Acquire `holidayActivity(...)`.
 2. Acquire `closeGarden` (garden exclusion). This excludes journal queries,
@@ -264,10 +265,12 @@ The complete lock order is `holiday → closeGarden → darkroom`. There is no
 `darkroom → closeGarden` path: the garden is always acquired before any
 per-replica darkroom.
 
-Reset-to-hostname is a replica cutover that installs a wholesale replacement
-snapshot. It follows the same protocol and, on success, publishes a fresh
-journal cursor domain for the newly installed lineage (see
-`incremental-graph-journal-types.md` § Journal lineage).
+Reset is an ordinary bulk graph operation, not structural journal mutation. Its
+locking is whatever its chosen graph implementation requires: a single
+active-replica bulk transaction may use `holiday → darkroom`, and an
+inactive-replica build and cutover may use `holiday → closeGarden → darkroom`
+for replica lifecycle safety. Reset never classifies as structural journal
+maintenance and never holds `closeGarden` for journal reasons.
 
 The two-step acquisition (`HOLIDAY_GATE_KEY` → `DOME_ACTIVITY_KEY("holiday")`)
 is deadlock-free because nighttime and daytime operations only ever acquire

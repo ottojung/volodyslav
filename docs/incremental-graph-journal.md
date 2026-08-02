@@ -31,11 +31,12 @@ The journal specifies only same-process, in-memory token usage. A
 `PossibleNodeChange` returned during a process session is valid as `since` for
 subsequent calls within that same session. Within the same process, a cursor
 remains valid across compaction (the private index survives physical deletion
-of its backing entry) and across normal pairwise synchronization and its
+of its backing entry), across normal pairwise synchronization and its
 associated active-replica cutover (notification coverage reports changes
-through repositioned canonical events). Normal pairwise synchronization
-preserves the cursor domain; a successful `reset-to-hostname` or successful
-migration cutover rotates it and rejects tokens registered in the old domain.
+through repositioned canonical events), and across reset (an ordinary bulk
+graph operation that preserves the cursor domain and keeps existing tokens
+valid). A successful migration cutover may rotate the domain and reject tokens
+registered in the old domain.
 Persistence of these tokens across process restarts, synchronization boundaries
 involving heterogeneous hosts, or migration/schema boundaries, and the
 corresponding long-lived validity guarantees, are outside this journal's token
@@ -138,28 +139,30 @@ transport-adapter concern and never enters the IncrementalGraph semantics (see
 
 Each logical snapshot carries a `SourceSnapshotProvenance` that includes a
 causal frontier: for every hostname that contributed to the snapshot, the
-latest host-state coordinate already incorporated — the pair of the host
-lineage and the host's transport-independent logical state version. A newly
-initialized host starts with its own coordinate (its lineage and initial
-version `0`) in the frontier; a pairwise merge unions the two frontiers
-(retaining the later comparable coordinate for a hostname present in both
-within the same lineage, resolving different-lineage coordinates through
-validated lineage transitions, and rejecting unresolvable conflicts); an export
-after ordinary activity preserves remote entries and updates only the local
-hostname's coordinate, advancing it exactly once per host-originated durable
-transaction and never for synchronization-only activity.
+latest host-state coordinate already incorporated — the pair of the immutable
+storage-instance identity and the host's transport-independent logical state
+version. A newly initialized storage instance starts with its own coordinate
+(its instance and initial version `0`) in the frontier; a merge unions the two
+frontiers (retaining the later coordinate for a hostname present in both within
+the same instance, and rejecting a different `HostInstanceId` for the same
+hostname as an administrative conflict); an export after ordinary activity
+preserves remote entries and updates only the local hostname's coordinate,
+advancing it exactly once per host-originated durable transaction and never for
+synchronization-only activity.
 
-The complete graph-and-journal merge is a canonical logical join: it is
-commutative, associative, and idempotent, so the result is determined by the
-represented host-originated logical states and not by the grouping or order in
-which snapshots were merged (see `incremental-graph-synchronization.md` § 1b
-Logical join).
+The complete graph-and-journal merge is a canonical logical join over a
+persisted, merge-closed basis: it is commutative, associative, and idempotent,
+so the result is determined by the represented host-originated logical states
+and not by the grouping or order in which snapshots were merged (see
+`incremental-graph-synchronization.md` § 1b Logical join and § 1c Merge basis).
+A derived replica persists the merge basis, so a later join is executable
+without the original input replicas.
 
-Host lineage is the one canonical host-lineage identifier: the same
-`HostLineageId` value scopes ordinary host-event identity, appears in every host
-state coordinate in the frontier, and detects reset discontinuities. Two
-coordinates of the same hostname with different lineage IDs are ordered only
-through a validated `HostLineageTransition`.
+`HostInstanceId` is the immutable identity of one storage instance: it scopes
+ordinary host-event identity, appears in every host state coordinate in the
+frontier, and is unchanged by reset, migration, synchronization, compaction,
+and replica cutover. A different instance for the same hostname is unrelated
+reinitialization and an explicit administrative conflict.
 
 Because the frontier records the exact logical state already incorporated,
 synchronization is a fixed point for unchanged hosts: if the local frontier
@@ -170,13 +173,13 @@ frontier, then `merge(D, S) = D` — no event is appended or repositioned, the
 watermark is unchanged, no new provenance is published, consumers are not
 notified again, and the active replica is not switched. Ordinary local graph
 activity preserves remote frontier entries, so it does not make an unchanged
-remote host "new"; only a later logical version (within the same lineage) or a
-validated lineage transition does. A regressed, conflicting, or unrelated
-coordinate is rejected by normal synchronization rather than guessed.
+remote host "new"; only a later logical version within the same storage
+instance does. A regressed coordinate or an administrative conflict is rejected
+by normal synchronization rather than guessed.
 
 Journal reconciliation is pairwise commutative: reversing the two source
 snapshots produces the same journal result, the same exact logical state and
-`ReplicaSnapshotId`, and the same causal frontier and transition history.
+`LogicalSnapshotId`, the same causal frontier, and the same merge basis.
 Synchronization may originate
 sync-derived `invalidate` and `delete` events under symmetric predicates (see
 `docs/specs/incremental-graph-journal-sync.md`). For other graph changes
@@ -192,19 +195,17 @@ freshness rules.
 The journal synchronization model defines how existing journal histories are
 compared, copied, repositioned, omitted, and physically compacted during sync.
 It also defines how logical snapshot provenance (including the causal frontier
-and lineage transitions), journal creators, and deterministic event identity
-and timestamps participate in conflict resolution.
+and merge basis), journal creators, and deterministic event identity and
+timestamps participate in conflict resolution.
 
-`reset-to-hostname` is a journal discontinuity: it installs the selected graph
-and journal snapshot, generates a fresh local host lineage, uses that same fresh
-lineage for newly originated host event IDs, replaces the resetting hostname's
-frontier coordinate with the fresh lineage and its initial logical version,
-records a durable `HostLineageTransition` from the previous coordinate,
-preserves the applicable coordinates of other hosts from the selected snapshot,
-may adopt a numerically lower watermark, and rotates the cursor domain. The
-transition is the logical proof of succession and is not inferred from
-transport history: a peer that knows the predecessor coordinate may accept the
-successor coordinate without performing its own reset.
+Reset is an ordinary bulk graph procedure: an outer adapter resolves a hostname
+to a validated target graph projection, and IncrementalGraph applies it through
+`replaceGraphState` as one host-originated bulk transaction. The journal has no
+reset operation of its own: the ordinary emission matrix records the reset's
+graph changes, the journal namespace is preserved (no watermark decrease, no
+cursor rotation, existing cursors stay valid), and the `HostInstanceId` is
+unchanged. See `incremental-graph-synchronization.md` § 17 and
+`incremental-graph-journal-emission.md` § Bulk reset.
 
 The detailed synchronization behavior is specified in:
 

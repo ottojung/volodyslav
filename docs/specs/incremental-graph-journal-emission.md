@@ -274,6 +274,84 @@ the exported causal frontier still advertises the old host version.
 
 ---
 
+## Transition-to-event matrix
+
+This document is the single authoritative owner of the transition-to-event
+matrix. Ordinary pull, invalidation, migration, bulk reset, and future
+host-local graph deletion all reference this matrix instead of restating
+variants.
+
+For each semantic node key, compute the complete delta between the previously
+installed state and the newly published state, then emit events:
+
+```text
+current unmaterialized, target materialized                -> add
+current materialized,   target unmaterialized              -> delete
+both materialized,      semantic value changed             -> edit
+both materialized,      up-to-date -> potentially-outdated -> invalidate
+both materialized,      potentially-outdated -> up-to-date -> validate
+both materialized,      identifier or representation changed only -> no event
+```
+
+When more than one condition applies:
+
+- value change plus freshness restoration: `edit`, then `validate`;
+- value change plus freshness downgrade: `edit`, then `invalidate`;
+- first materialization: `add` only, regardless of initial freshness;
+- deletion: `delete` only.
+
+`validate` is generalized from "successful recomputation only" to a
+host-originated transition that establishes an already materialized node as
+`up-to-date` with complete valid dependency proofs. This includes a validated
+bulk graph replacement (`replaceGraphState`, see
+`incremental-graph-synchronization.md` § 17 Reset as a bulk graph operation)
+that restores freshness with complete proofs.
+
+There are no reset-specific journal actions or event variants; reset emits only
+the ordinary actions above.
+
+## Bulk reset
+
+Reset is an ordinary bulk graph transaction. The core graph operation
+(`replaceGraphState`) must not receive or install a target snapshot's journal,
+watermark, cursor state, or journal provenance; the journal records the reset's
+graph changes through the transition-to-event matrix above.
+
+Atomicity and ordering:
+
+- The entire operation is published atomically from the perspective of graph and
+  journal readers.
+- If the destination is built in an inactive replica: copy the existing journal
+  prefix and watermark unchanged; build the new graph state; append
+  reset-generated journal entries at fresh indices above the old watermark;
+  persist the one successor `HostStateVersion`; switch only after the complete
+  destination is durable and validated.
+- Use one deterministic entry order:
+  1. deletes in reverse dependency-topological order;
+  2. adds and edits in dependency-topological order;
+  3. invalidations in dependency-topological order;
+  4. validations in dependency-topological order;
+  5. break unrelated ties by canonical `NodeKey` ordering;
+  6. for one key, place its state event before its freshness event.
+
+A successful changed reset advances the local `HostStateVersion` exactly once,
+regardless of how many nodes and journal entries it changes. A no-op reset emits
+no journal entries, advances no watermark and no host version, and performs no
+replica switch. A failed reset leaves graph state, journal state, watermark,
+host version, active replica, and existing cursor validity unchanged.
+
+Reset must preserve every established journal position and absence, append only
+above the current watermark, never decrease `last_journal_index`, preserve the
+existing `JournalCursorDomain`, keep existing `PossibleNodeChange` cursors
+valid, and preserve the local `HostInstanceId`. It is not journal compaction,
+synchronization normalization, migration, or journal replacement.
+
+A reset deletion must produce the same durable deletion evidence as any other
+host-local deletion (an ordered tombstone candidate in the merge basis and a
+`delete` journal event), never be represented merely by absence.
+
+---
+
 ## Journal index allocation
 
 JournalIndex allocation MUST happen during darkroom finalization, atomically with the durable batch commit. This ensures the published-prefix invariant (REQ-JT-17 through REQ-JT-18): once `last_journal_index = H` is published, no later ordinary append can ever fill, replace, or change a position at or below `H`.
@@ -303,13 +381,13 @@ its initial `JournalIndex` `i`, the implementation MUST compute the event's
 const eventId = JSON.stringify([
     "host",
     hostnameToString(entry.creator),
-    hostLineageIdToString(lineageId),
+    hostInstanceIdToString(instanceId),
     journalIndexToNumber(i),
 ]);
 ```
 
-`lineageId` is the host lineage active in the current journal
-lineage. The entry, `eventId`, physical index `i`, graph mutation, and final watermark MUST be committed in the same atomic durable batch. Sync-derived events are not assigned an ID from the physical index; their `eventId` derives from the merge protocol version, the canonical source-snapshot IDs, the action, and the key (see `incremental-graph-journal-sync.md`).
+`instanceId` is the storage-instance identity active in the current storage
+instance. The entry, `eventId`, physical index `i`, graph mutation, and final watermark MUST be committed in the same atomic durable batch. Sync-derived events are not assigned an ID from the physical index; their `eventId` derives from the merge protocol version, the canonical source-snapshot IDs, the action, and the key (see `incremental-graph-journal-sync.md`).
 
 REQ-JE-19: For an existing event being replicated or reappended (not newly created), the implementation MUST NOT assign a new event ID. It MUST preserve the original `eventId` string unchanged. Only the physical storage position changes.
 
@@ -376,11 +454,11 @@ If a transaction prepares an unindexed entry, but then fails during darkroom fin
 ### P9 — Host-originated event identity
 
 A new ordinary or migration host-originated entry assigned initial position
-`7` in the current host lineage receives:
+`7` in the current storage instance receives:
 
 ```
 eventId = JSON.stringify(["host", hostnameToString(host),
-                          hostLineageIdToString(L), 7])
+                          hostInstanceIdToString(I), 7])
 ```
 
 This applies to `AddJournalEntry`, `EditJournalEntry`,
@@ -469,9 +547,92 @@ and `invalidate` entries belong to that one migration version advance.
 A failed migration preserves the previously active coordinate; the destination
 is discarded or rebuilt and never publishes a version.
 
-### V10 — Fresh initialization and reset both start at version 0
+### V10 — Fresh initialization starts at version 0
 
-A freshly initialized host lineage begins at `HostStateVersion = 0`, and a
-successful reset initializes the new lineage at version 0; the reset operation
-is represented by the new lineage and its transition record, not by incrementing
-the old lineage.
+A freshly initialized storage instance begins at `HostStateVersion = 0`. A
+successful changed reset advances the same instance's version exactly once as
+one bulk transaction; the `HostInstanceId` does not change.
+
+### R1 — Reset to identical graph is a complete no-op
+
+If the target graph projection equals the installed graph, `replaceGraphState`
+emits no journal entries, advances no watermark and no host version, and
+performs no replica switch.
+
+### R2 — Target contains a new node: append `add`
+
+A target key that is unmaterialized in the installed graph and materialized in
+the target emits one `AddJournalEntry`.
+
+### R3 — Target lacks an existing node: append `delete`
+
+A key materialized in the installed graph and unmaterialized in the target emits
+one `HostDeleteJournalEntry` and creates the durable deletion tombstone evidence.
+
+### R4 — Target has a changed value: append `edit`
+
+A key materialized in both states with a changed semantic value emits one
+`EditJournalEntry`.
+
+### R5 — Up-to-date to stale: append `invalidate`
+
+A key that is `up-to-date` in the installed graph and `potentially-outdated` in
+the target emits one `HostInvalidateJournalEntry`.
+
+### R6 — Stale to up-to-date with valid proofs: append `validate`
+
+A key that is `potentially-outdated` in the installed graph and `up-to-date`
+with complete valid dependency proofs in the target emits one
+`ValidateJournalEntry`.
+
+### R7 — Value change plus freshness restoration: append `edit`, then `validate`
+
+A key whose value changed and whose freshness is restored to `up-to-date` emits
+`edit` at the lower index and `validate` at the higher index.
+
+### R8 — Mixed large reset: deterministic ordering and one version advance
+
+A large reset with deletes, adds, edits, invalidations, and validations emits
+all entries in the deterministic order defined in § Bulk reset (deletes in
+reverse dependency-topological order, adds/edits in dependency-topological
+order, invalidations and validations in dependency-topological order, ties by
+canonical `NodeKey`, state event before freshness event per key), and advances
+`HostStateVersion` exactly once for the whole operation.
+
+### R9 — Failed construction or validation: no observable change
+
+If the target graph fails validation or the destination cannot be completed, no
+journal entry, watermark advance, version advance, or replica switch is
+published.
+
+### R10 — Crash before cutover: old graph and journal remain active
+
+A crash before the active-replica cutover leaves the previously active graph and
+journal in place; the incomplete destination is discarded.
+
+### R11 — Existing cursor remains valid and observes reset events
+
+A `PossibleNodeChange` cursor obtained before reset remains valid after reset;
+its next query observes the reset-generated events appended above the previous
+watermark.
+
+### R12 — Watermark remains monotonic
+
+Reset never decreases `last_journal_index`; reset-generated entries are
+appended at strictly increasing fresh indices.
+
+### R13 — Reset does not change `HostInstanceId`
+
+The local `HostInstanceId` is unchanged by reset; host event identity and
+frontier coordinates continue to use it.
+
+### R14 — A later synchronization propagates the reset as an ordinary newer contribution
+
+After a changed reset advances the local `HostStateVersion`, a later
+synchronization exports the new state as an ordinary newer host contribution;
+the reset's graph changes propagate through the normal merge basis.
+
+### R15 — Repeating the same reset after it succeeded is a no-op
+
+Applying the same target graph projection again after a successful reset emits
+no journal entries and advances no version.

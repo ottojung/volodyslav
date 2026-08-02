@@ -32,9 +32,8 @@ P  = max(aH, bH)
 
 Each source snapshot carries a `SourceSnapshotProvenance` whose `id` identifies
 its exact synchronization-relevant logical state, together with a per-host
-`CausalFrontier`, the accepted `HostLineageTransition` records, the merge
-protocol version, and the schema version (see
-`incremental-graph-journal-types.md` § Logical snapshot provenance). Snapshots
+`CausalFrontier`, the merge protocol version, and the schema version (see
+`incremental-graph-journal-types.md` § Logical snapshot identity). Snapshots
 are transport-neutral: a staged logical snapshot is an exact frozen logical
 state, however it was transported.
 
@@ -51,34 +50,31 @@ Every synchronization input and output snapshot carries a
 ```js
 /**
  * @typedef {object} SourceSnapshotProvenance
- * @property {ReplicaSnapshotId} id
+ * @property {LogicalSnapshotId} id
  * @property {CausalFrontier} causalFrontier
- * @property {ReadonlyArray<HostLineageTransition>} lineageTransitions
  * @property {string} graphAndJournalMergeProtocolVersion
  * @property {Version} schemaVersion
  */
 ```
 
-- An exported logical snapshot staged from a host receives a `ReplicaSnapshotId`
+- An exported logical snapshot staged from a host receives a `LogicalSnapshotId`
   of its exact logical state, a `causalFrontier` that maps that hostname to its
-  own current coordinate (lineage and logical version) and preserves every
-  remote coordinate the host had already incorporated, its accepted lineage
-  transitions, the currently advertised merge protocol version, and the source's
-  schema version.
-- A deterministic merge result receives a `ReplicaSnapshotId` of its exact
+  own current coordinate (instance and logical version) and preserves every
+  remote coordinate the host had already incorporated, the currently advertised
+  merge protocol version, and the source's schema version.
+- A deterministic merge result receives a `LogicalSnapshotId` of its exact
   merged logical state, a `causalFrontier` equal to
-  `unionCausalFrontiers(left.causalFrontier, right.causalFrontier,
-  left.lineageTransitions, right.lineageTransitions)`, a transition history
-  equal to the deterministic union of the two inputs' histories, and preserves
-  the inputs' merge protocol and schema versions.
+  `unionCausalFrontiers(left.causalFrontier, right.causalFrontier)`, and
+  preserves the inputs' merge protocol and schema versions.
 
 The protocol and schema versions are persisted as explicit compatibility
 metadata, stored separately even though they are also hashed into the
-`ReplicaSnapshotId`. Pairwise merge rejects inputs with mismatching merge
+`LogicalSnapshotId`. Pairwise merge rejects inputs with mismatching merge
 protocol or schema versions before graph or journal reconciliation. The frontier
 union additionally rejects inputs whose frontiers record unresolvable
-coordinates for a common hostname; see § Causal frontier and the synchronization
-gate.
+coordinates for a common hostname (in particular, a different `HostInstanceId`
+for the same hostname, an administrative conflict); see § Causal frontier and
+the synchronization gate.
 
 The merged destination's provenance must be durably established before that
 destination can become active or be used as the source of a later per-host
@@ -96,18 +92,16 @@ the first per-host merge. An export derives its frontier with
 `localExportCausalFrontier`: it preserves every remote entry of the previous
 frontier and updates only the local hostname's coordinate, advancing that
 coordinate only when the host actually originated new logical graph or journal
-state since the prior export (keeping the local host's lineage, which ordinary
-activity does not change). Each derived merge output receives persisted
-provenance before it can become the next local source.
+state since the prior export (the local `HostInstanceId` never changes). Each
+derived merge output receives persisted provenance before it can become the
+next local source.
 
 For a sync-derived event created while merging source snapshots `A` and `B`:
 
 ```
 creator = makeSync(causalFrontierHostnames(unionCausalFrontiers(
     A.provenance.causalFrontier,
-    B.provenance.causalFrontier,
-    A.provenance.lineageTransitions,
-    B.provenance.lineageTransitions)))
+    B.provenance.causalFrontier)))
 ```
 
 The union of the two frontiers is the merged frontier, so the creator is
@@ -125,8 +119,8 @@ is never maintained as an independent value, so the two can never disagree.
 
 The causal frontier makes synchronization a fixed point for unchanged hosts and
 prevents repeated re-notification and acknowledgement churn. The frontier maps
-each contributing hostname to a `HostStateCoordinate`: the pair of the host
-lineage and the host's transport-independent logical state version already
+each contributing hostname to a `HostStateCoordinate`: the pair of the storage
+instance and the host's transport-independent logical state version already
 incorporated (see `incremental-graph-journal-types.md` § HostStateCoordinate
 and § Causal frontier).
 
@@ -134,18 +128,19 @@ and § Causal frontier).
 
 Before constructing a merged destination for a staged logical snapshot, the
 implementation MUST compare the complete staged frontier with the local
-frontier using `dominatesCausalFrontier(local, staged, transitions)`. The
-comparison covers every hostname represented by the staged frontier, not merely
-the hostname of the host that supplied the snapshot: a staged snapshot may
-contain contributions originating from several hosts.
+frontier using `dominatesCausalFrontier(local, staged)`. The comparison covers
+every hostname represented by the staged frontier, not merely the hostname of
+the host that supplied the snapshot: a staged snapshot may contain contributions
+originating from several hosts.
 
 The gate is sound only because the graph-and-journal merge is a canonical
-logical join — commutative, associative, and idempotent (see
-`incremental-graph-synchronization.md` § 1b Logical join). When the local
-frontier dominates a staged frontier, the staged snapshot contributes no
-host-originated logical state that is not already represented locally, so the
-join is unchanged. Two replicas with equal frontiers therefore have equal
-logical merge state, even though their physical storage may differ.
+logical join over a persisted, merge-closed basis — commutative, associative,
+and idempotent (see `incremental-graph-synchronization.md` § 1b Logical join and
+§ Merge basis). When the local frontier dominates a staged frontier, the staged
+snapshot contributes no host-originated logical state that is not already
+represented locally, so the join is unchanged. Two replicas with equal frontiers
+therefore have equal logical merge state, even though their physical storage may
+differ.
 
 - If the local frontier dominates the staged frontier, the staged snapshot
   contains no host-originated logical contribution that is new to the local
@@ -155,9 +150,9 @@ logical merge state, even though their physical storage may differ.
   published, and the active-replica pointer MUST remain unchanged.
 - If the staged frontier contains a later comparable coordinate for at least one
   hostname, synchronization may proceed with a normal per-host merge.
-- If the frontiers contain a genuine lineage conflict that cannot be resolved by
-  an accepted `HostLineageTransition`, synchronization MUST reject the input
-  rather than choose arbitrarily.
+- If the frontiers contain a coordinate whose `HostInstanceId` differs for the
+  same hostname (unrelated storage reinitialization), synchronization MUST
+  reject the input as an administrative conflict rather than choose arbitrarily.
 
 ### Absorption property
 
@@ -198,22 +193,8 @@ synchronizing hosts from generating an endless sequence of acknowledgements
 about acknowledgements.
 
 A remote host becomes a genuine new input only when its coordinate advances to a
-later logical version (within the same lineage) not yet recorded in the local
-frontier, or when a validated `HostLineageTransition` connects its new lineage to
-a recorded coordinate.
-
-### Reset-to-hostname
-
-A successful `reset-to-hostname` replaces the installed graph-and-journal state
-and therefore also replaces the installed frontier: the reset installs the
-selected snapshot, generates a fresh local `HostLineageId`, replaces the
-resetting hostname's frontier coordinate with the fresh lineage and its initial
-logical version, preserves the applicable coordinates of other hosts from the
-selected snapshot, and records a durable `HostLineageTransition` from the
-previous coordinate to the new one (see § Reset-to-hostname below). The
-transition is the logical proof of succession and is not inferred from transport
-history. Peers that know the predecessor coordinate may accept the successor
-coordinate without performing their own reset.
+later logical version (within the same storage instance) not yet recorded in the
+local frontier.
 
 ---
 
@@ -482,8 +463,7 @@ creator  = makeSync(causalFrontierHostnames(mergedFrontier))
 
 `mergedFrontier` is
 `unionCausalFrontiers(A.provenance.causalFrontier,
-B.provenance.causalFrontier, A.provenance.lineageTransitions,
-B.provenance.lineageTransitions)`: the creator is the set of contributing
+B.provenance.causalFrontier)`: the creator is the set of contributing
 source hosts represented by the merged frontier, canonically ordered (see
 `incremental-graph-journal-types.md`). It does not identify one host as the
 actor, and it is not necessarily just the two hosts involved in the latest
@@ -494,8 +474,8 @@ ID:
 
 ```js
 const [lowerId, upperId] = canonicalPair([
-    replicaSnapshotIdToString(A.provenance.id),
-    replicaSnapshotIdToString(B.provenance.id),
+    logicalSnapshotIdToString(A.provenance.id),
+    logicalSnapshotIdToString(B.provenance.id),
 ])
 
 JSON.stringify([
@@ -510,7 +490,7 @@ JSON.stringify([
 
 No special sync event type or alternate ID format. The merge protocol version
 is the protocol under which the merge produced the event (see
-`incremental-graph-journal-types.md` § ReplicaSnapshotId); two different
+`incremental-graph-journal-types.md` § LogicalSnapshotId); two different
 protocols producing different sync events for the same snapshots receive
 different event IDs. The event ID embeds only exact logical snapshot identities
 and never the physical journal placement allocated by the merge.
@@ -808,88 +788,6 @@ and release the garden afterward.
 
 ---
 
-## Reset-to-hostname
-
-`reset-to-hostname` (see `incremental-graph-synchronization.md`) is not a
-pairwise merge. It replaces the whole installed graph-and-journal state with a
-selected host snapshot and does not perform pairwise journal reconciliation.
-
-A successful `reset-to-hostname` MUST:
-
-1. install the selected graph and journal snapshot;
-2. generate a fresh local `HostLineageId`;
-3. use that same fresh lineage for newly originated host event IDs;
-4. replace the resetting hostname's frontier coordinate with the fresh lineage
-   and its initial logical version;
-5. preserve the applicable coordinates of other hosts from the selected
-   snapshot;
-6. record a durable `HostLineageTransition` from the previous coordinate to the
-   fresh-lineage coordinate;
-7. rotate the cursor domain as specified below.
-
-In detail:
-
-- A successful reset ends the currently installed journal lineage and installs
-  the selected snapshot as a new local lineage (see
-  `incremental-graph-journal-types.md` § Journal lineage).
-- The reset journal adopts the selected snapshot's journal and watermark
-  exactly. The new watermark may be numerically lower than the old lineage's
-  watermark.
-- A successful reset also generates a fresh local `HostLineageId`, so numeric
-  index reuse in the new lineage cannot collide with old-lineage host event
-  IDs. Newly originated host events after the reset use that same fresh lineage
-  (see `incremental-graph-journal-types.md` § Host lineage).
-- A successful reset replaces the installed causal frontier: the resetting
-  hostname's coordinate becomes the fresh lineage paired with its initial
-  logical version, while the applicable coordinates of other hosts are
-  preserved from the selected snapshot. The old lineage's frontier does not
-  carry across a reset. The resetting hostname's coordinate therefore changes
-  lineage; peers that know the previous coordinate may accept the new
-  coordinate through the recorded `HostLineageTransition` (see
-  `incremental-graph-journal-types.md` § Host lineage transition).
-- Normal synchronization MUST NOT merge two coordinates for the same hostname
-  when their lineage IDs differ, unless a validated `HostLineageTransition`
-  connects them.
-- No journal-notification continuity is specified across reset.
-
-Normal pairwise synchronization and migration preserve the current local host
-lineage.
-
-### Cursor domain rotation
-
-A successful reset must create and publish a fresh `JournalCursorDomain`:
-
-1. Keep the old domain active while constructing the reset destination.
-2. Construct the destination to contain its journal, watermark, source
-   provenance where applicable, and a fresh host lineage, all durably
-   stored inside the destination replica.
-3. Complete and durably validate the destination.
-4. Atomically switch the active replica. The pointer switch selects a
-   destination that already contains its fresh host lineage.
-5. Publish the fresh cursor domain and the in-memory cache of the new host
-   lineage.
-6. Reject every `PossibleNodeChange` token registered in the old domain.
-
-Only volatile state — the in-memory lineage cache and the new cursor domain —
-is published after the pointer switch. The durable lineage is part of the
-destination, so a crash after cutover cannot leave the newly active lineage
-with an old or missing lineage.
-
-A failed reset preserves the previous active replica, journal lineage, cursor
-domain, host lineage, and the validity of existing same-process tokens
-under the old state.
-
-Normal pairwise synchronization preserves the existing cursor domain; a
-successful wholesale reset or successful migration cutover rotates it.
-`BaselinePossibleNodeChange` remains the baseline sentinel and is not tied to
-one cursor domain.
-
-Reset-to-hostname uses the same structural protocol
-(`holiday → closeGarden → darkroom`) and publishes the fresh cursor domain as
-part of the cutover.
-
----
-
 ## Commutativity
 
 Journal reconciliation is pairwise commutative. For two valid merge inputs `A`
@@ -898,16 +796,18 @@ and `B`:
 - `SyncDelta` is symmetric by definition;
 - the generated-event predicates are symmetric;
 - the frontier union is symmetric: `unionCausalFrontiers` produces the same
-  merged frontier (or the same rejection) in either input order, and the
-  lineage-transition history union is commutative and deterministic;
+  merged frontier (or the same rejection) in either input order;
+- the merge-basis join is symmetric: `joinMergeBasis(A, B)` and
+  `joinMergeBasis(B, A)` produce the same basis (see
+  `incremental-graph-synchronization.md` § Merge basis);
 - sync creators, event IDs, timestamps, and identifier selection are derived
   symmetrically from logical snapshot provenance and source journal evidence;
 - carrier placement is enforced above `P = max(aH, bH)`, which is symmetric;
 - all fresh-placement ordering keys are symmetric.
 
 Therefore `merge(A, B)` and `merge(B, A)` produce the same canonical journal,
-the same logical snapshot identity, the same causal frontier, the same accepted
-transition history, and the same fresh-placement sequence.
+the same logical snapshot identity, the same causal frontier, the same merge
+basis, and the same fresh-placement sequence.
 
 ---
 
@@ -934,8 +834,8 @@ incorporated the logical contributions of `B`, re-synchronizing with any staged
 snapshot whose frontier is already dominated is a complete no-op, even though
 the local source is now the derived merge `D`, not the original snapshot `A`.
 Ordinary local graph activity preserves remote frontier entries, so it does not
-make an unchanged remote host "new"; only a later logical version (within the
-same lineage) or a validated lineage transition does.
+make an unchanged remote host "new"; only a later logical version within the
+same storage instance does.
 
 Do not query previous journal events to determine absorption. The no-op
 decision comes from the persisted causal frontier before any journal
@@ -970,9 +870,9 @@ normalization never runs as a storage-quota operation.
 
 The public `PossibleNodeChange` fields are exactly `nodeName`, `bindings`,
 `action`, and `time`. Host identities (`Hostname` values), sync creator sets
-(`Sync` values), logical snapshot identities (`ReplicaSnapshotId` values),
-causal frontiers, lineage transitions, and raw journal indices (`JournalIndex`
-values) are journal-internal and not part of the public API. The
+(`Sync` values), logical snapshot identities (`LogicalSnapshotId` values),
+causal frontiers, merge-basis candidates, and raw journal indices
+(`JournalIndex` values) are journal-internal and not part of the public API. The
 `PossibleNodeChange` type intentionally excludes them.
 
 ---
@@ -981,8 +881,8 @@ values) are journal-internal and not part of the public API. The
 
 ### T1 — Journal integrity: conflicting payload
 
-Source A: eventId "[\"host\",\"h1\",\"lineage-1\",3]" with payload edit W1
-Source B: eventId "[\"host\",\"h1\",\"lineage-1\",3]" with payload edit W2
+Source A: eventId "[\"host\",\"h1\",\"instance-1\",3]" with payload edit W1
+Source B: eventId "[\"host\",\"h1\",\"instance-1\",3]" with payload edit W2
 
 Synchronization aborts. Different payloads for the same eventId are an
 integrity error.
@@ -1175,23 +1075,23 @@ operational fixed point is the absorption property (PROP-JS-04a).
 ### T20 — New logical snapshots
 
 A later pair of logical snapshots with different exact state may generate a new
-event because the `ReplicaSnapshotId`s differ, and therefore the sync event ID
+event because the `LogicalSnapshotId`s differ, and therefore the sync event ID
 differs.
 
 ### T21 — A merge output receives the exact-state identity
 
 Merging logical snapshots `A` and `B` produces a destination whose
-`SourceSnapshotProvenance.id` is the `ReplicaSnapshotId` of the merged exact
-logical state (see `incremental-graph-journal-types.md` § ReplicaSnapshotId).
-The identity is a deterministic digest of the full logical state — graph,
-journal, `last_journal_index`, causal frontier, lineage transitions, schema
-version, and merge protocol version — and never encodes how the state was
-produced or transported.
+`SourceSnapshotProvenance.id` is the `LogicalSnapshotId` of the merged exact
+logical state (see `incremental-graph-journal-types.md` § Logical snapshot
+identity). The identity is a deterministic digest of the logical state — graph
+projection, merge basis, logical journal view, causal frontier, schema version,
+and merge protocol version — and never encodes how the state was produced or
+transported, nor physical journal placement.
 
 ### T22 — Derived snapshot becomes a later merge input
 
 After the first per-host merge, the derived output becomes the local source for
-a second per-host merge. Its identity is the `ReplicaSnapshotId` of its exact
+a second per-host merge. Its identity is the `LogicalSnapshotId` of its exact
 logical state.
 
 ### T23 — Second merge generates a deterministic sync event ID
@@ -1201,7 +1101,7 @@ generates a sync event whose ID is:
 
 ```
 ["sync-v2", graphAndJournalMergeProtocolVersion,
- replicaSnapshotIdToString(lower), replicaSnapshotIdToString(upper),
+ logicalSnapshotIdToString(lower), logicalSnapshotIdToString(upper),
  action, nodeKeyToString(key)]
 ```
 
@@ -1212,54 +1112,41 @@ merge ran.
 ### T24 — Reversal produces the same snapshot identity
 
 Merging `A` with `B` and merging `B` with `A` produce the same exact logical
-state and therefore the same `ReplicaSnapshotId`, because the frontier union,
-the transition-history union, and the canonical digest are all commutative.
+state and therefore the same `LogicalSnapshotId`, because the frontier union,
+the merge-basis join, and the canonical digest are all commutative.
 
 ### T25 — Distinct logical states do not share an ID
 
 Two different synchronization-relevant logical states do not share one
-`ReplicaSnapshotId`, even when they reside on the same physical host or are
+`LogicalSnapshotId`, even when they reside on the same physical host or are
 transported by the same adapter.
 
 ### T26 — Contributor sets union across successive merges
 
 Freshly initialized leaf snapshots `A`, `B`, and `C` begin at version 0 and
-have frontiers `{ A: { LA, 0 } }`, `{ B: { LB, 0 } }`, and `{ C: { LC, 0 } }`.
-Merging `A` and `B` yields a frontier `{ A: { LA, 0 }, B: { LB, 0 } }` and a
+have frontiers `{ A: { IA, 0 } }`, `{ B: { IB, 0 } }`, and `{ C: { IC, 0 } }`.
+Merging `A` and `B` yields a frontier `{ A: { IA, 0 }, B: { IB, 0 } }` and a
 contributor set `Sync{A, B}` (derived from the frontier's hostnames). Merging
 that derived snapshot with leaf `C` yields a frontier with hostnames `{A, B, C}`
 and a contributor set `Sync{A, B, C}`. The contributor set is never stored
 independently of the frontier.
 
-### T27 — Successful reset rotates the cursor domain
+### T27 — HostInstanceId is stable across reset and cutover
 
-A successful `reset-to-hostname` publishes a fresh `JournalCursorDomain` for
-the newly installed lineage.
+The local `HostInstanceId` is generated only at storage-instance initialization
+and is unchanged by reset, migration, synchronization, compaction, and replica
+cutover. Two unrelated reinitializations of the same hostname produce different
+`HostInstanceId`s, which is an administrative conflict when synchronized.
 
-### T28 — Pre-reset token rejected after reset
-
-A `PossibleNodeChange` token registered in the old cursor domain is rejected as
-a `since` argument after a successful reset.
-
-### T29 — Failed reset preserves the old state
-
-A failed reset leaves the previous active replica, journal lineage, cursor
-domain, and existing same-process token validity unchanged.
-
-### T30 — Reset may lower the watermark
-
-A successful reset may install a numerically lower `last_journal_index` because
-it starts a new journal lineage; the old and new positions are not one shared
-index namespace.
-
-### T31 — Sync event ID carries no physical index
+### T28 — Sync event ID carries no physical index
 
 A `SyncDeleteJournalEntry` or `SyncInvalidateJournalEntry` event ID is derived
 from the merge protocol version, the exact source-snapshot identities, the
-action, and the key. The embedded snapshot identities are fixed-size digests.
-The event ID does not depend on the destination physical journal index.
+action, and the key. The embedded snapshot identities are fixed-size digests of
+the logical state. The event ID does not depend on the destination physical
+journal index, compaction layout, or carrier positions.
 
-### T32 — Local activity invalidates source provenance
+### T29 — Local activity invalidates source provenance
 
 After a merge produces derived snapshot `D`, ordinary local `pull` or
 `invalidate` activity mutates the graph and journal. The stored provenance no
@@ -1269,34 +1156,33 @@ that precise logical snapshot, so the second run's local source snapshot ID
 differs from `D`'s. The export derives its frontier with
 `localExportCausalFrontier`: remote entries are preserved and only the local
 hostname's coordinate is updated, advancing it only when the host actually
-originated new logical state (its version within its current lineage).
+originated new logical state (its version within its current instance).
 
-### T33 — Host lineage prevents reuse across lineages
+### T30 — Host instance disambiguates unrelated reinitialization
 
-Host A's old lineage `LB1` contains `eventId = ["host","A","LB1",21]`. A resets
-and installs a new lineage `LB2`; after eleven appends the new lineage reaches
-index 21 with `eventId = ["host","A","LB2",21]`. The two event IDs differ, so
-later synchronization cannot confuse the two payloads. Events created before
-the reset use `LB1`; events created after the reset use `LB2`. Reused numeric
-journal indices cannot collide because the lineage is part of the event ID. The
-same `LB2` value also appears in A's new frontier coordinate
-`{ A: { LB2, 0 } }`, so event identity and frontier coordinates share one
-canonical lineage.
+Host A's storage instance `IA1` contains `eventId = ["host","A","IA1",21]`. A
+later reinitialization of host A creates a new storage instance `IA2`; after
+eleven appends the new instance reaches index 21 with
+`eventId = ["host","A","IA2",21]`. The two event IDs differ, so synchronization
+cannot confuse the two payloads. Reused numeric journal indices cannot collide
+because the instance identity is part of the event ID. The same `IA2` value also
+appears in A's frontier coordinate `{ A: { IA2, 0 } }`, so event identity and
+frontier coordinates share one canonical instance representation.
 
-### T34 — Two-host periodic fixed point
+### T31 — Two-host periodic fixed point
 
-Two hosts A and B start fresh at version 0: A's frontier is `{ A: { LA, 0 } }`
-and B's is `{ B: { LB, 0 } }`.
+Two hosts A and B start fresh at version 0: A's frontier is `{ A: { IA, 0 } }`
+and B's is `{ B: { IB, 0 } }`.
 
-1. A exports its snapshot and B stages it. B's frontier `{ B: { LB, 0 } }` does
-   not dominate the staged frontier `{ A: { LA, 0 } }`, so B merges A and its
-   frontier becomes `{ A: { LA, 0 }, B: { LB, 0 } }`.
+1. A exports its snapshot and B stages it. B's frontier `{ B: { IB, 0 } }` does
+   not dominate the staged frontier `{ A: { IA, 0 } }`, so B merges A and its
+   frontier becomes `{ A: { IA, 0 }, B: { IB, 0 } }`.
 2. B exports its snapshot and A stages it. A's frontier does not dominate, so A
-   merges B and its frontier becomes `{ A: { LA, 0 }, B: { LB, 0 } }`.
+   merges B and its frontier becomes `{ A: { IA, 0 }, B: { IB, 0 } }`.
 3. Each host exports its current state. Exporting the newly learned frontier
-   does not advance A or B's own logical version: both remain `LA/0` and `LB/0`.
+   does not advance A or B's own logical version: both remain `IA/0` and `IB/0`.
 4. They exchange snapshots again. Each local frontier now dominates the staged
-   frontier (`{ A: { LA, 0 }, B: { LB, 0 } }` in both directions), so both
+   frontier (`{ A: { IA, 0 }, B: { IB, 0 } }` in both directions), so both
    synchronization attempts are complete no-ops: no destination is constructed,
    no journal entry is appended or repositioned, no notification is emitted,
    the watermark is unchanged, no provenance is published, and no replica is
@@ -1304,81 +1190,45 @@ and B's is `{ B: { LB, 0 } }`.
 5. Repeating the periodic process indefinitely produces no new journal
    placement, provenance, watermark, snapshot content, or replica switch.
 
-### T35 — Local pulls do not re-incorporate unchanged B
+### T32 — Local pulls do not re-incorporate unchanged B
 
-After the fixed point above (`{ A: { LA, 0 }, B: { LB, 0 } }`), host A performs
+After the fixed point above (`{ A: { IA, 0 }, B: { IB, 0 } }`), host A performs
 ordinary local pulls and invalidations and exports again. The export preserves
-`{ B: { LB, 0 } }` and updates only A's own coordinate to `{ A: { LA, 1 } }`
+`{ B: { IB, 0 } }` and updates only A's own coordinate to `{ A: { IA, 1 } }`
 (A originated new content in one transaction, so its version advances exactly
-once). B stages A's export: B's frontier `{ A: { LA, 0 }, B: { LB, 0 } }` does
-not dominate (A is now `LA/1`), so B merges A exactly once. B exports (frontier
-`{ A: { LA, 1 }, B: { LB, 0 } }`); A stages it, A's frontier dominates, and the
+once). B stages A's export: B's frontier `{ A: { IA, 0 }, B: { IB, 0 } }` does
+not dominate (A is now `IA/1`), so B merges A exactly once. B exports (frontier
+`{ A: { IA, 1 }, B: { IB, 0 } }`); A stages it, A's frontier dominates, and the
 merge is a no-op. Unchanged B was not re-incorporated; A's new contribution
 propagated exactly once.
 
-### T36 — Real change on B propagates exactly once
+### T33 — Real change on B propagates exactly once
 
-The system is at the fixed point `{ A: { LA, 1 }, B: { LB, 1 } }`. B performs a
+The system is at the fixed point `{ A: { IA, 1 }, B: { IB, 1 } }`. B performs a
 real host-local graph or journal mutation and advances its own version to
-`LB/2`. B exports a snapshot with frontier `{ A: { LA, 1 }, B: { LB, 2 } }`. A
-stages it; A's frontier `{ A: { LA, 1 }, B: { LB, 1 } }` does not dominate
+`IB/2`. B exports a snapshot with frontier `{ A: { IA, 1 }, B: { IB, 2 } }`. A
+stages it; A's frontier `{ A: { IA, 1 }, B: { IB, 1 } }` does not dominate
 (B is later), so A merges B exactly once, and A's frontier becomes
-`{ A: { LA, 1 }, B: { LB, 2 } }`. Subsequent periodic exchanges are again
+`{ A: { IA, 1 }, B: { IB, 2 } }`. Subsequent periodic exchanges are again
 complete no-ops.
 
-### T37 — Regression, competing successors, and unrelated lineages are rejected
+### T34 — Regression and administrative conflict are rejected
 
-- If host B's coordinate regresses within the same lineage — the staged version
-  is earlier than the incorporated version — normal synchronization rejects the
-  merge.
-- If two different successor lineages claim the same predecessor coordinate for
-  one hostname, the frontier union rejects the conflict rather than choosing.
-- If a staged snapshot carries a different-lineage coordinate for a hostname
-  with no validated `HostLineageTransition` connecting it to the recorded
-  coordinate, the lineages are unrelated and normal synchronization rejects the
-  merge.
+- If host B's coordinate regresses within the same storage instance — the staged
+  version is earlier than the incorporated version — normal synchronization
+  rejects the merge.
+- If a staged snapshot carries a coordinate for a hostname whose `HostInstanceId`
+  differs from the recorded instance, the two coordinates represent unrelated
+  storage reinitialization; normal synchronization rejects the input as an
+  administrative conflict rather than choosing or ordering.
 
-### T38 — Reversed sources produce the same frontier and transition history
+### T35 — Reversed sources produce the same frontier and merge basis
 
-`unionCausalFrontiers(Fa, Fb, Ta, Tb)` and
-`unionCausalFrontiers(Fb, Fa, Tb, Ta)` produce the same frontier (or the same
-rejection), and the transition-history union is commutative. Therefore
-`merge(A, B)` and `merge(B, A)` record the same causal frontier, the same
-accepted transition history, and the same contributor set.
-
-### T38a — Reset reconvergence
-
-A and B have incorporated each other at the fixed point
-`{ A: { LA1, 1 }, B: { LB, 1 } }`. Host A performs a `reset-to-hostname`
-selecting B's snapshot:
-
-1. A installs the selected graph and journal snapshot, generates a fresh lineage
-   `LA2`, sets its own coordinate to `{ A: { LA2, 0 } }`, and records the
-   durable lineage transition
-   `{ hostname: A, predecessor: { LA1, 1 }, successor: { LA2, 0 }, kind: "reset" }`.
-2. A publishes a snapshot containing the new A coordinate and the transition.
-3. B performs ordinary synchronization and stages A's snapshot. B's recorded A
-   coordinate is `{ LA1, 1 }`, which equals the transition's predecessor, so B
-   validates and accepts A's lineage transition: B's frontier for A becomes
-   `{ LA2, 0 }` and B records the transition. B does not change its own lineage.
-4. A later synchronizes with B. A continues to recognize B's existing
-   coordinate `{ LB, 1 }` normally; no new B-lineage mismatch arises.
-5. Future changes from either host propagate normally, and the pair reaches a
-   new fixed point `{ A: { LA2, vA }, B: { LB, vB } }`.
-
-Additional reset scenarios:
-
-- **Replay:** restaging A's snapshot with the same transition is idempotent;
-  the transition and A's coordinate are unchanged.
-- **Stale reset:** a peer whose known A coordinate is later than the declared
-  predecessor rejects the reset as conflicting or stale.
-- **Competing successors:** two transitions claiming the same predecessor
-  coordinate of A but different successor lineages are a conflict and are
-  rejected.
-- **Unrelated lineage:** a different-lineage A coordinate with no transition
-  proof is incomparable and rejected.
-- **Restart:** the transition is persisted as part of A's and B's provenance;
-  restarting either host does not lose the reset-transition proof.
+`unionCausalFrontiers(Fa, Fb)` and `unionCausalFrontiers(Fb, Fa)` produce the
+same frontier (or the same rejection), and `joinMergeBasis(A, B)` and
+`joinMergeBasis(B, A)` produce the same merge basis. Therefore `merge(A, B)` and
+`merge(B, A)` record the same causal frontier, the same merge basis, and the
+same contributor set.
 
 ### T39 — Identical noncanonical entries at the same index
 
@@ -1452,8 +1302,8 @@ does not depend on journal state, journal retention, or journal compaction.
 
 **PROP-JS-06 (Pairwise commutativity):** `merge(A, B)` and `merge(B, A)` produce
 the same canonical journal, the same fresh-placement sequence, the same exact
-logical state and `ReplicaSnapshotId`, and the same causal frontier and accepted
-transition history.
+logical state and `LogicalSnapshotId`, the same causal frontier, and the same
+merge basis.
 
 **PROP-JS-07 (Deterministic sync events):** Sync-derived events depend only on
 the exact logical snapshots and the source journal evidence. They do not depend
