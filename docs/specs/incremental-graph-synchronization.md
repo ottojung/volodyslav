@@ -1,12 +1,11 @@
 # Specification for Incremental Graph Synchronization
 
 This document specifies synchronization of persisted IncrementalGraph replica
-states. It constrains how materialized graph state may be merged across host
-branches so that all future public IncrementalGraph operations remain valid
-under "incremental-graph.md". It does not change the public `pull()` or
+states. It constrains how materialized graph state may be merged across hosts
+so that all future public IncrementalGraph operations remain valid under
+"incremental-graph.md". It does not change the public `pull()` or
 `invalidate()` semantics; it specifies only how stored graph state may be
-checkpointed, staged, merged, invalidated, and committed during
-synchronization.
+exported, staged, merged, invalidated, and committed during synchronization.
 
 ---
 
@@ -15,7 +14,9 @@ synchronization.
 **Scope:**
 
 - This specification covers synchronization of persisted IncrementalGraph
-  state across host branches in a shared git repository.
+  state across hosts. It is transport-neutral: it never depends on how logical
+  snapshots are stored or exchanged (see `incremental-graph-journal-types.md`
+  § Transport boundary).
 - Synchronization is not a public computation operation. It is an
   administrative procedure that operates on stored replica state directly.
 - Synchronization MUST NOT invoke computors. It may copy, delete, invalidate,
@@ -30,8 +31,8 @@ synchronization.
 
 **Non-goals:**
 
-- This document does not specify git internals beyond the observable
-  staging/checkpoint/branch role needed by synchronization.
+- This document does not specify the transport used to obtain or store logical
+  snapshots; that is the responsibility of an external transport adapter.
 - Pairwise commutativity is required for any two valid source replicas using
   the same schema: merging A with B and merging B with A must produce
   observably equivalent final IncrementalGraph states after ignoring only
@@ -53,11 +54,11 @@ observable-state abstraction used by journal reconciliation.
 
 "Journal state" here means journal entries, journal absences, and
 `last_journal_index`. Graph synchronization does read one piece of provenance
-metadata — the `SourceSnapshotProvenance.incorporatedRevisions` frontier — but
-only as the per-host merge gate of REQ-SYNC-02a (skip a staged host whose exact
-lineage-and-revision coordinate is already incorporated; reject a regressed or
-incomparable coordinate). It never inspects journal entries to plan the graph
-merge.
+metadata — the `SourceSnapshotProvenance.causalFrontier` — but only as the
+per-host merge gate of REQ-SYNC-02a (skip a staged logical snapshot whose
+complete frontier is already dominated by the local frontier; reject a
+regressed, conflicting, or unresolvable coordinate). It never inspects journal
+entries to plan the graph merge.
 
 ### GraphDelta
 
@@ -133,17 +134,18 @@ deterministic commutative merge result. A key is in `SyncDelta` whenever
 installing `F` changes its public observable state relative to either source.
 Journal reconciliation must not inspect or compare `ComputedValue`s itself.
 
-Each synchronized source snapshot and merged destination carries a
-`SourceSnapshotProvenance` — a `SourceSnapshotId`, a per-host incorporation
-frontier, the merge protocol version, and the schema version (see
-`incremental-graph-journal-types.md` § Source snapshot provenance) — which
-journal reconciliation uses to derive sync event identity and contributor sets.
-Pairwise merge rejects inputs with mismatching merge protocol or schema
-versions, and the frontier union rejects inputs whose frontiers record
-incomparable coordinates for a common hostname (in particular, coordinates
-whose lineage IDs differ). The merged destination's
-provenance is durably established before the destination becomes active or is
-used as the source of a later per-host merge.
+Each synchronized logical snapshot and merged destination carries a
+`SourceSnapshotProvenance` — a `ReplicaSnapshotId`, a causal frontier, the
+accepted lineage-transition records, the merge protocol version, and the schema
+version (see `incremental-graph-journal-types.md` § Logical snapshot
+provenance) — which journal reconciliation uses to derive sync event identity
+and contributor sets. Pairwise merge rejects inputs with mismatching merge
+protocol or schema versions, and the frontier union rejects inputs whose
+frontiers record unresolvable coordinates for a common hostname (for example,
+a regression within a lineage, a competing successor, or an unrelated lineage
+with no validated transition). The merged destination's provenance is durably
+established before the destination becomes active or is used as the source of a
+later per-host merge.
 
 ---
 
@@ -157,8 +159,9 @@ database version string.
 **TERM-SYNC-02 (Local source replica L):** The active local replica before
 merging a host. Read during per-host merge, never modified by it.
 
-**TERM-SYNC-03 (Host source replica H):** Staged graph state scanned from one
-remote hostname branch into hostname staging storage.
+**TERM-SYNC-03 (Host source replica H):** A logical snapshot supplied by
+another host through the transport adapter, decoded and validated before the
+merge.
 
 **TERM-SYNC-04 (Merge target replica T):** Inactive local replica used as the
 write target during per-host merge. Initially a copy of L; after a successful
@@ -222,39 +225,41 @@ stored values MUST NOT create a value origin.
 steps in order:
 
 1. The caller holds the required synchronization/lock.
-2. The live database is checkpointed into the tracked filesystem snapshot.
-3. The local checkpoint branch is synchronized with the remote repository.
-4. Remote hostname branches are fetched from the remote repository.
-5. Each remote hostname branch is staged into hostname storage by scanning the
-   branch's rendered snapshot.
-6. Each staged host is merged into the local database by a per-host graph
-   merge.
-7. If a per-host merge switches the active replica, the root database is
+2. The exact local source is frozen/exported into a logical snapshot (its
+   frontier advanced only when the host originated new logical state).
+3. The transport adapter stores or transmits the exported snapshot and obtains
+   the logical snapshots supplied by other hosts.
+4. Each supplied logical snapshot is decoded and validated by the transport
+   adapter and staged for merging.
+5. Each staged logical snapshot is merged into the local database by a per-host
+   graph merge.
+6. If a per-host merge switches the active replica, the root database is
    reopened before continuing to the next host.
-8. Host staging storage is cleared after the per-host attempt (whether it
-   succeeded or failed).
-9. Failures are recorded per host. Synchronization may continue with remaining
+7. Staging storage is cleared after the per-host attempt (whether it succeeded
+   or failed).
+8. Failures are recorded per host. Synchronization may continue with remaining
    hosts and aggregate failures into a single error report.
 
-**REQ-SYNC-02a (Incorporated-host skip):** Before a staged host snapshot is
-merged, the implementation MUST compare the staged host's revision coordinate —
-the pair of the host's lineage and its exact revision — against the local
-source's incorporation frontier (see `incremental-graph-journal-types.md` §
-Incorporation frontier and `incremental-graph-journal-sync.md` § Staged-host
-coordinate check). If the local frontier records the exact staged coordinate
-(same lineage, same revision) for that hostname, the per-host merge is a
-**complete no-op**: no destination is constructed, no journal event is appended
-or repositioned, no notification is emitted, the watermark is not increased, no
-new provenance is published, and the active-replica pointer MUST remain
-unchanged. If the staged revision is a regression of, or incomparable with, the
-recorded coordinate — incomparable in particular when the staged coordinate's
-lineage differs from the recorded lineage, regardless of Git ancestry — then
-synchronization for that host MUST fail with a host-version mismatch or
-revision-conflict error. Git ancestry MUST NOT override a lineage mismatch. The
-frontier's remote entries are preserved by any
-local checkpoint taken after ordinary graph activity, so this skip is stable
-across runs while the remote host is unchanged. This is what makes
-synchronization a fixed point for an unchanged host.
+**REQ-SYNC-02a (Incorporated-host skip):** Before a staged logical snapshot is
+merged, the implementation MUST compare the snapshot's complete causal frontier
+against the local source's frontier using `dominatesCausalFrontier` (see
+`incremental-graph-journal-types.md` § Causal frontier and
+`incremental-graph-journal-sync.md` § Synchronization gate). If the local
+frontier dominates the staged frontier, the staged snapshot contains no
+host-originated logical contribution that is new to the local replica, and the
+per-host merge is a **complete no-op**: no destination is constructed, no
+journal event is appended or repositioned, no notification is emitted, the
+watermark is not increased, no new provenance is published, and the
+active-replica pointer MUST remain unchanged. If the staged frontier contains a
+later comparable coordinate for at least one hostname, synchronization may
+proceed. If the frontiers contain a genuine lineage conflict that cannot be
+resolved by an accepted `HostLineageTransition` — a regression within a
+lineage, a competing successor, or an unrelated lineage without a valid
+transition — synchronization for that host MUST fail with a host-version
+mismatch or coordinate-conflict error. The frontier's remote entries are
+preserved by any export taken after ordinary graph activity, so this skip is
+stable across runs while the remote hosts are unchanged. This is what makes
+synchronization a fixed point for unchanged hosts.
 
 **TERM-SYNC-13 (Reset-to-hostname mode):** A synchronization mode that is NOT
 a graph merge. It synchronizes to a chosen hostname snapshot by replacing the
@@ -265,26 +270,29 @@ hosts.
 mixed with normal per-host merge semantics. The reset procedure replaces
 replica state wholesale; it does not merge.
 
-**REQ-SYNC-03a (Reset publishes a fresh lineage):** A successful
-`reset-to-hostname` MUST:
+**REQ-SYNC-03a (Reset publishes a fresh lineage and a logical transition):** A
+successful `reset-to-hostname` MUST:
 
 1. install the selected graph and journal snapshot;
 2. generate a fresh local `HostLineageId` (see `incremental-graph-journal-types.md`
    § Host lineage);
 3. use that same fresh lineage for newly originated host event IDs;
 4. replace the resetting hostname's frontier coordinate with the fresh lineage
-   and the reset commit revision;
+   and its initial logical version;
 5. preserve the applicable coordinates of other hosts from the selected
    snapshot;
-6. rotate the journal cursor domain as specified by the journal
+6. record a durable `HostLineageTransition` from the previous coordinate to the
+   fresh-lineage coordinate (see `incremental-graph-journal-types.md` § Host
+   lineage transition);
+7. rotate the journal cursor domain as specified by the journal
    specifications.
 
-The reset creates a new commit whose parent is the old local head, so the reset
-commit is a Git descendant of the old local revision; the fresh lineage, not Git
-ancestry, is what makes the reset coordinate incomparable with the pre-reset
-coordinate. Normal synchronization MUST NOT merge two coordinates for the same
-hostname when their lineage IDs differ; the explicit reset operation is the
-mechanism for crossing that boundary.
+The transition is the logical proof of succession and is not inferred from
+transport history. A peer that knows the predecessor coordinate may accept the
+successor coordinate without performing its own reset. Normal synchronization
+MUST NOT merge two coordinates for the same hostname when their lineage IDs
+differ unless a validated `HostLineageTransition` connects them; a staged
+snapshot whose transition is stale, conflicting, or absent is rejected.
 
 ---
 
@@ -299,12 +307,12 @@ mechanism for crossing that boundary.
 **Preconditions:**
 
 1. The synchronization lock is held for the duration of the merge.
-2. H was staged from exactly one hostname branch.
+2. H is a single validated logical snapshot supplied by exactly one host.
 3. H and the local database have the same schema version. If not, the merge
    for that host MUST fail with a host-version mismatch error.
 4. L is not modified by per-host merge.
 5. T may be overwritten or refreshed during the merge.
-6. H is staging storage and is cleared by the caller after the merge attempt.
+6. H's staging storage is cleared by the caller after the merge attempt.
 7. The host and target identifier lookups must be parseable.
 8. A storage identifier MUST NOT map to different semantic keys across source
    lookups. That is corrupt metadata and MUST be rejected with an
@@ -437,8 +445,7 @@ and metadata transformations produce no new semantic versions.
   any future or past time.
 
 **REQ-SYNC-08b (No mergedAt field):** Synchronization MUST NOT introduce a
-persistent `mergedAt` field. Sync timing is available through logs and Git
-commits.
+persistent `mergedAt` field. Sync timing is available through logs.
 
 **REQ-SYNC-08c (Same-coordinate stale freshness):** When both replicas have
 identical `modifiedAt` and identical `NodeIdentifier` for a semantic key, the
@@ -732,8 +739,8 @@ following differ from the currently active replica:
 - graph data, identifier mapping, freshness, or validity metadata;
 - journal entries or established journal absences;
 - `last_journal_index`;
-- `SourceSnapshotProvenance` (the destination's source-snapshot ID,
-  incorporation frontier, merge protocol version, and schema version);
+- `SourceSnapshotProvenance` (the destination's `ReplicaSnapshotId`, causal
+  frontier, lineage transitions, merge protocol version, and schema version);
 - any other durable journal or provenance metadata.
 
 The active pointer remains unchanged only when the complete installed state
@@ -747,7 +754,7 @@ index allocation can reuse or overwrite a position another synchronized host has
 already established or retired, and so that the derived merge provenance can
 become the source of the next per-host merge.
 
-When the staged-host coordinate check of REQ-SYNC-02a makes the per-host merge a
+When the frontier-dominance gate of REQ-SYNC-02a makes the per-host merge a
 complete no-op, no destination is constructed and the active-replica pointer
 MUST remain unchanged: the installed state already matches, and no reconciled
 destination exists to switch to. In particular, the switch rule MUST NOT switch
@@ -774,9 +781,9 @@ commit must not leave callers reading from an invalid partial merge target.
 **REQ-SYNC-23 (Pairwise commutativity):** For valid source replicas A and B using the same schema, merging A with B and merging B with A produce observably equivalent final IncrementalGraph states. Observable equivalence includes semantic keys, selected identifiers, stored values, freshness, timestamps, lowered inputs, reverse dependencies, validity proofs, deletion outcomes, and invalidation outcomes. It excludes host-local allocator capability metadata: each host intentionally retains its own `fingerprint` and `last_node_index` allocation namespace. It may also ignore local physical details such as temporary paths, logs, replica-slot names, and source-role labels.
 
 **REQ-SYNC-24 (Sequential per-host merge):** Normal synchronization may merge
-multiple host branches sequentially. Each per-host merge observes the result of
-prior successful per-host merges (because each merge may switch the active
-replica and advance its state).
+multiple staged host snapshots sequentially. Each per-host merge observes the
+result of prior successful per-host merges (because each merge may switch the
+active replica and advance its state).
 
 **REQ-SYNC-25 (Per-host validation after success):** The implementation MUST
 validate the graph state after every successful per-host merge against the
