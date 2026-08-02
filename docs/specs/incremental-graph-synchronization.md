@@ -55,8 +55,9 @@ observable-state abstraction used by journal reconciliation.
 `last_journal_index`. Graph synchronization does read one piece of provenance
 metadata — the `SourceSnapshotProvenance.incorporatedRevisions` frontier — but
 only as the per-host merge gate of REQ-SYNC-02a (skip a staged host whose exact
-revision is already incorporated; reject a regressed or incomparable revision).
-It never inspects journal entries to plan the graph merge.
+lineage-and-revision coordinate is already incorporated; reject a regressed or
+incomparable coordinate). It never inspects journal entries to plan the graph
+merge.
 
 ### GraphDelta
 
@@ -139,7 +140,8 @@ frontier, the merge protocol version, and the schema version (see
 journal reconciliation uses to derive sync event identity and contributor sets.
 Pairwise merge rejects inputs with mismatching merge protocol or schema
 versions, and the frontier union rejects inputs whose frontiers record
-incomparable revisions for a common hostname. The merged destination's
+incomparable coordinates for a common hostname (in particular, coordinates
+whose lineage IDs differ). The merged destination's
 provenance is durably established before the destination becomes active or is
 used as the source of a later per-host merge.
 
@@ -235,16 +237,21 @@ steps in order:
    hosts and aggregate failures into a single error report.
 
 **REQ-SYNC-02a (Incorporated-host skip):** Before a staged host snapshot is
-merged, the implementation MUST compare the staged host's revision against the
-local source's incorporation frontier (see `incremental-graph-journal-types.md`
-§ Incorporation frontier). If the local frontier records the exact staged
-revision for that hostname, the per-host merge is a **complete no-op**: no
-destination is constructed, no journal event is appended or repositioned, no
-notification is emitted, the watermark is not increased, no new provenance is
-published, and the active-replica pointer MUST remain unchanged. If the staged
-revision is a regression of, or incomparable with, the recorded revision,
+merged, the implementation MUST compare the staged host's revision coordinate —
+the pair of the host's lineage and its exact revision — against the local
+source's incorporation frontier (see `incremental-graph-journal-types.md` §
+Incorporation frontier and `incremental-graph-journal-sync.md` § Staged-host
+coordinate check). If the local frontier records the exact staged coordinate
+(same lineage, same revision) for that hostname, the per-host merge is a
+**complete no-op**: no destination is constructed, no journal event is appended
+or repositioned, no notification is emitted, the watermark is not increased, no
+new provenance is published, and the active-replica pointer MUST remain
+unchanged. If the staged revision is a regression of, or incomparable with, the
+recorded coordinate — incomparable in particular when the staged coordinate's
+lineage differs from the recorded lineage, regardless of Git ancestry — then
 synchronization for that host MUST fail with a host-version mismatch or
-revision-conflict error. The frontier's remote entries are preserved by any
+revision-conflict error. Git ancestry MUST NOT override a lineage mismatch. The
+frontier's remote entries are preserved by any
 local checkpoint taken after ordinary graph activity, so this skip is stable
 across runs while the remote host is unchanged. This is what makes
 synchronization a fixed point for an unchanged host.
@@ -257,6 +264,27 @@ hosts.
 **REQ-SYNC-03 (Reset mode separation):** Reset-to-hostname mode must not be
 mixed with normal per-host merge semantics. The reset procedure replaces
 replica state wholesale; it does not merge.
+
+**REQ-SYNC-03a (Reset publishes a fresh lineage):** A successful
+`reset-to-hostname` MUST:
+
+1. install the selected graph and journal snapshot;
+2. generate a fresh local `HostLineageId` (see `incremental-graph-journal-types.md`
+   § Host lineage);
+3. use that same fresh lineage for newly originated host event IDs;
+4. replace the resetting hostname's frontier coordinate with the fresh lineage
+   and the reset commit revision;
+5. preserve the applicable coordinates of other hosts from the selected
+   snapshot;
+6. rotate the journal cursor domain as specified by the journal
+   specifications.
+
+The reset creates a new commit whose parent is the old local head, so the reset
+commit is a Git descendant of the old local revision; the fresh lineage, not Git
+ancestry, is what makes the reset coordinate incomparable with the pre-reset
+coordinate. Normal synchronization MUST NOT merge two coordinates for the same
+hostname when their lineage IDs differ; the explicit reset operation is the
+mechanism for crossing that boundary.
 
 ---
 
@@ -719,7 +747,7 @@ index allocation can reuse or overwrite a position another synchronized host has
 already established or retired, and so that the derived merge provenance can
 become the source of the next per-host merge.
 
-When the staged-host revision check of REQ-SYNC-02a makes the per-host merge a
+When the staged-host coordinate check of REQ-SYNC-02a makes the per-host merge a
 complete no-op, no destination is constructed and the active-replica pointer
 MUST remain unchanged: the installed state already matches, and no reconciled
 destination exists to switch to. In particular, the switch rule MUST NOT switch
