@@ -342,12 +342,16 @@ sha256(encode([
     versionToString(schemaVersion),
     hostnameToString(hostname),
     sourceRevisionIdToString(revision),
+    incorporationFrontierToString(incorporationFrontier),
 ]))
 ```
 
 The schema version is part of the checkpoint identity, so the same host
 revision staged for two different schema versions produces two distinct
-checkpoint snapshot IDs.
+checkpoint snapshot IDs. The incorporation frontier is also part of the
+checkpoint identity: two checkpoints on the same host revision with different
+incorporated remote coordinates are different exact states and receive
+different snapshot IDs.
 
 ### Derived merge identity
 
@@ -359,6 +363,10 @@ const [lowerId, upperId] = canonicalPair([
     sourceSnapshotIdToString(right),
 ])
 
+const mergedFrontier = unionIncorporationFrontiers(
+    left.provenance.incorporatedRevisions,
+    right.provenance.incorporatedRevisions)
+
 sha256(encode([
     "snapshot-v2",
     "merge",
@@ -366,6 +374,7 @@ sha256(encode([
     versionToString(schemaVersion),
     lowerId,
     upperId,
+    incorporationFrontierToString(mergedFrontier),
 ]))
 ```
 
@@ -381,6 +390,13 @@ therefore identifies both the exact inputs and the exact merge algorithm that
 produced the result; two runs of different merge algorithms on the same inputs
 must not receive the same snapshot ID. Merging is compatible only when both
 inputs share the same `graphAndJournalMergeProtocolVersion` and schema version.
+
+The merged incorporation frontier is part of the merge identity: two merges
+whose input snapshots have different frontiers produce different merged
+frontiers and therefore different merge snapshot IDs, even when the input
+snapshot IDs agree. This keeps the snapshot identity aligned with the
+frontier-derived contributor set, so a sync event ID (which embeds the
+snapshot IDs) can never be reused for events whose creator differs.
 
 `sha256` is the SHA-256 digest of the canonical byte encoding `encode`, rendered
 as 64 lowercase hexadecimal characters. `encode` serializes the array
@@ -567,6 +583,18 @@ function incorporationFrontierGet(frontier, hostname)
  * @returns {ReadonlyArray<Hostname>}
  */
 function incorporationFrontierHostnames(frontier)
+
+/**
+ * Render an IncorporationFrontier to its deterministic string persisted
+ * representation, used for storage, integrity comparison, and hashing into
+ * snapshot identities. The representation is a canonical JSON array of
+ * `[hostname, lineageId, revision]` tuples sorted by `hostnameToString` using
+ * deterministic JavaScript code-unit ordering.
+ *
+ * @param {IncorporationFrontier} frontier
+ * @returns {string}
+ */
+function incorporationFrontierToString(frontier)
 ```
 
 A host revision graph is the per-host history of revisions within one host
@@ -1733,12 +1761,29 @@ Host A's revision R staged for schema V1 receives a checkpoint ID:
 ```
 sha256(encode(["snapshot-v2", "checkpoint",
                versionToString(V1), hostnameToString(A),
-               sourceRevisionIdToString(R)]))
+               sourceRevisionIdToString(R),
+               incorporationFrontierToString(F)]))
 ```
 
 The same revision R staged for schema V2 receives a different checkpoint ID,
 because `versionToString(V2) ≠ versionToString(V1)`. The two snapshots cannot
 be confused even though host and revision match.
+
+### E6a — Checkpoint identity includes the incorporation frontier
+
+Host A at revision R stages two checkpoints with different frontiers:
+
+```
+F1 = { A: { LA, R } }
+F2 = { A: { LA, R }, B: { LB, rB } }
+```
+
+The two checkpoint IDs differ because
+`incorporationFrontierToString(F1) ≠ incorporationFrontierToString(F2)`, even
+though host and revision are the same. Consequently a merge using one snapshot
+cannot receive the same sync event ID as a merge using the other: the snapshot
+IDs embedded in the sync event ID differ, so the creator (derived from the
+frontier) can never be paired with the wrong event identity.
 
 ### E7 — Frontier descendant retention and incomparability
 

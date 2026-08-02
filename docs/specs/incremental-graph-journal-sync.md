@@ -1170,13 +1170,20 @@ const [lowerId, upperId] = canonicalPair([
     sourceSnapshotIdToString(B.provenance.id),
 ])
 
+const mergedFrontier = unionIncorporationFrontiers(
+    A.provenance.incorporatedRevisions,
+    B.provenance.incorporatedRevisions)
+
 sha256(encode(["snapshot-v2", "merge",
                graphAndJournalMergeProtocolVersion,
                versionToString(schemaVersion),
-               lowerId, upperId]))
+               lowerId, upperId,
+               incorporationFrontierToString(mergedFrontier)]))
 ```
 
-The result is a fixed-size digest regardless of merge depth.
+The result is a fixed-size digest regardless of merge depth. Two merges whose
+input snapshots have different frontiers produce different merged frontiers and
+therefore different snapshot IDs, even when the input snapshot IDs agree.
 
 ### T22 — Derived snapshot becomes a later merge input
 
