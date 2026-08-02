@@ -673,14 +673,37 @@ state.
 
 **REQ-SYNC-21 (Switch condition):**
 
-- If graph data, identifier mapping, freshness, or validity metadata changed,
-  the inactive replica becomes active.
-- If no semantic data, identifier data, freshness, or validity relation
-  changed, the active pointer remains unchanged.
-- A "metadata-only" change, such as importing a valid provenance-backed
-  validity proof, is sufficient to switch replicas, because it affects future
-  recomputation behavior. Metadata-only changes must obey the provenance rules
-  of §11.
+The switch decision covers the complete graph-and-journal destination, not only
+the graph semantic state. The inactive replica becomes active if any of the
+following differ from the currently active replica:
+
+- graph data, identifier mapping, freshness, or validity metadata;
+- journal entries or established journal absences;
+- `last_journal_index`;
+- `SourceSnapshotProvenance` (the destination's source-snapshot ID,
+  contributors, merge protocol version, and schema version);
+- any other durable journal or provenance metadata.
+
+The active pointer remains unchanged only when the complete installed state
+already matches the reconciled destination — graph data, journal entries,
+established absences, `last_journal_index`, and source-snapshot provenance
+included. In particular, a journal-only difference (for example a higher
+`last_journal_index` that covers established or known-absent synchronized
+positions, or a different merged provenance) is sufficient to switch replicas.
+This installs the reconciled journal and its watermark, so that no future local
+index allocation can reuse or overwrite a position another synchronized host has
+already established or retired, and so that the derived merge provenance can
+become the source of the next per-host merge.
+
+A "metadata-only" change, such as importing a valid provenance-backed
+validity proof, is sufficient to switch replicas, because it affects future
+recomputation behavior. Metadata-only changes must obey the provenance rules
+of §11.
+
+Journal reconciliation (see `incremental-graph-journal-sync.md`) runs
+downstream of graph planning and constructs the destination journal and
+provenance; its output participates in this switch decision exactly like graph
+state.
 
 **REQ-SYNC-22 (Partial failure safety):** The currently active local source
 replica must not be partially mutated by a failed host merge. Failure before
