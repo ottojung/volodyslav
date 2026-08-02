@@ -274,7 +274,7 @@ const eventId = JSON.stringify([
 ```
 
 `namespaceId` is the host event namespace active in the current journal
-lineage. The entry, `eventId`, physical index `i`, graph mutation, and final watermark MUST be committed in the same atomic durable batch. Sync-derived events are not assigned an ID from the physical index; their `eventId` derives from the exact source snapshots, the action, and the key (see `incremental-graph-journal-sync.md`).
+lineage. The entry, `eventId`, physical index `i`, graph mutation, and final watermark MUST be committed in the same atomic durable batch. Sync-derived events are not assigned an ID from the physical index; their `eventId` derives from the merge protocol version, the canonical source-snapshot IDs, the action, and the key (see `incremental-graph-journal-sync.md`).
 
 REQ-JE-19: For an existing event being replicated or reappended (not newly created), the implementation MUST NOT assign a new event ID. It MUST preserve the original `eventId` string unchanged. Only the physical storage position changes.
 

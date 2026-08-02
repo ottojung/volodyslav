@@ -277,8 +277,8 @@ the identified state. It is not:
 ```js
 /**
  * The properties that this type carries are:
- * - The value identifies one exact graph-and-journal source snapshot, including
- *   derived pairwise merge results.
+ * - The value identifies one exact synchronization-relevant source state,
+ *   including derived pairwise merge results.
  *
  * The proof of those properties is guaranteed by:
  * - This typedef cannot enforce the property by construction.
@@ -330,10 +330,15 @@ to:
 sha256(encode([
     "snapshot-v2",
     "checkpoint",
+    versionToString(schemaVersion),
     hostnameToString(hostname),
     sourceRevisionIdToString(revision),
 ]))
 ```
+
+The schema version is part of the checkpoint identity, so the same host
+revision staged for two different schema versions produces two distinct
+checkpoint snapshot IDs.
 
 ### Derived merge identity
 
@@ -429,10 +434,11 @@ currently advertised protocol version and the source's schema version. Derived
 outputs preserve both. Pairwise merge rejects inputs with mismatching protocol
 or schema versions before graph or journal reconciliation.
 
-A `SourceSnapshotProvenance` describes one exact snapshot. Any ordinary graph
+A `SourceSnapshotProvenance` describes one exact synchronization-relevant
+source state. Any ordinary graph
 or journal mutation (for example a `pull` or `invalidate`) makes existing
 exact-snapshot provenance inapplicable to the resulting mutable replica: the
-replica is no longer the exact snapshot the provenance identifies. Provenance
+replica is no longer the exact state the provenance identifies. Provenance
 for a mutable replica is established only by freezing/checkpointing that
 replica into an exact source snapshot and deriving fresh provenance for the
 exact frozen state.
@@ -1478,6 +1484,20 @@ while `Sync{Hostname("a"), Hostname("b")}` serializes to:
 ```
 
 The tagged representations are distinct, so the two creators never collide.
+
+### E6 — Checkpoint identity includes the schema version
+
+Host A's revision R staged for schema V1 receives a checkpoint ID:
+
+```
+sha256(encode(["snapshot-v2", "checkpoint",
+               versionToString(V1), hostnameToString(A),
+               sourceRevisionIdToString(R)]))
+```
+
+The same revision R staged for schema V2 receives a different checkpoint ID,
+because `versionToString(V2) ≠ versionToString(V1)`. The two snapshots cannot
+be confused even though host and revision match.
 
 ---
 

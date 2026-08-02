@@ -30,8 +30,9 @@ bH = B.last_journal_index
 P  = max(aH, bH)
 ```
 
-Each source snapshot carries a `SourceSnapshotProvenance` — a
-`SourceSnapshotId` and a contributor `Sync` set (see
+Each source snapshot carries a `SourceSnapshotProvenance` whose `id` identifies
+its exact synchronization-relevant source state, together with a contributor
+`Sync` set, the merge protocol version, and the schema version (see
 `incremental-graph-journal-types.md` § Source snapshot provenance). A snapshot
 directly staged from a host revision receives a checkpoint snapshot ID; a
 deterministic pairwise merge output receives a derived merge snapshot ID.
@@ -74,7 +75,8 @@ merge. The provenance must survive the root-database reopen that occurs between
 successive per-host merges. A failed merge must not publish the destination
 provenance.
 
-A `SourceSnapshotProvenance` describes one exact snapshot. Ordinary graph or
+A `SourceSnapshotProvenance` describes one exact synchronization-relevant
+source state. Ordinary graph or
 journal activity after the snapshot was taken makes the provenance inapplicable
 to the resulting mutable replica. At the beginning of synchronization, while
 graph activity is excluded, the exact local source is frozen/checkpointed and
@@ -322,10 +324,11 @@ events awaiting index allocation. Each member is identified by its `eventId`.
 eventId
 ```
 
-Because a sync-derived event's `eventId` is determined by the exact source
-snapshots, the action, and the key, the generated identity is stable across both
-merge directions and across hosts. An existing event that is already a
-sync-derived event from the same source snapshots shares that `eventId`.
+Because a sync-derived event's `eventId` is determined by the merge protocol
+version, the canonical source-snapshot IDs, the action, and the key, the
+generated identity is stable across both merge directions and across hosts. An
+existing event that is already a sync-derived event from the same source
+snapshots under the same protocol shares that `eventId`.
 
 Define one operation:
 
