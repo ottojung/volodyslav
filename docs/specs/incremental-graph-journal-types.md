@@ -119,27 +119,30 @@ The sync event ID is:
 
 ```js
 const eventId = JSON.stringify([
-    "sync",
-    canonicalPair([
-        sourceSnapshotIdToString(A.provenance.id),
-        sourceSnapshotIdToString(B.provenance.id),
-    ]),
+    "sync-v2",
+    graphAndJournalMergeProtocolVersion,
+    lowerSourceSnapshotId,
+    upperSourceSnapshotId,
     action,
     nodeKeyToString(key),
 ]);
 ```
 
-`canonicalPair` sorts the two source-snapshot-ID strings using deterministic
-JavaScript code-unit ordering. The identity applies only to
-`SyncDeleteJournalEntry` and `SyncInvalidateJournalEntry`.
+`lowerSourceSnapshotId` and `upperSourceSnapshotId` are the two
+source-snapshot-ID strings sorted by `canonicalPair` (deterministic JavaScript
+code-unit ordering). The event ID includes
+`graphAndJournalMergeProtocolVersion` so that two different merge protocols
+producing different sync events for the same snapshots and action receive
+different event IDs. The identity applies only to `SyncDeleteJournalEntry` and
+`SyncInvalidateJournalEntry`.
 
 Consequences:
 
 - reversing the two source snapshots produces the same event ID;
-- independently reconciling the same two exact snapshots produces the same
-  event ID;
-- a different derived source snapshot produces a different event ID even when
-  it resides on the same hostname;
+- independently reconciling the same two exact snapshots under the same merge
+  protocol produces the same event ID;
+- a different merge protocol, a different derived source snapshot, or a
+  different hostname producing the snapshot produces a different event ID;
 - repeated placement of the same sync event is deduplicated by `eventId`;
 - one `eventId` still identifies exactly one immutable payload;
 - if the same sync event ID is encountered with different payloads,
@@ -255,16 +258,21 @@ If the same event already survives at a positioned target entry, remove its queu
 
 ### SourceSnapshotId (nominal)
 
-`SourceSnapshotId` identifies one exact graph-and-journal source snapshot,
-including derived pairwise merge results. It is not:
+`SourceSnapshotId` identifies the exact synchronization-relevant graph and
+journal state of one source snapshot, including derived pairwise merge
+results. The actual journal entries and their immutable event IDs are part of
+the identified state. It is not:
 
 - a database allocation fingerprint (a fingerprint identifies an allocation
   namespace and can remain unchanged across many different snapshots);
 - the local hostname;
+- the current local host event namespace;
+- the cursor domain;
 - a physical replica slot;
 - the active/inactive designation;
 - the wall-clock merge time;
-- the destination journal watermark.
+- the destination journal watermark;
+- other host-local operational metadata.
 
 ```js
 /**
@@ -391,22 +399,35 @@ Each source replica used by synchronization carries provenance equivalent to:
  * @typedef {object} SourceSnapshotProvenance
  * @property {SourceSnapshotId} id
  * @property {Sync} contributors
+ * @property {string} graphAndJournalMergeProtocolVersion
+ * @property {Version} schemaVersion
  */
 ```
 
 For a checkpoint leaf:
 
 ```text
-id           = checkpoint source-snapshot ID
-contributors = Sync{source hostname}
+id                         = checkpoint source-snapshot ID
+contributors               = Sync{source hostname}
+graphAndJournalMergeProtocolVersion = the currently advertised protocol version
+schemaVersion              = the source's schema version
 ```
 
 For a merge result:
 
 ```text
-id           = merge source-snapshot ID
-contributors = union(left.contributors, right.contributors)
+id                         = merge source-snapshot ID
+contributors               = union(left.contributors, right.contributors)
+graphAndJournalMergeProtocolVersion = preserved from the inputs
+schemaVersion              = preserved from the inputs
 ```
+
+The protocol and schema versions are persisted as explicit compatibility
+metadata with every synchronization source, stored separately even though they
+are also hashed into derived snapshot IDs. Checkpoint staging assigns the
+currently advertised protocol version and the source's schema version. Derived
+outputs preserve both. Pairwise merge rejects inputs with mismatching protocol
+or schema versions before graph or journal reconciliation.
 
 A `SourceSnapshotProvenance` describes one exact snapshot. Any ordinary graph
 or journal mutation (for example a `pull` or `invalidate`) makes existing
@@ -1302,14 +1323,15 @@ process:
   The private journal index persists even if its backing entry is physically
   deleted. A later query scans strictly after that index and tolerates absent
   entries (see `incremental-graph-journal-compaction.md`).
-- A `PossibleNodeChange` cursor remains valid across **structural
-  synchronization and active-replica cutover** in the same process. The token's
-  `ownerDomain` survives database closing and `IncrementalGraph` reconstruction.
-  The notification coverage rules in `incremental-graph-journal-sync.md` ensure
-  that any change observable to the cursor is reported through repositioned
-  canonical events. Normal pairwise synchronization preserves the cursor
-  domain; a wholesale `reset-to-hostname` rotates the domain and rejects tokens
-  registered in the old domain (see `Journal lineage`).
+- A `PossibleNodeChange` cursor remains valid across **normal pairwise
+  synchronization and its associated active-replica cutover** in the same
+  process. The token's `ownerDomain` survives database closing and
+  `IncrementalGraph` reconstruction. The notification coverage rules in
+  `incremental-graph-journal-sync.md` ensure that any change observable to the
+  cursor is reported through repositioned canonical events. Normal pairwise
+  synchronization preserves the cursor domain; a wholesale `reset-to-hostname`
+  rotates the domain and rejects tokens registered in the old domain (see
+  `Journal lineage`).
 - A `PossibleNodeChange` cursor is **not portable** to another process or host
   without additional serialization mechanisms that are not specified by this
   specification.
@@ -1319,6 +1341,9 @@ that involve heterogeneous hosts without the notification protocol, or
 migration/schema boundaries, and the corresponding long-lived validity
 guarantees, are out of scope for this specification and deferred to a future
 computor/cursor-persistence specification.
+
+No cursor validity guarantee is defined across migration cutover or schema
+change.
 
 REQ-JT-21: The public `PossibleNodeChange` API consists exactly of `nodeName`,
 `bindings`, `action`, and `time` as public read-only fields. Private journal
