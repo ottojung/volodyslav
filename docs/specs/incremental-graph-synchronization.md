@@ -234,7 +234,9 @@ transaction authors at most one candidate per semantic key.
 
 ```js
 /**
- * The tuple that deterministically orders candidate state.
+ * The conflict tuple that deterministically orders concurrent candidate state.
+ * It is applied only between causally concurrent candidates (see Causal
+ * precedence below), never as a substitute for causal order.
  *
  * @typedef {object} CandidateComparisonKey
  * @property {UnixTimestamp} modifiedAt
@@ -243,14 +245,10 @@ transaction authors at most one candidate per semantic key.
  */
 ```
 
-Candidates (materialized and tombstone) are totally ordered by the canonical
-comparison tuple: newer `modifiedAt` wins; on tie, the lexicographically
-greater canonical `NodeIdentifier`; on tie, the lexicographically greater
-`sourceFingerprint`.
-
 ```js
 /**
- * A reference to the exact input candidate a value was computed against.
+ * A reference to the exact input candidate a value was computed or validated
+ * against.
  *
  * @typedef {object} InputCandidateReference
  * @property {NodeKey} semanticKey
@@ -265,14 +263,18 @@ greater canonical `NodeIdentifier`; on tie, the lexicographically greater
  * @typedef {object} MaterializedCandidate
  * @property {CandidateId} candidateId
  * @property {{ hostname: Hostname, instanceId: HostInstanceId, version: HostStateVersion }} origin
+ * @property {CausalFrontier} causalContext - The frontier of the origin
+ *   contribution; defines causal order for concurrent-origin comparisons.
  * @property {NodeKey} semanticKey
  * @property {"materialized"} kind
  * @property {ComputedValue} value
  * @property {{ createdAt: UnixTimestamp, modifiedAt: UnixTimestamp }} timestamps
  * @property {NodeIdentifier} identifier
  * @property {ReadonlyArray<InputCandidateReference>} inputCandidateIds
- *   - The exact selected input candidate IDs against which this value is valid.
- * @property {"up-to-date" | "potentially-outdated"} freshness
+ *   - The exact input candidate IDs the value was computed against. A
+ *     computed node MUST record the candidate ID of every direct input it
+ *     read, including for a first materialization; it is never empty for a
+ *     node with direct dependencies.
  * @property {CandidateComparisonKey} comparisonKey
  */
 ```
@@ -287,6 +289,8 @@ greater canonical `NodeIdentifier`; on tie, the lexicographically greater
  * @typedef {object} TombstoneCandidate
  * @property {CandidateId} candidateId
  * @property {{ hostname: Hostname, instanceId: HostInstanceId, version: HostStateVersion }} origin
+ * @property {CausalFrontier} causalContext - The frontier of the origin
+ *   contribution.
  * @property {NodeKey} semanticKey
  * @property {"tombstone"} kind
  * @property {UnixTimestamp} deletionTime
@@ -296,9 +300,10 @@ greater canonical `NodeIdentifier`; on tie, the lexicographically greater
 
 A tombstone's `comparisonKey` uses `modifiedAt = deletionTime`, a canonical
 deletion `NodeIdentifier` derived from the origin, and the origin's
-`sourceFingerprint`. A tombstone with a later `deletionTime` supersedes an
-earlier materialized candidate; a materialized candidate with a later
-`modifiedAt` supersedes an earlier tombstone.
+`sourceFingerprint`. The comparison key is used only between concurrent
+candidates; causal precedence decides first (a later-version deletion from the
+same host instance supersedes any earlier materialization from that host even
+if the wall clock moved backwards).
 
 ```js
 /**
@@ -318,31 +323,80 @@ copies. This is what lets the canonical serialization participate in
 `LogicalSnapshotId` hashing and in the integrity comparison of transported
 merge bases.
 
-### Evidence types
+### Causal precedence
+
+Contributions to the same semantic key (candidates, tombstones, and status
+revisions) are ordered causally before any conflict tuple is consulted:
+
+```
+causallyAfter(c2, c1)  is true exactly when one of:
+  1. c1.origin and c2.origin share the same (hostname, instanceId) and
+     c2.origin.version > c1.origin.version; or
+  2. c2.causalContext contains c1.origin (c2's origin contribution had already
+     incorporated c1's contribution).
+```
+
+Contributions not ordered by `causallyAfter` in either direction are
+**concurrent**. Causal precedence guarantees:
+
+- for contributions from the same host instance, the later `HostStateVersion`
+  always supersedes the earlier contribution, regardless of timestamps or
+  clock skew;
+- where one contribution's causal context includes another, the causally later
+  contribution wins;
+- only concurrent contributions are ever resolved by the conflict tuple, with
+  `CandidateId` as the final deterministic tie-breaker (which makes selection a
+  total order over the retained set).
+
+The winner selection for a semantic key is: the unique causally-maximal
+contribution when one exists; otherwise, among the pairwise-concurrent
+maximal contributions, the maximum by `(modifiedAt, NodeIdentifier,
+sourceFingerprint)`, then lexicographically greater `CandidateId`. The same
+ordering applies to materializations and tombstones, so a causally later
+deletion always beats a causally earlier materialization.
+
+### Candidate status revisions
+
+Freshness and proof are not fields of a candidate. They are carried by
+**candidate-scoped, causally ordered status revisions**:
 
 ```js
 /**
- * A monotonic freshness fact about a semantic key.
+ * One candidate-scoped freshness/proof revision.
  *
- * @typedef {object} FreshnessFact
+ * @typedef {object} CandidateStatus
+ * @property {string} statusId - Deterministic: hash over (origin, semanticKey,
+ *   candidateId). Globally unambiguous and reproducible from the originating
+ *   host contribution.
  * @property {{ hostname: Hostname, instanceId: HostInstanceId, version: HostStateVersion }} origin
+ * @property {CausalFrontier} causalContext - The frontier of the origin
+ *   contribution.
+ * @property {NodeKey} semanticKey
+ * @property {CandidateId} candidateId - The candidate this revision revises.
  * @property {"up-to-date" | "potentially-outdated"} tone
+ * @property {ReadonlyArray<InputCandidateReference>} inputCandidateIds
+ *   - The exact input candidate IDs validated against at this revision. An
+ *     unchanged successful recomputation publishes a new revision with the
+ *     newly validated input IDs.
  * @property {UnixTimestamp} time
  */
 ```
 
-`FreshnessEvidence(key)` is a set of `FreshnessFact`s. Its join is set union:
+`FreshnessEvidence(key)` is the set of retained `CandidateStatus` revisions for
+the key's candidates. Its join is set union:
 `joinFreshnessEvidence(E1, E2) = E1 ∪ E2`, which is commutative, associative,
-and idempotent by construction (sets are unordered and deduplicated). The
-projected freshness is `potentially-outdated` if any fact is
-`potentially-outdated` or any direct input is projected stale; otherwise
-`up-to-date` (conservative monotonic combination).
+and idempotent by construction. The projected freshness of the winning
+candidate is a function of its causally-maximal status revisions: a single
+maximal revision determines the tone; multiple concurrent maximal revisions
+with conflicting tones resolve conservatively to `potentially-outdated`. A
+causally later validation supersedes an observed invalidation by the same host
+instance; only concurrent unresolved stale evidence conservatively wins.
 
 ```js
 /**
- * Validity evidence of one materialized candidate: the transported proofs are
- * the input candidate references themselves. A value is valid only against
- * the exact input candidate IDs it records.
+ * Validity evidence of one candidate: the transported proofs are the input
+ * candidate references recorded by the candidate's causally-latest status. A
+ * value is valid only against the exact input candidate IDs recorded there.
  *
  * @typedef {ReadonlyArray<InputCandidateReference>} ValidityEvidence
  */
@@ -350,23 +404,23 @@ projected freshness is `potentially-outdated` if any fact is
 
 `joinValidityEvidence` unions two evidence sets and is commutative,
 associative, and idempotent by construction. Validity transport is performed
-only when the candidate's recorded input candidate IDs equal the final selected
-input candidate IDs.
+only when the winning status's recorded input candidate IDs equal the final
+selected input candidate IDs.
 
 ```js
 /**
- * Conflict evidence for a semantic key: the candidate comparison facts that
+ * Conflict evidence for a semantic key: the candidate and status records that
  * could still affect a future join.
  *
  * @typedef {object} ConflictEvidence
  * @property {ReadonlyArray<Candidate>} candidates
- * @property {ReadonlyArray<FreshnessFact>} stalenessFacts
+ * @property {ReadonlyArray<CandidateStatus>} statuses
  */
 ```
 
 `joinConflictEvidence(C1, C2)` is the union of the two candidate sets and the
-two staleness-fact sets, pruned by the dominance rule below. It is
-commutative, associative, and idempotent by construction.
+two status sets, pruned by the dominance rule below. It is commutative,
+associative, and idempotent by construction.
 
 ### Semilattice operations
 
@@ -374,12 +428,12 @@ commutative, associative, and idempotent by construction.
 joinCandidateSets(S1, S2)      = the union of the two candidate sets, pruned by
                                  candidate dominance
 
-joinFreshnessEvidence(E1, E2)  = E1 ∪ E2
+joinFreshnessEvidence(E1, E2)  = E1 ∪ E2   (status revisions)
 
 joinValidityEvidence(V1, V2)   = V1 ∪ V2
 
 joinConflictEvidence(C1, C2)   = (candidates(S1 ∪ S2) pruned,
-                                  stalenessFacts(E1 ∪ E2))
+                                  statuses(E1 ∪ E2) pruned)
 
 joinMergeBasis(A, B)           = per-key:
                                    candidates  = joinCandidateSets
@@ -395,17 +449,19 @@ declaration.
 ### Candidate dominance and safe pruning
 
 A candidate `c1` is **dominated** by a retained candidate `c2` for the same
-semantic key when `c2.comparisonKey > c1.comparisonKey` (the total comparison
-tuple) and `c1` is not referenced as an input by any retained materialized
-candidate and `c2`'s evidence absorbs `c1`'s evidence.
+semantic key when `c2` is strictly later than `c1` in the total selection order
+(causal precedence, then conflict tuple, then `CandidateId`) and `c1` is not
+referenced as an input by any retained materialized candidate and `c2`'s
+evidence absorbs `c1`'s evidence. A status revision is dominated when a
+retained revision for the same candidate is causally later than it (it can
+never again be maximal).
 
-Safe pruning: a candidate that is dominated by a retained candidate, is not
-referenced as an input, and whose freshness/validity evidence is absorbed by
-retained evidence may be removed. A candidate that could still win a future
-selection (its comparison key is not exceeded by a retained candidate), that is
-referenced as an input by a retained materialized candidate, or whose evidence
-has not been absorbed MUST be retained. Information needed by later merges must
-never be silently discarded.
+Safe pruning: a candidate or status that is dominated by a retained record, is
+not referenced as an input, and whose evidence is absorbed by retained evidence
+may be removed. A record that could still win a future selection (it is not
+dominated by a retained record), that is referenced as an input by a retained
+materialized candidate, or whose evidence has not been absorbed MUST be
+retained. Information needed by later merges must never be silently discarded.
 
 ### projectGraph
 
@@ -413,18 +469,18 @@ never be silently discarded.
 installed graph state, computed in this order:
 
 1. **Determine the winning candidate or tombstone for every semantic key**:
-   take the maximum by `CandidateComparisonKey` among the key's retained
-   candidates (a tombstone may win, superseding all materialized candidates).
-2. **Identify the selected input candidate IDs**: the winning
-   materialized candidate's `inputCandidateIds`.
+   select the winner by causal precedence, then the conflict tuple, then
+   `CandidateId` (a tombstone may win, superseding all materialized candidates).
+2. **Identify the selected input candidate IDs**: the final selected candidate
+   IDs for the winning candidate's direct semantic inputs.
 3. **Determine whether the selected value was computed against the final
-   selected inputs**: for every direct input, compare the recorded input
-   candidate ID against the final selected candidate ID for that input.
+   selected inputs**: for every direct input, compare the input candidate ID
+   recorded by the winning candidate's causally-maximal status against the
+   final selected candidate ID for that input.
 4. **Determine direct invalidation**: a key is a direct invalidation candidate
-   when its winning value was not computed against the final selected inputs
-   (direct input relowering), or a same-coordinate stale freshness fact
-   applies. This replaces the pairwise source-fidelity notion with an exact
-   candidate-input comparison.
+   when its winning value's maximal status records different inputs than the
+   final selection (direct input relowering), or a same-coordinate stale status
+   applies.
 5. **Apply the zero/one-input versus multi-input policy**: a direct
    invalidation candidate with zero or one distinct semantic inputs is retained
    and hard-invalidated (value kept, freshness `potentially-outdated`, incoming
@@ -433,12 +489,15 @@ installed graph state, computed in this order:
 6. **Apply deletion closure**: any materialized key with a deleted direct input
    is deleted transitively.
 7. **Derive final freshness**: a surviving materialization is `up-to-date` only
-   if it is not a direct invalidation candidate, every direct input is
-   materialized and `up-to-date`, and the freshness evidence contains no stale
-   fact for it; otherwise `potentially-outdated`.
+   if it is not a direct invalidation candidate, its causally-maximal status is
+   unique and `up-to-date`, the maximal status set is not conflict-stale, every
+   direct input is materialized and `up-to-date`, and the maximal status's input
+   candidate IDs match the final selection; otherwise `potentially-outdated`. A
+   causally later validation therefore supersedes an earlier invalidation and
+   can restore `up-to-date`.
 8. **Reconstruct validity**: a surviving `up-to-date` materialization receives
    incoming validity edges from each final direct input whose candidate ID
-   matches the value's recorded input candidate ID.
+   matches the input candidate ID recorded by its maximal status.
 9. **Assign final identifiers and dependency edges**: the surviving
    materializations form the final identifier lookup and lowered dependency
    edges.
@@ -454,16 +513,20 @@ separate pairwise implementation.
   deletion, a migration `storage.delete`, or a bulk reset deletion. Its
   `deletionTime` is the deletion transaction's time and its origin is the
   deleting host's contribution coordinate.
+- Tombstones are ordered by causal precedence first (a later-version deletion
+  from the same host instance supersedes any earlier contribution from that
+  host, even across clock rollback), then by the conflict tuple among concurrent
+  candidates.
 - Synchronization-derived deletion does not create a new tombstone per merge
   grouping: it projects deletion from the retained evidence by selecting the
   tombstone candidate that wins `projectGraph` step 1 and applying steps 5-6.
   A tombstone introduced by any host is retained and deduplicated by
   `CandidateId`.
-- A later materialization supersedes a tombstone when the materialized
-  candidate's comparison key exceeds the tombstone's (a later `modifiedAt` on a
-  value beats an earlier `deletionTime`), and vice versa.
-- Older candidates and tombstones may be discarded only by the safe-pruning
-  rule above.
+- A later materialization supersedes a tombstone when it is causally later than
+  the tombstone (a host re-materializes after deleting), or — among concurrent
+  candidates — when its conflict tuple exceeds the tombstone's.
+- Older candidates, tombstones, and statuses may be discarded only by the
+  safe-pruning rule above.
 
 ---
 
@@ -724,12 +787,12 @@ candidates have identical `modifiedAt` and identical `NodeIdentifier` for a
 semantic key, the records share a materialization coordinate but not
 necessarily a value. The merge MUST be conservative for freshness only:
 
-* If the winning candidate's value is `up-to-date` and a same-coordinate
-  candidate's freshness is not `up-to-date`, the final node MUST NOT remain
-  `up-to-date`. Set it to `potentially-outdated` without changing `modifiedAt`
-  or the winning value.
-* If the winning candidate is already not `up-to-date`, no adjustment is
-  needed.
+* If the winning candidate's maximal status is `up-to-date` and a
+  same-coordinate candidate's maximal status is not `up-to-date`, the final
+  node MUST NOT remain `up-to-date`. Set it to `potentially-outdated` without
+  changing `modifiedAt` or the winning value.
+* If the winning candidate's maximal status is already not `up-to-date`, no
+  adjustment is needed.
 * This same-coordinate relation MUST NOT create value provenance, dependency
   history, or validity-proof transport for the non-winning candidate.
 * The stale metadata belonging to an older value version (`modifiedAt`)
@@ -846,7 +909,9 @@ only if all of the following hold:
 4. Every direct input is itself `up-to-date`.
 5. Every direct input has a validity flag for this node in the final validity
    relation.
-6. The stored value's provenance and final dependency structure justify
+6. The winning candidate's causally-maximal `CandidateStatus` is unique and
+   `up-to-date`, and its recorded input candidate IDs match the final selection.
+7. The stored value's provenance and final dependency structure justify
    preserving it (the node was not invalidated by conflict propagation or
    relowering).
 
@@ -1176,21 +1241,33 @@ replica, and the mesh reaches a new fixed point
 
 Setup. Three snapshots over keys `K` and `D` (`D` depends on `K`):
 
-- `A` originates `K = v1` at origin `a = (A, IA, 1)`, so
-  `candA = MaterializedCandidate{ candidateId: id(a,K), origin: a, semanticKey: K,
-  kind: "materialized", value: v1, timestamps: (t1,t1), identifier: n1,
-  inputCandidateIds: [], freshness: "up-to-date", comparisonKey: (t1,n1,fA) }`.
-- `B` originates `K = v2` at origin `b = (B, IB, 1)`, so
-  `candB = MaterializedCandidate{ candidateId: id(b,K), origin: b, semanticKey: K,
-  kind: "materialized", value: v2, timestamps: (t2,t2), identifier: n2,
-  inputCandidateIds: [], freshness: "up-to-date", comparisonKey: (t2,n2,fB) }`,
-  with `(t2,n2,fB) > (t1,n1,fA)`.
-- `C` originates `D = w` at origin `c = (C, IC, 1)`, computed against `K = v2`,
-  so
-  `candC = MaterializedCandidate{ candidateId: id(c,D), origin: c, semanticKey: D,
-  kind: "materialized", value: w, timestamps: (t3,t3), identifier: n3,
+- `A` originates `K = v1` at origin `a = (A, IA, 1)` (causal context `ca`, a
+  frontier not containing `b` or `c`), so
+  `candA = MaterializedCandidate{ candidateId: id(a,K), origin: a,
+  causalContext: ca, semanticKey: K, kind: "materialized", value: v1,
+  timestamps: (t1,t1), identifier: n1, inputCandidateIds: [],
+  comparisonKey: (t1,n1,fA) }`, with status
+  `statA = CandidateStatus{ statusId: s(a,K), origin: a, causalContext: ca,
+  candidateId: id(a,K), tone: "up-to-date", inputCandidateIds: [], time: t1 }`.
+- `B` originates `K = v2` at origin `b = (B, IB, 1)` (causal context `cb`, not
+  containing `a`), so
+  `candB = MaterializedCandidate{ candidateId: id(b,K), origin: b,
+  causalContext: cb, semanticKey: K, kind: "materialized", value: v2,
+  timestamps: (t2,t2), identifier: n2, inputCandidateIds: [],
+  comparisonKey: (t2,n2,fB) }`, with
+  `statB = CandidateStatus{ origin: b, candidateId: id(b,K), tone: "up-to-date",
+  inputCandidateIds: [], time: t2 }`. `candA` and `candB` are concurrent
+  (neither causal context contains the other's origin), so the conflict tuple
+  decides: `(t2,n2,fB) > (t1,n1,fA)` selects `candB`.
+- `C` originates `D = w` at origin `c = (C, IC, 1)` (causal context `cc`),
+  computed against `K = v2`, so
+  `candC = MaterializedCandidate{ candidateId: id(c,D), origin: c,
+  causalContext: cc, semanticKey: D, kind: "materialized", value: w,
+  timestamps: (t3,t3), identifier: n3,
   inputCandidateIds: [ { semanticKey: K, candidateId: id(b,K) } ],
-  freshness: "up-to-date", comparisonKey: (t3,n3,fC) }`.
+  comparisonKey: (t3,n3,fC) }`, with
+  `statC = CandidateStatus{ origin: c, candidateId: id(c,D), tone: "up-to-date",
+  inputCandidateIds: [ { semanticKey: K, candidateId: id(b,K) } ], time: t3 }`.
 
 **First grouping — `join(join(A, B), C)`.**
 
@@ -1198,29 +1275,29 @@ Setup. Three snapshots over keys `K` and `D` (`D` depends on `K`):
 
 ```
 key K: candidates = { candA, candB }
-       freshness  = { FreshnessFact{origin: a, tone: up-to-date, time: t1},
-                      FreshnessFact{origin: b, tone: up-to-date, time: t2} }
+       statuses   = { statA, statB }
        conflicts  = { candA, candB }
 key D: (empty)
 ```
 
-`projectGraph(M1)`: `K`'s winner is `candB` (its comparison key is larger).
-`candB` has no input candidate references, so it is consistent with the final
-inputs; `K` is `up-to-date`.
+`projectGraph(M1)`: `K`'s winner is `candB` (causal maximal, conflict tuple
+larger). `candB`'s maximal status `statB` records no input references, so `K`
+is consistent with its (empty) input set and `up-to-date`.
 
 `M2 = joinMergeBasis(M1, C)` persists:
 
 ```
 key K: candidates = { candA, candB }
-       freshness  = { a: up-to-date@t1, b: up-to-date@t2 }
+       statuses   = { statA, statB }
+       conflicts  = { candA, candB }
 key D: candidates = { candC }
-       freshness  = { c: up-to-date@t3 }
+       statuses   = { statC }
        conflicts  = { candC }
 ```
 
-`projectGraph(M2)`: `D`'s winner is `candC`; its recorded input candidate for
-`K` is `id(b,K)`, which equals the final selected `K` candidate (`candB`), so
-`D` is consistent, not a direct invalidation candidate, and is `up-to-date`.
+`projectGraph(M2)`: `D`'s winner is `candC`; its maximal status `statC` records
+input `{K: id(b,K)}`, which equals the final selected `K` candidate (`candB`),
+so `D` is consistent, not a direct invalidation candidate, and `up-to-date`.
 
 **Second grouping — `join(A, join(B, C))`.**
 
@@ -1228,9 +1305,9 @@ key D: candidates = { candC }
 
 ```
 key K: candidates = { candB }
-       freshness  = { b: up-to-date@t2 }
+       statuses   = { statB }
 key D: candidates = { candC }
-       freshness  = { c: up-to-date@t3 }
+       statuses   = { statC }
        conflicts  = { candC }
 ```
 
@@ -1242,38 +1319,40 @@ correct: it has not been introduced.
 
 ```
 key K: candidates = { candA, candB }
-       freshness  = { a: up-to-date@t1, b: up-to-date@t2 }
+       statuses   = { statA, statB }
+       conflicts  = { candA, candB }
 key D: candidates = { candC }
-       freshness  = { c: up-to-date@t3 }
+       statuses   = { statC }
        conflicts  = { candC }
 ```
 
-`projectGraph(N2)` selects `candB` for `K` (larger comparison key), verifies
-`candC`'s recorded input candidate `id(b,K)` matches the final `K` winner, and
-produces the same graph as `projectGraph(M2)`.
+`projectGraph(N2)` selects `candB` for `K` (causal maximal; conflict tuple
+larger), verifies `candC`'s maximal status input `id(b,K)` matches the final
+`K` winner, and produces the same graph as `projectGraph(M2)`.
 
-`M2` and `N2` persist the identical candidate, freshness, validity, and conflict
+`M2` and `N2` persist the identical candidate, status, validity, and conflict
 evidence, so `projectGraph(M2) = projectGraph(N2)` and the two groupings yield
 the same merge basis, the same projected graph, and the same `LogicalSnapshotId`.
 
 This trace covers:
 
 - **Conflicting values:** `candA` versus `candB` are both retained in `M2` and
-  `N2` and compared by the same canonical tuple.
+  `N2` and, being concurrent, compared by the same conflict tuple.
 - **Winning value whose inputs come from different hosts:** `candC`'s value was
   computed against `candB` (host B), and the join retains that exact input
   candidate reference so the consistency check is possible in either grouping.
-- **One-input hard invalidation:** had `candC`'s recorded input candidate not
+- **One-input hard invalidation:** had `candC`'s maximal status input not
   matched the final `K` winner, `D` (one distinct input) would be hard-invalidated
   in both groupings.
 - **Multi-input deletion:** a direct invalidation candidate with two distinct
   inputs would yield a derived tombstone in both groupings.
 - **Deletion tombstones:** deletions are ordered `TombstoneCandidate` records in
-  the basis, never missing storage.
-- **Validity proof transport:** a proof is transported only when the candidate's
-  recorded input candidate ID matches the final selection.
-- **Stale evidence:** a host-originated stale `FreshnessFact` is retained while
-  it could affect a future join and combined monotonically.
+  the basis, never missing storage, ordered by causal precedence first.
+- **Validity proof transport:** a proof is transported only when the winning
+  candidate's maximal status input candidate IDs match the final selection.
+- **Status evidence:** a causally older status revision is retained while it
+  could affect a future join and combined monotonically; a causally later
+  validation supersedes an earlier invalidation.
 - **Compaction-independent journal evidence:** journal events are retained as
   immutable payloads in the logical journal view, independent of physical
   compaction.
