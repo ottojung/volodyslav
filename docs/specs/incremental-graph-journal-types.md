@@ -262,23 +262,106 @@ exactly once.** A transaction may originate several journal entries (for example
 `edit` followed by `validate`) but advances the version only once for the
 complete atomic state transition.
 
+#### Journal-entry to journal-fact transition
+
+Every host-originated `JournalEntry` maps to exactly one journal-basis fact by
+this authoritative transition:
+
+```text
+AddJournalEntry
+    -> JournalStateFact(action = "add")
+
+EditJournalEntry
+    -> JournalStateFact(action = "edit")
+
+HostDeleteJournalEntry
+    -> JournalStateFact(action = "delete")
+
+HostInvalidateJournalEntry
+    -> JournalFreshnessFact(tone = "potentially-outdated")
+
+ValidateJournalEntry
+    -> JournalFreshnessFact(tone = "up-to-date")
+```
+
+The fact copies the immutable event payload (`semanticKey`, `nodeIdentifier`,
+`time`, `creator`, `eventId`) and records:
+
+```text
+origin = {
+    hostname,
+    instanceId,
+    version = the successor HostStateVersion of the originating transaction,
+}
+```
+
+`causalContext` is the causal-frontier convention defined here:
+
+```text
+causalContext contains every host contribution observed before the originating
+transaction committed; the origin coordinate itself is stored separately and
+does not appear as the advanced coordinate inside causalContext.
+```
+
+#### Atomic commit batch
+
 During darkroom finalization:
 
 1. Read the currently committed `HostStateVersion`.
 2. Allocate its unique successor.
-3. Allocate journal indices and construct host event IDs as already specified.
-4. Add the graph mutations, the merge-basis candidate/evidence mutations, the
-   journal entries, the journal watermark, and the successor host version to
-   the same durable batch.
+3. Allocate journal indices, construct host event IDs, and derive the
+   corresponding journal-basis facts as already specified.
+4. Add the graph mutations, the graph-basis mutations, the journal-basis
+   mutations, the journal entries, the journal watermark, and the successor host
+   version to the same durable batch.
 5. Commit the batch atomically.
 6. Publish volatile counters only after the durable commit succeeds.
 
-A failed batch must leave all of the following unchanged: graph state; the
-merge basis; journal state; `last_journal_index`; `HostStateVersion`; and
-volatile next-version state.
+The batch may contain several graph candidates, status revisions, journal
+entries, and journal facts, but advances `HostStateVersion` exactly once.
 
-No-op operations must not advance the version and must not mutate the merge
-basis:
+A failed batch must leave all of the following unchanged: graph state; the graph
+basis; the journal basis; journal state; `last_journal_index`;
+`HostStateVersion`; and volatile next-version state. In particular, a journal
+entry and its corresponding journal fact are committed in the same batch, so a
+failure can never expose a journal entry or graph state under a frontier that
+advertises `(hostname, instanceId, v)` without the matching journal-basis fact
+and graph-basis contributions.
+
+#### Frontier coverage
+
+A snapshot whose frontier advertises `(hostname, instanceId, v)` MUST contain
+every graph-basis and journal-basis contribution originated by that host
+instance through version `v`. Because graph mutations, basis mutations, journal
+entries, facts, and the successor version commit atomically and the frontier is
+exported from the same committed state, this coverage is guaranteed by
+construction. Exporting takes the currently committed `localHostStateCoordinate`
+as the local frontier entry; it never advances the version.
+
+#### Failure scenarios
+
+The atomic batch makes these crash scenarios impossible:
+
+- new graph or journal state becomes durable while the exported causal frontier
+  still advertises the old host version;
+- new graph state is published with a stale graph or journal basis;
+- new journal-basis or graph-basis evidence is published with an old graph,
+  journal, or frontier coordinate;
+- a `ValidateJournalEntry` or `HostInvalidateJournalEntry` becomes visible
+  without its `JournalFreshnessFact`;
+- an `AddJournalEntry`/`EditJournalEntry`/`HostDeleteJournalEntry` becomes
+  visible without its `JournalStateFact`;
+- a first materialization is visible without its graph candidate and initial
+  `CandidateStatus`;
+- an unchanged recomputation is visible without its validating status revision.
+
+Concurrent host-originated transactions MUST serialize version allocation
+through the same finalization discipline, so they cannot receive the same
+successor or publish changes out of version order. Concurrent invalidations are
+two separate transactions and therefore two separate version advances, each
+publishing its own `JournalFreshnessFact(tone = potentially-outdated)`.
+
+No-op operations must not advance the version and must not mutate either basis:
 
 - cache-hit pull;
 - repeated invalidation of an already stale node;
@@ -289,13 +372,22 @@ basis:
 - synchronization-only changes;
 - replica reopening or switching.
 
-Concurrent host-originated transactions MUST serialize version allocation
-through the same finalization discipline, so they cannot receive the same
-successor or publish changes out of version order. This rule makes the following
-failures impossible: new graph or journal state becomes durable while the
-exported causal frontier still advertises the old host version; new graph state
-is published with a stale merge basis; and new merge-basis evidence is published
-with an old graph or frontier coordinate.
+#### Mandatory failure test
+
+```
+A validates K at version 7.
+The journal entry and graph state must never become visible under frontier v7
+without the corresponding JournalFreshnessFact.
+```
+
+A reader observing a frontier containing `(A, IA, 7)` must also observe K's
+`ValidateJournalEntry`, its `JournalFreshnessFact(tone = up-to-date)`, and the
+validating `CandidateStatus` — all committed atomically in the same batch. Any
+intermediate state exposing one without the others is a specification violation.
+
+Inactive-replica construction (migration, synchronization cutover, bulk reset)
+uses the same darkroom finalization discipline per durable batch, so the
+guarantees hold for every replica that can become active.
 
 ### Merge-basis maintenance
 
@@ -310,10 +402,16 @@ contribution from that instance.
 
 Per operation:
 
-- **First materialization**: creates one `MaterializedCandidate` for the key
-  (value, timestamps, identifier, the exact input candidate IDs the value was
-  computed against — never empty for a node with direct dependencies) and one
-  `up-to-date` `CandidateStatus` revision with the same input candidate IDs.
+- **First materialization (initial up-to-date)**: creates one
+  `MaterializedCandidate` for the key (value, timestamps, identifier, the exact
+  input candidate IDs the value was computed against — never empty for a node
+  with direct dependencies) and one `CandidateStatus(tone = "up-to-date")`
+  recording the same input candidate IDs.
+- **First materialization (initial potentially-outdated)**: creates the same
+  candidate with the same exact input candidate IDs and one
+  `CandidateStatus(tone = "potentially-outdated")`. Initial stale state is not
+  an `up-to-date -> potentially-outdated` transition; the journal emits `add`
+  only and never emits `invalidate` for it.
 - **Changed recomputation**: creates a new `MaterializedCandidate` (new origin,
   new value/timestamps) for the key, recording the exact input candidate IDs the
   new value was computed against, plus one `up-to-date` `CandidateStatus`
@@ -331,20 +429,27 @@ Per operation:
   tombstone is the durable deletion evidence.
 - **Migration create/delete/invalidate**: creates or removes candidates as a
   first materialization, deletion, or invalidation respectively, all within the
-  one migration version advance.
+  one migration version advance. A `storage.create` of an initially stale node
+  publishes a `potentially-outdated` status, emits `add` only, and never emits
+  `invalidate`.
 - **Bulk reset add/edit/delete/invalidate/validate**: creates or removes
   candidates per the transition-to-event matrix
   (`incremental-graph-journal-emission.md` § Transition-to-event matrix),
   including tombstones for reset deletions and the corresponding status
-  revisions, all within the one reset version advance.
+  revisions (a target node added in a `potentially-outdated` state receives a
+  `potentially-outdated` status), all within the one reset version advance.
 
 Operations that do not create a new candidate: unchanged recomputation,
 invalidation, cache-hit pull, export, compaction, and synchronization-only
 changes. Operations that only add monotonic evidence: unchanged recomputation
 (adds an `up-to-date` status revision), invalidation (adds a stale status
-revision). The merge basis and the exported causal frontier are committed
-together, so a crash can never expose new graph state with a stale merge basis,
-or new merge-basis evidence with an old graph or frontier coordinate.
+revision).
+
+Every first-materialization, recomputation, invalidation, deletion, migration,
+and reset path applies equally to any future authoritative import path. The
+graph basis and the exported causal frontier are committed together, so a crash
+can never expose new graph state with a stale graph basis, or new graph-basis
+evidence with an old graph or frontier coordinate.
 
 ```js
 /**
@@ -621,12 +726,25 @@ graphState = map([
 
 #### Merge basis encoding
 
-The canonical retained merge basis (see `incremental-graph-synchronization.md`
-§ Merge basis) encodes as a map from `candidateId` to the candidate record,
-sorted by `candidateId`. Each candidate record encodes its origin coordinate,
-semantic key, materialized-or-tombstone discriminant, value and timestamps when
-materialized, identifier provenance, exact direct-input candidate IDs, and
-freshness/validity evidence, in the field order defined there.
+The canonical retained graph merge basis (see
+`incremental-graph-synchronization.md` § Merge basis) encodes as two sorted
+maps in the normalized form:
+
+```text
+mergeBasis = [
+    "candidates" -> map(candidateId -> candidateRecord)
+    "statuses"   -> map(statusId -> candidateStatusRecord)
+]
+```
+
+The `candidates` map is sorted by `candidateId`; each candidate record encodes
+its origin coordinate, causal context, semantic key, materialized-or-tombstone
+discriminant, value and timestamps when materialized, identifier, exact
+direct-input candidate IDs, and comparison key, in the field order defined
+there. The `statuses` map is sorted by `statusId`; each status record encodes
+its origin coordinate, causal context, semantic key, candidateId, tone, exact
+validated input candidate IDs, and time. The encoding is always the normalized
+basis (`normalizeGraphBasis`); a non-normalized basis is not encodable.
 
 #### Logical journal view encoding
 
@@ -735,13 +853,42 @@ otherwise the causally-latest state fact (among concurrent, maximum by
 derived `invalidate` fact when one is derived, otherwise the causally-latest
 freshness fact (among concurrent, maximum by `(time, eventId)`).
 
-Safe pruning: a fact may be removed only when its removal changes no derivation
-and no canonical event. The basis MUST retain, per key, the causally-latest
-state fact, the causally-latest freshness fact, the maximum-time fact in each
-category, at least one `up-to-date` freshness fact when one exists, and at
-least one materialized (`add`/`edit`) state fact when one exists. This
-canonical subset preserves `derivedTime` and both derivation predicates, and
-pruning commutes with `joinJournalBasis`, so associativity is preserved.
+#### Normalization
+
+`LogicalSnapshotId` hashes both merge bases, so their retained form is
+canonical. `normalizeJournalBasis` and `normalizeGraphBasis`
+(`incremental-graph-synchronization.md` § Normalization) are mandatory: a basis
+may only ever be persisted, exported, hashed, or joined in normalized form.
+The canonical decision for this protocol version is:
+
+```text
+retain all immutable host-originated journal and graph evidence.
+```
+
+`normalizeJournalBasis(basis)` produces exactly one retained record set:
+
+- for each semantic key, the full set of retained `JournalStateFact`s and
+  `JournalFreshnessFact`s (no fact is ever dropped);
+- every fact's fields in the fixed field order;
+- state facts sorted by `factId`, freshness facts sorted by `factId`.
+
+It is deterministic (a pure sort and deduplication by `factId`), idempotent,
+independent of input iteration order, preserves every projection and derivation
+(the derived `delete`/`invalidate` facts, `derivedTime`, the creator origins,
+and the canonical journal), and is compatible with join:
+
+```text
+normalize(union(normalize(A), normalize(B)))
+    == normalize(union(A, B))
+```
+
+because set union, sorting, and deduplication all commute. There is no "may
+prune", "at least one retained fact", or "could still affect a future join"
+rule: the persisted format is the complete retained evidence. Snapshots carry
+only normalized bases; merge outputs normalize before publication; exports
+normalize before hashing; `LogicalSnapshotId` hashes only normalized bases; and
+two equal frontiers representing the same contributions have byte-equal
+normalized bases.
 
 #### Causal frontier encoding
 
@@ -854,12 +1001,12 @@ the exact synchronization-relevant state that a `LogicalSnapshotId` identifies:
 two snapshots with different frontiers are different exact states and receive
 different snapshot identities.
 
-The frontier is the single source of the contributor set of a snapshot. The
-contributor set of a logical snapshot is derived from the frontier's hostname
-keys; no independent contributor value is maintained, so the two can never
-disagree. The frontier summarizes which host contributions are included; it
-does not substitute for the merge basis (see `incremental-graph-synchronization.md`
-§ Merge basis).
+The frontier summarizes which host contributions are included; it
+does not substitute for the merge basis (see
+`incremental-graph-synchronization.md` § Merge basis). The frontier is not the
+creator of sync events: a sync event's creator derives from the origins of the
+retained journal facts relevant to its key (§ Sync), so a host present in the
+frontier without a fact for that key never enters the creator.
 
 ```js
 /**
@@ -981,9 +1128,10 @@ function unionCausalFrontiers(left, right)
 function causalFrontierGet(frontier, hostname)
 
 /**
- * Return the hostnames of a frontier in canonical order. The contributor set of
- * a snapshot is derived from this set:
- * `makeSync(causalFrontierHostnames(frontier))`.
+ * Return the hostnames of a frontier in canonical order. This is the frontier's
+ * hostname key set; it is NOT the creator of any sync-derived event. Sync-event
+ * creators derive from the origins of the canonical retained journal facts
+ * relevant to the event's semantic key (§ Sync-derived event).
  *
  * @param {CausalFrontier} frontier
  * @returns {ReadonlyArray<Hostname>}
@@ -1055,10 +1203,11 @@ schemaVersion              = preserved from the inputs
 The frontier union rejects a merge whose two inputs record unresolvable
 coordinates for a common hostname — in particular, a coordinate whose
 `HostInstanceId` differs for the same hostname, which is an administrative
-conflict. This is the rejection rule for a regressed or conflicting host
-coordinate during normal synchronization; see
+conflict. An older coordinate within the same `HostInstanceId` is not
+unresolvable: the union retains the later coordinate, and a staged older
+coordinate is an ordinary dominated no-op (see
 `incremental-graph-journal-sync.md` § Causal frontier and the synchronization
-gate.
+gate).
 
 The protocol and schema versions are persisted as explicit compatibility
 metadata with every synchronization source, stored separately even though they
@@ -1536,16 +1685,22 @@ function hostnameToString(hostname)
 ## Sync
 
 `Sync` is a nominal immutable set of participating `Hostname` values. It is the
-`creator` of sync-derived events: the set describes the hosts whose exact source
-snapshots participated in deriving the event. It does not identify one host as
-the actor.
+`creator` of sync-derived events: the set describes the hosts whose retained
+journal evidence participated in deriving the event. It does not identify one
+host as the actor.
 
-The contributor set of a source snapshot is derived from that snapshot's
-causal frontier and is never maintained as an independent value: for a
-snapshot whose frontier is `F`, the contributor set is
-`makeSync(causalFrontierHostnames(F))` (see `Causal frontier`).
-Because a merge unions the two input frontiers, the merged contributor set is
-exactly the union of the two input contributor sets.
+The creator of a sync-derived event for key `K` is derived from the origins of
+the canonical retained journal facts relevant to `K` and is never maintained as
+an independent value:
+
+```text
+creator(K) = makeSync(hostnames of the origins of the retained state and
+                      freshness facts for K in the joined journal basis)
+```
+
+A host whose causal frontier coordinate is present but that contributed no fact
+for `K` never enters `K`'s creator (see `incremental-graph-journal-sync.md` §
+Derive sync-derived merge facts).
 
 Although it is conceptually a set, its runtime iteration and persisted
 serialization order must be deterministic:
@@ -2054,8 +2209,8 @@ An `AddJournalEntry` has `action: "add"` and `creator: Hostname`. No
 ### E2 — Sync delete entry is sync-derived
 
 A `SyncDeleteJournalEntry` has `action: "delete"` and `creator: Sync`. Its
-`eventId` derives from the merge protocol version, the action, the key, and the
-canonical derived time of the joined journal evidence.
+`eventId` is a digest of the complete immutable payload: protocol, action, key,
+identifier, time, and the key-relevant creator (see § Sync-derived event).
 
 ### E3 — Sync-derived add is rejected
 
@@ -2106,9 +2261,11 @@ F2 = { A: { LA, 1 }, B: { LB, 1 } }
 
 The two snapshot IDs differ because
 `causalFrontierToString(F1) ≠ causalFrontierToString(F2)`. Consequently a merge
-using one snapshot cannot receive the same sync event ID as a merge using the
-other: the snapshot IDs embedded in the sync event ID differ, so the creator
-(derived from the frontier) can never be paired with the wrong event identity.
+using one snapshot cannot receive the same `LogicalSnapshotId` as a merge using
+the other. The sync event ID is a digest of the complete payload and never
+embeds snapshot IDs; the creator of any sync event derives from the origins of
+the retained journal facts relevant to the event's key, so a different frontier
+can only change an event ID through an actual change in the retained evidence.
 
 ### E7 — Frontier ordering and administrative conflict
 
@@ -2125,12 +2282,15 @@ Host H has coordinates `{ I, 4 }` and `{ I, 7 }` in the same storage instance
   unrelated reinitialization of H's storage; the union rejects it as an
   administrative conflict rather than ordering or guessing a winner.
 
-### E8 — Contributor set derives from the frontier
+### E8 — Creator derives from key-relevant origins
 
-A snapshot whose frontier is `{ A: {IA, 1}, B: {IB, 2}, C: {IC, 1} }` has
-contributor set `makeSync(causalFrontierHostnames(frontier)) =
-Sync{A, B, C}`. The contributor set is never stored independently, so it cannot
-disagree with the frontier.
+The creator of a sync-derived event for key `K` is
+`makeSync(hostnames of the origins of the canonical retained journal facts
+relevant to K)`. A host present in the snapshot's causal frontier but with no
+retained fact for `K` never enters `K`'s creator. For example, if the frontier
+is `{ A: {IA, 1}, B: {IB, 2}, C: {IC, 1} }` but only `A` and `B` contribute
+facts for `K`, the creator is `Sync{A, B}`, never `Sync{A, B, C}`. The creator
+is derived from the retained facts and is never stored independently.
 
 ### E9 — Frontier coordinate resolution rules
 
@@ -2140,7 +2300,9 @@ For a staged coordinate `{ Is, vs }` compared against a frontier coordinate
 - same instance (`Is === If`) and equal version (`vs === vf`): already
   incorporated, complete no-op;
 - same instance and `vs > vf`: later logical state, normal advancement, merge;
-- same instance and `vs < vf`: regression, reject;
+- same instance and `vs < vf`: an older staged snapshot whose coordinate is
+  already dominated — an ordinary dominated no-op, never an error
+  (see `incremental-graph-journal-sync.md` § Synchronization gate);
 - different instance (`Is !== If`): unrelated storage reinitialization,
   administrative conflict, reject.
 
@@ -2169,10 +2331,11 @@ canonical instance representation.
 ### C1 — Minimal empty or fresh replica
 
 A fresh storage instance with no materialized nodes, no journal events, frontier
-`{ A: { I, 0 } }`, and an empty merge basis encodes to exactly the bytes of
-`array(["logical-snapshot", u64(1), schemaVersion, protocolVersion, emptyGraph,
-emptyBasis, emptyJournalView, frontierBytes])`. Its `LogicalSnapshotId` is the
-SHA-256 of those bytes.
+`{ A: { I, 0 } }`, an empty graph basis, and an empty journal basis encodes to
+exactly the bytes of
+`array(["logical-snapshot", u64(2), schemaVersion, protocolVersion, emptyGraph,
+emptyGraphBasis, emptyJournalBasis, emptyJournalView, frontierBytes])`. Its
+`LogicalSnapshotId` is the SHA-256 of those bytes.
 
 ### C2 — One materialized node
 
