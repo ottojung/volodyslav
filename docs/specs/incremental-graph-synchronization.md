@@ -38,9 +38,11 @@ exported, staged, merged, invalidated, and committed during synchronization.
   observably equivalent final IncrementalGraph states after ignoring only
   local physical details such as inactive replica slot names and temporary
   paths.
-- This document does not establish associativity across three or more replicas
-  or arbitrary sequential host-order independence unless those properties are
-  separately proven.
+- The merge is a canonical logical join: it is commutative, associative, and
+  idempotent, so the result for any set of snapshots is independent of the
+  grouping or order in which they are merged (see § 1b Logical join).
+- This document does not specify the transport used to obtain or store logical
+  snapshots; that is the responsibility of an external transport adapter.
 - This document does not specify exact LevelDB key formats except where
   semantic lookup invariants require it.
 
@@ -146,6 +148,54 @@ a regression within a lineage, a competing successor, or an unrelated lineage
 with no validated transition). The merged destination's provenance is durably
 established before the destination becomes active or is used as the source of a
 later per-host merge.
+
+---
+
+## 1b. Logical Join
+
+The complete graph-and-journal merge is a canonical logical join over the
+represented host-originated logical contributions. It is:
+
+```text
+commutative:
+merge(A, B) = merge(B, A)
+
+associative:
+merge(merge(A, B), C) = merge(A, merge(B, C))
+
+idempotent:
+merge(A, A) = A
+```
+
+Equality covers synchronization-relevant logical state:
+
+- graph materializations and selected values;
+- freshness;
+- identifiers where logically relevant;
+- dependency and validity state;
+- deletion and invalidation outcomes;
+- canonical journal state;
+- causal frontier;
+- accepted lineage-transition history;
+- deterministic `ReplicaSnapshotId`.
+
+**Logical-join invariant:** For valid snapshots, the logical merge result is
+determined by the represented host-originated logical states, not by the
+grouping or order in which those states were previously merged.
+
+The join is defined over the multiset of snapshots represented by the causal
+frontier. Every per-key decision — candidate selection (§6), source fidelity,
+direct invalidation, multi-input deletion, deletion closure (§7), validity
+reconstruction (§11), journal event selection, and carrier placement — is a
+deterministic function of the complete set of candidate materializations, and
+is therefore independent of grouping. Physical storage may differ between two
+replicas with equal logical merge state: compaction and local layout are not
+part of the join result.
+
+The causal frontier may serve as the complete no-op gate only because of this
+invariant: when the local frontier dominates a staged frontier, the staged
+snapshot contributes no host-originated logical state that is not already
+represented, so the join is unchanged.
 
 ---
 
@@ -394,12 +444,13 @@ closure guarantees this.
 
 ## 6. Timestamp Conflict Policy
 
-**REQ-SYNC-07 (Canonical materialization selection):** For each semantic key:
+**REQ-SYNC-07 (Canonical materialization selection):** For each semantic key,
+the merge selects one canonical candidate over the complete set of candidate
+materializations contributed by all snapshots being joined:
 
-- If present only in L: select that materialization.
-- If present only in H: select that materialization.
-- If present in both L and H, compare materialization candidates by the fixed
-  tuple `(modifiedAt, NodeIdentifier, sourceFingerprint)`:
+- If only one candidate exists, select it.
+- If several candidates exist, compare them by the fixed tuple
+  `(modifiedAt, NodeIdentifier, sourceFingerprint)` and select the maximum:
   1. the newer `modifiedAt` wins;
   2. on equal `modifiedAt`, the lexicographically greater canonical
      `NodeIdentifier` string wins using deterministic JavaScript code-unit
@@ -407,6 +458,9 @@ closure guarantees this.
   3. on equal `modifiedAt` and `NodeIdentifier`, the lexicographically greater
      validated source replica fingerprint wins using deterministic JavaScript
      code-unit ordering.
+
+The maximum is a deterministic function of the candidate set, so the selection
+is independent of the grouping or order of the join (§ 1b).
 - The comparison MUST NOT prefer a candidate because it is named local, host,
   keep, take, current, or target.
 - Missing timestamps for materialized values are invalid or corrupt state under
@@ -469,28 +523,34 @@ merge MUST be conservative for freshness only:
 
 ## 7. Candidate Selection, Direct Invalidation, and Deletion
 
-The temporary pairwise merge rule implemented for
-https://github.com/ottojung/volodyslav/issues/1520 separates source selection,
-direct hard invalidation, propagated staleness, and deletion. The future
-journal-backed coherent-history rule is tracked by
-https://github.com/ottojung/volodyslav/issues/1521; this section specifies only
-the current conservative pairwise behaviour.
+The merge selects one canonical candidate per semantic key and then decides
+freshness, invalidation, and deletion. Every decision below is a deterministic
+function of the complete set of candidate materializations, so the result is
+independent of the grouping or order in which snapshots were merged (§ 1b).
 
-**DEF-SYNC-06 (Taint propagation):** Keep-taint propagates forward from every
-key where the local candidate strictly wins by the complete canonical tuple.
-Take-taint propagates forward from every key where the host candidate strictly
-wins by the complete canonical tuple. Taint is ancestry information, not a
-source-selection override. A selected local/target candidate has opposite-side
-ancestry when take-taint reaches it. A selected host candidate has opposite-side
-ancestry when keep-taint reaches it.
+**DEF-SYNC-06 (Source fidelity):** A source materialization `m` of semantic key
+`K` in snapshot `S` **faithfully represents** the final `K` when, for every
+direct semantic input `D` of `K`, the final selected version of `D` is provided
+by `S` — that is, `S`'s candidate for `D` is the canonical winner for `D`, and
+`S`'s materialization of `D` is that winner's materialization. Fidelity is a
+property of a single snapshot and the final selection; it does not depend on
+grouping.
 
-**DEF-SYNC-07 (Direct invalidation candidate):** A direct invalidation candidate
-is a selected cached node whose next required recomputation must invoke the
-computor rather than accept cache-only revalidation. Candidates are produced by:
+**DEF-SYNC-07 (Direct invalidation candidate):** A selected cached node `K` is a
+direct invalidation candidate when its stored value's proof does not carry to
+the final state, so its next required recomputation must invoke the computor
+rather than accept cache-only revalidation. A key is a direct invalidation
+candidate when at least one of:
 
-1. opposite-side ancestry reaching the selected candidate;
-2. direct input relowering;
-3. same-coordinate stale freshness metadata from REQ-SYNC-08c.
+1. no single source faithfully represents the final `K` — in particular when
+   the canonical winner's snapshot does not provide the final selected versions
+   of every direct input. This replaces the pairwise notion of opposite-side
+   ancestry: a selected candidate is tainted exactly when its own snapshot does
+   not represent the final inputs, which is a property of the candidate set
+   rather than of a merge direction;
+2. the final dependency structure of `K` differs from the winning source's
+   dependency structure (direct relowering below);
+3. same-coordinate stale freshness metadata from REQ-SYNC-08c applies.
 
 **DEF-SYNC-08 (Direct relowering):** A selected cached node is directly
 relowered when at least one distinct semantic direct input used by its source
@@ -537,7 +597,10 @@ materialized dependents, while `A`, `B`, siblings, and unrelated
 materializations such as `U` survive. The closure follows structural semantic
 dependencies, not only validity edges, and synchronization never invokes
 computors while applying it. Deleted nodes have no final identifier, cached
-value, freshness, timestamps, validity entries, or value origin.
+value, freshness, timestamps, validity entries, or value origin. The deletion
+root set is a deterministic function of the candidate set (§ 1b), and the
+closure over the final materialized graph is deterministic, so the resulting
+deleted-key set is independent of grouping.
 
 **TERM-SYNC-17 (Propagated staleness):** A node can become
 `potentially-outdated` because one of its inputs is stale. That is propagated
@@ -778,12 +841,13 @@ commit must not leave callers reading from an invalid partial merge target.
 
 ## 14. Multi-Host Synchronization
 
-**REQ-SYNC-23 (Pairwise commutativity):** For valid source replicas A and B using the same schema, merging A with B and merging B with A produce observably equivalent final IncrementalGraph states. Observable equivalence includes semantic keys, selected identifiers, stored values, freshness, timestamps, lowered inputs, reverse dependencies, validity proofs, deletion outcomes, and invalidation outcomes. It excludes host-local allocator capability metadata: each host intentionally retains its own `fingerprint` and `last_node_index` allocation namespace. It may also ignore local physical details such as temporary paths, logs, replica-slot names, and source-role labels.
+**REQ-SYNC-23 (Logical-join commutativity and associativity):** For valid source replicas using the same schema, the merge is a commutative, associative, and idempotent logical join (§ 1b): `merge(A, B) = merge(B, A)`, `merge(merge(A, B), C) = merge(A, merge(B, C))`, and `merge(A, A) = A`. Observable equivalence includes semantic keys, selected identifiers, stored values, freshness, timestamps, lowered inputs, reverse dependencies, validity proofs, deletion outcomes, and invalidation outcomes. It excludes host-local allocator capability metadata: each host intentionally retains its own `fingerprint` and `last_node_index` allocation namespace. It may also ignore local physical details such as temporary paths, logs, replica-slot names, and source-role labels.
 
 **REQ-SYNC-24 (Sequential per-host merge):** Normal synchronization may merge
-multiple staged host snapshots sequentially. Each per-host merge observes the
-result of prior successful per-host merges (because each merge may switch the
-active replica and advance its state).
+multiple staged host snapshots sequentially. Because the merge is a canonical
+logical join, the final state is independent of the order of those per-host
+merges; each per-host merge still observes the result of prior successful
+per-host merges.
 
 **REQ-SYNC-25 (Per-host validation after success):** The implementation MUST
 validate the graph state after every successful per-host merge against the
@@ -793,13 +857,14 @@ invariants in §12 before proceeding to the next host.
 synchronization may continue with remaining hosts and aggregate all failures
 into a single composite error.
 
-**REQ-SYNC-27 (No multi-host order independence guarantee):** This specification requires pairwise commutativity for a single two-replica merge. It does not guarantee associativity across three or more replicas or arbitrary sequential host-order independence unless a future document proves and requires those properties. Correctness is not full CRDT-like convergence.
-The correctness obligation for multi-host synchronization is that each
-individual per-host merge satisfies the invariants of §12 at the moment it
-completes, and that the final state after all host merges (successful or
-skipped) is a valid IncrementalGraph state from which all future public
-operations produce results consistent with the main IncrementalGraph spec.
-This is a safety property, not a convergence property.
+**REQ-SYNC-27 (Join order independence):** Because the merge is a canonical
+logical join (§ 1b), it is commutative and associative: the final state after
+merging a set of host snapshots is the same regardless of the order or grouping
+of per-host merges. Each individual per-host merge still satisfies the
+invariants of §12 at the moment it completes, and the final state after all host
+merges (successful or skipped) is a valid IncrementalGraph state from which all
+future public operations produce results consistent with the main
+IncrementalGraph spec.
 
 ---
 
@@ -834,3 +899,83 @@ copy of L into T.
 
 **PROP-SYNC-04 (No computor invocation):** Synchronization never invokes a
 computor function, directly or indirectly.
+
+**PROP-SYNC-05 (Join determinism):** The graph-and-journal merge is a canonical
+logical join: `merge(A, B) = merge(B, A)`, `merge(merge(A, B), C) =
+merge(A, merge(B, C))`, and `merge(A, A) = A` over all synchronization-relevant
+logical state. Two replicas that represent the same host-originated logical
+contributions, received in any grouping or order, converge to equal logical
+merge state.
+
+---
+
+## 16. Testable scenarios
+
+### G1 — Associativity across two groupings
+
+Snapshots `A`, `B`, `C` are valid and share a schema and protocol.
+`merge(merge(A, B), C)` and `merge(A, merge(B, C))` produce equal logical state:
+equal graph materializations and selected values, freshness, identifiers,
+dependency and validity state, deletion and invalidation outcomes, canonical
+journal state, causal frontier, transition history, and `ReplicaSnapshotId`.
+
+### G2 — All six processing orders of three snapshots
+
+Merging `A`, `B`, `C` in each of the six orders
+`ABC, ACB, BAC, BCA, CAB, CBA` produces the same final logical state.
+
+### G3 — One-input invalidation roots under different groupings
+
+`A → D` with a single distinct semantic input: whichever grouping is used,
+`D` is retained as a hard invalidation candidate (value kept,
+`potentially-outdated`, incoming proofs removed), never deleted, and the final
+logical state is identical across groupings.
+
+### G4 — Multi-input deletion roots under different groupings
+
+`A, B → D` with two distinct semantic inputs: whichever grouping is used, a
+direct invalidation candidate `D` is deleted (no final identifier, value,
+freshness, timestamps, validity entries, or value origin), and the deletion
+closure over the final materialized graph deletes the same transitive dependent
+set across groupings.
+
+### G5 — Conflicting values with equal and unequal modifiedAt
+
+Two snapshots contribute different values for the same key. With unequal
+`modifiedAt`, the newer `modifiedAt` wins in every grouping. With equal
+`modifiedAt` and equal identifier, the same-coordinate conservative rule
+(REQ-SYNC-08c) applies identically in every grouping; with equal `modifiedAt`
+and different identifiers, the canonical `(modifiedAt, NodeIdentifier,
+sourceFingerprint)` tuple determines the winner identically.
+
+### G6 — Different pre-existing journal placement and compaction histories
+
+Two replicas represent the same host-originated contributions but have
+physically different journal placement (different indices, different
+compaction-removed absences). Merging either replica with a third snapshot
+produces the same canonical journal state and the same `ReplicaSnapshotId`:
+physical placement and compaction are not part of the logical join result.
+
+### G7 — Three-host fixed point under different arrival orders
+
+Hosts `A`, `B`, `C` reach the fixed-point frontier
+`{ A: {LA, vA}, B: {LB, vB}, C: {LC, vC} }`. If each host then supplies its
+snapshot to a peer in any order, every synchronization attempt whose staged
+frontier is dominated by the local frontier is a complete no-op, and the
+resulting logical state is identical.
+
+### G8 — Equal frontiers imply equal logical merge state
+
+Two replicas with equal causal frontiers exchange snapshots. Because both
+represent the same host-originated logical contributions, the logical merge
+state — including the `ReplicaSnapshotId` — is equal after the exchange. Their
+physical storage may differ (compaction, index layout); that is not part of the
+join.
+
+### G9 — A real new contribution propagates once after the three-host fixed point
+
+After the three-host fixed point, host `C` performs a real host-local graph or
+journal mutation and advances to `LC/vC+1`. Whichever peer incorporates `C`'s
+new snapshot first, the new contribution propagates exactly once to every
+replica, and the mesh reaches a new fixed point
+`{ A: {LA, vA}, B: {LB, vB}, C: {LC, vC+1} }`.

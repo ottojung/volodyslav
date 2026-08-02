@@ -139,6 +139,14 @@ comparison covers every hostname represented by the staged frontier, not merely
 the hostname of the host that supplied the snapshot: a staged snapshot may
 contain contributions originating from several hosts.
 
+The gate is sound only because the graph-and-journal merge is a canonical
+logical join — commutative, associative, and idempotent (see
+`incremental-graph-synchronization.md` § 1b Logical join). When the local
+frontier dominates a staged frontier, the staged snapshot contributes no
+host-originated logical state that is not already represented locally, so the
+join is unchanged. Two replicas with equal frontiers therefore have equal
+logical merge state, even though their physical storage may differ.
+
 - If the local frontier dominates the staged frontier, the staged snapshot
   contains no host-originated logical contribution that is new to the local
   replica. The synchronization attempt MUST be a **complete no-op**: no
@@ -1215,12 +1223,12 @@ transported by the same adapter.
 
 ### T26 — Contributor sets union across successive merges
 
-Freshly initialized leaf snapshots `A`, `B`, and `C` have frontiers
-`{ A: { LA, 1 } }`, `{ B: { LB, 1 } }`, and `{ C: { LC, 1 } }`. Merging `A`
-and `B` yields a frontier `{ A: { LA, 1 }, B: { LB, 1 } }` and a contributor
-set `Sync{A, B}` (derived from the frontier's hostnames). Merging that derived
-snapshot with leaf `C` yields a frontier with hostnames `{A, B, C}` and a
-contributor set `Sync{A, B, C}`. The contributor set is never stored
+Freshly initialized leaf snapshots `A`, `B`, and `C` begin at version 0 and
+have frontiers `{ A: { LA, 0 } }`, `{ B: { LB, 0 } }`, and `{ C: { LC, 0 } }`.
+Merging `A` and `B` yields a frontier `{ A: { LA, 0 }, B: { LB, 0 } }` and a
+contributor set `Sync{A, B}` (derived from the frontier's hostnames). Merging
+that derived snapshot with leaf `C` yields a frontier with hostnames `{A, B, C}`
+and a contributor set `Sync{A, B, C}`. The contributor set is never stored
 independently of the frontier.
 
 ### T27 — Successful reset rotates the cursor domain
@@ -1277,18 +1285,18 @@ canonical lineage.
 
 ### T34 — Two-host periodic fixed point
 
-Two hosts A and B start fresh: A's frontier is `{ A: { LA, 1 } }` and B's is
-`{ B: { LB, 1 } }`.
+Two hosts A and B start fresh at version 0: A's frontier is `{ A: { LA, 0 } }`
+and B's is `{ B: { LB, 0 } }`.
 
-1. A exports its snapshot and B stages it. B's frontier `{ B: { LB, 1 } }` does
-   not dominate the staged frontier `{ A: { LA, 1 } }`, so B merges A and its
-   frontier becomes `{ A: { LA, 1 }, B: { LB, 1 } }`.
+1. A exports its snapshot and B stages it. B's frontier `{ B: { LB, 0 } }` does
+   not dominate the staged frontier `{ A: { LA, 0 } }`, so B merges A and its
+   frontier becomes `{ A: { LA, 0 }, B: { LB, 0 } }`.
 2. B exports its snapshot and A stages it. A's frontier does not dominate, so A
-   merges B and its frontier becomes `{ A: { LA, 1 }, B: { LB, 1 } }`.
+   merges B and its frontier becomes `{ A: { LA, 0 }, B: { LB, 0 } }`.
 3. Each host exports its current state. Exporting the newly learned frontier
-   does not advance A or B's own logical version: both remain `LA/1` and `LB/1`.
+   does not advance A or B's own logical version: both remain `LA/0` and `LB/0`.
 4. They exchange snapshots again. Each local frontier now dominates the staged
-   frontier (`{ A: { LA, 1 }, B: { LB, 1 } }` in both directions), so both
+   frontier (`{ A: { LA, 0 }, B: { LB, 0 } }` in both directions), so both
    synchronization attempts are complete no-ops: no destination is constructed,
    no journal entry is appended or repositioned, no notification is emitted,
    the watermark is unchanged, no provenance is published, and no replica is
@@ -1298,14 +1306,15 @@ Two hosts A and B start fresh: A's frontier is `{ A: { LA, 1 } }` and B's is
 
 ### T35 — Local pulls do not re-incorporate unchanged B
 
-After the fixed point above, host A performs ordinary local pulls and
-invalidations and exports again. The export preserves `{ B: { LB, 1 } }` and
-updates only A's own coordinate to `{ A: { LA, 2 } }` (A originated new content,
-so its version advances exactly once). B stages A's export: B's frontier
-`{ A: { LA, 1 }, B: { LB, 1 } }` does not dominate (A is now `LA/2`), so B
-merges A exactly once. B exports (frontier `{ A: { LA, 2 }, B: { LB, 1 } }`);
-A stages it, A's frontier dominates, and the merge is a no-op. Unchanged B was
-not re-incorporated; A's new contribution propagated exactly once.
+After the fixed point above (`{ A: { LA, 0 }, B: { LB, 0 } }`), host A performs
+ordinary local pulls and invalidations and exports again. The export preserves
+`{ B: { LB, 0 } }` and updates only A's own coordinate to `{ A: { LA, 1 } }`
+(A originated new content in one transaction, so its version advances exactly
+once). B stages A's export: B's frontier `{ A: { LA, 0 }, B: { LB, 0 } }` does
+not dominate (A is now `LA/1`), so B merges A exactly once. B exports (frontier
+`{ A: { LA, 1 }, B: { LB, 0 } }`); A stages it, A's frontier dominates, and the
+merge is a no-op. Unchanged B was not re-incorporated; A's new contribution
+propagated exactly once.
 
 ### T36 — Real change on B propagates exactly once
 
