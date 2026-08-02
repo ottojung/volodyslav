@@ -121,9 +121,8 @@ Migration-generated events are ordinary host-created events: their `creator` is
 a `Hostname`, not a `Sync` set. A `Sync` creator is used only for events
 derived by synchronization. Migration is not part of synchronization; it is a
 host-local storage transformation between schema versions. Migration preserves
-the current local host event namespace, so appended host events share the
-lineage's namespace (see `incremental-graph-journal-types.md` § Host event
-namespace).
+the current local host lineage, so appended host events share the
+lineage (see `incremental-graph-journal-types.md` § Host lineage).
 
 REQ-JM-07: `storage.delete` MUST NOT remove, purge, or otherwise modify any
 established journal entry for the deleted node (including older `add`, `edit`,
@@ -223,8 +222,8 @@ REQ-JM-12a: A successful migration cutover publishes a fresh
 `JournalCursorDomain` and rejects every `PossibleNodeChange` token registered
 in the old domain. A failed migration preserves the old cursor domain and the
 validity of existing same-process tokens under the old state. Migration
-preserves the established journal lineage and the current local host event
-namespace; it rotates only the cursor domain (see
+preserves the established journal lineage and the current local host lineage;
+it rotates only the cursor domain (see
 `incremental-graph-journal-types.md` § Journal lineage).
 
 ---
