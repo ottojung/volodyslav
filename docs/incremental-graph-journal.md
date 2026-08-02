@@ -136,24 +136,34 @@ design is introduced.
 
 Each source snapshot carries a `SourceSnapshotProvenance` that includes a
 per-host incorporation frontier: for every hostname that contributed to the
-snapshot, the exact host revision already incorporated. A newly initialized
-host starts with its own current revision in the frontier; a pairwise merge
-unions the two frontiers (retaining the known descendant revision for a
-hostname present in both, and rejecting incomparable revisions); a local
-checkpoint after ordinary activity preserves remote entries and updates only
-the local hostname's revision.
+snapshot, the exact host revision coordinate already incorporated — the pair of
+the host lineage and the exact revision. A newly initialized host starts with
+its own coordinate (its lineage and current revision) in the frontier; a
+pairwise merge unions the two frontiers (retaining the known descendant
+coordinate for a hostname present in both within the same lineage, and
+rejecting incomparable coordinates, in particular when their lineage IDs
+differ); a local checkpoint after ordinary activity preserves remote entries
+and updates only the local hostname's coordinate within its current lineage.
 
-Because the frontier records the exact revision already incorporated,
+Host lineage is the one canonical host-lineage identifier: the same
+`HostLineageId` value scopes ordinary host-event identity, appears in every host
+revision coordinate in the frontier, and detects reset discontinuities. Git
+revision ancestry orders revisions only inside the same explicit host lineage;
+two coordinates of the same hostname with different lineage IDs are incomparable
+regardless of Git ancestry.
+
+Because the frontier records the exact coordinate already incorporated,
 synchronization is a fixed point for an unchanged host: if the staged host
-revision is already recorded in the frontier, the per-host merge is a complete
-no-op. Let `D = merge(A, B)`; if `B` has not advanced, then `merge(D, B) = D` —
-no event is appended or repositioned, the watermark is unchanged, no new
-provenance is published, consumers are not notified again, and the active
-replica is not switched. Ordinary local graph activity preserves remote
-frontier entries, so it does not make an unchanged remote host "new"; only an
-advance to a not-yet-incorporated descendant revision does. A regressed or
-incomparable host revision is rejected by normal synchronization rather than
-guessed.
+coordinate (lineage and revision) is already recorded in the frontier, the
+per-host merge is a complete no-op. Let `D = merge(A, B)`; if `B` has not
+advanced, then `merge(D, B) = D` — no event is appended or repositioned, the
+watermark is unchanged, no new provenance is published, consumers are not
+notified again, and the active replica is not switched. Ordinary local graph
+activity preserves remote frontier entries, so it does not make an unchanged
+remote host "new"; only an advance to a not-yet-incorporated descendant
+revision (within the same lineage) does. A regressed or incomparable host
+coordinate — in particular one whose lineage differs from the recorded lineage —
+is rejected by normal synchronization rather than guessed.
 
 Journal reconciliation is pairwise commutative: reversing the two source
 snapshots produces the same journal result and the same frontier.
@@ -175,8 +185,15 @@ It also defines how source snapshot provenance (including the incorporation
 frontier), journal creators, and deterministic event identity and timestamps
 participate in conflict resolution.
 
-`reset-to-hostname` is a journal discontinuity: it installs a new journal
-lineage, may adopt a numerically lower watermark, and rotates the cursor domain.
+`reset-to-hostname` is a journal discontinuity: it installs the selected graph
+and journal snapshot, generates a fresh local host lineage, uses that same fresh
+lineage for newly originated host event IDs, replaces the resetting hostname's
+frontier coordinate with the fresh lineage and the reset commit revision while
+preserving the applicable coordinates of other hosts from the selected snapshot,
+may adopt a numerically lower watermark, and rotates the cursor domain. The
+supported reset implementation creates the reset commit as a child of the old
+local head, so Git ancestry alone cannot distinguish a reset from an ordinary
+advancement; the explicit lineage identifier detects the discontinuity.
 
 The detailed synchronization behavior is specified in:
 
