@@ -58,8 +58,9 @@ observable-state abstraction used by journal reconciliation.
 `last_journal_index`. Graph synchronization does read one piece of provenance
 metadata — the `SourceSnapshotProvenance.causalFrontier` — but only as the
 per-host merge gate of REQ-SYNC-02a (skip a staged logical snapshot whose
-complete frontier is already dominated by the local frontier; reject a
-regressed, conflicting, or unresolvable coordinate). It never inspects journal
+complete frontier is already dominated by the local frontier, including older
+same-instance coordinates; reject a coordinate whose `HostInstanceId` differs,
+an administrative conflict). It never inspects journal
 entries to plan the graph merge.
 
 ### GraphDelta
@@ -140,12 +141,13 @@ Each synchronized logical snapshot and merged destination carries a
 `SourceSnapshotProvenance` — a `LogicalSnapshotId`, a causal frontier, the merge
 protocol version, and the schema version (see
 `incremental-graph-journal-types.md` § Logical snapshot identity) — which
-journal reconciliation uses to derive sync event identity and contributor sets.
-Pairwise merge rejects inputs with mismatching merge protocol or schema
+journal reconciliation uses to derive sync event identity and key-relevant
+creators. Pairwise merge rejects inputs with mismatching merge protocol or schema
 versions, and the frontier union rejects inputs whose frontiers record
-unresolvable coordinates for a common hostname (for example, a regression within
-a storage instance, or a different `HostInstanceId` for the same hostname, an
-administrative conflict). The merged destination's provenance is durably
+unresolvable coordinates for a common hostname (a different `HostInstanceId`
+for the same hostname, an administrative conflict; an older coordinate within
+the same instance is a dominated no-op, never a rejection). The merged
+destination's provenance is durably
 established before the destination becomes active or is used as the source of a
 later per-host merge.
 
@@ -409,8 +411,8 @@ selected input candidate IDs.
 
 ```js
 /**
- * Conflict evidence for a semantic key: the candidate and status records that
- * could still affect a future join.
+ * Conflict evidence for a semantic key: the complete retained candidate and
+ * status records for the key.
  *
  * @typedef {object} ConflictEvidence
  * @property {ReadonlyArray<Candidate>} candidates
@@ -419,21 +421,21 @@ selected input candidate IDs.
 ```
 
 `joinConflictEvidence(C1, C2)` is the union of the two candidate sets and the
-two status sets, pruned by the dominance rule below. It is commutative,
-associative, and idempotent by construction.
+two status sets, deduplicated by record ID. It is commutative, associative, and
+idempotent by construction.
 
 ### Semilattice operations
 
 ```text
-joinCandidateSets(S1, S2)      = the union of the two candidate sets, pruned by
-                                 candidate dominance
+joinCandidateSets(S1, S2)      = the union of the two candidate sets
+                                 (deduplicated by candidateId)
 
 joinFreshnessEvidence(E1, E2)  = E1 ∪ E2   (status revisions)
 
 joinValidityEvidence(V1, V2)   = V1 ∪ V2
 
-joinConflictEvidence(C1, C2)   = (candidates(S1 ∪ S2) pruned,
-                                  statuses(E1 ∪ E2) pruned)
+joinConflictEvidence(C1, C2)   = (candidates(S1 ∪ S2) deduplicated,
+                                  statuses(E1 ∪ E2) deduplicated)
 
 joinMergeBasis(A, B)           = per-key:
                                    candidates  = joinCandidateSets
@@ -446,22 +448,40 @@ Each operation is the union of an unordered, deduplicated set and is therefore
 commutative, associative, and idempotent by construction — not merely by
 declaration.
 
-### Candidate dominance and safe pruning
+### Normalization
 
-A candidate `c1` is **dominated** by a retained candidate `c2` for the same
-semantic key when `c2` is strictly later than `c1` in the total selection order
-(causal precedence, then conflict tuple, then `CandidateId`) and `c1` is not
-referenced as an input by any retained materialized candidate and `c2`'s
-evidence absorbs `c1`'s evidence. A status revision is dominated when a
-retained revision for the same candidate is causally later than it (it can
-never again be maximal).
+`LogicalSnapshotId` hashes the graph basis, so the basis has a canonical
+persisted form. `normalizeGraphBasis(basis)` is mandatory: a basis may only be
+persisted, exported, hashed, or joined in normalized form. The canonical
+decision for this protocol version is:
 
-Safe pruning: a candidate or status that is dominated by a retained record, is
-not referenced as an input, and whose evidence is absorbed by retained evidence
-may be removed. A record that could still win a future selection (it is not
-dominated by a retained record), that is referenced as an input by a retained
-materialized candidate, or whose evidence has not been absorbed MUST be
-retained. Information needed by later merges must never be silently discarded.
+```text
+retain all immutable host-originated graph evidence.
+```
+
+`normalizeGraphBasis(basis)` produces exactly one retained record set:
+
+- the complete set of retained `MaterializedCandidate` and `TombstoneCandidate`
+  records (no candidate or tombstone is ever dropped);
+- the complete set of retained `CandidateStatus` revisions (no status is ever
+  dropped);
+- every record's fields in the fixed field order;
+- candidates sorted by `candidateId`, statuses sorted by `statusId`.
+
+It is deterministic (a pure sort and deduplication by record ID), idempotent,
+independent of input iteration order, preserves every projection and derivation
+(winning-candidate selection, direct invalidation, deletion closure, derived
+freshness, validity reconstruction), and is compatible with join:
+
+```text
+normalize(union(normalize(A), normalize(B)))
+    == normalize(union(A, B))
+```
+
+because set union, sorting, and deduplication all commute. There is no "may
+prune", "could still matter", or "may be removed" rule: the persisted format is
+the complete retained evidence. Unretained compaction of the basis is deferred
+to a future protocol revision and has no representation in this protocol.
 
 ### projectGraph
 
@@ -525,8 +545,8 @@ separate pairwise implementation.
 - A later materialization supersedes a tombstone when it is causally later than
   the tombstone (a host re-materializes after deleting), or — among concurrent
   candidates — when its conflict tuple exceeds the tombstone's.
-- Older candidates, tombstones, and statuses may be discarded only by the
-  safe-pruning rule above.
+- Older candidates, tombstones, and statuses are all retained in the normalized
+  basis (see § Normalization); this protocol defines no unretained compaction.
 
 ---
 
@@ -580,14 +600,26 @@ provenance from its selected candidate. Deleted nodes have no final value and
 therefore no value origin. The merge basis is the single retained
 representation of value origin; no separate origin map is maintained.
 
-**DEF-SYNC-02 (Candidate-input identity):** A materialized value is valid only
-against the exact input candidate IDs it records. The final selected value
-carries its validity proofs exactly when its recorded input candidate IDs equal
-the final selected input candidate IDs for each direct input (`projectGraph`
-steps 2-3). Equal timestamps and equal identifiers do not prove equal values
-because a recomputation preserves the identifier and `modifiedAt` has finite
-resolution. ComputedValue equality, hashing, or serialization must not be used
-as identity evidence.
+**DEF-SYNC-02 (Candidate-input identity):** Current validity is a property of
+the candidate's **causally-maximal `CandidateStatus`**, never of the candidate
+record itself. The two input sets are distinct:
+
+```text
+MaterializedCandidate.inputCandidateIds
+    = immutable historical inputs used when the value was originally computed
+
+maximal CandidateStatus.inputCandidateIds
+    = inputs against which that unchanged value is currently validated
+```
+
+A materialized value carries its validity proofs exactly when its maximal
+status's `inputCandidateIds` equal the final selected input candidate IDs for
+each direct input (`projectGraph` steps 2-3). The candidate's original input
+candidate IDs are historical provenance only and MUST NOT be consulted for
+current validity. Equal timestamps and equal identifiers do not prove equal
+values because a recomputation preserves the identifier and `modifiedAt` has
+finite resolution. ComputedValue equality, hashing, or serialization must not
+be used as identity evidence.
 
 **REQ-SYNC-01 (Value origin from copy, not equality):** Deep equality of
 stored values MUST NOT create a value origin.
@@ -617,23 +649,25 @@ steps in order:
 
 **REQ-SYNC-02a (Incorporated-host skip):** Before a staged logical snapshot is
 merged, the implementation MUST compare the snapshot's complete causal frontier
-against the local source's frontier using `dominatesCausalFrontier` (see
- `incremental-graph-journal-types.md` § Causal frontier and
- `incremental-graph-journal-sync.md` § Synchronization gate). If the local
- frontier dominates the staged frontier, the staged snapshot contains no
- host-originated logical contribution that is new to the local replica, and the
- per-host merge is a **complete no-op**: no destination is constructed, no
- journal event is appended or repositioned, no notification is emitted, the
- watermark is not increased, no new provenance is published, and the
- active-replica pointer MUST remain unchanged. If the staged frontier contains a
- later comparable coordinate for at least one hostname, synchronization may
- proceed. If the frontiers contain a coordinate whose `HostInstanceId` differs
- for the same hostname — a regression within an instance or unrelated storage
- reinitialization — synchronization for that host MUST fail with a
- coordinate-conflict error. The frontier's remote entries are preserved by any
- export taken after ordinary graph activity, so this skip is stable across runs
- while the remote hosts are unchanged. This is what makes synchronization a
- fixed point for unchanged hosts.
+ against the local source's frontier using `dominatesCausalFrontier` (see
+  `incremental-graph-journal-types.md` § Causal frontier and
+  `incremental-graph-journal-sync.md` § Synchronization gate). If the local
+  frontier dominates the staged frontier, the staged snapshot contains no
+  host-originated logical contribution that is new to the local replica, and the
+  per-host merge is a **complete no-op**: no destination is constructed, no
+  journal event is appended or repositioned, no notification is emitted, the
+  watermark is not increased, no new provenance is published, and the
+  active-replica pointer MUST remain unchanged. An older staged coordinate within
+  the same `HostInstanceId` is dominated and therefore the same no-op; it is
+  never an error. If the staged frontier contains a
+  later comparable coordinate for at least one hostname, synchronization may
+  proceed. If the frontiers contain a coordinate whose `HostInstanceId` differs
+  for the same hostname — unrelated storage reinitialization — synchronization
+  for that host MUST fail with a coordinate-conflict error. The frontier's remote
+  entries are preserved by any
+  export taken after ordinary graph activity, so this skip is stable across runs
+  while the remote hosts are unchanged. This is what makes synchronization a
+  fixed point for unchanged hosts.
 
 **REQ-SYNC-03 (Reset is an ordinary bulk graph procedure):** Reset is not a
 synchronization mode with journal semantics of its own. An outer adapter or
@@ -810,11 +844,12 @@ freshness, invalidation, and deletion. Every decision below is a deterministic
 function of the joined merge basis, so the result is independent of the
 grouping or order in which snapshots were merged (§ 1b and § 1c).
 
-**DEF-SYNC-06 (Candidate-input consistency):** A materialized candidate's value
-is consistent with the final inputs exactly when its recorded `inputCandidateIds`
-equal the final selected candidate IDs for each direct semantic input
-(`projectGraph` step 3). This is a property of the candidate record and the
-final selection; it does not depend on grouping.
+**DEF-SYNC-06 (Candidate-input consistency):** The winning candidate's value is
+consistent with the final inputs exactly when its **causally-maximal status's**
+`inputCandidateIds` equal the final selected candidate IDs for each direct
+semantic input (`projectGraph` step 3). This is a property of the maximal status
+and the final selection; it does not depend on grouping, and the candidate's own
+historical `inputCandidateIds` are never consulted.
 
 **DEF-SYNC-07 (Direct invalidation candidate):** A selected cached node `K` is a
 direct invalidation candidate when its stored value's proof does not carry to
@@ -822,18 +857,19 @@ the final state, so its next required recomputation must invoke the computor
 rather than accept cache-only revalidation. A key is a direct invalidation
 candidate when at least one of:
 
-1. the winning candidate's recorded `inputCandidateIds` do not equal the final
-   selected input candidate IDs (direct input relowering below);
+1. the winning candidate's causally-maximal status `inputCandidateIds` do not
+   equal the final selected input candidate IDs (direct input relowering below);
 2. the final dependency structure of `K` differs from the winning candidate's
-   recorded structure;
+   maximal-status recorded structure;
 3. same-coordinate stale freshness metadata from REQ-SYNC-08c applies.
 
 **DEF-SYNC-08 (Direct relowering):** A selected cached node is directly
-relowered when at least one distinct semantic direct input used by its winning
-`MaterializedCandidate` is not the final selected candidate for that semantic
-input. Different storage identifiers, equal timestamps, or equal stored values
-do not make a non-matching candidate equivalent. Direct relowering creates a
-direct invalidation candidate; it is not by itself a deletion decision.
+relowered when at least one distinct semantic direct input recorded by its
+winning candidate's causally-maximal status is not the final selected candidate
+for that semantic input. Different storage identifiers, equal timestamps, or
+equal stored values do not make a non-matching candidate equivalent. Direct
+relowering creates a direct invalidation candidate; it is not by itself a
+deletion decision.
 
 **REQ-SYNC-09 (Distinct semantic input classifier):** The classifier counts
 distinct semantic direct dependency keys. It must not count computor argument
@@ -950,32 +986,33 @@ the computation histories are interchangeable.
 
 ## 11. Validity Proof Transport
 
-**DEF-SYNC-09 (Candidate validity proof):** A materialized candidate's
-`inputCandidateIds` record the exact input candidate IDs against which its value
-is valid. A final validity edge `valid[finalD].has(finalN)` is transported from
-the winning `MaterializedCandidate` of `N` when that candidate's recorded input
-candidate reference for `D` equals the final selected candidate ID for `D`
-(`projectGraph` step 8).
+**DEF-SYNC-09 (Candidate validity proof):** A winning candidate's
+**causally-maximal `CandidateStatus`** records the exact input candidate IDs
+against which its unchanged value is currently valid. A final validity edge
+`valid[finalD].has(finalN)` is transported from the winning candidate of `N`
+when the maximal status's input candidate reference for `D` equals the final
+selected candidate ID for `D` (`projectGraph` step 8). The candidate's own
+historical `inputCandidateIds` are not a validity proof source.
 
 **REQ-SYNC-14 (Validity proof transport conditions):** A validity proof is
 transported only when ALL of the following hold:
 
-1. The winning candidate of `N` records an `InputCandidateReference` for
-   semantic input `D`.
-2. The recorded reference equals the final selected candidate ID for `D`.
+1. The winning candidate of `N` has a causally-maximal status recording an
+   `InputCandidateReference` for semantic input `D`.
+2. That recorded reference equals the final selected candidate ID for `D`.
 3. `D` and `N` both have final identifiers in `finalIdentifierForKey`.
 4. `finalD` is a direct structural input of `finalN` in the final lowered graph
    per `mergedInputsMap`.
 5. The final dependency edge is derived from the final graph scheme and
    semantic inputs, not copied blindly from source storage.
 
-The two endpoints of a transported proof come from one materialized candidate
-record. Their final stored byte origins do not need to be the same when
+The two endpoints of a transported proof come from one winning candidate and its
+maximal status. Their final stored byte origins do not need to be the same when
 equal-timestamp candidates represent the same temporary semantic versions.
 
 **REQ-SYNC-15 (Negative transport rules):**
 
-- A proof is transported only when the winning candidate's recorded input
+- A proof is transported only when the winning candidate's maximal status input
   candidate IDs match the final selection; otherwise no proof is transported.
 - Proofs involving deleted or discarded candidates MUST NOT be transported.
 - Proofs involving unknown semantic keys MUST NOT be transported.
@@ -985,15 +1022,17 @@ equal-timestamp candidates represent the same temporary semantic versions.
 - Stored value equality MUST NOT be used as a fallback for any endpoint in
   validity proof transport. A proof is transported only through an exact
   candidate-ID match, not on extensional value match.
+- The candidate's original `inputCandidateIds` MUST NOT justify transport when
+  the maximal status records different inputs.
 
 **REQ-SYNC-16 (Required incoming validity for up-to-date nodes):** Every final
 `up-to-date` materialized node must have complete incoming validity proofs for
-all its direct inputs. The winning candidate's recorded input candidate IDs plus
-the final selection justify complete proof transport for every node that is not
-a direct invalidation candidate. Validity reconstruction expects the planning
-classification to be complete and throws `UnplannedMissingValidityProofError` if
-a missing proof is discovered. Reconstruction does not itself create a new
-direct invalidation root.
+all its direct inputs. The winning candidate's maximal status input candidate
+IDs plus the final selection justify complete proof transport for every node
+that is not a direct invalidation candidate. Validity reconstruction expects
+the planning classification to be complete and throws
+`UnplannedMissingValidityProofError` if a missing proof is discovered.
+Reconstruction does not itself create a new direct invalidation root.
 
 **REQ-SYNC-17 (Rebuild, not merge):** The final validity relation must be
 rebuilt from the final lowered graph, not textually merged from source
@@ -1350,12 +1389,59 @@ This trace covers:
   the basis, never missing storage, ordered by causal precedence first.
 - **Validity proof transport:** a proof is transported only when the winning
   candidate's maximal status input candidate IDs match the final selection.
-- **Status evidence:** a causally older status revision is retained while it
-  could affect a future join and combined monotonically; a causally later
-  validation supersedes an earlier invalidation.
+- **Status evidence:** every status revision is retained in the normalized
+  basis; a causally later validation supersedes an earlier invalidation.
 - **Compaction-independent journal evidence:** journal events are retained as
   immutable payloads in the logical journal view, independent of physical
   compaction.
+
+### G11 — Unchanged recomputation keeps validity through the maximal status
+
+Setup: `A1` is the selected candidate of input `A`, and `D` is computed against
+`A1`. `D`'s candidate records historical `inputCandidateIds = [{A, id(A1)}]`,
+and its maximal status records the same inputs.
+
+`A` changes to `A2` (a new candidate for `A`, causally after `A1`). `D`
+recomputes against `A2` and returns unchanged (no new `D` candidate). The host
+publishes a new `CandidateStatus(D)` with `tone = "up-to-date"` and
+`inputCandidateIds = [{A, id(A2)}]`, causally later than the previous status.
+
+`projectGraph` of the joined basis: the winning `D` candidate is the original
+one (its value never changed), but the winning candidate's causally-maximal
+status records `{A: id(A2)}`, which equals the final selected `A` candidate.
+Therefore `D` is consistent, is not a direct invalidation candidate, remains
+`up-to-date`, and receives a validity proof against `A2`. No normative rule
+consults `D`'s original candidate input `A1` for current validity.
+
+### G12 — Status-edge cases
+
+- **Later validation superseding same-host invalidation:** a host invalidates
+  `K`, then revalidates it at a later `HostStateVersion`. The later
+  `up-to-date` status is causally maximal and supersedes the invalidation;
+  `K` is `up-to-date` when the recorded inputs match the final selection.
+- **Concurrent validate versus invalidate:** two hosts concurrently validate
+  and invalidate `K` (neither causal context contains the other). The maximal
+  status set is two concurrent statuses with conflicting tones, which resolves
+  conservatively to `potentially-outdated`.
+- **Status referring to a deleted or non-winning candidate:** a status whose
+  `candidateId` is not the winning candidate is not consulted for the key's
+  freshness or validity; the winning candidate's maximal status decides.
+- **Several status revisions in different merge groupings:** the basis retains
+  every status revision, and the maximal status of the winner is the same in
+  every grouping, because causal precedence and the total selection order are
+  canonical functions of the retained set.
+
+### G13 — Freshly created stale node round-trips byte-equal
+
+A host first materializes `K` in a `potentially-outdated` state: the basis
+retains the candidate, a `CandidateStatus(tone = "potentially-outdated")`
+recording the exact direct-input candidate IDs, and the journal emits `add`
+only (initial stale state is not an `up-to-date -> potentially-outdated`
+transition and emits no `invalidate`). Exporting that snapshot and
+re-projecting it (`projectGraph(normalizeGraphBasis(basis))`) keeps `K`
+`potentially-outdated` and produces byte-equal graph state and byte-equal
+normalized graph basis. Re-joining the exported snapshot with itself is
+absorbed (`merge(D, D) = D`).
 
 ---
 
