@@ -137,15 +137,15 @@ installing `F` changes its public observable state relative to either source.
 Journal reconciliation must not inspect or compare `ComputedValue`s itself.
 
 Each synchronized logical snapshot and merged destination carries a
-`SourceSnapshotProvenance` — a `ReplicaSnapshotId`, a causal frontier, the
-accepted lineage-transition records, the merge protocol version, and the schema
-version (see `incremental-graph-journal-types.md` § Logical snapshot
-provenance) — which journal reconciliation uses to derive sync event identity
-and contributor sets. Pairwise merge rejects inputs with mismatching merge
-protocol or schema versions, and the frontier union rejects inputs whose
-frontiers record unresolvable coordinates for a common hostname (for example,
-a regression within a lineage, a competing successor, or an unrelated lineage
-with no validated transition). The merged destination's provenance is durably
+`SourceSnapshotProvenance` — a `LogicalSnapshotId`, a causal frontier, the merge
+protocol version, and the schema version (see
+`incremental-graph-journal-types.md` § Logical snapshot identity) — which
+journal reconciliation uses to derive sync event identity and contributor sets.
+Pairwise merge rejects inputs with mismatching merge protocol or schema
+versions, and the frontier union rejects inputs whose frontiers record
+unresolvable coordinates for a common hostname (for example, a regression within
+a storage instance, or a different `HostInstanceId` for the same hostname, an
+administrative conflict). The merged destination's provenance is durably
 established before the destination becomes active or is used as the source of a
 later per-host merge.
 
@@ -176,26 +176,120 @@ Equality covers synchronization-relevant logical state:
 - deletion and invalidation outcomes;
 - canonical journal state;
 - causal frontier;
-- accepted lineage-transition history;
-- deterministic `ReplicaSnapshotId`.
+- the persisted merge basis;
+- deterministic `LogicalSnapshotId`.
 
 **Logical-join invariant:** For valid snapshots, the logical merge result is
 determined by the represented host-originated logical states, not by the
 grouping or order in which those states were previously merged.
 
-The join is defined over the multiset of snapshots represented by the causal
-frontier. Every per-key decision — candidate selection (§6), source fidelity,
-direct invalidation, multi-input deletion, deletion closure (§7), validity
-reconstruction (§11), journal event selection, and carrier placement — is a
-deterministic function of the complete set of candidate materializations, and
+The join is executable from persisted state: it is defined over the **merge
+basis** (§ 1c), not over the original input replicas. Every per-key decision —
+candidate selection (§6), direct invalidation, multi-input deletion, deletion
+closure (§7), validity reconstruction (§11), journal event selection, and
+carrier placement — is a deterministic function of the joined merge basis, and
 is therefore independent of grouping. Physical storage may differ between two
 replicas with equal logical merge state: compaction and local layout are not
 part of the join result.
 
-The causal frontier may serve as the complete no-op gate only because of this
-invariant: when the local frontier dominates a staged frontier, the staged
-snapshot contributes no host-originated logical state that is not already
-represented, so the join is unchanged.
+The causal frontier may serve as the complete no-op gate only because the merge
+basis is closed under merge and persisted: when the local frontier dominates a
+staged frontier, the staged snapshot contributes no host-originated logical
+state that is not already represented in the local basis, so the join is
+unchanged.
+
+---
+
+## 1c. Merge Basis
+
+A derived replica must be able to perform a later associative join without the
+original input replicas. It therefore persists a compact, per-key **merge
+basis** that is closed under merge. Exported snapshots include the merge basis
+or a canonical equivalent. The causal frontier summarizes which host
+contributions are included, but it does not substitute for the merge basis.
+
+Conceptually, each semantic key's merge basis retains a set of
+`MaterializationCandidate` records:
+
+```js
+/**
+ * One candidate materialization or tombstone for a semantic key.
+ *
+ * @typedef {object} MaterializationCandidate
+ * @property {string} candidateId - Immutable, globally unambiguous within the
+ *   synchronization mesh.
+ * @property {HostStateCoordinate} origin - The host-originated state that
+ *   introduced this candidate.
+ * @property {NodeKey} semanticKey
+ * @property {"materialized" | "tombstone"} kind
+ * @property {ComputedValue | undefined} value - When materialized.
+ * @property {{ createdAt: UnixTimestamp, modifiedAt: UnixTimestamp } | undefined} timestamps
+ * @property {NodeIdentifier | undefined} identifier - When materialized.
+ * @property {ReadonlyArray<string>} inputCandidateIds - The exact selected
+ *   input candidate IDs against which this value is valid.
+ * @property {object} freshnessEvidence - Monotonically combined freshness and
+ *   conflict evidence.
+ * @property {object} validityEvidence - Validity-proof evidence carried by this
+ *   candidate.
+ * @property {object} comparisonMetadata - Deterministic comparison metadata
+ *   (for example modifiedAt, identifier, fingerprint for candidate selection).
+ */
+```
+
+Rules:
+
+- `candidateId` is immutable and globally unambiguous within the synchronization
+  mesh.
+- A recomputed or authoritatively imported value records the exact selected
+  input candidate IDs against which it is valid.
+- A deletion is represented by an ordered tombstone candidate, never by missing
+  storage alone.
+- Freshness and conflict evidence is combined monotonically across joins.
+- Once a candidate is provably dominated and can never affect a future join,
+  the specification may define safe removal; information needed by later merges
+  must never be silently discarded.
+- A derived replica persists the resulting merge basis, and exported snapshots
+  include it.
+
+### joinMergeBasis
+
+```text
+joinMergeBasis(A, B)
+```
+
+is the commutative, associative, and idempotent union of the two input merge
+bases. For each semantic key, the joined basis retains:
+
+- the union of all candidate records that could still affect a future join
+  (the canonical winner, its input candidates, and any not-yet-dominated
+  tombstones or evidence), and
+- monotonically combined freshness and conflict evidence.
+
+The exact per-key retention rule is the closed semilattice of candidate
+evidence: a candidate is retained while it (or its evidence) could influence
+candidate selection, direct invalidation, dependency relowering, deletion
+closure, freshness, or validity reconstruction of a future join.
+
+### projectGraph
+
+```text
+projectGraph(joinedMergeBasis)
+```
+
+is the deterministic projection from the joined merge basis to the installed
+graph state:
+
+- the canonical winning materialization per key (candidate selection by the
+  comparison tuple);
+- freshness from the monotonically combined evidence;
+- dependency and validity edges lowered from the input candidate IDs to the
+  final identifiers;
+- deletion closure from tombstones;
+- identifier lookup from the surviving materializations.
+
+Candidate selection, direct invalidation, dependency relowering, deletion
+closure, freshness, and validity reconstruction are all computable from the
+joined merge basis.
 
 ---
 
@@ -293,56 +387,32 @@ steps in order:
 **REQ-SYNC-02a (Incorporated-host skip):** Before a staged logical snapshot is
 merged, the implementation MUST compare the snapshot's complete causal frontier
 against the local source's frontier using `dominatesCausalFrontier` (see
-`incremental-graph-journal-types.md` § Causal frontier and
-`incremental-graph-journal-sync.md` § Synchronization gate). If the local
-frontier dominates the staged frontier, the staged snapshot contains no
-host-originated logical contribution that is new to the local replica, and the
-per-host merge is a **complete no-op**: no destination is constructed, no
-journal event is appended or repositioned, no notification is emitted, the
-watermark is not increased, no new provenance is published, and the
-active-replica pointer MUST remain unchanged. If the staged frontier contains a
-later comparable coordinate for at least one hostname, synchronization may
-proceed. If the frontiers contain a genuine lineage conflict that cannot be
-resolved by an accepted `HostLineageTransition` — a regression within a
-lineage, a competing successor, or an unrelated lineage without a valid
-transition — synchronization for that host MUST fail with a host-version
-mismatch or coordinate-conflict error. The frontier's remote entries are
-preserved by any export taken after ordinary graph activity, so this skip is
-stable across runs while the remote hosts are unchanged. This is what makes
-synchronization a fixed point for unchanged hosts.
+ `incremental-graph-journal-types.md` § Causal frontier and
+ `incremental-graph-journal-sync.md` § Synchronization gate). If the local
+ frontier dominates the staged frontier, the staged snapshot contains no
+ host-originated logical contribution that is new to the local replica, and the
+ per-host merge is a **complete no-op**: no destination is constructed, no
+ journal event is appended or repositioned, no notification is emitted, the
+ watermark is not increased, no new provenance is published, and the
+ active-replica pointer MUST remain unchanged. If the staged frontier contains a
+ later comparable coordinate for at least one hostname, synchronization may
+ proceed. If the frontiers contain a coordinate whose `HostInstanceId` differs
+ for the same hostname — a regression within an instance or unrelated storage
+ reinitialization — synchronization for that host MUST fail with a
+ coordinate-conflict error. The frontier's remote entries are preserved by any
+ export taken after ordinary graph activity, so this skip is stable across runs
+ while the remote hosts are unchanged. This is what makes synchronization a
+ fixed point for unchanged hosts.
 
-**TERM-SYNC-13 (Reset-to-hostname mode):** A synchronization mode that is NOT
-a graph merge. It synchronizes to a chosen hostname snapshot by replacing the
-local state with the snapshot's state and returns without processing additional
-hosts.
-
-**REQ-SYNC-03 (Reset mode separation):** Reset-to-hostname mode must not be
-mixed with normal per-host merge semantics. The reset procedure replaces
-replica state wholesale; it does not merge.
-
-**REQ-SYNC-03a (Reset publishes a fresh lineage and a logical transition):** A
-successful `reset-to-hostname` MUST:
-
-1. install the selected graph and journal snapshot;
-2. generate a fresh local `HostLineageId` (see `incremental-graph-journal-types.md`
-   § Host lineage);
-3. use that same fresh lineage for newly originated host event IDs;
-4. replace the resetting hostname's frontier coordinate with the fresh lineage
-   and its initial logical version;
-5. preserve the applicable coordinates of other hosts from the selected
-   snapshot;
-6. record a durable `HostLineageTransition` from the previous coordinate to the
-   fresh-lineage coordinate (see `incremental-graph-journal-types.md` § Host
-   lineage transition);
-7. rotate the journal cursor domain as specified by the journal
-   specifications.
-
-The transition is the logical proof of succession and is not inferred from
-transport history. A peer that knows the predecessor coordinate may accept the
-successor coordinate without performing its own reset. Normal synchronization
-MUST NOT merge two coordinates for the same hostname when their lineage IDs
-differ unless a validated `HostLineageTransition` connects them; a staged
-snapshot whose transition is stale, conflicting, or absent is rejected.
+**REQ-SYNC-03 (Reset is an ordinary bulk graph procedure):** Reset is not a
+synchronization mode with journal semantics of its own. An outer adapter or
+orchestration command resolves a hostname to a validated target logical
+snapshot; the IncrementalGraph receives only the target graph projection and
+applies it through the internal bulk graph operation `replaceGraphState`
+(see § 17 Reset as a bulk graph operation). The core graph operation must not
+receive or install the target snapshot's journal, watermark, cursor state, or
+journal provenance. Reset is one host-originated bulk graph transaction; the
+journal records its graph changes through the ordinary emission matrix.
 
 ---
 
@@ -802,8 +872,8 @@ following differ from the currently active replica:
 - graph data, identifier mapping, freshness, or validity metadata;
 - journal entries or established journal absences;
 - `last_journal_index`;
-- `SourceSnapshotProvenance` (the destination's `ReplicaSnapshotId`, causal
-  frontier, lineage transitions, merge protocol version, and schema version);
+- `SourceSnapshotProvenance` (the destination's `LogicalSnapshotId`, causal
+  frontier, merge protocol version, and schema version);
 - any other durable journal or provenance metadata.
 
 The active pointer remains unchanged only when the complete installed state
@@ -917,7 +987,7 @@ Snapshots `A`, `B`, `C` are valid and share a schema and protocol.
 `merge(merge(A, B), C)` and `merge(A, merge(B, C))` produce equal logical state:
 equal graph materializations and selected values, freshness, identifiers,
 dependency and validity state, deletion and invalidation outcomes, canonical
-journal state, causal frontier, transition history, and `ReplicaSnapshotId`.
+journal state, causal frontier, merge basis, and `LogicalSnapshotId`.
 
 ### G2 — All six processing orders of three snapshots
 
@@ -953,13 +1023,13 @@ sourceFingerprint)` tuple determines the winner identically.
 Two replicas represent the same host-originated contributions but have
 physically different journal placement (different indices, different
 compaction-removed absences). Merging either replica with a third snapshot
-produces the same canonical journal state and the same `ReplicaSnapshotId`:
+produces the same canonical journal state and the same `LogicalSnapshotId`:
 physical placement and compaction are not part of the logical join result.
 
 ### G7 — Three-host fixed point under different arrival orders
 
 Hosts `A`, `B`, `C` reach the fixed-point frontier
-`{ A: {LA, vA}, B: {LB, vB}, C: {LC, vC} }`. If each host then supplies its
+`{ A: {IA, vA}, B: {IB, vB}, C: {IC, vC} }`. If each host then supplies its
 snapshot to a peer in any order, every synchronization attempt whose staged
 frontier is dominated by the local frontier is a complete no-op, and the
 resulting logical state is identical.
@@ -968,14 +1038,131 @@ resulting logical state is identical.
 
 Two replicas with equal causal frontiers exchange snapshots. Because both
 represent the same host-originated logical contributions, the logical merge
-state — including the `ReplicaSnapshotId` — is equal after the exchange. Their
+state — including the `LogicalSnapshotId` — is equal after the exchange. Their
 physical storage may differ (compaction, index layout); that is not part of the
 join.
 
 ### G9 — A real new contribution propagates once after the three-host fixed point
 
 After the three-host fixed point, host `C` performs a real host-local graph or
-journal mutation and advances to `LC/vC+1`. Whichever peer incorporates `C`'s
+journal mutation and advances to `IC/vC+1`. Whichever peer incorporates `C`'s
 new snapshot first, the new contribution propagates exactly once to every
 replica, and the mesh reaches a new fixed point
-`{ A: {LA, vA}, B: {LB, vB}, C: {LC, vC+1} }`.
+`{ A: {IA, vA}, B: {IB, vB}, C: {IC, vC+1} }`.
+
+### G10 — Detailed merge-basis trace: join(join(A,B),C) versus join(A,join(B,C))
+
+This trace shows the persisted intermediate merge basis and demonstrates that
+the second join has every fact required to produce the same result.
+
+Setup: `A` originates key `K` at value `v1` (origin `{ A: {IA, 1} }`), `B`
+originates `K` at value `v2` (origin `{ B: {IB, 1} }`), and `C` originates a
+related key `D` whose value depends on `K`.
+
+**First grouping — `join(join(A, B), C)`.**
+
+`M1 = joinMergeBasis(A, B)`. The persisted basis for key `K` retains both
+candidate records `candA(K, v1)` and `candB(K, v2)` with their comparison
+metadata (`modifiedAt`/`identifier`/`fingerprint`), the monotonic freshness
+evidence from both origins, and their input candidate IDs. `projectGraph(M1)`
+selects the canonical winner (say `v2` from `B`); because `B`'s candidate does
+not faithfully represent the final inputs of `K` (or `D`'s inputs), `D` is a
+direct-invalidation candidate.
+
+`M2 = joinMergeBasis(M1, C)`. The basis still contains `candA` and `candB`
+(either may yet affect a future join), plus `C`'s candidate for `D` with its
+exact input candidate IDs pointing into the basis (for example `candB(K)`),
+plus any tombstone evidence. `projectGraph(M2)` computes the final
+materializations, invalidation, deletion closure, and validity reconstruction.
+
+**Second grouping — `join(A, join(B, C))`.**
+
+`N1 = joinMergeBasis(B, C)`. Its basis contains `candB(K, v2)` and `C`'s
+candidate for `D` (which records `candB(K)` as its input candidate ID).
+
+`N2 = joinMergeBasis(A, N1)`. When joining `A` into `N1`, the basis contains
+`candA(K, v1)`, `candB(K, v2)`, and `C`'s `D` candidate. The join needs to
+determine that `v2` still wins over `v1`, that `C`'s `D` value was computed
+against `candB(K)` (the winning `K` input), and that `A`'s contribution does
+not change that. All of these facts are present in `N1`'s persisted basis:
+`candA` is not needed inside `N1`, but `N1` retains `candB` (the winner) and
+`C`'s candidate with its input candidate IDs, so joining `A` re-derives the same
+winner and the same freshness/validity decisions.
+
+Because `joinMergeBasis` is the closed semilattice union of candidate evidence,
+`M2` and `N2` retain the same candidate facts, and `projectGraph(M2)` equals
+`projectGraph(N2)`. This trace covers:
+
+- **Conflicting values:** `candA` versus `candB` are both retained and compared
+  by the same canonical tuple in both groupings.
+- **Winning value whose inputs come from different hosts:** `C`'s `D` candidate
+  records the exact input candidate IDs, so the join knows which `K` candidate
+  it was valid against even when the winner came from another host.
+- **One-input hard invalidation:** `D` with one distinct input that is not
+  faithfully represented is retained and invalidated in both groupings.
+- **Multi-input deletion:** a candidate with two distinct inputs that cannot be
+  faithfully represented yields a deletion tombstone in both groupings.
+- **Deletion tombstones:** deletions are ordered tombstone candidates in the
+  basis, never missing storage.
+- **Validity proof transport:** validity evidence is carried by the candidate
+  whose input candidate IDs match the final selection.
+- **Stale evidence:** older, now-dominated evidence is retained while it could
+  affect a future join, and combined monotonically.
+- **Compaction-independent journal evidence:** journal events are retained as
+  immutable payloads in the logical journal view, independent of physical
+  compaction.
+
+---
+
+## 17. Reset as a Bulk Graph Operation
+
+Reset is an ordinary graph procedure with no journal semantics of its own. An
+outer adapter or orchestration command resolves a hostname to a validated
+target logical snapshot and supplies only its graph projection to
+IncrementalGraph, which applies it through an internal bulk graph operation
+conceptually equivalent to:
+
+```text
+replaceGraphState(targetGraphState)
+```
+
+The core graph operation must not receive or install the target snapshot's
+journal, watermark, cursor state, or journal provenance. Reset is one
+host-originated bulk graph transaction.
+
+Before publishing anything, the operation computes the complete semantic delta
+between the currently installed graph and the target graph. For each semantic
+node key the delta yields zero or one of `add`, `delete`, `edit`, `invalidate`,
+or `validate`, according to the single transition-to-event matrix in
+`incremental-graph-journal-emission.md` § Transition-to-event matrix. When more
+than one condition applies, the matrix defines the combined events and their
+order.
+
+The target graph must be validated before publication: materialization closure
+holds; the identifier lookup is bijective; every `up-to-date` node has all
+required materialized, `up-to-date` inputs; validity proofs match the target
+dependencies; deleted nodes have no remaining values, freshness, timestamps,
+identifiers, dependency records, or validity records; no computor is invoked.
+
+A changed key must also produce the ordinary graph merge-basis candidate or
+tombstone required for future synchronization; a reset deletion must create the
+same durable deletion evidence as any other host-local deletion, never be
+represented merely by absence.
+
+The entire operation is published atomically. If the destination is built in an
+inactive replica: copy the existing journal prefix and watermark unchanged,
+build the new graph state, append reset-generated journal entries at fresh
+indices above the old watermark, persist the one successor `HostStateVersion`,
+and switch only after the complete destination is durable and validated. A
+successful changed reset advances the local `HostStateVersion` exactly once,
+regardless of how many nodes and journal entries it changes.
+
+Journal and cursor continuity: reset preserves every established journal
+position and absence, appends only above the current watermark, never decreases
+`last_journal_index`, preserves the existing `JournalCursorDomain`, keeps
+existing `PossibleNodeChange` cursors valid, and preserves the local
+`HostInstanceId`. Reset is not journal compaction, synchronization
+normalization, migration, or journal replacement. A no-op reset emits no
+journal entries, advances no watermark and no host version, and performs no
+replica switch. A failed reset leaves graph state, journal state, watermark,
+host version, active replica, and existing cursor validity unchanged.
