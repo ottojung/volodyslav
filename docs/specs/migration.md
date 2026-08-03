@@ -176,24 +176,6 @@ are defined in `docs/specs/incremental-graph-journal-migrations.md`.
 - Journal entries are emitted atomically with their corresponding graph
   transitions.
 
-## HostStateVersion advance on migration
-
-A migration destination is invisible until cutover. A successful migration that
-produces host-originated synchronization-relevant state advances the local
-host's `HostStateVersion` exactly once for the complete migration:
-
-- The successor version is derived from the previously active replica and
-  persisted in the completed inactive destination.
-- It is published only through successful active-replica cutover.
-- A failed migration preserves the previously active coordinate.
-- A migration that is entirely synchronization-neutral and produces no
-  host-originated logical change must not advance the version.
-- Migration-generated `add`, `delete`, and `invalidate` entries belong to that
-  one version advance.
-
-See `incremental-graph-journal-types.md` § Durable commit rules and
-`incremental-graph-journal-emission.md` § HostStateVersion advance.
-
 ## Atomicity guarantee
 
 Decisions are collected in memory during the callback.  The desired state is unified into the target replica's storage, then validated with `assertValidFinalMergeState` before the replica pointer is switched.  A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
