@@ -198,6 +198,11 @@ Every freshness entry contains:
 
 ```text
 subjectStateEventId
+tone:
+    "up-to-date"
+    | "potentially-outdated"
+validInputStateEvents:
+    Map<input NodeKey, eventId>
 ```
 
 It applies only when that exact state event remains selected. Freshness entries
@@ -210,19 +215,25 @@ freshnessOrder(entry) = (
 )
 ```
 
+Every freshness transition is represented as a journal entry, including
+staleness that arises by recursive propagation. The runtime graph cache and the
+journal projection therefore always agree.
+
 #### Validate
 
 ```text
 {
     action: "validate",
     subjectStateEventId,
+    tone: "up-to-date",
     validInputStateEvents:
         Map<input NodeKey, eventId>,
 }
 ```
 
 It records the exact selected input state events against which the unchanged
-cached value was validated.
+cached value was validated. A dependent becomes fresh only after its own
+`validate` event.
 
 #### Invalidate
 
@@ -230,14 +241,23 @@ cached value was validated.
 {
     action: "invalidate",
     subjectStateEventId,
-    validInputStateEvents: empty,
+    tone: "potentially-outdated",
+    validInputStateEvents: Map<input NodeKey, eventId>,
 }
 ```
 
-It represents removal of the named node's incoming validity proofs. Freshness
-events are never emitted merely because a node became stale through upstream
-propagation; that staleness is derived during graph projection, and its existing
-incoming proofs remain available.
+Two forms exist, distinguished by the proof map:
+
+- **Explicit invalidation** of the named node emits `invalidate` with an
+  empty proof map: the node's incoming validity proofs are removed.
+- **Recursively propagated invalidation** emits `invalidate` while preserving
+  the existing proof map: the node's incoming validity proofs remain, exactly
+  as the flag-based inverse-validity algorithm requires.
+
+A stale node may therefore carry a complete proof map; it becomes fresh only
+when a later `validate` entry for the same subject state event arrives. An
+explicit invalidation of an already stale node, or a propagated invalidation of
+a node that is already stale for the same reason, is a no-op.
 
 ---
 
@@ -331,7 +351,105 @@ The reasons are:
 
 ---
 
-## 6. Local physical position
+## 6. Canonical serialization
+
+`eventId` is the final state/freshness conflict tie-breaker and `LogicalSnapshotId`
+is a digest of the canonical encoding, so the encoding is normative and
+executable. Two implementations that encode the same logical journal must
+produce byte-identical serializations.
+
+### 6.1 Numeric domains
+
+All numeric values are IEEE-754 binary64. `originIndex`, `logicalRevision`, and
+`time` (Unix milliseconds) are `u64` integers within `[0, 2^53-1]`. No other
+integer domain is valid.
+
+### 6.2 Node identifiers and keys
+
+- `NodeKey` and `NodeIdentifier` encode as UTF-8 strings.
+- A `Map<K, V>` encodes as a sorted array of `[key, value]` pairs, sorted by the
+  UTF-8 bytes of the canonical key encoding. Duplicate keys are invalid.
+
+### 6.3 Values
+
+`ComputedValue` encodes as its tagged `SimpleValue` representation:
+
+```text
+null        0x00
+string      0x01 <utf8>
+number      0x02 <binary64 IEEE-754 little-endian bits>
+boolean     0x03 0x00 | 0x01
+array       0x04 <u32 length> <element>*   (elements preserve order)
+record      0x05 <sorted map of string -> value>
+```
+
+Record keys are sorted by UTF-8 bytes. `-0` and `0` are equal and encode to the
+same bits. `NaN` payloads are normalized to the canonical `NaN` bit pattern.
+
+### 6.4 Entry variants
+
+Every journal entry encodes as a tagged array with the common fields first:
+
+```text
+[ tag, origin, key, time, action, logicalRevision, ...payload ]
+```
+
+- state `add` / `edit`:
+  `[ "state-add" | "state-edit", origin, key, time, action, logicalRevision,
+     id, value, createdAtMs, modifiedAtMs, storedFreshness, proofMap ]`
+- state `delete`:
+  `[ "state-delete", origin, key, time, action, logicalRevision, id ]`
+- freshness:
+  `[ "freshness", origin, key, time, action, logicalRevision,
+     subjectStateEventId, tone, proofMap ]`
+
+`origin` encodes as `[ hostname, hostInstanceId, originIndex ]`; `storedFreshness`
+and `tone` encode as `"up-to-date"`/`"potentially-outdated"`; `proofMap` is the
+canonical `Map<input NodeKey, eventId>`; `subjectStateEventId` is a canonical
+`eventId` string.
+
+### 6.5 eventId
+
+```text
+eventId = string(
+    JSON.stringify([
+        "host-event-v1",
+        hostname,
+        hostInstanceId,
+        originIndex,
+    ])
+)
+```
+
+`eventId` comparison in `stateOrder` and `freshnessOrder` is lexicographic on
+the canonical UTF-8 bytes of this string.
+
+### 6.6 Immutable payload equality
+
+Two logical events are payload-equal exactly when their full canonical
+serialization bytes are equal (common fields plus payload). The integrity check
+of INV-JT-02 compares these bytes.
+
+### 6.7 Snapshot byte sequence
+
+```text
+snapshotBytes =
+    array([
+        string("logical-snapshot"),
+        u64(1),                        // canonical-encoding version
+        string(schemaVersion),
+        string(mergeProtocolVersion),
+        array([ normalized entry encodings, sorted by eventId ]),
+    ])
+
+LogicalSnapshotId = sha256(snapshotBytes)
+```
+
+Normalized entries are sorted by `eventId` before hashing.
+
+---
+
+## 7. Local physical position
 
 A separate local physical `JournalIndex` identifies one physical occurrence in
 one replica's journal storage. It is:
@@ -346,7 +464,7 @@ and is not required to converge across hosts.
 
 ---
 
-## 7. Public tokens
+## 8. Public tokens
 
 The public API surface is:
 
@@ -373,7 +491,7 @@ this journal's token contract.
 
 ---
 
-## 8. Snapshot identity and transport
+## 9. Snapshot identity and transport
 
 A logical transport snapshot contains:
 
@@ -408,7 +526,7 @@ identity.
 
 ---
 
-## 9. Global invariants
+## 10. Global invariants
 
 ```text
 The canonical journal is the only synchronization authority.
@@ -419,6 +537,8 @@ A complete materialization lives in its state entry, so closure-suppressed
 values require no hidden merge basis.
 Freshness events are scoped to an exact state event, so validation of an old
 state cannot overwrite a newer value.
+Every freshness transition is a journal entry, so the committed runtime graph
+cache always equals projectGraph(schema, canonical journal).
 Logical state is commutative, associative, and idempotent.
 Physical cursor positions are local notification infrastructure.
 Compaction is canonical maximum selection, not evidence pruning.

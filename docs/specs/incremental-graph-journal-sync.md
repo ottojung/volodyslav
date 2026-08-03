@@ -100,11 +100,18 @@ input event, so `N` reappears stale rather than incorrectly up-to-date.
 
 For a selected materialized state event `S`:
 
-- when an applicable freshness event exists:
-  - `validate` supplies stored freshness `up-to-date` and its proof map;
-  - `invalidate` supplies stored freshness `potentially-outdated` and an empty
-    proof map;
+- when an applicable freshness event exists, it supplies both `tone` and the
+  proof map:
+  - `validate` supplies `tone = "up-to-date"` and its proof map;
+  - `invalidate` supplies `tone = "potentially-outdated"` and its proof map —
+    empty for an explicit invalidation, preserved for a propagated
+    invalidation;
 - otherwise use `S.storedFreshness` and `S.validInputStateEvents`.
+
+Because propagated staleness is itself journaled, the projected freshness never
+restores a propagated-stale node merely because its input later validates: the
+node's own stale freshness entry remains selected until a later `validate` entry
+for the same subject state event arrives.
 
 ### 2.4 Rebuild validity
 
@@ -135,7 +142,8 @@ A selected installed node is `up-to-date` exactly when:
 Otherwise it is `potentially-outdated`. Compute this in dependency order.
 Staleness propagates through dependants. A stale node may retain complete
 incoming and outgoing validity edges, consistent with the flag-based
-inverse-validity specification.
+inverse-validity specification. Because every stale transition is journaled, the
+projected graph always equals the committed runtime graph cache.
 
 ### 2.6 No multi-input deletion policy
 
@@ -162,6 +170,23 @@ install atomically
 
 It creates no new logical event IDs, no sync creator, and no sync-derived
 delete or invalidate event.
+
+### 3.0 Compatibility preconditions
+
+Before `joinJournal`, the two operands MUST satisfy:
+
+```text
+left.schemaVersion === right.schemaVersion
+left.mergeProtocolVersion === right.mergeProtocolVersion
+```
+
+These are mandatory preconditions because projection depends on the schema: the
+same joined journal can project a node as stale or closure-suppressed under one
+schema and as independently fresh under another. A mismatch produces the same
+deterministic rejection in either operand order (`joinJournal` rejects before
+any union occurs). The schema identity identifies the actual dependency
+semantics, not merely a display label; a schema change that alters dependency
+edges, proof envelopes, or value types is a different schema identity.
 
 The installation commit is atomic: the graph-cache mutations, the newly imported
 physical occurrences, and the local physical watermark advance together. A
@@ -245,10 +270,15 @@ every grouping. This is documented LWW, not conservative concurrency detection.
 
 ### E. Input value changes
 
-`D` is valid against input state event `A1`. The selected input becomes `A2`.
-`D`'s proof references `A1`, so its incoming validity edge is absent and `D`
-becomes stale. No new logical event for `D` is created. A physical carrier for
-`D` provides cursor notification.
+`D` is valid against input state event `A1`. The selected input becomes `A2`
+(a state edit). The runtime propagates the change to `D`, marking it stale and
+preserving its proofs, and the propagation emits an `invalidate` entry for `D`'s
+selected state event with `tone = "potentially-outdated"` and the preserved
+proof map. Under projection, `D`'s proof references `A1` while the selected
+input is `A2`, so its incoming validity edge is absent and `D` is stale. The
+runtime cache and the projection agree. `D` becomes fresh only after its own
+`validate` entry for the current state (a pull that revalidates against `A2`).
+A physical carrier for `D` provides cursor notification when needed.
 
 ### F. Input temporarily deleted and re-added
 
@@ -266,10 +296,31 @@ identical projected graphs.
 
 ### G. Stale input later validates unchanged
 
-`D` retains a validity proof against the current input state event. The input
-is stale, so `D` is stale by propagation. A later `validate` entry makes the
-same input state up-to-date. Because the state-event identity did not change and
-`D` retained its proof, `D` can again become up-to-date without recomputation.
+`D` retains a validity proof against the current input state event `A1`. The
+input is explicitly invalidated, and the runtime propagates staleness to `D`:
+an `invalidate` entry for `D`'s selected state event `D1` is emitted with
+`tone = "potentially-outdated"` preserving `D`'s proof map. A later `validate`
+entry makes the same input state `A1` up-to-date. `D`'s own stale freshness
+entry remains selected, so `D` stays stale; it becomes fresh only after its own
+`validate` entry for `D1` (cache revalidation, no recomputation), because the
+state-event identity did not change and `D` retained its proof.
+
+### G'. Propagated staleness persists across input revalidation
+
+```
+A → D
+A = up-to-date, state event A1
+D = up-to-date, proof references A1
+```
+
+1. `A` is explicitly invalidated; runtime marks `A` and `D` stale. The journal
+   gains an `invalidate` for `A1` (empty proof) and an `invalidate` for `D1`
+   (proof preserved).
+2. `A` later validates unchanged; its selected state event remains `A1`.
+3. Reprojection: `D`'s selected freshness entry still says
+   `potentially-outdated`, so `D` remains stale. The runtime graph cache and the
+   projection agree. This is the flag-based behavior: recursively invalidated
+   `D` stays stale until `D` itself is pulled and cache-revalidates.
 
 ### H. Explicit delete versus closure suppression
 
