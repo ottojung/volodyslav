@@ -167,14 +167,28 @@ If no previous version is found, the migration is a no-op.
 ## Journal interaction
 
 Migration has limited interaction with the journal system. The detailed rules
-are defined in `docs/specs/incremental-graph-journal-migrations.md`.
+are defined in `docs/specs/incremental-graph-journal-migrations.md`. Because the
+journal is the sole synchronization authority, migration must compare the
+**complete journal-projected assertion** — value, logically relevant identifier
+and timestamps, stored freshness, and the input proof map under the new schema —
+and emit ordinary entries for every change:
 
-- Finalized `CREATE` produces an `add` journal entry.
+- Finalized `CREATE` produces an `add` entry.
 - Finalized `DELETE` produces a `delete` entry for every deleted materialization.
-- Fresh-to-stale finalized transitions produce an `invalidate` entry.
-- `KEEP` and semantic-preserving `OVERRIDE` produce no journal entry.
+- A value change (including a semantic `OVERRIDE` that rewrites the logical
+  `ComputedValue`) produces an `edit` entry.
+- A fresh-to-stale finalized transition produces an `invalidate` entry.
+- A stale node carried through `keep` or `override` loses its incoming proofs;
+  because that removes the authoritative proof map, it produces an `invalidate`
+  entry with an empty proof map.
+- A proof-map change under a fixed state produces the applicable freshness
+  entry (`validate` for up-to-date, `invalidate` for stale).
+- `KEEP` and representation-only `OVERRIDE` produce no journal entry **only**
+  when the resulting authoritative assertion is unchanged — the journal stores
+  the same logical `ComputedValue` and the new physical encoding is purely a
+  rebuildable-cache concern.
 - Journal entries are emitted atomically with their corresponding graph
-  transitions.
+  transitions in one durable batch.
 
 ## Atomicity guarantee
 

@@ -27,7 +27,12 @@ version, sync-derived event, or sync creator anywhere in the system.
 
 Normal synchronization follows these steps in order:
 
-1. The caller holds the required synchronization/lock.
+1. The caller holds the required synchronization/lock, including the graph
+   lifecycle/holiday exclusion that freezes the local source (see
+   `incremental-graph-locking-design.md` § Synchronization and cutover). No
+   local `pull()`, `invalidate()`, migration, or reset can commit to the active
+   replica from the moment the local journal is frozen until active-replica
+   cutover completes.
 2. The exact local logical journal is exported into a logical snapshot
    (`normalizeJournal(entries)`, schema version, merge-protocol version, and the
    derived `LogicalSnapshotId`).
@@ -35,7 +40,11 @@ Normal synchronization follows these steps in order:
    the logical snapshots supplied by other hosts.
 4. Each supplied logical snapshot is decoded and validated by the transport
    adapter. Validation rejects malformed shapes and, atomically, any payload
-   disagreement under one `eventId` (INV-JT-02).
+   disagreement under one `eventId` (INV-JT-02), and enforces the compatibility
+   preconditions: a staged snapshot whose `schemaVersion` or
+   `mergeProtocolVersion` differs from the local source is rejected with the
+   same deterministic error in either operand order, before any union occurs
+   (`incremental-graph-journal-sync.md` § Compatibility preconditions).
 5. `joinJournal(local, staged)` produces the merged normalized journal.
 6. `projectGraph(schema, merged)` produces the final graph.
 7. The final graph is compared with the pre-sync local graph; affected keys are
@@ -48,6 +57,10 @@ Normal synchronization follows these steps in order:
    failed).
 10. Failures are recorded per host. Synchronization may continue with remaining
     hosts and aggregate failures into a single error report.
+
+Because the local source is frozen for the whole procedure, the destination is
+`joinJournal(frozenLocal, staged)` and cannot lose a local operation committed
+during synchronization.
 
 Synchronization creates no new logical event IDs, no sync creator, and no
 sync-derived delete or invalidate event.

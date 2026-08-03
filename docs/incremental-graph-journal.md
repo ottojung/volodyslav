@@ -41,10 +41,14 @@ freshness/proof: invalidate | validate
 
 A state entry carries the complete materialization assertion — value,
 timestamps, identifier, stored freshness, and the exact input state events it
-was valid against. A freshness entry names exactly one subject state event and
-applies only while that event remains selected. State selection never consults
-freshness entries, so a concurrent validation of an old state can never
-overwrite a newer edit.
+was valid against. A freshness entry names exactly one subject state event,
+applies only while that event remains selected, and carries both a tone
+(`up-to-date` / `potentially-outdated`) and a proof map. Every freshness
+transition is journaled, including staleness that arises by recursive
+propagation (with the proof map preserved); a dependent becomes fresh only
+after its own `validate` entry. State selection never consults freshness
+entries, so a concurrent validation of an old state can never overwrite a newer
+edit.
 
 ## Revisions
 
@@ -82,12 +86,15 @@ freshness is derived in dependency order.
 
 ## Synchronization
 
-Synchronization validates inputs, joins the normalized journal entries, projects
-the final graph, compares it with the pre-sync local graph, and installs
-atomically. It creates no new logical event. To notify local cursors it appends
-duplicate occurrences of canonical events as physical carriers. Logical state
-converges across hosts; physical indices and carrier positions are deliberately
-host-local.
+Synchronization validates inputs (including mandatory equal `schemaVersion` and
+`mergeProtocolVersion` preconditions, since projection depends on the schema),
+joins the normalized journal entries, projects the final graph, compares it
+with the pre-sync local graph, and installs atomically. It creates no new
+logical event. To notify local cursors it appends duplicate occurrences of
+canonical events as physical carriers. Logical state converges across hosts;
+physical indices and carrier positions are deliberately host-local.
+Synchronization holds the graph `holiday` exclusion from freezing the local
+source through cutover, so a concurrent local operation cannot be lost.
 
 ## Public API
 

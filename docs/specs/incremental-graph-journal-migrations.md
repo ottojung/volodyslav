@@ -14,14 +14,27 @@ entries follow the identical transition-to-entry matrix
 identical atomic batching discipline. There is no host-state version, no
 operation ID, and no migration-specific journal semantics.
 
+Migration compares the **complete journal-projected assertion** — value,
+logically relevant identifier and timestamps, stored freshness, and the input
+proof map under the new schema — not merely observable value and freshness. A
+migration operation may emit nothing only when the resulting authoritative
+assertion is unchanged.
+
 For example:
 
 - `storage.create` of a node emits `add` carrying the complete materialization
   and its actual initial freshness;
-- a value rewrite emits `edit`;
-- an explicit `storage.invalidate` emits `invalidate`;
+- a value rewrite (including a semantic `OVERRIDE` that changes the logical
+  `ComputedValue`) emits `edit`;
+- a stale node carried through `keep` or `override` that loses its incoming
+  proofs emits `invalidate` with an empty proof map (the authoritative proof
+  assertion changed even though the value and freshness did not);
+- a proof-map change under a fixed state emits the applicable freshness entry
+  (`validate` for up-to-date, `invalidate` for stale);
+- a revalidation emits `validate` for the current selected state event;
 - a deletion emits `delete`;
-- a revalidation emits `validate` for the current selected state event.
+- a representation-only `OVERRIDE` that stores the same logical `ComputedValue`
+  and changes only the rebuildable physical encoding emits nothing.
 
 ### Emitted-event atomicity
 
