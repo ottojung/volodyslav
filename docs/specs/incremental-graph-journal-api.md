@@ -29,7 +29,9 @@ journal specifies only same-process, in-memory token usage.
 
 The query proceeds as follows:
 
-1. acquire shared garden access;
+1. acquire shared `enterGarden` access (selecting and traversing one physical
+   replica; protected from cutover and destructive physical operations by
+   `closeGarden`);
 2. capture the local physical watermark `H`;
 3. scan physical occurrences in `(since, H]`;
 4. skip absences;

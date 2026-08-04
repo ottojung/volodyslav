@@ -22,8 +22,9 @@ canonical journal entries
 A **logical event** is one immutable `JournalEntry` identified by its `eventId`.
 An **origin** `{ hostname, hostInstanceId, originIndex }` names the storage
 instance and monotonic index that created the event, and `eventId` is the
-canonical encoding of the origin. There is exactly one event-ID format and no
-sync-event IDs.
+`JSON.stringify` encoding of the origin. There is exactly one event-ID format and
+no sync-event IDs. A host event's `originIndex` equals the `LocalJournalIndex`
+of its original occurrence.
 
 A **physical occurrence** is one local journal position containing an event.
 Synchronization may append duplicate occurrences (notification carriers) so that
