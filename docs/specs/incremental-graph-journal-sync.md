@@ -154,6 +154,34 @@ unnecessary. When all inputs remain materialized, the selected cached value is
 retained and marked stale regardless of input count. Only materialization-closure
 failure suppresses the node.
 
+### 2.7 Projected-graph validation
+
+`validateProjectedGraph(schema, normalizedJournal, graph)` runs before
+destination publication. It requires:
+
+- one selected semantic key maps to one selected `NodeIdentifier`, and one
+  selected `NodeIdentifier` maps to one semantic key; duplicate selected
+  identifiers are rejected deterministically;
+- every installed identifier has exactly one value record, freshness record,
+  timestamp record, and identifier-lookup entry;
+- no closure-suppressed or deleted identifier appears in installed graph
+  storage;
+- every validity endpoint is installed;
+- every validity edge is a schema-derived direct input edge;
+- every `up-to-date` node has all inputs installed and `up-to-date`;
+- every `up-to-date` node has a matching proof for every direct input;
+- every stored value is a valid `ComputedValue`;
+- every timestamp is valid;
+- the rebuilt identifier lookup is bijective.
+
+A validation failure MUST reject the merge, commit nothing, leave the active
+replica unchanged, and produce the same rejection regardless of operand order.
+
+**Projected-graph validation test:** two event-ID-distinct selected state
+entries for different keys carry the same `NodeIdentifier`. The merge must
+reject before cutover, because the lookup bijectivity check fails
+deterministically.
+
 ---
 
 ## 3. Synchronization installation and notifications
@@ -162,8 +190,10 @@ Synchronization performs:
 
 ```text
 validate inputs
+validateLogicalSnapshot (each staged snapshot)
 join normalized journal entries
 project final graph
+validateProjectedGraph
 compare old local graph with final graph
 install atomically
 ```

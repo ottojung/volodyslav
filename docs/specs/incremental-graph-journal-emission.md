@@ -37,20 +37,17 @@ state-event IDs.
 
 ### Explicit invalidation
 
-Emit `invalidate` for the current selected state event with `tone =
+Intent: emit `invalidate` for the current selected state event with `tone =
 "potentially-outdated"` and an empty incoming proof map. This removes the named
-node's incoming validity proofs. Repeated explicit invalidation of an already
-explicitly invalidated node is a no-op (no entry, no revision, no physical
-occurrence).
+node's incoming validity proofs.
 
 ### Propagated staleness
 
-When a node becomes stale through recursive upstream propagation, emit
+Intent: when a node becomes stale through recursive upstream propagation, emit
 `invalidate` for its current selected state event with `tone =
 "potentially-outdated"` **preserving the existing incoming proof map**. The
 runtime graph cache marks the node stale, and the journal entry records the same
-transition, so cache and projection never diverge. A node whose reason for
-staleness is already recorded for its current state event is a no-op.
+transition, so cache and projection never diverge.
 
 A dependent becomes fresh only after its own `validate` event for its current
 selected state event; validating an input alone does not restore a
@@ -58,13 +55,112 @@ propagated-stale dependent.
 
 ### Explicit deletion
 
-Emit `delete`.
+Intent: emit `delete`.
+
+### Validate
+
+Intent: emit `validate` for the intended subject state event with the intended
+input state-event IDs.
+
+The intents above are tentative. They are not authoritative until reconciled
+against the current committed assertion inside the darkroom (§ 2).
 
 ---
 
-## 2. Atomic batching
+## 2. Host-operation transactions: intent then darkroom reconciliation
 
-A successful local operation commits in one durable batch:
+One graph operation may emit several ordinary one-node journal entries. There is
+no operation envelope and no operation ID; LevelDB batching provides atomic
+publication.
+
+A host operation runs in two phases:
+
+```text
+transaction body:
+    compute operation intent and tentative graph work
+
+darkroom finalization:
+    read the current canonical journal
+    project the current authoritative assertion
+    reconcile the intent against that current assertion
+    derive final journal entries
+    derive the resulting graph-cache mutation
+    allocate indices/revisions
+    commit atomically
+```
+
+Prepared journal entries are not authoritative until reconciled in the darkroom.
+The current committed assertion is read under the darkroom, so two concurrent
+transactions serialized there always reconcile against the same, up-to-date
+authoritative state.
+
+### 2.1 Explicit invalidation finalization
+
+For the selected state event `S` of the intended node:
+
+```text
+current tone = up-to-date
+    -> emit invalidate(S, stale, empty proof map)
+
+current tone = stale, current proof map nonempty
+    -> emit invalidate(S, stale, empty proof map)
+
+current tone = stale, current proof map empty
+    -> no-op
+```
+
+An explicit invalidation of a propagated-stale node is NOT a no-op: it removes
+the incoming proofs so the next pull must invoke the computor. Only a repeated
+explicit invalidation of an already explicitly invalidated state (empty proof
+map already selected) is a no-op.
+
+### 2.2 Propagated invalidation finalization
+
+For the selected state event `S` of the intended node:
+
+```text
+current tone = up-to-date
+    -> emit invalidate(S, stale, current proof map)
+
+current tone = stale
+    -> no-op
+```
+
+Propagation never replaces an already-selected empty proof map with a preserved
+proof map: the explicit-invalidation outcome is monotone and cannot be
+un-done by a concurrent propagation.
+
+### 2.3 Validate finalization
+
+Recheck during finalization that:
+
+- the intended `subjectStateEventId` is still selected;
+- every intended input state event is still selected;
+- every input is materialized and up-to-date.
+
+If any condition no longer holds, do not publish an up-to-date cache state.
+Either commit a conservative stale assertion when the underlying operation
+semantics require it, or fail/retry according to the existing transaction model.
+
+### 2.4 Commit invariant
+
+Before durable commit, require:
+
+```text
+planned graph cache
+    == projectGraph(
+           schema,
+           normalizeJournal(current journal ∪ final entries)
+       )
+```
+
+The equality covers selected values, materialization, identifiers, timestamps,
+freshness, and validity. The graph-cache mutation is derived from the final
+entries, never from the tentative graph work alone.
+
+### 2.5 Atomic publication
+
+A successful operation commits in one durable batch:
 
 ```text
 graph-cache mutations
@@ -73,10 +169,38 @@ new local physical occurrences
 last local physical JournalIndex
 ```
 
-A failed batch exposes none of them. Journal revisions and origin indices are
-allocated during serialized finalization. Several entries created by one
-operation may receive consecutive origin indices and, where applicable,
-consecutive logical revisions. No host-state version exists.
+A failed batch exposes none of them. Origin indices are allocated during
+serialized finalization and equal the new local physical indices of the original
+occurrences (§ 2.1 of `incremental-graph-journal-types.md`). Logical revisions
+are scoped per key, category, and subject, so entries of one operation are not
+generally "consecutive" across different keys. No host-state version exists.
+
+### 2.6 Invalidation race test
+
+```
+A -> D
+D fresh with proof P
+```
+
+Two concurrent transactions:
+
+- `X` explicitly invalidates `D`;
+- `Y` invalidates `A` and propagates to `D`.
+
+Test both darkroom commit orders:
+
+- **X then Y:** X finalizes first: `D`'s tone is up-to-date, so it emits
+  `invalidate(D, stale, empty proof)` and commits. Y finalizes next: `D`'s
+  selected assertion is already stale with an empty proof map, so the
+  propagated intent is a no-op. Final: `D` stale, `D` incoming proof map empty.
+- **Y then X:** Y finalizes first: `D`'s tone is up-to-date, so it emits
+  `invalidate(D, stale, P)` (proof preserved) and commits. X finalizes next:
+  `D`'s tone is stale with a nonempty proof map, so it emits
+  `invalidate(D, stale, empty proof)`. Final: `D` stale, `D` incoming proof map
+  empty.
+
+No commit order restores `P`. The explicit-invalidation outcome is monotone and
+wins over a later-configured propagation.
 
 ---
 
@@ -145,7 +269,10 @@ valid.
 
 `invalidate` is emitted for explicit invalidation (empty proof map) and for
 recursively propagated invalidation (preserved proof map). Upstream-propagated
-staleness is therefore represented in the journal, never silently dropped.
+staleness is therefore represented in the journal, never silently dropped. All
+emission intents are reconciled against the current committed assertion in the
+darkroom (§ 2), which applies the exact finalization rules for explicit
+invalidation, propagated invalidation, and validate.
 
 An operation may emit nothing only when the resulting authoritative assertion is
 unchanged. A representation-only `OVERRIDE` can remain journal-silent only when
@@ -187,10 +314,15 @@ the journal projection agree.
 never restores a propagated-stale dependent; the dependent becomes fresh only
 after its own `validate` entry for its current selected state event.
 
-**P8 — Consecutive revisions.** Entries of one operation receive consecutive
-origin indices and, where applicable, consecutive logical revisions; no
-interleaving operation can observe a partial batch.
+**P8 — Darkroom reconciliation.** Final entries are derived from the current
+committed assertion read under the darkroom, never from a stale prepared
+assertion; the planned graph cache equals
+`projectGraph(schema, normalizeJournal(current ∪ final entries))`.
 
-**P9 — Assertion-compared transitions.** A transition emits nothing only when
+**P9 — Explicit invalidation is monotone.** A propagated invalidation can never
+replace an already-selected empty proof map; the explicit-invalidation outcome
+wins in every darkroom commit order.
+
+**P10 — Assertion-compared transitions.** A transition emits nothing only when
 the complete authoritative assertion (value, logically relevant identifier and
 timestamps, stored freshness, input proof map) is unchanged.
