@@ -624,17 +624,37 @@ type Computor = (
 
 ### 3.6 Journal API
 
-The IncrementalGraph journal records graph changes to support incremental graph maintenance, synchronization, and migration. The public journal API consists of:
+The graph database is the sole authority for graph state. The journal is a
+bounded possible-change notification source and never a graph-state source. It
+observes exactly materialization presence, `ComputedValue`, and the authoritative
+freshness sublevel. The public journal API consists of:
 
 - `graph.possibleMaybeChanges({ since, to })` — Queries possible node changes since a previously observed position, restricted to nodes matching the given filter. Returns `Promise<Array<PossibleNodeChange>>`. The `since` parameter accepts `PossibleNodeChange | BaselinePossibleNodeChange`; the `to` parameter is a `NodeFilter`. See `docs/specs/incremental-graph-journal-api.md` for the full specification.
 
 - `baselinePossibleNodeChange()` — Returns a `BaselinePossibleNodeChange` sentinel (a position less than any real journal index). When passed as `since` to `graph.possibleMaybeChanges`, scanning starts from the first journal entry. This is a standalone function, not an `IncrementalGraph` method.
 
-Journal notification is conservative: coverage has no false negatives for
-supported graph changes, but the journal may contain conservative or duplicate
-notifications, and a returned action does not assert current graph state.
+Journal notification has no false negatives for those three dimensions, but it
+may have false positives and collapse repeated occurrences of one exact action.
+A returned action does not assert current graph state.
 
-The journal type system, emission rules, synchronization model, migration interaction, and compaction rules are specified in the dedicated journal specification documents. The physical journal is append-only except for compaction deleting explicitly selected obsolete occurrences; compaction never replaces, truncates, or rewrites the journal:
+The action meanings are closed: `add` is only absent-to-materialized; `edit` is
+only a normative `ComputedValue` inequality while materialized; `delete` is only
+materialized-to-absent; `invalidate` is only up-to-date to
+potentially-outdated; and `validate` is only potentially-outdated to up-to-date.
+Add/delete do not also emit freshness actions. Value and freshness transitions
+may independently produce two actions.
+
+`createdAt` changes only as part of add. `modifiedAt` changes only with value and
+therefore alongside edit. `NodeIdentifier` is stable for a semantic key, or an
+identity replacement is explicitly delete plus add. Validity edges and
+dependency evidence are internal metadata: changing them with unchanged
+freshness emits nothing. Storage representation is not journal-observable.
+There is no additional independently changing semantic field in the journal
+contract; adding one requires explicitly extending the observable surface rather
+than broadening an existing action.
+
+The journal type system, emission rules, synchronization model, migration
+interaction, and mandatory append-or-replace delivery rules are specified in:
 
 ```text
 docs/specs/incremental-graph-journal-types.md

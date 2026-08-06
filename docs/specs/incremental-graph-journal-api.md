@@ -1,82 +1,62 @@
-# Incremental Graph Journal — Public API
+# Possible-change journal API
 
-This document defines the public query API and its conservative notification
-semantics over local physical occurrences.
-
----
-
-## 1. Public surface
-
-Preserved public API:
+## Surface
 
 ```text
 graph.possibleMaybeChanges({ since, to })
 baselinePossibleNodeChange()
-PossibleNodeChange fields:
+
+PossibleNodeChange {
     nodeName
     bindings
     action
     time
+}
 ```
 
-`PossibleNodeChange` is the public unit of journal observation and can be passed
-as `since` to a later `possibleMaybeChanges` call in the same API context. The
-journal specifies only same-process, in-memory token usage.
+`since` is a physical local cursor from a previous result or the baseline
+sentinel. `to` is a `NodeFilter`. A result means: **this exact kind of transition
+may have happened to this semantic node after the cursor.** It does not assert
+current graph state.
 
----
+Actions have only these meanings: absent-to-materialized `add`; materialized
+`ComputedValue` inequality `edit`; materialized-to-absent `delete`; fresh-to-stale
+`invalidate`; and stale-to-fresh `validate`. False positives and collapse of
+repeated identical actions are permitted; false negatives on these dimensions
+are not.
 
-## 2. Query semantics
+## Fixed-snapshot query
 
-The query proceeds as follows:
+A query performs:
 
-1. acquire shared `enterGarden` access (selecting and traversing one physical
-   replica; protected from cutover and destructive physical operations by
-   `closeGarden`);
-2. capture the local physical watermark `H`;
-3. scan physical occurrences in `(since, H]`;
-4. skip absences;
-5. apply `NodeFilter`;
-6. deduplicate repeated occurrences of the same event ID;
-7. retain at most the greatest local occurrence per key and category within the
-   scanned suffix;
-8. order by ascending local physical index;
-9. return public projections.
+```text
+1. acquire shared garden access and select one active graph replica
+2. open one fixed committed snapshot of that replica's journal
+3. capture watermark H from the snapshot
+4. scan DeliveryByIndex over (since,H]
+5. skip absent physical indices
+6. apply NodeFilter
+7. return records in ascending localIndex order
+```
 
-A returned action is a conservative possible-change notification. It does not
-assert current graph state, so carrier copies are legitimate: a duplicate
-occurrence of a canonical event may be reported again even though the underlying
-logical event is unchanged.
+Selection, snapshot creation, and watermark capture cannot straddle replica
+cutover. The filter affects returned nodes, not cursor allocation. Since there is one record per key/action, the scan returns that physical
+record directly after filtering.
 
-Compaction preserves conservative no-false-negative notification coverage: the
-query may return a different action than it would have before compaction, but it
-never misses a change that a retained covering occurrence would have reported.
-Compaction need not preserve the exact historical list of returned actions.
+`time` is the delivery record time: operation time for a local mutation; the
+selected advanced remote component's time for remote progress; or local cutover
+time for a graph transition created locally by synchronization.
 
----
+## Same-process cursor domain
 
-## 3. Cursor tokens
+Inactive construction copies `DeliveryByIndex`, `DeliveryHead`, and watermark
+exactly from one fixed active snapshot. Gaps remain gaps, new indices are above
+the copied watermark, and remote physical history is not imported. Consequently
+a cursor issued before cutover remains a valid position afterward.
 
-Private same-process cursor tokens are supported. A `PossibleNodeChange`
-returned during a process session is valid as `since` for subsequent calls
-within that same session.
+### Cutover trace
 
-Same-process cursors remain valid across ordinary synchronization cutovers
-performed by the same open `RootDatabase`: the destination preserves the frozen
-local physical layout, so the physical indices the cursor refers to are
-preserved and only freshly imported occurrences and carriers are appended above
-them.
-
-Persistence of tokens across process restart, serialization, movement to
-another machine, or heterogeneous-host synchronization boundaries, and the
-corresponding long-lived validity guarantees, are outside this journal's token
-contract.
-
-`baselinePossibleNodeChange()` returns a position less than any real local
-physical index.
-
----
-
-## 4. Node filters
-
-Node filters are immutable. Filtering is applied per returned change; filters
-never alter the logical journal, physical occurrences, or revisions.
+With active watermark 100 and retained indices `{42,88}`, the inactive replica
+starts with the same indices, heads, and watermark. If synchronization emits a
+record, it receives index 101 or greater. A client cursor at 88 scans the same
+local domain after cutover and can observe the new covering record.
