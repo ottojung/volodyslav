@@ -251,6 +251,10 @@ DeliveryHead updates
 lastLocalJournalIndex update
 ```
 
+Writable open and finalization require the local origin to belong to the
+replica's `JournalDomain.allowedOrigins`; missing or invalid identity prevents
+the graph mutation from committing.
+
 For every exact before/after action, delivery replacement allocates a fresh
 index, deletes exactly the old headed record if present, puts the new record,
 updates the head, and advances the watermark. A commit publishes all graph
@@ -293,13 +297,21 @@ holiday
     -> release enterGarden
 ```
 
+That fixed snapshot contains `JournalDomain`, `NotificationClock`,
+`DeliveryByIndex`, `DeliveryHead`, `JournalOriginId`, and
+`lastLocalJournalIndex`. Inactive targets copy all six before applying their
+operation-specific graph and notification changes.
+
 Inactive construction proceeds from that snapshot without garden access. The
 validated switch is:
 
 ```text
 holiday
+    -> destination fully constructed, durable, and validated
     -> closeGarden
-    -> validated active-pointer switch
+    -> active-pointer switch
+    -> release closeGarden
+    -> release holiday
 ```
 
 Code must never request `closeGarden` while holding `enterGarden`. Holiday
@@ -316,9 +328,13 @@ the garden coordinates replica lifetime and pointer visibility.
 | journal query | enterGarden → select replica → retain fixed journal snapshot and watermark → release enterGarden | No dome, telescope, or darkroom absent a demonstrated storage requirement. |
 | synchronization source capture | HOLIDAY_GATE_KEY → holiday dome → enterGarden → fixed graph+journal snapshot → release enterGarden | Construction uses the inactive replica; no computor runs. |
 | migration source capture | HOLIDAY_GATE_KEY → holiday dome → enterGarden → fixed graph+journal snapshot → release enterGarden | Migration logic uses the retained snapshot and inactive replica. |
-| cutover | retained holiday (without enterGarden) → closeGarden → validate destination → switch active pointer | Never upgrade enterGarden to closeGarden; failure leaves the active pointer unchanged. |
+| cutover | retained holiday (without enterGarden), after durable construction and validation → closeGarden → switch active pointer → release closeGarden → release holiday | Never upgrade enterGarden to closeGarden; failure leaves the active pointer unchanged. |
 
 The table supplements the telescope recursion and deadlock discipline above.
 No operation may acquire daytime while holding a telescope, and
 `withoutMutex` remains prohibited. Commit finalization remains per-replica;
 different replica darkrooms are independent.
+
+Graph merge, computors, and long-running destination validation never move into
+an ordinary active-replica darkroom. Destination graph and journal updates are
+already durable when `closeGarden` publishes the pointer.

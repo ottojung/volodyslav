@@ -135,13 +135,23 @@ steps in order:
    hosts and aggregate failures into a single error report.
 
 **TERM-SYNC-13 (Reset-to-hostname mode):** A synchronization mode that is NOT
-a graph merge. It synchronizes to a chosen hostname snapshot by replacing the
-local state with the snapshot's state and returns without processing additional
-hosts.
+a graph merge. It replaces authoritative graph state wholesale from a chosen
+hostname snapshot while preserving the receiving host's journal-domain identity
+and cursor infrastructure, then returns without processing additional hosts.
 
 **REQ-SYNC-03 (Reset mode separation):** Reset-to-hostname mode must not be
-mixed with normal per-host merge semantics. The reset procedure replaces
-replica state wholesale; it does not merge.
+mixed with normal per-host merge semantics. It preserves the receiving
+`JournalDomain`, `JournalOriginId`, `NotificationClock`, `DeliveryByIndex`,
+`DeliveryHead`, `lastLocalJournalIndex`, and physical gaps. Remote writer
+identity and physical cursor state are never installed. A source with a
+different journal domain is rejected before replacement; its domain is never
+silently installed.
+
+After constructing `replacementGraph`, classify
+`ResetActions = classifyExactActions(oldLocalGraph, replacementGraph)`. Each
+action advances the receiving local-origin component and append-or-replaces a
+receiving local delivery. The replacement graph, clock increments, deliveries,
+heads, and watermark commit atomically in the inactive target before cutover.
 
 ---
 
@@ -578,16 +588,23 @@ previously contained that materialization. A host-only key that is deleted
 before ever being written to the target does not by itself change the target
 state.
 
-**REQ-SYNC-21 (Switch condition):**
+**REQ-SYNC-21 (Complete-result switch condition):** The inactive destination
+MUST become active when any part of the complete replica result changes:
 
-- If graph data, identifier mapping, freshness, or validity metadata changed,
-  the inactive replica becomes active.
-- If no semantic data, identifier data, freshness, or validity relation
-  changed, the active pointer remains unchanged.
-- A "metadata-only" change, such as importing a valid provenance-backed
-  validity proof, is sufficient to switch replicas, because it affects future
-  recomputation behavior. Metadata-only changes must obey the provenance rules
-  of §11.
+```text
+mustSwitch =
+    authoritativeGraphChanged
+    || finalClock != localClock
+    || DeliveryActions is nonempty
+    || destination journal metadata differs
+```
+
+Cutover may be skipped only when the final authoritative graph equals the local
+authoritative graph, the final `NotificationClock` equals the local clock, no
+local delivery replacement is required, and all journal-domain and cursor
+metadata are unchanged. A journal-only synchronization result still activates
+the destination replica. The active replica MUST NOT be partially mutated as an
+alternative; inactive construction and atomic pointer cutover remain mandatory.
 
 **REQ-SYNC-22 (Partial failure safety):** The currently active local source
 replica must not be partially mutated by a failed host merge. Failure before
@@ -656,105 +673,151 @@ computor function, directly or indirectly.
 
 ---
 
-## 16. Independent Notification-Clock Result
+## 16. Independent Authoritative and Notification Results
 
-The graph and replicated notification results have separate ownership:
+The graph result is settled without journal input. Notification processing then
+joins replicated progress and emits the exact graph transitions created on the
+receiving host:
 
 ```text
 finalGraph =
     the fully specified authoritative graph merge in §§1–15
 
-finalClock =
+joinedClock =
     joinClock(localClock, remoteClock)
+
+SyncGraphActions =
+    classifyExactActions(localGraph, finalGraph)
+
+finalClock =
+    emitActions(
+        joinedClock,
+        localJournalOrigin,
+        SyncGraphActions,
+        cutoverTime
+    )
 ```
 
 The graph merge is fully specified independently of the journal.
 `NotificationClock` must not influence `finalGraph`, and `finalGraph` must not
-be reconstructed from `NotificationClock`. The notification clock never
-chooses graph state. Journal-domain and clock validation occurs before either
-result is installed, but successful clock contents have no role in candidate
-selection, conflict policy, deletion, freshness, identifier reconciliation, or
-validity transport.
+be reconstructed from the clock. Domain and clock validation precede joining,
+but clock contents never select candidates, conflicts, deletions, freshness,
+identifiers, or validity transport.
+
+For each `(K,A)` in `SyncGraphActions`, `emitActions` increments
+`finalClock[K][localJournalOrigin][A].sequence` exactly once and sets its time to
+`cutoverTime`. Sequence overflow is fatal. Duplicate delivery coordinates do
+not suppress this local-origin advancement. Every committed synchronization-
+created graph transition advances the receiving host's synchronized action
+counter. No graph transition is represented only by an unsynchronized local
+delivery.
+
+```text
+component = finalClock[K][localJournalOrigin][A]
+component.sequence += 1
+component.time = cutoverTime
+```
 
 ## 17. Notification journal integration
 
-After the authoritative algorithm has completely settled and validated
-`finalGraph`, compute notification delivery coordinates as follows:
+Compute remote advancement against the joined clock, before local emission:
 
 ```text
 RemoteAdvancedActions = {
     (K,A) |
     some allowed origin O has
-      finalClock[K][O][A].sequence > localClock[K][O][A].sequence
+      joinedClock[K][O][A].sequence > localClock[K][O][A].sequence
 }
-
-SyncGraphActions =
-    classifyExactActions(local authoritative graph, final authoritative graph)
 
 DeliveryActions =
     RemoteAdvancedActions ∪ SyncGraphActions
 ```
 
-`classifyExactActions` is the closed before/after classifier: `add` only for
-absent to materialized, `edit` only for unequal `ComputedValue` while both
-sides are materialized, `delete` only for materialized to absent, `invalidate`
-only for fresh to stale while materialized, and `validate` only for stale to
-fresh while materialized. Value and freshness changes may yield two independent
-actions. Duplicate `(K,A)` coordinates coalesce.
+The classifier remains exact: `add` only absent-to-materialized, `edit` only an
+unequal `ComputedValue` while materialized, `delete` only materialized-to-absent,
+`invalidate` only fresh-to-stale, and `validate` only stale-to-fresh. Independent
+value and freshness changes can emit two actions.
 
-Remote advances choose their delivery time by the notification-clock
-specification. A coordinate introduced only by `SyncGraphActions` uses local
-cutover time. Such graph-difference delivery does not advance a local clock
-component: synchronization grouping must not manufacture replicated progress.
-Remote physical indices, heads, gaps, and watermarks are not merged.
-
-The inactive destination starts as an exact copy of the fixed local source
-snapshot, including local delivery cursor infrastructure. It installs
-`finalClock`, then append-or-replaces one delivery for each `DeliveryActions`
-coordinate at fresh indices above the copied watermark. The destination graph,
-clock, deliveries, and watermark are validated and committed before the active
-pointer can switch. The journal integration supplements, and never replaces,
-any graph merge requirement in §§1–15.
-
-### 17.1 Conflict-resolution trace
-
-Consider local inputs `A` and `B`, a multi-input materialization `D(A,B)`, and
-dependants `E(D)` and `F(E)`. The host's canonical candidate for `A` wins and
-has a different value. Its selected freshness is stale, while local `A` was
-fresh. This establishes the authoritative value and freshness changes first.
-Relowering makes `D` a direct invalidation candidate; because `D` has two
-distinct semantic inputs, §7 deletes it. The structural deletion closure then
-deletes materialized dependants `E` and `F`. Validity edges and identifiers are
-rebuilt for survivors, and the complete result passes §12 validation.
-
-Only now compare local authoritative state with settled `finalGraph`:
+The inactive destination exact-copies from one fixed local source snapshot:
 
 ```text
-SyncGraphActions = {
-    (A, edit),
-    (A, invalidate),
-    (D, delete),
-    (E, delete),
-    (F, delete)
-}
+JournalDomain
+NotificationClock
+DeliveryByIndex
+DeliveryHead
+JournalOriginId
+lastLocalJournalIndex
 ```
 
-Any remote-advanced coordinates are unioned afterward. Thus classification
-reports the value change, freshness change, multi-input deletion, and propagated
-dependant deletions without participating in or altering their resolution.
+It then installs the authoritative graph, joined remote progress, receiving-
+origin increments, append-or-replaced deliveries, heads, and watermark as one
+durable destination result before cutover. Remote physical deliveries are never
+copied. For every duplicate coordinate in `DeliveryActions`, only one local
+replacement is needed, although every actual `SyncGraphAction` has already
+advanced its counter.
 
-## 18. Lifecycle and failure requirements for journal-bearing replicas
+Pre-cutover validation requires the destination `JournalDomain` to equal the
+local domain; the destination origin and every clock origin to belong to
+`allowedOrigins`; `DeliveryHead` and `DeliveryByIndex` to satisfy the one-head
+invariant; and the watermark not to be below any retained delivery index.
 
-The fixed source snapshot contains both authoritative graph state and the local
-journal state. Destination construction remains isolated in inactive replica T.
-Pre-cutover validation covers graph invariants, the fixed journal domain, clock
-validity, one-head delivery integrity, and notification coverage. Failure leaves
-the active pointer and active replica unchanged. Reset-to-hostname remains a
-separate wholesale authoritative operation; it preserves the receiving host's
-origin and emits exact local notifications for its before/after graph changes.
+### 17.1 Conflict-resolution and three-host trace
 
-Sequential multi-host processing still uses each prior successful authoritative
-result as the next local source. Graph-level pairwise commutativity remains
-REQ-SYNC-23. Independently, only the replicated `NotificationClock` join has the
-commutative, associative, and idempotent laws; local delivery indices and
-watermarks need not agree across hosts or synchronization schedules.
+For local `A,B → D → E → F`, suppose the host's canonical `A` candidate changes
+value and changes freshness from fresh to stale. The authoritative merge first emits no notification: it
+settles `A`, deletes multi-input `D`, propagates deletion to `E` and `F`, rebuilds
+surviving validity, and validates the graph. Classification afterward yields
+`edit(A)`, `invalidate(A)`, and `delete(D)`, `delete(E)`, and `delete(F)`;
+each advances the receiving origin and receives one local delivery.
+
+More specifically, hosts A and B independently change different inputs of
+`X,Y → D`. A synchronizes with B and the authoritative merge deletes D:
+
+```text
+A clock[D][OA].delete advances
+A local delivery receives delete D
+```
+
+Later C synchronizes with A while D is already absent on C. Although
+`localGraphC[D] == finalGraphC[D] == absent`, A's replicated OA delete component
+is greater than C's component. `(D,delete)` is therefore in
+`RemoteAdvancedActions`, and C receives a local delete delivery. Replicating the
+synchronization-created counter is what prevents the false negative.
+
+### 17.2 Journal-only activation trace
+
+```text
+local:  K value = A; edit[K][remoteOrigin] = 4
+remote: K value = A; edit[K][remoteOrigin] = 6
+```
+
+The remote host changed A to B and back to A. Thus `finalGraph == localGraph`,
+`finalClock != localClock`, and `RemoteAdvancedActions = {(K,edit)}`. The
+inactive destination MUST be activated so the joined clock and replacement edit
+delivery become visible. Replica cutover is skipped only when both graph and the
+complete journal result are unchanged.
+
+## 18. Lifecycle, writable-state, and failure requirements
+
+Every fixed graph+journal source snapshot and inactive initialization carries
+all six journal parts listed in §17. `JournalDomain` survives synchronization,
+migration, reset, restart, and replica cutover. Destination construction remains
+isolated in inactive replica T; failure leaves the active pointer unchanged.
+
+Writable open and transaction finalization both require
+`localJournalOrigin ∈ JournalDomain.allowedOrigins`. A replica with a missing
+domain, missing local origin, or origin outside the allowed set MUST NOT commit
+an authoritative graph mutation. A fork copied from host A must be provisioned
+with distinct allowed origin OB before host B opens for writes; it retains OA's
+clock components but never advances them. Provisioning is deployment-specific,
+but rejection is normative.
+
+With holiday retained, the destination is fully constructed, made durable, and
+validated before `closeGarden` is acquired. Then the active pointer switches,
+`closeGarden` releases, and finally holiday releases. Graph merge and long
+validation do not run in an ordinary active-replica darkroom.
+
+`joinClock` remains commutative, associative, and idempotent. Emitting ordinary
+local actions before or after a join does not change those algebraic laws of the
+join operation. Sequential multi-host graph processing and graph-level pairwise
+commutativity remain governed by §§14–15.

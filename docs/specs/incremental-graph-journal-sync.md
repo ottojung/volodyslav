@@ -61,6 +61,11 @@ components are identical because validity requires equal times.
 A clock is a finite product over key/origin/action coordinates of max-counter
 semilattices. Finite products preserve these three laws.
 
+Ordinary local emission, including synchronization-created emission, may occur
+before or after a join. Emission changes an operand by advancing its assigned
+origin; it does not change the commutative, associative, or idempotent laws of
+`joinClock` itself.
+
 Normatively, the laws apply only to `NotificationClock`:
 
 ```text

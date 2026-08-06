@@ -168,9 +168,15 @@ If no previous version is found, the migration is a no-op.
 
 Migration constructs the new authoritative graph independently of the journal;
 the graph remains the sole authority. From one fixed active-replica snapshot,
-the inactive destination exact-copies local `NotificationClock`,
+the inactive destination exact-copies local `JournalDomain`, `NotificationClock`,
 `DeliveryByIndex`, `DeliveryHead`, `JournalOriginId`, and
 `lastLocalJournalIndex` as cursor infrastructure.
+
+Migration preserves the complete local domain and local writer identity. It
+does not create, replace, or infer a journal domain. Pre-cutover validation
+requires the destination domain to equal the local domain, every represented
+origin to be allowed, delivery heads and records to satisfy the one-head
+invariant, and the watermark to cover every retained delivery index.
 
 After construction, migration compares old and new authoritative states. It
 emits `add` for absent-to-materialized, `delete` for materialized-to-absent,

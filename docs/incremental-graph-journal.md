@@ -160,6 +160,20 @@ the corresponding files under `docs/specs/`.
   local cursor infrastructure during replica construction.
 - No committed materialization, value, or freshness transition lacks a covering
   notification.
+- Every committed synchronization-created graph transition advances the
+  receiving host's synchronized action counter.
+- No graph transition is represented only by an unsynchronized local delivery.
+- A journal-only synchronization result still activates the destination
+  replica.
+- Replica cutover is skipped only when both graph and complete journal result
+  are unchanged.
+- `JournalDomain` survives synchronization, migration, reset, restart, and
+  replica cutover.
+- Reset replaces graph state but preserves receiving-host journal identity and
+  cursor history.
+- A writable replica cannot commit while its local origin is absent from the
+  fixed allowed-origin set.
+- `joinClock` remains commutative, associative, and idempotent.
 
 ## Strict O(n) proof
 

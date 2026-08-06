@@ -87,6 +87,13 @@ subsequent mutations. Adding or removing writable origins requires a separately
 specified journal-domain migration; dynamic membership is outside this protocol
 revision.
 
+Writable open and transaction finalization require
+`localJournalOrigin ∈ JournalDomain.allowedOrigins`. Missing domain, missing
+local origin, or an origin outside the fixed set prevents authoritative graph
+mutation. If A's storage is copied to a new writable host B, B must be
+provisioned with a distinct allowed origin before opening the graph for writes;
+B retains A's clock components but never advances them.
+
 ## Local delivery types and cursors
 
 ```text
