@@ -179,7 +179,21 @@ Logical revisions are scoped per key, category, and subject, so entries of one
 operation are not generally "consecutive" across different keys. No host-state
 version exists.
 
-### 2.6 Invalidation race test
+### 2.6 Construction order within one batch
+
+Entries that reference other entries from the same batch are constructed and
+hashed in acyclic dependency order before the atomic commit
+(`incremental-graph-journal-types.md` § Construction order for multi-entry
+batches): state entries are constructed in dependency-topological order and
+hashed immediately; freshness entries are constructed only after their subject
+state event IDs exist; dependent proof maps are built only after all referenced
+input state event IDs exist. For a bulk reset or migration that newly
+materializes `A` and a dependent `D`, the `add` entry for `A` is hashed before
+the `add` entry for `D`, so `D.validInputStateEvents[A]` is the digest of `add
+A`. The graph schema is a DAG, so this order is acyclic; a cycle is rejected by
+the schema rules.
+
+### 2.7 Invalidation race test
 
 ```
 A -> D

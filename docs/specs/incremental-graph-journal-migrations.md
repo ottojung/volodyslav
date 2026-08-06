@@ -20,6 +20,14 @@ proof map under the new schema — not merely observable value and freshness. A
 migration operation may emit nothing only when the resulting authoritative
 assertion is unchanged.
 
+Entries that reference other entries from the same migration batch are
+constructed and hashed in acyclic dependency order
+(`incremental-graph-journal-types.md` § Construction order for multi-entry
+batches and `incremental-graph-journal-emission.md` § 2.6): a newly created
+`add` for an input node is hashed before the `add` for its dependant, so the
+dependant's proof map references the input's digest; a state entry is hashed
+before the freshness entry whose `subjectStateEventId` names it.
+
 For example:
 
 - `storage.create` of a node emits `add` carrying the complete materialization

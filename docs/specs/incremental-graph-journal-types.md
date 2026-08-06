@@ -44,12 +44,8 @@ synchronization may append a notification carrier.
 - The public cursor API operates on local physical occurrences.
 - These two notions are never confused.
 
-**INV-JT-01 (Logical identity):** `eventId` identifies a logical event's
-immutable payload. A copied or repositioned event preserves its `eventId` and
-complete payload.
-
-**INV-JT-02 (Payload integrity):** If the same `eventId` occurs with two
-different immutable payloads, synchronization rejects the exchange atomically.
+Event identity and payload integrity are defined once, in § 2.1 (INV-JT-01 and
+INV-JT-02).
 
 ### 2.1 Event identity and origin
 
@@ -76,6 +72,12 @@ copied or repositioned event preserves its `eventId` and complete payload. A
 SHA-256 collision is outside the supported protocol model and is treated as a
 fatal cryptographic integrity failure. There is no event-ID-to-payload evidence
 table and no retained digest basis.
+
+**INV-JT-02 (Payload integrity):** An `eventId` is the content digest of its
+immutable payload (INV-JT-01). Two occurrences with the same `eventId` denote
+the same logical event; a payload disagreement under one `eventId` is therefore
+impossible except as a SHA-256 collision, and synchronization rejects such an
+exchange atomically.
 
 Snapshot validation recomputes `sha256(canonicalEntryBytes(entry))` and rejects
 an entry whose supplied `eventId` does not equal the recomputed value.
@@ -150,7 +152,12 @@ LocalJournalIndex = newly allocated locally
 
 There is no separate `lastOriginIndex`. A failed inactive migration may advance
 the root-local allocator and leave gaps, but it must never permit reuse of a
-`(hostname, originIndex)` provenance tuple.
+`(hostname, originIndex)` provenance tuple within one `RootDatabase` lineage.
+
+Provenance-index uniqueness is scoped to one `RootDatabase` lineage: within a
+lineage, no `(hostname, originIndex)` tuple is reused. No global uniqueness is
+claimed across genuinely unrelated database reinitializations; such repetition
+is harmless because origin is provenance only and `eventId` is content-addressed.
 
 #### Failure guarantee for inactive work
 
@@ -161,7 +168,8 @@ failed migration or synchronization destination build:
 ```
 
 The possible watermark advance is acceptable and required for uniqueness: no
-retry may reuse a `(hostname, originIndex)` provenance tuple.
+retry within the same lineage may reuse a `(hostname, originIndex)` provenance
+tuple.
 
 A local physical `JournalIndex` is not part of logical event identity, logical
 event order, snapshot equality, synchronization conflict resolution, or
@@ -444,6 +452,43 @@ logicalRevision =
 
 Use `1` when no explicit freshness entry exists for `S`.
 
+### Construction order for multi-entry batches
+
+Content-addressed entries may refer to the event IDs of other entries emitted in
+the same atomic batch. Construction order is explicit and acyclic:
+
+```text
+1. determine the final authoritative graph transition
+2. reserve fresh local physical/origin indices for all new entries
+3. construct new state entries in dependency-topological order
+4. compute each state entry's eventId immediately after its canonical bytes are
+   complete
+5. construct freshness entries only after their subject state event IDs exist
+6. construct dependent proof maps only after all referenced input state event
+   IDs exist
+7. commit every entry and occurrence in the original atomic LevelDB batch
+```
+
+For a bulk reset or migration that newly materializes `A` and `D` (where `D`
+depends on `A`), the `add` entry for `A` is constructed and hashed before the
+`add` entry for `D`, so:
+
+```text
+D.validInputStateEvents[A] = eventId(add A)
+```
+
+The graph schema is a DAG, so this construction order is acyclic. A dependency
+cycle is rejected by the existing schema rules rather than handled by the
+journal encoder.
+
+For one key that emits both a state entry and a freshness entry:
+
+```text
+construct and hash state entry first
+freshness.subjectStateEventId = state.eventId
+construct and hash freshness entry second
+```
+
 ### Last-writer-wins tradeoff
 
 Concurrent hosts may produce equal revisions; `eventId` is the deterministic
@@ -549,6 +594,94 @@ logical journal must produce byte-identical serializations.
 
 ### 6.1 Primitives
 
+#### Canonical string domain
+
+Every string that appears in canonical bytes belongs to the accepted domain:
+
+```text
+CanonicalString =
+    a well-formed sequence of Unicode scalar values
+```
+
+For a JavaScript implementation:
+
+```text
+A string is valid exactly when it contains no unpaired UTF-16 surrogate code
+unit.
+```
+
+Use `String.prototype.isWellFormed()` where available, or an equivalent explicit
+validator, and reject malformed strings before any hashing or encoding. The
+encoding is:
+
+```text
+bytes(s) =
+    RFC 3629 UTF-8 encoding of the Unicode scalar sequence s
+```
+
+No Unicode normalization is performed: NFC is not applied, NFD is not applied,
+and case folding is not applied. Two well-formed strings with different scalar
+sequences remain different logical strings even when Unicode considers them
+canonically equivalent.
+
+The well-formedness requirement applies to every string in canonical bytes:
+
+```text
+hostname
+NodeKey
+NodeIdentifier
+schemaVersion
+mergeProtocolVersion
+SimpleValue string values
+SimpleValue record keys
+proof-map input keys
+subjectStateEventId
+eventId text when embedded in a snapshot pair or proof
+```
+
+`eventId` and proof IDs must additionally satisfy:
+
+```text
+exactly 64 lowercase ASCII hexadecimal characters
+```
+
+Snapshot validation and local event creation reject malformed strings before
+hashing.
+
+#### Canonical string tests
+
+```text
+U+FFFD:
+    "\uFFFD"
+    valid
+    UTF-8 = efbfbd
+
+unpaired high surrogate:
+    "\uD800"
+    invalid
+
+unpaired low surrogate:
+    "\uDC00"
+    invalid
+
+embedded unpaired surrogate:
+    "a\uD800b"
+    invalid
+
+valid surrogate pair:
+    "\uD83D\uDE00"
+    valid
+    UTF-8 = f09f9880
+```
+
+Regression test for the old ambiguity: common JavaScript UTF-8 encoders replace
+malformed surrogates with `U+FFFD`, so `Buffer.from("\uD800", "utf8")` and
+`Buffer.from("\uFFFD", "utf8")` both commonly produce `efbfbd`. The protocol
+rejects the former before encoding, so two different accepted payloads can no
+longer share bytes for this reason.
+
+#### Framing primitives
+
 One byte order is used everywhere, big-endian:
 
 ```text
@@ -557,7 +690,7 @@ u64(n) = eight-byte unsigned big-endian integer
 ```
 
 ```text
-bytes(s)  = UTF-8 bytes of s
+bytes(s)  = RFC 3629 UTF-8 bytes of the well-formed scalar sequence s
 string(s) = u64(byteLength(bytes(s))) || bytes(s)
 
 array(xs) =
@@ -1001,6 +1134,9 @@ identity.
   `sha256(canonicalEntryBytes(entry))` (the content digest, § 2.1 and § 6.7);
 - a valid `origin` (hostname plus a `u64` origin index in domain) and the
   derived `eventId` format (exactly 64 lowercase hexadecimal characters);
+- every string in the snapshot is a well-formed canonical string (§ 6.1):
+  no unpaired UTF-16 surrogate code unit, and `eventId`/proof IDs are exactly
+  64 lowercase ASCII hexadecimal characters;
 - valid `logicalRevision` and `time` domains;
 - valid `NodeKey` and `NodeIdentifier` forms;
 - canonical proof maps with no duplicate keys;
@@ -1043,7 +1179,8 @@ A propagated invalidation can never restore proofs removed by an explicit
 invalidation.
 Holiday freezes graph writers; closeGarden protects physical replica readers.
 A host event's originIndex is its original LocalJournalIndex.
-No event-origin coordinate is ever reused.
+Within one RootDatabase lineage, no (hostname, originIndex) provenance tuple is
+reused.
 Every published projected graph satisfies the complete IncrementalGraph storage
 and validity invariants.
 Canonical serialization determines one exact byte sequence.
@@ -1063,4 +1200,15 @@ selection.
 Compaction mutates the physical journal only through exact deletes.
 Compaction never replaces, truncates, or rewrites retained occurrences.
 A concurrent append cannot belong to a previously calculated delete set.
+Synchronization copies one fixed committed physical source view.
+Any operation reading an active physical journal while compaction may run is a
+shared garden reader.
+Synchronization never upgrades enterGarden to closeGarden.
+Every string accepted by canonical serialization is a well-formed Unicode
+scalar sequence.
+Canonical UTF-8 encoding never replaces malformed surrogate code units;
+malformed strings are rejected.
+All event-ID references are exactly 64 lowercase hexadecimal characters.
+Entries that reference other entries from the same batch are hashed in an
+acyclic dependency order before the atomic commit.
 ```
