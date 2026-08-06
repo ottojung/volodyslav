@@ -75,28 +75,61 @@ eventId = JSON.stringify([
 The LWW comparison of two `eventId` strings is lexicographic comparison of
 their UTF-8 bytes.
 
-#### originIndex is the original LocalJournalIndex
+#### Root-local physical/event allocator
 
-For every host-originated logical event:
+`HostInstanceId` and `lastLocalJournalIndex` are **root-local durable allocator
+metadata**, shared by both replica slots of one `RootDatabase` — not
+per-replica fields. They are local physical/event-allocation infrastructure,
+not synchronization authority and not part of logical snapshot identity.
 
 ```text
-originIndex equals the LocalJournalIndex assigned to its original occurrence.
+allocateLocalJournalIndex():
+    atomically advance the root-local watermark
+    return the new value
 ```
 
-During darkroom finalization:
+Every physical occurrence consumes an index from this single allocator:
 
-1. allocate a fresh local physical index;
-2. use that same number as `origin.originIndex`;
-3. derive `eventId`;
-4. write the logical event at that original occurrence;
-5. advance the local physical watermark in the same batch.
+- a host-originated logical event (its `originIndex` is the allocated
+  `LocalJournalIndex`);
+- an imported event occurrence;
+- a notification carrier;
+- an inactive migration occurrence;
+- a synchronization destination occurrence where a new local position is
+  required.
 
-There is no separate `lastOriginIndex`. An imported event or a notification
-carrier preserves its `origin` and `eventId` from the originating event and
-receives a newly allocated local physical `JournalIndex` on the receiving
-replica. No sequence may ever reuse one `(hostname, HostInstanceId,
-originIndex)` tuple: origin indices never decrease, physical indices never
-decrease, and each tuple is allocated exactly once.
+For a host-originated event:
+
+```text
+originIndex = allocated LocalJournalIndex
+eventId = derived from hostname, HostInstanceId, originIndex
+```
+
+For imported events and carriers:
+
+```text
+origin / eventId = preserved from the originating event
+LocalJournalIndex = newly allocated locally
+```
+
+There is no separate `lastOriginIndex`.
+
+`HostInstanceId` is generated exactly once for genuinely new local storage and
+persisted with the root-local allocator. It is stable across restart, reset,
+migration, compaction, and replica cutover; it is changed only for genuinely
+unrelated reinitialization. A failed inactive migration may advance the
+root-local allocator and leave gaps, but it must never permit reuse.
+
+#### Failure guarantee for inactive work
+
+```text
+failed migration or synchronization destination build:
+    active graph, active logical journal, active physical occurrences: unchanged
+    root-local allocation watermark: may have advanced
+```
+
+The possible watermark advance is acceptable and required for uniqueness: no
+retry may reuse a `(hostname, HostInstanceId, originIndex)` tuple.
 
 A local physical `JournalIndex` is not part of logical event identity, logical
 event order, snapshot equality, synchronization conflict resolution, or
@@ -104,28 +137,16 @@ canonical journal normalization.
 
 #### Local physical watermark
 
-The local physical watermark is persisted durably and:
+The root-local physical watermark is persisted durably and:
 
 - initialized to zero only for genuinely new storage;
 - advanced atomically with the occurrences of the same batch;
 - never decreased by compaction;
 - never derived from surviving entries after compaction;
 - preserved across reset;
-- copied correctly into migration and synchronization destinations;
+- shared by both replica slots (a destination that may become active continues
+  from the root-local allocator, never from a copied stale value);
 - loaded on restart before any allocation.
-
-#### HostInstanceId lifecycle
-
-`HostInstanceId` is generated exactly once for genuinely new local storage and
-persisted as local allocator metadata. It is:
-
-- stable across restart, reset, migration, compaction, and replica cutover;
-- copied into every inactive destination that may become the same local
-  storage;
-- changed only for genuinely unrelated reinitialization.
-
-This metadata is local event-allocation infrastructure. It is not merge
-authority and not part of journal conflict resolution.
 
 #### Origin-allocation tests
 
@@ -139,12 +160,35 @@ tuple:
   recomputed from surviving entries);
 - restart (the watermark is loaded before any allocation);
 - reset (the watermark is preserved);
-- migration cutover (the watermark is copied into the destination);
-- synchronization cutover (the watermark is copied into the destination);
+- migration cutover (the destination continues from the root-local allocator);
+- synchronization cutover (the destination continues from the root-local
+  allocator);
 - imported occurrences advancing the physical watermark (each import receives
   a new local physical index while preserving `origin`/`eventId`);
 - notification carriers advancing the physical watermark (each carrier
   receives a new local physical index for the same `eventId`).
+
+#### Root-local allocator traces
+
+Each trace proves that no `(hostname, HostInstanceId, originIndex)` tuple is
+ever reused:
+
+- **Failed inactive migration followed by retry:** the first attempt advances
+  the root-local watermark to `W` then fails. The retry allocates indices
+  strictly above `W`, so the failed attempt's indices are never reused.
+- **Failed migration followed by ordinary host event:** the host event
+  allocates an index strictly above the failed migration's last allocation.
+- **Failed synchronization destination build followed by retry:** the retry
+  allocates destination occurrences strictly above the failed build's last
+  allocation.
+- **Restart after failed inactive work:** the root-local watermark is loaded
+  before any allocation, so the failed work's indices remain consumed.
+- **Alternating active replica slots:** both slots allocate from the single
+  root-local allocator, so no slot can produce an index the other slot already
+  consumed.
+- **Compaction after gaps:** compaction never recomputes or decreases the
+  watermark; new allocations stay strictly above the highest ever allocated
+  index, including indices freed as gaps.
 
 
 
@@ -451,13 +495,27 @@ string(s) = u64(byteLength(bytes(s))) || bytes(s)
 array(xs) =
     u64(xs.length) || encode(xs[0]) || ... || encode(xs[n-1])
 
-map(entries) =
-    u64(entries.length) ||
-    encoded key/value pairs sorted by canonical encoded key bytes
+map(entries):
+    sort entries by the raw canonical key comparison defined for the map's key
+        type
+    encode u64(entries.length)
+    encode each self-delimiting key/value pair
 ```
 
 Every variable-length item is self-delimiting through its length prefix. Tags
 are fixed single bytes.
+
+There is exactly one ordering rule for every string-keyed canonical map
+(`SimpleValue` record keys, proof-map input keys, and any future string-keyed
+map):
+
+```text
+compare the raw UTF-8 key bytes lexicographically.
+```
+
+The encoded length prefix is framing only and does not participate in map-key
+ordering. For keys `"z"`, `"aa"`, `"a"`, the canonical order is `"a"`, `"aa"`,
+`"z"` (raw lexicographic: `"a" < "aa" < "z"`).
 
 ### 6.2 Numeric domains
 
@@ -582,84 +640,166 @@ LogicalSnapshotId = sha256(snapshotBytes)
 
 ### 6.8 Fixed test vectors
 
-Origin and events under schema `"schema-1"`, protocol `"proto-1"`:
+All vectors use schema `"schema-1"`, protocol `"proto-1"`, and the entry
+layout of § 6.4 with big-endian `u64` framing, raw-UTF-8 map-key ordering, and
+the variant tags `add=0x11`, `edit=0x12`, `delete=0x13`, `validate=0x14`,
+`invalidate=0x15`. The bytes below were generated by the normative encoding
+described in this section.
+
+#### Vector 1 — Entry encoding
+
+Five independent entries; every variant begins with its correct tag:
 
 ```text
-A = add, origin ("h1", "i1", 5), key "k", time 1000, revision 1,
-    id "n1", value 1, createdAt 1000, modifiedAt 1000,
-    storedFreshness up-to-date, proof {}
-eventId A = ["host-event-v1","h1","i1",5]
+add:
+  origin ("h1","i1",5), key "k", time 1000, revision 1, id "n1",
+  value 1, createdAt 1000, modifiedAt 1000, up-to-date, proof {}
+  tag 0x11
+  hex = 11000000000000000300000000000000026831000000000000000269310000
+        00000000000500000000000000016b00000000000003e80000000000000001
+        00000000000000026e31023ff000000000000000000000000003e800000000
+        000003e8010000000000000000
 
-B = invalidate, origin ("h1", "i1", 6), key "k", time 1100, revision 1,
-    subject = eventId A, tone potentially-outdated, proof {}
-eventId B = ["host-event-v1","h1","i1",6]
+edit:
+  origin ("h1","i1",6), key "k", time 2000, revision 2, id "n1",
+  value 2, createdAt 1000, modifiedAt 2000, potentially-outdated,
+  proof { "a" -> eventId(add) }
+  tag 0x12
+  hex = 12000000000000000300000000000000026831000000000000000269310000
+        00000000000600000000000000016b00000000000007d00000000000000002
+        00000000000000026e31024000000000000000000000000000003e80000000
+        000007d0020000000000000001000000000000000161000000000000001d5b
+        22686f73742d6576656e742d7631222c226831222c226931222c355d
 
-C = edit, origin ("h1", "i1", 7), key "k", time 2000, revision 2,
-    id "n1", value 2, createdAt 1000, modifiedAt 2000,
-    storedFreshness potentially-outdated, proof { "a" -> eventId A }
-eventId C = ["host-event-v1","h1","i1",7]
+validate:
+  origin ("h1","i1",7), key "k", time 1500, revision 1,
+  subject = eventId(add), up-to-date,
+  proof { "a" -> eventId(add) }
+  tag 0x14
+  hex = 14000000000000000300000000000000026831000000000000000269310000
+        00000000000700000000000000016b00000000000005dc0000000000000001
+        000000000000001d5b22686f73742d6576656e742d7631222c226831222c22
+        6931222c355d01000000000000000100000000000000016100000000000000
+        1d5b22686f73742d6576656e742d7631222c226831222c226931222c355d
+
+invalidate:
+  origin ("h1","i1",8), key "k", time 1100, revision 1,
+  subject = eventId(add), potentially-outdated, proof {}
+  tag 0x15
+  hex = 15000000000000000300000000000000026831000000000000000269310000
+        00000000000800000000000000016b000000000000044c0000000000000001
+        000000000000001d5b22686f73742d6576656e742d7631222c226831222c22
+        6931222c355d020000000000000000
+
+delete:
+  origin ("h1","i1",9), key "k", time 3000, revision 1, id "n1"
+  tag 0x13
+  hex = 13000000000000000300000000000000026831000000000000000269310000
+        00000000000900000000000000016b0000000000000bb80000000000000001
+        00000000000000026e31
 ```
 
-Entry bytes (hexadecimal):
+#### Vector 2 — Normalization
+
+Input:
 
 ```text
-A = 11000000000000000300000000000000026831000000000000000269310000
-    00000000000500000000000000016b00000000000003e80000000000000001
-    00000000000000026e31023ff000000000000000000000000003e800000000
-    000003e8010000000000000000
-
-B = 15000000000000000300000000000000026831000000000000000269310000
-    00000000000600000000000000016b000000000000044c0000000000000001
-    000000000000001d5b22686f73742d6576656e742d7631222c226831222c22
-    6931222c355d020000000000000000
-
-C = 11000000000000000300000000000000026831000000000000000269310000
-    00000000000700000000000000016b00000000000007d00000000000000002
-    00000000000000026e31024000000000000000000000000000003e80000000
-    000007d0020000000000000001000000000000000161000000000000001d5b
-    22686f73742d6576656e742d7631222c226831222c226931222c355d
+A = add, origin ("h1","i1",5), key "k", time 1000, revision 1, id "n1",
+    value 1, createdAt 1000, modifiedAt 1000, up-to-date, proof {}
+B = invalidate, origin ("h1","i1",6), subject = eventId(A), stale, proof {}
+C = edit, origin ("h1","i1",7), key "k", time 2000, revision 2, id "n1",
+    value 2, createdAt 1000, modifiedAt 2000, potentially-outdated,
+    proof { "a" -> eventId(A) }
 ```
 
-Normalized ordering by derived eventId is `A, B, C`.
-
-Snapshot bytes (hexadecimal) and the derived identity:
+`normalizeJournal({A, B, C}) = [C]`: `C` defeats `A` by `stateOrder`
+(`(2, eventId C) > (1, eventId A)`), and `B` is not applicable to `C` because
+its `subjectStateEventId` is `eventId(A)`, not `eventId(C)`.
 
 ```text
-snapshot bytes = 000000000000000500000000000000106c6f676963616c2d736e
-    617073686f7400000000000000010000000000000008736368656d612d310000
-    00000000000770726f746f2d3100000000000000031100000000000000030000
-    0000000000026831000000000000000269310000000000000005000000000000
-    00016b00000000000003e8000000000000000100000000000000026e31023ff0
-    000000000000000000000000003e800000000000003e801000000000000000015
-    0000000000000003000000000000000268310000000000000002693100000000
-    0000000600000000000000016b000000000000044c0000000000000001000000
-    000000001d5b22686f73742d6576656e742d7631222c226831222c226931222c
-    355d020000000000000000110000000000000003000000000000000268310000
-    0000000000026931000000000000000700000000000000016b00000000000007
-    d0000000000000000200000000000000026e3102400000000000000000000000
-    0000003e800000000000007d002000000000000000100000000000000016100
-    0000000000001d5b22686f73742d6576656e742d7631222c226831222c226931
-    222c355d
+C bytes hex = 120000000000000003000000000000000268310000000000000002693
+    1000000000000000700000000000000016b00000000000007d00000000000000002
+    00000000000000026e31024000000000000000000000000000003e800000000000
+    007d0020000000000000001000000000000000161000000000000001d5b22686f
+    73742d6576656e742d7631222c226831222c226931222c355d
+
+snapshot bytes hex = 000000000000000500000000000000106c6f676963616c2d736e
+    617073686f7400000000000000010000000000000008736368656d612d31000000
+    000000000770726f746f2d31000000000000000112000000000000000300000000
+    00000002683100000000000000026931000000000000000700000000000000016b
+    00000000000007d0000000000000000200000000000000026e3102400000000000
+    000000000000000003e800000000000007d0020000000000000001000000000000
+    000161000000000000001d5b22686f73742d6576656e742d7631222c226831222c
+    226931222c355d
 
 LogicalSnapshotId = sha256(snapshot bytes)
-                  = f7895e75aae5e3cf7d1a328908ef2d82dfb24ec5ba30fa8ad4b8
-                    dab5c1b16fd0
+                  = 03741fe065bffd0dbe715f6f7963b5257c86bb498e03b474dc0e
+                    24a5e1220c60
 ```
 
-### 6.9 Ambiguity tests
+#### Vector 3 — Applicable freshness
+
+Input:
+
+```text
+A = add, origin ("h1","i1",5), key "k", time 1000, revision 1, id "n1",
+    value 1, createdAt 1000, modifiedAt 1000, up-to-date, proof {}
+B = invalidate, origin ("h1","i1",6), subject = eventId(A), stale, proof {}
+```
+
+`normalizeJournal({A, B}) = [A, B]` (A is the selected state; B is applicable
+because its subject is `eventId(A)`). Entry ordering by derived eventId is `A,
+B`.
+
+```text
+A bytes hex = 110000000000000003000000000000000268310000000000000002693
+    1000000000000000500000000000000016b00000000000003e80000000000000001
+    00000000000000026e31023ff000000000000000000000000003e80000000000000
+    3e8010000000000000000
+
+B bytes hex = 150000000000000003000000000000000268310000000000000002693
+    1000000000000000600000000000000016b000000000000044c0000000000000001
+    000000000000001d5b22686f73742d6576656e742d7631222c226831222c226931
+    222c355d020000000000000000
+
+snapshot bytes hex = 000000000000000500000000000000106c6f676963616c2d736e
+    617073686f7400000000000000010000000000000008736368656d612d31000000
+    000000000770726f746f2d31000000000000000211000000000000000300000000
+    00000002683100000000000000026931000000000000000500000000000000016b
+    00000000000003e8000000000000000100000000000000026e31023ff000000000
+    000000000000000003e800000000000003e8010000000000000000150000000000
+    000003000000000000000268310000000000000002693100000000000000060000
+    0000000000016b000000000000044c0000000000000001000000000000001d5b22
+    686f73742d6576656e742d7631222c226831222c226931222c355d020000000000
+    000000
+
+LogicalSnapshotId = sha256(snapshot bytes)
+                  = 5330745ce4c2a67abc33ef8a318cd1e9f1aa4188111605b675b8
+                    aa3932adfe08
+```
+
+### 6.9 Automated-vector requirement
+
+The implementation tests MUST generate these values through the normative
+encoder of this specification and compare them byte-for-byte with the constants
+in § 6.8 (entry bytes, normalized ordering, snapshot bytes, and `sha256`
+`LogicalSnapshotId`). The constants are normative, not illustrative.
+
+### 6.10 Ambiguity tests
 
 The encoding is injective and order-independent where required:
 
 - `["ab", "c"]` and `["a", "bc"]` produce different bytes (the string length
   prefix disambiguates nesting at the array level);
 - `["a", ["b", "c"]]` and `[["a", "b"], "c"]` produce different bytes;
-- record insertion order does not affect bytes (record keys are sorted);
-- map insertion order does not affect bytes (map keys are sorted);
+- record insertion order does not affect bytes (record keys are sorted by raw
+  UTF-8 bytes);
+- map insertion order does not affect bytes (map keys are sorted by raw UTF-8
+  bytes);
+- map keys `"z"`, `"aa"`, `"a"` encode in the order `"a"`, `"aa"`, `"z"`;
 - `-0` and `+0` produce identical bytes;
 - every NaN bit pattern normalizes to canonical NaN and produces identical
   bytes (and journal validation rejects NaN in authoritative values).
-
-Normalized entries are sorted by `eventId` before hashing.
 
 ---
 
@@ -668,13 +808,15 @@ Normalized entries are sorted by `eventId` before hashing.
 A separate local physical `JournalIndex` identifies one physical occurrence in
 one replica's journal storage. It is:
 
-- allocated monotonically and locally during serialized finalization;
+- allocated from the single root-local allocator
+  (`allocateLocalJournalIndex`, § 2.1) during serialized finalization;
 - never part of `eventId`, logical order, snapshot equality, or normalization;
 - used only by the public cursor API and by physical compaction.
 
 Imported events and notification carriers are appended at fresh local physical
-indices, strictly after the local watermark. Physical placement is host-local
-and is not required to converge across hosts.
+indices, strictly after the highest index the root-local allocator has ever
+returned. Physical placement is host-local and is not required to converge
+across hosts.
 
 ---
 
@@ -785,4 +927,11 @@ No event-origin coordinate is ever reused.
 Every published projected graph satisfies the complete IncrementalGraph storage
 and validity invariants.
 Canonical serialization determines one exact byte sequence.
+Physical compaction is serialized with both readers and occurrence writers.
+Synchronization preserves the frozen local physical cursor domain.
+Local event/occurrence indices come from one root-local monotonic allocator.
+Failed inactive work may create gaps but can never cause event-ID reuse.
+Every canonical map has exactly one normative key-order relation.
+Every published test vector is produced by the same normalization and encoding
+rules stated by the specification.
 ```
