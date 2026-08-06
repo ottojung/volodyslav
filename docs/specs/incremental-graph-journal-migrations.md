@@ -6,6 +6,7 @@ exactly from one fixed snapshot:
 
 ```text
 JournalDomain
+localWriterId
 NotificationClock
 DeliveryByIndex
 DeliveryHead
@@ -16,7 +17,8 @@ lastLocalJournalIndex
 Migration preserves this complete local domain and the receiving writer
 identity; it never creates, replaces, or infers a domain. Before cutover it
 validates domain equality with the source, membership of the local and all clock
-origins, the one-head invariant, and that the watermark is at least every
+origins, equality of the local writer/origin pair with `writerOrigins`, the
+one-head invariant, and that the watermark is at least every
 retained delivery index.
 
 It then compares old and new authoritative graphs and applies the ordinary exact

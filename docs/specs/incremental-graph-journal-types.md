@@ -24,25 +24,43 @@ timestamps, validity relations, freshness, dependency metadata, representation,
 or encoding when `ComputedValue` is equal. Independent value and freshness
 transitions can emit two actions.
 
-## Stable origin and synchronized clock
+## Stable writer ownership and synchronized clock
 
-`JournalDomainId` is the durable identity of one synchronization domain.
-`AllowedJournalOrigins` is a finite immutable set. This protocol version fixes
-membership:
+`JournalWriterId` is the durable identity of one independently writable host.
+It MUST be a stable validated replica identity whose lifecycle and uniqueness
+guarantees cover restart, reset, migration, and replica cutover. An unvalidated
+transient hostname is not sufficient. A deployment may use an existing validated
+replica fingerprint only if it has those guarantees; otherwise it provisions a
+separate durable writer ID.
+
+`JournalOriginId` is the durable counter namespace assigned to one writer.
+Ownership is authoritative only through the finite immutable domain mapping:
 
 ```text
 JournalDomain = {
     domainId: JournalDomainId
-    allowedOrigins: AllowedJournalOrigins
+    writerOrigins: Map<JournalWriterId, JournalOriginId>
 }
 
-AllowedJournalOrigins = finite immutable set<JournalOriginId>
+AllowedJournalOrigins = set(JournalDomain.writerOrigins.values())
 ```
 
-`JournalOriginId` is the assigned writer identity of exactly one independently
-writable host. Every writable host has one unique origin from a fixed finite
-synchronization domain. Unknown origins cannot enlarge a clock. A host advances
-only its assigned local origin; it retains but never advances other origins.
+All writer IDs are unique, all origin IDs are unique, no two writers map to one
+origin, and every permitted writable host has exactly one mapping. The derived
+`AllowedJournalOrigins` is useful for clock validation but is not the ownership
+authority. Dynamic writer membership requires a separately specified domain
+migration.
+
+Every writable replica carries both `localWriterId` and `localJournalOrigin`.
+Writable open and transaction finalization require:
+
+```text
+JournalDomain.writerOrigins[localWriterId] == localJournalOrigin
+```
+
+A missing domain, writer, or origin; a mismatched assignment; or duplicate
+ownership prevents authoritative mutation. A host advances only its assigned
+origin and retains but never advances other origins.
 
 ```text
 NotificationClock =
@@ -69,30 +87,18 @@ transaction identifier, or synchronization generation. Equal nonzero sequence
 at the same coordinate has exactly one valid time. Overflow is fatal and never
 wraps.
 
-Origin identity obeys these lifecycle rules:
+Writer identity and assignment survive restart, reset, migration, and same-host
+active/inactive cutover. Remote snapshot import does not replace the receiving
+writer or origin. When A's storage is copied to new writable host B, B retains
+`JournalDomain` and every historical clock component, but before writable open:
 
 ```text
-process restart: preserve local origin
-reset: preserve local origin
-migration: preserve local origin
-active/inactive cutover on the same host: both slots share the local origin
-remote snapshot import: do not replace the receiving host's local origin
-new independently writable host:
-    assign a distinct allowed origin before its first graph mutation
+B.localWriterId = WB
+B.localJournalOrigin = JournalDomain.writerOrigins[WB]
 ```
 
-A copied database does not transfer writer identity. A receiving host retains
-all synchronized clock components but uses only its own assigned origin for
-subsequent mutations. Adding or removing writable origins requires a separately
-specified journal-domain migration; dynamic membership is outside this protocol
-revision.
-
-Writable open and transaction finalization require
-`localJournalOrigin ∈ JournalDomain.allowedOrigins`. Missing domain, missing
-local origin, or an origin outside the fixed set prevents authoritative graph
-mutation. If A's storage is copied to a new writable host B, B must be
-provisioned with a distinct allowed origin before opening the graph for writes;
-B retains A's clock components but never advances them.
+WB must be the distinct mapping provisioned for B. B never advances A's origin.
+Copying storage alone does not transfer writer ownership.
 
 ## Local delivery types and cursors
 
@@ -122,7 +128,7 @@ other than notification time, validity data, proofs, or graph assertions.
 ## Storage bound
 
 Let `n` be current plus historic semantic keys, `a = 5`, and
-`r = |allowedOrigins|`, a fixed domain constant.
+`r = |set(writerOrigins.values())|`, a fixed domain constant.
 
 ```text
 NotificationClock: at most n × r × a components

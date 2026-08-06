@@ -141,7 +141,7 @@ and cursor infrastructure, then returns without processing additional hosts.
 
 **REQ-SYNC-03 (Reset mode separation):** Reset-to-hostname mode must not be
 mixed with normal per-host merge semantics. It preserves the receiving
-`JournalDomain`, `JournalOriginId`, `NotificationClock`, `DeliveryByIndex`,
+`JournalDomain`, `localWriterId`, `JournalOriginId`, `NotificationClock`, `DeliveryByIndex`,
 `DeliveryHead`, `lastLocalJournalIndex`, and physical gaps. Remote writer
 identity and physical cursor state are never installed. A source with a
 different journal domain is rejected before replacement; its domain is never
@@ -684,19 +684,24 @@ finalGraph =
     the fully specified authoritative graph merge in §§1–15
 
 joinedClock =
-    joinClock(localClock, remoteClock)
+    mergeNotificationClocks(localClock, remoteClock)
 
 SyncGraphActions =
     classifyExactActions(localGraph, finalGraph)
 
 finalClock =
-    emitActions(
+    emitSynchronizationCreatedTransitions(
         joinedClock,
-        localJournalOrigin,
+        receivingWriterOrigin,
         SyncGraphActions,
         cutoverTime
     )
 ```
+
+`mergeNotificationClocks(A,B) = joinClock(A,B)` is the commutative,
+associative, and idempotent binary merge of already-emitted replicated clock
+states. `emitSynchronizationCreatedTransitions` is an ordinary receiving-host
+local update after that merge and is not part of the binary operator.
 
 The graph merge is fully specified independently of the journal.
 `NotificationClock` must not influence `finalGraph`, and `finalGraph` must not
@@ -704,7 +709,8 @@ be reconstructed from the clock. Domain and clock validation precede joining,
 but clock contents never select candidates, conflicts, deletions, freshness,
 identifiers, or validity transport.
 
-For each `(K,A)` in `SyncGraphActions`, `emitActions` increments
+For each `(K,A)` in `SyncGraphActions`,
+`emitSynchronizationCreatedTransitions` increments
 `finalClock[K][localJournalOrigin][A].sequence` exactly once and sets its time to
 `cutoverTime`. Sequence overflow is fatal. Duplicate delivery coordinates do
 not suppress this local-origin advancement. Every committed synchronization-
@@ -738,10 +744,28 @@ unequal `ComputedValue` while materialized, `delete` only materialized-to-absent
 `invalidate` only fresh-to-stale, and `validate` only stale-to-fresh. Independent
 value and freshness changes can emit two actions.
 
+Delivery time is deterministic when notification sources overlap:
+
+```text
+if (K,A) ∈ SyncGraphActions:
+    DeliveryRecord.time = cutoverTime
+else:
+    DeliveryRecord.time =
+        time selected from advanced remote components by the
+        deterministic (sequence, JournalOriginId) rule
+```
+
+A synchronization-created action is an actual local cutover transition, so its
+time takes precedence. A coordinate in both sets still produces only one
+bounded delivery record. For example, if remote `edit K` advancement also makes
+the authoritative merge change the receiver's K value, `(K,edit)` belongs to
+both sets and its replacement delivery uses `cutoverTime`.
+
 The inactive destination exact-copies from one fixed local source snapshot:
 
 ```text
 JournalDomain
+localWriterId
 NotificationClock
 DeliveryByIndex
 DeliveryHead
@@ -757,15 +781,17 @@ replacement is needed, although every actual `SyncGraphAction` has already
 advanced its counter.
 
 Pre-cutover validation requires the destination `JournalDomain` to equal the
-local domain; the destination origin and every clock origin to belong to
-`allowedOrigins`; `DeliveryHead` and `DeliveryByIndex` to satisfy the one-head
-invariant; and the watermark not to be below any retained delivery index.
+local domain; its local writer/origin pair to equal the domain mapping; every
+clock origin to belong to `set(writerOrigins.values())`; `DeliveryHead` and
+`DeliveryByIndex` to satisfy the one-head invariant; and the watermark not to
+be below any retained delivery index.
 
 ### 17.1 Conflict-resolution and three-host trace
 
 For local `A,B → D → E → F`, suppose the host's canonical `A` candidate changes
-value and changes freshness from fresh to stale. The authoritative merge first emits no notification: it
-settles `A`, deletes multi-input `D`, propagates deletion to `E` and `F`, rebuilds
+value and changes freshness from fresh to stale. The authoritative merge first
+emits no notification: it settles `A`, deletes multi-input `D`, propagates
+deletion to `E` and `F`, rebuilds
 surviving validity, and validates the graph. Classification afterward yields
 `edit(A)`, `invalidate(A)`, and `delete(D)`, `delete(E)`, and `delete(F)`;
 each advances the receiving origin and receives one local delivery.
@@ -797,20 +823,61 @@ inactive destination MUST be activated so the joined clock and replacement edit
 delivery become visible. Replica cutover is skipped only when both graph and the
 complete journal result are unchanged.
 
+### 17.3 Binary merge boundary counterexample
+
+```text
+A:
+    graph K = value A
+    local origin OA
+
+B:
+    graph K = value B
+    local origin OB
+    clock[K][OB][edit] = 1
+
+authoritative merge selects B
+```
+
+```text
+A receives B:
+    joinedClock: OB.edit = 1
+    SyncGraphActions: edit K
+    finalClock: OB.edit = 1, OA.edit = 1
+
+B receives A:
+    joinedClock: OB.edit = 1
+    SyncGraphActions: none
+    finalClock: OB.edit = 1
+```
+
+The complete receiving-host result is not commutative because it includes a new
+local update after the commutative merge. The complete receiving-host
+post-emission clock need not equal the reversed-role post-emission clock. Once
+the emitted state is replicated, the binary operator converges it:
+
+```text
+joinClock(
+    { OA.edit = 1, OB.edit = 1 },
+    { OB.edit = 1 }
+)
+=
+{ OA.edit = 1, OB.edit = 1 }
+```
+
 ## 18. Lifecycle, writable-state, and failure requirements
 
 Every fixed graph+journal source snapshot and inactive initialization carries
-all six journal parts listed in §17. `JournalDomain` survives synchronization,
+all journal parts listed in §17. `JournalDomain` survives synchronization,
 migration, reset, restart, and replica cutover. Destination construction remains
 isolated in inactive replica T; failure leaves the active pointer unchanged.
 
 Writable open and transaction finalization both require
-`localJournalOrigin ∈ JournalDomain.allowedOrigins`. A replica with a missing
-domain, missing local origin, or origin outside the allowed set MUST NOT commit
-an authoritative graph mutation. A fork copied from host A must be provisioned
-with distinct allowed origin OB before host B opens for writes; it retains OA's
-clock components but never advances them. Provisioning is deployment-specific,
-but rejection is normative.
+`JournalDomain.writerOrigins[localWriterId] == localJournalOrigin`. A replica
+with a missing domain, writer, or origin, a mismatched assignment, or duplicate
+ownership MUST NOT commit an authoritative graph mutation. A fork copied from
+host A must be provisioned with B's distinct mapped writer/origin pair before B
+opens for writes; it retains OA's clock components but never advances them.
+Provisioning is deployment-specific, but rejection is normative.
 
 With holiday retained, the destination is fully constructed, made durable, and
 validated before `closeGarden` is acquired. Then the active pointer switches,

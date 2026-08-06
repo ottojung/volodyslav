@@ -9,21 +9,29 @@ materialization and never participate in journal synchronization.
 Before joining, validate both complete inputs and require:
 
 ```text
-local.domainId == remote.domainId
-local.allowedOrigins == remote.allowedOrigins
+local.JournalDomain == remote.JournalDomain
+
+domain.writerOrigins[local.localWriterId]
+    == local.localJournalOrigin
+
+domain.writerOrigins[remote.localWriterId]
+    == remote.localJournalOrigin
+
+local.localWriterId != remote.localWriterId
+local.localJournalOrigin != remote.localJournalOrigin
 ```
 
-Set equality is exact. Reject either clock if any component names an origin
-outside `allowedOrigins`. Domain mismatch, unknown origin, malformed component,
-and equal-sequence/time conflict reject synchronization atomically and
-symmetrically before either result is installed. Remote data never silently
-adds an origin. Dynamic membership requires a separately specified
-journal-domain migration.
+Mapping equality is exact. Each staged peer declares its stable writer ID and
+assigned origin. Reject either clock if any coordinate uses an origin outside
+`set(domain.writerOrigins.values())`. Domain mismatch, unknown origin, malformed
+component, ownership mismatch, and equal-sequence/time conflict reject
+synchronization atomically and symmetrically before either result is installed.
+Remote data never adds a writer or origin. Dynamic membership requires a
+separately specified journal-domain migration.
 
-Distinct independently writable peers must have distinct assigned local
-origins. As a mandatory negative protocol test, two writable hosts configured
-with the same local origin are rejected before either may synchronize as a
-valid peer; neither destination is installed.
+Distinct independently writable peers must have distinct mapped writers and
+origins. Claims are checked against the immutable mapping, not merely against
+previously encountered peers.
 
 ## Coordinate join
 
@@ -74,6 +82,19 @@ joinClock(joinClock(A, B), C) = joinClock(A, joinClock(B, C))
 joinClock(A, A) = A
 ```
 
+`mergeNotificationClocks(A,B) = joinClock(A,B)` is the binary journal merge
+operator for already-emitted replicated states. The three laws above belong to
+that operator alone.
+
+```text
+mergeNotificationClocks(A, B) = mergeNotificationClocks(B, A)
+
+mergeNotificationClocks(mergeNotificationClocks(A, B), C)
+    = mergeNotificationClocks(A, mergeNotificationClocks(B, C))
+
+mergeNotificationClocks(A, A) = A
+```
+
 Different hosts or synchronization schedules need not produce identical
 physical delivery indices or watermarks. Local delivery state instead
 guarantees no false negatives, same-process cursor continuity, one retained
@@ -96,7 +117,7 @@ detects B. This is required for concurrent edits.
 ```text
 RemoteAdvancedActions = {
   (K,A) |
-  some O has finalClock[K][O][A].sequence
+  some O has joinedClock[K][O][A].sequence
              > localClock[K][O][A].sequence
 }
 ```
@@ -120,18 +141,36 @@ component greatest under `(sequence, JournalOriginId)` and copy its time.
 The clock join does not synchronize graph state and is never an input to graph
 conflict resolution.
 
+### Writer-ownership rejection across three hosts
+
+```text
+domain:
+    WA -> OA
+    WB -> OB
+    WC -> OC
+
+A declares: writer WA, origin OA
+B declares: writer WB, origin OA
+```
+
+C rejects B because `domain.writerOrigins[WB] = OB` but
+`B.localJournalOrigin = OA`. This works even when C synchronized with A and B
+at different times: ownership is verified from the immutable domain.
+
 ### Mandatory host-fork trace
 
 ```text
 A:
+    local writer WA
     local origin OA
     edit[K][OA] = 5
 
 copy A's storage to new writable host B
 
 before B may mutate:
-    B.local origin = OB
-    OA != OB
+    B.localWriterId = WB
+    B.local origin = domain.writerOrigins[WB] = OB
+    WA != WB and OA != OB
 
 B edits K:
     edit[K][OB] = 1

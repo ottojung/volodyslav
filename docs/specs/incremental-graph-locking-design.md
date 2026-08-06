@@ -251,9 +251,9 @@ DeliveryHead updates
 lastLocalJournalIndex update
 ```
 
-Writable open and finalization require the local origin to belong to the
-replica's `JournalDomain.allowedOrigins`; missing or invalid identity prevents
-the graph mutation from committing.
+Writable open and finalization require
+`JournalDomain.writerOrigins[localWriterId] == localJournalOrigin`; a missing
+writer/origin or mismatched assignment prevents graph mutation from committing.
 
 For every exact before/after action, delivery replacement allocates a fresh
 index, deletes exactly the old headed record if present, puts the new record,
@@ -297,10 +297,10 @@ holiday
     -> release enterGarden
 ```
 
-That fixed snapshot contains `JournalDomain`, `NotificationClock`,
-`DeliveryByIndex`, `DeliveryHead`, `JournalOriginId`, and
-`lastLocalJournalIndex`. Inactive targets copy all six before applying their
-operation-specific graph and notification changes.
+That fixed snapshot contains `JournalDomain`, `localWriterId`,
+`NotificationClock`, `DeliveryByIndex`, `DeliveryHead`, `JournalOriginId`, and
+`lastLocalJournalIndex`. Inactive targets copy all identity and cursor fields
+before applying their operation-specific graph and notification changes.
 
 Inactive construction proceeds from that snapshot without garden access. The
 validated switch is:
