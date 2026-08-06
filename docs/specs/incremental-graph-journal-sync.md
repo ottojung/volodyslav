@@ -1,5 +1,30 @@
 # Notification-clock synchronization
 
+## Domain validation and synchronization boundary
+
+Only `NotificationClock` is replicated journal state. `DeliveryByIndex`,
+`DeliveryHead`, `lastLocalJournalIndex`, and physical gaps are host-local cursor
+materialization and never participate in journal synchronization.
+
+Before joining, validate both complete inputs and require:
+
+```text
+local.domainId == remote.domainId
+local.allowedOrigins == remote.allowedOrigins
+```
+
+Set equality is exact. Reject either clock if any component names an origin
+outside `allowedOrigins`. Domain mismatch, unknown origin, malformed component,
+and equal-sequence/time conflict reject synchronization atomically and
+symmetrically before either result is installed. Remote data never silently
+adds an origin. Dynamic membership requires a separately specified
+journal-domain migration.
+
+Distinct independently writable peers must have distinct assigned local
+origins. As a mandatory negative protocol test, two writable hosts configured
+with the same local origin are rejected before either may synchronize as a
+valid peer; neither destination is installed.
+
 ## Coordinate join
 
 Missing coordinates have sequence zero. For each `(key, origin, action)`:
@@ -35,6 +60,20 @@ components are identical because validity requires equal times.
 
 A clock is a finite product over key/origin/action coordinates of max-counter
 semilattices. Finite products preserve these three laws.
+
+Normatively, the laws apply only to `NotificationClock`:
+
+```text
+joinClock(A, B) = joinClock(B, A)
+joinClock(joinClock(A, B), C) = joinClock(A, joinClock(B, C))
+joinClock(A, A) = A
+```
+
+Different hosts or synchronization schedules need not produce identical
+physical delivery indices or watermarks. Local delivery state instead
+guarantees no false negatives, same-process cursor continuity, one retained
+record per key/action, and O(n) live records. Local delivery indices are cursor
+infrastructure and are not part of the algebraic merge result.
 
 ## Independent coordinates
 
@@ -75,3 +114,28 @@ component greatest under `(sequence, JournalOriginId)` and copy its time.
 
 The clock join does not synchronize graph state and is never an input to graph
 conflict resolution.
+
+### Mandatory host-fork trace
+
+```text
+A:
+    local origin OA
+    edit[K][OA] = 5
+
+copy A's storage to new writable host B
+
+before B may mutate:
+    B.local origin = OB
+    OA != OB
+
+B edits K:
+    edit[K][OB] = 1
+
+join retains:
+    edit[K][OA] = 5
+    edit[K][OB] = 1
+```
+
+B retains OA's copied component but never advances it. Copying storage does not
+make B the OA writer. OB must be distinct, already allowed by the fixed domain,
+and assigned before B's first authoritative graph mutation.

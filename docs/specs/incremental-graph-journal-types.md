@@ -26,10 +26,23 @@ transitions can emit two actions.
 
 ## Stable origin and synchronized clock
 
-`JournalOriginId` is the durable identity of one independently writable replica
-origin. It is unique among concurrent writers and survives process restart,
-reset, migration, and active/inactive cutover. Both slots of one local graph
-lineage carry the same identity. It is not regenerated per operation or sync.
+`JournalDomainId` is the durable identity of one synchronization domain.
+`AllowedJournalOrigins` is a finite immutable set. This protocol version fixes
+membership:
+
+```text
+JournalDomain = {
+    domainId: JournalDomainId
+    allowedOrigins: AllowedJournalOrigins
+}
+
+AllowedJournalOrigins = finite immutable set<JournalOriginId>
+```
+
+`JournalOriginId` is the assigned writer identity of exactly one independently
+writable host. Every writable host has one unique origin from a fixed finite
+synchronization domain. Unknown origins cannot enlarge a clock. A host advances
+only its assigned local origin; it retains but never advances other origins.
 
 ```text
 NotificationClock =
@@ -55,6 +68,24 @@ only: it is not a graph revision/version, causal context, operation or
 transaction identifier, or synchronization generation. Equal nonzero sequence
 at the same coordinate has exactly one valid time. Overflow is fatal and never
 wraps.
+
+Origin identity obeys these lifecycle rules:
+
+```text
+process restart: preserve local origin
+reset: preserve local origin
+migration: preserve local origin
+active/inactive cutover on the same host: both slots share the local origin
+remote snapshot import: do not replace the receiving host's local origin
+new independently writable host:
+    assign a distinct allowed origin before its first graph mutation
+```
+
+A copied database does not transfer writer identity. A receiving host retains
+all synchronized clock components but uses only its own assigned origin for
+subsequent mutations. Adding or removing writable origins requires a separately
+specified journal-domain migration; dynamic membership is outside this protocol
+revision.
 
 ## Local delivery types and cursors
 
@@ -83,13 +114,16 @@ other than notification time, validity data, proofs, or graph assertions.
 
 ## Storage bound
 
-Let `n` be current plus historic semantic keys, `r` the fixed configured origin
-count, and `a = 5`. There are at most `n × r × a` clock components, `n × a`
-heads, and `n × a` records, plus constant origin/watermark metadata. Thus:
+Let `n` be current plus historic semantic keys, `a = 5`, and
+`r = |allowedOrigins|`, a fixed domain constant.
 
 ```text
-size = O(nra + na) = O(n) for fixed r and a
+NotificationClock: at most n × r × a components
+DeliveryHead:       at most n × a entries
+DeliveryByIndex:    at most n × a records
+total:              O(n)
 ```
 
-If origins are unbounded, the bound is `O(nr)`, not `O(n)`. Values and proofs are
-not stored, so their size cannot affect journal size.
+Domain metadata, local origin, and the watermark add constant state. The
+protocol rejects unbounded or unknown origins rather than admitting them.
+Values and proofs are not stored, so their size cannot affect journal size.

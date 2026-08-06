@@ -28,10 +28,11 @@ or active/inactive cutover.
 
 ### Goal 3 — algebraic synchronization
 
-**Synchronization of synchronized journal state must be commutative,
-associative, and idempotent.** `NotificationClock` joins coordinate-wise by the
-maximum sequence. It is therefore a finite product of max-counter
-semilattices; the journal synchronization specification proves each law.
+**The replicated notification state of the journal synchronizes commutatively,
+associatively, and idempotently.** That replicated state is exactly
+`NotificationClock`, which joins coordinate-wise by maximum sequence. Local
+delivery indices, heads, watermarks, and physical gaps are cursor
+infrastructure, not algebraic merge state.
 
 ### Non-goal — graph authority
 
@@ -51,6 +52,7 @@ GraphReplica
     ├── NotificationClock
     ├── DeliveryByIndex
     ├── DeliveryHead
+    ├── JournalDomain
     ├── JournalOriginId
     └── lastLocalJournalIndex
 ```
@@ -123,6 +125,9 @@ the corresponding files under `docs/specs/`.
 
 ## Normative invariants
 
+- The graph merge is fully specified independently of the journal.
+- The notification clock never chooses graph state.
+- The journal rewrite does not remove or weaken the observatory locking model.
 - The graph database is the sole authority for graph state.
 - The journal is a notification source and never a graph-state source.
 - The journal has no false negatives for materialization, `ComputedValue`, or
@@ -136,6 +141,14 @@ the corresponding files under `docs/specs/`.
   up-to-date.
 - Notification-clock synchronization is pointwise maximum and is commutative,
   associative, and idempotent.
+- Every writable host has one unique origin from a fixed finite synchronization
+  domain.
+- Unknown origins cannot enlarge a clock.
+- For a fixed journal domain, total live journal state is O(n).
+- The replicated `NotificationClock` join is commutative, associative, and
+  idempotent.
+- Local delivery indices are cursor infrastructure and are not part of the
+  algebraic merge result.
 - Concurrent origins and distinct actions cannot overwrite one another.
 - At most one local delivery record exists per historic node key and exact
   action.
@@ -145,6 +158,8 @@ the corresponding files under `docs/specs/`.
   length.
 - The journal remains physically inside the graph replica and is copied as
   local cursor infrastructure during replica construction.
+- No committed materialization, value, or freshness transition lacks a covering
+  notification.
 
 ## Strict O(n) proof
 
@@ -162,6 +177,9 @@ The last equality requires fixed `r` and `a`; with unbounded origins it is
 `O(nr)`. Historic deleted keys remain in `n`. Mandatory replacement maintains
 the bound continuously. Operation/synchronization count, value/proof size,
 graph age, validity edges, and obsolete intermediate values add no terms.
+For this protocol version, `allowedOrigins` is finite and immutable, so `r` is
+an enforced domain constant. For a fixed journal domain, total live journal
+state is O(n).
 
 ## No-false-negatives proof
 
