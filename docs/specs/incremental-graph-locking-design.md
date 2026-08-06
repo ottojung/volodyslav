@@ -48,15 +48,22 @@ operations by `closeGarden`, not by `holiday`.
 
 A host-originated graph operation (`pull`, `invalidate`, first materialization,
 explicit deletion) computes its intent and tentative graph work in the
-transaction body, then acquires the **darkroom** for finalization. Inside the
-darkroom it reads the current canonical journal, projects the current
+transaction body, then acquires the **activeReplicaDarkroom** for finalization.
+Inside the darkroom it reads the current canonical journal, projects the current
 authoritative assertion, reconciles the intent against it, derives the final
 journal entries and the graph-cache mutation, allocates origin and physical
-indices, and commits graph-cache mutations, new journal entries, new physical
-occurrences, and the advanced local `JournalIndex` in one durable batch
+indices from the root-local allocator, and commits graph-cache mutations, new
+journal entries, new physical occurrences, and the advanced root-local
+`lastLocalJournalIndex` in one durable batch
 (`incremental-graph-journal-emission.md` § 2). `pull` runs in `nighttime` mode
 with its per-node telescope; `invalidate` and other non-`pull` operations run in
 `daytime` mode.
+
+The root-local physical/event allocator (`HostInstanceId` and
+`lastLocalJournalIndex`) is shared by both replica slots. A failed inactive
+migration or synchronization destination build may advance it and leave gaps,
+but never reuses a `(hostname, HostInstanceId, originIndex)` tuple
+(`incremental-graph-journal-types.md` § 2.1).
 
 ---
 
@@ -69,14 +76,18 @@ sequence, with a deadlock-free acquisition order of
 holiday -> closeGarden -> destination darkroom
 ```
 
-No path may acquire these in reverse order.
+No path may acquire these in reverse order, and no path may hold a darkroom and
+then request `closeGarden`.
 
 ```text
 1. acquire holiday
 2. freeze/export the local logical journal
 3. obtain and validate staged snapshots
 4. join and project
-5. build the inactive destination
+5. build the inactive destination as a physical copy of the frozen local
+   journal layout (occurrences, indices, gaps, watermark), then replace its
+   logical journal and projected graph, and append imported occurrences and
+   carriers after the copied watermark
 6. acquire closeGarden
 7. wait for all existing enterGarden readers to leave
 8. finish destination metadata and atomically switch active replica
@@ -107,15 +118,26 @@ only then may x be cleared
 Failure before cutover leaves the previously active replica active and
 unchanged. The destination is `joinJournal(frozenLocal, staged)`; because the
 local source is frozen under `holiday`, the destination cannot omit a local
-operation committed during synchronization.
+operation committed during synchronization. Because the destination preserves
+the frozen local physical layout, same-process cursors remain valid across the
+cutover.
 
 ---
 
 ## 5. Compaction
 
 Physical compaction of the active journal is a destructive physical rewrite and
-MUST acquire `closeGarden` for its complete duration. A query observes either
-the pre-compaction or the post-compaction layout, never a mixture. Logical
+is serialized with both readers and occurrence writers. It acquires
+`closeGarden` (readers) AND `activeReplicaDarkroom` (occurrence writers), in the
+one lock order:
+
+```text
+closeGarden -> activeReplicaDarkroom
+```
+
+No host-originated append can finalize while compaction reads and writes
+(`incremental-graph-journal-compaction.md` § 2.1). A query observes either the
+pre-compaction or the post-compaction layout, never a mixture. Logical
 compaction (`normalizeJournal`) has no physical effect and needs no garden
 protection beyond the ordinary batch commit discipline.
 
@@ -125,7 +147,9 @@ protection beyond the ordinary batch commit discipline.
 
 Migration is a `holiday`-mode lifecycle operation that builds an inactive
 destination and switches the active-replica pointer through the same
-`holiday -> closeGarden -> destination darkroom` order. Reset is an ordinary
-bulk graph operation that emits per-key entries in one batch under `holiday`;
-it does not install a target journal and does not alter the cursor domain or
-origin identity.
+`holiday -> closeGarden -> destination darkroom` order. A failed migration may
+advance the root-local allocator and leave gaps, but the active graph, active
+logical journal, and active physical occurrences are unchanged. Reset is an
+ordinary bulk graph operation that emits per-key entries in one batch under
+`holiday`; it does not install a target journal and does not alter the cursor
+domain or origin identity.

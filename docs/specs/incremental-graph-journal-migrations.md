@@ -55,13 +55,25 @@ The migration writes to an inactive destination replica:
 - Each durable batch acquires the destination darkroom; the darkroom is not held
   for the complete potentially long-running migration.
 
-`last local physical JournalIndex` must accurately reflect every committed
-occurrence at every intermediate state.
+Physical indices come from the single root-local allocator
+(`incremental-graph-journal-types.md` § 2.1), shared by both replica slots. A
+failed migration may advance the root-local allocator and leave gaps, but it
+never permits reuse of a `(hostname, HostInstanceId, originIndex)` tuple.
 
 ---
 
 ## 3. Failure guarantee
 
 A failed migration leaves both the graph cache and the physical occurrences of
-the previously active replica unchanged. Entries and occurrences written to the
-inactive destination before a failure are never activated.
+the previously active replica unchanged:
+
+```text
+failed migration:
+    active graph, active logical journal, active physical occurrences: unchanged
+    root-local allocation watermark: may have advanced
+```
+
+The possible watermark advance is acceptable and required for uniqueness. A
+retry of the failed migration, or any later host event, allocates indices
+strictly above the failed attempt's last allocation. Entries and occurrences
+written to the inactive destination before a failure are never activated.

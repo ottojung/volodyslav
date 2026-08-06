@@ -24,7 +24,8 @@ An **origin** `{ hostname, hostInstanceId, originIndex }` names the storage
 instance and monotonic index that created the event, and `eventId` is the
 `JSON.stringify` encoding of the origin. There is exactly one event-ID format and
 no sync-event IDs. A host event's `originIndex` equals the `LocalJournalIndex`
-of its original occurrence.
+of its original occurrence, allocated from the single root-local allocator
+(`HostInstanceId` + `lastLocalJournalIndex`) shared by both replica slots.
 
 A **physical occurrence** is one local journal position containing an event.
 Synchronization may append duplicate occurrences (notification carriers) so that
@@ -91,11 +92,14 @@ Synchronization validates inputs (including mandatory equal `schemaVersion` and
 `mergeProtocolVersion` preconditions, since projection depends on the schema),
 joins the normalized journal entries, projects the final graph, compares it
 with the pre-sync local graph, and installs atomically. It creates no new
-logical event. To notify local cursors it appends duplicate occurrences of
-canonical events as physical carriers. Logical state converges across hosts;
-physical indices and carrier positions are deliberately host-local.
-Synchronization holds the graph `holiday` exclusion from freezing the local
-source through cutover, so a concurrent local operation cannot be lost.
+logical event. The inactive destination begins as an exact physical copy of the
+frozen local journal layout, then appends imported occurrences and notification
+carriers after the copied watermark, so the local physical cursor domain is
+preserved across cutover. Logical state converges across hosts; physical
+indices and carrier positions are deliberately host-local. Synchronization
+holds the graph `holiday` exclusion from freezing the local source through
+cutover, so a concurrent local operation cannot be lost, and uses
+`closeGarden` only to drain readers at the cutover.
 
 ## Public API
 
@@ -112,7 +116,10 @@ assert current graph state, so carrier copies are legitimate.
 
 Logical compaction is `normalizeJournal`; physical compaction deletes duplicate
 occurrences while retaining the greatest local occurrence of each canonical
-event. No checkpoint, lease, frontier, or compaction summary exists.
+event. Physical compaction is serialized with both readers (`closeGarden`) and
+occurrence writers (`activeReplicaDarkroom`), so a committed occurrence is never
+erased by compaction. No checkpoint, lease, frontier, or compaction summary
+exists.
 
 ## Related specifications
 

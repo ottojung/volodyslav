@@ -52,9 +52,13 @@ Normal synchronization follows these steps in order (lock acquisition order is
    Projected-graph validation).
 7. The final graph is compared with the pre-sync local graph; affected keys are
    determined.
-8. The merged journal, the projected graph, the newly imported physical
-   occurrences, and the notification carriers are installed atomically in the
-   inactive destination.
+8. The inactive destination is initialized as an exact physical copy of the
+   frozen local journal layout (every surviving occurrence, its exact
+   `LocalJournalIndex`, physical gaps/absences, and the local physical
+   watermark), then the destination's canonical logical journal and projected
+   graph are replaced by the join result, and newly imported occurrences and
+   notification carriers are appended at fresh indices strictly greater than
+   the copied watermark (allocated from the root-local allocator).
 9. Acquire `closeGarden`, wait for existing `enterGarden` readers to leave,
    finish destination metadata in the destination darkroom, and atomically
    switch the active-replica pointer; release `closeGarden` before the old
@@ -67,7 +71,10 @@ Normal synchronization follows these steps in order (lock acquisition order is
 
 Because the local source is frozen under `holiday` for the whole procedure, the
 destination is `joinJournal(frozenLocal, staged)` and cannot lose a local
-operation committed during synchronization.
+operation committed during synchronization. Because the destination preserves
+the frozen local physical layout, same-process cursors remain valid across the
+cutover: logical state comes from `joinJournal`, local physical history comes
+from the frozen local source.
 
 Synchronization creates no new logical event IDs, no sync creator, and no
 sync-derived delete or invalidate event.

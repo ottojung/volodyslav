@@ -195,11 +195,16 @@ join normalized journal entries
 project final graph
 validateProjectedGraph
 compare old local graph with final graph
+initialize destination as a physical copy of the frozen local journal layout
+  (occurrences, indices, gaps, watermark)
+append imported occurrences and carriers after the copied watermark
 install atomically
 ```
 
 It creates no new logical event IDs, no sync creator, and no sync-derived
-delete or invalidate event.
+delete or invalidate event. The destination's physical history is the frozen
+local source's history; only its logical journal and projected graph are
+replaced by the join result.
 
 ### 3.0 Compatibility preconditions
 
@@ -222,7 +227,47 @@ The installation commit is atomic: the graph-cache mutations, the newly imported
 physical occurrences, and the local physical watermark advance together. A
 failed installation exposes none of them.
 
-### 3.1 Physical notification carriers
+### 3.1 Preserving the local physical cursor domain
+
+The inactive synchronization destination must begin with an exact physical copy
+of the frozen local active journal. Before appending remote occurrences or
+carriers, copy:
+
+```text
+every surviving local physical occurrence
+its exact LocalJournalIndex
+physical gaps/absences
+the local physical watermark
+```
+
+Then append:
+
+```text
+newly imported logical events
+notification carriers
+```
+
+at fresh indices strictly greater than the copied watermark, allocated from the
+single root-local allocator. The distinction is precise:
+
+```text
+Logical state comes from joinJournal.
+Local physical history comes from the frozen local source.
+```
+
+**Cursor-domain trace:**
+
+```text
+L contains E at physical index 10
+consumer cursor = 5
+remote merge is a logical no-op
+```
+
+After cutover, the query over `(5, H]` must still observe `E`, because the
+destination preserved `L`'s physical layout including the occurrence of `E` at
+index 10 and the watermark.
+
+### 3.2 Physical notification carriers
 
 The public journal API uses local physical cursor positions. Therefore
 synchronization must notify existing local cursors about graph-observable

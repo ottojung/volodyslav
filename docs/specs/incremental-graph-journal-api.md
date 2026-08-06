@@ -53,10 +53,18 @@ logical event is unchanged.
 
 Private same-process cursor tokens are supported. A `PossibleNodeChange`
 returned during a process session is valid as `since` for subsequent calls
-within that same session. Persistence of tokens across process restarts,
-synchronization boundaries involving heterogeneous hosts, or migration/schema
-boundaries, and the corresponding long-lived validity guarantees, are outside
-this journal's token contract.
+within that same session.
+
+Same-process cursors remain valid across ordinary synchronization cutovers
+performed by the same open `RootDatabase`: the destination preserves the frozen
+local physical layout, so the physical indices the cursor refers to are
+preserved and only freshly imported occurrences and carriers are appended above
+them.
+
+Persistence of tokens across process restart, serialization, movement to
+another machine, or heterogeneous-host synchronization boundaries, and the
+corresponding long-lived validity guarantees, are outside this journal's token
+contract.
 
 `baselinePossibleNodeChange()` returns a position less than any real local
 physical index.
