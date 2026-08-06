@@ -25,9 +25,20 @@ version, sync-derived event, or sync creator anywhere in the system.
 
 ## 2. Per-host synchronization procedure
 
-Normal synchronization follows these steps in order (lock acquisition order is
-`holiday -> enterGarden -> closeGarden -> destination darkroom`; see
-`incremental-graph-locking-design.md` § Synchronization and cutover):
+Normal synchronization follows these steps in order, using two distinct lock
+phases (see `incremental-graph-locking-design.md` § Synchronization and
+cutover):
+
+```text
+source capture:
+    holiday -> enterGarden -> release enterGarden
+
+cutover:
+    holiday -> closeGarden -> destination darkroom
+```
+
+`enterGarden` is always released before `closeGarden` is requested; there is no
+shared-to-exclusive upgrade.
 
 1. Acquire `holiday`. No local `pull()`, `invalidate()`, migration, or reset can
    commit to the active replica from the moment the local journal is frozen

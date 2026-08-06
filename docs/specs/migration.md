@@ -190,6 +190,24 @@ and emit ordinary entries for every change:
 - Journal entries are emitted atomically with their corresponding graph
   transitions in one durable batch.
 
+### Authoritative journal seed
+
+A migration begins from the active canonical journal `J0`, never from an empty
+journal. Let `M` be the migration-generated events; the destination's
+authoritative state is:
+
+```text
+J1 = normalizeJournal(J0 ∪ M)
+```
+
+with target graph `G1 = projectGraph(newSchema, J1)`. The migration callback's
+graph decisions are inputs used to derive `M`; they are not an independent
+authority. An unchanged `KEEP` may emit no event only because its existing
+canonical event is carried into `J1`. The migration captures its source `J0`
+under `enterGarden` as a shared garden reader
+(`docs/specs/incremental-graph-journal-migrations.md` § Migration source
+capture).
+
 ## Atomicity guarantee
 
 Decisions are collected in memory during the callback.  The desired state is unified into the target replica's storage, then validated with `assertValidFinalMergeState` before the replica pointer is switched.  A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.

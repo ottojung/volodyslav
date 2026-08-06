@@ -69,11 +69,16 @@ originIndex)` provenance tuple
 
 ## 4. Synchronization and cutover
 
-Synchronization is a `holiday`-mode lifecycle operation. It uses the following
-sequence, with a deadlock-free acquisition order of
+Synchronization is a `holiday`-mode lifecycle operation. It uses two distinct
+lock phases. `enterGarden` is always released before `closeGarden` is requested,
+so the operation is never one nested chain:
 
 ```text
-holiday -> enterGarden -> closeGarden -> destination darkroom
+source capture:
+    holiday -> enterGarden -> release enterGarden
+
+cutover:
+    holiday -> closeGarden -> destination darkroom
 ```
 
 No path may acquire these in reverse order, no path may hold a darkroom and then
@@ -96,6 +101,7 @@ request `closeGarden`, and synchronization never upgrades `enterGarden` to
 5. export the local normalized logical journal from a state consistent with S
 
 6. release enterGarden
+      (source capture phase complete)
 
 7. obtain and validate remote logical snapshots
 
@@ -109,6 +115,7 @@ request `closeGarden`, and synchronization never upgrades `enterGarden` to
 11. validate the destination
 
 12. acquire closeGarden
+      (cutover phase)
 
 13. drain existing enterGarden readers
 
@@ -208,10 +215,23 @@ discipline.
 ## 6. Migration and reset
 
 Migration is a `holiday`-mode lifecycle operation that builds an inactive
-destination and switches the active-replica pointer through the same
-`holiday -> closeGarden -> destination darkroom` order. A failed migration may
-advance the root-local allocator and leave gaps, but the active graph, active
-logical journal, and active physical occurrences are unchanged. Reset is an
+destination and switches the active-replica pointer. It uses the same two lock
+phases as synchronization (`incremental-graph-journal-migrations.md` §
+Migration source capture):
+
+```text
+source capture:
+    holiday -> enterGarden -> release enterGarden
+
+cutover:
+    holiday -> closeGarden -> destination darkroom
+```
+
+Migration acts as a shared garden reader while capturing its authoritative
+source view `S`, releases `enterGarden` before requesting `closeGarden`, and
+never upgrades `enterGarden` to `closeGarden`. A failed migration may advance
+the root-local allocator and leave gaps, but the active canonical journal,
+active graph, and active physical occurrences are unchanged. Reset is an
 ordinary bulk graph operation that emits per-key entries in one batch under
 `holiday`; it does not install a target journal and does not alter the cursor
 domain or origin identity.
