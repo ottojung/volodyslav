@@ -166,47 +166,26 @@ If no previous version is found, the migration is a no-op.
 
 ## Journal interaction
 
-Migration has limited interaction with the journal system. The detailed rules
-are defined in `docs/specs/incremental-graph-journal-migrations.md`. Because the
-journal is the sole synchronization authority, migration must compare the
-**complete journal-projected assertion** — value, logically relevant identifier
-and timestamps, stored freshness, and the input proof map under the new schema —
-and emit ordinary entries for every change:
+Migration constructs the new authoritative graph independently of the journal;
+the graph remains the sole authority. From one fixed active-replica snapshot,
+the inactive destination exact-copies local `NotificationClock`,
+`DeliveryByIndex`, `DeliveryHead`, `JournalOriginId`, and
+`lastLocalJournalIndex` as cursor infrastructure.
 
-- Finalized `CREATE` produces an `add` entry.
-- Finalized `DELETE` produces a `delete` entry for every deleted materialization.
-- A value change (including a semantic `OVERRIDE` that rewrites the logical
-  `ComputedValue`) produces an `edit` entry.
-- A fresh-to-stale finalized transition produces an `invalidate` entry.
-- A stale node carried through `keep` or `override` loses its incoming proofs;
-  because that removes the authoritative proof map, it produces an `invalidate`
-  entry with an empty proof map.
-- A proof-map change under a fixed state produces the applicable freshness
-  entry (`validate` for up-to-date, `invalidate` for stale).
-- `KEEP` and representation-only `OVERRIDE` produce no journal entry **only**
-  when the resulting authoritative assertion is unchanged — the journal stores
-  the same logical `ComputedValue` and the new physical encoding is purely a
-  rebuildable-cache concern.
-- Journal entries are emitted atomically with their corresponding graph
-  transitions in one durable batch.
+After construction, migration compares old and new authoritative states. It
+emits `add` for absent-to-materialized, `delete` for materialized-to-absent,
+`edit` only for unequal materialized `ComputedValue`s, `invalidate` only for
+fresh-to-stale, and `validate` only for stale-to-fresh. Value and freshness may
+produce multiple actions. `KEEP`, encoding changes, validity-edge changes, and
+other representation-only changes are silent when the three observable
+dimensions are unchanged.
 
-### Authoritative journal seed
-
-A migration begins from the active canonical journal `J0`, never from an empty
-journal. Let `M` be the migration-generated events; the destination's
-authoritative state is:
-
-```text
-J1 = normalizeJournal(J0 ∪ M)
-```
-
-with target graph `G1 = projectGraph(newSchema, J1)`. The migration callback's
-graph decisions are inputs used to derive `M`; they are not an independent
-authority. An unchanged `KEEP` may emit no event only because its existing
-canonical event is carried into `J1`. The migration captures its source `J0`
-under `enterGarden` as a shared garden reader
-(`docs/specs/incremental-graph-journal-migrations.md` § Migration source
-capture).
+Migration-generated exact actions advance the stable local origin's synchronized
+components and append-or-replace delivery records, atomically with graph
+installation. Migration neither reconstructs nor seeds graph state from journal
+data, and it preserves origin identity and the never-decreasing local watermark.
+Detailed rules are in
+`docs/specs/incremental-graph-journal-migrations.md`.
 
 ## Atomicity guarantee
 
