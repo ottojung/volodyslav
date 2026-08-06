@@ -172,8 +172,9 @@ root-local lastLocalJournalIndex
 A failed batch exposes none of them. Every physical occurrence consumes an
 index from the single root-local allocator (`allocateLocalJournalIndex`,
 `incremental-graph-journal-types.md` § 2.1). A host-originated event's
-`originIndex` is its allocated `LocalJournalIndex`; an imported event or carrier
-preserves its `origin`/`eventId` and receives a newly allocated local index.
+`originIndex` is its allocated `LocalJournalIndex` and its `eventId` is the
+SHA-256 digest of its entry bytes; an imported event or carrier preserves its
+`eventId` and immutable payload and receives a newly allocated local index.
 Logical revisions are scoped per key, category, and subject, so entries of one
 operation are not generally "consecutive" across different keys. No host-state
 version exists.

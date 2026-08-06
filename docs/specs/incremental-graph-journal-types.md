@@ -51,36 +51,72 @@ complete payload.
 **INV-JT-02 (Payload integrity):** If the same `eventId` occurs with two
 different immutable payloads, synchronization rejects the exchange atomically.
 
-### 2.1 Event origin identity
+### 2.1 Event identity and origin
+
+#### Content-addressed event identity
+
+Event identity is content-addressed:
+
+```text
+canonicalEntryBytes(entry)
+    = the complete canonical byte encoding of the entry (§ 6), with no eventId
+      field
+
+eventDigest = sha256(canonicalEntryBytes(entry))
+eventId     = lowercase hexadecimal encoding of eventDigest
+```
+
+`eventId` is exactly 64 lowercase hexadecimal characters. There is exactly one
+event-ID format and there are no sync-event IDs.
+
+**INV-JT-01 (Logical identity):** `eventId` identifies a logical event's
+immutable payload by content. Two occurrences with the same `eventId` denote
+the same logical event, because an `eventId` is the digest of its payload. A
+copied or repositioned event preserves its `eventId` and complete payload. A
+SHA-256 collision is outside the supported protocol model and is treated as a
+fatal cryptographic integrity failure. There is no event-ID-to-payload evidence
+table and no retained digest basis.
+
+Snapshot validation recomputes `sha256(canonicalEntryBytes(entry))` and rejects
+an entry whose supplied `eventId` does not equal the recomputed value.
+
+Ordering uses the raw 32-byte digest:
+
+```text
+stateOrder / freshnessOrder / snapshot entry ordering:
+    compare eventDigest bytes lexicographically
+```
+
+Lexicographic ordering of the lowercase hexadecimal form is equivalent; raw
+digest-byte order is the normative definition.
+
+#### Origin
+
+`origin` is provenance, not identity:
 
 ```text
 origin = {
     hostname,
-    hostInstanceId,
     originIndex,
 }
 ```
 
-There is exactly one event-ID format and there are no sync-event IDs:
-
-```text
-eventId = JSON.stringify([
-    "host-event-v1",
-    hostname,
-    hostInstanceId,
-    originIndex,
-])
-```
-
-The LWW comparison of two `eventId` strings is lexicographic comparison of
-their UTF-8 bytes.
+`originIndex` is the original local physical `JournalIndex` allocated for the
+event. `HostInstanceId` is not part of origin and is not retained: content
+addressing already supplies identity.
 
 #### Root-local physical/event allocator
 
-`HostInstanceId` and `lastLocalJournalIndex` are **root-local durable allocator
-metadata**, shared by both replica slots of one `RootDatabase` — not
-per-replica fields. They are local physical/event-allocation infrastructure,
-not synchronization authority and not part of logical snapshot identity.
+`lastLocalJournalIndex` is **root-local durable allocator metadata**, shared by
+both replica slots of one `RootDatabase` — not a per-replica field. Its
+responsibilities are only:
+
+- monotonic local physical positions;
+- same-process cursor ordering;
+- new occurrence allocation;
+- preserving gaps after failed inactive work.
+
+It is not part of logical event identity.
 
 ```text
 allocateLocalJournalIndex():
@@ -102,23 +138,19 @@ For a host-originated event:
 
 ```text
 originIndex = allocated LocalJournalIndex
-eventId = derived from hostname, HostInstanceId, originIndex
+eventId = sha256(canonicalEntryBytes(entry))   // content-addressed
 ```
 
 For imported events and carriers:
 
 ```text
-origin / eventId = preserved from the originating event
+eventId and immutable payload = preserved from the originating event
 LocalJournalIndex = newly allocated locally
 ```
 
-There is no separate `lastOriginIndex`.
-
-`HostInstanceId` is generated exactly once for genuinely new local storage and
-persisted with the root-local allocator. It is stable across restart, reset,
-migration, compaction, and replica cutover; it is changed only for genuinely
-unrelated reinitialization. A failed inactive migration may advance the
-root-local allocator and leave gaps, but it must never permit reuse.
+There is no separate `lastOriginIndex`. A failed inactive migration may advance
+the root-local allocator and leave gaps, but it must never permit reuse of a
+`(hostname, originIndex)` provenance tuple.
 
 #### Failure guarantee for inactive work
 
@@ -129,7 +161,7 @@ failed migration or synchronization destination build:
 ```
 
 The possible watermark advance is acceptable and required for uniqueness: no
-retry may reuse a `(hostname, HostInstanceId, originIndex)` tuple.
+retry may reuse a `(hostname, originIndex)` provenance tuple.
 
 A local physical `JournalIndex` is not part of logical event identity, logical
 event order, snapshot equality, synchronization conflict resolution, or
@@ -151,7 +183,7 @@ The root-local physical watermark is persisted durably and:
 #### Origin-allocation tests
 
 The following sequences each produce fresh tuples and advance the physical
-watermark; no sequence reuses a `(hostname, HostInstanceId, originIndex)`
+watermark; no sequence reuses a `(hostname, originIndex)`
 tuple:
 
 - event creation after logical compaction (the new event's `originIndex` is
@@ -170,7 +202,7 @@ tuple:
 
 #### Root-local allocator traces
 
-Each trace proves that no `(hostname, HostInstanceId, originIndex)` tuple is
+Each trace proves that no `(hostname, originIndex)` tuple is
 ever reused:
 
 - **Failed inactive migration followed by retry:** the first attempt advances
@@ -212,11 +244,11 @@ that created a new state.
 
 ### 3.1 Common fields
 
-Every logical event contains:
+Every logical event carries:
 
 ```text
-eventId
-origin
+eventId          = sha256(canonicalEntryBytes(entry)), 64 lowercase hex
+origin           = { hostname, originIndex }            (provenance only)
 key
 time
 action
@@ -227,6 +259,9 @@ logicalRevision
   conflict resolution.
 - `creator` is derivable from `origin.hostname` and need not be stored
   separately.
+- The `eventId` is not stored inside the entry bytes; it is recomputed as the
+  digest of those bytes (§ 2.1) and compared and hashed through its derived
+  value.
 
 ### 3.2 State entries
 
@@ -459,8 +494,13 @@ normalize(normalize(A) ∪ B)
     = normalize(A ∪ B)
 ```
 
-The reasons are:
+The reasons include content-identity semantics:
 
+- equal `eventId`s are equal immutable payloads by content addressing
+  (INV-JT-01), so deduplication by `eventId` never merges two different
+  payloads and normalization cannot lose information needed for future
+  payload-integrity checking — the discarded entry's identity would differ from
+  any conflicting future entry's identity;
 - a non-maximal state entry can never become maximal after adding more entries,
   because `stateOrder` is a total order and adding entries cannot increase an
   existing entry's position;
@@ -468,6 +508,34 @@ The reasons are:
   because state selection never moves backwards once it is fixed by the maximum;
 - a non-maximal freshness entry for the selected state can never become maximal
   after adding more entries, for the same total-order reason.
+
+#### Old-model counterexample (regression test)
+
+The origin-derived ID model made the law false:
+
+```text
+A contains:
+    E1 with origin-derived ID e
+    later winning state W
+normalization discards E1
+
+B contains:
+    E2 with the same old origin-derived ID e
+    different payload
+```
+
+The old model gave:
+
+```text
+normalize(A ∪ B) -> reject        (E1 and E2 share ID e, different payloads)
+normalize(normalize(A) ∪ B) -> accept   (E1 already discarded)
+```
+
+Under content addressing this discrepancy cannot occur: `E1` and `E2` are
+different immutable payloads, so they necessarily have different SHA-256
+digests and therefore different `eventId`s. Discarding a losing event never
+hides a future payload conflict, because the discarded event's identity is
+content-derived and would not collide with any different payload.
 
 ---
 
@@ -561,12 +629,12 @@ record      0x05 map(string -> value)
 ### 6.4 Entry encoding
 
 Every journal entry encodes as a fixed single-byte variant tag followed by the
-self-delimiting fields. The derived `eventId` is NOT included in the entry
-bytes: it is deterministically derived from `origin` (§ 2.1), and is compared
-and hashed through its derived value during ordering and integrity checks.
+self-delimiting fields. The `eventId` is NOT included in the entry bytes: it is
+the SHA-256 digest of those bytes (§ 2.1), recomputed during ordering, integrity
+checks, and snapshot validation.
 
 ```text
-origin = array([string(hostname), string(hostInstanceId), u64(originIndex)])
+origin = array([string(hostname), u64(originIndex)])
 proof  = map(string(inputKey) -> string(eventId))
 
 0x11 add:
@@ -598,21 +666,19 @@ potentially-outdated) is validated by `validateLogicalSnapshot`.
 
 ### 6.5 eventId
 
-`eventId` is a runtime string:
+`eventId` is the lowercase hexadecimal encoding of the SHA-256 digest of the
+entry bytes:
 
 ```text
-eventId = JSON.stringify([
-    "host-event-v1",
-    hostname,
-    hostInstanceId,
-    originIndex,
-])
+canonicalEntryBytes(entry)  // § 6.4, no eventId field
+eventId = lowercase hex(sha256(canonicalEntryBytes(entry)))
 ```
 
-LWW comparison in `stateOrder` and `freshnessOrder` is lexicographic comparison
-of the UTF-8 bytes of this string. `string(eventId)` is used only when the
-`eventId` is embedded inside another byte encoding (proof maps, snapshot entry
-ordering, `subjectStateEventId`).
+It is exactly 64 lowercase hexadecimal characters. Ordering in `stateOrder`,
+`freshnessOrder`, and snapshot entry ordering compares the raw 32-byte digest
+lexicographically (equivalent to lexicographic comparison of the lowercase hex
+form). `string(eventId)` is used when an `eventId` is embedded inside another
+byte encoding (proof maps, snapshot pairs, `subjectStateEventId`).
 
 ### 6.6 Immutable payload equality
 
@@ -622,7 +688,14 @@ of INV-JT-02 compares these bytes.
 
 ### 6.7 Snapshot byte sequence
 
+Each normalized entry is carried as a self-delimiting pair of its `eventId`
+(the 64-character lowercase hex digest) and its canonical entry bytes, so the
+receiver can recompute and validate the digest:
+
 ```text
+entryPair(entry) =
+    array([ string(eventId), canonicalEntryBytes(entry) ])
+
 snapshotBytes =
     array([
         string("logical-snapshot"),
@@ -630,73 +703,86 @@ snapshotBytes =
         string(schemaVersion),
         string(mergeProtocolVersion),
         array([
-            normalized entry encodings,
-            sorted by derived eventId UTF-8 bytes,
+            entryPair for each normalized entry,
+            sorted by raw eventDigest bytes,
         ]),
     ])
 
 LogicalSnapshotId = sha256(snapshotBytes)
 ```
 
+`validateLogicalSnapshot` recomputes `sha256(canonicalEntryBytes(entry))` for
+every pair and rejects a pair whose supplied `eventId` differs from the
+recomputed digest.
+
 ### 6.8 Fixed test vectors
 
-All vectors use schema `"schema-1"`, protocol `"proto-1"`, and the entry
-layout of § 6.4 with big-endian `u64` framing, raw-UTF-8 map-key ordering, and
-the variant tags `add=0x11`, `edit=0x12`, `delete=0x13`, `validate=0x14`,
-`invalidate=0x15`. The bytes below were generated by the normative encoding
-described in this section.
+All vectors use schema `"schema-1"`, protocol `"proto-1"`, origin
+`{ hostname, originIndex }`, the entry layout of § 6.4 with big-endian `u64`
+framing, raw-UTF-8 map-key ordering, and the variant tags `add=0x11`,
+`edit=0x12`, `delete=0x13`, `validate=0x14`, `invalidate=0x15`. Event IDs are
+SHA-256 digests of the entry bytes. The bytes below were generated by the
+normative encoding described in this section.
 
-#### Vector 1 — Entry encoding
+#### Vector 1 — Entry encoding and content-addressed IDs
 
-Five independent entries; every variant begins with its correct tag:
+Five independent entries; every variant begins with its correct tag, and every
+`eventId` is `sha256(entryBytes)`:
 
 ```text
 add:
-  origin ("h1","i1",5), key "k", time 1000, revision 1, id "n1",
+  origin ("h1",5), key "k", time 1000, revision 1, id "n1",
   value 1, createdAt 1000, modifiedAt 1000, up-to-date, proof {}
   tag 0x11
-  hex = 11000000000000000300000000000000026831000000000000000269310000
-        00000000000500000000000000016b00000000000003e80000000000000001
-        00000000000000026e31023ff000000000000000000000000003e800000000
-        000003e8010000000000000000
+  eventId = 3ab2b709300aca87e2757b78ea317779bce6b718fe120c36caac0219ded5e119
+  hex = 11000000000000000200000000000000026831000000000000000500000000
+        000000016b00000000000003e8000000000000000100000000000000026e31
+        023ff000000000000000000000000003e800000000000003e8010000000000
+        000000
 
 edit:
-  origin ("h1","i1",6), key "k", time 2000, revision 2, id "n1",
+  origin ("h1",6), key "k", time 2000, revision 2, id "n1",
   value 2, createdAt 1000, modifiedAt 2000, potentially-outdated,
   proof { "a" -> eventId(add) }
   tag 0x12
-  hex = 12000000000000000300000000000000026831000000000000000269310000
-        00000000000600000000000000016b00000000000007d00000000000000002
-        00000000000000026e31024000000000000000000000000000003e80000000
-        000007d0020000000000000001000000000000000161000000000000001d5b
-        22686f73742d6576656e742d7631222c226831222c226931222c355d
+  eventId = a308361e9514221b4a24c9e9404bbf0a2b032dc0d15a481892e1f0b4a79c64cb
+  hex = 12000000000000000200000000000000026831000000000000000600000000000000016b
+        00000000000007d0000000000000000200000000000000026e3102400000000000000000
+        000000000003e800000000000007d0020000000000000001000000000000000161000000
+        000000004033616232623730393330306163613837653237353762373865613331373737
+        396263653662373138666531323063333663616163303231396465643565313139
 
 validate:
-  origin ("h1","i1",7), key "k", time 1500, revision 1,
+  origin ("h1",7), key "k", time 1500, revision 1,
   subject = eventId(add), up-to-date,
   proof { "a" -> eventId(add) }
   tag 0x14
-  hex = 14000000000000000300000000000000026831000000000000000269310000
-        00000000000700000000000000016b00000000000005dc0000000000000001
-        000000000000001d5b22686f73742d6576656e742d7631222c226831222c22
-        6931222c355d01000000000000000100000000000000016100000000000000
-        1d5b22686f73742d6576656e742d7631222c226831222c226931222c355d
+  eventId = 05badd93d8d16814f2ceace25a8263508d6f37ca115e6ce08eef8f295f56b8e2
+  hex = 14000000000000000200000000000000026831000000000000000700000000
+        000000016b00000000000005dc000000000000000100000000000000403361
+        62326237303933303061636138376532373537623738656133313737373962
+        63653662373138666531323063333663616163303231396465643565313139
+        01000000000000000100000000000000016100000000000000403361623262
+        37303933303061636138376532373537623738656133313737373962636536
+        62373138666531323063333663616163303231396465643565313139
 
 invalidate:
-  origin ("h1","i1",8), key "k", time 1100, revision 1,
+  origin ("h1",8), key "k", time 1100, revision 1,
   subject = eventId(add), potentially-outdated, proof {}
   tag 0x15
-  hex = 15000000000000000300000000000000026831000000000000000269310000
-        00000000000800000000000000016b000000000000044c0000000000000001
-        000000000000001d5b22686f73742d6576656e742d7631222c226831222c22
-        6931222c355d020000000000000000
+  eventId = 9505e7dea832486f9e88aeaec0ffa963ab59158d6e5bd49c0b1bdb25d29771bd
+  hex = 15000000000000000200000000000000026831000000000000000800000000
+        000000016b000000000000044c000000000000000100000000000000403361
+        62326237303933303061636138376532373537623738656133313737373962
+        63653662373138666531323063333663616163303231396465643565313139
+        020000000000000000
 
 delete:
-  origin ("h1","i1",9), key "k", time 3000, revision 1, id "n1"
+  origin ("h1",9), key "k", time 3000, revision 1, id "n1"
   tag 0x13
-  hex = 13000000000000000300000000000000026831000000000000000269310000
-        00000000000900000000000000016b0000000000000bb80000000000000001
-        00000000000000026e31
+  eventId = 36c6eb5ceb50a63bffc5299c1db0fdfccc358a81bcb6c13504d28aee5c0e93f5
+  hex = 13000000000000000200000000000000026831000000000000000900000000
+        000000016b0000000000000bb8000000000000000100000000000000026e31
 ```
 
 #### Vector 2 — Normalization
@@ -704,12 +790,15 @@ delete:
 Input:
 
 ```text
-A = add, origin ("h1","i1",5), key "k", time 1000, revision 1, id "n1",
+A = add, origin ("h1",5), key "k", time 1000, revision 1, id "n1",
     value 1, createdAt 1000, modifiedAt 1000, up-to-date, proof {}
-B = invalidate, origin ("h1","i1",6), subject = eventId(A), stale, proof {}
-C = edit, origin ("h1","i1",7), key "k", time 2000, revision 2, id "n1",
+    eventId = 3ab2b709300aca87e2757b78ea317779bce6b718fe120c36caac0219ded5e119
+B = invalidate, origin ("h1",6), subject = eventId(A), stale, proof {}
+    eventId = 4198230ebaf02f94c1a97d32bb8debf1fb6e9a01309000729206543d112ce837
+C = edit, origin ("h1",7), key "k", time 2000, revision 2, id "n1",
     value 2, createdAt 1000, modifiedAt 2000, potentially-outdated,
     proof { "a" -> eventId(A) }
+    eventId = c1e418fd81eb737f4288554733c07f8a40e7d148b6e6d9a4de8132da4faf4778
 ```
 
 `normalizeJournal({A, B, C}) = [C]`: `C` defeats `A` by `stateOrder`
@@ -717,24 +806,26 @@ C = edit, origin ("h1","i1",7), key "k", time 2000, revision 2, id "n1",
 its `subjectStateEventId` is `eventId(A)`, not `eventId(C)`.
 
 ```text
-C bytes hex = 120000000000000003000000000000000268310000000000000002693
-    1000000000000000700000000000000016b00000000000007d00000000000000002
-    00000000000000026e31024000000000000000000000000000003e800000000000
-    007d0020000000000000001000000000000000161000000000000001d5b22686f
-    73742d6576656e742d7631222c226831222c226931222c355d
+C bytes hex = 120000000000000002000000000000000268310000000000000007000
+    00000000000016b00000000000007d0000000000000000200000000000000026e31
+    02400000000000000000000000000003e800000000000007d00200000000000000
+    01000000000000000161000000000000004033616232623730393330306163613837
+    653237353762373865613331373737396263653662373138666531323063333663
+    616163303231396465643565313139
 
-snapshot bytes hex = 000000000000000500000000000000106c6f676963616c2d736e
-    617073686f7400000000000000010000000000000008736368656d612d31000000
-    000000000770726f746f2d31000000000000000112000000000000000300000000
-    00000002683100000000000000026931000000000000000700000000000000016b
-    00000000000007d0000000000000000200000000000000026e3102400000000000
-    000000000000000003e800000000000007d0020000000000000001000000000000
-    000161000000000000001d5b22686f73742d6576656e742d7631222c226831222c
-    226931222c355d
+snapshot bytes hex = 000000000000000500000000000000106c6f676963616c2d736e617073686f74000000000000
+    00010000000000000008736368656d612d31000000000000000770726f746f2d310000000000
+    0000010000000000000002000000000000004063316534313866643831656237333766343238
+    3835353437333363303766386134306537643134386236653664396134646538313332646134
+    6661663437373812000000000000000200000000000000026831000000000000000700000000
+    000000016b00000000000007d0000000000000000200000000000000026e3102400000000000
+    000000000000000003e800000000000007d00200000000000000010000000000000001610000
+    0000000000403361623262373039333030616361383765323735376237386561333137373739
+    6263653662373138666531323063333663616163303231396465643565313139
 
 LogicalSnapshotId = sha256(snapshot bytes)
-                  = 03741fe065bffd0dbe715f6f7963b5257c86bb498e03b474dc0e
-                    24a5e1220c60
+                  = 36ab90bf2d8695aed9650c3e7d29f61cdd210205159bd9c05ccce
+                    7bf5ce5e115
 ```
 
 #### Vector 3 — Applicable freshness
@@ -742,50 +833,74 @@ LogicalSnapshotId = sha256(snapshot bytes)
 Input:
 
 ```text
-A = add, origin ("h1","i1",5), key "k", time 1000, revision 1, id "n1",
+A = add, origin ("h1",5), key "k", time 1000, revision 1, id "n1",
     value 1, createdAt 1000, modifiedAt 1000, up-to-date, proof {}
-B = invalidate, origin ("h1","i1",6), subject = eventId(A), stale, proof {}
+B = invalidate, origin ("h1",6), subject = eventId(A), stale, proof {}
 ```
 
 `normalizeJournal({A, B}) = [A, B]` (A is the selected state; B is applicable
-because its subject is `eventId(A)`). Entry ordering by derived eventId is `A,
-B`.
+because its subject is `eventId(A)`). Snapshot entry ordering by raw eventDigest
+bytes is `A` (`0x3a...`) before `B` (`0x41...`).
 
 ```text
-A bytes hex = 110000000000000003000000000000000268310000000000000002693
-    1000000000000000500000000000000016b00000000000003e80000000000000001
-    00000000000000026e31023ff000000000000000000000000003e80000000000000
-    3e8010000000000000000
+A bytes hex = 110000000000000002000000000000000268310000000000000005000
+    00000000000016b00000000000003e8000000000000000100000000000000026e31
+    023ff000000000000000000000000003e800000000000003e80100000000000000
+    00
 
-B bytes hex = 150000000000000003000000000000000268310000000000000002693
-    1000000000000000600000000000000016b000000000000044c0000000000000001
-    000000000000001d5b22686f73742d6576656e742d7631222c226831222c226931
-    222c355d020000000000000000
+B bytes hex = 150000000000000002000000000000000268310000000000000006000
+    00000000000016b000000000000044c0000000000000001000000000000004033
+    616232623730393330306163613837653237353762373865613331373737396263
+    653662373138666531323063333663616163303231396465643565313139020000
+    000000000000
 
-snapshot bytes hex = 000000000000000500000000000000106c6f676963616c2d736e
-    617073686f7400000000000000010000000000000008736368656d612d31000000
-    000000000770726f746f2d31000000000000000211000000000000000300000000
-    00000002683100000000000000026931000000000000000500000000000000016b
-    00000000000003e8000000000000000100000000000000026e31023ff000000000
-    000000000000000003e800000000000003e8010000000000000000150000000000
-    000003000000000000000268310000000000000002693100000000000000060000
-    0000000000016b000000000000044c0000000000000001000000000000001d5b22
-    686f73742d6576656e742d7631222c226831222c226931222c355d020000000000
-    000000
+snapshot bytes hex = 000000000000000500000000000000106c6f676963616c2d736e617073686f74000000000000
+    00010000000000000008736368656d612d31000000000000000770726f746f2d310000000000
+    0000020000000000000002000000000000000403361623262373039333030616361383765323
+    7353762373865613331373737396263653662373138666531323063333663616163303231396
+    4656435653131391100000000000000020000000000000002683100000000000000050000000
+    000000016b00000000000003e8000000000000000100000000000000026e31023ff000000000
+    000000000000000003e800000000000003e80100000000000000000000000000000002000000
+    0000000040343139383233306562616630326639346331613937643332626238646562663166
+    6236653961303133303930303037323932303635343364313132636538333715000000000000
+    00020000000000000002683100000000000000060000000000000016b000000000000044c000
+    0000000000001000000000000004033616232623730393330306163613837653237353762373
+    8656133313737373962636536623731386665313230633336636161633032313964656435653
+    13139020000000000000000
 
 LogicalSnapshotId = sha256(snapshot bytes)
-                  = 5330745ce4c2a67abc33ef8a318cd1e9f1aa4188111605b675b8
-                    aa3932adfe08
+                  = 0b33c627435e66fa811716da3cf96a531a27f1ded577c12c2ef15
+                    34fab17d217
 ```
 
-### 6.9 Automated-vector requirement
+### 6.9 Content-identity vectors
+
+- **Same immutable payload -> same eventId:** encoding the same entry bytes
+  twice yields the same SHA-256 digest.
+- **One-byte payload change -> different eventId:** the add entry with value
+  `7` (`eventId c842f6e271e6e5590b0648064fe8033e036cf387005ae1e0f00290ab
+  259697d1`) differs from the add entry with value `8` (`eventId 54f524cdfed
+  956d3154574f5ef4728fb9973ac108d20dc442faff242bb82457a`).
+- **Copied physical occurrence -> same eventId:** a copy preserves the entry
+  bytes, so its digest is unchanged.
+- **Notification carrier -> same eventId:** a carrier is a duplicate occurrence
+  of a canonical event with identical entry bytes.
+- **Different local physical position of a copy -> same eventId:** the physical
+  `JournalIndex` is not part of the entry bytes; only `originIndex` (the
+  original position) is, and a copy preserves it.
+- **Normalization followed by future union cannot hide an ID/payload
+  conflict:** because an `eventId` is the digest of its payload, a discarded
+  losing event cannot collide with any different future payload.
+
+### 6.10 Automated-vector requirement
 
 The implementation tests MUST generate these values through the normative
 encoder of this specification and compare them byte-for-byte with the constants
-in § 6.8 (entry bytes, normalized ordering, snapshot bytes, and `sha256`
-`LogicalSnapshotId`). The constants are normative, not illustrative.
+in § 6.8 and § 6.9 (entry bytes, event IDs, normalized ordering, snapshot
+bytes, and `sha256` `LogicalSnapshotId`). The constants are normative, not
+illustrative.
 
-### 6.10 Ambiguity tests
+### 6.11 Ambiguity tests
 
 The encoding is injective and order-independent where required:
 
@@ -882,8 +997,10 @@ identity.
 
 - exactly one known entry variant, with exactly the required fields and no
   ambiguous alternate layouts;
-- a valid `origin` and `eventId` (the `eventId` must equal the deterministic
-  derivation from `origin`);
+- for every `entryPair`, the supplied `eventId` equals
+  `sha256(canonicalEntryBytes(entry))` (the content digest, § 2.1 and § 6.7);
+- a valid `origin` (hostname plus a `u64` origin index in domain) and the
+  derived `eventId` format (exactly 64 lowercase hexadecimal characters);
 - valid `logicalRevision` and `time` domains;
 - valid `NodeKey` and `NodeIdentifier` forms;
 - canonical proof maps with no duplicate keys;
@@ -891,8 +1008,11 @@ identity.
   key as the entry;
 - a valid action/tone/payload combination (for example, `validate` always
   pairs with `tone = "up-to-date"`, `invalidate` with
-  `"potentially-outdated"`);
-- full payload bytes agreeing for repeated `eventId`s (INV-JT-02).
+  `"potentially-outdated"`).
+
+Because an `eventId` is the digest of its payload, equal `eventId`s
+automatically carry equal payloads (INV-JT-01); a digest mismatch is rejected
+before any union.
 
 Dangling input proof `eventId`s are allowed: they represent proofs against
 losing historical input states. A proof target is not required to survive
@@ -927,11 +1047,20 @@ No event-origin coordinate is ever reused.
 Every published projected graph satisfies the complete IncrementalGraph storage
 and validity invariants.
 Canonical serialization determines one exact byte sequence.
-Physical compaction is serialized with both readers and occurrence writers.
+Physical compaction deletes only exact physical indices proven redundant.
 Synchronization preserves the frozen local physical cursor domain.
 Local event/occurrence indices come from one root-local monotonic allocator.
 Failed inactive work may create gaps but can never cause event-ID reuse.
 Every canonical map has exactly one normative key-order relation.
 Every published test vector is produced by the same normalization and encoding
 rules stated by the specification.
+Event identity is the SHA-256 digest of the complete immutable entry payload.
+Origin is provenance, not identity.
+Normalization can permanently discard losing events without losing future
+integrity evidence.
+The normalization law includes content-identity semantics, not only maximum
+selection.
+Compaction mutates the physical journal only through exact deletes.
+Compaction never replaces, truncates, or rewrites retained occurrences.
+A concurrent append cannot belong to a previously calculated delete set.
 ```

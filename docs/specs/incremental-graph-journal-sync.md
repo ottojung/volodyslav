@@ -22,6 +22,13 @@ This is the entire logical synchronization merge. There is no candidate set, no
 merge basis, no causal frontier, no provenance comparison, and no retained
 evidence beyond the canonical journal entries themselves.
 
+Event identity is content-addressed (`eventId` is the SHA-256 digest of the
+entry's canonical bytes, `incremental-graph-journal-types.md` § 2.1), so
+deduplication by `eventId` merges only byte-identical immutable payloads and
+snapshot validation rejects any entry whose supplied `eventId` does not match
+its recomputed digest. Discarding losing events during normalization therefore
+never discards integrity evidence for a different payload.
+
 **PROP-JS-01 (Commutative):**
 
 ```text

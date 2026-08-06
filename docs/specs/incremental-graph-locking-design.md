@@ -59,10 +59,10 @@ journal entries, new physical occurrences, and the advanced root-local
 with its per-node telescope; `invalidate` and other non-`pull` operations run in
 `daytime` mode.
 
-The root-local physical/event allocator (`HostInstanceId` and
-`lastLocalJournalIndex`) is shared by both replica slots. A failed inactive
-migration or synchronization destination build may advance it and leave gaps,
-but never reuses a `(hostname, HostInstanceId, originIndex)` tuple
+The root-local physical/event allocator (`lastLocalJournalIndex`) is shared by
+both replica slots. A failed inactive migration or synchronization destination
+build may advance it and leave gaps, but never reuses a `(hostname,
+originIndex)` provenance tuple
 (`incremental-graph-journal-types.md` § 2.1).
 
 ---
@@ -126,20 +126,15 @@ cutover.
 
 ## 5. Compaction
 
-Physical compaction of the active journal is a destructive physical rewrite and
-is serialized with both readers and occurrence writers. It acquires
-`closeGarden` (readers) AND `activeReplicaDarkroom` (occurrence writers), in the
-one lock order:
-
-```text
-closeGarden -> activeReplicaDarkroom
-```
-
-No host-originated append can finalize while compaction reads and writes
-(`incremental-graph-journal-compaction.md` § 2.1). A query observes either the
-pre-compaction or the post-compaction layout, never a mixture. Logical
-compaction (`normalizeJournal`) has no physical effect and needs no garden
-protection beyond the ordinary batch commit discipline.
+Physical compaction mutates the physical journal only through exact deletes
+(`incremental-graph-journal-compaction.md` § 2). It acquires `closeGarden` so
+readers observe either the pre- or post-deletion state, never a mixture. It
+does NOT acquire `activeReplicaDarkroom`: writers append at fresh indices
+strictly greater than the compaction watermark, so a committed append can never
+fall inside a previously calculated delete set. No path holds a darkroom and
+then requests `closeGarden`. Logical compaction (`normalizeJournal`) has no
+physical effect and needs no garden protection beyond the ordinary batch commit
+discipline.
 
 ---
 

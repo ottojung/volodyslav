@@ -58,7 +58,7 @@ The migration writes to an inactive destination replica:
 Physical indices come from the single root-local allocator
 (`incremental-graph-journal-types.md` § 2.1), shared by both replica slots. A
 failed migration may advance the root-local allocator and leave gaps, but it
-never permits reuse of a `(hostname, HostInstanceId, originIndex)` tuple.
+never permits reuse of a `(hostname, originIndex)` tuple.
 
 ---
 
