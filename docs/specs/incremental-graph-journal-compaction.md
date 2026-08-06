@@ -56,6 +56,14 @@ iterator view. Compaction does not acquire `activeReplicaDarkroom`;
 `closeGarden` protects physical readers while deletions occur, and it is not
 writer exclusion.
 
+Any operation reading the active physical journal while compaction may run is a
+shared garden reader: `possibleMaybeChanges` and synchronization source capture
+hold `enterGarden`, compaction holds `closeGarden`, and the two are mutually
+exclusive over the same replica. Synchronization's fixed committed snapshot `S`
+remains readable after its `enterGarden` is released, so compaction deleting
+obsolete indices from the live replica never changes the view synchronization
+copies (`incremental-graph-locking-design.md` § Compaction-source race traces).
+
 ### 2.1 Writer race proof
 
 All journal writers append at fresh indices strictly greater than the highest

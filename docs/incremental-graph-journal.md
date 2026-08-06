@@ -90,18 +90,23 @@ freshness is derived in dependency order.
 
 ## Synchronization
 
-Synchronization validates inputs (including mandatory equal `schemaVersion` and
-`mergeProtocolVersion` preconditions, since projection depends on the schema),
-joins the normalized journal entries, projects the final graph, compares it
-with the pre-sync local graph, and installs atomically. It creates no new
-logical event. The inactive destination begins as an exact physical copy of the
-frozen local journal layout, then appends imported occurrences and notification
-carriers after the copied watermark, so the local physical cursor domain is
-preserved across cutover. Logical state converges across hosts; physical
-indices and carrier positions are deliberately host-local. Synchronization
-holds the graph `holiday` exclusion from freezing the local source through
-cutover, so a concurrent local operation cannot be lost, and uses
-`closeGarden` only to drain readers at the cutover.
+Synchronization captures one fixed committed physical view `S` of the active
+replica under shared `enterGarden`, exports the local normalized logical journal
+consistent with `S`, validates inputs (including mandatory equal `schemaVersion`
+and `mergeProtocolVersion` preconditions, since projection depends on the
+schema), joins the normalized journal entries, projects the final graph,
+compares it with the pre-sync local graph, and installs atomically. It creates
+no new logical event. The inactive destination's local physical history is built
+entirely from `S`, then appends imported occurrences and notification carriers
+after the copied watermark, so the local physical cursor domain is preserved
+across cutover. Logical state converges across hosts; physical indices and
+carrier positions are deliberately host-local. Synchronization holds the graph
+`holiday` exclusion from freezing the local source through cutover, so a
+concurrent local operation cannot be lost; it acts as a shared garden reader
+while capturing `S`, never upgrades `enterGarden` to `closeGarden`, and uses
+`closeGarden` only to drain readers at the cutover. Compaction holds
+`closeGarden` while applying exact deletes, so it cannot delete an occurrence
+out from under the captured view.
 
 ## Public API
 

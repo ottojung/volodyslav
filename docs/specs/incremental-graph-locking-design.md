@@ -73,54 +73,121 @@ Synchronization is a `holiday`-mode lifecycle operation. It uses the following
 sequence, with a deadlock-free acquisition order of
 
 ```text
-holiday -> closeGarden -> destination darkroom
+holiday -> enterGarden -> closeGarden -> destination darkroom
 ```
 
-No path may acquire these in reverse order, and no path may hold a darkroom and
-then request `closeGarden`.
+No path may acquire these in reverse order, no path may hold a darkroom and then
+request `closeGarden`, and synchronization never upgrades `enterGarden` to
+`closeGarden` (there is no shared-to-exclusive lock upgrade).
 
 ```text
 1. acquire holiday
-2. freeze/export the local logical journal
-3. obtain and validate staged snapshots
-4. join and project
-5. build the inactive destination as a physical copy of the frozen local
-   journal layout (occurrences, indices, gaps, watermark), then replace its
-   logical journal and projected graph, and append imported occurrences and
-   carriers after the copied watermark
-6. acquire closeGarden
-7. wait for all existing enterGarden readers to leave
-8. finish destination metadata and atomically switch active replica
-9. release closeGarden
-10. only now may the old replica be cleared or reused
-11. release holiday
+
+2. acquire enterGarden
+
+3. select the currently active physical replica
+
+4. open one fixed committed snapshot S of:
+       physical occurrences
+       exact LocalJournalIndices
+       gaps/absences
+       the physical watermark visible to the active journal
+
+5. export the local normalized logical journal from a state consistent with S
+
+6. release enterGarden
+
+7. obtain and validate remote logical snapshots
+
+8. calculate joinJournal and projectGraph
+
+9. build the inactive destination's local physical history entirely from S
+
+10. append newly imported occurrences and notification carriers at fresh
+    root-local indices
+
+11. validate the destination
+
+12. acquire closeGarden
+
+13. drain existing enterGarden readers
+
+14. switch the active pointer atomically
+
+15. release closeGarden
+
+16. release holiday
 ```
 
-Building the inactive replica does not require closing the garden: readers still
-traverse the unchanged active replica while steps 3-5 run. `closeGarden` is
-acquired only at cutover, after which readers drain before the pointer switch.
+The snapshot `S` must remain readable after `enterGarden` is released. If the
+storage abstraction cannot provide such a durable read snapshot, synchronization
+holds `enterGarden` for the complete physical copy, releases it after copying,
+and only then requests `closeGarden`. Building the inactive replica does not
+require closing the garden: readers still traverse the unchanged active replica
+while steps 7-11 run. `closeGarden` is acquired only at cutover, after which
+readers drain before the pointer switch.
+
+### Lock relationships
+
+```text
+possibleMaybeChanges:
+    enterGarden while selecting and scanning
+
+synchronization source capture:
+    enterGarden while selecting active replica and opening/copying its fixed view
+
+physical compaction:
+    closeGarden while applying exact deletes
+
+synchronization cutover:
+    closeGarden while switching the active pointer
+```
+
+Because synchronization captures its source under `enterGarden`, and compaction
+applies exact deletes under `closeGarden`, the two are mutually exclusive over
+the same replica: compaction cannot delete an occurrence while synchronization
+is opening or copying its fixed view, and synchronization's view `S` is a fixed
+committed snapshot that remains readable after `enterGarden` is released.
+
+### Compaction-source race traces
+
+Both orderings preserve same-process cursor coverage:
+
+**Compaction after sync captures:**
+
+```text
+sync acquires enterGarden and opens snapshot S of replica x
+
+compaction requests closeGarden
+    -> compaction waits
+
+sync releases enterGarden
+
+compaction acquires closeGarden and deletes obsolete exact indices from live x
+
+sync continues building destination y from immutable S
+
+destination y contains exactly the physical source view represented by S
+```
+
+**Compaction before sync captures:**
+
+```text
+compaction finishes first
+sync then opens S
+destination copies the post-compaction layout exactly
+```
 
 For multi-host synchronization, the old replica from one cutover must never be
 reused as the next inactive destination until the corresponding `closeGarden`
 boundary has drained all readers that could have selected it.
 
-**Cutover trace:**
-
-```text
-Q selects replica x under enterGarden
-sync prepares y
-sync requests closeGarden and waits
-Q finishes scanning x and releases enterGarden
-sync switches to y
-only then may x be cleared
-```
-
 Failure before cutover leaves the previously active replica active and
 unchanged. The destination is `joinJournal(frozenLocal, staged)`; because the
 local source is frozen under `holiday`, the destination cannot omit a local
-operation committed during synchronization. Because the destination preserves
-the frozen local physical layout, same-process cursors remain valid across the
-cutover.
+operation committed during synchronization. Because the destination is built
+entirely from the fixed committed view `S`, same-process cursors remain valid
+across the cutover.
 
 ---
 

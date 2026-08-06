@@ -26,18 +26,26 @@ version, sync-derived event, or sync creator anywhere in the system.
 ## 2. Per-host synchronization procedure
 
 Normal synchronization follows these steps in order (lock acquisition order is
-`holiday -> closeGarden -> destination darkroom`, see
+`holiday -> enterGarden -> closeGarden -> destination darkroom`; see
 `incremental-graph-locking-design.md` § Synchronization and cutover):
 
 1. Acquire `holiday`. No local `pull()`, `invalidate()`, migration, or reset can
    commit to the active replica from the moment the local journal is frozen
    until active-replica cutover completes.
-2. The exact local logical journal is exported into a logical snapshot
+2. Acquire `enterGarden` (synchronization acts as a shared garden reader while
+   capturing one fixed committed physical view).
+3. Select the currently active physical replica.
+4. Open one fixed committed snapshot `S` of the active replica: its physical
+   occurrences, exact `LocalJournalIndex`es, gaps/absences, and the physical
+   watermark visible to the active journal. `S` is a LevelDB snapshot or an
+   equivalent fixed committed iterator view.
+5. Export the local normalized logical journal from a state consistent with `S`
    (`normalizeJournal(entries)`, schema version, merge-protocol version, and the
    derived `LogicalSnapshotId`).
-3. The transport adapter stores or transmits the exported snapshot and obtains
+6. Release `enterGarden`.
+7. The transport adapter stores or transmits the exported snapshot and obtains
    the logical snapshots supplied by other hosts.
-4. Each supplied logical snapshot is decoded and validated by the transport
+8. Each supplied logical snapshot is decoded and validated by the transport
    adapter. Validation rejects malformed shapes and, atomically, any payload
    disagreement under one `eventId` (INV-JT-02), runs
    `validateLogicalSnapshot` on each staged snapshot
@@ -46,35 +54,44 @@ Normal synchronization follows these steps in order (lock acquisition order is
    `mergeProtocolVersion` differs from the local source is rejected with the
    same deterministic error in either operand order, before any union occurs
    (`incremental-graph-journal-sync.md` § Compatibility preconditions).
-5. `joinJournal(local, staged)` produces the merged normalized journal.
-6. `projectGraph(schema, merged)` produces the final graph, then
-   `validateProjectedGraph` runs (`incremental-graph-journal-sync.md` §
-   Projected-graph validation).
-7. The final graph is compared with the pre-sync local graph; affected keys are
-   determined.
-8. The inactive destination is initialized as an exact physical copy of the
-   frozen local journal layout (every surviving occurrence, its exact
-   `LocalJournalIndex`, physical gaps/absences, and the local physical
-   watermark), then the destination's canonical logical journal and projected
-   graph are replaced by the join result, and newly imported occurrences and
-   notification carriers are appended at fresh indices strictly greater than
-   the copied watermark (allocated from the root-local allocator).
-9. Acquire `closeGarden`, wait for existing `enterGarden` readers to leave,
-   finish destination metadata in the destination darkroom, and atomically
-   switch the active-replica pointer; release `closeGarden` before the old
-   replica may be cleared or reused.
-10. Release `holiday`.
-11. Staging storage is cleared after the attempt (whether it succeeded or
+9. `joinJournal(local, staged)` produces the merged normalized journal.
+10. `projectGraph(schema, merged)` produces the final graph, then
+    `validateProjectedGraph` runs (`incremental-graph-journal-sync.md` §
+    Projected-graph validation).
+11. The final graph is compared with the pre-sync local graph; affected keys are
+    determined.
+12. The inactive destination's local physical history is built entirely from the
+    immutable snapshot `S` (every surviving occurrence, its exact
+    `LocalJournalIndex`, physical gaps/absences, and the copied watermark), then
+    the destination's canonical logical journal and projected graph are replaced
+    by the join result, and newly imported occurrences and notification carriers
+    are appended at fresh indices strictly greater than the copied watermark
+    (allocated from the root-local allocator).
+13. Validate the destination.
+14. Acquire `closeGarden`, wait for existing `enterGarden` readers to leave,
+    finish destination metadata in the destination darkroom, and atomically
+    switch the active-replica pointer; release `closeGarden` before the old
+    replica may be cleared or reused.
+15. Release `holiday`.
+16. Staging storage is cleared after the attempt (whether it succeeded or
     failed).
-12. Failures are recorded per host. Synchronization may continue with remaining
+17. Failures are recorded per host. Synchronization may continue with remaining
     hosts and aggregate failures into a single error report.
+
+The snapshot `S` must remain readable after `enterGarden` is released. If the
+storage abstraction cannot provide such a durable read snapshot, synchronization
+holds `enterGarden` for the complete physical copy, releases it after copying,
+and only then requests `closeGarden`. Synchronization never requests
+`closeGarden` while holding `enterGarden`; there is no shared-to-exclusive lock
+upgrade.
 
 Because the local source is frozen under `holiday` for the whole procedure, the
 destination is `joinJournal(frozenLocal, staged)` and cannot lose a local
-operation committed during synchronization. Because the destination preserves
-the frozen local physical layout, same-process cursors remain valid across the
-cutover: logical state comes from `joinJournal`, local physical history comes
-from the frozen local source.
+operation committed during synchronization. Because the destination is built
+entirely from the fixed committed view `S`, its physical history is exactly the
+physical source view represented by `S`, and same-process cursors remain valid
+across the cutover: logical state comes from `joinJournal`, local physical
+history comes from `S`.
 
 Synchronization creates no new logical event IDs, no sync creator, and no
 sync-derived delete or invalidate event.
