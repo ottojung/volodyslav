@@ -184,14 +184,18 @@ version exists.
 Entries that reference other entries from the same batch are constructed and
 hashed in acyclic dependency order before the atomic commit
 (`incremental-graph-journal-types.md` § Construction order for multi-entry
-batches): state entries are constructed in dependency-topological order and
-hashed immediately; freshness entries are constructed only after their subject
-state event IDs exist; dependent proof maps are built only after all referenced
-input state event IDs exist. For a bulk reset or migration that newly
-materializes `A` and a dependent `D`, the `add` entry for `A` is hashed before
-the `add` entry for `D`, so `D.validInputStateEvents[A]` is the digest of `add
-A`. The graph schema is a DAG, so this order is acyclic; a cycle is rejected by
-the schema rules.
+batches). A state entry is not constructed until its proof map is complete: for
+each new state entry in dependency-topological order, the final event ID of
+every direct input is resolved first, then the entry's complete
+`validInputStateEvents` map and all other immutable fields are built, the
+complete entry is validated and canonical-encoded, and only then is its event
+ID computed and made available to later dependent entries. Freshness entries are
+constructed after all required state event IDs exist. It is invalid to hash an
+`add`/`edit` entry and then add or modify one of its proof references. For a
+bulk reset or migration that newly materializes `A` and a dependent `D`, the
+`add` entry for `A` is hashed before the `add` entry for `D`, so
+`D.validInputStateEvents[A]` is the digest of `add A`. The graph schema is a
+DAG, so this order is acyclic; a cycle is rejected by the schema rules.
 
 ### 2.7 Invalidation race test
 

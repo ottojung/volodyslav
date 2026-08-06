@@ -455,39 +455,80 @@ Use `1` when no explicit freshness entry exists for `S`.
 ### Construction order for multi-entry batches
 
 Content-addressed entries may refer to the event IDs of other entries emitted in
-the same atomic batch. Construction order is explicit and acyclic:
+the same atomic batch. The proof map is part of an `add` or `edit` entry's
+canonical bytes, so a state entry is not constructed until its proof map is
+complete. Construction order is explicit and acyclic.
+
+After darkroom reconciliation determines the final authoritative transition:
 
 ```text
-1. determine the final authoritative graph transition
-2. reserve fresh local physical/origin indices for all new entries
-3. construct new state entries in dependency-topological order
-4. compute each state entry's eventId immediately after its canonical bytes are
-   complete
-5. construct freshness entries only after their subject state event IDs exist
-6. construct dependent proof maps only after all referenced input state event
-   IDs exist
-7. commit every entry and occurrence in the original atomic LevelDB batch
+1. Determine every new logical entry that may be required.
+
+2. Reserve fresh root-local physical/origin indices for every host-originated
+   new entry.
+
+3. Determine the final selected state event for every input that will be
+   referenced:
+       - an existing selected state event; or
+       - a new state event produced by this batch.
+
+4. Traverse new state entries in dependency-topological order.
+
+5. For each state entry K in that order:
+       a. resolve the final eventId of every direct input;
+       b. construct K.validInputStateEvents completely;
+       c. construct every other immutable field of K;
+       d. validate every field, including canonical-string validity;
+       e. canonical-encode the complete entry;
+       f. compute K.eventId;
+       g. make K.eventId available to later dependent entries.
+
+6. After all required state event IDs exist, construct freshness entries:
+       a. resolve subjectStateEventId;
+       b. construct the complete proof map;
+       c. construct all other immutable fields;
+       d. canonical-encode and hash the complete freshness entry.
+
+7. Normalize the current journal plus the completed new entries.
+
+8. Project and validate the resulting graph.
+
+9. Commit the graph-cache mutations, completed entries, physical occurrences,
+   and allocator watermark in the original atomic durable batch.
 ```
 
-For a bulk reset or migration that newly materializes `A` and `D` (where `D`
-depends on `A`), the `add` entry for `A` is constructed and hashed before the
-`add` entry for `D`, so:
+No entry may be hashed while any hashed field is missing, tentative, or subject
+to later mutation. In particular, it is invalid to hash an `add` or `edit`
+entry and then add or modify one of its proof references: the proof map is part
+of the entry's canonical bytes, so any such change would produce a different
+event ID after the fact.
+
+The graph schema is a DAG, so the dependency-topological traversal is acyclic. A
+dependency cycle is rejected by the existing schema rules rather than handled by
+the journal encoder.
+
+#### Same-batch construction trace
+
+Both `A` and its dependent `D` are newly materialized in one migration or reset
+batch:
 
 ```text
-D.validInputStateEvents[A] = eventId(add A)
+allocate origins for add(A) and add(D)
+
+add(A):
+    complete proof map
+    complete canonical bytes
+    eventId A1 = sha256(bytes)
+
+add(D):
+    validInputStateEvents[A] = A1
+    complete canonical bytes
+    eventId D1 = sha256(bytes)
 ```
 
-The graph schema is a DAG, so this construction order is acyclic. A dependency
-cycle is rejected by the existing schema rules rather than handled by the
-journal encoder.
-
-For one key that emits both a state entry and a freshness entry:
-
-```text
-construct and hash state entry first
-freshness.subjectStateEventId = state.eventId
-construct and hash freshness entry second
-```
+A freshness entry for `D1` is constructed only after `D1` exists (step 6): its
+`subjectStateEventId` is `D1` and its proof map references the resolved input
+state event IDs, all of which exist by then.
 
 ### Last-writer-wins tradeoff
 
@@ -1211,4 +1252,16 @@ malformed strings are rejected.
 All event-ID references are exactly 64 lowercase hexadecimal characters.
 Entries that reference other entries from the same batch are hashed in an
 acyclic dependency order before the atomic commit.
+No event is hashed before its complete canonical payload, including its proof
+map, is final.
+Same-batch state references are resolved in dependency-topological order.
+A migration begins from the active canonical journal, not from an empty journal.
+Migration result:
+    J1 = normalizeJournal(J0 ∪ migrationEvents)
+Migration target graph:
+    projectGraph(newSchema, J1)
+An unchanged KEEP may emit no event only because its existing canonical event is
+carried into J1.
+Any lifecycle operation that reads the active physical journal while compaction
+may run captures that source under enterGarden.
 ```
