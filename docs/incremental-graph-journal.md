@@ -20,16 +20,18 @@ canonical journal entries
 ## Logical events and physical occurrences
 
 A **logical event** is one immutable `JournalEntry` identified by its `eventId`.
-An **origin** `{ hostname, hostInstanceId, originIndex }` names the storage
-instance and monotonic index that created the event, and `eventId` is the
-`JSON.stringify` encoding of the origin. There is exactly one event-ID format and
-no sync-event IDs. A host event's `originIndex` equals the `LocalJournalIndex`
-of its original occurrence, allocated from the single root-local allocator
-(`HostInstanceId` + `lastLocalJournalIndex`) shared by both replica slots.
+Event identity is content-addressed: `eventId` is the lowercase hexadecimal
+SHA-256 digest of the entry's canonical bytes, so identical payloads share an
+identity and different payloads cannot. An **origin** `{ hostname, originIndex }`
+records provenance only (never identity): `originIndex` is the original local
+physical `JournalIndex` of the event, allocated from the single root-local
+allocator (`lastLocalJournalIndex`) shared by both replica slots. There is
+exactly one event-ID format and no sync-event IDs.
 
 A **physical occurrence** is one local journal position containing an event.
 Synchronization may append duplicate occurrences (notification carriers) so that
-local cursors observe graph changes. Logical synchronization operates on
+local cursors observe graph changes; a copy preserves its `eventId` and payload
+and receives a new local `JournalIndex`. Logical synchronization operates on
 logical events; the public cursor API operates on local physical occurrences.
 
 ## Entries and categories
@@ -114,12 +116,12 @@ assert current graph state, so carrier copies are legitimate.
 
 ## Compaction
 
-Logical compaction is `normalizeJournal`; physical compaction deletes duplicate
-occurrences while retaining the greatest local occurrence of each canonical
-event. Physical compaction is serialized with both readers (`closeGarden`) and
-occurrence writers (`activeReplicaDarkroom`), so a committed occurrence is never
-erased by compaction. No checkpoint, lease, frontier, or compaction summary
-exists.
+Logical compaction is `normalizeJournal`; physical compaction deletes only
+explicitly selected obsolete occurrences in one exact-delete batch. It never
+replaces, truncates, or rewrites the journal, and it does not acquire the
+occurrence-writer darkroom: writers append at fresh indices strictly greater
+than the compaction watermark, so a committed occurrence is never erased by
+compaction. No checkpoint, lease, frontier, or compaction summary exists.
 
 ## Related specifications
 

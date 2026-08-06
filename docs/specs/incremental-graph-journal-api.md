@@ -47,6 +47,11 @@ assert current graph state, so carrier copies are legitimate: a duplicate
 occurrence of a canonical event may be reported again even though the underlying
 logical event is unchanged.
 
+Compaction preserves conservative no-false-negative notification coverage: the
+query may return a different action than it would have before compaction, but it
+never misses a change that a retained covering occurrence would have reported.
+Compaction need not preserve the exact historical list of returned actions.
+
 ---
 
 ## 3. Cursor tokens

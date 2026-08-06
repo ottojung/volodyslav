@@ -634,7 +634,7 @@ Journal notification is conservative: coverage has no false negatives for
 supported graph changes, but the journal may contain conservative or duplicate
 notifications, and a returned action does not assert current graph state.
 
-The journal type system, emission rules, synchronization model, migration interaction, and compaction rules are specified in the dedicated journal specification documents:
+The journal type system, emission rules, synchronization model, migration interaction, and compaction rules are specified in the dedicated journal specification documents. The physical journal is append-only except for compaction deleting explicitly selected obsolete occurrences; compaction never replaces, truncates, or rewrites the journal:
 
 ```text
 docs/specs/incremental-graph-journal-types.md
