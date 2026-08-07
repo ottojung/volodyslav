@@ -1,43 +1,340 @@
-# Incremental graph locking and replica cutover
+# Incremental Graph Locking Design
 
-## Ownership
+## Status
 
-Each `GraphReplica` physically owns authoritative IncrementalGraph storage and
-its notification journal (`NotificationClock`, `DeliveryByIndex`,
-`DeliveryHead`, `JournalOriginId`, and `lastLocalJournalIndex`). The graph is the
-sole authority; journal locks protect notification consistency, not graph
-projection.
+This document describes the locking model of the incremental graph.
 
-## Ordinary transaction boundary
+## Summary
 
-The existing durable transaction-finalization boundary serializes authoritative
-mutations, local clock increments, append-or-replace deletes/puts, head changes,
-and watermark advancement. A committed snapshot contains all of a transition
-and its coverage or none. Sequence overflow aborts rather than wraps.
+The target behavior is:
 
-## Queries
+1. Daytime activity (`getValue()`, `getFreshness()`, `listMaterializedNodes()`,
+   `invalidate()`) is exclusive with nighttime observation (`pull()`), but not
+   exclusive with other daytime activities.
+2. Inspection reads such as `getValue()` and `listMaterializedNodes()` are
+   allowed to run concurrently with `invalidate()`.
+3. Nighttime observation (`pull()`) is exclusive with daytime activity.
+4. Observations of the same concrete node must not coexist (telescope
+   mutex).
+5. Observations of different concrete nodes may coexist.
+6. Migration and replica cutover suspend all graph activity (daytime,
+   nighttime, and other exclusive work).
+7. Transaction commits for the same replica are serialized (the commit
+   mutex is per-replica, not global, so commits to different replicas
+   proceed concurrently).
 
-`possibleMaybeChanges` acquires shared garden access while selecting the active
-replica and opening a fixed committed journal snapshot. It captures the
-watermark within that snapshot, then scans `(since,H]`. The snapshot prevents a
-query from observing neither side of an atomic delivery replacement.
+## Sleeper Primitives
 
-## Synchronization and migration construction
+The design is based on two sleeper primitives:
 
-A lifecycle holiday excludes competing structural work. Under shared garden
-access, construction selects the active replica and opens one fixed committed
-source snapshot containing the graph and all five journal parts. After capture,
-shared access may be released while the inactive destination is built.
+### `withMutex(key, procedure)`
 
-The destination exact-copies the local journal infrastructure before adding
-records above the copied watermark. Synchronization joins only the remote clock;
-it never imports remote delivery history. Migration likewise copies local
-journal infrastructure, then records exact old/new authoritative transitions.
+This is the existing exclusive mutex:
 
-After destination validation, exclusive garden access serializes the atomic
-active-replica switch. Existing readers finish on their selected replica; new
-readers select the destination. Exact copied physical indices, heads, gaps, and
-watermark preserve same-process cursor positions.
+- at most one caller per key runs at a time;
+- other callers queue in FIFO order.
 
-The required locks and snapshots are exactly those protecting authoritative
-transactions, fixed journal reads, source capture, and replica cutover.
+It remains the right primitive for **per-node pull exclusion**.
+
+### `withModeMutex(key, mode, procedure)`
+
+This is a grouped lock:
+
+- callers with the same `(key, mode)` may run concurrently;
+- callers with the same `key` but a different `mode` are mutually exclusive;
+- queued callers are served in FIFO **mode groups** so that a later caller in
+  the current mode cannot skip ahead of an earlier conflicting mode.
+
+This is the right primitive for **global graph phases** where we want
+`nighttime`/`daytime` exclusion without forcing all pulls to serialize with each
+other.
+
+## Lock Keys
+
+The implementation derives keys from functor-based factories.
+
+### 1. Dome activity key
+
+There is exactly one dome key:
+
+- `DOME_ACTIVITY_KEY` — a zero-argument term key instantiated from `makeUniqueFunctor`.
+
+This key is acquired through `withModeMutex`. Three conditions are defined:
+
+- `"daytime"` for `invalidate()` and inspection reads;
+- `"nighttime"` for all pull activity;
+- `"holiday"` for migration and replica cutover.
+
+Because same-mode holders are compatible, many invalidates may overlap, many
+pulls may overlap, and many holiday operations are serialized via the holiday
+gate. Because different modes are incompatible, no pull may overlap any
+invalidate, inspection read, or holiday operation.
+
+Before acquiring the holiday dome condition, a small `HOLIDAY_GATE_KEY` mutex
+serializes concurrent holiday callers with each other.
+
+### 2. Telescope key (per-node pull)
+
+There is one exclusive mutex per concrete node, created through the
+`TELESCOPE_FUNCTOR`:
+
+- `TELESCOPE_FUNCTOR.instantiate([nodeKeyString])`
+
+This key is acquired through `withMutex`.
+
+It is used only by pull operations, and only for the concrete node currently
+being pulled. This is what serializes same-node pulls without blocking pulls on
+different nodes.
+
+### 3. Darkroom key (per-replica finalization)
+
+There is one exclusive mutex per replica, created through the `DARKROOM_FUNCTOR`:
+
+- `DARKROOM_FUNCTOR.instantiate([replicaName])`
+
+It serializes the short finalization step where a finished transaction's batch
+and identifier allocations become part of that replica's settled record.
+Commit-snapshot reads (`listMaterializedNodes()`) also acquire the darkroom
+to observe state between commit finalizations.
+
+## Operation Protocol
+
+### `invalidate(node)`
+
+1. Acquire `daytimeActivity(...)` (internally `withModeMutex(DOME_ACTIVITY_KEY, "daytime", ...)`).
+2. Open a transaction.
+3. Run the invalidation logic inside the transaction body — this runs outside the
+   darkroom lock, so concurrent invalidations can make progress.
+4. Acquire the per-replica darkroom lock only for transaction finalization:
+   finalize and flush any pending writes.
+5. Release the darkroom.
+6. Release the dome daytime lock.
+
+No per-node mutex is needed.
+
+### inspection read
+
+1. Acquire `daytimeActivity(...)` (internally `withModeMutex(DOME_ACTIVITY_KEY, "daytime", ...)`).
+2. Read the requested inspection data (e.g. `getValue()`, `getFreshness()`).
+3. Release the dome daytime lock.
+
+No per-node mutex is needed.
+
+`listMaterializedNodes()` additionally acquires the per-replica darkroom lock to
+observe state between commit finalizations — it reads the committed identifier
+lookup while no darkroom finalization is in progress.
+
+### `pull(node)`
+
+1. Acquire `nighttimeActivity(...)` (internally
+   `withModeMutex(DOME_ACTIVITY_KEY, "nighttime", ...)`).
+2. Acquire `telescopeActivity(nodeKeyString, ...)` (internally
+   `withMutex(TELESCOPE_FUNCTOR.instantiate([nodeKeyString]), ...)`).
+3. Inside the telescope, open a transaction — the darkroom is NOT acquired at
+   this point. The transaction body (dependency pulls and computor execution)
+   runs outside the per-replica darkroom lock.
+4. Run dependency pulls and the computor. Each dependency pull is a recursive
+   call to `pullNode` — it acquires its own telescope mutex, creates its own
+   transaction, commits independently under its own darkroom (step 5), and
+   returns the computed value. Dependencies commit before the parent computor
+   runs.
+5. After the transaction body returns, acquire the per-replica darkroom lock
+   **only for the short finalization phase**:
+   - reconcile validity mutations against the current committed state;
+   - prepare identifier-map and allocation-watermark writes;
+   - flush the durable batch (LevelDB `batch` write);
+   - publish the identifier overlay to the volatile committed lookup **only
+     after** the disk flush succeeds.
+6. In the cleanup path, release all identifier reservations owned by the
+   transaction, whether the transaction committed or failed.
+7. Release the per-node telescope mutex.
+8. Release the dome nighttime lock.
+
+The darkroom lock is per-replica, so commits to different replicas never
+contend. If a parent computor fails, successfully committed dependency pulls
+remain committed — their darkroom finalizations complete before the parent
+computor is invoked and before the parent transaction finalizes.
+
+Nested pulls (dependencies) share the same dome nighttime activity but acquire
+their own telescope mutex per concrete node and create their own Transaction
+(each with its own darkroom finalization). This matches the volatile-consistency
+spec: every call to pullNode is structurally identical, whether top-level or
+nested.
+
+### `migration / replica cutover`
+
+1. Acquire `holidayActivity(...)`.
+2. Run the migration or cutover.
+3. Release the holiday lock.
+
+The two-step acquisition (`HOLIDAY_GATE_KEY` → `DOME_ACTIVITY_KEY("holiday")`)
+is deadlock-free because nighttime and daytime operations only ever acquire
+`DOME_ACTIVITY_KEY`.
+
+The computor runs inside the telescope critical section but outside the
+darkroom. This is safe because the critical section is no longer graph-global:
+other pulls may still proceed on other nodes, while invalidates and inspection
+reads are excluded.
+
+## Why This Matches the Requested Semantics
+
+### Invalidates with invalidates
+
+Both use `daytimeActivity(...)`, so they are compatible.
+
+### Invalidates with reads
+
+Both use `daytimeActivity(...)`, so they are compatible.
+
+### Pulls with reads or invalidates
+
+Nighttime observations (`pull()`) use mode `"nighttime"` while reads and invalidates
+use mode `"daytime"`. Those modes conflict, so these operations are
+mutually exclusive.
+
+### Pulls on the same node
+
+They contend on the same telescope mutex key, so they serialize.
+
+### Pulls on different nodes
+
+They share the compatible global `"nighttime"` mode and use different per-node mutex
+keys, so they may proceed concurrently.
+
+## Deadlock Discipline
+
+The implementation keeps this acquisition discipline:
+
+1. acquire the dome mode lock first;
+2. acquire any per-node telescope mutexes after that;
+3. never acquire `"daytime"` while holding a telescope mutex.
+
+Inspection reads and invalidates only take the global mode lock, so they cannot
+participate in a node-level cycle.
+
+Pulls may recursively pull dependencies while already holding pull locks. The
+incremental graph is a DAG, so any wait edge from node `A` to node `B` implies
+that `A` depends on `B`. A deadlock cycle would therefore imply a dependency
+cycle, which the graph constructor already rejects.
+
+## Why `withoutMutex` Must Not Return
+
+`withoutMutex` encoded a very different strategy: temporarily leave the critical
+section and try to restore it later. That is fundamentally the wrong shape for
+the new invariants because:
+
+- it allows a pull to overlap an invalidate;
+- it allows two same-node pulls to race through the same recomputation;
+- it requires the caller to reason about a lock gap outside the type and API
+  structure of the primitive itself.
+
+The safer replacement is not a more careful "drop and reacquire" helper. The
+safer replacement is a pair of primitives that directly express the intended
+compatibility rules.
+
+## Journal integration without weakening graph locking
+
+The journal rewrite does not remove or weaken the observatory locking model.
+Each replica physically owns its authoritative graph and notification journal,
+but notifications add work only to existing commit and lifecycle boundaries.
+
+### Ordinary graph transaction
+
+During the existing per-replica darkroom/finalization boundary, one durable
+batch contains all applicable writes:
+
+```text
+authoritative graph mutations
+NotificationClock increments
+DeliveryByIndex delete/put operations
+DeliveryHead updates
+lastLocalJournalIndex update
+```
+
+Writable open and finalization require
+`JournalDomain.writerOrigins[localWriterId] == localJournalOrigin`; a missing
+writer/origin or mismatched assignment prevents graph mutation from committing.
+
+For every exact before/after action, delivery replacement allocates a fresh
+index, deletes exactly the old headed record if present, puts the new record,
+updates the head, and advances the watermark. A commit publishes all graph
+changes and notification coverage or neither. No committed materialization,
+value, or freshness transition lacks a covering notification.
+
+Dependency pulls and computor execution remain in the telescope transaction
+body outside the darkroom. The darkroom continues to serialize only short
+per-replica finalization, including graph writes and their journal coverage.
+
+### Garden access and fixed snapshots
+
+`enterGarden` is shared access that pins selection of an active replica long
+enough to retain a fixed committed snapshot. `closeGarden` is exclusive access
+for the active-pointer switch. A safely retained snapshot remains readable
+after `enterGarden` is released.
+
+`possibleMaybeChanges` follows exactly:
+
+```text
+acquire enterGarden
+select active replica
+open fixed committed journal snapshot
+capture watermark in that snapshot
+release enterGarden when the snapshot is safely retained
+```
+
+It scans the retained snapshot through that watermark. It does not acquire
+daytime, nighttime, a telescope, or a darkroom unless the storage engine is
+shown to require an additional lock to retain a committed snapshot. The fixed
+snapshot observes either side of an atomic append-or-replace batch, never a
+mixture.
+
+Synchronization and migration capture their lifecycle source as:
+
+```text
+holiday
+    -> enterGarden
+    -> fixed graph+journal source snapshot
+    -> release enterGarden
+```
+
+That fixed snapshot contains `JournalDomain`, `localWriterId`,
+`NotificationClock`, `DeliveryByIndex`, `DeliveryHead`, `JournalOriginId`, and
+`lastLocalJournalIndex`. Inactive targets copy all identity and cursor fields
+before applying their operation-specific graph and notification changes.
+
+Inactive construction proceeds from that snapshot without garden access. The
+validated switch is:
+
+```text
+holiday
+    -> destination fully constructed, durable, and validated
+    -> closeGarden
+    -> active-pointer switch
+    -> release closeGarden
+    -> release holiday
+```
+
+Code must never request `closeGarden` while holding `enterGarden`. Holiday
+continues to exclude all ordinary daytime and nighttime graph activity, while
+the garden coordinates replica lifetime and pointer visibility.
+
+### Complete lock-order table
+
+| Operation | Required acquisition order | Compatibility and boundary |
+|---|---|---|
+| ordinary pull | nighttime dome → telescope for each recursively pulled node → that transaction's per-replica darkroom only at finalization | Same-node pulls serialize; different-node pulls overlap; dependency pulls commit before the parent computor; no daytime overlap. |
+| ordinary invalidate | daytime dome → per-replica darkroom only at finalization | Invalidations overlap one another and inspections; the durable graph+journal batch is atomic. |
+| inspection | daytime dome; `listMaterializedNodes` additionally takes the per-replica darkroom around its committed lookup read | Inspections overlap invalidations; no telescope is taken. |
+| journal query | enterGarden → select replica → retain fixed journal snapshot and watermark → release enterGarden | No dome, telescope, or darkroom absent a demonstrated storage requirement. |
+| synchronization source capture | HOLIDAY_GATE_KEY → holiday dome → enterGarden → fixed graph+journal snapshot → release enterGarden | Construction uses the inactive replica; no computor runs. |
+| migration source capture | HOLIDAY_GATE_KEY → holiday dome → enterGarden → fixed graph+journal snapshot → release enterGarden | Migration logic uses the retained snapshot and inactive replica. |
+| cutover | retained holiday (without enterGarden), after durable construction and validation → closeGarden → switch active pointer → release closeGarden → release holiday | Never upgrade enterGarden to closeGarden; failure leaves the active pointer unchanged. |
+
+The table supplements the telescope recursion and deadlock discipline above.
+No operation may acquire daytime while holding a telescope, and
+`withoutMutex` remains prohibited. Commit finalization remains per-replica;
+different replica darkrooms are independent.
+
+Graph merge, computors, and long-running destination validation never move into
+an ordinary active-replica darkroom. Destination graph and journal updates are
+already durable when `closeGarden` publishes the pointer.

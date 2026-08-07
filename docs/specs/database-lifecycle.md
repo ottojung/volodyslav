@@ -76,15 +76,17 @@ The synchronization repository is part of creation even when the resulting datab
 
 ### 4.2 Restoring this host's synchronized state
 
-When local live state is absent, Volodyslav first asks whether the synchronization repository contains state previously published for the current hostname.
+When local live state is absent, Volodyslav first asks whether the synchronization repository contains the current synchronized state previously published for this same host and writer. The synchronization lifecycle must recognize the selected branch as the branch assigned to the current host/writer.
 
-If it does, startup uses the controlled reset-to-host path to restore that snapshot into a newly opened local database. The imported state is committed through the database's normal cutover mechanism, then the database is reopened and passed through the migration gate. Thus a host can recover its own synchronized state and then migrate it to the running version.
+This is **absent-state self-restoration**, not reset of an existing database. It restores and validates the authoritative graph together with `JournalDomain`, `localWriterId`, `JournalOriginId`, `NotificationClock`, `DeliveryByIndex`, `DeliveryHead`, `lastLocalJournalIndex`, and physical gaps. The restored identity must satisfy `JournalDomain.writerOrigins[localWriterId] == JournalOriginId`.
 
-Any failure to query, obtain, parse, or install that state is fatal to bootstrap. Volodyslav does not silently fall back to an empty database after discovering that the host is supposed to have synchronized state.
+Restoration resumes previously emitted state. It MUST NOT classify the restored graph as an empty-to-restored transition and MUST NOT emit `add` for every restored materialization. The restored counters and cursor history are installed through the normal durable cutover, after which the database is reopened and passed through the migration gate.
+
+The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same writer/origin is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new origin. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup initializes the local synchronization working state and runs normal synchronization from an empty local database. This establishes the host's synchronization history and then considers other host branches under the ordinary synchronization rules.
+If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions a fresh graph allocation fingerprint and the host's preassigned `localWriterId`/`JournalOriginId` mapping before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then joins other host clocks under ordinary synchronization rules without adopting their writer identities.
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 
@@ -199,13 +201,54 @@ Synchronization is therefore not globally atomic across all remote hosts. Its po
 
 After an initiated synchronization, Volodyslav attempts to reopen the local database and rerun the migration gate even if synchronization itself failed. If both synchronization and reopening fail, both failures are relevant. A synchronization error does not justify leaving the application interface attached to a closed database.
 
-### 7.4 Controlled reset
+### 7.4 Existing-live controlled reset
 
-A reset-to-host synchronization selects a host snapshot and installs it through a non-active target state followed by cutover. It is used during restoration and may also be invoked through a Volodyslav-controlled synchronization path.
+A reset-to-host synchronization applied to an established live database selects
+a snapshot's authoritative graph and installs it through a non-active target
+followed by cutover. The receiving host preserves its complete journal state:
+`JournalDomain`, `localWriterId`, `JournalOriginId`, `NotificationClock`,
+`DeliveryByIndex`, `DeliveryHead`, `lastLocalJournalIndex`, and physical gaps.
+The source contributes authoritative graph state only.
 
-Reset is intentionally different from normal merge: it selects the snapshot as the logical source rather than combining it node by node with the current state. The selected snapshot must still be structurally importable and must pass required database identity checks. When reset is applied to an already-existing local database, implementation-defined host-local state that must remain local is preserved by the reset path. When reset is used during absent-local-state bootstrap, there is no previous local database identity to preserve; the selected synchronized host snapshot is installed according to the bootstrap protocol.
+The reset classifies `ResetActions` from `oldLocalGraph` to `replacementGraph`.
+Every exact action advances the receiving origin and append-or-replaces a local
+delivery. Graph replacement and notification coverage commit atomically before
+cutover. This transition is distinct from absent-state self-restoration in §4.2.
+After reset, the database is reopened through the migration gate.
 
-After reset, the database is reopened through the migration gate. A reset snapshot may therefore be older than the running application if the supported migration can bring it forward. This does not weaken the normal synchronization rule that peer-to-peer merging requires matching versions before merge.
+### 7.5 Counter continuity during self-restoration
+
+A writer MUST never resume authoritative mutation with a local action sequence
+below a sequence it previously published under the same `JournalOriginId`.
+
+```text
+A previously published:
+    clock[K][OA][edit] = 10
+
+A loses its live database.
+
+A restores its own synchronized snapshot:
+    clock[K][OA][edit] = 10
+
+A edits K:
+    clock[K][OA][edit] = 11
+
+B previously observed 10:
+    join detects 11 > 10
+    B receives edit K
+```
+
+The rollback below is invalid because max join makes the new edit invisible:
+
+```text
+restore OA at sequence 0
+emit sequence 1
+peer already has sequence 10
+
+join chooses 10
+new edit is invisible
+```
+
 
 ## 8. Version compatibility
 
@@ -330,6 +373,9 @@ Implementations and future changes MUST preserve the following lifecycle propert
 10. Tests and diagnostics SHOULD distinguish incompatibility, failed preconditions, corruption, and unsupported manipulation rather than using those terms interchangeably.
 11. New recovery, import, or restore behavior MUST be implemented as a Volodyslav-controlled lifecycle transition. Documentation alone MUST NOT redefine raw file manipulation as supported.
 12. Storage refactors MAY change physical artifacts without changing this specification, provided these lifecycle preconditions, transitions, and postconditions remain true.
+13. Existing-live reset MUST preserve the receiving host's complete journal state.
+14. Absent-state self-restoration MUST restore the same host's current published clock and continue its counters without empty-graph classification.
+15. Raw cross-host copying of a live database remains unsupported; copied writer metadata does not establish ownership.
 
 ## 15. Known boundaries
 

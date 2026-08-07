@@ -28,10 +28,14 @@ or active/inactive cutover.
 
 ### Goal 3 — algebraic synchronization
 
-**Synchronization of synchronized journal state must be commutative,
-associative, and idempotent.** `NotificationClock` joins coordinate-wise by the
-maximum sequence. It is therefore a finite product of max-counter
-semilattices; the journal synchronization specification proves each law.
+**The binary merge operator for already-emitted replicated `NotificationClock`
+states is commutative, associative, and idempotent.** The operator is
+`mergeNotificationClocks(A,B) = joinClock(A,B)`, a coordinate-wise maximum.
+An overall graph synchronization may subsequently emit new receiving-host clock
+progress for graph transitions created by that synchronization. This is a local
+update after the merge, not part of the merge algebra. Reversing the receiving
+host need not produce an identical complete replica or post-emission clock.
+Local delivery indices, heads, watermarks, and gaps remain cursor infrastructure.
 
 ### Non-goal — graph authority
 
@@ -51,6 +55,8 @@ GraphReplica
     ├── NotificationClock
     ├── DeliveryByIndex
     ├── DeliveryHead
+    ├── JournalDomain
+    ├── JournalWriterId
     ├── JournalOriginId
     └── lastLocalJournalIndex
 ```
@@ -123,6 +129,9 @@ the corresponding files under `docs/specs/`.
 
 ## Normative invariants
 
+- The graph merge is fully specified independently of the journal.
+- The notification clock never chooses graph state.
+- The journal rewrite does not remove or weaken the observatory locking model.
 - The graph database is the sole authority for graph state.
 - The journal is a notification source and never a graph-state source.
 - The journal has no false negatives for materialization, `ComputedValue`, or
@@ -136,6 +145,21 @@ the corresponding files under `docs/specs/`.
   up-to-date.
 - Notification-clock synchronization is pointwise maximum and is commutative,
   associative, and idempotent.
+- Every writable writer identity has exactly one immutable origin assignment in
+  `JournalDomain`.
+- No two writer identities may own one `JournalOriginId`.
+- A peer's claimed writer/origin pair is validated against `JournalDomain`
+  before clock join.
+- Unknown origins cannot enlarge a clock.
+- For a fixed journal domain, total live journal state is O(n).
+- `joinClock` is the commutative, associative, and idempotent binary merge
+  operator.
+- Post-merge synchronization-created emission is a new local update, not part of
+  the `joinClock` algebra.
+- The complete receiving-host post-emission clock need not equal the
+  reversed-role post-emission clock.
+- Local delivery indices are cursor infrastructure and are not part of the
+  algebraic merge result.
 - Concurrent origins and distinct actions cannot overwrite one another.
 - At most one local delivery record exists per historic node key and exact
   action.
@@ -145,6 +169,36 @@ the corresponding files under `docs/specs/`.
   length.
 - The journal remains physically inside the graph replica and is copied as
   local cursor infrastructure during replica construction.
+- No committed materialization, value, or freshness transition lacks a covering
+  notification.
+- Every committed synchronization-created graph transition advances the
+  receiving host's synchronized action counter.
+- No graph transition is represented only by an unsynchronized local delivery.
+- A journal-only synchronization result still activates the destination
+  replica.
+- Replica cutover is skipped only when both graph and complete journal result
+  are unchanged.
+- `JournalDomain` survives synchronization, migration, reset, restart, and
+  replica cutover.
+- Reset replaces graph state but preserves receiving-host journal identity and
+  cursor history.
+- Existing-live reset preserves the receiving host's complete journal state.
+- Absent-state self-restoration restores the same host's previously published
+  `NotificationClock` and continues its counters.
+- No `JournalOriginId` may reuse a sequence lower than progress previously
+  published under that origin.
+- Restoration is not classified as empty-graph-to-restored-graph journal
+  actions.
+- Raw cross-host database copying remains unsupported.
+- A copied `localWriterId`/`localJournalOrigin` pair is not proof of writer
+  ownership.
+- A new host obtains a fresh graph fingerprint and its preassigned
+  writer/origin pair through the supported fresh-host lifecycle.
+- A writable replica cannot commit unless its local writer/origin pair equals
+  its immutable `JournalDomain.writerOrigins` assignment.
+- When remote progress and a local synchronization-created transition share one
+  delivery coordinate, the delivery uses local cutover time.
+- `joinClock` remains commutative, associative, and idempotent.
 
 ## Strict O(n) proof
 
@@ -162,6 +216,9 @@ The last equality requires fixed `r` and `a`; with unbounded origins it is
 `O(nr)`. Historic deleted keys remain in `n`. Mandatory replacement maintains
 the bound continuously. Operation/synchronization count, value/proof size,
 graph age, validity edges, and obsolete intermediate values add no terms.
+For this protocol version, `writerOrigins` is finite and immutable, so the
+cardinality of its unique origin values is an enforced domain constant. For a fixed journal domain, total live journal
+state is O(n).
 
 ## No-false-negatives proof
 

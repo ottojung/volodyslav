@@ -1,5 +1,38 @@
 # Notification-clock synchronization
 
+## Domain validation and synchronization boundary
+
+Only `NotificationClock` is replicated journal state. `DeliveryByIndex`,
+`DeliveryHead`, `lastLocalJournalIndex`, and physical gaps are host-local cursor
+materialization and never participate in journal synchronization.
+
+Before joining, validate both complete inputs and require:
+
+```text
+local.JournalDomain == remote.JournalDomain
+
+domain.writerOrigins[local.localWriterId]
+    == local.localJournalOrigin
+
+domain.writerOrigins[remote.localWriterId]
+    == remote.localJournalOrigin
+
+local.localWriterId != remote.localWriterId
+local.localJournalOrigin != remote.localJournalOrigin
+```
+
+Mapping equality is exact. Each staged peer declares its stable writer ID and
+assigned origin. Reject either clock if any coordinate uses an origin outside
+`set(domain.writerOrigins.values())`. Domain mismatch, unknown origin, malformed
+component, ownership mismatch, and equal-sequence/time conflict reject
+synchronization atomically and symmetrically before either result is installed.
+Remote data never adds a writer or origin. Dynamic membership requires a
+separately specified journal-domain migration.
+
+Distinct independently writable peers must have distinct mapped writers and
+origins. Claims are checked against the immutable mapping, not merely against
+previously encountered peers.
+
 ## Coordinate join
 
 Missing coordinates have sequence zero. For each `(key, origin, action)`:
@@ -36,6 +69,38 @@ components are identical because validity requires equal times.
 A clock is a finite product over key/origin/action coordinates of max-counter
 semilattices. Finite products preserve these three laws.
 
+Ordinary local emission, including synchronization-created emission, may occur
+before or after a join. Emission changes an operand by advancing its assigned
+origin; it does not change the commutative, associative, or idempotent laws of
+`joinClock` itself.
+
+Normatively, the laws apply only to `NotificationClock`:
+
+```text
+joinClock(A, B) = joinClock(B, A)
+joinClock(joinClock(A, B), C) = joinClock(A, joinClock(B, C))
+joinClock(A, A) = A
+```
+
+`mergeNotificationClocks(A,B) = joinClock(A,B)` is the binary journal merge
+operator for already-emitted replicated states. The three laws above belong to
+that operator alone.
+
+```text
+mergeNotificationClocks(A, B) = mergeNotificationClocks(B, A)
+
+mergeNotificationClocks(mergeNotificationClocks(A, B), C)
+    = mergeNotificationClocks(A, mergeNotificationClocks(B, C))
+
+mergeNotificationClocks(A, A) = A
+```
+
+Different hosts or synchronization schedules need not produce identical
+physical delivery indices or watermarks. Local delivery state instead
+guarantees no false negatives, same-process cursor continuity, one retained
+record per key/action, and O(n) live records. Local delivery indices are cursor
+infrastructure and are not part of the algebraic merge result.
+
 ## Independent coordinates
 
 Actions cannot share one latest-action scalar. If a host emits `edit` and
@@ -52,7 +117,7 @@ detects B. This is required for concurrent edits.
 ```text
 RemoteAdvancedActions = {
   (K,A) |
-  some O has finalClock[K][O][A].sequence
+  some O has joinedClock[K][O][A].sequence
              > localClock[K][O][A].sequence
 }
 ```
@@ -75,3 +140,57 @@ component greatest under `(sequence, JournalOriginId)` and copy its time.
 
 The clock join does not synchronize graph state and is never an input to graph
 conflict resolution.
+
+### Writer-ownership rejection across three hosts
+
+```text
+domain:
+    WA -> OA
+    WB -> OB
+    WC -> OC
+
+A declares: writer WA, origin OA
+B declares: writer WB, origin OA
+```
+
+C rejects B because `domain.writerOrigins[WB] = OB` but
+`B.localJournalOrigin = OA`. This works even when C synchronized with A and B
+at different times: ownership is verified from the immutable domain.
+
+### Supported fresh-host trace
+
+```text
+domain:
+    WA -> OA
+    WB -> OB
+
+A is an existing host:
+    allocation fingerprint FA
+    localWriterId WA
+    origin OA
+
+B is created through the supported fresh-host lifecycle:
+    allocation fingerprint FB
+    localWriterId WB
+    origin OB
+
+require:
+    FA != FB
+    WA != WB
+    OA != OB
+
+B synchronizes with A:
+    B keeps FB, WB, and OB
+    B joins A's NotificationClock components
+    B never advances OA
+```
+
+Normal synchronization validates a staged peer's mapped writer/origin claim and
+also its recognized host branch identity supplied by the synchronization
+lifecycle. These are correctness checks under the non-adversarial model, not
+cryptographic or Byzantine authentication.
+
+Raw cross-host copying of a live database is unsupported. A copied
+`localWriterId`/`localJournalOrigin` pair is not proof of writer ownership, and
+the journal mapping cannot authenticate the physical installation that holds
+copied files.

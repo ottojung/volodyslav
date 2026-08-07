@@ -24,12 +24,43 @@ timestamps, validity relations, freshness, dependency metadata, representation,
 or encoding when `ComputedValue` is equal. Independent value and freshness
 transitions can emit two actions.
 
-## Stable origin and synchronized clock
+## Stable writer ownership and synchronized clock
 
-`JournalOriginId` is the durable identity of one independently writable replica
-origin. It is unique among concurrent writers and survives process restart,
-reset, migration, and active/inactive cutover. Both slots of one local graph
-lineage carry the same identity. It is not regenerated per operation or sync.
+`JournalWriterId` is the durable identity of one independently writable host.
+It MUST be a stable validated replica identity whose lifecycle and uniqueness
+guarantees cover restart, reset, migration, and replica cutover. An unvalidated
+transient hostname is not sufficient. A deployment may use an existing validated
+replica fingerprint only if it has those guarantees; otherwise it provisions a
+separate durable writer ID.
+
+`JournalOriginId` is the durable counter namespace assigned to one writer.
+Ownership is authoritative only through the finite immutable domain mapping:
+
+```text
+JournalDomain = {
+    domainId: JournalDomainId
+    writerOrigins: Map<JournalWriterId, JournalOriginId>
+}
+
+AllowedJournalOrigins = set(JournalDomain.writerOrigins.values())
+```
+
+All writer IDs are unique, all origin IDs are unique, no two writers map to one
+origin, and every permitted writable host has exactly one mapping. The derived
+`AllowedJournalOrigins` is useful for clock validation but is not the ownership
+authority. Dynamic writer membership requires a separately specified domain
+migration.
+
+Every writable replica carries both `localWriterId` and `localJournalOrigin`.
+Writable open and transaction finalization require:
+
+```text
+JournalDomain.writerOrigins[localWriterId] == localJournalOrigin
+```
+
+A missing domain, writer, or origin; a mismatched assignment; or duplicate
+ownership prevents authoritative mutation. A host advances only its assigned
+origin and retains but never advances other origins.
 
 ```text
 NotificationClock =
@@ -55,6 +86,23 @@ only: it is not a graph revision/version, causal context, operation or
 transaction identifier, or synchronization generation. Equal nonzero sequence
 at the same coordinate has exactly one valid time. Overflow is fatal and never
 wraps.
+
+`JournalWriterId` is host identity established by a supported lifecycle
+transition outside arbitrary replica copying. Replica-local storage carries that
+already-established identity through restart, migration, existing-live reset,
+and same-host active/inactive cutover.
+
+A writer identity is established by a supported host lifecycle transition.
+Possession of a copied replica containing that identity does not establish
+ownership. Raw cross-host copying of a live database is outside the supported
+lifecycle, and the journal protocol does not make it safe. Merely replacing the
+journal writer/origin pair would also leave copied graph allocation and allocator
+namespaces unsafe.
+
+Absent-state self-restoration is different: it restores this same writer's
+current synchronized `JournalDomain`, identity, clock, delivery state, and graph.
+It must continue all previously published local-origin sequences and must not
+classify restoration as new graph actions.
 
 ## Local delivery types and cursors
 
@@ -83,13 +131,16 @@ other than notification time, validity data, proofs, or graph assertions.
 
 ## Storage bound
 
-Let `n` be current plus historic semantic keys, `r` the fixed configured origin
-count, and `a = 5`. There are at most `n × r × a` clock components, `n × a`
-heads, and `n × a` records, plus constant origin/watermark metadata. Thus:
+Let `n` be current plus historic semantic keys, `a = 5`, and
+`r = |set(writerOrigins.values())|`, a fixed domain constant.
 
 ```text
-size = O(nra + na) = O(n) for fixed r and a
+NotificationClock: at most n × r × a components
+DeliveryHead:       at most n × a entries
+DeliveryByIndex:    at most n × a records
+total:              O(n)
 ```
 
-If origins are unbounded, the bound is `O(nr)`, not `O(n)`. Values and proofs are
-not stored, so their size cannot affect journal size.
+Domain metadata, local origin, and the watermark add constant state. The
+protocol rejects unbounded or unknown origins rather than admitting them.
+Values and proofs are not stored, so their size cannot affect journal size.
