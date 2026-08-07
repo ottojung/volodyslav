@@ -25,6 +25,23 @@ Actions have only these meanings: absent-to-materialized `add`; materialized
 repeated identical actions are permitted; false negatives on these dimensions
 are not.
 
+Every `PossibleNodeChange` returned by `possibleMaybeChanges` carries a private
+same-process cursor position corresponding to its local `JournalIndex`. The
+private cursor position:
+
+- is not one of the public data fields;
+- is not directly readable as a raw journal index;
+- is not user-constructible from `nodeName`, `bindings`, `action`, and `time`;
+- is accepted internally when that returned token is later passed as `since`;
+- is valid only within the documented same-process cursor domain; and
+- has no persistence or serialization guarantee.
+
+`baselinePossibleNodeChange()` similarly returns an opaque sentinel strictly
+before every real local journal position. The implementation representation is
+deliberately unspecified. It may use private fields, symbols, nominal branding,
+object identity plus private lookup, or another mechanism satisfying this
+contract. A raw numeric `JournalIndex` is not part of the public API.
+
 ## Fixed-snapshot query
 
 A query performs:

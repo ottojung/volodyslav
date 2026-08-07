@@ -119,11 +119,17 @@ DeliveryHead = Map<(NodeKey, JournalAction), JournalIndex>
 ```
 
 `JournalIndex` is a monotonically allocated physical token in one process-local
-cursor domain. `lastLocalJournalIndex` is its never-decreasing watermark. A
-`PossibleNodeChange` containing a real index, or the sentinel returned by
-`baselinePossibleNodeChange()`, is a cursor token. Tokens address local physical delivery progress, not synchronized clock
-positions or graph versions. Sparse indices are valid because replacement deletes old records but
-never reuses their indices.
+cursor domain. `lastLocalJournalIndex` is its never-decreasing watermark. Every
+returned `PossibleNodeChange` privately carries the position of its real local
+index, and `baselinePossibleNodeChange()` returns an opaque sentinel strictly
+before all real local positions. Neither token exposes a raw index as a public
+field or permits construction from the public change fields. Tokens are
+accepted internally as `since`, are valid only in the documented same-process
+domain, and have no persistence or serialization guarantee. Their private
+representation is deliberately unspecified, and a raw numeric `JournalIndex`
+is not part of the public API. Tokens address local physical delivery progress,
+not synchronized clock positions or graph versions. Sparse indices are valid
+because replacement deletes old records but never reuses their indices.
 
 `DeliveryHead[K,A]`, when present, points to the sole retained record for that
 coordinate. `DeliveryRecord` contains no graph values, identifiers, timestamps

@@ -521,10 +521,15 @@ interface IncrementalGraph {
 
 **REQ-IFACE-08 (Timestamp Invariants):**
 * `getCreationTime(N, B) <= getModificationTime(N, B)` for any materialized node instance `N@B`.
-* `getCreationTime(N, B)` MUST NOT change once set.
+* During ordinary local graph operations, `getCreationTime(N, B)` MUST NOT
+  change once set. Synchronization may replace it only by copying the selected
+  materialization record's exact existing `createdAt`.
 * `getModificationTime(N, B)` is a version timestamp for the stored semantic value.
 * A **new timestamp record** is created when a semantic value is first stored for a node (including migration `create` and the node's initial computation). `createdAt` and `modifiedAt` are both set to the current time at this point.
-* An existing `modifiedAt` **advances** only when a computor produces a changed value that replaces the previous stored value. `modifiedAt` MUST NOT advance in any other circumstance.
+* During ordinary local computor execution, an existing `modifiedAt`
+  **advances** only when a computor produces a changed value that replaces the
+  previous stored value. Synchronization can instead replace it with the exact
+  existing `modifiedAt` of the selected source materialization.
 * Synchronization may replace a local node value and timestamp with another replica's existing value-version pair (the `take` decision). This copies the existing timestamp; it does not mint a new one. Synchronization MUST NOT replace a timestamp with the merge execution time or any other manufactured value.
 * `modifiedAt` MUST NOT change when:
   * a node becomes `potentially-outdated` (invalidation);
@@ -532,7 +537,8 @@ interface IncrementalGraph {
   * validity flags are added, removed, transported, or rebuilt;
   * a computor returns `Unchanged`;
   * synchronization keeps an existing value (the `keep` decision);
-  * identifier reconciliation occurs;
+  * identifier reconciliation occurs without selection of a different source
+    materialization record;
   * dependency identifiers are relowered;
   * a cached value is deleted because the old value is not valid for the final dependency structure;
   * freshness changes between `up-to-date` and `potentially-outdated`; no freshness record exists for unmaterialized nodes.
@@ -631,7 +637,12 @@ freshness sublevel. The public journal API consists of:
 
 - `graph.possibleMaybeChanges({ since, to })` — Queries possible node changes since a previously observed position, restricted to nodes matching the given filter. Returns `Promise<Array<PossibleNodeChange>>`. The `since` parameter accepts `PossibleNodeChange | BaselinePossibleNodeChange`; the `to` parameter is a `NodeFilter`. See `docs/specs/incremental-graph-journal-api.md` for the full specification.
 
-- `baselinePossibleNodeChange()` — Returns a `BaselinePossibleNodeChange` sentinel (a position less than any real journal index). When passed as `since` to `graph.possibleMaybeChanges`, scanning starts from the first journal entry. This is a standalone function, not an `IncrementalGraph` method.
+- `baselinePossibleNodeChange()` — Returns an opaque
+  `BaselinePossibleNodeChange` sentinel strictly before every real local
+  journal position. When passed as `since` to
+  `graph.possibleMaybeChanges`, scanning starts from the first journal entry.
+  This is a standalone function, not an `IncrementalGraph` method. The raw
+  physical `JournalIndex` is not part of the public API.
 
 Journal notification has no false negatives for those three dimensions, but it
 may have false positives and collapse repeated occurrences of one exact action.
@@ -644,14 +655,67 @@ potentially-outdated; and `validate` is only potentially-outdated to up-to-date.
 Add/delete do not also emit freshness actions. Value and freshness transitions
 may independently produce two actions.
 
-`createdAt` changes only as part of add. `modifiedAt` changes only with value and
-therefore alongside edit. `NodeIdentifier` is stable for a semantic key, or an
-identity replacement is explicitly delete plus add. Validity edges and
-dependency evidence are internal metadata: changing them with unchanged
-freshness emits nothing. Storage representation is not journal-observable.
-There is no additional independently changing semantic field in the journal
-contract; adding one requires explicitly extending the observable surface rather
-than broadening an existing action.
+The journal's no-false-negatives contract covers exactly:
+
+1. materialization presence;
+2. `ComputedValue`;
+3. freshness sublevel.
+
+For the notification journal, a graph change means a committed transition in
+one of those dimensions. Other persisted or public graph metadata may change
+without a journal notification. Where permitted by the authoritative graph
+operation, this includes `NodeIdentifier`, `createdAt`, `modifiedAt`, validity
+relations, dependency or validity evidence, storage representation, and other
+metadata outside the three journal-observable dimensions. These fields are not
+all derived from the observable dimensions or incapable of independent change.
+
+During ordinary local computor execution, `modifiedAt` changes only when the
+computor changes the stored value. Synchronization may nevertheless select a
+remote materialization whose value is equal to the receiver's current value but
+whose existing `modifiedAt` and `createdAt` differ. Copying those source
+timestamps is metadata replacement, not a local value edit, and emits no edit
+notification.
+
+`NodeIdentifier` is storage identity, not semantic `NodeKey` identity.
+Synchronization may reconcile the same semantic `NodeKey` to a different
+selected `NodeIdentifier` without a delete/add journal transition.
+
+The required metadata-only synchronization trace is:
+
+```text
+local K:
+    id         = n-local
+    value      = A
+    createdAt  = 100
+    modifiedAt = 1000
+    freshness  = up-to-date
+
+remote K:
+    id         = n-remote
+    value      = A
+    createdAt  = 200
+    modifiedAt = 2000
+    freshness  = up-to-date
+
+remote wins by modifiedAt
+
+final receiving state:
+    id               n-local -> n-remote
+    createdAt        100 -> 200
+    modifiedAt       1000 -> 2000
+    value            A -> A
+    freshness        up-to-date -> up-to-date
+    materialization  present -> present
+
+journal result:
+    no action
+```
+
+`edit` MUST NOT be emitted because `ComputedValue` did not change.
+`delete`/`add` MUST NOT be emitted because materialization did not change. No
+freshness action is emitted because freshness did not change. Extending the
+observable surface requires a separate explicit contract change rather than
+broadening an existing action.
 
 The journal type system, emission rules, synchronization model, migration
 interaction, and mandatory append-or-replace delivery rules are specified in:
@@ -753,7 +817,7 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 | `listMaterializedNodes()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
 | `getCreationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
 | `getModificationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `possibleMaybeChanges()` | `enterGarden` (shared garden access) | Daytime and nighttime methods; ordinary append-only journal growth; does not acquire `DOME_ACTIVITY_KEY` or darkroom; structural operations excluded by garden; replica cutover serialized via `closeGarden` + `holiday` |
+| `possibleMaybeChanges()` | `enterGarden` (shared garden access) | Daytime and nighttime methods; ordinary atomic journal emission and append-or-replace delivery updates; does not acquire `DOME_ACTIVITY_KEY` or darkroom; structural operations excluded by garden; replica cutover serialized via `closeGarden` + `holiday` |
 | `getSchemas()` | none (in-memory read) | Everything |
 | `getSchemaByHead()` | none (in-memory read) | Everything |
 | `getDbVersion()` | none (in-memory read) | Everything |
