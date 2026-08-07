@@ -4,8 +4,9 @@
 
 ### Goal 1 — no false negatives
 
-**The journal must have no false negatives with respect to graph changes.** A
-graph change is exactly a committed transition in materialization presence,
+**The journal must have no false negatives with respect to graph changes.** For
+the notification journal, a graph change means exactly a committed
+transition in materialization presence,
 `ComputedValue`, or the freshness sublevel. The corresponding closed action set
 is `add`, `edit`, `delete`, `invalidate`, and `validate`. Every such transition
 produces a covering notification. Repeated changes of the same exact action may
@@ -104,14 +105,67 @@ materialization transitions and never additionally produce freshness actions.
 
 ## Journal-observable graph surface
 
-The complete surface is exactly materialization presence, `ComputedValue`, and
-freshness sublevel. Other fields are derived from those dimensions, cannot
-change independently, or are deliberately non-observable internal metadata.
-`createdAt` changes only with add; `modifiedAt` only with a value change and
-therefore edit; `NodeIdentifier` is stable for a semantic node or identity
-replacement is specified as delete plus add; validity edges can change silently
-while freshness is unchanged; storage representation is not observable. No
-other independently changing semantic field is presently in this contract.
+The journal's no-false-negatives contract covers exactly:
+
+1. materialization presence;
+2. `ComputedValue`;
+3. freshness sublevel.
+
+Other persisted or public graph metadata may change without a journal
+notification. Where permitted by the authoritative graph operation, this
+includes `NodeIdentifier`, `createdAt`, `modifiedAt`, validity relations,
+dependency or validity evidence, storage representation, and other metadata
+outside the three journal-observable dimensions. These fields are not all
+derived from the observable dimensions and are not required to change with one
+of them.
+
+During ordinary local computor execution, `modifiedAt` changes only when the
+computor changes the stored value. Synchronization may nevertheless select a
+remote materialization whose value is equal to the receiver's current value but
+whose existing `modifiedAt` and `createdAt` differ. Copying those source
+timestamps is metadata replacement, not a local value edit, and emits no edit
+notification.
+
+`NodeIdentifier` is storage identity, not semantic `NodeKey` identity.
+Synchronization may reconcile the same semantic `NodeKey` to a different
+selected `NodeIdentifier` without a delete/add journal transition.
+
+For example, consider the mandatory metadata-only synchronization trace:
+
+```text
+local K:
+    id         = n-local
+    value      = A
+    createdAt  = 100
+    modifiedAt = 1000
+    freshness  = up-to-date
+
+remote K:
+    id         = n-remote
+    value      = A
+    createdAt  = 200
+    modifiedAt = 2000
+    freshness  = up-to-date
+
+remote wins by modifiedAt
+```
+
+The final receiving transition is:
+
+```text
+id:               n-local -> n-remote
+createdAt:        100 -> 200
+modifiedAt:       1000 -> 2000
+value:            A -> A
+freshness:        up-to-date -> up-to-date
+materialization:  present -> present
+
+journal result:   no action
+```
+
+This result is required. `edit` is not emitted because `ComputedValue` did not
+change; `delete` and `add` are not emitted because materialization did not
+change; and no freshness action is emitted because freshness did not change.
 
 ## Core guarantees
 
