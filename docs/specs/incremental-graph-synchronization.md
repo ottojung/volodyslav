@@ -134,10 +134,11 @@ steps in order:
 9. Failures are recorded per host. Synchronization may continue with remaining
    hosts and aggregate failures into a single error report.
 
-**TERM-SYNC-13 (Reset-to-hostname mode):** A synchronization mode that is NOT
-a graph merge. It replaces authoritative graph state wholesale from a chosen
-hostname snapshot while preserving the receiving host's journal-domain identity
-and cursor infrastructure, then returns without processing additional hosts.
+**TERM-SYNC-13 (Existing-live reset-to-hostname mode):** A synchronization mode
+for a receiving host with established live state. It is NOT a graph merge. It
+replaces authoritative graph state wholesale from a chosen hostname snapshot
+while preserving the receiving host's complete journal state, then returns
+without processing additional hosts.
 
 **REQ-SYNC-03 (Reset mode separation):** Reset-to-hostname mode must not be
 mixed with normal per-host merge semantics. It preserves the receiving
@@ -152,6 +153,20 @@ After constructing `replacementGraph`, classify
 action advances the receiving local-origin component and append-or-replaces a
 receiving local delivery. The replacement graph, clock increments, deliveries,
 heads, and watermark commit atomically in the inactive target before cutover.
+
+**REQ-SYNC-03a (Absent-state self-restoration):** When no local live database
+exists, restoring this same host's current synchronized branch is a distinct
+bootstrap transition. It restores and validates the authoritative graph,
+`JournalDomain`, `localWriterId`, `JournalOriginId`, `NotificationClock`,
+`DeliveryByIndex`, `DeliveryHead`, `lastLocalJournalIndex`, and physical gaps.
+The branch must be the current branch recognized for that host/writer, and the
+restored mapping must satisfy
+`JournalDomain.writerOrigins[localWriterId] == JournalOriginId`.
+
+Self-restoration resumes previously emitted state. It MUST NOT classify an
+empty graph against the restored graph and MUST NOT emit `add` actions for
+restored materializations. An arbitrary older checkpoint is unsupported without
+anti-rollback state or a new origin assignment.
 
 ---
 
@@ -874,10 +889,16 @@ isolated in inactive replica T; failure leaves the active pointer unchanged.
 Writable open and transaction finalization both require
 `JournalDomain.writerOrigins[localWriterId] == localJournalOrigin`. A replica
 with a missing domain, writer, or origin, a mismatched assignment, or duplicate
-ownership MUST NOT commit an authoritative graph mutation. A fork copied from
-host A must be provisioned with B's distinct mapped writer/origin pair before B
-opens for writes; it retains OA's clock components but never advances them.
-Provisioning is deployment-specific, but rejection is normative.
+ownership MUST NOT commit an authoritative graph mutation. Cross-host copying
+is not a supported way to create a new host. A new host instead receives a
+fresh graph allocation fingerprint and its preassigned mapped writer/origin pair
+through the supported fresh-host lifecycle, then joins other hosts' clock
+components without advancing their origins.
+
+A writer MUST NOT resume authoritative mutation with a local action sequence
+below progress it previously published under the same `JournalOriginId`.
+Raw cross-host database copying remains unsupported, and a copied
+writer/origin pair does not prove ownership of the physical installation.
 
 With holiday retained, the destination is fully constructed, made durable, and
 validated before `closeGarden` is acquired. Then the active pointer switches,

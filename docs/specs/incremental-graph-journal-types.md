@@ -87,18 +87,22 @@ transaction identifier, or synchronization generation. Equal nonzero sequence
 at the same coordinate has exactly one valid time. Overflow is fatal and never
 wraps.
 
-Writer identity and assignment survive restart, reset, migration, and same-host
-active/inactive cutover. Remote snapshot import does not replace the receiving
-writer or origin. When A's storage is copied to new writable host B, B retains
-`JournalDomain` and every historical clock component, but before writable open:
+`JournalWriterId` is host identity established by a supported lifecycle
+transition outside arbitrary replica copying. Replica-local storage carries that
+already-established identity through restart, migration, existing-live reset,
+and same-host active/inactive cutover.
 
-```text
-B.localWriterId = WB
-B.localJournalOrigin = JournalDomain.writerOrigins[WB]
-```
+A writer identity is established by a supported host lifecycle transition.
+Possession of a copied replica containing that identity does not establish
+ownership. Raw cross-host copying of a live database is outside the supported
+lifecycle, and the journal protocol does not make it safe. Merely replacing the
+journal writer/origin pair would also leave copied graph allocation and allocator
+namespaces unsafe.
 
-WB must be the distinct mapping provisioned for B. B never advances A's origin.
-Copying storage alone does not transfer writer ownership.
+Absent-state self-restoration is different: it restores this same writer's
+current synchronized `JournalDomain`, identity, clock, delivery state, and graph.
+It must continue all previously published local-origin sequences and must not
+classify restoration as new graph actions.
 
 ## Local delivery types and cursors
 

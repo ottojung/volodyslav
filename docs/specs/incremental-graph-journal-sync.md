@@ -157,29 +157,40 @@ C rejects B because `domain.writerOrigins[WB] = OB` but
 `B.localJournalOrigin = OA`. This works even when C synchronized with A and B
 at different times: ownership is verified from the immutable domain.
 
-### Mandatory host-fork trace
+### Supported fresh-host trace
 
 ```text
-A:
-    local writer WA
-    local origin OA
-    edit[K][OA] = 5
+domain:
+    WA -> OA
+    WB -> OB
 
-copy A's storage to new writable host B
+A is an existing host:
+    allocation fingerprint FA
+    localWriterId WA
+    origin OA
 
-before B may mutate:
-    B.localWriterId = WB
-    B.local origin = domain.writerOrigins[WB] = OB
-    WA != WB and OA != OB
+B is created through the supported fresh-host lifecycle:
+    allocation fingerprint FB
+    localWriterId WB
+    origin OB
 
-B edits K:
-    edit[K][OB] = 1
+require:
+    FA != FB
+    WA != WB
+    OA != OB
 
-join retains:
-    edit[K][OA] = 5
-    edit[K][OB] = 1
+B synchronizes with A:
+    B keeps FB, WB, and OB
+    B joins A's NotificationClock components
+    B never advances OA
 ```
 
-B retains OA's copied component but never advances it. Copying storage does not
-make B the OA writer. OB must be distinct, already allowed by the fixed domain,
-and assigned before B's first authoritative graph mutation.
+Normal synchronization validates a staged peer's mapped writer/origin claim and
+also its recognized host branch identity supplied by the synchronization
+lifecycle. These are correctness checks under the non-adversarial model, not
+cryptographic or Byzantine authentication.
+
+Raw cross-host copying of a live database is unsupported. A copied
+`localWriterId`/`localJournalOrigin` pair is not proof of writer ownership, and
+the journal mapping cannot authenticate the physical installation that holds
+copied files.

@@ -182,6 +182,18 @@ the corresponding files under `docs/specs/`.
   replica cutover.
 - Reset replaces graph state but preserves receiving-host journal identity and
   cursor history.
+- Existing-live reset preserves the receiving host's complete journal state.
+- Absent-state self-restoration restores the same host's previously published
+  `NotificationClock` and continues its counters.
+- No `JournalOriginId` may reuse a sequence lower than progress previously
+  published under that origin.
+- Restoration is not classified as empty-graph-to-restored-graph journal
+  actions.
+- Raw cross-host database copying remains unsupported.
+- A copied `localWriterId`/`localJournalOrigin` pair is not proof of writer
+  ownership.
+- A new host obtains a fresh graph fingerprint and its preassigned
+  writer/origin pair through the supported fresh-host lifecycle.
 - A writable replica cannot commit unless its local writer/origin pair equals
   its immutable `JournalDomain.writerOrigins` assignment.
 - When remote progress and a local synchronization-created transition share one
