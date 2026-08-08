@@ -1,41 +1,46 @@
-# Mandatory bounded delivery replacement
+# Logical journal compaction
 
-## One-head invariant
-
-At all committed snapshots, at most one `DeliveryByIndex` record exists for each
-historic `(NodeKey, JournalAction)`, and `DeliveryHead` points to it. Every
-emission performs append-or-replace: it deletes exactly the superseded record,
-adds a fresh-index record, and changes its head atomically. This is mandatory
-online compaction, not optional cleanup.
-
-The complete delivery journal is never replaced, truncated, or imported from a
-remote. Compaction concerns only the physical delivery indexes described here.
-
-## Cursor coverage proof
-
-Suppose the record at `d` is replaced at `r`, where `r > d`:
+For entries `E1` and `E2`:
 
 ```text
-cursor < r:  a query can observe the covering record at r
-cursor >= r: the cursor has already crossed the covering notification at r
+E2 covers E1 iff
+    E1.author == E2.author && E1.key == E2.key &&
+    E1.action == E2.action && E2.sequence > E1.sequence
 ```
 
-The replacement batch is atomic. A fixed snapshot sees the old record or the
-new record, never neither. Gaps left at `d` are expected and scans skip them.
-This preserves action-specific no-false-negatives while bounding retained
-records by `5 × n`.
+There is no cross-author coverage. `compact(S)` retains exactly the maximal
+entry in every `(author,key,action)` coordinate and returns them in canonical
+`JournalEntryId` order.
+
+## Preservation proof
+
+Replacing `E1` with covering `E2` preserves the action-specific
+`possibleMaybeChanges` guarantee: both report the same key and exact action,
+and a receiver allocates a new local delivery position for newly learned `E2`.
+The API promises possible occurrence, not occurrence count or the older time.
+Atomic append-or-replace delivery ensures a cursor before the replacement sees
+the later covering record; a cursor after it has already crossed that record.
+
+Every virtual projection is monotone under replacement:
+
+* `valueHead(author,key)` uses the maximum sequence among that author's
+  `add`/`edit` entries. Covering an add or edit replaces it by a strictly later
+  entry of the same action, so that action's candidate maximum advances; the
+  maximum across add and edit cannot move backward.
+* `presenceHead(key)` is the greatest ID among all authors' add/delete maxima.
+  Replacing either coordinate with a greater sequence cannot lower that maximum.
+* the generation-establishing add and `freshnessHead(key)` are selected by
+  greatest IDs. A replacement advances its coordinate. If it advances the add,
+  older freshness history correctly falls before the new generation; otherwise
+  the greatest post-add invalidate/validate cannot move backward.
+
+Thus compaction preserves every retained head and all synchronization decisions
+based on them. It also preserves exact key/action possible-change coverage.
 
 ### Trace
 
-A cursor at 40, old `edit[K]` at 41, and replacement at 57 yields a scan through
-watermark 57 that sees 57. A cursor at or above 57 already includes the newer
-covering position. A snapshot taken across replacement sees either index 41 and
-the old head or index 57 and the new head.
-
-## Continuous size guarantee
-
-One million edits of one node leave one `edit` delivery head and one retained
-`edit` record, while its local-origin clock component reaches one million. A
-value growing from one byte to many megabytes changes no journal record size,
-because delivery and clock state contain no value. Thus bounds hold continuously
-and do not depend on future maintenance.
+For author A and key K, `edit#4`, `edit#9`, `invalidate#6`, and `validate#8`
+compact to `edit#9`, `invalidate#6`, and `validate#8`. The value head advances
+from 4 to 9; the freshness maximum remains validate 8. If `invalidate#11`
+arrives it covers invalidate 6 and becomes the freshness head. No projection
+moves backward.

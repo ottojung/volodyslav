@@ -78,15 +78,15 @@ The synchronization repository is part of creation even when the resulting datab
 
 When local live state is absent, Volodyslav first asks whether the synchronization repository contains the current synchronized state previously published for this same host and writer. The synchronization lifecycle must recognize the selected branch as the branch assigned to the current host/writer.
 
-This is **absent-state self-restoration**, not reset of an existing database. It restores and validates the authoritative graph together with `JournalDomain`, `localWriterId`, `JournalOriginId`, `NotificationClock`, `DeliveryByIndex`, `DeliveryHead`, `lastLocalJournalIndex`, and physical gaps. The restored identity must satisfy `JournalDomain.writerOrigins[localWriterId] == JournalOriginId`.
+This is **absent-state self-restoration**, not reset of an existing database. It restores and validates the authoritative graph together with `JournalDomain`, the durable local `HostFingerprint`, compacted logical `JournalEntry` collection, `localJournalClock`, and receiver-local delivery cursor state. The restored author must be the branch owner, and the clock watermark must cover every observed sequence.
 
 Restoration resumes previously emitted state. It MUST NOT classify the restored graph as an empty-to-restored transition and MUST NOT emit `add` for every restored materialization. The restored counters and cursor history are installed through the normal durable cutover, after which the database is reopened and passed through the migration gate.
 
-The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same writer/origin is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new origin. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
+The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable author fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions a fresh graph allocation fingerprint and the host's preassigned `localWriterId`/`JournalOriginId` mapping before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then joins other host clocks under ordinary synchronization rules without adopting their writer identities.
+If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions a fresh graph allocation fingerprint and the host's durable `HostFingerprint` and persistent `localJournalClock` before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their writer identities.
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 
@@ -206,39 +206,42 @@ After an initiated synchronization, Volodyslav attempts to reopen the local data
 A reset-to-host synchronization applied to an established live database selects
 a snapshot's authoritative graph and installs it through a non-active target
 followed by cutover. The receiving host preserves its complete journal state:
-`JournalDomain`, `localWriterId`, `JournalOriginId`, `NotificationClock`,
-`DeliveryByIndex`, `DeliveryHead`, `lastLocalJournalIndex`, and physical gaps.
-The source contributes authoritative graph state only.
+`JournalDomain`, its durable local `HostFingerprint`, logical compacted journal,
+`localJournalClock`, and receiver-local delivery cursor state.
+The source contributes its authoritative graph snapshot and immutable logical
+journal entries. The receiver retains its author identity and cursor domain; it
+does not adopt source delivery positions.
 
 The reset classifies `ResetActions` from `oldLocalGraph` to `replacementGraph`.
-Every exact action advances the receiving origin and append-or-replaces a local
-delivery. Graph replacement and notification coverage commit atomically before
+Every exact action allocates a receiving-author entry and a local delivery
+position. Graph replacement and notification coverage commit atomically before
 cutover. This transition is distinct from absent-state self-restoration in §4.2.
 After reset, the database is reopened through the migration gate.
 
 ### 7.5 Counter continuity during self-restoration
 
 A writer MUST never resume authoritative mutation with a local action sequence
-below a sequence it previously published under the same `JournalOriginId`.
+at or below a sequence it previously authored with the same `HostFingerprint`.
 
 ```text
 A previously published:
-    clock[K][OA][edit] = 10
+    JournalEntry(author=A, sequence=10, key=K, action=edit)
 
 A loses its live database.
 
 A restores its own synchronized snapshot:
-    clock[K][OA][edit] = 10
+    JournalEntry(author=A, sequence=10, key=K, action=edit)
 
 A edits K:
-    clock[K][OA][edit] = 11
+    localJournalClock advances to 11
+    JournalEntry(author=A, sequence=11, key=K, action=edit)
 
 B previously observed 10:
-    join detects 11 > 10
-    B receives edit K
+    journal merge retains 11 over covered edit 10
+    B delivers the unchanged logical entry at a new local cursor position
 ```
 
-The rollback below is invalid because max join makes the new edit invisible:
+The rollback below is invalid because sequence reuse makes the new edit conflict with immutable history:
 
 ```text
 restore OA at sequence 0

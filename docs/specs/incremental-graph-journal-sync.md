@@ -1,196 +1,107 @@
-# Notification-clock synchronization
+# Logical journal synchronization
 
-## Domain validation and synchronization boundary
+## Merge
 
-Only `NotificationClock` is replicated journal state. `DeliveryByIndex`,
-`DeliveryHead`, `lastLocalJournalIndex`, and physical gaps are host-local cursor
-materialization and never participate in journal synchronization.
-
-Before joining, validate both complete inputs and require:
+Only immutable logical entries replicate. Local cursor indexes, delivery heads,
+watermarks, and gaps do not.
 
 ```text
-local.JournalDomain == remote.JournalDomain
-
-domain.writerOrigins[local.localWriterId]
-    == local.localJournalOrigin
-
-domain.writerOrigins[remote.localWriterId]
-    == remote.localJournalOrigin
-
-local.localWriterId != remote.localWriterId
-local.localJournalOrigin != remote.localJournalOrigin
+J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
 ```
 
-Mapping equality is exact. Each staged peer declares its stable writer ID and
-assigned origin. Reject either clock if any coordinate uses an origin outside
-`set(domain.writerOrigins.values())`. Domain mismatch, unknown origin, malformed
-component, ownership mismatch, and equal-sequence/time conflict reject
-synchronization atomically and symmetrically before either result is installed.
-Remote data never adds a writer or origin. Dynamic membership requires a
-separately specified journal-domain migration.
+Inputs must have the same journal domain/schema, valid durable authors, valid
+actions and keys, and unique content for every `JournalEntryId`. Two entries
+with one ID but different content are corruption and reject the operation
+atomically and symmetrically. Remote entries never transfer author ownership.
 
-Distinct independently writable peers must have distinct mapped writers and
-origins. Claims are checked against the immutable mapping, not merely against
-previously encountered peers.
+The receiver imports an entry unchanged. If it has not delivered that logical
+entry locally, it allocates a new physical cursor record. This makes learned
+history observable without turning the receiver into its author.
 
-## Coordinate join
+## ACI proof
 
-Missing coordinates have sequence zero. For each `(key, origin, action)`:
+For each `(author,key,action)` coordinate, compacted union selects the entry of
+maximum sequence. Validity makes that maximum unique. Set union is commutative,
+associative, and idempotent, and coordinate-wise maximum has the same laws.
+Canonical ordering is a representation function. Therefore logical merge is:
 
 ```text
-joinComponent(a,b):
-    if a.sequence > b.sequence: return a
-    if b.sequence > a.sequence: return b
-    require a.time == b.time
-    return a
-
-joinClock(A,B)[key][origin][action] =
-    joinComponent(A[key][origin][action], B[key][origin][action])
+J1 ⊔ J2 = J2 ⊔ J1
+(J1 ⊔ J2) ⊔ J3 = J1 ⊔ (J2 ⊔ J3)
+J ⊔ J = J
 ```
 
-Equal sequences with unequal times are corrupt or malformed input. Validation
-rejects the entire input symmetrically and atomically before destination state
-is installed.
+These laws apply to logical journal merge, not to the complete graph merge.
 
-## Algebraic proof
+After accepting a peer journal, a writable host durably raises
+`localJournalClock` to at least the greatest observed sequence before allocating
+another entry. This watermark update and later allocations are serialized by
+the journal-clock mutex. It does not alter imported entries.
 
-For valid components, sequence comparison chooses their maximum. Equal sequence
-components are identical because validity requires equal times.
+## Virtual projections
 
-- **Commutativity:** `max(x,y) = max(y,x)`; either argument order selects the
-  unique component at that maximum sequence. Therefore `joinClock(A,B) =
-  joinClock(B,A)`.
-- **Associativity:** both parenthesizations select the unique component whose
-  sequence is `max(x,y,z)`. Therefore `joinClock(joinClock(A,B),C) =
-  joinClock(A,joinClock(B,C))`.
-- **Idempotence:** the maximum of a sequence with itself is itself, and times
-  agree, so `joinClock(A,A) = A`.
-
-A clock is a finite product over key/origin/action coordinates of max-counter
-semilattices. Finite products preserve these three laws.
-
-Ordinary local emission, including synchronization-created emission, may occur
-before or after a join. Emission changes an operand by advancing its assigned
-origin; it does not change the commutative, associative, or idempotent laws of
-`joinClock` itself.
-
-Normatively, the laws apply only to `NotificationClock`:
+For materialized semantic key `x`:
 
 ```text
-joinClock(A, B) = joinClock(B, A)
-joinClock(joinClock(A, B), C) = joinClock(A, joinClock(B, C))
-joinClock(A, A) = A
+valueHead(author,x) = greatest retained add/edit entry by sequence
+
+candidateEvents(x) = E such that
+    E.key == x && E.action in {add,edit} &&
+    E.time == graph.timestamps[x].modifiedAt &&
+    E == valueHead(E.author,x)
+
+origin(x) = greatest candidate under (E.author,E.sequence)
+ValueRevision(x) = [modifiedAt(x), origin(x).author, origin(x).sequence]
 ```
 
-`mergeNotificationClocks(A,B) = joinClock(A,B)` is the binary journal merge
-operator for already-emitted replicated states. The three laws above belong to
-that operator alone.
+The author-first ordering used only to resolve candidate provenance is distinct
+from `JournalEntryId` ordering. If no candidate exists, the materialization is
+provenance-obsolete/unusable; synchronization never invents one.
 
 ```text
-mergeNotificationClocks(A, B) = mergeNotificationClocks(B, A)
-
-mergeNotificationClocks(mergeNotificationClocks(A, B), C)
-    = mergeNotificationClocks(A, mergeNotificationClocks(B, C))
-
-mergeNotificationClocks(A, A) = A
+presenceHead(x) = greatest add/delete entry by JournalEntryId
+generation(x)   = presenceHead(x) when its action is add
+freshnessHead(x)= greatest invalidate/validate entry by JournalEntryId
+                  occurring after generation(x)
 ```
 
-Different hosts or synchronization schedules need not produce identical
-physical delivery indices or watermarks. Local delivery state instead
-guarantees no false negatives, same-process cursor continuity, one retained
-record per key/action, and O(n) live records. Local delivery indices are cursor
-infrastructure and are not part of the algebraic merge result.
+A delete head bars older adds. A later real add authored after observing it
+starts a new generation. An invalidate head bars older freshness proofs. A
+validate head permits freshness only when current graph validity evidence is
+coherent. With no post-add freshness entry, the generation's initial graph
+freshness applies.
 
-## Independent coordinates
+Compaction preservation is proved in the compaction specification.
 
-Actions cannot share one latest-action scalar. If a host emits `edit` and
-`invalidate`, or adds then deletes before synchronization, every respective
-counter advances and none overwrites another. Final graph equality does not
-remove possible-change coverage.
+## Stable value identity invariant
 
-Origins also cannot share an LWW scalar. If origin A has `edit[K] = 7` and B has
-`edit[K] = 3`, the joined clock retains both. A receiver that had only A later
-detects B. This is required for concurrent edits.
+In every reachable snapshot, two admissible materializations with equal
+`ValueRevision` have equal `ComputedValue`:
 
-## Advanced-action detection
+* Base case: an atomic add/edit authors one entry and commits exactly its value
+  and real `modifiedAt`; one author never reuses the sequence.
+* Local step: a value change receives a fresh sequence, so equality with the old
+  revision is impossible. `Unchanged` retains both value and provenance.
+* Copy step: synchronization copies an existing value and its unchanged origin
+  entry, so equal revision retains equal bytes/value.
+* Destructive step: delete removes the candidate and invalidate changes no
+  value. Neither creates a counterexample.
 
-```text
-RemoteAdvancedActions = {
-  (K,A) |
-  some O has joinedClock[K][O][A].sequence
-             > localClock[K][O][A].sequence
-}
-```
+Thus `ValueRevision` is collision-free over reachable admissible states. Its
+lexicographic tuple is a strict deterministic total order: timestamps decide
+first, different simultaneous authors second, repeated same-author changes at
+one timestamp third. Equal revision with unequal values is corruption, not a
+hash tie-break case.
 
-Only one destination delivery record is required per resulting `(K,A)`, even if
-several origins advanced. Choose time deterministically from the advanced
-component greatest under `(sequence, JournalOriginId)` and copy its time.
+## Traces
 
-### Synchronization traces
-
-- Concurrent origins edit K: both origin coordinates survive; a receiver detects
-  advancement and emits one local `edit` delivery.
-- Remote absent→present→absent: `add` and `delete` coordinates advance, so both
-  are delivered although the receiver's final graph remains absent.
-- Remote fresh→stale→fresh: `invalidate` and `validate` both advance and deliver.
-- Remote A→B→A: `edit` advances twice; a receiver behind that coordinate reports
-  `edit` although final values match.
-- Repeated edit sequence 7→8→9: a receiver at 7 detects 9; intermediate edits
-  collapse without losing possible-change coverage.
-
-The clock join does not synchronize graph state and is never an input to graph
-conflict resolution.
-
-### Writer-ownership rejection across three hosts
-
-```text
-domain:
-    WA -> OA
-    WB -> OB
-    WC -> OC
-
-A declares: writer WA, origin OA
-B declares: writer WB, origin OA
-```
-
-C rejects B because `domain.writerOrigins[WB] = OB` but
-`B.localJournalOrigin = OA`. This works even when C synchronized with A and B
-at different times: ownership is verified from the immutable domain.
-
-### Supported fresh-host trace
-
-```text
-domain:
-    WA -> OA
-    WB -> OB
-
-A is an existing host:
-    allocation fingerprint FA
-    localWriterId WA
-    origin OA
-
-B is created through the supported fresh-host lifecycle:
-    allocation fingerprint FB
-    localWriterId WB
-    origin OB
-
-require:
-    FA != FB
-    WA != WB
-    OA != OB
-
-B synchronizes with A:
-    B keeps FB, WB, and OB
-    B joins A's NotificationClock components
-    B never advances OA
-```
-
-Normal synchronization validates a staged peer's mapped writer/origin claim and
-also its recognized host branch identity supplied by the synchronization
-lifecycle. These are correctness checks under the non-adversarial model, not
-cryptographic or Byzantine authentication.
-
-Raw cross-host copying of a live database is unsupported. A copied
-`localWriterId`/`localJournalOrigin` pair is not proof of writer ownership, and
-the journal mapping cannot authenticate the physical installation that holds
-copied files.
+* **Same writer/time:** A's edits at wall time 100 receive sequences 7 and 8;
+  `[100,A,8]` wins.
+* **Concurrent writers/time:** A and B each edit at 100. Author order chooses
+  between `[100,A,n]` and `[100,B,m]`; no source-host tie-break is involved.
+* **Carrier independence:** A's `[100,A,8]` travels A → B → C. B and C import
+  the entry and allocate local delivery positions but author no edit. All three
+  compare the same revision.
+* **Same-writer supersession:** A's retained head is edit 12. A host carrying
+  A's edit 8 cannot resolve it as a candidate, even if its timestamp is large;
+  it cannot resurrect.

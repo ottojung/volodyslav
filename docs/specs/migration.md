@@ -168,16 +168,18 @@ If no previous version is found, the migration is a no-op.
 
 Migration constructs the new authoritative graph independently of the journal;
 the graph remains the sole authority. From one fixed active-replica snapshot,
-the inactive destination exact-copies local `JournalDomain`, `localWriterId`, `NotificationClock`,
-`DeliveryByIndex`, `DeliveryHead`, `JournalOriginId`, and
-`lastLocalJournalIndex` as cursor infrastructure.
+the inactive destination exact-copies local `JournalDomain`, the durable local
+`HostFingerprint`, the compacted logical `JournalEntry` collection,
+`localJournalClock`, receiver-local `DeliveryByIndex`, delivery heads, and
+cursor watermark.
 
-Migration preserves the complete local domain and local writer identity. It
+Migration preserves the complete local domain and durable author identity. It
 does not create, replace, or infer a journal domain. Pre-cutover validation
 requires the destination domain to equal the local domain, every represented
-origin to occur in `writerOrigins`, the local writer/origin pair to match its
-mapping, delivery heads and records to satisfy the one-head
-invariant, and the watermark to cover every retained delivery index.
+author to be valid, entry IDs to have unique content, the allocator watermark
+to cover every observed sequence, delivery heads and records to satisfy the
+one-head invariant, and the cursor watermark to cover every retained delivery
+index.
 
 After construction, migration compares old and new authoritative states. It
 emits `add` for absent-to-materialized, `delete` for materialized-to-absent,
@@ -187,10 +189,10 @@ produce multiple actions. `KEEP`, encoding changes, validity-edge changes, and
 other representation-only changes are silent when the three observable
 dimensions are unchanged.
 
-Migration-generated exact actions advance the stable local origin's synchronized
-components and append-or-replace delivery records, atomically with graph
-installation. Migration neither reconstructs nor seeds graph state from journal
-data, and it preserves origin identity and the never-decreasing local watermark.
+Migration-generated exact actions allocate immutable local entries from the
+serialized host journal clock and create receiver-local delivery records,
+atomically with graph installation. Migration neither reconstructs nor seeds graph state from journal
+data, and it preserves author identity and the never-decreasing local watermark.
 Detailed rules are in
 `docs/specs/incremental-graph-journal-migrations.md`.
 

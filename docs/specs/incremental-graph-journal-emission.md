@@ -1,86 +1,52 @@
-# Notification journal emission
+# IncrementalGraph journal emission
 
-## Transition classifier
+## Atomic local classification
 
-For every successful local transaction, compare authoritative committed states:
+A successful normal graph transaction compares its committed before and after
+states and applies the closed classifier in the journal types specification.
+Intermediate states do not emit. The graph mutation and every locally authored
+entry commit atomically; a reachable committed snapshot never contains one
+without the other.
 
-```text
-before = graph state before the transaction
-after  = graph state after the transaction
-ActionsByKey = classifyGraphTransition(before, after)
-```
+Before authoring, reserve one sequence per entry from the dedicated host-local
+journal-clock allocator. The allocator first observes the maximum sequence in
+the transaction's installed journal, then increments. Multiple entries receive
+distinct increasing sequences. Aborted reservations may leave gaps but are
+never reused; overflow is fatal.
 
-For each semantic key, classification is exhaustive and exact:
-
-1. absent to materialized: `add` only;
-2. materialized to absent: `delete` only;
-3. both materialized: emit `edit` iff values differ under normative
-   `ComputedValue` equality; independently emit `invalidate` for fresh-to-stale
-   or `validate` for stale-to-fresh.
-
-No net change in materialization, value, or freshness emits nothing. Intermediate
-states inside the atomic transaction are not committed transitions.
-
-## Clock advancement
-
-For each `(key, action)` in `ActionsByKey`:
-
-```text
-component = clock[key][localJournalOrigin][action]
-newComponent = {
-    sequence: component.sequence + 1
-    time: operation time
-}
-```
-
-The durable transaction-finalization boundary serializes advancement. One local
-origin cannot publish different components with the same sequence at a
-coordinate. Increment at `uint64` maximum is a fatal capacity failure; wrapping
-is forbidden.
-
-## Append or replace
-
-Publishing `(K,A)` is mandatory online replacement:
-
-```text
-1. previousIndex = DeliveryHead[K,A], if present
-2. allocate localIndex > lastLocalJournalIndex
-3. in the transaction's atomic LevelDB batch:
-   delete DeliveryByIndex[previousIndex], if present
-   put DeliveryByIndex[localIndex] = DeliveryRecord
-   put DeliveryHead[K,A] = localIndex
-   set lastLocalJournalIndex = localIndex
-```
-
-Indices are never reused and the watermark never decreases. The graph mutation,
-all clock advances, all replacements, all heads, and the watermark commit in one
-durable batch. One transaction may cover many keys and actions.
-
-There is no operation ID, journal transaction, batch ID, event envelope, or
-causal metadata.
-
-## Normative local traces
-
-| Before | After | Notification |
+| Before | After | Entries |
 |---|---|---|
-| absent | present, fresh | `add` |
-| absent | present, stale | `add` only |
-| present value A | present value B, same freshness | `edit` |
-| present value A | recomputed A, same freshness | none |
-| present, any freshness | absent | `delete` only |
-| present fresh | present stale, same value | `invalidate` |
-| present stale | present stale after repeated invalidation | none |
-| present stale | present fresh, same value | `validate` |
-| present fresh | validation work, remains fresh | none |
-| A/fresh | B/stale | `edit`, `invalidate` |
-| A/stale | B/fresh | `edit`, `validate` |
+| absent | materialized | `add` |
+| value A | unequal value B | `edit` |
+| value A | `Unchanged` value A | none |
+| materialized | absent | `delete` |
+| fresh | stale | `invalidate` |
+| stale | fresh | `validate` |
 
-Identifier-only, timestamp-only, validity-edge, proof, dependency metadata, and
-representation-only changes emit nothing when the three observable dimensions
-are unchanged.
+Identifier-only, timestamp-only, and validity-edge-only changes emit nothing.
 
-## Local no-false-negatives argument
+## Synchronization emission
 
-A committed exact transition and its clock advancement and delivery replacement
-share one atomic batch. A committed transition therefore cannot exist without a
-covering record and synchronized progress. Aborted transactions expose neither.
+Synchronization invokes no computor and therefore cannot invent a semantic
+`ComputedValue`. Copying or selecting an existing value imports its originating
+`add`/`edit` history unchanged and MUST NOT author an `add` or `edit`. A local
+delivery record may notify clients that imported history was learned.
+
+Synchronization can derive genuinely new conservative facts:
+
+* deleting an incompatible or provenance-unresolvable cache; and
+* invalidating a cache whose freshness proof cannot safely survive.
+
+For a newly caused transition it authors `delete` or `invalidate`. Each such
+sequence is greater than every entry observed by that synchronization operation,
+and the graph transition, joined journal, entry, and local delivery record are
+installed atomically. An already known covering destructive entry is propagated,
+not re-authored. Synchronization never synthesizes `validate`; only normal graph
+revalidation with coherent validity evidence may do that.
+
+## Reachability invariant
+
+All correctness arguments range over snapshots reachable through atomic normal
+mutations, migrations that preserve these invariants, and the synchronization
+protocol. Arbitrary mismatched graph/journal pairs are corrupt inputs, not
+ordinary conflicts.
