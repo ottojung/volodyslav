@@ -91,13 +91,21 @@ freshnessHead(x,G) = greatest invalidate/validate entry by JournalEntryId
                      whose generation == G
 ```
 
-A delete head bars older adds. A later real add authored after observing it
-starts a new generation. For winning add G, only `freshnessHead(x,G)` has
+A delete head bars lower-ordered adds. Any greater add starts the winning
+generation, whether causally later or concurrent with unrelated higher Lamport
+history. For winning add G, only `freshnessHead(x,G)` has
 freshness authority. Its invalidate bars older proofs for G; its validate
 permits freshness only when current graph validity evidence is coherent. With no
 entry scoped to G, the generation's initial graph freshness applies. An entry
 scoped to an older or losing generation has no authority over G regardless of
 its larger sequence or `JournalEntryId`.
+
+These heads have explicit LWW total-order semantics. `JournalEntryId` does not
+prove observation in the reverse direction: `E2.id > E1.id` does not imply E2
+observed E1. Consequently a concurrent high-sequence add may cross an unseen
+delete, and a concurrent high-sequence validate scoped to G may cross an unseen
+invalidate for G. An entry authored after actually observing a barrier is still
+guaranteed to sort later because the allocator raises its watermark first.
 
 For source snapshot `S`, `sourceGenerationS(x)` is its pre-merge
 `presenceHeadS(x)` when that head is an add. Once the joined `presenceHead(x)`
@@ -149,8 +157,8 @@ values is corruption, not a hash tie-break case.
 
 * **Same writer/time:** A's edits at wall time 100 receive sequences 7 and 8;
   `[100,A,8]` wins.
-* **Concurrent writers/time:** A and B each edit at 100. Author order chooses
-  between `[100,A,n]` and `[100,B,m]`; no source-host tie-break is involved.
+* **Concurrent writers/time:** A and B each edit at 100. Sequence chooses when
+  `n != m`; author chooses only when `n == m`. No source-host tie-break is involved.
   If B is the canonical event but B's derived cache is unsupported against final
   inputs, coherent A is not mislabeled as B: the result is stale fallback for
   one input or deletion for multiple inputs.
@@ -180,6 +188,11 @@ values is corruption, not a hash tie-break case.
   `canonicalEvent(D,G)` selects E2 because sequence is primary. If truly
   concurrent events instead have equal sequence, author deterministically
   breaks that tie.
+* **Concurrent positive crossing:** A authors delete Q at sequence 40. Without
+  observing Q, B has watermark 100 from unrelated history and authors add G at
+  101. LWW presence selects G. Likewise, a greater concurrent validate scoped to
+  G can supersede an unseen invalidate for G. This is total-order resolution,
+  not evidence that B observed the destructive entry.
 * **Carrier independence:** A's `[100,A,8]` travels A → B → C. B and C import
   the entry and allocate local delivery positions but author no edit. All three
   compare the same revision.

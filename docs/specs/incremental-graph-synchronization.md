@@ -52,22 +52,30 @@ does not add a hash tie-break.
 For an exact `modifiedAt` collision inside G, the greatest matching event by
 `JournalEntryId=(sequence,author)` is canonical. A source candidate resolves its alleged event
 from its own pre-merge reachable snapshot, and is admissible after journal join
-only if that event is `canonicalEvent(x,G)`. Selection MUST NOT keep another tied candidate
-and attribute the canonical event to it. If the canonical candidate is
+only if that event is `canonicalEvent(x,G)`. Selection MUST NOT keep another
+tied candidate and attribute the canonical event to it. If the canonical candidate is
 unsupported, lower tied coherent candidates are excluded and the conservative
 no-coherent rule applies.
 
-A delete presence head prevents older add generations from resurrecting. A later
-normal add may rematerialize only when authored after observing that delete. If
+A delete presence head prevents lower-ordered add generations from resurrecting.
+A greater add may rematerialize under LWW order whether causally later or
+concurrent with unrelated high Lamport history. If
 the joined head says present but no source carries usable bytes for that
 presence generation, the result is absent; a genuinely new decision emits a
 delete barrier.
 
-For final add generation G, an invalidate in `freshnessHead(x,G)` prevents an
-older fresh proof for G from restoring freshness. A later validate scoped to G
-only permits freshness when normal graph validity proof remains coherent. An
-invalidate or validate scoped to another generation has no authority over G;
-Lamport ID comparison alone never establishes generation membership.
+For final add generation G, an invalidate in `freshnessHead(x,G)` prevents a
+lower-ordered fresh proof for G from restoring freshness. A greater validate
+scoped to G only permits freshness when normal graph validity proof remains
+coherent. An invalidate or validate scoped to another generation has no
+authority over G; Lamport ID comparison alone never establishes generation
+membership.
+
+Presence and generation-scoped freshness are LWW total-order frontiers.
+`E2.id > E1.id` does not assert E2 observed E1. A concurrent add with a greater
+ID can supersede an unseen delete, and a concurrent same-G validate with a
+greater ID can supersede an unseen invalidate. Conversely, an event genuinely
+authored after observation is guaranteed to sort later by allocator watermark.
 
 ## Transient support
 
@@ -118,10 +126,10 @@ coherence comparison, even when one is the retained edit notification maximum.
 
 ### 2. Candidate resolution
 
-For every surviving source materialization, resolve `ValueRevision(N,G)` in that
-source's pre-merge view after accounting for joined supersession. Discard
-unresolvable/provenance-obsolete candidates. A source container is never part of
-semantic identity.
+Every candidate enters this phase with `ValueRevision(N,G)` already resolved in
+its own validated pre-merge source. Apply the joined heads and discard candidates
+made obsolete only by valid joined history. An internally unresolvable source
+cannot reach this phase. A source container is never part of semantic identity.
 
 When G-scoped source events share `modifiedAt`, determine `canonicalEvent(N,G)`
 before coherence selection and discard candidates alleged to originate at a
@@ -179,8 +187,8 @@ A selected node is final-fresh only if:
 Otherwise it is stale. When synchronization newly demotes fresh to stale for a
 reason not represented by a covering invalidate, it authors exactly one
 `invalidate` after all observed journal history. It never synthesizes validate.
-An older validate for G or old fresh peer cannot cross that barrier; a later
-genuine normal revalidation may author validate explicitly scoped to G.
+A lower-ordered validate for G or old fresh peer cannot cross that barrier; a
+later genuine normal revalidation may author validate explicitly scoped to G.
 
 That synchronization-authored invalidate explicitly carries G. Entries for
 other generations neither satisfy nor override this barrier.
@@ -216,6 +224,15 @@ Before planning, synchronization MUST reject atomically:
    generation resolving to a same-key add witness;
 7. conflicting content at one `JournalEntryId`; or
 8. a local allocator watermark below an observed sequence.
+
+Before journal join or conflict planning, validate each source against its own
+pre-merge journal. Every source materialization MUST resolve its source presence
+generation, a current generation-scoped value event matching its `modifiedAt`,
+and a `ValueRevision` whose event belongs to that generation. Its source
+freshness and validity must agree with `freshnessHead(N,G)` and ordinary graph
+invariants. Failure is corrupt source state and rejects that host merge; it MUST
+NOT be converted into an unusable candidate, absence, or a new destructive
+entry.
 
 Different identifiers for the same semantic key are expected, not corruption.
 For a surviving selected candidate, its source identifier is preferred. If the
@@ -384,9 +401,11 @@ have a deterministic strict total order.
 
 Presence/freshness heads, candidate sets, coherence predicates, and maximum
 selection are symmetric functions of A and B. Thus semantic selection is
-argument-order independent. After a peer learns a destructive barrier, its old
-positive candidate is inadmissible; resynchronizing the old snapshot cannot
-undo the result (absorption). Equivalent settled inputs have identical heads and
+argument-order independent. After a peer learns a destructive frontier that
+sorts above a particular positive candidate, that candidate is inadmissible;
+resynchronizing that old snapshot cannot undo the result. A previously unseen
+concurrent positive entry with a greater ID is a distinct LWW event and may
+supersede it. Equivalent settled inputs have identical heads and
 classifications, so no transition or reconciliation entry is generated.
 
 Logical journal merge is associative, but this specification deliberately does
@@ -399,12 +418,22 @@ satisfies IncrementalGraph correctness.
 
 **Theorem.** Let a finite set of writable hosts share one fixed finite schema and
 finite materialized dependency DAG. Suppose ordinary graph mutation becomes
-quiescent. Let there be a fixed connected undirected peer graph, and let every
-edge be synchronized infinitely often (**fairness**). Then repeated bilateral
+quiescent. Let there be a fixed connected undirected neighbor graph. For every
+neighbor edge `{A,B}`, require both directed receive operations `A <- B` and
+`B <- A` infinitely often (**directional fairness**). A receive stages the
+sender's published snapshot and installs a validated result only at the receiver;
+the sender remains read-only. Then repeated bilateral
 synchronization eventually makes every host's graph observably equivalent, and
 all later synchronizations make no graph change.
 
 No leader, distinguished host, or all-to-all edge is assumed.
+
+Directional fairness is also what guarantees destructive transition authorship.
+If an absent receiver sees an unsupported remote cache, it remains absent and
+authors no delete because the closed classifier observes no local transition.
+The reverse receive eventually occurs: the materialized endpoint receives the
+absent/incompatible state, performs `materialized -> absent`, and authors the
+delete. A merely undirected count of edge invocations would not suffice.
 
 ### A. Finite positive history
 
@@ -417,36 +446,35 @@ removes their admissibility.
 
 ### B. Destructive progress terminates
 
-Let `P` be the finite set of pairs `(node, positive candidate generation/proof)`
-present at quiescence. For each joined-history state, let measure `M` be the
-subset of P still admissible somewhere across its known presence and freshness
-barriers, ordered by strict set inclusion; refine it with the finite number of
-hosts not yet carrying each already-created barrier.
+Let P be the finite set of positive add/edit/validate generations and proofs
+present at quiescence. A new destructive entry b is allocated above every entry
+observed by that receive, so it LWW-dominates at least one offending positive p
+that caused the decision. Charge the decision to `(receiver,p)`. That exact p
+cannot cross b at that receiver again, and propagation of b authors nothing.
 
-A genuinely new sync-derived delete or invalidate is sequenced after all history
-that caused it and makes at least one member of M permanently inadmissible to
-any host that learns the barrier. That exact older generation/proof can never
-cross the barrier. Propagating an existing barrier decreases only the finite
-refinement and authors nothing. Because strict deletion from finite P is
-well-founded, only finitely many genuinely new destructive decisions can occur.
-A later positive generation could cross a barrier only through normal
-add/edit/validate, which quiescence excludes. Therefore journal creation stops.
+A previously unseen concurrent positive p2 may have a greater ID and cross b;
+this does not contradict the LWW rule. When p2 later causes another destructive
+decision, the new entry is allocated above p2 and is charged to the distinct
+finite pair `(receiver,p2)`. A receiver already absent or stale does not author
+the same transition again. Since `Hosts × P` is finite, only finitely many such
+charges and genuinely new destructive entries occur. This is the well-founded
+measure; the proof does not assume that Lamport order implies observation.
 
 ### C. Journal gossip converges
 
 After the final entry, logical merge is commutative, associative, and idempotent.
 For any retained entry and any target host, connectedness gives a finite path;
-fair synchronization of each path edge eventually carries the entry along that
-path. With finitely many entries and hosts, eventually every host has every
-retained coordinate maximum and current-generation value/freshness authority
-witness. Compaction preserves all projections, so generation-scoped value,
-presence, and freshness frontiers stabilize identically everywhere.
+directional fairness eventually carries the entry through receives oriented
+along that path. With finitely many entries and hosts, eventually every host has
+every retained coordinate maximum and current-generation value/freshness
+authority witness. Compaction preserves all projections, so generation-scoped
+value, presence, and freshness frontiers stabilize identically everywhere.
 
 ### D. DAG induction
 
 Proceed by dependency depth. Roots have no support condition and converge to the
 deterministic greatest admissible revision, subject to the common presence
-barrier. Fair connected gossip propagates its bytes along paths.
+barrier. Directionally fair connected gossip propagates its bytes along paths.
 
 Assume every direct input of N has stabilized. Every N candidate now has a fixed
 classification: coherent, unsupported, or absent. If a coherent candidate
@@ -454,8 +482,8 @@ exists, the greatest coherent revision propagates along connected paths because
 support names intrinsic journal-backed input revisions, not the carrier. If none
 exists, the deterministic one-input stale fallback propagates; incompatible
 multi-input candidates collapse to absence/delete, and unsupported-plus-absent
-cannot re-expand beyond the delete barrier. Freshness follows the common barrier
-and exact coherent proof rule. Thus N stabilizes. Induction through the finite
-DAG establishes equivalent values, presence, freshness, timestamps, identifiers
-up to semantic lookup, and validity relations at every host. Settled idempotence
-then makes every further synchronization a graph no-op.
+cannot re-expand beyond the stabilized delete frontier. Freshness follows the
+common frontier and exact coherent proof rule. Thus N stabilizes. Induction
+through the finite DAG establishes equivalent values, presence, freshness,
+timestamps, identifiers up to semantic lookup, and validity relations at every
+host. Settled idempotence then makes every further synchronization a graph no-op.

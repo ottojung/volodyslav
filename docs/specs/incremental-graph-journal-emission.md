@@ -48,7 +48,8 @@ delivery record may notify clients that imported history was learned.
 
 Synchronization can derive genuinely new conservative facts:
 
-* deleting an incompatible or provenance-unresolvable cache; and
+* deleting incompatible caches or a joined generation for which no valid source
+  carries usable bytes; and
 * invalidating a cache whose freshness proof cannot safely survive.
 
 For a newly caused transition it authors `delete` or `invalidate`. Each such

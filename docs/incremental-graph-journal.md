@@ -4,7 +4,7 @@ The IncrementalGraph journal is immutable logical history and possible-change
 notification infrastructure. It is not authoritative graph state. The graph
 continues to own current values, freshness, wall-clock timestamps, identifiers,
 and validity; synchronization consults journal history only to derive ordering
-and causal barriers.
+and destructive LWW frontiers.
 
 ## Model
 
@@ -71,10 +71,11 @@ freshnessHead(x,G) = greatest invalidate/validate whose generation == G
 ```
 
 These values are derived, never stored on graph materializations. A superseded
-or unresolvable value is unusable. Delete prevents older add history from
-resurrecting; an invalidate scoped to G prevents older fresh proof for G from
-resurrecting. A later normal add starts another generation, while a coherent
-validate explicitly scoped to G may restore G's freshness.
+or unresolvable value is invalid source state. Delete prevents lower-ordered add
+history from resurrecting; an invalidate scoped to G prevents lower-ordered
+fresh proof for G from resurrecting. A later normal add starts another
+generation, while a coherent validate explicitly scoped to G may restore G's
+freshness.
 
 Presence resolves before value selection. When the joined presence head is an
 add, only materializations whose source journal has that exact add as its
@@ -87,6 +88,13 @@ Synchronization invokes no computor. Copying a value imports its original
 add/edit entry and emits no semantic value revision. Synchronization may derive
 a conservative delete or invalidate; it authors that fact after all history
 which caused it and does not repeatedly re-author a known barrier.
+
+Presence and freshness frontiers are deterministic Lamport/LWW registers, not
+proofs of causal observation. A greater concurrent add may supersede a delete,
+and a greater concurrent same-generation validate may supersede an invalidate.
+A destructive entry is guaranteed to dominate the histories its author actually
+observed because its sequence is allocated above them; previously unseen finite
+positive history may cross it once and cause a later reconciliation decision.
 
 Detailed normative requirements and proofs are split into:
 
