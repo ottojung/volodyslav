@@ -195,6 +195,12 @@ atomically with graph installation. Migration neither reconstructs nor seeds
 graph state from journal data, and it preserves author identity and the
 never-decreasing local watermark.
 
+Delivery creation is the normative one-head append-or-replace operation: the
+batch removes the prior `DeliveryByIndex` record for `(K,A)`, inserts its
+replacement above the cursor watermark, updates `DeliveryHead[K,A]`, and
+advances that watermark. This is receiver-local physical compaction, not logical
+journal compaction.
+
 Detailed rules are in
 `docs/specs/incremental-graph-journal-migrations.md`.
 

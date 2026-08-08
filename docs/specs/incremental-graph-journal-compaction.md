@@ -1,5 +1,11 @@
 # Logical journal compaction
 
+This document's canonical algorithm compacts replicated logical entries. It is
+separate from receiver-local delivery replacement. Physical delivery retains one
+headed `DeliveryByIndex` record per `(NodeKey,JournalAction)` and replaces it at
+a strictly greater local index atomically, as specified by the journal types and
+API documents.
+
 For notification coverage, entries retain the simple relation:
 
 ```text
@@ -61,6 +67,9 @@ only generation that can win are never lost.
 * **Possible changes:** the coordinate maximum covers every older entry with the
   same author, key, and exact action. Receiver-local delivery records are
   self-contained, so a compacted optional `causeId` is never dereferenced.
+  Independently, replacing physical delivery d with r cannot cause a cursor
+  false negative: a cursor below r can observe r, while one at or above r has
+  crossed it. Physical gaps are expected.
 * **Value head:** add G is retained, and item 2 retains every author's greatest
   edit scoped to G. These entries reconstruct exactly
   `valueHead(author,K,G)` even when an old-generation edit is the notification

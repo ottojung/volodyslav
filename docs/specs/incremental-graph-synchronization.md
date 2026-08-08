@@ -50,7 +50,7 @@ violate the reachable-state invariant; synchronization rejects corruption and
 does not add a hash tie-break.
 
 For an exact `modifiedAt` collision inside G, the greatest matching event by
-`(author,sequence)` is canonical. A source candidate resolves its alleged event
+`JournalEntryId=(sequence,author)` is canonical. A source candidate resolves its alleged event
 from its own pre-merge reachable snapshot, and is admissible after journal join
 only if that event is `canonicalEvent(x,G)`. Selection MUST NOT keep another tied candidate
 and attribute the canonical event to it. If the canonical candidate is
@@ -312,6 +312,15 @@ selects G2, so E1 is inapplicable before the author tie-break.
 `canonicalEvent(D,G2)` considers only G2 events and selects E2. No conservative
 delete occurs merely because a losing generation used the same timestamp.
 
+### Causally later equal-time edit
+
+A authors `E1=(sequence=10,author=A,generation=G,time=T)`. B synchronizes A and
+then genuinely changes D in G, authoring
+`E2=(sequence=11,author=B,generation=G,time=T)`. Wall time need not advance.
+Even when A sorts above B, sequence-first `canonicalEvent(D,G)` selects E2 in
+B's reachable post-transaction snapshot. Only truly concurrent equal-sequence
+events use author as the deterministic tie-break.
+
 ### Value through a carrier
 
 A authors `(A,12,K,edit,t,generation=G)`. A → B imports that entry and value; B
@@ -363,7 +372,7 @@ later. The merge result is unchanged.
 ### Reachable-state value invariant and total order
 
 Induct over allowed transitions. Atomic add establishes G; atomic edit names its
-resolved current G and introduces one unique `(author,sequence)` at its real
+resolved current G and introduces one unique `JournalEntryId` at its real
 `modifiedAt`. `Unchanged` changes neither.
 Synchronization copies this pair unchanged; delete removes it and invalidate
 changes only freshness. Hence equal admissible `ValueRevision`s imply equal

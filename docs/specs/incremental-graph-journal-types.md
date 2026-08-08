@@ -108,7 +108,7 @@ graph clock and not a per-node counter.
 
 ## Physical delivery state
 
-`JournalEntryId` is distinct from a receiver-local cursor position. A host may
+`JournalEntryId` is distinct from a receiver-local cursor position. A host MUST
 maintain `DeliveryByIndex`, per-coordinate delivery heads, and a monotonically
 increasing local watermark so `possibleMaybeChanges()` can expose newly learned
 history. Delivery records are self-contained:
@@ -121,6 +121,9 @@ DeliveryRecord = {
     time: UnixTimestamp
     causeId?: JournalEntryId
 }
+
+DeliveryHead: Map<(NodeKey,JournalAction), localIndex>
+DeliveryByIndex: Map<localIndex,DeliveryRecord>
 ```
 
 `key`, `action`, and `time` are copied into the record when delivery is created.
@@ -129,6 +132,32 @@ compaction of that entry; public queries never dereference it. Those indexes are
 local, opaque, same-process delivery infrastructure;
 they are neither replicated identity nor causal order. A receiving host assigns
 a new delivery position while retaining the imported logical entry unchanged.
+
+At every committed snapshot, each `(K,A)` has at most one retained
+`DeliveryByIndex` record, and `DeliveryHead[K,A]`, when present, points to
+exactly that record. Creating any delivery for `(K,A)` performs the following
+receiver-local append-or-replace operation:
+
+```text
+previous = DeliveryHead[K,A], if present
+newIndex = allocate index strictly above local delivery watermark
+
+atomically:
+    delete DeliveryByIndex[previous], if present
+    put DeliveryByIndex[newIndex] = self-contained DeliveryRecord
+    put DeliveryHead[K,A] = newIndex
+    set local delivery watermark = newIndex
+```
+
+Local indexes never repeat. The rule applies to normal mutation, newly imported
+logical history, later graph application of already-delivered history, reset,
+and migration. Logical journal compaction does not perform or replace this
+physical receiver-local compaction.
+
+The physical bounds are `DeliveryHead = O(historic keys × 5)` and
+`DeliveryByIndex = O(historic keys × 5)`, independent of operation count,
+synchronization count, and database age. These are separate from the replicated
+logical journal's `O(historic keys × writers × constant)` bound.
 
 ## Persisted graph boundary
 

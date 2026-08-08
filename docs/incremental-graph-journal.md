@@ -50,11 +50,18 @@ position so `possibleMaybeChanges()` exposes newly learned history, but never
 re-authors the entry merely because it learned it. Compaction retains exact
 action-specific possible-change coverage.
 
+Receiver-local delivery is independently append-or-replaced. `DeliveryHead`
+points to at most one retained `DeliveryByIndex` record per key/action; a new
+delivery atomically removes the old record, inserts a self-contained record at a
+never-reused index above the watermark, and updates the head. This bounds both
+physical maps by `O(historic keys × 5)` and leaves harmless scan gaps.
+
 ## Synchronization projections
 
 For materialized x in winning add generation G, each author-specific value head
 contains only add G or edits explicitly scoped to G and must match the real
-graph `modifiedAt`. The greatest surviving candidate by `(author,sequence)`
+graph `modifiedAt`. The greatest surviving candidate by `JournalEntryId`,
+`(sequence,author)`,
 defines:
 
 ```text

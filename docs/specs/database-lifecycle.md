@@ -80,6 +80,11 @@ When local live state is absent, Volodyslav first asks whether the synchronizati
 
 This is **absent-state self-restoration**, not reset of an existing database. It restores and validates the authoritative graph together with the durable local `HostFingerprint`, compacted logical `JournalEntry` collection, `localJournalClock`, and receiver-local delivery cursor state. The restored author must be the branch owner, and the clock watermark must cover every observed sequence.
 
+Receiver-local cursor state includes `DeliveryHead`, the one retained
+`DeliveryByIndex` record per historic key/action, the never-decreasing delivery
+watermark, and physical gaps. Restoration and inactive construction preserve
+the one-head invariant exactly; future delivery uses atomic append-or-replace.
+
 Restoration resumes previously emitted state. It MUST NOT classify the restored graph as an empty-to-restored transition and MUST NOT emit `add` for every restored materialization. The restored counters and cursor history are installed through the normal durable cutover, after which the database is reopened and passed through the migration gate.
 
 The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable author fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
@@ -238,6 +243,10 @@ ordinary merge, discard receiver history, or manufacture a compatibility path.
 Joined history, the validated replacement graph, and delivery coverage commit
 atomically before cutover. This transition is distinct from absent-state
 self-restoration in §4.2.
+
+Every reset delivery uses receiver-local append-or-replace and therefore leaves
+at most one `DeliveryByIndex` record per `(NodeKey,JournalAction)`. It never
+imports source physical delivery indexes.
 
 **Normative rejection trace:** receiver R has delete `Q=(100,R)` for K and K is
 absent. Source S carries K from add `G=(50,S)` and has not observed Q. The joined

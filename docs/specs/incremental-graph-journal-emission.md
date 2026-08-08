@@ -73,6 +73,12 @@ invalidate delivery references the newly authored destructive entry. Graph and
 delivery commit atomically, so advancing a cursor after learning history cannot
 hide a later graph transition caused by that history.
 
+Every local, imported, synchronization-applied, reset, or migration delivery
+uses the same atomic receiver-local append-or-replace rule: delete the previous
+`DeliveryHead[K,A]` record, insert one self-contained record at a never-reused
+index above the watermark, update the head, and advance the watermark. This
+physical replacement is distinct from replicated logical-entry compaction.
+
 ## Reachability invariant
 
 All correctness arguments range over snapshots reachable through atomic normal

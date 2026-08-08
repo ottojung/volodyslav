@@ -24,3 +24,9 @@ rejects the migration. It reserves distinct local journal sequences after the
 observed watermark and commits the new graph, immutable entries, and delivery
 records atomically.
 Aborted reservations may leave gaps and must never be reused.
+
+Each migration delivery uses receiver-local append-or-replace: it deletes the
+previous record named by `DeliveryHead[K,A]`, inserts the new self-contained
+record above the cursor watermark, updates the head, and advances the watermark
+in the graph installation batch. Migration preserves at most one retained
+delivery record per key/action; preexisting and newly created gaps remain valid.

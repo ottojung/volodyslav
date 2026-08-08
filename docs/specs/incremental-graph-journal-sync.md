@@ -59,17 +59,19 @@ candidateEvents(x,G) = E such that
     E.time == graph.timestamps[x].modifiedAt &&
     E == valueHead(E.author,x,G)
 
-canonicalEvent(x,G) = greatest candidate under (E.author,E.sequence)
+canonicalEvent(x,G) = greatest candidate by JournalEntryId
+                      = greatest by (E.sequence,E.author)
 origin(x,G) = canonicalEvent(x,G)
 ValueRevision(x,G) = [modifiedAt(x), origin(x,G).author, origin(x,G).sequence]
 ```
 
-The author-first ordering used only to resolve candidate provenance is distinct
-from `JournalEntryId` ordering. If no candidate exists, the materialization is
-provenance-obsolete/unusable; synchronization never invents one.
+Sequence is primary because it preserves observed-before order; author only
+breaks genuinely concurrent equal-sequence ties. If no candidate exists, the
+materialization is provenance-obsolete/unusable; synchronization never invents
+one.
 
-When multiple current G-scoped value heads match one `modifiedAt`, the canonical event
-is also an admissibility constraint, not merely a label inferred after value
+When multiple current G-scoped value heads match one `modifiedAt`, the canonical
+event is also an admissibility constraint, not merely a label inferred after value
 selection. Each source candidate first resolves its alleged event in its own
 reachable pre-merge snapshot. After journal join, only the candidate whose
 alleged event equals `canonicalEvent(x,G)` may represent that timestamp. A lower
@@ -122,8 +124,12 @@ In every reachable snapshot, two admissible materializations with equal
 * Base case: an atomic add establishes G; an atomic edit names its resolved G.
   Each commits exactly its value and real `modifiedAt`, and one author never
   reuses the sequence.
-* Local step: a value change receives a fresh sequence, so equality with the old
-  revision is impossible. `Unchanged` retains both value and provenance.
+* Local step: before authoring a changed value event E2, the allocator watermark
+  is at least every observed sequence. Therefore E2 has a greater sequence than
+  every observed same-G event E1. If E1 and E2 share wall time, E2 is still the
+  greatest matching `JournalEntryId` in the reachable post-transaction snapshot
+  and remains canonical regardless of author lexical order. `Unchanged` retains
+  both value and provenance.
 * Copy step: synchronization copies an existing value and its unchanged origin
   entry. Exact timestamp collisions admit only the canonical event's source
   candidate, so selection cannot attach another candidate's bytes to that ID;
@@ -134,8 +140,10 @@ In every reachable snapshot, two admissible materializations with equal
 Thus `ValueRevision` is collision-free over reachable admissible states. Its
 lexicographic tuple is a strict deterministic total order: timestamps decide
 first, different simultaneous authors second, repeated same-author changes at
-one timestamp third. Equal revision with unequal values is corruption, not a
-hash tie-break case.
+one timestamp third. This external revision-tuple comparison is not provenance
+recovery: matching same-time journal events were already reduced to one
+canonical event by sequence-first `JournalEntryId`. Equal revision with unequal
+values is corruption, not a hash tie-break case.
 
 ## Traces
 
@@ -165,6 +173,13 @@ hash tie-break case.
   E1 is inapplicable because its generation differs, so
   `canonicalEvent(D,G2)` considers only G2 events and E2 remains the correct
   provenance. The collision causes no conservative deletion.
+* **Causally later equal-time edit:** A authors
+  `E1=(sequence=10,author=A,generation=G,time=T)`. B synchronizes A, then
+  genuinely changes the same materialization and authors
+  `E2=(sequence=11,author=B,generation=G,time=T)`. Even if A sorts above B,
+  `canonicalEvent(D,G)` selects E2 because sequence is primary. If truly
+  concurrent events instead have equal sequence, author deterministically
+  breaks that tie.
 * **Carrier independence:** A's `[100,A,8]` travels A → B → C. B and C import
   the entry and allocate local delivery positions but author no edit. All three
   compare the same revision.

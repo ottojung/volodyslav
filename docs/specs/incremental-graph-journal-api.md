@@ -42,6 +42,20 @@ the causal logical entry when one exists, or is the local transition time for a
 locally derived delivery. Logical compaction therefore cannot make a delivery
 unreadable or change its public fields.
 
+Every required delivery uses the append-or-replace operation from the journal
+types specification. If old record d for `(K,A)` is replaced by r, then `r > d`:
+
+```text
+cursor < r:  a subsequent scan can observe the covering record at r
+cursor >= r: the cursor has already crossed the covering notification at r
+```
+
+The replacement batch is atomic, so a fixed snapshot sees the old headed record
+or the new headed record, never neither. Deleting d cannot create an
+action-specific false negative. Its physical gap is expected and scans skip it.
+Repeated delivery therefore does not make `DeliveryByIndex` grow with operation
+or synchronization history.
+
 Inactive construction copies the active local delivery domain exactly; new
 local or imported deliveries allocate above its watermark. Consequently an
 existing same-process cursor remains meaningful across cutover.
