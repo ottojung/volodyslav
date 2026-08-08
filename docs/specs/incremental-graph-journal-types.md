@@ -9,13 +9,30 @@ validity come from the IncrementalGraph.
 ```text
 JournalAction = "add" | "edit" | "delete" | "invalidate" | "validate"
 
-JournalEntry = ValueOrPresenceEntry | FreshnessEntry
+JournalEntry = AddEntry | EditEntry | DeleteEntry | FreshnessEntry
 
-ValueOrPresenceEntry = {
+AddEntry = {
     author: HostFingerprint
     sequence: uint64
     key: NodeKey
-    action: "add" | "edit" | "delete"
+    action: "add"
+    time: UnixTimestamp
+}
+
+EditEntry = {
+    author: HostFingerprint
+    sequence: uint64
+    key: NodeKey
+    action: "edit"
+    time: UnixTimestamp
+    generation: JournalEntryId
+}
+
+DeleteEntry = {
+    author: HostFingerprint
+    sequence: uint64
+    key: NodeKey
+    action: "delete"
     time: UnixTimestamp
 }
 
@@ -47,17 +64,18 @@ unsupported and prevents writable open.
 Entries are immutable. A remotely learned entry is imported byte-for-byte with
 the same author and sequence. Learning an entry never re-authors it.
 
-`FreshnessEntry.generation` is the exact `JournalEntryId` of the `add` which
-established the materialization whose freshness changed. It is required for
-invalidate and validate and forbidden on add, edit, and delete. This reference
-is journal history only and is never stored on a graph materialization.
+`EditEntry.generation` and `FreshnessEntry.generation` are the exact
+`JournalEntryId` of the `add` which established the materialization being
+edited, invalidated, or validated. The field is required for edit, invalidate,
+and validate and forbidden on add and delete. This reference is journal history
+only and is never stored on a graph materialization.
 
-Journal validation rejects a freshness entry unless its generation resolves to
-a valid logical add for the same key in the merge input. Compaction retains an
-add-reference witness for every retained freshness notification. It may discard
-additional freshness authority for a losing generation only after proving that
-the generation can never again become the winning presence generation, as
-specified by the compaction rules.
+Journal validation rejects an edit or freshness entry unless its generation
+resolves to a valid logical add for the same key in the merge input. Compaction
+retains an add-reference witness for every retained generation-scoped
+notification. It may discard additional value/freshness authority for a losing
+generation only after proving that the generation can never again become the
+winning presence generation, as specified by the compaction rules.
 
 ## Closed action classifier
 
@@ -122,7 +140,7 @@ Synchronization never advances `modifiedAt` merely because bytes were copied.
 
 The logical storage bound is
 `O(number_of_historic_keys × writers × 5)`: compaction retains each coordinate
-maximum plus only constant-many winning-generation freshness and add-reference
-witnesses, apart from local cursor infrastructure. The bound is independent of
-the number of historical generations. Entries contain no graph value, support
-vector, or validity proof.
+maximum plus only constant-many winning-generation value/freshness and
+add-reference witnesses, apart from local cursor infrastructure. The bound is
+independent of the number of historical generations. Entries contain no graph
+value, support vector, or validity proof.

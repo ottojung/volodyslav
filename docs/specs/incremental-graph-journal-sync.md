@@ -10,8 +10,8 @@ J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
 ```
 
 Inputs must have the same schema, valid durable authors, valid actions and keys,
-and unique content for every `JournalEntryId`. Every invalidate/validate must
-carry a generation resolving to a valid same-key add in the validated merge
+and unique content for every `JournalEntryId`. Every edit/invalidate/validate
+must carry a generation resolving to a valid same-key add in the validated merge
 input. Two entries
 with one ID but different content are corruption and reject the operation
 atomically and symmetrically. Remote entries never transfer author ownership.
@@ -23,7 +23,7 @@ history observable without turning the receiver into its author.
 ## ACI proof
 
 Compaction retains every coordinate maximum plus, for the sole winning presence
-generation G, the bounded freshness-authority witnesses defined in the
+generation G, the bounded value/freshness-authority witnesses defined in the
 compaction specification. Presence maxima are monotone: a discarded losing
 generation can never win after union with more entries. Thus both the winning G
 and its witness selection are canonical functions of set union. Set union is
@@ -49,27 +49,30 @@ the journal-clock mutex. It does not alter imported entries.
 For materialized semantic key `x`:
 
 ```text
-valueHead(author,x) = greatest retained add/edit entry by sequence
+valueHead(author,x,G) = greatest applicable value event by sequence
+                        authored by author for generation G
 
-candidateEvents(x) = E such that
-    E.key == x && E.action in {add,edit} &&
+valueEvents(x,G) = add G itself, plus edits for x whose generation == G
+
+candidateEvents(x,G) = E such that
+    E is in valueEvents(x,G) &&
     E.time == graph.timestamps[x].modifiedAt &&
-    E == valueHead(E.author,x)
+    E == valueHead(E.author,x,G)
 
-canonicalEvent(x) = greatest candidate under (E.author,E.sequence)
-origin(x) = canonicalEvent(x)
-ValueRevision(x) = [modifiedAt(x), origin(x).author, origin(x).sequence]
+canonicalEvent(x,G) = greatest candidate under (E.author,E.sequence)
+origin(x,G) = canonicalEvent(x,G)
+ValueRevision(x,G) = [modifiedAt(x), origin(x,G).author, origin(x,G).sequence]
 ```
 
 The author-first ordering used only to resolve candidate provenance is distinct
 from `JournalEntryId` ordering. If no candidate exists, the materialization is
 provenance-obsolete/unusable; synchronization never invents one.
 
-When multiple current value heads match one `modifiedAt`, the canonical event
+When multiple current G-scoped value heads match one `modifiedAt`, the canonical event
 is also an admissibility constraint, not merely a label inferred after value
 selection. Each source candidate first resolves its alleged event in its own
 reachable pre-merge snapshot. After journal join, only the candidate whose
-alleged event equals `canonicalEvent(x)` may represent that timestamp. A lower
+alleged event equals `canonicalEvent(x,G)` may represent that timestamp. A lower
 tied candidate cannot be selected and then labeled with the winner's event.
 
 Consequently, if the canonical tied candidate is unsupported while a lower tied
@@ -103,6 +106,12 @@ generation is an older or concurrent losing add cannot supply bytes for G.
 generation. Thus concurrent adds cannot combine one add's presence frontier with
 another add's value.
 
+Edits scoped to any G1 other than winning G are inapplicable before timestamp
+or author comparison. They cannot affect `valueHead(author,x,G)`,
+`canonicalEvent(x,G)`, or `ValueRevision(x,G)`, even if they are the edit
+notification-coordinate maximum or have a greater sequence, author, or wall
+time.
+
 Compaction preservation is proved in the compaction specification.
 
 ## Stable value identity invariant
@@ -110,8 +119,9 @@ Compaction preservation is proved in the compaction specification.
 In every reachable snapshot, two admissible materializations with equal
 `ValueRevision` have equal `ComputedValue`:
 
-* Base case: an atomic add/edit authors one entry and commits exactly its value
-  and real `modifiedAt`; one author never reuses the sequence.
+* Base case: an atomic add establishes G; an atomic edit names its resolved G.
+  Each commits exactly its value and real `modifiedAt`, and one author never
+  reuses the sequence.
 * Local step: a value change receives a fresh sequence, so equality with the old
   revision is impossible. `Unchanged` retains both value and provenance.
 * Copy step: synchronization copies an existing value and its unchanged origin
@@ -148,6 +158,13 @@ hash tie-break case.
   the greater entry ID, it is inapplicable to G2. `freshnessHead(K,G2)` is I, so
   C's incoming proofs are revoked and K remains stale until a later genuine
   validate scoped to G2.
+* **Losing-generation edit collision:** G1 is old and G2 is the winning presence
+  generation. A carries D on G1 and edit
+  `E1=(author=A,time=T,generation=G1)`. B carries D on G2 with value event
+  `E2=(author=B,time=T,generation=G2)`, and A sorts above B. Presence selects G2.
+  E1 is inapplicable because its generation differs, so
+  `canonicalEvent(D,G2)` considers only G2 events and E2 remains the correct
+  provenance. The collision causes no conservative deletion.
 * **Carrier independence:** A's `[100,A,8]` travels A → B → C. B and C import
   the entry and allocate local delivery positions but author no edit. All three
   compare the same revision.

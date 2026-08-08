@@ -15,7 +15,7 @@ JournalEntry = {
   key: NodeKey,
   action: "add" | "edit" | "delete" | "invalidate" | "validate",
   time: UnixTimestamp,
-  generation?: JournalEntryId // present iff action is invalidate/validate
+  generation?: JournalEntryId // present iff action is edit/invalidate/validate
 }
 JournalEntryId = (sequence, author)
 ```
@@ -38,9 +38,9 @@ J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
 ```
 
 A later entry covers an earlier notification only for the same author, key, and
-action. Canonical compaction retains coordinate maxima plus at most one extra
-freshness-authority witness per freshness coordinate for the winning add
-generation. Merge is commutative, associative, and idempotent, and its bound is
+action. Canonical compaction retains coordinate maxima plus bounded value and
+freshness authority witnesses for the winning add generation. Merge is
+commutative, associative, and idempotent, and its bound is
 `O(historic keys × writers × 5)` with a constant freshness factor, excluding
 local cursor infrastructure.
 
@@ -52,12 +52,13 @@ action-specific possible-change coverage.
 
 ## Synchronization projections
 
-For a materialized x, its current author-specific add/edit head must match its
-real graph `modifiedAt`. The greatest surviving candidate by `(author,sequence)`
+For materialized x in winning add generation G, each author-specific value head
+contains only add G or edits explicitly scoped to G and must match the real
+graph `modifiedAt`. The greatest surviving candidate by `(author,sequence)`
 defines:
 
 ```text
-ValueRevision(x) = [modifiedAt(x), author, sequence]
+ValueRevision(x,G) = [modifiedAt(x), author, sequence]
 presenceHead(x)  = greatest add/delete by JournalEntryId
 freshnessHead(x,G) = greatest invalidate/validate whose generation == G
 ```

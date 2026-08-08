@@ -218,14 +218,15 @@ Reset is replacement with validation, not ordinary graph merge. Before cutover:
    receiver history;
 2. retain the source graph unchanged as the proposed replacement graph;
 3. resolve every source materialization's source presence generation and
-   `ValueRevision`;
+   generation-scoped `ValueRevision`;
 4. require its generation to equal the joined presence-head add and require its
-   value event to remain admissible under joined value heads;
+   add/edit value event to name that same generation and remain admissible under
+   joined `valueHead(author,K,G)` and `canonicalEvent(K,G)`;
 5. evaluate freshness only through `freshnessHead(K,G)` for that joined add G,
    requiring proposed graph freshness and incoming proofs to agree with it;
 6. require identifier, timestamp, structural dependency, validity, freshness,
    and materialization closure invariants from the synchronization specification;
-7. validate every freshness entry and generation-reference witness; and
+7. validate every edit/freshness entry and generation-reference witness; and
 8. reject the reset atomically if any check fails, leaving the existing live
    graph and active pointer unchanged.
 
@@ -254,16 +255,16 @@ at or below a sequence it previously authored with the same `HostFingerprint`.
 
 ```text
 A previously published:
-    JournalEntry(author=A, sequence=10, key=K, action=edit)
+    JournalEntry(author=A, sequence=10, key=K, action=edit, generation=G)
 
 A loses its live database.
 
 A restores its own synchronized snapshot:
-    JournalEntry(author=A, sequence=10, key=K, action=edit)
+    JournalEntry(author=A, sequence=10, key=K, action=edit, generation=G)
 
 A edits K:
     localJournalClock advances to 11
-    JournalEntry(author=A, sequence=11, key=K, action=edit)
+    JournalEntry(author=A, sequence=11, key=K, action=edit, generation=G)
 
 B previously observed 10:
     journal merge retains 11 over covered edit 10

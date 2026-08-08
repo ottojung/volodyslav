@@ -20,11 +20,13 @@ timestamp once and uses the same value for both records; two independent
 `now()` reads are forbidden. For delete, invalidate, and validate, `time` is the
 actual transition time.
 
-Before normal invalidate or revalidation, derive the currently materialized
-node's exact establishing add ID from its pre-transaction graph+journal
-snapshot. The emitted invalidate or validate MUST carry that ID as
-`generation`. If the materialization has no resolvable current add generation,
-the transaction is invalid and cannot commit. Delete carries no generation.
+Before changing an already-materialized value, invalidating, or revalidating,
+derive the materialization's exact establishing add ID G from the
+pre-transaction graph/journal snapshot. An emitted edit, invalidate, or validate
+MUST carry `generation=G`. If G cannot be resolved, the transaction is an
+invariant violation and cannot commit. A newly materialized value emits add,
+which itself establishes G and carries no generation. Delete also carries no
+generation. `Unchanged` still emits no edit.
 
 | Before | After | Entries |
 |---|---|---|

@@ -32,26 +32,27 @@ transitions are corruption, not conflicts for which this protocol invents data.
 This specification uses the definitions in the journal synchronization spec:
 
 ```text
-ValueRevision(x) = [modifiedAt(x), modifiedBy(x), modifiedAtVirtual(x)]
-modifiedBy(x) = origin(x).author
-modifiedAtVirtual(x) = origin(x).sequence
+ValueRevision(x,G) = [modifiedAt(x), modifiedBy(x,G), modifiedAtVirtual(x,G)]
+modifiedBy(x,G) = origin(x,G).author
+modifiedAtVirtual(x,G) = origin(x,G).sequence
 
 presenceHead(x)  = greatest add/delete by (sequence,author)
 freshnessHead(x,G) = greatest invalidate/validate by (sequence,author)
                      whose explicit generation == G
 ```
 
-A value event is usable only when its time equals the graph `modifiedAt` and it
-is the current add/edit `valueHead` for its author. An unresolvable or superseded
-materialization is provenance-obsolete. `ValueRevision` is compared
+A value event for winning generation G is usable only when it is add G or an
+edit explicitly scoped to G, its time equals graph `modifiedAt`, and it is
+`valueHead(author,x,G)`. An unresolvable, superseded, or differently scoped
+materialization is provenance-obsolete. `ValueRevision(x,G)` is compared
 lexicographically and totally. Equal revisions with unequal `ComputedValue`s
 violate the reachable-state invariant; synchronization rejects corruption and
 does not add a hash tie-break.
 
-For an exact `modifiedAt` collision, the greatest matching current event by
+For an exact `modifiedAt` collision inside G, the greatest matching event by
 `(author,sequence)` is canonical. A source candidate resolves its alleged event
 from its own pre-merge reachable snapshot, and is admissible after journal join
-only if that event is canonical. Selection MUST NOT keep another tied candidate
+only if that event is `canonicalEvent(x,G)`. Selection MUST NOT keep another tied candidate
 and attribute the canonical event to it. If the canonical candidate is
 unsupported, lower tied coherent candidates are excluded and the conservative
 no-coherent rule applies.
@@ -76,7 +77,7 @@ inputs be `I1...Ik`. Duplicate input positions collapse exactly as existing
 
 ```text
 SupportS(D) is known iff S.valid[Ii].has(D) for every distinct Ii
-SupportS(D) = [ValueRevisionS(I1), ..., ValueRevisionS(Ik)]
+SupportS(D) = [ValueRevisionS(I1,G1), ..., ValueRevisionS(Ik,Gk)]
 
 coherentS(D) iff SupportS(D) is known &&
                    SupportS(D) == FinalInputRevisions(D)
@@ -111,20 +112,24 @@ that generation equals G. This applies to concurrent adds as well as adds around
 deletes. Value ordering and coherence selection occur only inside G; they cannot
 select bytes from a losing presence generation.
 
+Only add G and edits explicitly scoped to G participate in G's value heads.
+Losing-generation edits are discarded before wall-time, author, sequence, or
+coherence comparison, even when one is the retained edit notification maximum.
+
 ### 2. Candidate resolution
 
-For every surviving source materialization, resolve `ValueRevision` in that
+For every surviving source materialization, resolve `ValueRevision(N,G)` in that
 source's pre-merge view after accounting for joined supersession. Discard
 unresolvable/provenance-obsolete candidates. A source container is never part of
 semantic identity.
 
-When source events share `modifiedAt`, determine the canonical joined event
+When G-scoped source events share `modifiedAt`, determine `canonicalEvent(N,G)`
 before coherence selection and discard candidates alleged to originate at a
 lower tied event. This ordering is necessary because provenance is not persisted
 on materializations.
 
-For a zero-input node choose the candidate with greatest `ValueRevision`. This
-is the complete root rule.
+For a zero-input node choose the candidate with greatest
+`ValueRevision(N,G)`. This is the complete root rule.
 
 ### 3. Derived coherence
 
@@ -207,7 +212,7 @@ Before planning, synchronization MUST reject atomically:
 4. duplicate or internally conflicting lookup entries;
 5. a value, freshness, timestamp, or validity record whose identifier is not
    covered by its source lookup;
-6. malformed journal entries, including invalidate/validate without a
+6. malformed journal entries, including edit/invalidate/validate without a
    generation resolving to a same-key add witness;
 7. conflicting content at one `JournalEntryId`; or
 8. a local allocator watermark below an observed sequence.
@@ -298,12 +303,21 @@ resolved first to B's add generation. VA is not a candidate inside that
 generation, so its wall time cannot override the presence decision; final K is
 VB with revision `[100,B,50]`.
 
+### Losing-generation edit collision
+
+G1 is old and G2 is the newer winning generation. A carries D on G1 with edit
+`E1=(author=A,modifiedAt=T,generation=G1)`. B carries D on G2 with event
+`E2=(author=B,modifiedAt=T,generation=G2)`, and A sorts above B. Joined presence
+selects G2, so E1 is inapplicable before the author tie-break.
+`canonicalEvent(D,G2)` considers only G2 events and selects E2. No conservative
+delete occurs merely because a losing generation used the same timestamp.
+
 ### Value through a carrier
 
-A authors `(A,12,K,edit,t)`. A → B imports that entry and value; B allocates only
-a local delivery cursor. B → C transmits the same entry. All hosts derive
-`[t,A,12]`, so support referring to K survives physical movement. Neither B nor
-C emits edit.
+A authors `(A,12,K,edit,t,generation=G)`. A → B imports that entry and value; B
+allocates only a local delivery cursor. B → C transmits the same entry. All
+hosts derive `[t,A,12]`, so support referring to K survives physical movement.
+Neither B nor C emits edit.
 
 ### Same-writer later edit
 
@@ -338,18 +352,19 @@ flags. D remains `[t,A,7]`, while transient `Support(D)` is now `[a2,b2]`.
 ### Compaction
 
 A's edit 3 is covered by edit 9 for the same key/action. Retaining edit 9 keeps
-A's value head at the newest revision. Add/delete coordinate maxima preserve
-presence. For freshness, compaction retains the coordinate notification maximum
-and, when different, the greatest invalidate/validate scoped to winning G plus
-their add witnesses. It may discard authority for losing generations because
-they can never win later. The merge result is unchanged.
+notification coverage. Add/delete coordinate maxima preserve presence. For
+value and freshness authority, compaction additionally retains the greatest edit
+and invalidate/validate per author scoped to winning G, plus their add witnesses.
+It may discard authority for losing generations because they can never win
+later. The merge result is unchanged.
 
 ## Properties
 
 ### Reachable-state value invariant and total order
 
-Induct over allowed transitions. Atomic add/edit introduces one value and one
-unique `(author,sequence)` at its real `modifiedAt`. `Unchanged` changes neither.
+Induct over allowed transitions. Atomic add establishes G; atomic edit names its
+resolved current G and introduces one unique `(author,sequence)` at its real
+`modifiedAt`. `Unchanged` changes neither.
 Synchronization copies this pair unchanged; delete removes it and invalidate
 changes only freshness. Hence equal admissible `ValueRevision`s imply equal
 values. Lexicographic ordering distinguishes different time, simultaneous
@@ -414,9 +429,9 @@ After the final entry, logical merge is commutative, associative, and idempotent
 For any retained entry and any target host, connectedness gives a finite path;
 fair synchronization of each path edge eventually carries the entry along that
 path. With finitely many entries and hosts, eventually every host has every
-retained coordinate maximum and current-generation authority witness.
-Compaction preserves all projections, so value, presence, and generation-scoped
-freshness frontiers stabilize identically everywhere.
+retained coordinate maximum and current-generation value/freshness authority
+witness. Compaction preserves all projections, so generation-scoped value,
+presence, and freshness frontiers stabilize identically everywhere.
 
 ### D. DAG induction
 
