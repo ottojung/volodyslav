@@ -78,7 +78,7 @@ The synchronization repository is part of creation even when the resulting datab
 
 When local live state is absent, Volodyslav first asks whether the synchronization repository contains the current synchronized state previously published for this same host and writer. The synchronization lifecycle must recognize the selected branch as the branch assigned to the current host/writer.
 
-This is **absent-state self-restoration**, not reset of an existing database. It restores and validates the authoritative graph together with `JournalDomain`, the durable local `HostFingerprint`, compacted logical `JournalEntry` collection, `localJournalClock`, and receiver-local delivery cursor state. The restored author must be the branch owner, and the clock watermark must cover every observed sequence.
+This is **absent-state self-restoration**, not reset of an existing database. It restores and validates the authoritative graph together with the durable local `HostFingerprint`, compacted logical `JournalEntry` collection, `localJournalClock`, and receiver-local delivery cursor state. The restored author must be the branch owner, and the clock watermark must cover every observed sequence.
 
 Restoration resumes previously emitted state. It MUST NOT classify the restored graph as an empty-to-restored transition and MUST NOT emit `add` for every restored materialization. The restored counters and cursor history are installed through the normal durable cutover, after which the database is reopened and passed through the migration gate.
 
@@ -205,17 +205,22 @@ After an initiated synchronization, Volodyslav attempts to reopen the local data
 
 A reset-to-host synchronization applied to an established live database selects
 a snapshot's authoritative graph and installs it through a non-active target
-followed by cutover. The receiving host preserves its complete journal state:
-`JournalDomain`, its durable local `HostFingerprint`, logical compacted journal,
-`localJournalClock`, and receiver-local delivery cursor state.
+followed by cutover. The receiving host preserves its durable local
+`HostFingerprint`, logical compacted journal, `localJournalClock`, and
+receiver-local delivery cursor state.
 The source contributes its authoritative graph snapshot and immutable logical
 journal entries. The receiver retains its author identity and cursor domain; it
 does not adopt source delivery positions.
 
 The reset classifies `ResetActions` from `oldLocalGraph` to `replacementGraph`.
-Every exact action allocates a receiving-author entry and a local delivery
-position. Graph replacement and notification coverage commit atomically before
-cutover. This transition is distinct from absent-state self-restoration in §4.2.
+Copied add/edit provenance remains the source's immutable logical entry; reset
+MUST NOT re-author it as a receiving-host revision. Every observable reset graph
+transition receives a fresh receiver-local delivery position referring to its
+logical cause. A genuinely reset-derived delete or invalidate may allocate a
+new receiving-author destructive entry after all observed history. Graph
+replacement, joined history, any destructive entries, and delivery coverage
+commit atomically before cutover. This transition is distinct from absent-state
+self-restoration in §4.2.
 After reset, the database is reopened through the migration gate.
 
 ### 7.5 Counter continuity during self-restoration

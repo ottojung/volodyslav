@@ -19,6 +19,19 @@ record privately carries its local position. An imported logical entry keeps
 its `(sequence,author)` while receiving a fresh local position so newly learned
 history can be observed.
 
+Learning history and applying it are separate delivery causes. If an entry was
+delivered when learned but a later synchronization uses it to create an
+observable local graph transition, that transition MUST receive another fresh
+local position above the current watermark. The delivery references the same
+immutable logical entry; it does not re-author it. Its exposed action is the
+exact receiver transition classified against the committed before/after graph.
+
+For example, B may learn A's add for D while D is unsupported and remains
+absent, then a client advances its cursor. If later input convergence makes the
+same revision coherent and B materializes D, B creates a fresh local `add`
+delivery referring to A's already-known entry. The client observes the
+absent-to-materialized transition without any new logical add.
+
 A query selects one fixed committed active-replica snapshot, captures its local
 watermark, scans `(since,watermark]` in local-position order while skipping
 compaction gaps, and applies `NodeFilter`. Selection and snapshot capture cannot

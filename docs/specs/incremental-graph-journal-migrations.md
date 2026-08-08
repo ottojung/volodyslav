@@ -4,7 +4,7 @@ Migration builds the authoritative graph independently from journal history. An
 inactive destination copies one fixed active snapshot of:
 
 ```text
-JournalDomain and durable local HostFingerprint
+durable local HostFingerprint
 logical compacted JournalEntry collection
 localJournalClock
 receiver-local DeliveryByIndex, delivery heads, and cursor watermark

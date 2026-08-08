@@ -48,6 +48,14 @@ lexicographically and totally. Equal revisions with unequal `ComputedValue`s
 violate the reachable-state invariant; synchronization rejects corruption and
 does not add a hash tie-break.
 
+For an exact `modifiedAt` collision, the greatest matching current event by
+`(author,sequence)` is canonical. A source candidate resolves its alleged event
+from its own pre-merge reachable snapshot, and is admissible after journal join
+only if that event is canonical. Selection MUST NOT keep another tied candidate
+and attribute the canonical event to it. If the canonical candidate is
+unsupported, lower tied coherent candidates are excluded and the conservative
+no-coherent rule applies.
+
 A delete presence head prevents older add generations from resurrecting. A later
 normal add may rematerialize only when authored after observing that delete. If
 the joined head says present but no source carries usable bytes for that
@@ -103,6 +111,11 @@ source's pre-merge view after accounting for joined supersession. Discard
 unresolvable/provenance-obsolete candidates. A source container is never part of
 semantic identity.
 
+When source events share `modifiedAt`, determine the canonical joined event
+before coherence selection and discard candidates alleged to originate at a
+lower tied event. This ordering is necessary because provenance is not persisted
+on materializations.
+
 For a zero-input node choose the candidate with greatest `ValueRevision`. This
 is the complete root rule.
 
@@ -156,6 +169,84 @@ Install the joined journal, any newly derived destructive entries, graph result,
 identifier lookup, timestamps, freshness, and validity in one transaction.
 Pure copying authors no add/edit and does not alter `modifiedAt`. Synchronizing
 settled equivalent states performs no graph transition and authors no entry.
+Every actual receiver graph transition also creates a fresh receiver-local
+delivery record, even when the referenced immutable logical add/edit/validate
+was already known. Delivery is atomic with the graph transition and does not
+re-author the entry.
+
+## Storage, validation, and lifecycle safety
+
+The merge algebra above does not weaken storage safety. A bilateral merge uses
+read-only fixed snapshots L and H and constructs inactive target T. L remains
+active and unmodified until T is complete, durable, and validated.
+
+### Input validation and identifier reconciliation
+
+Before planning, synchronization MUST reject atomically:
+
+1. schema-version mismatch;
+2. an unparseable identifier lookup;
+3. one `NodeIdentifier` mapped to different semantic keys;
+4. duplicate or internally conflicting lookup entries;
+5. a value, freshness, timestamp, or validity record whose identifier is not
+   covered by its source lookup;
+6. malformed journal entries, conflicting content at one `JournalEntryId`, or a
+   local allocator watermark below an observed sequence.
+
+Different identifiers for the same semantic key are expected, not corruption.
+For a surviving selected candidate, its source identifier is preferred. If the
+same selected `ValueRevision` is available under multiple identifiers, choose
+the least `NodeIdentifier` in canonical byte order. This rule is symmetric and
+uses the allocating fingerprint already contained in `NodeIdentifier`; no new
+host discriminator is added. The final lookup is a bijection between surviving
+semantic keys and final identifiers. All structural input edges are relowered
+from the fixed graph scheme through this final lookup.
+
+### Deletion closure
+
+A deletion root expands through every transitive materialized dependent in the
+structural semantic DAG, not merely through `valid`. For `A,B -> D -> E -> F`,
+deleting D deletes cached D, E, and F while preserving A, B, siblings, and
+unrelated nodes. Deleted keys retain no final identifier, value, freshness,
+timestamp, or validity record. Synchronization invokes no computor while
+building this closure.
+
+### Mandatory pre-cutover validation
+
+Before T can become active, validate all of the following:
+
+1. every value, freshness, timestamp, validity key, and validity dependent is
+   covered by the final identifier lookup and is materialized where required;
+2. every surviving materialization has exactly one identifier and complete
+   value, freshness, and timestamp records;
+3. the identifier lookup is internally consistent and bijective;
+4. every validity edge is a structural dependency edge in the final graph;
+5. every fresh node has a value, all distinct direct inputs materialized and
+   fresh, and a validity flag from every direct input;
+6. every retained validity proof passed the exact final-`ValueRevision` support
+   check;
+7. no losing or deleted identifier remains in any graph sublevel;
+8. every materialized value resolves to the canonical current journal event;
+9. presence and freshness agree with the installed journal frontiers; and
+10. `localJournalClock` covers every installed logical entry sequence.
+
+Failure of any check aborts that host merge, leaves the active pointer unchanged,
+and exposes no partial target. Graph merge and long validation run in inactive
+storage, not by broadening the active-replica darkroom.
+
+### Cutover and sequential hosts
+
+T becomes active whenever either authoritative graph state, logical journal
+state, or local delivery state changes; a journal-only import therefore still
+uses durable inactive construction and atomic pointer cutover. Cutover may be
+skipped only when all three are unchanged.
+
+Normal synchronization may process multiple host branches sequentially. Each
+host merge reads the active result of prior successful merges, validates its own
+complete result before cutover, and cleans its staging storage afterward. A
+failed host is recorded and does not roll back successful hosts; processing may
+continue and failures are reported together. This sequential lifecycle does not
+imply multi-host associativity, order independence, or all-to-all communication.
 
 ## Required traces
 
@@ -165,6 +256,12 @@ A makes two actual edits at wall time `t`. Its journal allocator produces 40 and
 41, so `[t,A,41] > [t,A,40]`. Independently A and B may each edit at `t`; their
 author components deterministically differ, with sequence resolving repeated
 same-author changes. No physical-host or hash tie-break is needed.
+
+For `X -> D`, suppose A and B edit D at the same `t`, A's D is coherent with the
+winning X, and B's D is unsupported, while B's event is canonical. A's D cannot
+be chosen and mislabeled as B's revision. B's candidate is retained stale under
+the one-input fallback. With multiple inputs, the unsafe collision is deleted
+and receives a durable delete barrier.
 
 ### Value through a carrier
 

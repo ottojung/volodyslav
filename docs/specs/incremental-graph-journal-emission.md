@@ -14,6 +14,12 @@ the transaction's installed journal, then increments. Multiple entries receive
 distinct increasing sequences. Aborted reservations may leave gaps but are
 never reused; overflow is fatal.
 
+For `add` and `edit`, `JournalEntry.time` MUST equal the resulting graph
+materialization's exact `timestamps[key].modifiedAt`. The mutation obtains that
+timestamp once and uses the same value for both records; two independent
+`now()` reads are forbidden. For delete, invalidate, and validate, `time` is the
+actual transition time.
+
 | Before | After | Entries |
 |---|---|---|
 | absent | materialized | `add` |
@@ -43,6 +49,16 @@ and the graph transition, joined journal, entry, and local delivery record are
 installed atomically. An already known covering destructive entry is propagated,
 not re-authored. Synchronization never synthesizes `validate`; only normal graph
 revalidation with coherent validity evidence may do that.
+
+Logical emission and receiver-local delivery are separate. Every observable
+graph transition caused by synchronization allocates a fresh local delivery
+position, even when its causal logical entry was learned earlier. For copied
+presence/value/freshness, the delivery record references the already-existing
+originating add/edit/validate entry while reporting the exact local transition
+action; it does not create or alter a logical entry. A newly derived delete or
+invalidate delivery references the newly authored destructive entry. Graph and
+delivery commit atomically, so advancing a cursor after learning history cannot
+hide a later graph transition caused by that history.
 
 ## Reachability invariant
 

@@ -50,13 +50,28 @@ candidateEvents(x) = E such that
     E.time == graph.timestamps[x].modifiedAt &&
     E == valueHead(E.author,x)
 
-origin(x) = greatest candidate under (E.author,E.sequence)
+canonicalEvent(x) = greatest candidate under (E.author,E.sequence)
+origin(x) = canonicalEvent(x)
 ValueRevision(x) = [modifiedAt(x), origin(x).author, origin(x).sequence]
 ```
 
 The author-first ordering used only to resolve candidate provenance is distinct
 from `JournalEntryId` ordering. If no candidate exists, the materialization is
 provenance-obsolete/unusable; synchronization never invents one.
+
+When multiple current value heads match one `modifiedAt`, the canonical event
+is also an admissibility constraint, not merely a label inferred after value
+selection. Each source candidate first resolves its alleged event in its own
+reachable pre-merge snapshot. After journal join, only the candidate whose
+alleged event equals `canonicalEvent(x)` may represent that timestamp. A lower
+tied candidate cannot be selected and then labeled with the winner's event.
+
+Consequently, if the canonical tied candidate is unsupported while a lower tied
+candidate is coherent, synchronization does not keep the lower candidate. The
+ordinary no-coherent rule applies to the canonical candidate: a one-input cache
+may be retained stale, while incompatible multi-input history is deleted. This
+is conservative only for exact wall-clock collisions and preserves recoverable
+journal-only provenance.
 
 ```text
 presenceHead(x) = greatest add/delete entry by JournalEntryId
@@ -83,7 +98,9 @@ In every reachable snapshot, two admissible materializations with equal
 * Local step: a value change receives a fresh sequence, so equality with the old
   revision is impossible. `Unchanged` retains both value and provenance.
 * Copy step: synchronization copies an existing value and its unchanged origin
-  entry, so equal revision retains equal bytes/value.
+  entry. Exact timestamp collisions admit only the canonical event's source
+  candidate, so selection cannot attach another candidate's bytes to that ID;
+  equal revision retains equal bytes/value.
 * Destructive step: delete removes the candidate and invalidate changes no
   value. Neither creates a counterexample.
 
@@ -99,6 +116,9 @@ hash tie-break case.
   `[100,A,8]` wins.
 * **Concurrent writers/time:** A and B each edit at 100. Author order chooses
   between `[100,A,n]` and `[100,B,m]`; no source-host tie-break is involved.
+  If B is the canonical event but B's derived cache is unsupported against final
+  inputs, coherent A is not mislabeled as B: the result is stale fallback for
+  one input or deletion for multiple inputs.
 * **Carrier independence:** A's `[100,A,8]` travels A → B → C. B and C import
   the entry and allocate local delivery positions but author no edit. All three
   compare the same revision.

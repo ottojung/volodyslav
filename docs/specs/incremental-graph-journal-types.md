@@ -25,6 +25,14 @@ Entry IDs are ordered lexicographically, sequence first and author second.
 lifecycle. It is not a hostname. `NodeIdentifier` already embeds its allocating
 host fingerprint and receives no additional discriminator.
 
+There is no separate journal membership domain. Supported host creation allocates one
+globally unique durable `HostFingerprint`; restoration may resume it only from
+that host's current synchronized state, and reset, migration, and copying never
+transfer ownership. Synchronization validates that every author is a
+well-formed supported host fingerprint and that one `JournalEntryId` has only
+one immutable content. Duplicate ownership or rollback under the same author is
+unsupported and prevents writable open.
+
 Entries are immutable. A remotely learned entry is imported byte-for-byte with
 the same author and sequence. Learning an entry never re-authors it.
 
@@ -62,7 +70,9 @@ graph clock and not a per-node counter.
 `JournalEntryId` is distinct from a receiver-local cursor position. A host may
 maintain `DeliveryByIndex`, per-coordinate delivery heads, and a monotonically
 increasing local watermark so `possibleMaybeChanges()` can expose newly learned
-history. Those indexes are local, opaque, same-process delivery infrastructure;
+  history. A delivery record contains the exact receiver-observed action and may
+  reference the immutable logical entry which caused it. Those indexes are
+  local, opaque, same-process delivery infrastructure;
 they are neither replicated identity nor causal order. A receiving host assigns
 a new delivery position while retaining the imported logical entry unchanged.
 
