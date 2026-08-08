@@ -30,17 +30,49 @@ against the committed before/after graph.
 For example, B may learn A's add for D while D is unsupported and remains
 absent, then a client advances its cursor. If later input convergence makes the
 same revision coherent and B materializes D, B creates a fresh local `add`
-delivery referring to A's already-known entry. The client observes the
+delivery at B's materialization/cutover time, referring to A's already-known
+entry by `causeId`. The client observes the
 absent-to-materialized transition without any new logical add.
 
 A query selects one fixed committed active-replica snapshot, captures its local
 watermark, scans `(since,watermark]` in local-position order while skipping
 compaction gaps, and applies `NodeFilter`. Selection and snapshot capture cannot
 straddle replica cutover. The public fields are read directly from the retained
-`DeliveryRecord`; queries MUST NOT dereference `causeId`. `time` is copied from
-the causal logical entry when one exists, or is the local transition time for a
-locally derived delivery. Logical compaction therefore cannot make a delivery
-unreadable or change its public fields.
+`DeliveryRecord`; queries MUST NOT dereference `causeId`. Logical compaction
+therefore cannot make a delivery unreadable or change its public fields.
+
+Delivery action and time always describe the same reported occurrence:
+
+* **Newly learned history without a graph transition:** `action` and `time` are
+  copied from the previously unseen logical entry, and `causeId` is that entry's
+  ID. This reports the historical occurrence.
+* **Actual receiver graph transition:** `action` is the exact closed-classifier
+  action from receiver before-state to after-state, `time` is the receiver's
+  transition/cutover wall time, and optional `causeId` names the logical event
+  responsible. The cause's original action/time do not replace the public
+  receiver-transition fields.
+
+When synchronization authors delete or invalidate while performing the local
+transition, the occurrences are atomic and naturally have
+`logicalEntry.time == DeliveryRecord.time == transition/cutover time`.
+
+### Delayed-application trace
+
+At t1 A authors logical edit E for D. At t2 B learns E, cannot materialize D,
+delivers `{action: edit, time: t1, causeId: E.id}`, and the client advances its
+cursor. At t3 other synchronization makes E's value admissible and B performs
+`absent -> materialized`. The new delivery is:
+
+```text
+DeliveryRecord {
+    action: "add"
+    time: t3
+    causeId: E.id
+}
+```
+
+It is not `{action: add, time: t1}`. The cause remains old and immutable while
+the public action/time describe B's new local occurrence.
 
 Every required delivery uses the append-or-replace operation from the journal
 types specification. If old record d for `(K,A)` is replaced by r, then `r > d`:

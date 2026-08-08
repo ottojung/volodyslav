@@ -246,7 +246,9 @@ self-restoration in §4.2.
 
 Every reset delivery uses receiver-local append-or-replace and therefore leaves
 at most one `DeliveryByIndex` record per `(NodeKey,JournalAction)`. It never
-imports source physical delivery indexes.
+imports source physical delivery indexes. Its action classifies the receiver's
+old graph against the replacement graph and its time is the local reset cutover
+time; an optional older source `causeId` does not replace either public field.
 
 **Normative rejection trace:** receiver R has delete `Q=(100,R)` for K and K is
 absent. Source S carries K from add `G=(50,S)` and has not observed Q. The joined

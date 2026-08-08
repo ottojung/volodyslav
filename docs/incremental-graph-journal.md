@@ -58,11 +58,17 @@ physical maps by `O(historic keys × 5)` and leaves harmless scan gaps.
 
 ## Synchronization projections
 
+Supported hosts have monotone system wall clocks. Wall time is the best
+available approximation of universal cross-host event order and is the primary
+value-order coordinate. Its finite resolution permits equal timestamps; journal
+identity resolves only those collisions. Clock rollback violates the supported
+execution model and has undefined synchronization behavior.
+
 For materialized x in winning add generation G, each author-specific value head
 contains only add G or edits explicitly scoped to G and must match the real
-graph `modifiedAt`. The greatest surviving candidate by `JournalEntryId`,
-`(sequence,author)`,
-defines:
+graph `modifiedAt`. Value revisions compare `modifiedAt` first. Only when
+multiple provenance events match that same timestamp does sequence-first
+`JournalEntryId=(sequence,author)` select the canonical origin:
 
 ```text
 ValueRevision(x,G) = [modifiedAt(x), author, sequence]

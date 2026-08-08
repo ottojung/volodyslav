@@ -74,6 +74,14 @@ invalidate delivery references the newly authored destructive entry. Graph and
 delivery commit atomically, so advancing a cursor after learning history cannot
 hide a later graph transition caused by that history.
 
+When an imported logical entry is newly learned without a receiver graph
+transition, its delivery copies the logical entry's action and time. When
+synchronization creates an actual receiver graph transition, delivery action is
+the exact receiver before/after classifier and delivery time is the local
+transition/cutover wall time; `causeId` may independently name an older logical
+event. For a newly synchronization-authored delete/invalidate, logical and
+delivery times coincide because entry emission and graph transition are atomic.
+
 Every local, imported, synchronization-applied, reset, or migration delivery
 uses the same atomic receiver-local append-or-replace rule: delete the previous
 `DeliveryHead[K,A]` record, insert one self-contained record at a never-reused

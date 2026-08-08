@@ -29,6 +29,21 @@ transitions are corruption, not conflicts for which this protocol invents data.
 
 ## Journal-derived frontiers
 
+### Clock assumptions
+
+Synchronization assumes that system wall clocks are monotone over
+IncrementalGraph operations on every supported host. Wall-clock timestamps are
+the closest available approximation of a universal temporal order between
+operations performed on different hosts and are therefore the primary
+cross-host value-order coordinate.
+
+Wall-clock timestamps have finite resolution and are not injective: distinct
+value-changing operations may receive exactly equal timestamps. The journal
+identity deterministically disambiguates those collisions. Clock rollback or
+any other violation of these assumptions is outside the supported execution
+model and gives undefined synchronization behavior. Synchronization does not
+attempt to repair it.
+
 This specification uses the definitions in the journal synchronization spec:
 
 ```text
@@ -49,13 +64,32 @@ lexicographically and totally. Equal revisions with unequal `ComputedValue`s
 violate the reachable-state invariant; synchronization rejects corruption and
 does not add a hash tie-break.
 
+These are distinct orders:
+
+```text
+ValueRevision ordering:
+    modifiedAt first, as approximate cross-host real-time order
+
+canonical provenance among events with equal modifiedAt:
+    JournalEntryId = (sequence,author)
+```
+
+Thus `modifiedBy` and `modifiedAtVirtual` provide exact deterministic identity
+when finite-resolution wall times collide. `modifiedAtVirtual` does not replace
+wall time and is not intended to repair a non-monotone system clock.
+For `T1 < T2`, T2 wins regardless of journal sequences. At equal T, distinct
+writer fingerprints distinguish cross-host revisions, while the journal
+sequence distinguishes repeated same-writer changes and selects the canonical
+event under sequence-first `JournalEntryId`. No hash or value-equality fallback
+is used as revision identity.
+
 For an exact `modifiedAt` collision inside G, the greatest matching event by
-`JournalEntryId=(sequence,author)` is canonical. A source candidate resolves its alleged event
-from its own pre-merge reachable snapshot, and is admissible after journal join
-only if that event is `canonicalEvent(x,G)`. Selection MUST NOT keep another
-tied candidate and attribute the canonical event to it. If the canonical candidate is
-unsupported, lower tied coherent candidates are excluded and the conservative
-no-coherent rule applies.
+`JournalEntryId=(sequence,author)` is canonical. A source candidate resolves its
+alleged event from its own pre-merge reachable snapshot and is admissible after
+journal join only if that event is `canonicalEvent(x,G)`. Selection MUST NOT keep another
+tied candidate and attribute the canonical event to it. If the canonical
+candidate is unsupported, lower tied coherent candidates are excluded and the
+conservative no-coherent rule applies.
 
 A delete presence head prevents lower-ordered add generations from resurrecting.
 A greater add may rematerialize under LWW order whether causally later or
@@ -299,18 +333,33 @@ values. The lifecycle specification defines the complete reset procedure.
 
 ## Required traces
 
+### Ordinary cross-host wall-time ordering
+
+A edits K at `modifiedAt=10:00` with unrelated journal sequence 500. B edits K
+at `modifiedAt=10:01` with sequence 20. B wins because wall time is the primary
+value-order coordinate. A's larger journal sequence does not override the later
+wall-clock timestamp.
+
 ### Timestamp collisions
 
 A makes two actual edits at wall time `t`. Its journal allocator produces 40 and
-41, so `[t,A,41] > [t,A,40]`. Independently A and B may each edit at `t`; their
-author components deterministically differ, with sequence resolving repeated
-same-author changes. No physical-host or hash tie-break is needed.
+41, so the distinct sequences keep `[t,A,41]` and `[t,A,40]` distinct and the
+sequence-first canonical event is 41. Independently A and B may each edit at
+`t`; sequence decides first and author breaks an equal-sequence tie. No
+physical-host or hash tie-break is needed.
 
 For `X -> D`, suppose A and B edit D at the same `t`, A's D is coherent with the
 winning X, and B's D is unsupported, while B's event is canonical. A's D cannot
 be chosen and mislabeled as B's revision. B's candidate is retained stale under
 the one-input fallback. With multiple inputs, the unsafe collision is deleted
 and receives a durable delete barrier.
+
+### Unsupported clock rollback
+
+K has an old value at `modifiedAt=12:00`. A later actual edit after system-clock
+rollback receives `modifiedAt=11:59`. This violates the monotone-clock
+assumption and has undefined synchronization semantics. Neither journal sequence
+nor any other synchronization mechanism repairs this unsupported execution.
 
 ### Concurrent presence generations
 
@@ -418,7 +467,9 @@ satisfies IncrementalGraph correctness.
 
 **Theorem.** Let a finite set of writable hosts share one fixed finite schema and
 finite materialized dependency DAG. Suppose ordinary graph mutation becomes
-quiescent. Let there be a fixed connected undirected neighbor graph. For every
+quiescent and every host satisfies the monotone-wall-clock assumptions above.
+Executions containing clock rollback are excluded. Let there be a fixed
+connected undirected neighbor graph. For every
 neighbor edge `{A,B}`, require both directed receive operations `A <- B` and
 `B <- A` infinitely often (**directional fairness**). A receive stages the
 sender's published snapshot and installs a validated result only at the receiver;

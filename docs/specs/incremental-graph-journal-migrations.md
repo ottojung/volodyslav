@@ -30,3 +30,6 @@ previous record named by `DeliveryHead[K,A]`, inserts the new self-contained
 record above the cursor watermark, updates the head, and advances the watermark
 in the graph installation batch. Migration preserves at most one retained
 delivery record per key/action; preexisting and newly created gaps remain valid.
+The delivery action/time describe the local migrated-graph transition. The
+logical entry independently obeys its action-specific time rule, including
+`entry.time == resulting modifiedAt` for add/edit.

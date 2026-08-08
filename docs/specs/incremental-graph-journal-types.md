@@ -133,6 +133,11 @@ local, opaque, same-process delivery infrastructure;
 they are neither replicated identity nor causal order. A receiving host assigns
 a new delivery position while retaining the imported logical entry unchanged.
 
+For newly learned history without a graph transition, the copied action/time are
+the logical entry's historical action/time. For a receiver graph transition,
+they are the receiver's exact transition action and local transition/cutover
+time. `causeId` never changes which occurrence the public fields describe.
+
 At every committed snapshot, each `(K,A)` has at most one retained
 `DeliveryByIndex` record, and `DeliveryHead[K,A]`, when present, points to
 exactly that record. Creating any delivery for `(K,A)` performs the following

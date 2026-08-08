@@ -201,6 +201,10 @@ replacement above the cursor watermark, updates `DeliveryHead[K,A]`, and
 advances that watermark. This is receiver-local physical compaction, not logical
 journal compaction.
 
+Migration delivery action and time describe the same local migrated-graph
+transition. A causal logical entry independently obeys its action-specific time
+rule; its optional `causeId` does not replace either delivery field.
+
 Detailed rules are in
 `docs/specs/incremental-graph-journal-migrations.md`.
 

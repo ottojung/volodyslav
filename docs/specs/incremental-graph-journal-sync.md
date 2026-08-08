@@ -65,8 +65,10 @@ origin(x,G) = canonicalEvent(x,G)
 ValueRevision(x,G) = [modifiedAt(x), origin(x,G).author, origin(x,G).sequence]
 ```
 
-Sequence is primary because it preserves observed-before order; author only
-breaks genuinely concurrent equal-sequence ties. If no candidate exists, the
+Within this already equal-`modifiedAt` candidate set, sequence is primary
+because it preserves observed-before order; author only breaks genuinely
+concurrent equal-sequence ties. This does not make sequence the primary value
+order across different wall times. If no candidate exists, the
 materialization is provenance-obsolete/unusable; synchronization never invents
 one.
 
@@ -157,8 +159,13 @@ values is corruption, not a hash tie-break case.
 
 * **Same writer/time:** A's edits at wall time 100 receive sequences 7 and 8;
   `[100,A,8]` wins.
+* **Different wall times:** A edits at 10:00 with sequence 500; B edits at 10:01
+  with sequence 20. B wins by the primary wall-time coordinate. Sequence 500 is
+  irrelevant because canonical journal ordering is consulted only for an exact
+  wall-time collision.
 * **Concurrent writers/time:** A and B each edit at 100. Sequence chooses when
-  `n != m`; author chooses only when `n == m`. No source-host tie-break is involved.
+  `n != m`; author chooses only when `n == m`. No source-host tie-break is
+  involved.
   If B is the canonical event but B's derived cache is unsupported against final
   inputs, coherent A is not mislabeled as B: the result is stale fallback for
   one input or deletion for multiple inputs.
@@ -185,7 +192,8 @@ values is corruption, not a hash tie-break case.
   `E1=(sequence=10,author=A,generation=G,time=T)`. B synchronizes A, then
   genuinely changes the same materialization and authors
   `E2=(sequence=11,author=B,generation=G,time=T)`. Even if A sorts above B,
-  `canonicalEvent(D,G)` selects E2 because sequence is primary. If truly
+  `canonicalEvent(D,G)` selects E2 because sequence is primary within this
+  equal-wall-time collision. If truly
   concurrent events instead have equal sequence, author deterministically
   breaks that tie.
 * **Concurrent positive crossing:** A authors delete Q at sequence 40. Without
