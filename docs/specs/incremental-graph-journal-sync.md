@@ -86,6 +86,15 @@ validate head permits freshness only when current graph validity evidence is
 coherent. With no post-add freshness entry, the generation's initial graph
 freshness applies.
 
+For source snapshot `S`, `sourceGenerationS(x)` is its pre-merge
+`presenceHeadS(x)` when that head is an add. Once the joined `presenceHead(x)`
+selects add generation G, only materializations with
+`sourceGenerationS(x) == G` are admissible value candidates. A source whose
+generation is an older or concurrent losing add cannot supply bytes for G.
+`ValueRevision` orders candidates only within this surviving presence
+generation. Thus concurrent adds cannot combine one add's presence frontier with
+another add's value.
+
 Compaction preservation is proved in the compaction specification.
 
 ## Stable value identity invariant
@@ -119,6 +128,11 @@ hash tie-break case.
   If B is the canonical event but B's derived cache is unsupported against final
   inputs, coherent A is not mislabeled as B: the result is stale fallback for
   one input or deletion for multiple inputs.
+* **Concurrent adds:** A adds K at `(10,A)` with `modifiedAt=200`; B adds K at
+  `(50,B)` with `modifiedAt=100`. Joined presence chooses B's generation, so A's
+  bytes are inadmissible despite their later wall time. The result uses B's
+  value and derives `[100,B,50]`; presence and value cannot name different
+  generations.
 * **Carrier independence:** A's `[100,A,8]` travels A → B → C. B and C import
   the entry and allocate local delivery positions but author no edit. All three
   compare the same revision.

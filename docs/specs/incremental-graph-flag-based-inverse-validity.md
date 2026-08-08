@@ -534,6 +534,12 @@ The merge validity algorithm does **not** mint proofs. It derives transient
 support from a source's preexisting flags and journal-backed value revisions,
 then classifies nodes without an exact final proof set as direct roots.
 
+A node whose current-presence-generation journal freshness head is `invalidate`
+is always a direct invalidation root. It receives no incoming validity proofs,
+even when a coherent older fresh source contains them. The journal does not
+distinguish explicit from propagated invalidation causes, so this conservative
+revocation applies to both during synchronization.
+
 1. **Exact revision proof transport**: Candidate N from snapshot S has known
    support only when `S.valid[D].has(N)` exists for every distinct direct input
    D. Its support is the ordered tuple of those inputs' journal-derived

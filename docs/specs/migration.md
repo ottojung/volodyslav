@@ -190,10 +190,10 @@ dimensions are unchanged.
 
 Migration-generated exact actions allocate immutable local entries from the
 serialized host journal clock and create receiver-local delivery records,
-atomically with graph installation. Migration neither reconstructs nor seeds graph state from journal
 atomically with graph installation. Migration neither reconstructs nor seeds
 graph state from journal data, and it preserves author identity and the
 never-decreasing local watermark.
+
 Detailed rules are in
 `docs/specs/incremental-graph-journal-migrations.md`.
 

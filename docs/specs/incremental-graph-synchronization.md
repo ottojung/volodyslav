@@ -104,6 +104,12 @@ generation predates the newest applicable delete. If final presence is absent,
 delete the node and maintain dependency-closure deletion. Do not spread a
 materialization when no usable source carries the current add generation.
 
+If the joined `presenceHead(N)` is add G, derive each candidate's source
+generation from its source pre-merge `presenceHead(N)` and admit it only when
+that generation equals G. This applies to concurrent adds as well as adds around
+deletes. Value ordering and coherence selection occur only inside G; they cannot
+select bytes from a losing presence generation.
+
 ### 2. Candidate resolution
 
 For every surviving source materialization, resolve `ValueRevision` in that
@@ -148,6 +154,13 @@ Never union `valid`. Rebuild incoming validity edges only from a coherent source
 proof against the exact final direct-input revisions. A stale fallback retains
 no incoming proof not established coherent. Structural dependency edges come
 from the graph scheme, never from `valid`.
+
+If the current-generation `freshnessHead(N)` is `invalidate`, N is a direct
+invalidation root: final N is stale and synchronization transports **no incoming
+validity proofs into N**, even if an older fresh source is otherwise coherent.
+This applies equally to locally and synchronization-authored invalidations. A
+later normal pull must recompute or revalidate through the normal graph rules
+before it may emit `validate` and restore incoming proofs.
 
 ### 6. Freshness
 
@@ -262,6 +275,14 @@ winning X, and B's D is unsupported, while B's event is canonical. A's D cannot
 be chosen and mislabeled as B's revision. B's candidate is retained stale under
 the one-input fallback. With multiple inputs, the unsafe collision is deleted
 and receives a durable delete barrier.
+
+### Concurrent presence generations
+
+A adds root K as VA at `(10,A)` and wall time 200. Concurrently B, after
+unrelated journal activity, adds VB at `(50,B)` and wall time 100. Presence is
+resolved first to B's add generation. VA is not a candidate inside that
+generation, so its wall time cannot override the presence decision; final K is
+VB with revision `[100,B,50]`.
 
 ### Value through a carrier
 

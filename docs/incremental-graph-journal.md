@@ -65,6 +65,12 @@ resurrecting; invalidate prevents older fresh proof from resurrecting. A later
 normal add or coherent validate, authored after observing its barrier, may begin
 new positive history.
 
+Presence resolves before value selection. When the joined presence head is an
+add, only materializations whose source journal has that exact add as its
+presence generation may compete by `ValueRevision`. A current-generation
+invalidate makes the node stale and revokes all incoming validity proofs during
+synchronization.
+
 Synchronization invokes no computor. Copying a value imports its original
 add/edit entry and emits no semantic value revision. Synchronization may derive
 a conservative delete or invalidate; it authors that fact after all history

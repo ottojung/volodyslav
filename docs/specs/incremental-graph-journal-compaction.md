@@ -20,6 +20,11 @@ and a receiver allocates a new local delivery position for newly learned `E2`.
 The API promises possible occurrence, not occurrence count or the older time.
 Atomic append-or-replace delivery ensures a cursor before the replacement sees
 the later covering record; a cursor after it has already crossed that record.
+Receiver-local `DeliveryRecord`s are self-contained: compaction may remove the
+logical entry named by an optional `causeId`, but the delivery retains its own
+key, receiver-transition action, and copied time. Public cursor queries never
+dereference the cause, so cross-action deliveries remain readable and retain
+their exact notification coverage.
 
 Every virtual projection is monotone under replacement:
 

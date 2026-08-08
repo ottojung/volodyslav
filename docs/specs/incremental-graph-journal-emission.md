@@ -54,8 +54,9 @@ Logical emission and receiver-local delivery are separate. Every observable
 graph transition caused by synchronization allocates a fresh local delivery
 position, even when its causal logical entry was learned earlier. For copied
 presence/value/freshness, the delivery record references the already-existing
-originating add/edit/validate entry while reporting the exact local transition
-action; it does not create or alter a logical entry. A newly derived delete or
+originating add/edit/validate entry through optional `causeId` while storing the
+exact local transition key, action, and time itself; it does not create or alter
+a logical entry. A newly derived delete or
 invalidate delivery references the newly authored destructive entry. Graph and
 delivery commit atomically, so advancing a cursor after learning history cannot
 hide a later graph transition caused by that history.

@@ -70,9 +70,22 @@ graph clock and not a per-node counter.
 `JournalEntryId` is distinct from a receiver-local cursor position. A host may
 maintain `DeliveryByIndex`, per-coordinate delivery heads, and a monotonically
 increasing local watermark so `possibleMaybeChanges()` can expose newly learned
-  history. A delivery record contains the exact receiver-observed action and may
-  reference the immutable logical entry which caused it. Those indexes are
-  local, opaque, same-process delivery infrastructure;
+history. Delivery records are self-contained:
+
+```text
+DeliveryRecord = {
+    localIndex: receiver-local cursor position
+    key: NodeKey
+    action: JournalAction
+    time: UnixTimestamp
+    causeId?: JournalEntryId
+}
+```
+
+`key`, `action`, and `time` are copied into the record when delivery is created.
+`causeId` is optional provenance/debugging information and may outlive logical
+compaction of that entry; public queries never dereference it. Those indexes are
+local, opaque, same-process delivery infrastructure;
 they are neither replicated identity nor causal order. A receiving host assigns
 a new delivery position while retaining the imported logical entry unchanged.
 
