@@ -9,8 +9,10 @@ watermarks, and gaps do not.
 J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
 ```
 
-Inputs must have the same journal domain/schema, valid durable authors, valid
-actions and keys, and unique content for every `JournalEntryId`. Two entries
+Inputs must have the same schema, valid durable authors, valid actions and keys,
+and unique content for every `JournalEntryId`. Every invalidate/validate must
+carry a generation resolving to a valid same-key add in the validated merge
+input. Two entries
 with one ID but different content are corruption and reject the operation
 atomically and symmetrically. Remote entries never transfer author ownership.
 
@@ -20,10 +22,14 @@ history observable without turning the receiver into its author.
 
 ## ACI proof
 
-For each `(author,key,action)` coordinate, compacted union selects the entry of
-maximum sequence. Validity makes that maximum unique. Set union is commutative,
-associative, and idempotent, and coordinate-wise maximum has the same laws.
-Canonical ordering is a representation function. Therefore logical merge is:
+Compaction retains every coordinate maximum plus, for the sole winning presence
+generation G, the bounded freshness-authority witnesses defined in the
+compaction specification. Presence maxima are monotone: a discarded losing
+generation can never win after union with more entries. Thus both the winning G
+and its witness selection are canonical functions of set union. Set union is
+commutative, associative, and idempotent; inserting this canonical closure after
+either parenthesization produces the same maxima and G witnesses. Canonical
+ordering is only a representation function. Therefore logical merge is:
 
 ```text
 J1 ⊔ J2 = J2 ⊔ J1
@@ -76,15 +82,17 @@ journal-only provenance.
 ```text
 presenceHead(x) = greatest add/delete entry by JournalEntryId
 generation(x)   = presenceHead(x) when its action is add
-freshnessHead(x)= greatest invalidate/validate entry by JournalEntryId
-                  occurring after generation(x)
+freshnessHead(x,G) = greatest invalidate/validate entry by JournalEntryId
+                     whose generation == G
 ```
 
 A delete head bars older adds. A later real add authored after observing it
-starts a new generation. An invalidate head bars older freshness proofs. A
-validate head permits freshness only when current graph validity evidence is
-coherent. With no post-add freshness entry, the generation's initial graph
-freshness applies.
+starts a new generation. For winning add G, only `freshnessHead(x,G)` has
+freshness authority. Its invalidate bars older proofs for G; its validate
+permits freshness only when current graph validity evidence is coherent. With no
+entry scoped to G, the generation's initial graph freshness applies. An entry
+scoped to an older or losing generation has no authority over G regardless of
+its larger sequence or `JournalEntryId`.
 
 For source snapshot `S`, `sourceGenerationS(x)` is its pre-merge
 `presenceHeadS(x)` when that head is an add. Once the joined `presenceHead(x)`
@@ -133,6 +141,13 @@ hash tie-break case.
   bytes are inadmissible despite their later wall time. The result uses B's
   value and derives `[100,B,50]`; presence and value cannot name different
   generations.
+* **Concurrent old-generation validation:** A validates old G1 with
+  `V=(100,A,generation=G1)`. Concurrently B establishes newer winning
+  `G2=(20,B)` and invalidates it with
+  `I=(21,B,generation=G2)`. C carries fresh/coherent G2 bytes. Although V has
+  the greater entry ID, it is inapplicable to G2. `freshnessHead(K,G2)` is I, so
+  C's incoming proofs are revoked and K remains stale until a later genuine
+  validate scoped to G2.
 * **Carrier independence:** A's `[100,A,8]` travels A → B → C. B and C import
   the entry and allocate local delivery positions but author no edit. All three
   compare the same revision.

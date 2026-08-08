@@ -37,8 +37,8 @@ modifiedBy(x) = origin(x).author
 modifiedAtVirtual(x) = origin(x).sequence
 
 presenceHead(x)  = greatest add/delete by (sequence,author)
-freshnessHead(x) = greatest post-generation invalidate/validate
-                   by (sequence,author)
+freshnessHead(x,G) = greatest invalidate/validate by (sequence,author)
+                     whose explicit generation == G
 ```
 
 A value event is usable only when its time equals the graph `modifiedAt` and it
@@ -62,10 +62,11 @@ the joined head says present but no source carries usable bytes for that
 presence generation, the result is absent; a genuinely new decision emits a
 delete barrier.
 
-A post-generation invalidate prevents an older fresh proof from restoring
-freshness. A later validate only permits freshness when normal graph validity
-proof remains coherent. An add starts a new presence generation, so freshness
-history before it does not constrain that generation.
+For final add generation G, an invalidate in `freshnessHead(x,G)` prevents an
+older fresh proof for G from restoring freshness. A later validate scoped to G
+only permits freshness when normal graph validity proof remains coherent. An
+invalidate or validate scoped to another generation has no authority over G;
+Lamport ID comparison alone never establishes generation membership.
 
 ## Transient support
 
@@ -155,7 +156,7 @@ proof against the exact final direct-input revisions. A stale fallback retains
 no incoming proof not established coherent. Structural dependency edges come
 from the graph scheme, never from `valid`.
 
-If the current-generation `freshnessHead(N)` is `invalidate`, N is a direct
+If `freshnessHead(N,G)` for final add generation G is `invalidate`, N is a direct
 invalidation root: final N is stale and synchronization transports **no incoming
 validity proofs into N**, even if an older fresh source is otherwise coherent.
 This applies equally to locally and synchronization-authored invalidations. A
@@ -166,15 +167,18 @@ before it may emit `validate` and restore incoming proofs.
 
 A selected node is final-fresh only if:
 
-1. joined generation history contains no later invalidate barrier;
+1. `freshnessHead(N,G)` for final add generation G is not invalidate;
 2. selected-source validity is coherent with exact final inputs; and
 3. every ordinary clean-node invariant holds.
 
 Otherwise it is stale. When synchronization newly demotes fresh to stale for a
 reason not represented by a covering invalidate, it authors exactly one
 `invalidate` after all observed journal history. It never synthesizes validate.
-An old validate or old fresh peer cannot cross that barrier; a later genuine
-normal revalidation after observing it may author validate.
+An older validate for G or old fresh peer cannot cross that barrier; a later
+genuine normal revalidation may author validate explicitly scoped to G.
+
+That synchronization-authored invalidate explicitly carries G. Entries for
+other generations neither satisfy nor override this barrier.
 
 ### 7. Atomic installation and no-op
 
@@ -203,8 +207,10 @@ Before planning, synchronization MUST reject atomically:
 4. duplicate or internally conflicting lookup entries;
 5. a value, freshness, timestamp, or validity record whose identifier is not
    covered by its source lookup;
-6. malformed journal entries, conflicting content at one `JournalEntryId`, or a
-   local allocator watermark below an observed sequence.
+6. malformed journal entries, including invalidate/validate without a
+   generation resolving to a same-key add witness;
+7. conflicting content at one `JournalEntryId`; or
+8. a local allocator watermark below an observed sequence.
 
 Different identifiers for the same semantic key are expected, not corruption.
 For a surviving selected candidate, its source identifier is preferred. If the
@@ -240,7 +246,8 @@ Before T can become active, validate all of the following:
    check;
 7. no losing or deleted identifier remains in any graph sublevel;
 8. every materialized value resolves to the canonical current journal event;
-9. presence and freshness agree with the installed journal frontiers; and
+9. presence and generation-scoped freshness agree with the installed journal
+   frontiers; and
 10. `localJournalClock` covers every installed logical entry sequence.
 
 Failure of any check aborts that host merge, leaves the active pointer unchanged,
@@ -260,6 +267,13 @@ complete result before cutover, and cleans its staging storage afterward. A
 failed host is recorded and does not roll back successful hosts; processing may
 continue and failures are reported together. This sequential lifecycle does not
 imply multi-host associativity, order independence, or all-to-all communication.
+
+Controlled reset is not this merge algorithm. It proposes the source graph
+unchanged, joins receiver and source journals, and applies all presence,
+generation-scoped freshness, provenance, identifier, structural, and validity
+rules in this section as rejection constraints. Any contradiction rejects the
+reset atomically; reset neither reconciles the graph nor re-authors copied
+values. The lifecycle specification defines the complete reset procedure.
 
 ## Required traces
 
@@ -308,10 +322,12 @@ H1—H3 edge.
 
 ### Invalidation barrier
 
-H1 has fresh D with old proof p. H2 derives invalidate q after p. Once H1 learns
-q, p cannot restore fresh and repeat synchronization authors nothing. A later
-normal recomputation that observes q, proves exact current inputs, and emits
-validate v with `v.sequence > q.sequence` may restore freshness.
+A has old generation G1 and validate `V=(100,A,generation=G1)`. B establishes
+winning `G2=(20,B)` and invalidates it with
+`I=(21,B,generation=G2)`. C carries fresh/coherent G2 bytes and old incoming
+proofs. V is ignored for G2 despite its larger ID; `freshnessHead(D,G2)` is I,
+so C's proofs are not transported. A later normal recomputation that observes I,
+proves exact G2 inputs, and emits validate V2 scoped to G2 may restore freshness.
 
 ### Unchanged
 
@@ -322,10 +338,11 @@ flags. D remains `[t,A,7]`, while transient `Support(D)` is now `[a2,b2]`.
 ### Compaction
 
 A's edit 3 is covered by edit 9 for the same key/action. Retaining edit 9 keeps
-A's value head at the newest revision. Likewise a later same-coordinate add,
-delete, invalidate, or validate advances rather than lowers its relevant
-presence/freshness projection. The merge result is unchanged by discarding the
-covered entries.
+A's value head at the newest revision. Add/delete coordinate maxima preserve
+presence. For freshness, compaction retains the coordinate notification maximum
+and, when different, the greatest invalidate/validate scoped to winning G plus
+their add witnesses. It may discard authority for losing generations because
+they can never win later. The merge result is unchanged.
 
 ## Properties
 
@@ -397,8 +414,9 @@ After the final entry, logical merge is commutative, associative, and idempotent
 For any retained entry and any target host, connectedness gives a finite path;
 fair synchronization of each path edge eventually carries the entry along that
 path. With finitely many entries and hosts, eventually every host has every
-non-covered entry. Compaction preserves all projections, so value, presence,
-and freshness frontiers stabilize identically everywhere.
+retained coordinate maximum and current-generation authority witness.
+Compaction preserves all projections, so value, presence, and generation-scoped
+freshness frontiers stabilize identically everywhere.
 
 ### D. DAG induction
 

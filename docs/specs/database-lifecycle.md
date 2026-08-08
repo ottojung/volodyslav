@@ -212,15 +212,39 @@ The source contributes its authoritative graph snapshot and immutable logical
 journal entries. The receiver retains its author identity and cursor domain; it
 does not adopt source delivery positions.
 
-The reset classifies `ResetActions` from `oldLocalGraph` to `replacementGraph`.
-Copied add/edit provenance remains the source's immutable logical entry; reset
-MUST NOT re-author it as a receiving-host revision. Every observable reset graph
-transition receives a fresh receiver-local delivery position referring to its
-logical cause. A genuinely reset-derived delete or invalidate may allocate a
-new receiving-author destructive entry after all observed history. Graph
-replacement, joined history, any destructive entries, and delivery coverage
-commit atomically before cutover. This transition is distinct from absent-state
+Reset is replacement with validation, not ordinary graph merge. Before cutover:
+
+1. join the receiver and source logical journals without discarding newer
+   receiver history;
+2. retain the source graph unchanged as the proposed replacement graph;
+3. resolve every source materialization's source presence generation and
+   `ValueRevision`;
+4. require its generation to equal the joined presence-head add and require its
+   value event to remain admissible under joined value heads;
+5. evaluate freshness only through `freshnessHead(K,G)` for that joined add G,
+   requiring proposed graph freshness and incoming proofs to agree with it;
+6. require identifier, timestamp, structural dependency, validity, freshness,
+   and materialization closure invariants from the synchronization specification;
+7. validate every freshness entry and generation-reference witness; and
+8. reject the reset atomically if any check fails, leaving the existing live
+   graph and active pointer unchanged.
+
+The reset classifies `ResetActions` only to create receiver-local delivery
+coverage. Copied add/edit provenance remains the source's immutable logical
+entry and MUST NOT be re-authored as a receiving-host revision. Reset does not
+author destructive entries to repair a contradicted source graph, silently run
+ordinary merge, discard receiver history, or manufacture a compatibility path.
+Joined history, the validated replacement graph, and delivery coverage commit
+atomically before cutover. This transition is distinct from absent-state
 self-restoration in §4.2.
+
+**Normative rejection trace:** receiver R has delete `Q=(100,R)` for K and K is
+absent. Source S carries K from add `G=(50,S)` and has not observed Q. The joined
+`presenceHead(K)` is Q/delete, while the proposed source graph is present from
+G. The reset rejects before cutover, keeps R's live graph and Q, and does not
+re-author S's value. A force-replacement operation that overrides newer history
+is outside this specification and requires separately defined semantics.
+
 After reset, the database is reopened through the migration gate.
 
 ### 7.5 Counter continuity during self-restoration

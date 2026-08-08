@@ -176,6 +176,7 @@ cursor watermark.
 Migration preserves the durable author identity and never transfers its
 ownership. Pre-cutover validation requires every represented author to be a
 well-formed supported host fingerprint, entry IDs to have unique content, the
+generation of every invalidate/validate to resolve to a same-key add witness,
 allocator watermark to cover every observed sequence, delivery heads and
 records to satisfy the one-head invariant, and the cursor watermark to cover
 every retained delivery index.

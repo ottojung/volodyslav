@@ -9,12 +9,23 @@ validity come from the IncrementalGraph.
 ```text
 JournalAction = "add" | "edit" | "delete" | "invalidate" | "validate"
 
-JournalEntry = {
+JournalEntry = ValueOrPresenceEntry | FreshnessEntry
+
+ValueOrPresenceEntry = {
     author: HostFingerprint
     sequence: uint64
     key: NodeKey
-    action: JournalAction
+    action: "add" | "edit" | "delete"
     time: UnixTimestamp
+}
+
+FreshnessEntry = {
+    author: HostFingerprint
+    sequence: uint64
+    key: NodeKey
+    action: "invalidate" | "validate"
+    time: UnixTimestamp
+    generation: JournalEntryId
 }
 
 JournalEntryId(E) = (E.sequence, E.author)
@@ -35,6 +46,18 @@ unsupported and prevents writable open.
 
 Entries are immutable. A remotely learned entry is imported byte-for-byte with
 the same author and sequence. Learning an entry never re-authors it.
+
+`FreshnessEntry.generation` is the exact `JournalEntryId` of the `add` which
+established the materialization whose freshness changed. It is required for
+invalidate and validate and forbidden on add, edit, and delete. This reference
+is journal history only and is never stored on a graph materialization.
+
+Journal validation rejects a freshness entry unless its generation resolves to
+a valid logical add for the same key in the merge input. Compaction retains an
+add-reference witness for every retained freshness notification. It may discard
+additional freshness authority for a losing generation only after proving that
+the generation can never again become the winning presence generation, as
+specified by the compaction rules.
 
 ## Closed action classifier
 
@@ -98,6 +121,8 @@ revision stamp, support vector, epoch, vector clock, or synchronization field.
 Synchronization never advances `modifiedAt` merely because bytes were copied.
 
 The logical storage bound is
-`O(number_of_historic_keys × writers × 5)`: compaction retains at most one
-entry per `(author,key,action)`, apart from local cursor infrastructure. Entries
-contain no graph value, support vector, or validity proof.
+`O(number_of_historic_keys × writers × 5)`: compaction retains each coordinate
+maximum plus only constant-many winning-generation freshness and add-reference
+witnesses, apart from local cursor infrastructure. The bound is independent of
+the number of historical generations. Entries contain no graph value, support
+vector, or validity proof.

@@ -14,7 +14,8 @@ JournalEntry = {
   sequence: uint64,
   key: NodeKey,
   action: "add" | "edit" | "delete" | "invalidate" | "validate",
-  time: UnixTimestamp
+  time: UnixTimestamp,
+  generation?: JournalEntryId // present iff action is invalidate/validate
 }
 JournalEntryId = (sequence, author)
 ```
@@ -36,10 +37,12 @@ atomically.
 J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
 ```
 
-A later entry covers an earlier one only for the same author, key, and action.
-The non-covered canonical journal merge is commutative, associative, and
-idempotent. Its bound is `O(historic keys × writers × 5)`, excluding local cursor
-infrastructure.
+A later entry covers an earlier notification only for the same author, key, and
+action. Canonical compaction retains coordinate maxima plus at most one extra
+freshness-authority witness per freshness coordinate for the winning add
+generation. Merge is commutative, associative, and idempotent, and its bound is
+`O(historic keys × writers × 5)` with a constant freshness factor, excluding
+local cursor infrastructure.
 
 Logical identity and local delivery are separate. Import preserves the remote
 entry's author and sequence. The receiver may assign a fresh opaque local cursor
@@ -56,19 +59,20 @@ defines:
 ```text
 ValueRevision(x) = [modifiedAt(x), author, sequence]
 presenceHead(x)  = greatest add/delete by JournalEntryId
-freshnessHead(x) = greatest invalidate/validate after the current add generation
+freshnessHead(x,G) = greatest invalidate/validate whose generation == G
 ```
 
 These values are derived, never stored on graph materializations. A superseded
 or unresolvable value is unusable. Delete prevents older add history from
-resurrecting; invalidate prevents older fresh proof from resurrecting. A later
-normal add or coherent validate, authored after observing its barrier, may begin
-new positive history.
+resurrecting; an invalidate scoped to G prevents older fresh proof for G from
+resurrecting. A later normal add starts another generation, while a coherent
+validate explicitly scoped to G may restore G's freshness.
 
 Presence resolves before value selection. When the joined presence head is an
 add, only materializations whose source journal has that exact add as its
 presence generation may compete by `ValueRevision`. A current-generation
-invalidate makes the node stale and revokes all incoming validity proofs during
+invalidate scoped to that generation makes the node stale and revokes all
+incoming validity proofs during
 synchronization.
 
 Synchronization invokes no computor. Copying a value imports its original

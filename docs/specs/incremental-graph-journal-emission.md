@@ -20,6 +20,12 @@ timestamp once and uses the same value for both records; two independent
 `now()` reads are forbidden. For delete, invalidate, and validate, `time` is the
 actual transition time.
 
+Before normal invalidate or revalidation, derive the currently materialized
+node's exact establishing add ID from its pre-transaction graph+journal
+snapshot. The emitted invalidate or validate MUST carry that ID as
+`generation`. If the materialization has no resolvable current add generation,
+the transaction is invalid and cannot commit. Delete carries no generation.
+
 | Before | After | Entries |
 |---|---|---|
 | absent | materialized | `add` |
@@ -49,6 +55,10 @@ and the graph transition, joined journal, entry, and local delivery record are
 installed atomically. An already known covering destructive entry is propagated,
 not re-authored. Synchronization never synthesizes `validate`; only normal graph
 revalidation with coherent validity evidence may do that.
+
+A synchronization-authored invalidate sets `generation` to the final joined add
+generation whose selected materialization it demotes. It cannot be emitted when
+final presence is absent or the add generation is unresolved.
 
 Logical emission and receiver-local delivery are separate. Every observable
 graph transition caused by synchronization allocates a fresh local delivery
