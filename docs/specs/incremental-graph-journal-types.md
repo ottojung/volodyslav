@@ -103,7 +103,14 @@ invalidate iff up-to-date -> potentially-outdated
 validate   iff potentially-outdated -> up-to-date
 ```
 
-The public classifier remains transition-based. An explicit hard `invalidate(K)` on a materialized already-stale node additionally authors an internal generation-scoped causal invalidate barrier when it removes/reasserts absence of incoming proofs; its all-actions query projection may be a permitted false positive. There is no generic `change`. Identifier, timestamp, validity-only, dependency,
+The public classifier remains transition-based. Independently, no operation may
+make a materialized cache require genuine later revalidation without causally
+representing that obligation in its generation's invalidation frontier. Explicit
+invalidation, synchronization or migration stale→stale hardening, and equivalent
+lifecycle paths therefore author an internal generation-scoped invalidate when
+they remove/reassert absence of sufficient incoming proofs; its all-actions query
+projection may be a permitted false positive. Settled hard-invalidated state
+already represented by an outstanding barrier is merely carried. There is no generic `change`. Identifier, timestamp, validity-only, dependency,
 or representation changes are not edits. `Unchanged` emits no edit. Value and
 freshness transitions may emit two entries when both classifiers apply.
 

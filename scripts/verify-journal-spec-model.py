@@ -49,6 +49,10 @@ V_COMPLETE = Entry(122, "E", "K", "validate", 27, G2.id,
 I_HARD = Entry(29, "A", "K", "invalidate", 28, G2.id)
 V_AFTER_HARD = Entry(123, "E", "K", "validate", 29, G2.id,
                      (("A", I_HARD.id), ("C", I_C.id)))
+# The same hard-invalidation invariant is exercised for synchronization and
+# migration stale-to-stale proof removal, not only public invalidate().
+I_SYNC_HARD = Entry(30, "S", "K", "invalidate", 30, G2.id)
+I_MIGRATION_HARD = Entry(31, "M", "K", "invalidate", 31, G2.id)
 
 # Composite atoms make every enumerated union generation-valid while representing
 # materially distinct ordering classes.
@@ -200,6 +204,10 @@ assert effective({G2, I_A_LATE, I_C, V_COMPLETE}, G2)
 assert not effective({G2, I_A_LATE, I_C, V_COMPLETE, I_HARD}, G2)
 assert effective({G2, I_A_LATE, I_C, I_HARD, V_AFTER_HARD}, G2)
 assert not effective({G1, I_OLD, V_OLD, G2, I_CUR}, G2)
+assert not effective({G2, I_A_LATE, I_C, V_COMPLETE, I_SYNC_HARD}, G2)
+assert not effective({G2, I_A_LATE, I_C, V_COMPLETE, I_MIGRATION_HARD}, G2)
+assert I_SYNC_HARD.sequence > max(I_A_LATE.sequence, I_C.sequence)
+assert I_MIGRATION_HARD.sequence > max(I_A_LATE.sequence, I_C.sequence)
 
 for j in VALID:
     assert compact(compact(j)) == compact(j)
@@ -257,7 +265,8 @@ def query(state, cursor):
 
 # Exhaust every four-operation word and check obligations after every prefix.
 ops = ("installK1", "authorK2", "installL", "graphAddK", "graphDeleteK",
-       "graphInvalidateK", "graphValidateL", "compactK", "graphCompactK", "noop")
+       "graphInvalidateK", "graphValidateL", "syncHardenK", "migrationHardenK",
+       "compactK", "graphCompactK", "noop")
 states_checked = 0; prefixes_checked = 0; obligations_checked = 0; max_records = 0
 for word in product(ops, repeat=4):
     s = Stored((), 0); obligations = []
@@ -271,6 +280,16 @@ for word in product(ops, repeat=4):
                 action = {"installK1": "add", "authorK2": "edit",
                           "installL": "validate"}[op]
                 obligations += [(c, key, action) for c in issued_cursors(before)]
+        elif op in ("syncHardenK", "migrationHardenK"):
+            # A stale-to-stale hardening decision authors one barrier. Repeating
+            # the settled same decision carries it instead of authoring forever.
+            candidates = [k for k, _ in s.entries if k.startswith("K")]
+            if candidates:
+                label = "KS" if op == "syncHardenK" else "KM"
+                s = put(s, label)
+                if s != before:
+                    obligations += [(c, "K", "invalidate")
+                                    for c in issued_cursors(before)]
         elif op.startswith("graph") and op != "graphCompactK":
             key = "L" if op == "graphValidateL" else "K"
             candidates = [k for k, _ in s.entries if k.startswith(key)]
@@ -304,7 +323,7 @@ for word in product(ops, repeat=4):
     for _ in range(3):
         assert s == settled
     states_checked += 1
-assert max_records <= 3
+assert max_records <= 4
 
 print(f"valid combined logical states: {len(VALID)}")
 print(f"projection preservation checks: {len(VALID)}")

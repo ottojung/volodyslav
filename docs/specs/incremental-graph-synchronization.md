@@ -255,13 +255,35 @@ A selected node is final-fresh only if:
 2. selected-source validity is coherent with exact final inputs; and
 3. every ordinary clean-node invariant holds.
 
-Otherwise it is stale. When synchronization newly demotes fresh to stale for a
-reason not represented by a covering invalidate, it authors exactly one
-`invalidate` after all observed journal history. It never synthesizes validate.
+Otherwise it is stale. Whenever synchronization removes or declines incoming
+proofs in a way that newly makes a materialized N require genuine normal
+recomputation/revalidation, it establishes hard invalidation. This includes
+fresh→stale demotion and stale→stale hardening of a propagated-stale cache whose
+incoming proofs had still permitted cache-only revalidation. The transaction
+MUST author exactly one invalidate for G after all observed journal history,
+unless an entry installed or authored by this same causal decision already
+represents that exact new obligation. It never synthesizes validate.
+
+Synchronization does not author endless barriers for a settled node. If N was
+already hard-invalidated before the transaction, its proofs remain absent, and
+the retained frontier already contains the outstanding barrier representing
+that obligation, synchronization merely carries that barrier. No new hardening
+decision occurred. Conversely, removing proofs during this transaction is a new
+decision even if an older frontier barrier exists: that older barrier may have
+been cleared on an unseen host and cannot represent the later proof-removal
+decision.
 A validation which did not observe the barrier cannot cross it, regardless of ID; a later genuine normal revalidation may author validate scoped to G with the complete observed frontier.
 
 That synchronization-authored invalidate explicitly carries G. Entries for
 other generations neither satisfy nor override this barrier.
+
+Trace: A has propagated I0, is stale, and retains incoming proofs. B observes I0,
+cache-revalidates, and authors V0 clearing I0. A has not seen V0. Synchronizing A
+with C (which also lacks V0) finds no effective validation and removes N's
+incoming proofs. Although freshness remains stale, this is hardening, so the
+transaction authors I1 above all observed history. Later union with B includes
+I1; V0 does not cover I1, and N remains stale until genuine validation after
+observing I1.
 
 ### 7. Atomic installation and no-op
 

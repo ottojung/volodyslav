@@ -68,4 +68,12 @@ Per key, constant actions times r coordinates use `O(r)` entries. There are at m
 
 It checks 64 valid combined states and all 64 resulting compact states, 64 projection-preservation/idempotence checks, 4,096 full-universe closure pairs, and 262,144 full compact-universe ACI triples. Projections include presence/generation, value heads, equal-time canonical inputs, invalidate frontier, effective-validation existence, add references, and causal references. Negative cases reject malformed variants, observation-order violations, and backward same-author contexts.
 
-The independent cursor model remains exhaustive over 10,000 four-operation words and 40,000 committed prefixes, carrying 97,151 action-specific obligations through later prefixes. It covers unknown installation, two keys, repeated touches, stale and partial-action cursors, combined graph transition plus compaction, settled no-op, index uniqueness, and watermark coverage. A repeated same-key trace has 41 raw records and two after canonical compaction. These finite structural checks support, but do not prove, the analytical `O(nr²)` result.
+The independent cursor model remains exhaustive and now covers 20,736
+four-operation words and 82,944 committed prefixes, carrying 189,449
+action-specific obligations through later prefixes. It covers unknown
+installation, two keys, repeated touches, stale and partial-action cursors,
+synchronization and migration stale→stale hardening, settled repetition without
+endless barriers, combined graph transition plus compaction, settled no-op,
+index uniqueness, and watermark coverage. A repeated same-key trace has 41 raw
+records and two after canonical compaction. These finite structural checks
+support, but do not prove, the analytical `O(nr²)` result.
