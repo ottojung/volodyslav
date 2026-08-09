@@ -426,8 +426,9 @@ transactions are active. In these contexts, raw full-array writes to `valid[D]` 
 
 After applying precise merge decisions, the merge flow:
 
-1. Transports compatible `valid` entries from both source sides where provenance, value identity,
-   and structural compatibility justify preserving the exact proof.
+1. Derives each source candidate's transient support from its existing `valid`
+   flags and journal-backed input `ValueRevision`s, and retains a proof only
+   when it names the exact final input revisions.
 2. Identifies **direct invalidation roots**: nodes whose decision is `invalidate`, same-coordinate
    freshness staleness, host-only invalidation, or any up-to-date node whose required incoming proof could
    not be transported. All incoming proofs are removed from each direct root.
@@ -529,22 +530,25 @@ Document this explicitly because it prevents a future reader from treating `vali
 
 **Proof sketch:**
 
-The merge validity algorithm (`rebuildMergedValidity`) does **not** mint proofs. It
-only transports preexisting proofs from either source side when provenance
-supports it, and it classifies nodes without a full proof set as direct roots.
+The merge validity algorithm does **not** mint proofs. It derives transient
+support from a source's preexisting flags and journal-backed value revisions,
+then classifies nodes without an exact final proof set as direct roots.
 
-1. **Exact source-side proof transport**: A validity edge
-   `valid[sourceD].has(sourceN)` is transported from a source side `S` only
-   when both source identifiers resolve to semantic keys with surviving final
-   identifiers in `finalIdentifierForKey`, and `valueOrigin(finalD)` records
-   `{ kind: "source", side: S, sourceId: sourceD }` while
-   `valueOrigin(finalN)` records `{ kind: "source", side: S, sourceId: sourceN }`.
-   The final storage identifiers may differ from the source identifiers because
-   of identifier reconciliation. No cross-side mixing: a target-origin
-   dependency and a host-origin dependent never exchange a transported proof.
+A node whose `freshnessHead(N,G)` for final presence generation G is `invalidate`
+is always a direct invalidation root. It receives no incoming validity proofs,
+even when a coherent older fresh source contains them. The journal does not
+distinguish explicit from propagated invalidation causes, so this conservative
+revocation applies to both during synchronization.
 
-2. **Structural-edge survival**: A transported proof that passes the two-sided
-   provenance check is preserved only if `D` is still a structural input of `N`
+1. **Exact revision proof transport**: Candidate N from snapshot S has known
+   support only when `S.valid[D].has(N)` exists for every distinct direct input
+   D. Its support is the ordered tuple of those inputs' journal-derived
+   `ValueRevision`s. The proof survives only when that tuple equals the final
+   direct-input revisions. Identifier reconciliation and the physical carrier
+   do not alter revision identity.
+
+2. **Structural-edge survival**: A transported proof that passes the exact
+   revision check is preserved only if `D` is still a structural input of `N`
    in the merged graph. Removed or relowered inputs do not carry proofs.
 
 3. **Incoming-proof revocation for direct roots**: Every node in the merge plan
@@ -570,10 +574,9 @@ supports it, and it classifies nodes without a full proof set as direct roots.
    `up-to-date`, and no stale descendant is accidentally promoted to clean by
    proof reconstruction.
 
-7. **No proof minting**: The algorithm never creates a validity edge that was
-   not already present in at least one source side and successfully transported.
-   The only validity edges in the final state are those that survived the
-   two-sided provenance check.
+7. **No proof minting**: The algorithm never creates a validity edge absent
+   from the source snapshot whose coherent candidate supplied the proof. The
+   final edges are exactly those surviving structural and revision checks.
 
 Final validation (`assertValidFinalMergeState`) checks unknown identifiers,
 compatibility with derived input edges, and required incoming validity for all

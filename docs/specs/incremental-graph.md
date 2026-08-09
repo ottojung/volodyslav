@@ -718,7 +718,7 @@ observable surface requires a separate explicit contract change rather than
 broadening an existing action.
 
 The journal type system, emission rules, synchronization model, migration
-interaction, and mandatory append-or-replace delivery rules are specified in:
+interaction and receiver-local stored-entry cursor rules are specified in:
 
 ```text
 docs/specs/incremental-graph-journal-types.md
@@ -817,7 +817,7 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 | `listMaterializedNodes()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
 | `getCreationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
 | `getModificationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `possibleMaybeChanges()` | `enterGarden` (shared garden access) | Daytime and nighttime methods; ordinary atomic journal emission and append-or-replace delivery updates; does not acquire `DOME_ACTIVITY_KEY` or darkroom; structural operations excluded by garden; replica cutover serialized via `closeGarden` + `holiday` |
+| `possibleMaybeChanges()` | `enterGarden` (shared garden access) | Daytime and nighttime methods; ordinary atomic journal emission and local-index updates; does not acquire `DOME_ACTIVITY_KEY` or darkroom; structural operations excluded by garden; replica cutover serialized via `closeGarden` + `holiday` |
 | `getSchemas()` | none (in-memory read) | Everything |
 | `getSchemaByHead()` | none (in-memory read) | Everything |
 | `getDbVersion()` | none (in-memory read) | Everything |

@@ -1,40 +1,24 @@
-# Notification journal during migration
+# Journal during migration
 
-Migration constructs the authoritative graph independently from journal data.
-The inactive destination first copies the active local journal infrastructure
-exactly from one fixed snapshot:
+Migration builds authoritative graph state independently, starting from one
+fixed receiver snapshot containing:
 
 ```text
-JournalDomain
-localWriterId
-NotificationClock
-DeliveryByIndex
-DeliveryHead
-JournalOriginId
-lastLocalJournalIndex
+durable HostFingerprint
+StoredJournalEntry collection
+localJournalClock
+localJournalIndexWatermark
 ```
 
-Migration preserves this complete local domain and the receiving writer
-identity; it never creates, replaces, or infers a domain. Before cutover it
-validates domain equality with the source, membership of the local and all clock
-origins, equality of the local writer/origin pair with `writerOrigins`, the
-one-head invariant, and that the watermark is at least every
-retained delivery index.
+It copies every retained entry and its receiver-local index exactly, then
+validates immutable ID content, generation references, canonical compaction,
+logical clock coverage, unique indexes, and index-watermark coverage. It never
+imports another host's index or author ownership.
 
-It then compares old and new authoritative graphs and applies the ordinary exact
-classifier: absent→present `add`, present→absent `delete`, unequal materialized
-values `edit`, fresh→stale `invalidate`, and stale→fresh `validate`. A key can
-produce both value and freshness actions. Representation-only changes produce
-nothing.
-
-Migration is a local authoritative graph mutation, so each classified action
-advances the local origin clock and append-or-replaces local delivery state. The
-new graph plus these changes commit atomically. Migration does not seed the graph
-from journal data or create materialization assertions.
-
-## Trace
-
-If old K is present with value A/fresh and new K is present with value B/stale,
-migration emits `edit` and `invalidate`, advances both coordinates, and retains
-one head for each. If only its encoding changes, it emits none. Origin identity
-and watermark survive; any new records use strictly greater indices.
+Migration applies the exact closed classifier. New logical entries use the host
+clock, required generation, action-specific logical time, and distinct fresh
+local indexes. Any changed key without a newly indexed entry touches its greatest
+retained witness. Graph, entries, touches, and watermarks commit atomically.
+`Unchanged`, representation-only, identifier-only, and validity-only changes are
+silent. Aborted inactive construction exposes no index advancement and index
+values are never reused after publication.

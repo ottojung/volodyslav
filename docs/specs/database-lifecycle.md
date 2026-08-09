@@ -78,15 +78,15 @@ The synchronization repository is part of creation even when the resulting datab
 
 When local live state is absent, Volodyslav first asks whether the synchronization repository contains the current synchronized state previously published for this same host and writer. The synchronization lifecycle must recognize the selected branch as the branch assigned to the current host/writer.
 
-This is **absent-state self-restoration**, not reset of an existing database. It restores and validates the authoritative graph together with `JournalDomain`, `localWriterId`, `JournalOriginId`, `NotificationClock`, `DeliveryByIndex`, `DeliveryHead`, `lastLocalJournalIndex`, and physical gaps. The restored identity must satisfy `JournalDomain.writerOrigins[localWriterId] == JournalOriginId`.
+This is **absent-state self-restoration**, not reset of an existing database. It restores and validates the authoritative graph together with the durable local `HostFingerprint`, compacted stored journal entries with their local indexes, `localJournalClock`, and `localJournalIndexWatermark`. The restored author must be the branch owner, the logical clock must cover every observed sequence, and the index watermark must cover every retained local index. Gaps are harmless.
 
 Restoration resumes previously emitted state. It MUST NOT classify the restored graph as an empty-to-restored transition and MUST NOT emit `add` for every restored materialization. The restored counters and cursor history are installed through the normal durable cutover, after which the database is reopened and passed through the migration gate.
 
-The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same writer/origin is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new origin. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
+The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable author fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions a fresh graph allocation fingerprint and the host's preassigned `localWriterId`/`JournalOriginId` mapping before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then joins other host clocks under ordinary synchronization rules without adopting their writer identities.
+If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions a fresh graph allocation fingerprint and the host's durable `HostFingerprint` and persistent `localJournalClock` before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their writer identities.
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 
@@ -203,42 +203,91 @@ After an initiated synchronization, Volodyslav attempts to reopen the local data
 
 ### 7.4 Existing-live controlled reset
 
-A reset-to-host synchronization applied to an established live database selects
-a snapshot's authoritative graph and installs it through a non-active target
-followed by cutover. The receiving host preserves its complete journal state:
-`JournalDomain`, `localWriterId`, `JournalOriginId`, `NotificationClock`,
-`DeliveryByIndex`, `DeliveryHead`, `lastLocalJournalIndex`, and physical gaps.
-The source contributes authoritative graph state only.
+Reset is an authoritative semantic mutation, not ordinary synchronization and
+not byte-for-byte restoration. It establishes a desired source semantic graph as
+a new reachable receiver state:
 
-The reset classifies `ResetActions` from `oldLocalGraph` to `replacementGraph`.
-Every exact action advances the receiving origin and append-or-replaces a local
-delivery. Graph replacement and notification coverage commit atomically before
-cutover. This transition is distinct from absent-state self-restoration in §4.2.
+1. snapshot the desired source semantic graph;
+2. preserve the receiver's durable `HostFingerprint`;
+3. import/join source immutable logical history normally, assigning fresh local
+   indexes only to entries unknown at the receiver;
+4. raise `localJournalClock` above every observed sequence;
+5. process the desired target in topological order and author a fresh receiver
+   `add` generation for every target-materialized semantic key, with every
+   sequence above the joined history and earlier reset entries;
+6. author a receiver `delete` above observed presence history for every historic
+   semantic key known to either graph/journal which the target wants absent;
+7. give new entries distinct local indexes, touch any changed key lacking fresh
+   coverage, and atomically install graph, journal, and allocator watermarks.
+
+Every target materialization is thus a new presence generation, whether the
+receiver was absent, held a different value, or already held the same value.
+Older add, edit, invalidate, and validate entries belong to losing generations
+and are inapplicable before value or freshness selection. Reset uses ordinary
+`JournalEntry` values, not a reset-specific record type.
+
+If reset changes a semantic value, the resulting `modifiedAt` is the real reset
+wall-clock value-change time and the establishing add's `time` is exactly that
+timestamp. If the receiver already has the same semantic value, administrative
+re-generation is not a value change: reset preserves that materialization's
+`modifiedAt` and uses the preserved timestamp as the new add's `time`. Reset
+never synthesizes a future timestamp to defeat clock skew; presence-generation
+ordering supplies its authority.
+
+For a dependency graph, reset authors generations in topological order. Roots
+retain freshness only when their desired graph evidence permits it. A derived
+cache cannot reuse source incoming validity proofs against newly regenerated
+input revisions: it is installed stale with no incoming proofs unless the reset
+transaction can validate a coherent proof against the exact newly established
+direct-input `ValueRevision`s. Structural edges still come from the fixed
+schema. Before cutover, reset validates every new generation reference, value
+event and timestamp, presence/freshness frontier, identifier lookup, dependency
+closure, freshness invariant, and validity edge against the complete resulting
+graph and journal. Any failure rejects the entire reset.
+
+There is no reset-specific cursor machinery. Trace: R is absent with delete 100,
+while source S desires value V from old add 50. Reset imports source history,
+then authors a new R add above all observed sequences with reset-time
+`modifiedAt`, installs V under that generation, and assigns the new add a fresh
+local index. The resulting graph/journal pair is reachable and the desired state
+wins normally.
+
+Clock-skew trace: generation G exists and B's edit `EB=(10,B)` for K has
+`generation=G`, `modifiedAt=200`, and value B. R has observed EB, contains B,
+and later resets to value A while R's monotone local clock reads 150. Reset
+authors fresh add generation `GR=(n,R)`, where `n>10`, with
+`GR.time=modifiedAt=150`. `presenceHead(K)=GR`, so EB is inapplicable before
+wall-time value comparison: A remains authoritative even though EB's timestamp
+is 200. If the target had instead remained B, GR would preserve
+`modifiedAt=200` and use `GR.time=200`; the new generation would still make the
+old history inapplicable without pretending that the equal value changed.
+
 After reset, the database is reopened through the migration gate.
 
 ### 7.5 Counter continuity during self-restoration
 
 A writer MUST never resume authoritative mutation with a local action sequence
-below a sequence it previously published under the same `JournalOriginId`.
+at or below a sequence it previously authored with the same `HostFingerprint`.
 
 ```text
 A previously published:
-    clock[K][OA][edit] = 10
+    JournalEntry(author=A, sequence=10, key=K, action=edit, generation=G)
 
 A loses its live database.
 
 A restores its own synchronized snapshot:
-    clock[K][OA][edit] = 10
+    JournalEntry(author=A, sequence=10, key=K, action=edit, generation=G)
 
 A edits K:
-    clock[K][OA][edit] = 11
+    localJournalClock advances to 11
+    JournalEntry(author=A, sequence=11, key=K, action=edit, generation=G)
 
 B previously observed 10:
-    join detects 11 > 10
-    B receives edit K
+    journal merge retains 11 over covered edit 10
+    B stores the unchanged logical entry with a fresh localIndex
 ```
 
-The rollback below is invalid because max join makes the new edit invisible:
+The rollback below is invalid because sequence reuse makes the new edit conflict with immutable history:
 
 ```text
 restore OA at sequence 0

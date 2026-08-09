@@ -1,79 +1,86 @@
 # Possible-change journal API
 
-## Surface
-
 ```text
 graph.possibleMaybeChanges({ since, to })
 baselinePossibleNodeChange()
-
-PossibleNodeChange {
-    nodeName
-    bindings
-    action
-    time
-}
+PossibleNodeChange { nodeName, bindings, action, time }
 ```
 
-`since` is a physical local cursor from a previous result or the baseline
-sentinel. `to` is a `NodeFilter`. A result means: **this exact kind of transition
-may have happened to this semantic node after the cursor.** It does not assert
-current graph state.
+A result means that this exact closed-classifier action may have happened to the
+semantic key after the cursor. False positives and collapse into a later
+covering possibility are allowed; action-specific false negatives are forbidden.
 
-Actions have only these meanings: absent-to-materialized `add`; materialized
-`ComputedValue` inequality `edit`; materialized-to-absent `delete`; fresh-to-stale
-`invalidate`; and stale-to-fresh `validate`. False positives and collapse of
-repeated identical actions are permitted; false negatives on these dimensions
-are not.
+## Cursor and query
 
-Every `PossibleNodeChange` returned by `possibleMaybeChanges` carries a private
-same-process cursor position corresponding to its local `JournalIndex`. The
-private cursor position:
+`since` is an opaque same-process cursor conceptually
+`(localIndex,actionOrdinal)`, where the ordinal uses the fixed order add, edit,
+delete, invalidate, validate. It is neither a `JournalEntryId` nor serializable
+or user-constructible. The baseline is before every pair.
 
-- is not one of the public data fields;
-- is not directly readable as a raw journal index;
-- is not user-constructible from `nodeName`, `bindings`, `action`, and `time`;
-- is accepted internally when that returned token is later passed as `since`;
-- is valid only within the documented same-process cursor domain; and
-- has no persistence or serialization guarantee.
+This cursor coordinate is `StoredJournalEntry.localIndex`, allocated from the
+receiver's `localJournalIndexWatermark`; it is not the replicated
+`JournalEntry.sequence` allocated from `localJournalClock`. Sequence travels
+with immutable logical history, whereas local index never leaves its receiver
+and may move when that receiver touches the entry.
 
-`baselinePossibleNodeChange()` similarly returns an opaque sentinel strictly
-before every real local journal position. The implementation representation is
-deliberately unspecified. It may use private fields, symbols, nominal branding,
-object identity plus private lookup, or another mechanism satisfying this
-contract. A raw numeric `JournalIndex` is not part of the public API.
+A query retains one fixed committed active snapshot, captures
+`localJournalIndexWatermark=H`, considers stored entries after `since` and at or
+before H, expands them, applies `NodeFilter`, and returns deterministic
+`(localIndex,actionOrdinal)` order. An implementation may scan all `O(nr)`
+canonical entries; any secondary local index must be reconstructible from them.
+Cutover cannot straddle snapshot selection.
 
-## Fixed-snapshot query
-
-A query performs:
+For every qualifying stored entry E:
 
 ```text
-1. acquire shared garden access and select one active graph replica
-2. open one fixed committed snapshot of that replica's journal
-3. capture watermark H from the snapshot
-4. scan DeliveryByIndex over (since,H]
-5. skip absent physical indices
-6. apply NodeFilter
-7. return records in ascending localIndex order
+PossibleActions(E) = { add, edit, delete, invalidate, validate }
+PossibleNodeChange.time = E.entry.time
 ```
 
-Selection, snapshot creation, and watermark capture cannot straddle replica
-cutover. The filter affects returned nodes, not cursor allocation. Since there is one record per key/action, the scan returns that physical
-record directly after filtering.
+All five records use E's semantic key and immutable logical time. The local
+index answers when this possibility became relevant to this receiver; `time`
+answers when the underlying logical event occurred. There is no receiver-local
+event object, action mask, cause field, or transition timestamp.
 
-`time` is the delivery record time: operation time for a local mutation; the
-selected advanced remote component's time for remote progress; or local cutover
-time for a graph transition created locally by synchronization.
+The action ordinal lets a client advance record-by-record without skipping the
+remaining projections at one index:
 
-## Same-process cursor domain
+```text
+(51,add), (51,edit), (51,delete), (51,invalidate), (51,validate), (52,add)
+```
 
-Inactive construction copies `DeliveryByIndex`, `DeliveryHead`, and watermark
-exactly from one fixed active snapshot. Gaps remain gaps, new indices are above
-the copied watermark, and remote physical history is not imported. Consequently
-a cursor issued before cutover remains a valid position afterward.
+## Installation and touch traces
 
-### Cutover trace
+* **Unknown history:** B first learns remote entry E. B stores E unchanged and
+  assigns a fresh local index; all five possibilities become observable.
+* **Known witness touched:** synchronization changes key K using history already
+  known by B. B updates only `notificationWitness(K).localIndex`; its logical
+  entry remains identical and all five possibilities cover the actual action.
+* **Settled no-op:** receiving an already-known entry with no graph or compaction
+  change neither touches it nor advances the watermark.
 
-With active watermark 100 and retained indices `{42,88}`, the inactive replica
-starts with the same indices, heads, and watermark. If synchronization emits a
-record, it receives index 101 or greater. A client cursor at 88 scans the same
-local domain after cutover and can observe the new covering record.
+## Cursor-coverage theorem
+
+For every successful transaction T and key K with at least one actual closed-
+classifier transition, either T installs/authors an unknown entry for K or it
+touches the greatest retained `JournalEntryId` for K,
+`notificationWitness(K)`. Do this once per changed key, not once per action. If
+an entry for K already receives a fresh index in T, no extra touch is needed.
+Graph changes and index updates commit atomically.
+
+For any cursor C issued before T:
+
+```text
+C <= oldWatermark < witness.localIndex
+```
+
+A later query therefore observes the witness, whose five projections include
+the exact action. A later touch only moves coverage forward. If compaction
+removes the witness, compaction touches another retained same-key witness above
+its old watermark. Induction over transactions proves no action-specific false
+negative. Touching one entry a million times retains one logical entry and one
+scalar index.
+
+Inactive construction copies every retained local index and the watermark from
+one fixed receiver snapshot before allocating above it. Thus same-process cursors
+remain comparable across cutover; remote indexes never participate.

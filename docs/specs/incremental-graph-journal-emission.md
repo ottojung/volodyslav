@@ -1,86 +1,111 @@
-# Notification journal emission
+# IncrementalGraph journal emission
 
-## Transition classifier
+## Atomic local classification
 
-For every successful local transaction, compare authoritative committed states:
+A successful normal graph transaction compares its committed before and after
+states and applies the closed classifier in the journal types specification.
+Intermediate states do not emit. The graph mutation and every locally authored
+entry commit atomically; a reachable committed snapshot never contains one
+without the other.
 
-```text
-before = graph state before the transaction
-after  = graph state after the transaction
-ActionsByKey = classifyGraphTransition(before, after)
-```
+Before authoring, reserve one sequence per entry from the dedicated host-local
+journal-clock allocator. The allocator first observes the maximum sequence in
+the transaction's installed journal, then increments. Multiple entries receive
+distinct increasing sequences. Aborted reservations may leave gaps but are
+never reused; overflow is fatal.
 
-For each semantic key, classification is exhaustive and exact:
+For `add` and `edit`, `JournalEntry.time` MUST equal the resulting graph
+materialization's exact `timestamps[key].modifiedAt`. The mutation obtains that
+timestamp once and uses the same value for both records; two independent
+`now()` reads are forbidden. For delete, invalidate, and validate, `time` is the
+actual transition time.
 
-1. absent to materialized: `add` only;
-2. materialized to absent: `delete` only;
-3. both materialized: emit `edit` iff values differ under normative
-   `ComputedValue` equality; independently emit `invalidate` for fresh-to-stale
-   or `validate` for stale-to-fresh.
+Before changing an already-materialized value, invalidating, or revalidating,
+derive the materialization's exact establishing add ID G from the
+pre-transaction graph/journal snapshot. An emitted edit, invalidate, or validate
+MUST carry `generation=G`. If G cannot be resolved, the transaction is an
+invariant violation and cannot commit. A newly materialized value emits add,
+which itself establishes G and carries no generation. Delete also carries no
+generation. `Unchanged` still emits no edit.
 
-No net change in materialization, value, or freshness emits nothing. Intermediate
-states inside the atomic transaction are not committed transitions.
-
-## Clock advancement
-
-For each `(key, action)` in `ActionsByKey`:
-
-```text
-component = clock[key][localJournalOrigin][action]
-newComponent = {
-    sequence: component.sequence + 1
-    time: operation time
-}
-```
-
-The durable transaction-finalization boundary serializes advancement. One local
-origin cannot publish different components with the same sequence at a
-coordinate. Increment at `uint64` maximum is a fatal capacity failure; wrapping
-is forbidden.
-
-## Append or replace
-
-Publishing `(K,A)` is mandatory online replacement:
-
-```text
-1. previousIndex = DeliveryHead[K,A], if present
-2. allocate localIndex > lastLocalJournalIndex
-3. in the transaction's atomic LevelDB batch:
-   delete DeliveryByIndex[previousIndex], if present
-   put DeliveryByIndex[localIndex] = DeliveryRecord
-   put DeliveryHead[K,A] = localIndex
-   set lastLocalJournalIndex = localIndex
-```
-
-Indices are never reused and the watermark never decreases. The graph mutation,
-all clock advances, all replacements, all heads, and the watermark commit in one
-durable batch. One transaction may cover many keys and actions.
-
-There is no operation ID, journal transaction, batch ID, event envelope, or
-causal metadata.
-
-## Normative local traces
-
-| Before | After | Notification |
+| Before | After | Entries |
 |---|---|---|
-| absent | present, fresh | `add` |
-| absent | present, stale | `add` only |
-| present value A | present value B, same freshness | `edit` |
-| present value A | recomputed A, same freshness | none |
-| present, any freshness | absent | `delete` only |
-| present fresh | present stale, same value | `invalidate` |
-| present stale | present stale after repeated invalidation | none |
-| present stale | present fresh, same value | `validate` |
-| present fresh | validation work, remains fresh | none |
-| A/fresh | B/stale | `edit`, `invalidate` |
-| A/stale | B/fresh | `edit`, `validate` |
+| absent | materialized | `add` |
+| value A | unequal value B | `edit` |
+| value A | `Unchanged` value A | none |
+| materialized | absent | `delete` |
+| fresh | stale | `invalidate` |
+| stale | fresh | `validate` |
 
-Identifier-only, timestamp-only, validity-edge, proof, dependency metadata, and
-representation-only changes emit nothing when the three observable dimensions
-are unchanged.
+Identifier-only, timestamp-only, and validity-edge-only changes emit nothing.
 
-## Local no-false-negatives argument
+## Synchronization emission
 
-A committed exact transition and its clock advancement and delivery replacement
-share one atomic batch. A committed transition therefore cannot exist without a
-covering record and synchronized progress. Aborted transactions expose neither.
+Synchronization invokes no computor and therefore cannot invent a semantic
+`ComputedValue`. Copying or selecting an existing value imports its originating
+`add`/`edit` history unchanged and MUST NOT author an `add` or `edit`. An unknown
+import receives a receiver-local index on its single stored entry.
+
+Synchronization can derive genuinely new conservative facts:
+
+* deleting incompatible caches or a joined generation for which no valid source
+  carries usable bytes; and
+* invalidating a cache whose freshness proof cannot safely survive.
+
+For a newly caused transition it authors `delete` or `invalidate`. Each such
+sequence is greater than every entry observed by that synchronization operation,
+and the graph transition, joined journal, stored entry/index, and watermarks are
+installed atomically. An already known covering destructive entry is propagated,
+not re-authored. Synchronization never synthesizes `validate`; only normal graph
+revalidation with coherent validity evidence may do that.
+
+A synchronization-authored invalidate sets `generation` to the final joined add
+generation whose selected materialization it demotes. It cannot be emitted when
+final presence is absent or the add generation is unresolved.
+
+Logical emission and receiver-local cursor indexing are one stored-journal
+operation. Every newly authored entry receives a distinct increasing
+`localIndex` above the pre-transaction `localJournalIndexWatermark`. Every newly
+installed remote entry does likewise while retaining immutable logical contents.
+Receiving an already-known entry alone does nothing.
+
+For synchronization, compute the compacted logical result and all graph
+transitions first. For each changed semantic key K, a newly installed/authored
+entry for K supplies fresh cursor coverage; otherwise touch the greatest retained
+`notificationWitness(K)` exactly once. This includes every structurally deleted
+or transitively invalidated dependent whose graph state changed. The graph,
+logical entries, local-index changes, and both allocator watermarks commit
+atomically.
+
+Ordinary mutations author exact classifier entries. Several entries for one key
+receive distinct local indexes, and no touch is needed unless some real
+transition lacks a freshly indexed entry. `Unchanged` remains silent.
+
+## Controlled-reset re-generation
+
+Controlled reset is an administrative exception to mechanical application of
+the ordinary classifier. After joining all receiver and source history, it
+authors a fresh receiver `add` generation for every key that the desired target
+materializes, even for a present-to-present or equal-value replacement. Each
+such add is allocated after all history observed by reset. Every historic key
+known to the joined graph/journal which the target wants absent receives a
+receiver `delete` after the observed presence history.
+
+When the desired value differs from the receiver's pre-reset value, reset is a
+real value change: the resulting `modifiedAt` and `add.time` are the same real
+reset wall-clock instant. When the values are semantically equal, re-generation
+does not constitute a value change: reset preserves the materialization's
+existing `modifiedAt` and uses exactly that timestamp as `add.time`. It never
+manufactures a future timestamp. In both cases the fresh add generation, rather
+than wall-time comparison with older generations, makes pre-reset edits and
+freshness events inapplicable.
+
+A settled equivalent synchronization authors no entry, learns no entry, touches
+nothing, changes no graph, and advances neither watermark.
+
+## Reachability invariant
+
+All correctness arguments range over snapshots reachable through atomic normal
+mutations, migrations that preserve these invariants, and the synchronization
+protocol. Arbitrary mismatched graph/journal pairs are corrupt inputs, not
+ordinary conflicts.

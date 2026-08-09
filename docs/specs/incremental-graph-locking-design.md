@@ -234,107 +234,62 @@ compatibility rules.
 
 ## Journal integration without weakening graph locking
 
-The journal rewrite does not remove or weaken the observatory locking model.
-Each replica physically owns its authoritative graph and notification journal,
-but notifications add work only to existing commit and lifecycle boundaries.
+The observatory model is unchanged. Computor execution remains outside the
+short darkroom; neither journal merge nor clock allocation broadens it.
 
-### Ordinary graph transaction
+Each writable host additionally has one dedicated **journal clock mutex**. It
+serializes only the persistent `localJournalClock` watermark and reservations.
+There is no per-node synchronization counter. A reservation may commit before a
+graph transaction and leave a gap if that transaction aborts; it is never
+reused.
 
-During the existing per-replica darkroom/finalization boundary, one durable
-batch contains all applicable writes:
+### Lock order
 
-```text
-authoritative graph mutations
-NotificationClock increments
-DeliveryByIndex delete/put operations
-DeliveryHead updates
-lastLocalJournalIndex update
-```
-
-Writable open and finalization require
-`JournalDomain.writerOrigins[localWriterId] == localJournalOrigin`; a missing
-writer/origin or mismatched assignment prevents graph mutation from committing.
-
-For every exact before/after action, delivery replacement allocates a fresh
-index, deletes exactly the old headed record if present, puts the new record,
-updates the head, and advances the watermark. A commit publishes all graph
-changes and notification coverage or neither. No committed materialization,
-value, or freshness transition lacks a covering notification.
-
-Dependency pulls and computor execution remain in the telescope transaction
-body outside the darkroom. The darkroom continues to serialize only short
-per-replica finalization, including graph writes and their journal coverage.
-
-### Garden access and fixed snapshots
-
-`enterGarden` is shared access that pins selection of an active replica long
-enough to retain a fixed committed snapshot. `closeGarden` is exclusive access
-for the active-pointer switch. A safely retained snapshot remains readable
-after `enterGarden` is released.
-
-`possibleMaybeChanges` follows exactly:
+The only permitted nesting order is:
 
 ```text
-acquire enterGarden
-select active replica
-open fixed committed journal snapshot
-capture watermark in that snapshot
-release enterGarden when the snapshot is safely retained
+dome mode (daytime/nighttime/holiday)
+  -> telescope, when pull observes a concrete node
+    -> journal clock mutex, only when an entry must be authored
+      -> darkroom/replica commit mutex
+
+release construction locks
+  -> garden close for the final active-pointer switch
 ```
 
-It scans the retained snapshot through that watermark. It does not acquire
-daytime, nighttime, a telescope, or a darkroom unless the storage engine is
-shown to require an additional lock to retain a committed snapshot. The fixed
-snapshot observes either side of an atomic append-or-replace batch, never a
-mixture.
+`enterGarden` may be used under holiday to retain a fixed source snapshot, but
+must be released before inactive construction. Code never requests
+`closeGarden` while holding `enterGarden`, telescope, journal-clock, or darkroom.
+No path acquires telescope or dome while holding the journal-clock mutex, and no
+path acquires that mutex while holding darkroom. These rules prevent cycles.
 
-Synchronization and migration capture their lifecycle source as:
+Normal mutation classifies its graph transition, reserves the necessary entry
+sequences, and commits graph writes, immutable `JournalEntry` values, and local
+index allocations/touches in one short darkroom batch. A transaction MUST read
+the current durable `localJournalIndexWatermark`, allocate every required fresh
+index monotonically, and update the watermark while holding the per-replica
+darkroom/commit mutex. Reading the watermark outside the darkroom and later
+committing a precomputed successor is forbidden: overlapping different-node
+pulls could otherwise choose the same index. No separate local-index mutex is
+needed.
 
-```text
-holiday
-    -> enterGarden
-    -> fixed graph+journal source snapshot
-    -> release enterGarden
-```
+Conceptually, work that does not require final durable state may be prepared
+outside the darkroom. After acquiring it, the transaction reads the committed
+watermark, assigns `watermark+1`, `watermark+2`, and so on, writes graph changes,
+logical entries, stored-entry index changes, and the final watermark atomically,
+then releases the darkroom. Aborted construction cannot expose any advancement.
+Synchronization first takes fixed
+source snapshots, joins logical entries, and raises the allocator watermark;
+only if its deterministic decision requires a new delete/invalidate does it
+reserve a sequence. The inactive graph and exactly the journal reconciled with
+it become durable before garden cutover.
 
-That fixed snapshot contains `JournalDomain`, `localWriterId`,
-`NotificationClock`, `DeliveryByIndex`, `DeliveryHead`, `JournalOriginId`, and
-`lastLocalJournalIndex`. Inactive targets copy all identity and cursor fields
-before applying their operation-specific graph and notification changes.
+An inactive synchronization or migration target may allocate privately, but
+only relative to the exact receiver watermark copied into that destination and
+under the destination's serialization boundary. No two builders may publish
+indexes into the same destination without that uniqueness boundary.
 
-Inactive construction proceeds from that snapshot without garden access. The
-validated switch is:
-
-```text
-holiday
-    -> destination fully constructed, durable, and validated
-    -> closeGarden
-    -> active-pointer switch
-    -> release closeGarden
-    -> release holiday
-```
-
-Code must never request `closeGarden` while holding `enterGarden`. Holiday
-continues to exclude all ordinary daytime and nighttime graph activity, while
-the garden coordinates replica lifetime and pointer visibility.
-
-### Complete lock-order table
-
-| Operation | Required acquisition order | Compatibility and boundary |
-|---|---|---|
-| ordinary pull | nighttime dome → telescope for each recursively pulled node → that transaction's per-replica darkroom only at finalization | Same-node pulls serialize; different-node pulls overlap; dependency pulls commit before the parent computor; no daytime overlap. |
-| ordinary invalidate | daytime dome → per-replica darkroom only at finalization | Invalidations overlap one another and inspections; the durable graph+journal batch is atomic. |
-| inspection | daytime dome; `listMaterializedNodes` additionally takes the per-replica darkroom around its committed lookup read | Inspections overlap invalidations; no telescope is taken. |
-| journal query | enterGarden → select replica → retain fixed journal snapshot and watermark → release enterGarden | No dome, telescope, or darkroom absent a demonstrated storage requirement. |
-| synchronization source capture | HOLIDAY_GATE_KEY → holiday dome → enterGarden → fixed graph+journal snapshot → release enterGarden | Construction uses the inactive replica; no computor runs. |
-| migration source capture | HOLIDAY_GATE_KEY → holiday dome → enterGarden → fixed graph+journal snapshot → release enterGarden | Migration logic uses the retained snapshot and inactive replica. |
-| cutover | retained holiday (without enterGarden), after durable construction and validation → closeGarden → switch active pointer → release closeGarden → release holiday | Never upgrade enterGarden to closeGarden; failure leaves the active pointer unchanged. |
-
-The table supplements the telescope recursion and deadlock discipline above.
-No operation may acquire daytime while holding a telescope, and
-`withoutMutex` remains prohibited. Commit finalization remains per-replica;
-different replica darkrooms are independent.
-
-Graph merge, computors, and long-running destination validation never move into
-an ordinary active-replica darkroom. Destination graph and journal updates are
-already durable when `closeGarden` publishes the pointer.
+`possibleMaybeChanges()` uses garden access to retain one fixed committed
+snapshot and then scans stored entries by local index through the captured index
+watermark. It needs no telescope, dome phase beyond ordinary inspection access,
+or journal-clock mutex.

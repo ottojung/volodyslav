@@ -1,152 +1,207 @@
-# Notification journal types
+# IncrementalGraph journal types
 
-## Closed action set
+## Logical replicated journal
+
+The journal is notification and history infrastructure. It is not authoritative
+graph state: current values, materialization, freshness, timestamps, and
+validity come from the IncrementalGraph.
 
 ```text
-JournalAction = "add" | "edit" | "delete" | "invalidate" | "validate"
+JournalEntry =
+    AddJournalEntry
+  | DeleteJournalEntry
+  | EditJournalEntry
+  | InvalidateJournalEntry
+  | ValidateJournalEntry
+
+JournalEntryBase = {
+    author: HostFingerprint
+    sequence: uint64
+    key: NodeKey
+    time: UnixTimestamp
+}
+
+AddJournalEntry = JournalEntryBase & { action: "add" }
+DeleteJournalEntry = JournalEntryBase & { action: "delete" }
+
+GenerationScopedJournalEntryBase = JournalEntryBase & {
+    generation: JournalEntryId
+}
+
+EditJournalEntry =
+    GenerationScopedJournalEntryBase & { action: "edit" }
+InvalidateJournalEntry =
+    GenerationScopedJournalEntryBase & { action: "invalidate" }
+ValidateJournalEntry =
+    GenerationScopedJournalEntryBase & { action: "validate" }
+
+JournalEntryId(E) = (E.sequence, E.author)
 ```
 
-The set is closed and has no generic `change` action. Its exact classifier is:
+Entry IDs are ordered lexicographically, sequence first and author second.
+`HostFingerprint` is the durable writer fingerprint established by the host
+lifecycle. It is not a hostname. `NodeIdentifier` already embeds its allocating
+host fingerprint and receives no additional discriminator.
+
+There is no separate journal membership domain. Supported host creation
+allocates one globally unique durable `HostFingerprint`; restoration may resume
+it only from that host's current synchronized state. Reset, migration, and
+copying never transfer ownership. Synchronization validates that every author
+is a well-formed supported host fingerprint and that one `JournalEntryId` has only
+one immutable content. Duplicate ownership or rollback under the same author is
+unsupported and prevents writable open.
+
+The journal has no fixed closed writer-membership domain. A supported new host
+may introduce a new durable `HostFingerprint`, so storage is not bounded
+independently of the number of durable authors represented in retained history.
+
+Entries are immutable. A remotely learned entry is imported byte-for-byte with
+the same author and sequence. Learning an entry never re-authors it.
+
+The union makes generation membership structural rather than optional.
+`generation` is the exact `JournalEntryId` of the same-key `AddJournalEntry`
+which established the materialization incarnation being edited, invalidated, or
+validated. `AddJournalEntry` and `DeleteJournalEntry` have no `generation`
+field; each of the other three variants requires it. This reference is journal
+history only and is never stored on a graph materialization.
+
+For example, if `G1=(10,A)` is an add for K, every edit, invalidate, and validate
+for that incarnation contains `generation=(10,A)`, while a delete for K has no
+generation field. After a delete and later add `G2=(50,B)`, subsequent scoped
+events for the new incarnation contain `generation=(50,B)`. Events scoped to G1
+are inapplicable to G2.
+
+Action variant and authorship context are orthogonal. Ordinary mutation,
+migration, synchronization-authored destruction, and controlled reset all use
+these same variants without an origin discriminator. In particular,
+synchronization may author `DeleteJournalEntry` or an
+`InvalidateJournalEntry` carrying its required generation; normal
+synchronization never authors add, edit, or validate, while reset may author
+fresh add generations.
+
+Journal validation rejects an entry with action edit, invalidate, or validate
+unless its generation resolves to a valid same-key add in the merge input.
+Compaction retains an add-reference witness for every retained generation-scoped
+notification. It may discard additional value/freshness authority for a losing
+generation only after proving that the generation can never again become the
+winning presence generation, as specified by the compaction rules.
+
+## Closed action classifier
 
 ```text
 add        iff absent -> materialized
-edit       iff materialized -> materialized and before.value != after.value
-              under normative ComputedValue equality
+edit       iff materialized -> materialized and ComputedValue changes
 delete     iff materialized -> absent
-invalidate iff materialized -> materialized and
-              up-to-date -> potentially-outdated
-validate   iff materialized -> materialized and
-              potentially-outdated -> up-to-date
+invalidate iff up-to-date -> potentially-outdated
+validate   iff potentially-outdated -> up-to-date
 ```
 
-Add/delete never imply a freshness action. Edit never includes identifiers,
-timestamps, validity relations, freshness, dependency metadata, representation,
-or encoding when `ComputedValue` is equal. Independent value and freshness
-transitions can emit two actions.
+There is no generic `change`. Identifier, timestamp, validity-only, dependency,
+or representation changes are not edits. `Unchanged` emits no edit. Value and
+freshness transitions may emit two entries when both classifiers apply.
 
-## Stable writer ownership and synchronized clock
+This classifier governs ordinary graph mutation and synchronization. Controlled
+reset is the sole administrative re-generation operation: it emits `add` for
+every target-materialized key, including a key that was already materialized,
+and `delete` for every known historic key the target leaves absent. These
+entries deliberately establish fresh presence frontiers. Reset uses the same
+`JournalEntry` shape; there is no reset-specific action or record type.
 
-`JournalWriterId` is the durable identity of one independently writable host.
-It MUST be a stable validated replica identity whose lifecycle and uniqueness
-guarantees cover restart, reset, migration, and replica cutover. An unvalidated
-transient hostname is not sufficient. A deployment may use an existing validated
-replica fingerprint only if it has those guarantees; otherwise it provisions a
-separate durable writer ID.
+## Host-local journal clock
 
-`JournalOriginId` is the durable counter namespace assigned to one writer.
-Ownership is authoritative only through the finite immutable domain mapping:
+Each writable host owns one persistent `localJournalClock: uint64`, protected
+by a dedicated allocator mutex. It is a journal-only Lamport-style clock, not a
+graph clock and not a per-node counter.
+
+1. Sequences are never reused, including after an aborted reservation.
+2. Importing or observing entries raises the allocator watermark to at least
+   their maximum sequence.
+3. Allocation increments the watermark and uses the result.
+4. Consequently, if `E2` is authored after observing `E1`, then
+   `E2.sequence > E1.sequence`.
+5. Concurrent authors may use the same sequence; author breaks the tie.
+6. Overflow is fatal and wrapping is forbidden.
+
+## Stored entries and receiver-local cursor metadata
+
+Each retained logical entry is stored exactly once:
 
 ```text
-JournalDomain = {
-    domainId: JournalDomainId
-    writerOrigins: Map<JournalWriterId, JournalOriginId>
+StoredJournalEntry = {
+    entry: JournalEntry
+    localIndex: uint64
 }
 
-AllowedJournalOrigins = set(JournalDomain.writerOrigins.values())
+journal.entries: Map<JournalEntryId,StoredJournalEntry>
+localJournalIndexWatermark: uint64
 ```
 
-All writer IDs are unique, all origin IDs are unique, no two writers map to one
-origin, and every permitted writable host has exactly one mapping. The derived
-`AllowedJournalOrigins` is useful for clock validation but is not the ownership
-authority. Dynamic writer membership requires a separately specified domain
-migration.
+`JournalEntry.sequence` is the replicated logical event coordinate. The author
+allocates it from `localJournalClock`; it travels unchanged with the entry and,
+together with `author`, forms `JournalEntryId`.
 
-Every writable replica carries both `localWriterId` and `localJournalOrigin`.
-Writable open and transaction finalization require:
+`StoredJournalEntry.localIndex` is the receiver-local
+`possibleMaybeChanges()` position. Its receiver allocates it from
+`localJournalIndexWatermark`; it never replicates and may change when the
+existing stored entry is touched. It is not part of `JournalEntry`,
+`JournalEntryId`, replicated serialization, logical equality, Lamport ordering,
+provenance, graph revision identity, compaction selection, or synchronization.
+Thus each author uses `localJournalClock` as the allocator/watermark for its
+replicated logical sequence coordinates, while `localJournalIndexWatermark` is
+the allocator/watermark for a receiver's notification positions. Concurrent
+authors may allocate the same numeric sequence;
+`JournalEntryId=(sequence,author)` is the globally comparable identity. Sequence
+and local index are not competing logical journal coordinates. Both overflow
+fatally, and neither allocator reuses a value within its applicable domain.
+
+A previously unknown logical entry installed locally keeps its immutable contents
+byte-for-byte and receives:
 
 ```text
-JournalDomain.writerOrigins[localWriterId] == localJournalOrigin
+localJournalIndexWatermark += 1
+stored.localIndex = localJournalIndexWatermark
 ```
 
-A missing domain, writer, or origin; a mismatched assignment; or duplicate
-ownership prevents authoritative mutation. A host advances only its assigned
-origin and retains but never advances other origins.
+A sender's index is never imported. Receiving an already-known entry does not
+move it. `touch(E)` increments the local index watermark and updates only E's
+single stored `localIndex`; it never deletes, duplicates, replaces, or re-authors
+E's logical contents. A reconstructible secondary index is permitted only as a
+local optimization and has no synchronization meaning.
+
+Every retained entry has exactly one local index; retained indexes are unique;
+the watermark covers every retained index; gaps are harmless; and indexes are
+never reused in one receiver cursor domain. Index allocation/update commits
+atomically with the graph and journal transaction which requires it. Active
+transactions read the committed index watermark and allocate/update indexes
+while holding the per-replica darkroom commit mutex, never before acquiring it.
+
+## Persisted graph boundary
+
+Materializations remain exactly the graph concepts `values`, `freshness`, real
+wall-clock `timestamps { createdAt, modifiedAt }`, identifier lookup,
+`NodeIdentifier`, and `valid`. They contain no journal entry ID, virtual time,
+revision stamp, support vector, epoch, vector clock, or synchronization field.
+Synchronization never advances `modifiedAt` merely because bytes were copied.
+
+For storage analysis:
 
 ```text
-NotificationClock =
-    Map<NodeKey, Map<JournalOriginId, ActionClock>>
-
-ActionClock = {
-    add:        NotificationComponent
-    edit:       NotificationComponent
-    delete:     NotificationComponent
-    invalidate: NotificationComponent
-    validate:   NotificationComponent
-}
-
-NotificationComponent = {
-    sequence: uint64
-    time: UnixTimestamp
-}
+n = number of current or historic semantic node keys represented by the
+    database/journal
+r = number of distinct durable authors represented by retained journal history
+a = 5 journal actions, a fixed constant
 ```
 
-An absent component has sequence zero. The action is its fixed map coordinate,
-not mutable component metadata. A component's sequence is notification progress
-only: it is not a graph revision/version, causal context, operation or
-transaction identifier, or synchronization generation. Equal nonzero sequence
-at the same coordinate has exactly one valid time. Overflow is fatal and never
-wraps.
+The fixed finite schema bounds node arity, and the maximum serialized size of a
+`ConstValue` is treated as a fixed system constant. Consequently a `NodeKey`,
+including its bounded-arity binding values, has constant size in this analysis.
 
-`JournalWriterId` is host identity established by a supported lifecycle
-transition outside arbitrary replica copying. Replica-local storage carries that
-already-established identity through restart, migration, existing-live reset,
-and same-host active/inactive cutover.
-
-A writer identity is established by a supported host lifecycle transition.
-Possession of a copied replica containing that identity does not establish
-ownership. Raw cross-host copying of a live database is outside the supported
-lifecycle, and the journal protocol does not make it safe. Merely replacing the
-journal writer/origin pair would also leave copied graph allocation and allocator
-namespaces unsafe.
-
-Absent-state self-restoration is different: it restores this same writer's
-current synchronized `JournalDomain`, identity, clock, delivery state, and graph.
-It must continue all previously published local-origin sequences and must not
-classify restoration as new graph actions.
-
-## Local delivery types and cursors
-
-```text
-DeliveryRecord = {
-    localIndex: JournalIndex
-    key: NodeKey
-    action: JournalAction
-    time: UnixTimestamp
-}
-
-DeliveryByIndex = Map<JournalIndex, DeliveryRecord>
-DeliveryHead = Map<(NodeKey, JournalAction), JournalIndex>
-```
-
-`JournalIndex` is a monotonically allocated physical token in one process-local
-cursor domain. `lastLocalJournalIndex` is its never-decreasing watermark. Every
-returned `PossibleNodeChange` privately carries the position of its real local
-index, and `baselinePossibleNodeChange()` returns an opaque sentinel strictly
-before all real local positions. Neither token exposes a raw index as a public
-field or permits construction from the public change fields. Tokens are
-accepted internally as `since`, are valid only in the documented same-process
-domain, and have no persistence or serialization guarantee. Their private
-representation is deliberately unspecified, and a raw numeric `JournalIndex`
-is not part of the public API. Tokens address local physical delivery progress,
-not synchronized clock positions or graph versions. Sparse indices are valid
-because replacement deletes old records but never reuses their indices.
-
-`DeliveryHead[K,A]`, when present, points to the sole retained record for that
-coordinate. `DeliveryRecord` contains no graph values, identifiers, timestamps
-other than notification time, validity data, proofs, or graph assertions.
-
-## Storage bound
-
-Let `n` be current plus historic semantic keys, `a = 5`, and
-`r = |set(writerOrigins.values())|`, a fixed domain constant.
-
-```text
-NotificationClock: at most n × r × a components
-DeliveryHead:       at most n × a entries
-DeliveryByIndex:    at most n × a records
-total:              O(n)
-```
-
-Domain metadata, local origin, and the watermark add constant state. The
-protocol rejects unbounded or unknown origins rather than admitting them.
-Values and proofs are not stored, so their size cannot affect journal size.
+The logical storage bound is `O(nr)`: compaction retains constant-many entries
+per relevant `(author,key,action)` coordinate plus constant-many winning-
+generation value/freshness and add-reference witnesses. Each entry stores one
+scalar local index; touches create no records. Operation count, synchronization
+count, database age, historic generation count, and touch count add no unbounded
+multiplicative term, and the same bound applies to any reconstructible secondary
+index. Entries contain no `ComputedValue`, support/provenance vector, or validity
+proof. Because author membership is open, no writer-independent `O(n)` bound is
+promised.
