@@ -239,7 +239,11 @@ retain freshness only when their desired graph evidence permits it. A derived
 cache cannot reuse source incoming validity proofs against newly regenerated
 input revisions: it is installed stale with no incoming proofs unless the reset
 transaction can validate a coherent proof against the exact newly established
-direct-input `ValueRevision`s. Structural edges still come from the fixed
+direct-input `ValueRevision`s. Every such hard-invalidated derived cache also
+receives an invalidate scoped to its newly authored add generation and allocated
+after all history observed by reset; the barrier commits atomically with reset
+state and local cursor metadata. Thus regeneration cannot create a must-recompute
+cache represented only by an add. Structural edges still come from the fixed
 schema. Before cutover, reset validates every new generation reference, value
 event and timestamp, presence/freshness frontier, identifier lookup, dependency
 closure, freshness invariant, and validity edge against the complete resulting

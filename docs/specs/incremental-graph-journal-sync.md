@@ -10,9 +10,7 @@ J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
 ```
 
 Inputs must have the same schema, valid durable authors, valid actions and keys,
-and unique content for every `JournalEntryId`. Every edit/invalidate/validate
-must carry a generation resolving to a valid same-key add in the validated merge
-input. Two entries
+and unique content for every `JournalEntryId`. Every edit/invalidate/validate must carry a generation resolving to a valid same-key add in the validated merge input. Every validation context coordinate `A -> I` must resolve I in that input; I must be a same-key, same-generation invalidate authored by A, and `I.sequence < V.sequence`. For every two validations V1,V2 with the same author, key, and generation and `V1.sequence < V2.sequence`, V2 must contain an equal-or-later same-author invalidate reference for every coordinate in V1. It may add or advance coordinates, but never forget or move one backward. Journals violating either causal-reference rule are rejected atomically before merge or compaction. Two entries
 with one ID but different content are corruption and reject the operation
 atomically and symmetrically. Remote entries never transfer author ownership.
 
@@ -100,26 +98,16 @@ journal-only provenance.
 ```text
 presenceHead(x) = greatest add/delete entry by JournalEntryId
 generation(x)   = presenceHead(x) when its action is add
-freshnessHead(x,G) = greatest invalidate/validate entry by JournalEntryId
-                     whose generation == G
+invalidateFrontier(x,G)[A] = greatest invalidate authored by A whose generation == G
+covers(V,I) iff V.key == I.key && V.generation == I.generation &&
+    V.clearsInvalidates[I.author] names I or a later same-author invalidate
+effectiveValidate(V,x,G) iff V is scoped to x,G and
+    V individually covers every element of invalidateFrontier(x,G)
 ```
 
-A delete head bars lower-ordered adds. Any greater add starts the winning
-generation, whether causally later or concurrent with unrelated higher Lamport
-history. For winning add G, only `freshnessHead(x,G)` has
-freshness authority. Its invalidate bars older proofs for G; its validate
-permits freshness only when current graph validity evidence is coherent. With no
-entry scoped to G, the generation's initial graph freshness applies. An entry
-scoped to an older or losing generation has no authority over G regardless of
-its larger sequence or `JournalEntryId`.
+A delete head bars lower-ordered adds. Any greater add starts the winning generation, whether causally later or concurrent with unrelated higher Lamport history. For winning add G, each author's frontier invalidate is an independent barrier. One applicable validation permits journal freshness only when it individually covers the entire joined frontier; several partial validations MUST NOT be combined. With no invalidates scoped to G, the generation's initial graph freshness applies. An effective validation still cannot manufacture graph validity: current graph validity evidence must be coherent. Entries from losing generations have no authority over G.
 
-These heads have explicit LWW total-order semantics. `JournalEntryId` does not
-prove observation in the reverse direction: `E2.id > E1.id` does not imply E2
-observed E1. Consequently a concurrent high-sequence add may cross an unseen
-delete, and a concurrent high-sequence validate scoped to G may cross an unseen
-invalidate for G. An entry authored after actually observing a barrier is still
-guaranteed to sort later because the allocator raises its watermark first.
-
+`JournalEntryId` ordering alone never proves observation. In particular, a high-sequence validation cannot clear a lower-ID invalidate absent an exact-or-later reference in its immutable context. A delayed invalidate therefore immediately makes a previous validation insufficient. A genuine normal revalidation captures the complete transaction-visible frontier atomically and can restore journal freshness after observing all barriers.
 For source snapshot `S`, `sourceGenerationS(x)` is its pre-merge
 `presenceHeadS(x)` when that head is an add. Once the joined `presenceHead(x)`
 selects add generation G, only materializations with
@@ -191,10 +179,7 @@ values is corruption, not a hash tie-break case.
 * **Concurrent old-generation validation:** A validates old G1 with
   `V=(100,A,generation=G1)`. Concurrently B establishes newer winning
   `G2=(20,B)` and invalidates it with
-  `I=(21,B,generation=G2)`. C carries fresh/coherent G2 bytes. Although V has
-  the greater entry ID, it is inapplicable to G2. `freshnessHead(K,G2)` is I, so
-  C's incoming proofs are revoked and K remains stale until a later genuine
-  validate scoped to G2.
+  `I=(21,B,generation=G2)`. C carries fresh/coherent G2 bytes. Although V has the greater entry ID, it is inapplicable to G2. No validation scoped to G2 covers I, so C's incoming proofs are revoked until a later genuine validation for G2 names I.
 * **Losing-generation edit collision:** G1 is old and G2 is the winning presence
   generation. A carries D on G1 and edit
   `E1=(author=A,time=T,generation=G1)`. B carries D on G2 with value event
@@ -212,12 +197,19 @@ values is corruption, not a hash tie-break case.
   breaks that tie.
 * **Concurrent positive crossing:** A authors delete Q at sequence 40. Without
   observing Q, B has watermark 100 from unrelated history and authors add G at
-  101. LWW presence selects G. Likewise, a greater concurrent validate scoped to
-  G can supersede an unseen invalidate for G. This is total-order resolution,
-  not evidence that B observed the destructive entry.
+  101. LWW presence selects G. Freshness differs: a concurrent validation cannot
+  clear an unseen invalidate regardless of its ID because its causal context
+  does not name that barrier.
 * **Carrier independence:** A's `[100,A,8]` travels A → B → C. B and C import
   the entry and allocate their own local indexes but author no edit. All three
   compare the same revision.
 * **Same-writer supersession:** A's retained head is edit 12. A host carrying
   A's edit 8 cannot resolve it as a candidate, even if its timestamp is large;
   it cannot resurrect.
+
+## Causal freshness traces
+
+* **High-clock old validation:** `V=(101,B,G)` with an empty context does not cover delayed `I=(10,A,G)`; K is stale.
+* **Observed and split invalidations:** a genuine validation naming I may clear it subject to graph coherence. If `I_A` and `I_C` exist, validations separately naming one each do not combine; one later validation naming both is required.
+* **Later same-author invalidate:** a validation naming `I_A1` does not cover later `I_A2`; a later validation may name I_A2 and thereby also cover I_A1.
+* **Already-stale explicit invalidation:** A's propagated I0 leaves K stale with incoming proofs. B observes I0, revalidates, and authors V0 naming I0. A has not observed V0; its later explicit `invalidate(K)` removes incoming proofs and authors new generation-scoped I1 even though freshness stays stale. On merge, V0 does not name I1, so I1 remains outstanding and recomputation is mandatory. Repeating explicit hard invalidation repeats proof removal and authors a fresh causal barrier each time.

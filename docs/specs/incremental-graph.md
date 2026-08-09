@@ -594,6 +594,8 @@ type Computor = (
 ) => Promise<ComputedValue | Unchanged>;
 ```
 
+**Normative API boundary:** Computor invocation deliberately receives no journal cursor. The runtime exposes neither a computation-position nor bootstrap cursor. `baselinePossibleNodeChange()` means only before all locally observable journal history in this cursor domain; it is not the position at which the invocation started and is not a substitute. No raw journal index, `journalGet`, context object, or hidden graph handle is provided.
+
 **Note on Return Type:** Computors MAY return `Unchanged` as an optimization sentinel. However, `Unchanged` is NOT part of the semantic `Outcomes` set (see §1.1). When a computor returns `Unchanged`, it is semantically equivalent to returning the current stored value (which must be a `ComputedValue`). The `pull()` operation always returns `Promise<ComputedValue>` — the `Unchanged` sentinel is handled internally and never exposed to callers.
 
 **REQ-COMP-01A (Conditional Determinism):** If `NodeDef.isDeterministic` is `true`, the computor MUST be treated as deterministic with respect to `(nodeName, bindings, inputs, oldValue)`. Formally, `Outcomes(nodeName, bindings, inputs, oldValue)` (per DEF-OUTCOMES-01) MUST always be a singleton set.

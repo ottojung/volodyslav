@@ -37,7 +37,36 @@ generation. `Unchanged` still emits no edit.
 | fresh | stale | `invalidate` |
 | stale | fresh | `validate` |
 
+For stale→fresh, the validate contains `clearsInvalidates`, the complete per-author invalidation frontier for its key/generation in the exact transaction-visible journal snapshot. Graph freshness and this immutable context commit atomically. A validate is forbidden on any other path.
+
 Identifier-only, timestamp-only, and validity-edge-only changes emit nothing.
+
+### Global hard-invalidation invariant
+
+The public closed classifier remains unchanged: only fresh→stale is an
+`invalidate` transition notification. Separately, a materialization is
+**hard-invalidated** when it requires a later genuine normal recomputation or
+revalidation before becoming fresh; in particular, its incoming proof set is
+insufficient for cache-only reuse. No graph-writing operation may establish or
+deliberately reassert that obligation without representing the causal decision
+in the materialization generation's invalidation frontier.
+
+Whenever a transaction newly establishes or deliberately reasserts hard
+invalidation, it MUST author a generation-scoped `InvalidateJournalEntry` after
+all history it observed, unless a barrier installed or authored by that same
+causal decision already represents the exact new obligation. This rule depends
+on the proof/revalidation obligation, not merely on a freshness transition. The
+internal barrier may create a permitted conservative possible-change false
+positive.
+
+Every successful explicit public `invalidate(K)` on a materialized node removes
+or reasserts absence of incoming validity proofs and therefore authors a new
+barrier even when K was already stale. Synchronization and migration follow the
+same invariant when they harden stale materializations. Equivalent lifecycle
+paths MUST do likewise; there is no migration- or synchronization-specific
+journal action.
+
+The barrier carries the materialization's exact generation G. Its sequence is reserved from `localJournalClock` after observing the transaction snapshot and is greater than all history observed by the operation. Incoming-proof removal/reassertion, graph state, the immutable barrier, receiver-local index, and watermarks commit atomically in the same darkroom batch. Each repeated explicit hard invalidation authors a fresh barrier: each call independently reasserts that the next pull must invoke the computor. Invalidation propagated by ordinary dependency mechanics may preserve complete validity proofs and continues to author only on its actual fresh→stale transition; such freshness-only propagation does not newly establish hard invalidation.
 
 ## Synchronization emission
 
@@ -52,11 +81,14 @@ Synchronization can derive genuinely new conservative facts:
   carries usable bytes; and
 * invalidating a cache whose freshness proof cannot safely survive.
 
-For a newly caused transition it authors `delete` or `invalidate`. Each such
-sequence is greater than every entry observed by that synchronization operation,
-and the graph transition, joined journal, stored entry/index, and watermarks are
-installed atomically. An already known covering destructive entry is propagated,
-not re-authored. Synchronization never synthesizes `validate`; only normal graph
+For a newly caused delete transition it authors `delete`. For fresh→stale
+demotion or stale→stale proof removal which newly establishes hard invalidation,
+it authors `invalidate` unless the same causal decision installed an exact
+representing barrier. Each such sequence is greater than every entry observed by
+that synchronization operation, and graph/proof state, joined journal, stored
+entry/index, and watermarks are installed atomically. A settled obligation
+already represented by an outstanding retained barrier is propagated, not
+re-authored. Synchronization never synthesizes `validate`; only normal graph
 revalidation with coherent validity evidence may do that.
 
 A synchronization-authored invalidate sets `generation` to the final joined add

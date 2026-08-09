@@ -85,6 +85,11 @@ Calling the same decision twice (except for `override` and `create`) is allowed 
 
 `keep` preserves the value, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. A stale node carried through `keep` loses its incoming proofs: persisted storage does not encode whether its staleness was explicit or propagated, so it is conservatively treated as a direct invalidation root.
 
+Losing those proofs is a stale→stale hardening decision, not a silent
+validity-only change. Migration MUST atomically author a normal
+generation-scoped causal invalidate above all observed journal history unless a
+barrier authored by that same migration decision already represents it.
+
 Within a **preexisting stale `keep`/`override` region**, every stale node loses incoming proofs, so validity edges inside the region may disappear. A stale B whose dependent C is also stale loses both `A⇝B` and `B⇝C` during migration, and both nodes must recompute.
 
 **Migration-time propagated invalidation** is different: the migration callback explicitly calls `invalidate()` on a node, and the propagation runs in memory with full provenance. In that case outgoing proofs survive and freshness-only propagation preserves validity edges.
@@ -98,6 +103,12 @@ The intended use case is format migration: the database version changes the seri
 `invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 
 **Explicit invalidation** removes only the explicitly named node's incoming validity proofs. Its outgoing proofs remain intact because its stored semantic value has not changed.
+
+Migration explicit invalidation authors the same causal invalidate even when the
+node was already stale. `create(..., "potentially-outdated")` likewise authors a
+barrier for its new add generation because it creates a must-recompute cache.
+These entries use no migration-specific action and follow normal allocation,
+atomicity, frontier, cursor, and compaction rules.
 
 **Propagated invalidation** (automatic recursive propagation) preserves all validity proofs — both incoming and outgoing. It is freshness-only: downstream nodes are marked stale but retain their complete proof sets.
 
@@ -172,7 +183,8 @@ Migration exact-copies one fixed active receiver snapshot of retained
 remote cursor metadata.
 
 Pre-cutover validation requires unique immutable logical content per ID, valid
-same-key generation references, canonical compaction, logical-clock coverage,
+same-key generation references, validation-causal reference ordering and
+same-author context monotonicity, canonical compaction, logical-clock coverage,
 exactly one unique index per retained entry, and index-watermark coverage.
 Indexes have no logical merge or provenance role; gaps are valid.
 

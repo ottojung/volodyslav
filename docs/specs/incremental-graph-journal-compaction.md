@@ -12,12 +12,11 @@ it is add G, retain:
 1. the maximum entry for every `(author,K,action)` coordinate;
 2. each author's greatest edit scoped to G when different from its coordinate
    maximum;
-3. each author's greatest invalidate and validate scoped to G when different
-   from their coordinate maxima; and
-4. every add referenced by a retained generation-scoped entry.
+3. each author's greatest invalidate scoped to G, reconstructing `invalidateFrontier(K,G)`, and greatest validate scoped to G when different from coordinate maxima;
+4. every exact invalidate referenced by every retained validation causal context, including coordinate-max validations for losing generations; and
+5. every add referenced by a retained generation-scoped entry.
 
-If presence is absent, generation-authority witnesses are empty. Invalid
-same-key generation references reject the journal. Results have canonical
+If presence is absent, generation-authority witnesses are empty. Invalid same-key generation references, unresolved/mismatched causal references, references not preceding their validation, and non-monotone same-author validation contexts reject the journal before selection. Reference closure leaves no dangling context. Results have canonical
 `JournalEntryId` order.
 
 Let G win before compaction. Every losing add H is below a retained presence
@@ -26,12 +25,9 @@ greater add establishes new G2 while bringing its own witnesses. Thus H can
 never regain authority in a future union. It is sound to discard H's value and
 freshness authority while retaining coordinate maxima.
 
-The algorithm preserves `presenceHead`, every `valueHead(author,K,G)`,
-`canonicalEvent(K,G)` inputs, `freshnessHead(K,G)`, and all add references. It
-retains a constant number per author/key/action plus constant witnesses, hence
-`O(nr)` entries, where n is the number of current or historic semantic keys and
-r is the number of distinct durable authors represented by retained history.
-The five actions contribute only a constant factor.
+The algorithm preserves `presenceHead`; each winning-generation `valueHead(author,K,G)` by retaining add G and each author's greatest G-scoped edit; the exact equal-time `candidateEvents` inputs needed by `canonicalEvent(K,G)`; `invalidateFrontier(K,G)`; existence of an individual effective validation; every required generation reference; and every retained causal reference.
+
+For same author/key/generation validations, journal validity requires later contexts to be componentwise nondecreasing. Thus an older discarded validation is dominated by the retained later one: every invalidate it covered remains covered. This is an enforced input invariant, not an assumption about well-behaved hosts.
 
 ## Cursor coverage when entries are removed
 
@@ -54,53 +50,30 @@ Canonical compaction satisfies:
 compact(compact(A) union B) = compact(A union B)
 ```
 
-A discarded coordinate loser cannot beat its retained greater coordinate entry.
-A discarded losing generation cannot win later by the monotonic-presence
-argument above. A future greater add brings its retained generation witnesses.
-Therefore early compaction loses no fact that a future union can select.
+A discarded coordinate loser cannot beat its retained maximum. Winning-generation value heads and equal-time canonical-event inputs remain explicit. A discarded older same-author invalidate is dominated by the retained frontier element. A discarded older same-author validation has a componentwise-dominated context by the validated monotonicity invariant. Every referenced invalidate and add remains resolvable. A delayed invalidate either adds an author coordinate or advances its frontier and defeats any validation that did not name it; this result is identical whether compaction ran before or after delivery. Partial validations never combine. Losing generations cannot regain authority, while a future greater add brings isolated value and freshness witnesses.
 
-Since set union is ACI and compaction is canonical and idempotent:
+These cases establish closure under every later union. Since compaction is canonical and idempotent, closure plus ACI set union yields commutative, associative, and idempotent logical merge. The conclusion does not follow from union alone. Logical equality excludes local indexes.
 
-```text
-A join B = B join A
-(A join B) join C = A join (B join C)
-A join A = A
-```
-Logical equality and this proof exclude local indexes entirely.
+## Fully compacted bound and optional timing
 
-## Continuous bound
+Let n be the number of current or historic semantic keys represented by the compacted journal/database, and r the number of durable authors represented by compacted entries or retained causal-context references. Finite schema arity and fixed maximum serialized `ConstValue` size make `NodeKey` constant-sized.
 
-Each retained entry stores exactly one scalar local index. Touches change that
-integer, never record count. Canonical entries and any reconstructible index are
-both `O(nr)` continuously, independent of touch count, synchronization count,
-and database age. The finite schema bounds binding arity and maximum serialized
-`ConstValue` size is a fixed system constant, so `NodeKey` size contributes only
-a constant factor. The journal has no closed writer-membership domain; new
-supported hosts may increase r, and no bound independent of r is guaranteed.
+Per key, constant actions times r coordinates use `O(r)` entries. There are at most `O(r)` retained validations relevant to generation/coordinate structure, each carrying `O(r)` context; exact invalidate references contribute at most `O(r²)`. Other value, generation, freshness, and notification witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`. One scalar `localIndex` per retained entry does not change the bound.
+
+**This applies only to complete canonical compaction. No operation-count-independent bound is promised for an uncompacted journal.** Ordinary mutations may append without compacting. Compaction may run after any transaction, during maintenance or synchronization, repeatedly, at any time, or be skipped for arbitrarily many mutations. Correctness is timing-independent; a crash before optional compaction leaves valid uncompacted history. An independent compaction transaction atomically performs the witness touch described above.
 
 ## Executable bounded verification
 
-`scripts/verify-journal-spec-model.py` exhaustively checks 128 valid states and
-96 distinct compact states in a two-author universe. Its deliberately chosen
-ordering classes include concurrent cross-author adds, same-author successive
-adds, an intervening delete, cross-author value/freshness heads, generation
-references, and both directions of coordinate-maximum versus winning-generation
-witness ordering. In particular, losing-generation edit, invalidate, and
-validate coordinate maxima at sequences 110, 111, and 112 coexist with required
-winning-generation witnesses at sequences 22, 23, and 24; compaction must
-retain both sides of every pair.
+`scripts/verify-journal-spec-model.py` uses one combined six-atom universe rather than a freshness-only universe. Its composite atoms preserve every materially distinct class while keeping full ACI exhaustive: competing generations and an intervening delete; losing coordinate maxima and winning edit witnesses; cross-author heads; two-author split invalidation knowledge; complete validation; a delayed later same-author hard invalidate; later complete validation; and generation replacement.
 
-The verifier checks idempotence and every synchronization projection on all 128
-states, all 16,384 valid closure pairs, and all 884,736 compact-state merge
-triples for ACI. Logical comparison excludes local indexes.
+It checks 64 valid combined states and all 64 resulting compact states, 64 projection-preservation/idempotence checks, 4,096 full-universe closure pairs, and 262,144 full compact-universe ACI triples. Projections include presence/generation, value heads, equal-time canonical inputs, invalidate frontier, effective-validation existence, add references, and causal references. Negative cases reject malformed variants, observation-order violations, and backward same-author contexts.
 
-Its cursor model exhausts 10,000 four-operation words and checks all 40,000
-committed prefixes immediately, including unknown installation, authored
-entries, two keys, repeated touches, combined graph transition and compaction,
-stale and partial-action cursors, and settled no-op. It performs 97,151
-action-specific obligation checks. At most three logical records exist in that
-universe despite arbitrary touches. These finite checks cover logical compaction
-projections, generation-reference validity, ACI, cursor coverage, touch
-behavior, and bounded record count in this fixed two-author universe. They
-support but do not replace the normative proofs and do not test historical
-computation provenance, graph coherence, or a bound independent of author count.
+The independent cursor model remains exhaustive and now covers 20,736
+four-operation words and 82,944 committed prefixes, carrying 189,449
+action-specific obligations through later prefixes. It covers unknown
+installation, two keys, repeated touches, stale and partial-action cursors,
+synchronization and migration stale→stale hardening, settled repetition without
+endless barriers, combined graph transition plus compaction, settled no-op,
+index uniqueness, and watermark coverage. A repeated same-key trace has 41 raw
+records and two after canonical compaction. These finite structural checks
+support, but do not prove, the analytical `O(nr²)` result.
