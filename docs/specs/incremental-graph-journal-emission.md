@@ -37,6 +37,8 @@ generation. `Unchanged` still emits no edit.
 | fresh | stale | `invalidate` |
 | stale | fresh | `validate` |
 
+For stale→fresh, the validate contains `clearsInvalidates`, the complete per-author invalidation frontier for its key/generation in the exact transaction-visible journal snapshot. Graph freshness and this immutable context commit atomically. A validate is forbidden on any other path.
+
 Identifier-only, timestamp-only, and validity-edge-only changes emit nothing.
 
 ## Synchronization emission

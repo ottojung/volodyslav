@@ -265,7 +265,7 @@ path acquires that mutex while holding darkroom. These rules prevent cycles.
 
 Normal mutation classifies its graph transition, reserves the necessary entry
 sequences, and commits graph writes, immutable `JournalEntry` values, and local
-index allocations/touches in one short darkroom batch. A transaction MUST read
+index allocations/touches in one short darkroom batch. For stale→fresh, while holding the telescope and final darkroom serialization, it reads the exact transaction-visible `invalidateFrontier(K,G)` and commits that complete `clearsInvalidates` context atomically with freshness. An invalidate committed before this validation linearization point cannot be omitted; one serialized afterward remains outside the context and outstanding. A transaction MUST read
 the current durable `localJournalIndexWatermark`, allocate every required fresh
 index monotonically, and update the watermark while holding the per-replica
 darkroom/commit mutex. Reading the watermark outside the darkroom and later

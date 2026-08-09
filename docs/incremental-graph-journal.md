@@ -1,187 +1,59 @@
 # IncrementalGraph journal
 
-The IncrementalGraph journal is immutable logical history and possible-change
-notification infrastructure. It is not authoritative graph state. The graph
-continues to own current values, freshness, wall-clock timestamps, identifiers,
-and validity; synchronization consults journal history only to derive ordering
-and destructive LWW frontiers.
+The journal is immutable logical history and possible-change infrastructure, not authoritative graph state. Graph values, freshness, timestamps, identifiers, and validity remain graph-owned. Synchronization never invokes computors or invents values.
 
-## Normative synchronization contract
-
-This design guarantees stable journal-backed identity for semantic value
-versions represented by retained add/edit history; deterministic resolution of
-wall-timestamp collisions; presence generations and generation-scoped freshness
-barriers; and coherence decisions from evidence in the reachable source
-snapshots and retained history defined here. When that evidence is insufficient,
-the specified conservative stale/delete rules apply.
-
-Synchronization never invokes computors or invents a `ComputedValue`. Logical
-journal merge is commutative, associative, and idempotent. Reconciliation is
-pairwise and decentralized, requires neither a leader nor all-to-all exchange,
-and permits hosts to be unavailable for arbitrary periods subject to the host
-lifecycle and directional-fairness assumptions. `possibleMaybeChanges()` has no
-action-specific false negatives, and journal storage is `O(nr)` under the size
-model below.
-
-The journal does not retain complete historical direct-input version provenance
-for cached derived values. It is not guaranteed to reconstruct the exact vector
-of input versions against which every retained historical derived value was
-computed. Current `valid` edges and transient synchronization support represent
-available snapshot evidence, not a complete computation history.
-
-Consequently, insufficient evidence may make synchronization retain a cache
-stale or delete it under the fallback rules. A multi-input cache may be deleted
-even where additional historical provenance could have established that some
-`oldValue` was safe. Maximal `oldValue` preservation and stronger historical
-reconstruction are deliberately outside this contract; no such property is
-implied.
-
-## Model
+## Entries and causal freshness
 
 ```text
-JournalEntry =
-    AddJournalEntry
-  | DeleteJournalEntry
-  | EditJournalEntry
-  | InvalidateJournalEntry
-  | ValidateJournalEntry
-
-JournalEntryBase = {
-  author: HostFingerprint,
-  sequence: uint64,
-  key: NodeKey,
-  time: UnixTimestamp
+ValidateJournalEntry = GenerationScopedJournalEntryBase & {
+    action: "validate"
+    clearsInvalidates: InvalidationContext
 }
-AddJournalEntry = JournalEntryBase & { action: "add" }
-DeleteJournalEntry = JournalEntryBase & { action: "delete" }
-GenerationScopedJournalEntryBase = JournalEntryBase & {
-  generation: JournalEntryId
-}
-EditJournalEntry = GenerationScopedJournalEntryBase & { action: "edit" }
-InvalidateJournalEntry = GenerationScopedJournalEntryBase & { action: "invalidate" }
-ValidateJournalEntry = GenerationScopedJournalEntryBase & { action: "validate" }
-JournalEntryId = (sequence, author)
+InvalidationContext = Map<HostFingerprint, JournalEntryId>
 ```
 
-The generation-scoped variants name the exact same-key add which established
-their materialization incarnation. Add and delete variants contain no generation
-field. The entry shape is independent of whether ordinary mutation,
-synchronization, migration, or controlled reset authored it.
+Add/delete are unscoped; edit/invalidate/validate name the exact same-key add generation. `JournalEntryId=(sequence,author)` remains immutable replicated identity. Each context mapping `A -> I` names a real observed invalidate authored by A for the validation's same key and generation. It is not an arbitrary Lamport threshold.
 
-IDs order sequence first, author second. Each durable host owns one persistent
-`localJournalClock`, serialized by a dedicated allocator mutex. It raises its
-watermark after observing remote entries and increments before authoring; IDs
-are never reused and overflow is fatal. This is journal infrastructure, not a
-materialization field or per-node clock.
+For K,G, `invalidateFrontier(K,G)[A]` is A's greatest retained invalidate in that stream. `covers(V,I)` holds exactly when V and I have equal key and generation and V's context for I.author names I or a later same-author invalidate in that stream. V is effective exactly when it alone covers every frontier element. Contexts from separate validations are never combined. With an empty frontier, an applicable genuine validation is effective but does not itself manufacture graph validity.
 
-For ordinary graph mutation and synchronization, the exact actions are
-absent→materialized add, unequal materialized value edit, materialized→absent
-delete, fresh→stale invalidate, and stale→fresh validate. Controlled reset is
-the sole administrative exception: it may author a fresh add for an already-
-materialized target key to establish a new authoritative presence generation.
-This does not broaden ordinary add or permit synchronization to author a
-present→present add. There is no generic change. Graph mutation and its local
-entries commit atomically.
+A validate is authored only when normal graph execution genuinely commits stale→fresh. In the same atomic graph/journal transaction it captures the complete frontier from the exact transaction-visible snapshot. Telescope/darkroom serialization makes every invalidate committed before the validation linearization point visible in the context; one committed afterward remains uncleared. Synchronization never authors validate.
 
-## Merge and receiver-local cursor position
+Freshness for the winning generation requires both one effective validation (when invalidations exist) and ordinary exact graph validity/coherence. Without it, the key is stale and synchronization transports no incoming validity proof that bypasses revalidation.
+
+## Normative traces
+
+* **High-clock old validation:** B's `V=(101,B,G)` does not name A's later unseen `I=(10,A,G)`. After merge V does not cover I, so K is stale; numeric order is irrelevant.
+* **Actual observation:** A invalidates; B synchronizes, observes I, genuinely recomputes, and atomically authors V naming I. V covers the frontier, so freshness may return if graph proof is coherent.
+* **Split knowledge:** with `I_A` and `I_C`, B's validation naming only I_A and D's naming only I_C leave K stale. No single validation covers both. E may genuinely revalidate after observing both and author one context naming both, permitting freshness subject to coherence.
+* **Delayed host:** a validation missing an offline host's invalidate becomes insufficient immediately when that invalidate arrives.
+* **Generation change:** contexts and invalidates for G1 have no authority over a later winning add G2.
+
+These rules guarantee no unseen invalidation clearing, no fictional combination of proofs, eventual genuine revalidation after complete observation, delayed-host safety, and strict generation isolation.
+
+## Merge, compaction, and storage
 
 ```text
-J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
+J1 join J2 = compact(entries(J1) union entries(J2))
 ```
 
-A later entry covers an earlier notification only for the same author, key, and
-action. Canonical compaction retains coordinate maxima plus bounded value and
-freshness authority witnesses for the winning add generation. Merge is
-commutative, associative, and idempotent, and its bound is
-`O(nr)` with a constant action/witness factor.
+Canonical compaction retains notification coordinate maxima, winning-generation value witnesses, every author's frontier invalidate and greatest validation, every invalidate referenced by a retained validation, and every referenced add. Same-author later validations have componentwise-monotone contexts because durable author knowledge cannot roll back. This makes discarded older contexts dominated and gives `compact(compact(A) union B)=compact(A union B)`, including delayed hosts and future generations. Canonical idempotence and closure yield ACI merge. Details and cursor witness touching are normative in the compaction specification.
 
-Each retained entry is stored once with one receiver-local `localIndex`.
-Import preserves immutable contents and assigns a fresh index only when the
-entry is unknown. Touching changes only that scalar index. It never duplicates
-or re-authors the entry. `possibleMaybeChanges()` expands every qualifying entry
-to all five conservative actions, and compaction touches a surviving same-key
-witness when it removes cursor-visible history. Total stored records remain
-`O(nr)`.
-
-`JournalEntry.sequence` is allocated from `localJournalClock`, replicates
-unchanged, and forms logical identity with `author`. `StoredJournalEntry.localIndex`
-is allocated from the distinct `localJournalIndexWatermark`, never replicates,
-and may move when that receiver touches an existing entry. Each authored event
-has a replicated logical sequence coordinate and each stored entry has a
-receiver-local notification position. The sequence coordinate comes from the
-author's Lamport-style clock; concurrent authors may use the same numeric
-sequence, and globally comparable identity is
-`JournalEntryId=(sequence,author)`.
-
-For this bound, `n` is the number of current or historic semantic node keys
-represented by the database/journal, and `r` is the number of distinct durable
-journal authors represented by retained history. The five actions are a fixed
-constant. There is no fixed closed writer-membership domain: a supported new
-host may introduce another durable `HostFingerprint`, so storage is not bounded
-independently of `r`. Each retained logical entry has one local index, and
-touching does not add records.
-
-The fixed finite schema bounds node arity. Complexity analysis also treats the
-maximum serialized size of one `ConstValue` as a fixed system constant, so a
-`NodeKey`, including its bounded-arity bindings, contributes only a constant
-factor. The bound is therefore `O(nr)`, without a value-size or binding-depth
-dimension. Journal entries contain no `ComputedValue` or historical support
-vector.
-
-## Synchronization projections
-
-Supported hosts have monotone system wall clocks. Wall time is the best
-available approximation of universal cross-host event order. It is the primary
-coordinate inside `ValueRevision` ordering among candidates which remain
-eligible at the relevant selection stage. It does not override presence,
-canonical-event, coherence, or fallback rules. Its finite resolution permits
-equal timestamps; journal identity resolves only those collisions. Clock
-rollback violates the supported execution model and has undefined
-synchronization behavior.
-
-For materialized x in winning add generation G, each author-specific value head
-contains only add G or edits explicitly scoped to G and must match the real
-graph `modifiedAt`. Value revisions compare `modifiedAt` first. Only when
-multiple provenance events match that same timestamp does sequence-first
-`JournalEntryId=(sequence,author)` select the canonical origin:
+The exact guarantee is:
 
 ```text
-ValueRevision(x,G) = [modifiedAt(x), author, sequence]
-presenceHead(x)  = greatest add/delete by JournalEntryId
-freshnessHead(x,G) = greatest invalidate/validate whose generation == G
+size(compact(J)) = O(nr²)
 ```
 
-These values are derived, never stored on graph materializations. A superseded
-or unresolvable value is invalid source state. Delete prevents lower-ordered add
-history from resurrecting; an invalidate scoped to G prevents lower-ordered
-fresh proof for G from resurrecting. A later normal add starts another
-generation, while a coherent validate explicitly scoped to G may restore G's
-freshness.
+Here n counts represented current/historic keys and r counts authors in compacted entries or causal references. Finite schema arity and fixed maximum serialized `ConstValue` size make keys constant-sized. Per key there are `O(r)` coordinates and validations, each validation may carry `O(r)` context, and exact references add at most `O(r²)` state.
 
-Presence resolves before value selection. When the joined presence head is an
-add, only materializations whose source journal has that exact add as its
-presence generation may compete by `ValueRevision`. A current-generation
-invalidate scoped to that generation makes the node stale and revokes all
-incoming validity proofs during
-synchronization.
+**This is not a continuous physical-storage promise.** Uncompacted immutable history may grow with operation count. Compaction may run at any time, after any transaction, during maintenance or synchronization, repeatedly, or not for arbitrarily many mutations. A crash before it leaves valid history. Correctness never depends on timing.
 
-Synchronization invokes no computor. Copying a value imports its original
-add/edit entry and emits no semantic value revision. Synchronization may derive
-a conservative delete or invalidate; it authors that fact after all history
-which caused it and does not repeatedly re-author a known barrier.
+Receiver-local `localIndex` is movable cursor metadata, not logical identity. Import assigns it only to unknown entries. Compaction removal atomically touches a retained same-key witness so old cursors retain all-action coverage.
 
-Presence and freshness frontiers are deterministic Lamport/LWW registers, not
-proofs of causal observation. A greater concurrent add may supersede a delete,
-and a greater concurrent same-generation validate may supersede an invalidate.
-A destructive entry is guaranteed to dominate the histories its author actually
-observed because its sequence is allocated above them; previously unseen finite
-positive history may cross it once and cause a later reconciliation decision.
+## Deliberate API limits
 
-Detailed normative requirements and proofs are split into:
+Computor invocation does not receive a journal cursor. The runtime does not expose the journal position corresponding to a computation. A computor therefore cannot rely on a runtime-supplied bootstrap cursor for later incremental `possibleMaybeChanges()` polling. This omission is deliberate. `baselinePossibleNodeChange()` means only “before all locally observable journal history in this cursor domain”; it is not the position where a current computation began and is not an equivalent substitute. No raw index, `journalGet`, context object, hidden graph handle, or bootstrap cursor is provided.
 
-- [types](specs/incremental-graph-journal-types.md)
-- [API](specs/incremental-graph-journal-api.md)
-- [emission](specs/incremental-graph-journal-emission.md)
-- [compaction](specs/incremental-graph-journal-compaction.md)
-- [journal synchronization](specs/incremental-graph-journal-sync.md)
-- [graph synchronization](specs/incremental-graph-synchronization.md)
+A filtered query that scans through internal watermark H but returns no match produces no reusable cursor. The prior cursor remains the only continuation, so later polling may reconsider irrelevant entries. This is intentional. `possibleMaybeChanges()` guarantees conservative change coverage, not amortized progress through entries excluded by `NodeFilter`. No `scannedThrough` or matching-output complexity guarantee exists. Reconstructible indexes may optimize scanning without changing semantics; optional compaction means cost may depend on uncompacted size.
+
+Detailed specifications: [types](specs/incremental-graph-journal-types.md), [API](specs/incremental-graph-journal-api.md), [emission](specs/incremental-graph-journal-emission.md), [compaction](specs/incremental-graph-journal-compaction.md), [journal synchronization](specs/incremental-graph-journal-sync.md), and [graph synchronization](specs/incremental-graph-synchronization.md).

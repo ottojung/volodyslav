@@ -26,8 +26,7 @@ and may move when that receiver touches the entry.
 A query retains one fixed committed active snapshot, captures
 `localJournalIndexWatermark=H`, considers stored entries after `since` and at or
 before H, expands them, applies `NodeFilter`, and returns deterministic
-`(localIndex,actionOrdinal)` order. An implementation may scan all `O(nr)`
-canonical entries; any secondary local index must be reconstructible from them.
+`(localIndex,actionOrdinal)` order. An implementation may scan the current physical journal; any secondary local index must be reconstructible. Because compaction is optional, cost may depend on uncompacted size.
 Cutover cannot straddle snapshot selection.
 
 For every qualifying stored entry E:
@@ -84,3 +83,9 @@ scalar index.
 Inactive construction copies every retained local index and the watermark from
 one fixed receiver snapshot before allocating above it. Thus same-process cursors
 remain comparable across cutover; remote indexes never participate.
+
+## Deliberate cursor limitations
+
+Computor invocation does not receive a journal cursor, and the runtime exposes no computation-position or bootstrap cursor. This omission is deliberate. `baselinePossibleNodeChange()` means only before all locally observable history in this cursor domain; it is not the position at which a computor began and is not a substitute. No raw `JournalIndex`, `journalGet`, computor context, hidden graph handle, or bootstrap cursor is part of this API.
+
+A filtered query that scans through internal watermark H but returns no matching change produces no reusable cursor. The caller's previous cursor remains its only continuation and later queries may reconsider the same excluded entries. This is intentional. `possibleMaybeChanges()` guarantees conservative change coverage, not amortized filtered scan progress. No `scannedThrough` value and no `O(number of newly unseen matching changes)` guarantee is promised. Reconstructible indexes MAY optimize this without changing cursor semantics. Query cost may depend on uncompacted journal size.

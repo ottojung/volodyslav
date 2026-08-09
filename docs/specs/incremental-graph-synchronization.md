@@ -36,7 +36,7 @@ available in its two reachable source snapshots and retained logical history.
 Insufficient evidence is handled conservatively. Synchronization invokes no
 computor and invents no `ComputedValue`; journal merge is ACI; bilateral gossip
 is decentralized; journal notifications have no action-specific false
-negatives; and retained journal storage is `O(nr)` under the journal size model.
+negatives; and fully compacted journal storage is `O(nr²)` under the journal size model; uncompacted storage may grow with operations.
 
 The journal does not provide complete historical input-version provenance for
 cached derived values. For D with direct inputs I1...Ik, synchronization is not
@@ -79,9 +79,9 @@ ValueRevision(x,G) = [modifiedAt(x), modifiedBy(x,G), modifiedAtVirtual(x,G)]
 modifiedBy(x,G) = origin(x,G).author
 modifiedAtVirtual(x,G) = origin(x,G).sequence
 
-presenceHead(x)  = greatest add/delete by (sequence,author)
-freshnessHead(x,G) = greatest invalidate/validate by (sequence,author)
-                     whose explicit generation == G
+presenceHead(x) = greatest add/delete by (sequence,author)
+invalidateFrontier(x,G)[A] = greatest invalidate by A scoped to G
+effectiveValidate(V,x,G) iff V alone covers every frontier element
 ```
 
 A value event for winning generation G is usable only when it is add G or an
@@ -126,18 +126,7 @@ the joined head says present but no source carries usable bytes for that
 presence generation, the result is absent; a genuinely new decision emits a
 delete barrier.
 
-For final add generation G, an invalidate in `freshnessHead(x,G)` prevents a
-lower-ordered fresh proof for G from restoring freshness. A greater validate
-scoped to G only permits freshness when normal graph validity proof remains
-coherent. An invalidate or validate scoped to another generation has no
-authority over G; Lamport ID comparison alone never establishes generation
-membership.
-
-Presence and generation-scoped freshness are LWW total-order frontiers.
-`E2.id > E1.id` does not assert E2 observed E1. A concurrent add with a greater
-ID can supersede an unseen delete, and a concurrent same-G validate with a
-greater ID can supersede an unseen invalidate. Conversely, an event genuinely
-authored after observation is guaranteed to sort later by allocator watermark.
+For final add generation G, every per-author invalidate is an independent barrier. A validation permits journal freshness only if its immutable `clearsInvalidates` context names the exact frontier invalidate (or a later same-author invalidate) for every author. Numeric entry order is not observation and contexts from separate validations MUST NOT be combined. Even one effective validation only permits freshness when ordinary exact graph validity is coherent. Other-generation contexts have no authority.
 
 ## Transient support
 
@@ -251,7 +240,7 @@ proof against the exact final direct-input revisions. A stale fallback retains
 no incoming proof not established coherent. Structural dependency edges come
 from the graph scheme, never from `valid`.
 
-If `freshnessHead(N,G)` for final add generation G is `invalidate`, N is a direct
+If no single validation covers the complete `invalidateFrontier(N,G)`, N is a direct
 invalidation root: final N is stale and synchronization transports **no incoming
 validity proofs into N**, even if an older fresh source is otherwise coherent.
 This applies equally to locally and synchronization-authored invalidations. A
@@ -262,15 +251,14 @@ before it may emit `validate` and restore incoming proofs.
 
 A selected node is final-fresh only if:
 
-1. `freshnessHead(N,G)` for final add generation G is not invalidate;
+1. one applicable validation individually covers the complete `invalidateFrontier(N,G)` when that frontier is nonempty;
 2. selected-source validity is coherent with exact final inputs; and
 3. every ordinary clean-node invariant holds.
 
 Otherwise it is stale. When synchronization newly demotes fresh to stale for a
 reason not represented by a covering invalidate, it authors exactly one
 `invalidate` after all observed journal history. It never synthesizes validate.
-A lower-ordered validate for G or old fresh peer cannot cross that barrier; a
-later genuine normal revalidation may author validate explicitly scoped to G.
+A validation which did not observe the barrier cannot cross it, regardless of ID; a later genuine normal revalidation may author validate scoped to G with the complete observed frontier.
 
 That synchronization-authored invalidate explicitly carries G. Entries for
 other generations neither satisfy nor override this barrier.
@@ -305,8 +293,7 @@ Before planning, synchronization MUST reject atomically:
 4. duplicate or internally conflicting lookup entries;
 5. a value, freshness, timestamp, or validity record whose identifier is not
    covered by its source lookup;
-6. malformed journal entries, including edit/invalidate/validate without a
-   generation resolving to a same-key add witness;
+6. malformed journal entries, including edit/invalidate/validate without a generation resolving to a same-key add witness, or validate with an unresolved/mismatched causal invalidate reference;
 7. conflicting content at one `JournalEntryId`; or
 8. `localJournalClock` below an observed sequence;
 9. a retained entry missing exactly one unique valid local index;
@@ -317,7 +304,7 @@ Before journal join or conflict planning, validate each source against its own
 pre-merge journal. Every source materialization MUST resolve its source presence
 generation, a current generation-scoped value event matching its `modifiedAt`,
 and a `ValueRevision` whose event belongs to that generation. Its source
-freshness and validity must agree with `freshnessHead(N,G)` and ordinary graph
+freshness and validity must agree with the effective-validation barrier for N,G and ordinary graph
 invariants. Failure is corrupt source state and rejects that host merge; it MUST
 NOT be converted into an unusable candidate, absence, or a new destructive
 entry.
@@ -470,8 +457,7 @@ H1—H3 edge.
 A has old generation G1 and validate `V=(100,A,generation=G1)`. B establishes
 winning `G2=(20,B)` and invalidates it with
 `I=(21,B,generation=G2)`. C carries fresh/coherent G2 bytes and old incoming
-proofs. V is ignored for G2 despite its larger ID; `freshnessHead(D,G2)` is I,
-so C's proofs are not transported. A later normal recomputation that observes I,
+proofs. V is ignored for G2. No validation for G2 covers I, so C's proofs are not transported. A later normal recomputation that observes I,
 proves exact G2 inputs, and emits validate V2 scoped to G2 may restore freshness.
 
 ### Unchanged

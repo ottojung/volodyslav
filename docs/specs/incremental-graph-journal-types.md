@@ -33,7 +33,12 @@ EditJournalEntry =
 InvalidateJournalEntry =
     GenerationScopedJournalEntryBase & { action: "invalidate" }
 ValidateJournalEntry =
-    GenerationScopedJournalEntryBase & { action: "validate" }
+    GenerationScopedJournalEntryBase & {
+        action: "validate"
+        clearsInvalidates: InvalidationContext
+    }
+
+InvalidationContext = Map<HostFingerprint, JournalEntryId>
 
 JournalEntryId(E) = (E.sequence, E.author)
 ```
@@ -70,6 +75,8 @@ for that incarnation contains `generation=(10,A)`, while a delete for K has no
 generation field. After a delete and later add `G2=(50,B)`, subsequent scoped
 events for the new incarnation contain `generation=(50,B)`. Events scoped to G1
 are inapplicable to G2.
+
+`clearsInvalidates` is immutable causal evidence, not a Lamport threshold. Each mapping `A -> I` MUST resolve to a real invalidate authored by A for the validation's exact key and generation. It contains at most one reference per author: the greatest same-author invalidate in the exact transaction-visible frontier at genuine revalidation. Malformed, unresolved, or mismatched references reject the journal.
 
 Action variant and authorship context are orthogonal. Ordinary mutation,
 migration, synchronization-authored destruction, and controlled reset all use
@@ -188,7 +195,8 @@ For storage analysis:
 ```text
 n = number of current or historic semantic node keys represented by the
     database/journal
-r = number of distinct durable authors represented by retained journal history
+r = number of distinct durable authors represented by compacted entries or
+    retained causal-context references
 a = 5 journal actions, a fixed constant
 ```
 
@@ -196,12 +204,6 @@ The fixed finite schema bounds node arity, and the maximum serialized size of a
 `ConstValue` is treated as a fixed system constant. Consequently a `NodeKey`,
 including its bounded-arity binding values, has constant size in this analysis.
 
-The logical storage bound is `O(nr)`: compaction retains constant-many entries
-per relevant `(author,key,action)` coordinate plus constant-many winning-
-generation value/freshness and add-reference witnesses. Each entry stores one
-scalar local index; touches create no records. Operation count, synchronization
-count, database age, historic generation count, and touch count add no unbounded
-multiplicative term, and the same bound applies to any reconstructible secondary
-index. Entries contain no `ComputedValue`, support/provenance vector, or validity
-proof. Because author membership is open, no writer-independent `O(n)` bound is
-promised.
+The normative guarantee is `size(compact(J)) = O(nr²)`. Constant action coordinates use `O(r)` entries per key; at most `O(r)` retained validations each carry an `O(r)` context, including exact causal references. Other witnesses are no larger. A scalar local index does not alter the result.
+
+This applies exclusively to fully canonical compacted state. Ordinary mutations may append immutable entries and skip compaction arbitrarily long, so no operation-count-independent bound is promised for an uncompacted physical journal.
