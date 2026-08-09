@@ -51,6 +51,10 @@ is a well-formed supported host fingerprint and that one `JournalEntryId` has on
 one immutable content. Duplicate ownership or rollback under the same author is
 unsupported and prevents writable open.
 
+The journal has no fixed closed writer-membership domain. A supported new host
+may introduce a new durable `HostFingerprint`, so storage is not bounded
+independently of the number of durable authors represented in retained history.
+
 Entries are immutable. A remotely learned entry is imported byte-for-byte with
 the same author and sequence. Learning an entry never re-authors it.
 
@@ -176,10 +180,25 @@ wall-clock `timestamps { createdAt, modifiedAt }`, identifier lookup,
 revision stamp, support vector, epoch, vector clock, or synchronization field.
 Synchronization never advances `modifiedAt` merely because bytes were copied.
 
-The logical storage bound is
-`O(number_of_historic_keys × writers)`: compaction retains each coordinate
-maximum plus only constant-many winning-generation value/freshness and
-add-reference witnesses. Each stores exactly one scalar local index; touches
-create no records. The bound is independent of historical generations and touch
-count, and applies to any reconstructible secondary index. Entries contain no
-graph value, support vector, or validity proof.
+For storage analysis:
+
+```text
+n = number of current or historic semantic node keys represented by the
+    database/journal
+r = number of distinct durable authors represented by retained journal history
+a = 5 journal actions, a fixed constant
+```
+
+The fixed finite schema bounds node arity, and the maximum serialized size of a
+`ConstValue` is treated as a fixed system constant. Consequently a `NodeKey`,
+including its bounded-arity binding values, has constant size in this analysis.
+
+The logical storage bound is `O(nr)`: compaction retains constant-many entries
+per relevant `(author,key,action)` coordinate plus constant-many winning-
+generation value/freshness and add-reference witnesses. Each entry stores one
+scalar local index; touches create no records. Operation count, synchronization
+count, database age, historic generation count, and touch count add no unbounded
+multiplicative term, and the same bound applies to any reconstructible secondary
+index. Entries contain no `ComputedValue`, support/provenance vector, or validity
+proof. Because author membership is open, no writer-independent `O(n)` bound is
+promised.

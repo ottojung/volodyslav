@@ -27,6 +27,31 @@ topological order, and the reconciled graph and joined/locally extended journal
 commit atomically. Invalid graph/journal combinations outside reachable
 transitions are corruption, not conflicts for which this protocol invents data.
 
+## Guarantees and deliberate limits
+
+Synchronization provides stable retained-journal identity for represented value
+versions, deterministic timestamp-collision resolution, presence generations,
+generation-scoped freshness barriers, and coherence decisions from the evidence
+available in its two reachable source snapshots and retained logical history.
+Insufficient evidence is handled conservatively. Synchronization invokes no
+computor and invents no `ComputedValue`; journal merge is ACI; bilateral gossip
+is decentralized; journal notifications have no action-specific false
+negatives; and retained journal storage is `O(nr)` under the journal size model.
+
+The journal does not provide complete historical input-version provenance for
+cached derived values. For D with direct inputs I1...Ik, synchronization is not
+guaranteed to reconstruct the exact historical vector
+`[version(I1),...,version(Ik)]` against which every retained value of D was
+computed. Consequently, a cache may be retained stale or deleted when the
+represented evidence cannot establish coherence. For a multi-input node this
+may delete a value even though richer historical provenance could have proved
+some `oldValue` safe. Maximal old-value preservation is not guaranteed.
+
+Additional historical provenance could permit stronger preservation, but that
+behavior is outside this specification. These limits are exhaustive for
+historical reconstruction and `oldValue` preservation; no componentwise history
+reconstruction or stronger maximal-preservation property is implied.
+
 ## Journal-derived frontiers
 
 ### Clock assumptions
@@ -35,7 +60,10 @@ Synchronization assumes that system wall clocks are monotone over
 IncrementalGraph operations on every supported host. Wall-clock timestamps are
 the closest available approximation of a universal temporal order between
 operations performed on different hosts and are therefore the primary
-cross-host value-order coordinate.
+cross-host coordinate within `ValueRevision` ordering among candidates still
+eligible at the relevant selection stage. This does not make wall time a global
+override of presence-generation applicability, collision canonicalization,
+coherence classification, or fallback rules.
 
 Wall-clock timestamps have finite resolution and are not injective: distinct
 value-changing operations may receive exactly equal timestamps. The journal
@@ -130,6 +158,14 @@ makes support unknown. Deep value equality does not create proof. Because input
 revisions identify originating journal events rather than source containers, a
 value copied through another host has the same support identity.
 
+`SupportS(D)` is evidence derivable from S about D's currently retained cached
+value. It is not a record of every input revision D has incorporated, historical
+computation provenance, proof that no earlier coherent history existed when
+support is unknown, or a complete history of `Unchanged` revalidations. Unknown
+support means only that this synchronization cannot establish coherence from
+the evidence represented by this specification; it does not prove that D was
+historically incoherent.
+
 `Unchanged` preserves D's add/edit provenance. Normal recomputation may restore
 its current `valid` edges against newer inputs, so transient support changes
 without any metadata or new edit on D.
@@ -181,6 +217,13 @@ final input revisions. If coherent candidates exist, choose the coherent
 candidate with greatest `ValueRevision`. A newer-timestamp unsupported candidate
 never suppresses a coherent one.
 
+Thus “`modifiedAt` is primary” means primary inside `ValueRevision` comparison
+among candidates eligible at that selection stage. Roots order admissible
+candidates directly by `ValueRevision`. Derived nodes resolve presence and
+equal-time canonical events, classify coherence, and only then order the
+coherent candidates by `ValueRevision`; a newer unsupported derived cache is not
+guaranteed to defeat an older coherent cache.
+
 ### 4. No coherent candidate
 
 * Zero distinct inputs use the root greatest-revision rule.
@@ -191,6 +234,11 @@ never suppresses a coherent one.
   * different unsupported revisions are deleted;
   * one unsupported revision opposite absence is not spread into the hole and
     the result is absent/deleted.
+
+These fallbacks express inability to establish coherence from retained evidence,
+not proof that the cached value lacked some historically coherent computation.
+In particular, deletion is not specified as an if-and-only-if test over
+incomparable historical input vectors.
 
 A newly derived deletion authors one `delete` entry after every entry observed
 by the operation. If a covering barrier already justifies the result, propagate

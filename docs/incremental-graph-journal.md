@@ -6,6 +6,36 @@ continues to own current values, freshness, wall-clock timestamps, identifiers,
 and validity; synchronization consults journal history only to derive ordering
 and destructive LWW frontiers.
 
+## Normative synchronization contract
+
+This design guarantees stable journal-backed identity for semantic value
+versions represented by retained add/edit history; deterministic resolution of
+wall-timestamp collisions; presence generations and generation-scoped freshness
+barriers; and coherence decisions from evidence in the reachable source
+snapshots and retained history defined here. When that evidence is insufficient,
+the specified conservative stale/delete rules apply.
+
+Synchronization never invokes computors or invents a `ComputedValue`. Logical
+journal merge is commutative, associative, and idempotent. Reconciliation is
+pairwise and decentralized, requires neither a leader nor all-to-all exchange,
+and permits hosts to be unavailable for arbitrary periods subject to the host
+lifecycle and directional-fairness assumptions. `possibleMaybeChanges()` has no
+action-specific false negatives, and journal storage is `O(nr)` under the size
+model below.
+
+The journal does not retain complete historical direct-input version provenance
+for cached derived values. It is not guaranteed to reconstruct the exact vector
+of input versions against which every retained historical derived value was
+computed. Current `valid` edges and transient synchronization support represent
+available snapshot evidence, not a complete computation history.
+
+Consequently, insufficient evidence may make synchronization retain a cache
+stale or delete it under the fallback rules. A multi-input cache may be deleted
+even where additional historical provenance could have established that some
+`oldValue` was safe. Maximal `oldValue` preservation and stronger historical
+reconstruction are deliberately outside this contract; no such property is
+implied.
+
 ## Model
 
 ```text
@@ -63,7 +93,7 @@ A later entry covers an earlier notification only for the same author, key, and
 action. Canonical compaction retains coordinate maxima plus bounded value and
 freshness authority witnesses for the winning add generation. Merge is
 commutative, associative, and idempotent, and its bound is
-`O(historic keys × writers)` with a constant action/witness factor.
+`O(nr)` with a constant action/witness factor.
 
 Each retained entry is stored once with one receiver-local `localIndex`.
 Import preserves immutable contents and assigns a fresh index only when the
@@ -71,7 +101,7 @@ entry is unknown. Touching changes only that scalar index. It never duplicates
 or re-authors the entry. `possibleMaybeChanges()` expands every qualifying entry
 to all five conservative actions, and compaction touches a surviving same-key
 witness when it removes cursor-visible history. Total stored records remain
-`O(historic keys × writers)`.
+`O(nr)`.
 
 `JournalEntry.sequence` is allocated from `localJournalClock`, replicates
 unchanged, and forms logical identity with `author`. `StoredJournalEntry.localIndex`
@@ -79,13 +109,31 @@ is allocated from the distinct `localJournalIndexWatermark`, never replicates,
 and may move when that receiver touches an existing entry. There is one logical
 distributed event sequence and one receiver-local notification position.
 
+For this bound, `n` is the number of current or historic semantic node keys
+represented by the database/journal, and `r` is the number of distinct durable
+journal authors represented by retained history. The five actions are a fixed
+constant. There is no fixed closed writer-membership domain: a supported new
+host may introduce another durable `HostFingerprint`, so storage is not bounded
+independently of `r`. Each retained logical entry has one local index, and
+touching does not add records.
+
+The fixed finite schema bounds node arity. Complexity analysis also treats the
+maximum serialized size of one `ConstValue` as a fixed system constant, so a
+`NodeKey`, including its bounded-arity bindings, contributes only a constant
+factor. The bound is therefore `O(nr)`, without a value-size or binding-depth
+dimension. Journal entries contain no `ComputedValue` or historical support
+vector.
+
 ## Synchronization projections
 
 Supported hosts have monotone system wall clocks. Wall time is the best
-available approximation of universal cross-host event order and is the primary
-value-order coordinate. Its finite resolution permits equal timestamps; journal
-identity resolves only those collisions. Clock rollback violates the supported
-execution model and has undefined synchronization behavior.
+available approximation of universal cross-host event order. It is the primary
+coordinate inside `ValueRevision` ordering among candidates which remain
+eligible at the relevant selection stage. It does not override presence,
+canonical-event, coherence, or fallback rules. Its finite resolution permits
+equal timestamps; journal identity resolves only those collisions. Clock
+rollback violates the supported execution model and has undefined
+synchronization behavior.
 
 For materialized x in winning add generation G, each author-specific value head
 contains only add G or edits explicitly scoped to G and must match the real

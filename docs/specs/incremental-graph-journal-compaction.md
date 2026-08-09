@@ -29,7 +29,9 @@ freshness authority while retaining coordinate maxima.
 The algorithm preserves `presenceHead`, every `valueHead(author,K,G)`,
 `canonicalEvent(K,G)` inputs, `freshnessHead(K,G)`, and all add references. It
 retains a constant number per author/key/action plus constant witnesses, hence
-`O(rn)` entries for r authors and n historic keys.
+`O(nr)` entries, where n is the number of current or historic semantic keys and
+r is the number of distinct durable authors represented by retained history.
+The five actions contribute only a constant factor.
 
 ## Cursor coverage when entries are removed
 
@@ -70,8 +72,11 @@ Logical equality and this proof exclude local indexes entirely.
 
 Each retained entry stores exactly one scalar local index. Touches change that
 integer, never record count. Canonical entries and any reconstructible index are
-both `O(rn)` continuously, independent of touch count, synchronization count,
-and database age.
+both `O(nr)` continuously, independent of touch count, synchronization count,
+and database age. The finite schema bounds binding arity and maximum serialized
+`ConstValue` size is a fixed system constant, so `NodeKey` size contributes only
+a constant factor. The journal has no closed writer-membership domain; new
+supported hosts may increase r, and no bound independent of r is guaranteed.
 
 ## Executable bounded verification
 
@@ -94,5 +99,8 @@ committed prefixes immediately, including unknown installation, authored
 entries, two keys, repeated touches, combined graph transition and compaction,
 stale and partial-action cursors, and settled no-op. It performs 97,151
 action-specific obligation checks. At most three logical records exist in that
-universe despite arbitrary touches. These finite checks support but do not
-replace the normative proofs above.
+universe despite arbitrary touches. These finite checks cover logical compaction
+projections, generation-reference validity, ACI, cursor coverage, touch
+behavior, and bounded record count in this fixed two-author universe. They
+support but do not replace the normative proofs and do not test historical
+computation provenance, graph coherence, or a bound independent of author count.

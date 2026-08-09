@@ -26,7 +26,7 @@ and may move when that receiver touches the entry.
 A query retains one fixed committed active snapshot, captures
 `localJournalIndexWatermark=H`, considers stored entries after `since` and at or
 before H, expands them, applies `NodeFilter`, and returns deterministic
-`(localIndex,actionOrdinal)` order. An implementation may scan all `O(rn)`
+`(localIndex,actionOrdinal)` order. An implementation may scan all `O(nr)`
 canonical entries; any secondary local index must be reconstructible from them.
 Cutover cannot straddle snapshot selection.
 
