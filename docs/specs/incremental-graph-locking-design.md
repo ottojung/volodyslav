@@ -265,17 +265,16 @@ path acquires that mutex while holding darkroom. These rules prevent cycles.
 
 Normal mutation classifies its graph transition, reserves the necessary entry
 sequences, and commits graph writes, immutable `JournalEntry` values, and local
-delivery append-or-replace writes in one short darkroom batch. For every
-delivered `(K,A)`, that batch deletes the previous headed record, inserts the
-new self-contained record above the local watermark, updates `DeliveryHead`, and
-advances the watermark. Thus no committed snapshot violates the one-head
-invariant. Synchronization first takes fixed
+index allocations/touches in one short darkroom batch. `localIndex` and
+`localJournalIndexWatermark` require no separate mutex: their planned values are
+private until this serialized durable commit. Aborted inactive construction
+cannot advance active cursor state. Synchronization first takes fixed
 source snapshots, joins logical entries, and raises the allocator watermark;
 only if its deterministic decision requires a new delete/invalidate does it
 reserve a sequence. The inactive graph and exactly the journal reconciled with
 it become durable before garden cutover.
 
 `possibleMaybeChanges()` uses garden access to retain one fixed committed
-snapshot and then scans receiver-local delivery positions through the captured
+snapshot and then scans stored entries by local index through the captured index
 watermark. It needs no telescope, dome phase beyond ordinary inspection access,
 or journal-clock mutex.

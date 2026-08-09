@@ -9,40 +9,13 @@ validity come from the IncrementalGraph.
 ```text
 JournalAction = "add" | "edit" | "delete" | "invalidate" | "validate"
 
-JournalEntry = AddEntry | EditEntry | DeleteEntry | FreshnessEntry
-
-AddEntry = {
+JournalEntry = {
     author: HostFingerprint
     sequence: uint64
     key: NodeKey
-    action: "add"
+    action: JournalAction
     time: UnixTimestamp
-}
-
-EditEntry = {
-    author: HostFingerprint
-    sequence: uint64
-    key: NodeKey
-    action: "edit"
-    time: UnixTimestamp
-    generation: JournalEntryId
-}
-
-DeleteEntry = {
-    author: HostFingerprint
-    sequence: uint64
-    key: NodeKey
-    action: "delete"
-    time: UnixTimestamp
-}
-
-FreshnessEntry = {
-    author: HostFingerprint
-    sequence: uint64
-    key: NodeKey
-    action: "invalidate" | "validate"
-    time: UnixTimestamp
-    generation: JournalEntryId
+    generation?: JournalEntryId
 }
 
 JournalEntryId(E) = (E.sequence, E.author)
@@ -53,26 +26,25 @@ Entry IDs are ordered lexicographically, sequence first and author second.
 lifecycle. It is not a hostname. `NodeIdentifier` already embeds its allocating
 host fingerprint and receives no additional discriminator.
 
-There is no separate journal membership domain. Supported host creation allocates one
-globally unique durable `HostFingerprint`; restoration may resume it only from
-that host's current synchronized state, and reset, migration, and copying never
-transfer ownership. Synchronization validates that every author is a
-well-formed supported host fingerprint and that one `JournalEntryId` has only
+There is no separate journal membership domain. Supported host creation
+allocates one globally unique durable `HostFingerprint`; restoration may resume
+it only from that host's current synchronized state. Reset, migration, and
+copying never transfer ownership. Synchronization validates that every author
+is a well-formed supported host fingerprint and that one `JournalEntryId` has only
 one immutable content. Duplicate ownership or rollback under the same author is
 unsupported and prevents writable open.
 
 Entries are immutable. A remotely learned entry is imported byte-for-byte with
 the same author and sequence. Learning an entry never re-authors it.
 
-`EditEntry.generation` and `FreshnessEntry.generation` are the exact
-`JournalEntryId` of the `add` which established the materialization being
-edited, invalidated, or validated. The field is required for edit, invalidate,
-and validate and forbidden on add and delete. This reference is journal history
-only and is never stored on a graph materialization.
+`generation` is the exact `JournalEntryId` of the add which established the
+materialization being edited, invalidated, or validated. It is required exactly
+for edit, invalidate, and validate and forbidden for add and delete. This
+reference is journal history only and is never stored on a graph materialization.
 
-Journal validation rejects an edit or freshness entry unless its generation
-resolves to a valid logical add for the same key in the merge input. Compaction
-retains an add-reference witness for every retained generation-scoped
+Journal validation rejects an entry with action edit, invalidate, or validate
+unless its generation resolves to a valid same-key add in the merge input.
+Compaction retains an add-reference witness for every retained generation-scoped
 notification. It may discard additional value/freshness authority for a losing
 generation only after proving that the generation can never again become the
 winning presence generation, as specified by the compaction rules.
@@ -106,63 +78,45 @@ graph clock and not a per-node counter.
 5. Concurrent authors may use the same sequence; author breaks the tie.
 6. Overflow is fatal and wrapping is forbidden.
 
-## Physical delivery state
+## Stored entries and receiver-local cursor metadata
 
-`JournalEntryId` is distinct from a receiver-local cursor position. A host MUST
-maintain `DeliveryByIndex`, per-coordinate delivery heads, and a monotonically
-increasing local watermark so `possibleMaybeChanges()` can expose newly learned
-history. Delivery records are self-contained:
+Each retained logical entry is stored exactly once:
 
 ```text
-DeliveryRecord = {
-    localIndex: receiver-local cursor position
-    key: NodeKey
-    action: JournalAction
-    time: UnixTimestamp
-    causeId?: JournalEntryId
+StoredJournalEntry = {
+    entry: JournalEntry
+    localIndex: uint64
 }
 
-DeliveryHead: Map<(NodeKey,JournalAction), localIndex>
-DeliveryByIndex: Map<localIndex,DeliveryRecord>
+journal.entries: Map<JournalEntryId,StoredJournalEntry>
+localJournalIndexWatermark: uint64
 ```
 
-`key`, `action`, and `time` are copied into the record when delivery is created.
-`causeId` is optional provenance/debugging information and may outlive logical
-compaction of that entry; public queries never dereference it. Those indexes are
-local, opaque, same-process delivery infrastructure;
-they are neither replicated identity nor causal order. A receiving host assigns
-a new delivery position while retaining the imported logical entry unchanged.
+`localIndex` is receiver-local metadata only. It is not part of `JournalEntry`,
+`JournalEntryId`, replicated serialization, logical equality, Lamport ordering,
+provenance, graph revision identity, compaction selection, or synchronization.
+`localJournalClock` allocates logical sequences; the distinct
+`localJournalIndexWatermark` allocates cursor positions. Both overflow fatally,
+and neither allocator reuses a value.
 
-For newly learned history without a graph transition, the copied action/time are
-the logical entry's historical action/time. For a receiver graph transition,
-they are the receiver's exact transition action and local transition/cutover
-time. `causeId` never changes which occurrence the public fields describe.
-
-At every committed snapshot, each `(K,A)` has at most one retained
-`DeliveryByIndex` record, and `DeliveryHead[K,A]`, when present, points to
-exactly that record. Creating any delivery for `(K,A)` performs the following
-receiver-local append-or-replace operation:
+A previously unknown logical entry installed locally keeps its immutable contents
+byte-for-byte and receives:
 
 ```text
-previous = DeliveryHead[K,A], if present
-newIndex = allocate index strictly above local delivery watermark
-
-atomically:
-    delete DeliveryByIndex[previous], if present
-    put DeliveryByIndex[newIndex] = self-contained DeliveryRecord
-    put DeliveryHead[K,A] = newIndex
-    set local delivery watermark = newIndex
+localJournalIndexWatermark += 1
+stored.localIndex = localJournalIndexWatermark
 ```
 
-Local indexes never repeat. The rule applies to normal mutation, newly imported
-logical history, later graph application of already-delivered history, reset,
-and migration. Logical journal compaction does not perform or replace this
-physical receiver-local compaction.
+A sender's index is never imported. Receiving an already-known entry does not
+move it. `touch(E)` increments the local index watermark and updates only E's
+single stored `localIndex`; it never deletes, duplicates, replaces, or re-authors
+E's logical contents. A reconstructible secondary index is permitted only as a
+local optimization and has no synchronization meaning.
 
-The physical bounds are `DeliveryHead = O(historic keys × 5)` and
-`DeliveryByIndex = O(historic keys × 5)`, independent of operation count,
-synchronization count, and database age. These are separate from the replicated
-logical journal's `O(historic keys × writers × constant)` bound.
+Every retained entry has exactly one local index; retained indexes are unique;
+the watermark covers every retained index; gaps are harmless; and indexes are
+never reused in one receiver cursor domain. Index allocation/update commits
+atomically with the graph and journal transaction which requires it.
 
 ## Persisted graph boundary
 
@@ -173,8 +127,9 @@ revision stamp, support vector, epoch, vector clock, or synchronization field.
 Synchronization never advances `modifiedAt` merely because bytes were copied.
 
 The logical storage bound is
-`O(number_of_historic_keys × writers × 5)`: compaction retains each coordinate
+`O(number_of_historic_keys × writers)`: compaction retains each coordinate
 maximum plus only constant-many winning-generation value/freshness and
-add-reference witnesses, apart from local cursor infrastructure. The bound is
-independent of the number of historical generations. Entries contain no graph
-value, support vector, or validity proof.
+add-reference witnesses. Each stores exactly one scalar local index; touches
+create no records. The bound is independent of historical generations and touch
+count, and applies to any reconstructible secondary index. Entries contain no
+graph value, support vector, or validity proof.

@@ -78,12 +78,7 @@ The synchronization repository is part of creation even when the resulting datab
 
 When local live state is absent, Volodyslav first asks whether the synchronization repository contains the current synchronized state previously published for this same host and writer. The synchronization lifecycle must recognize the selected branch as the branch assigned to the current host/writer.
 
-This is **absent-state self-restoration**, not reset of an existing database. It restores and validates the authoritative graph together with the durable local `HostFingerprint`, compacted logical `JournalEntry` collection, `localJournalClock`, and receiver-local delivery cursor state. The restored author must be the branch owner, and the clock watermark must cover every observed sequence.
-
-Receiver-local cursor state includes `DeliveryHead`, the one retained
-`DeliveryByIndex` record per historic key/action, the never-decreasing delivery
-watermark, and physical gaps. Restoration and inactive construction preserve
-the one-head invariant exactly; future delivery uses atomic append-or-replace.
+This is **absent-state self-restoration**, not reset of an existing database. It restores and validates the authoritative graph together with the durable local `HostFingerprint`, compacted stored journal entries with their local indexes, `localJournalClock`, and `localJournalIndexWatermark`. The restored author must be the branch owner, the logical clock must cover every observed sequence, and the index watermark must cover every retained local index. Gaps are harmless.
 
 Restoration resumes previously emitted state. It MUST NOT classify the restored graph as an empty-to-restored transition and MUST NOT emit `add` for every restored materialization. The restored counters and cursor history are installed through the normal durable cutover, after which the database is reopened and passed through the migration gate.
 
@@ -208,54 +203,36 @@ After an initiated synchronization, Volodyslav attempts to reopen the local data
 
 ### 7.4 Existing-live controlled reset
 
-A reset-to-host synchronization applied to an established live database selects
-a snapshot's authoritative graph and installs it through a non-active target
-followed by cutover. The receiving host preserves its durable local
-`HostFingerprint`, logical compacted journal, `localJournalClock`, and
-receiver-local delivery cursor state.
-The source contributes its authoritative graph snapshot and immutable logical
-journal entries. The receiver retains its author identity and cursor domain; it
-does not adopt source delivery positions.
+Reset is an authoritative semantic mutation, not ordinary synchronization and
+not byte-for-byte restoration. It establishes a desired source semantic graph as
+a new reachable receiver state:
 
-Reset is replacement with validation, not ordinary graph merge. Before cutover:
+1. snapshot the desired source semantic graph;
+2. preserve the receiver's durable `HostFingerprint`;
+3. import/join source immutable logical history normally, assigning fresh local
+   indexes only to entries unknown at the receiver;
+4. raise `localJournalClock` above every observed sequence;
+5. compare the pre-reset receiver graph with the desired target using the closed
+   classifier;
+6. author receiver-local add/edit/delete/invalidate/validate entries required to
+   establish that target, with reset-time wall clock for value-changing
+   `modifiedAt` and normal generation rules;
+7. give new entries distinct local indexes, touch any changed key lacking fresh
+   coverage, and atomically install graph, journal, and allocator watermarks.
 
-1. join the receiver and source logical journals without discarding newer
-   receiver history;
-2. retain the source graph unchanged as the proposed replacement graph;
-3. resolve every source materialization's source presence generation and
-   generation-scoped `ValueRevision`;
-4. require its generation to equal the joined presence-head add and require its
-   add/edit value event to name that same generation and remain admissible under
-   joined `valueHead(author,K,G)` and `canonicalEvent(K,G)`;
-5. evaluate freshness only through `freshnessHead(K,G)` for that joined add G,
-   requiring proposed graph freshness and incoming proofs to agree with it;
-6. require identifier, timestamp, structural dependency, validity, freshness,
-   and materialization closure invariants from the synchronization specification;
-7. validate every edit/freshness entry and generation-reference witness; and
-8. reject the reset atomically if any check fails, leaving the existing live
-   graph and active pointer unchanged.
+Absent-to-present reset creates a new add generation; unequal present values
+create a receiver edit in the applicable generation; target absence creates
+delete; and freshness transitions create invalidate/validate. These are genuine
+new authoritative events, not re-labeling of source events. Reset may therefore
+override newer receiver history without preserving source timestamps or storage
+identifiers when those would make the target lose.
 
-The reset classifies `ResetActions` only to create receiver-local delivery
-coverage. Copied add/edit provenance remains the source's immutable logical
-entry and MUST NOT be re-authored as a receiving-host revision. Reset does not
-author destructive entries to repair a contradicted source graph, silently run
-ordinary merge, discard receiver history, or manufacture a compatibility path.
-Joined history, the validated replacement graph, and delivery coverage commit
-atomically before cutover. This transition is distinct from absent-state
-self-restoration in §4.2.
-
-Every reset delivery uses receiver-local append-or-replace and therefore leaves
-at most one `DeliveryByIndex` record per `(NodeKey,JournalAction)`. It never
-imports source physical delivery indexes. Its action classifies the receiver's
-old graph against the replacement graph and its time is the local reset cutover
-time; an optional older source `causeId` does not replace either public field.
-
-**Normative rejection trace:** receiver R has delete `Q=(100,R)` for K and K is
-absent. Source S carries K from add `G=(50,S)` and has not observed Q. The joined
-`presenceHead(K)` is Q/delete, while the proposed source graph is present from
-G. The reset rejects before cutover, keeps R's live graph and Q, and does not
-re-author S's value. A force-replacement operation that overrides newer history
-is outside this specification and requires separately defined semantics.
+There is no reset-specific cursor machinery. Trace: R is absent with delete 100,
+while source S desires value V from old add 50. Reset imports source history,
+then authors a new R add above all observed sequences with reset-time
+`modifiedAt`, installs V under that generation, and assigns the new add a fresh
+local index. The resulting graph/journal pair is reachable and the desired state
+wins normally.
 
 After reset, the database is reopened through the migration gate.
 
@@ -279,7 +256,7 @@ A edits K:
 
 B previously observed 10:
     journal merge retains 11 over covered edit 10
-    B delivers the unchanged logical entry at a new local cursor position
+    B stores the unchanged logical entry with a fresh localIndex
 ```
 
 The rollback below is invalid because sequence reuse makes the new edit conflict with immutable history:

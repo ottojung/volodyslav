@@ -2,8 +2,8 @@
 
 ## Merge
 
-Only immutable logical entries replicate. Local cursor indexes, delivery heads,
-watermarks, and gaps do not.
+Only immutable logical entries replicate. Receiver-local `localIndex` values,
+`localJournalIndexWatermark`, and harmless gaps do not.
 
 ```text
 J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
@@ -16,9 +16,9 @@ input. Two entries
 with one ID but different content are corruption and reject the operation
 atomically and symmetrically. Remote entries never transfer author ownership.
 
-The receiver imports an entry unchanged. If it has not delivered that logical
-entry locally, it allocates a new physical cursor record. This makes learned
-history observable without turning the receiver into its author.
+The receiver imports an unknown entry unchanged, stores it once, and assigns a
+fresh local index. The sender's index is ignored. An already-known entry is not
+moved merely because it was received again.
 
 ## ACI proof
 
@@ -32,12 +32,23 @@ either parenthesization produces the same maxima and G witnesses. Canonical
 ordering is only a representation function. Therefore logical merge is:
 
 ```text
+compact(compact(A) ∪ B) = compact(A ∪ B)
+```
+
+Coordinate losers cannot beat retained maxima, and a losing generation cannot
+become winning after union because its greater retained presence head cannot
+disappear. A future winning add brings its own authority witnesses. Therefore:
+
+```text
 J1 ⊔ J2 = J2 ⊔ J1
 (J1 ⊔ J2) ⊔ J3 = J1 ⊔ (J2 ⊔ J3)
 J ⊔ J = J
 ```
 
 These laws apply to logical journal merge, not to the complete graph merge.
+They also exclude local indexes: changing an index affects no logical equality,
+head, canonical event, value revision, generation, candidate, coherence, or graph
+merge decision.
 
 After accepting a peer journal, a writable host durably raises
 `localJournalClock` to at least the greatest observed sequence before allocating
@@ -202,7 +213,7 @@ values is corruption, not a hash tie-break case.
   G can supersede an unseen invalidate for G. This is total-order resolution,
   not evidence that B observed the destructive entry.
 * **Carrier independence:** A's `[100,A,8]` travels A → B → C. B and C import
-  the entry and allocate local delivery positions but author no edit. All three
+  the entry and allocate their own local indexes but author no edit. All three
   compare the same revision.
 * **Same-writer supersession:** A's retained head is edit 12. A host carrying
   A's edit 8 cannot resolve it as a candidate, even if its timestamp is large;

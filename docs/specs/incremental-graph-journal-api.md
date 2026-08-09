@@ -3,91 +3,78 @@
 ```text
 graph.possibleMaybeChanges({ since, to })
 baselinePossibleNodeChange()
-
 PossibleNodeChange { nodeName, bindings, action, time }
 ```
 
-The result means that this exact closed-classifier action may have happened to
-the semantic node after the cursor. It describes history, not current graph
-state. Repeated covered occurrences may collapse and false positives are
-allowed, but an action-specific false negative is forbidden.
+A result means that this exact closed-classifier action may have happened to the
+semantic key after the cursor. False positives and collapse into a later
+covering possibility are allowed; action-specific false negatives are forbidden.
 
-`since` is an opaque receiver-local physical cursor returned in the same
-process, or the baseline sentinel. It is not a `JournalEntryId`, is not
-serializable or user-constructible, and has no replicated meaning. Each returned
-record privately carries its local position. An imported logical entry keeps
-its `(sequence,author)` while receiving a fresh local position so newly learned
-history can be observed.
+## Cursor and query
 
-Learning history and applying it are separate delivery causes. If an entry was
-delivered when learned but a later synchronization uses it to create an
-observable local graph transition, that transition MUST receive another fresh
-local position above the current watermark. The delivery references the same
-immutable logical entry by optional `causeId`; it does not re-author it. Its
-self-contained exposed action is the exact receiver transition classified
-against the committed before/after graph.
+`since` is an opaque same-process cursor conceptually
+`(localIndex,actionOrdinal)`, where the ordinal uses the fixed order add, edit,
+delete, invalidate, validate. It is neither a `JournalEntryId` nor serializable
+or user-constructible. The baseline is before every pair.
 
-For example, B may learn A's add for D while D is unsupported and remains
-absent, then a client advances its cursor. If later input convergence makes the
-same revision coherent and B materializes D, B creates a fresh local `add`
-delivery at B's materialization/cutover time, referring to A's already-known
-entry by `causeId`. The client observes the
-absent-to-materialized transition without any new logical add.
+A query retains one fixed committed active snapshot, captures
+`localJournalIndexWatermark=H`, considers stored entries after `since` and at or
+before H, expands them, applies `NodeFilter`, and returns deterministic
+`(localIndex,actionOrdinal)` order. An implementation may scan all `O(rn)`
+canonical entries; any secondary local index must be reconstructible from them.
+Cutover cannot straddle snapshot selection.
 
-A query selects one fixed committed active-replica snapshot, captures its local
-watermark, scans `(since,watermark]` in local-position order while skipping
-compaction gaps, and applies `NodeFilter`. Selection and snapshot capture cannot
-straddle replica cutover. The public fields are read directly from the retained
-`DeliveryRecord`; queries MUST NOT dereference `causeId`. Logical compaction
-therefore cannot make a delivery unreadable or change its public fields.
-
-Delivery action and time always describe the same reported occurrence:
-
-* **Newly learned history without a graph transition:** `action` and `time` are
-  copied from the previously unseen logical entry, and `causeId` is that entry's
-  ID. This reports the historical occurrence.
-* **Actual receiver graph transition:** `action` is the exact closed-classifier
-  action from receiver before-state to after-state, `time` is the receiver's
-  transition/cutover wall time, and optional `causeId` names the logical event
-  responsible. The cause's original action/time do not replace the public
-  receiver-transition fields.
-
-When synchronization authors delete or invalidate while performing the local
-transition, the occurrences are atomic and naturally have
-`logicalEntry.time == DeliveryRecord.time == transition/cutover time`.
-
-### Delayed-application trace
-
-At t1 A authors logical edit E for D. At t2 B learns E, cannot materialize D,
-delivers `{action: edit, time: t1, causeId: E.id}`, and the client advances its
-cursor. At t3 other synchronization makes E's value admissible and B performs
-`absent -> materialized`. The new delivery is:
+For every qualifying stored entry E:
 
 ```text
-DeliveryRecord {
-    action: "add"
-    time: t3
-    causeId: E.id
-}
+PossibleActions(E) = { add, edit, delete, invalidate, validate }
+PossibleNodeChange.time = E.entry.time
 ```
 
-It is not `{action: add, time: t1}`. The cause remains old and immutable while
-the public action/time describe B's new local occurrence.
+All five records use E's semantic key and immutable logical time. The local
+index answers when this possibility became relevant to this receiver; `time`
+answers when the underlying logical event occurred. There is no receiver-local
+event object, action mask, cause field, or transition timestamp.
 
-Every required delivery uses the append-or-replace operation from the journal
-types specification. If old record d for `(K,A)` is replaced by r, then `r > d`:
+The action ordinal lets a client advance record-by-record without skipping the
+remaining projections at one index:
 
 ```text
-cursor < r:  a subsequent scan can observe the covering record at r
-cursor >= r: the cursor has already crossed the covering notification at r
+(51,add), (51,edit), (51,delete), (51,invalidate), (51,validate), (52,add)
 ```
 
-The replacement batch is atomic, so a fixed snapshot sees the old headed record
-or the new headed record, never neither. Deleting d cannot create an
-action-specific false negative. Its physical gap is expected and scans skip it.
-Repeated delivery therefore does not make `DeliveryByIndex` grow with operation
-or synchronization history.
+## Installation and touch traces
 
-Inactive construction copies the active local delivery domain exactly; new
-local or imported deliveries allocate above its watermark. Consequently an
-existing same-process cursor remains meaningful across cutover.
+* **Unknown history:** B first learns remote entry E. B stores E unchanged and
+  assigns a fresh local index; all five possibilities become observable.
+* **Known witness touched:** synchronization changes key K using history already
+  known by B. B updates only `notificationWitness(K).localIndex`; its logical
+  entry remains identical and all five possibilities cover the actual action.
+* **Settled no-op:** receiving an already-known entry with no graph or compaction
+  change neither touches it nor advances the watermark.
+
+## Cursor-coverage theorem
+
+For every successful transaction T and key K with at least one actual closed-
+classifier transition, either T installs/authors an unknown entry for K or it
+touches the greatest retained `JournalEntryId` for K,
+`notificationWitness(K)`. Do this once per changed key, not once per action. If
+an entry for K already receives a fresh index in T, no extra touch is needed.
+Graph changes and index updates commit atomically.
+
+For any cursor C issued before T:
+
+```text
+C <= oldWatermark < witness.localIndex
+```
+
+A later query therefore observes the witness, whose five projections include
+the exact action. A later touch only moves coverage forward. If compaction
+removes the witness, compaction touches another retained same-key witness above
+its old watermark. Induction over transactions proves no action-specific false
+negative. Touching one entry a million times retains one logical entry and one
+scalar index.
+
+Inactive construction copies every retained local index and the watermark from
+one fixed receiver snapshot before allocating above it. Thus same-process cursors
+remain comparable across cutover; remote indexes never participate.

@@ -1,102 +1,89 @@
 # Logical journal compaction
 
-This document's canonical algorithm compacts replicated logical entries. It is
-separate from receiver-local delivery replacement. Physical delivery retains one
-headed `DeliveryByIndex` record per `(NodeKey,JournalAction)` and replaces it at
-a strictly greater local index atomically, as specified by the journal types and
-API documents.
-
-For notification coverage, entries retain the simple relation:
-
-```text
-E2 covers E1 iff
-    E1.author == E2.author && E1.key == E2.key &&
-    E1.action == E2.action && E2.sequence > E1.sequence
-```
-
-There is no cross-author coverage. Value and freshness authority add bounded
-witness exceptions because an edit or freshness notification maximum may name a
-losing presence generation.
+Compaction considers immutable `JournalEntry` contents only; `localIndex` is
+ignored. For notification coverage, E2 covers E1 when author, key, and action are
+equal and E2 has greater sequence. There is no cross-author coverage.
 
 ## Canonical algorithm
 
-For each key K, first compact add/delete coordinates and compute
-`presenceHead(K)`. If that head is add G, G is the only presence generation that
-can still win. Then retain:
+For each key K, compact add/delete coordinates and compute `presenceHead(K)`. If
+it is add G, retain:
 
-1. the maximum entry for every `(author,K,action)` coordinate, preserving exact
-   action-specific possible-change coverage and all presence heads;
-2. for each author, the maximum edit for K whose explicit `generation == G`,
-   when it differs from the edit notification maximum;
-3. for each author and freshness action, the maximum entry in that coordinate
-   whose explicit `generation == G`, when it differs from item 1; and
-4. every add entry named as `generation` by an edit or freshness entry retained
-   in items 1–3, as a generation-reference witness even when that add is covered
-   for notification purposes.
+1. the maximum entry for every `(author,K,action)` coordinate;
+2. each author's greatest edit scoped to G when different from its coordinate
+   maximum;
+3. each author's greatest invalidate and validate scoped to G when different
+   from their coordinate maxima; and
+4. every add referenced by a retained generation-scoped entry.
 
-If presence is absent, items 2 and 3 are empty. Edit/freshness entries whose
-generation does not resolve to a validated same-key add are malformed and
-rejected before compaction. Entries are returned in canonical `JournalEntryId`
-order.
+If presence is absent, generation-authority witnesses are empty. Invalid
+same-key generation references reject the journal. Results have canonical
+`JournalEntryId` order.
 
-Thus the edit coordinate and each freshness coordinate retain at most their
-notification head, one current-generation authority witness, and their
-add-reference witnesses. The bound remains
-`O(historic keys × writers)`—equivalently the existing
-`O(historic keys × writers × 5)` with a fixed constant-factor increase—and is
-not proportional to historical generations.
+Let G win before compaction. Every losing add H is below a retained presence
+entry. Union cannot remove that entry; a greater delete makes K absent and a
+greater add establishes new G2 while bringing its own witnesses. Thus H can
+never regain authority in a future union. It is sound to discard H's value and
+freshness authority while retaining coordinate maxima.
 
-## Why a discarded generation cannot become relevant
+The algorithm preserves `presenceHead`, every `valueHead(author,K,G)`,
+`canonicalEvent(K,G)` inputs, `freshnessHead(K,G)`, and all add references. It
+retains a constant number per author/key/action plus constant witnesses, hence
+`O(rn)` entries for r authors and n historic keys.
 
-Let G be the winning add when compaction runs. Every other retained add H has
-`H.id < G.id`; every removed add is below a later same-author add and therefore
-also cannot beat G. Future merge is set union plus maximum presence selection:
-it cannot remove G. A later delete makes the key absent, and a later add creates
-new generation G2; neither can make H win. Therefore a generation discarded as
-losing can never again become the final presence generation in any future merge.
-It is sound to discard its value and freshness authority while retaining the
-coordinate notification heads.
+## Cursor coverage when entries are removed
 
-If future add G2 wins, its own journal travels with edits and freshness entries
-scoped to G2. Canonical compaction recomputes items 2 and 3 for G2 before
-removing any witness. Consequently the value and freshness heads relevant to the
-only generation that can win are never lost.
+For every K from which compaction removes entries, choose the greatest retained
+`notificationWitness(K)` and touch it once after logical compaction. Touching
+updates only its local index. It is not part of canonical selection.
 
-## Preservation proofs
+Let C precede an occurrence represented by removed E. Witness W receives index w
+above the transaction's previous watermark, so `C < w`; a later query sees W.
+W expands to all five actions and covers every action E could expose. A cursor at
+or beyond w has already crossed that covering possibility. Compaction therefore
+cannot create a false negative. Trace: removing old same-key entries touches one
+surviving witness; no logical duplicate is appended.
 
-* **Possible changes:** the coordinate maximum covers every older entry with the
-  same author, key, and exact action. Receiver-local delivery records are
-  self-contained, so a compacted optional `causeId` is never dereferenced.
-  Independently, replacing physical delivery d with r cannot cause a cursor
-  false negative: a cursor below r can observe r, while one at or above r has
-  crossed it. Physical gaps are expected.
-* **Value head:** add G is retained, and item 2 retains every author's greatest
-  edit scoped to G. These entries reconstruct exactly
-  `valueHead(author,K,G)` even when an old-generation edit is the notification
-  maximum. Losing-generation edits are inapplicable and can never regain
-  authority because their add can never win later.
-* **Presence head:** maxima for add/delete coordinates are retained, so their
-  global maximum is unchanged. Extra covered add-reference witnesses are lower
-  than those maxima and cannot change it.
-* **Freshness head:** for winning G, item 3 retains each author's greatest
-  invalidate and validate scoped to G. Taking the greatest ID across those
-  witnesses gives exactly `freshnessHead(K,G)`. Entries for losing generations
-  are inapplicable and never become applicable later.
+## ACI closure proof
 
-Every synchronization projection and decision is therefore preserved. The
-algorithm is a canonical closure: compacting twice changes nothing. Union is
-commutative and associative, and discarded authority belongs only to generations
-that cannot beat a retained presence head in any later union. Hence inserting
-compaction after either parenthesization of journal union produces the same
-notification maxima, winning generation, and value/freshness authority
-witnesses; logical merge remains commutative, associative, and idempotent.
+Canonical compaction satisfies:
 
-### Trace
+```text
+compact(compact(A) union B) = compact(A union B)
+```
 
-For winning add G2, suppose A has `edit#110(generation=G1)`,
-`edit#22(generation=G2)`, `validate#100(generation=G1)`, and
-`invalidate#21(generation=G2)`. The old-generation entries remain coordinate
-notification maxima, while edit 22 and invalidate 21 are retained as G2
-authority witnesses. Thus neither `valueHead(A,K,G2)` nor
-`freshnessHead(K,G2)` is displaced by larger G1 IDs. Once G2 wins, G1 can never
-win later, so no other G1 authority history is required.
+A discarded coordinate loser cannot beat its retained greater coordinate entry.
+A discarded losing generation cannot win later by the monotonic-presence
+argument above. A future greater add brings its retained generation witnesses.
+Therefore early compaction loses no fact that a future union can select.
+
+Since set union is ACI and compaction is canonical and idempotent:
+
+```text
+A join B = B join A
+(A join B) join C = A join (B join C)
+A join A = A
+```
+Logical equality and this proof exclude local indexes entirely.
+
+## Continuous bound
+
+Each retained entry stores exactly one scalar local index. Touches change that
+integer, never record count. Canonical entries and any reconstructible index are
+both `O(rn)` continuously, independent of touch count, synchronization count,
+and database age.
+
+## Executable bounded verification
+
+`scripts/verify-journal-spec-model.py` exhaustively checks a two-author universe
+with two add generations, generation-scoped edits, delete, invalidate, and
+validate. It checks 50 valid subsets, 34 distinct compact states, all 39,304
+merge triples, all 2,500 valid closure pairs, compaction
+idempotence/projection preservation, and the closure equation. Logical
+comparison excludes local indexes.
+
+Its cursor model exhausts 16,807 five-operation words covering installation,
+multiple keys, repeated touch, compaction removal/touch, stale cursors, and
+settled no-op. It checks 800,755 action-specific cursor obligations. At most
+three logical records exist in that universe despite arbitrary touches. These
+finite checks support but do not replace the normative proofs above.

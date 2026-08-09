@@ -43,8 +43,8 @@ Identifier-only, timestamp-only, and validity-edge-only changes emit nothing.
 
 Synchronization invokes no computor and therefore cannot invent a semantic
 `ComputedValue`. Copying or selecting an existing value imports its originating
-`add`/`edit` history unchanged and MUST NOT author an `add` or `edit`. A local
-delivery record may notify clients that imported history was learned.
+`add`/`edit` history unchanged and MUST NOT author an `add` or `edit`. An unknown
+import receives a receiver-local index on its single stored entry.
 
 Synchronization can derive genuinely new conservative facts:
 
@@ -54,7 +54,7 @@ Synchronization can derive genuinely new conservative facts:
 
 For a newly caused transition it authors `delete` or `invalidate`. Each such
 sequence is greater than every entry observed by that synchronization operation,
-and the graph transition, joined journal, entry, and local delivery record are
+and the graph transition, joined journal, stored entry/index, and watermarks are
 installed atomically. An already known covering destructive entry is propagated,
 not re-authored. Synchronization never synthesizes `validate`; only normal graph
 revalidation with coherent validity evidence may do that.
@@ -63,30 +63,26 @@ A synchronization-authored invalidate sets `generation` to the final joined add
 generation whose selected materialization it demotes. It cannot be emitted when
 final presence is absent or the add generation is unresolved.
 
-Logical emission and receiver-local delivery are separate. Every observable
-graph transition caused by synchronization allocates a fresh local delivery
-position, even when its causal logical entry was learned earlier. For copied
-presence/value/freshness, the delivery record references the already-existing
-originating add/edit/validate entry through optional `causeId` while storing the
-exact local transition key, action, and time itself; it does not create or alter
-a logical entry. A newly derived delete or
-invalidate delivery references the newly authored destructive entry. Graph and
-delivery commit atomically, so advancing a cursor after learning history cannot
-hide a later graph transition caused by that history.
+Logical emission and receiver-local cursor indexing are one stored-journal
+operation. Every newly authored entry receives a distinct increasing
+`localIndex` above the pre-transaction `localJournalIndexWatermark`. Every newly
+installed remote entry does likewise while retaining immutable logical contents.
+Receiving an already-known entry alone does nothing.
 
-When an imported logical entry is newly learned without a receiver graph
-transition, its delivery copies the logical entry's action and time. When
-synchronization creates an actual receiver graph transition, delivery action is
-the exact receiver before/after classifier and delivery time is the local
-transition/cutover wall time; `causeId` may independently name an older logical
-event. For a newly synchronization-authored delete/invalidate, logical and
-delivery times coincide because entry emission and graph transition are atomic.
+For synchronization, compute the compacted logical result and all graph
+transitions first. For each changed semantic key K, a newly installed/authored
+entry for K supplies fresh cursor coverage; otherwise touch the greatest retained
+`notificationWitness(K)` exactly once. This includes every structurally deleted
+or transitively invalidated dependent whose graph state changed. The graph,
+logical entries, local-index changes, and both allocator watermarks commit
+atomically.
 
-Every local, imported, synchronization-applied, reset, or migration delivery
-uses the same atomic receiver-local append-or-replace rule: delete the previous
-`DeliveryHead[K,A]` record, insert one self-contained record at a never-reused
-index above the watermark, update the head, and advance the watermark. This
-physical replacement is distinct from replicated logical-entry compaction.
+Ordinary mutations author exact classifier entries. Several entries for one key
+receive distinct local indexes, and no touch is needed unless some real
+transition lacks a freshly indexed entry. `Unchanged` remains silent.
+
+A settled equivalent synchronization authors no entry, learns no entry, touches
+nothing, changes no graph, and advances neither watermark.
 
 ## Reachability invariant
 

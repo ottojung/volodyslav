@@ -1,35 +1,24 @@
 # Journal during migration
 
-Migration builds the authoritative graph independently from journal history. An
-inactive destination copies one fixed active snapshot of:
+Migration builds authoritative graph state independently, starting from one
+fixed receiver snapshot containing:
 
 ```text
-durable local HostFingerprint
-logical compacted JournalEntry collection
+durable HostFingerprint
+StoredJournalEntry collection
 localJournalClock
-receiver-local DeliveryByIndex, delivery heads, and cursor watermark
+localJournalIndexWatermark
 ```
 
-It validates authors, unique entry identity/content, required edit/freshness
-generation references to same-key add witnesses, canonical compaction,
-clock watermark at least the greatest observed sequence, and local delivery
-invariants before cutover. Migration never adopts a remote author identity.
+It copies every retained entry and its receiver-local index exactly, then
+validates immutable ID content, generation references, canonical compaction,
+logical clock coverage, unique indexes, and index-watermark coverage. It never
+imports another host's index or author ownership.
 
-Migration compares old and new authoritative graphs with the exact classifier:
-add, unequal-value edit, delete, invalidate, and validate. Representation-only,
-identifier-only, validity-only, and `Unchanged` transitions are silent. It
-scopes every emitted edit/invalidate/validate to the exact add generation of the
-materialization whose value or freshness changed; an unresolved generation
-rejects the migration. It reserves distinct local journal sequences after the
-observed watermark and commits the new graph, immutable entries, and delivery
-records atomically.
-Aborted reservations may leave gaps and must never be reused.
-
-Each migration delivery uses receiver-local append-or-replace: it deletes the
-previous record named by `DeliveryHead[K,A]`, inserts the new self-contained
-record above the cursor watermark, updates the head, and advances the watermark
-in the graph installation batch. Migration preserves at most one retained
-delivery record per key/action; preexisting and newly created gaps remain valid.
-The delivery action/time describe the local migrated-graph transition. The
-logical entry independently obeys its action-specific time rule, including
-`entry.time == resulting modifiedAt` for add/edit.
+Migration applies the exact closed classifier. New logical entries use the host
+clock, required generation, action-specific logical time, and distinct fresh
+local indexes. Any changed key without a newly indexed entry touches its greatest
+retained witness. Graph, entries, touches, and watermarks commit atomically.
+`Unchanged`, representation-only, identifier-only, and validity-only changes are
+silent. Aborted inactive construction exposes no index advancement and index
+values are never reused after publication.

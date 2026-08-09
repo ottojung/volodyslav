@@ -166,47 +166,23 @@ If no previous version is found, the migration is a no-op.
 
 ## Journal interaction
 
-Migration constructs the new authoritative graph independently of the journal;
-the graph remains the sole authority. From one fixed active-replica snapshot,
-the inactive destination exact-copies the durable local `HostFingerprint`, the
-compacted logical `JournalEntry` collection,
-`localJournalClock`, receiver-local `DeliveryByIndex`, delivery heads, and
-cursor watermark.
+Migration exact-copies one fixed active receiver snapshot of retained
+`StoredJournalEntry` values, their local indexes, `localJournalClock`, and
+`localJournalIndexWatermark`. It preserves the durable author and never imports
+remote cursor metadata.
 
-Migration preserves the durable author identity and never transfers its
-ownership. Pre-cutover validation requires every represented author to be a
-well-formed supported host fingerprint, entry IDs to have unique content, the
-generation of every edit/invalidate/validate to resolve to a same-key add witness,
-allocator watermark to cover every observed sequence, delivery heads and
-records to satisfy the one-head invariant, and the cursor watermark to cover
-every retained delivery index.
+Pre-cutover validation requires unique immutable logical content per ID, valid
+same-key generation references, canonical compaction, logical-clock coverage,
+exactly one unique index per retained entry, and index-watermark coverage.
+Indexes have no logical merge or provenance role; gaps are valid.
 
-After construction, migration compares old and new authoritative states. It
-emits `add` for absent-to-materialized, `delete` for materialized-to-absent,
-`edit` only for unequal materialized `ComputedValue`s, `invalidate` only for
-fresh-to-stale, and `validate` only for stale-to-fresh. Value and freshness may
-produce multiple actions. `KEEP`, encoding changes, validity-edge changes, and
-other representation-only changes are silent when the three observable
-dimensions are unchanged.
+Migration classifies old/new semantic graph states normally and authors exact
+add/edit/delete/invalidate/validate entries. Each gets a fresh logical sequence
+and local index; a changed key without a newly indexed entry has its greatest
+retained witness touched. All graph, journal, index, and allocator changes commit
+atomically. Migration never seeds graph authority from journal history.
 
-Migration-generated exact actions allocate immutable local entries from the
-serialized host journal clock and create receiver-local delivery records,
-atomically with graph installation. Migration neither reconstructs nor seeds
-graph state from journal data, and it preserves author identity and the
-never-decreasing local watermark.
-
-Delivery creation is the normative one-head append-or-replace operation: the
-batch removes the prior `DeliveryByIndex` record for `(K,A)`, inserts its
-replacement above the cursor watermark, updates `DeliveryHead[K,A]`, and
-advances that watermark. This is receiver-local physical compaction, not logical
-journal compaction.
-
-Migration delivery action and time describe the same local migrated-graph
-transition. A causal logical entry independently obeys its action-specific time
-rule; its optional `causeId` does not replace either delivery field.
-
-Detailed rules are in
-`docs/specs/incremental-graph-journal-migrations.md`.
+Detailed rules are in `docs/specs/incremental-graph-journal-migrations.md`.
 
 ## Atomicity guarantee
 

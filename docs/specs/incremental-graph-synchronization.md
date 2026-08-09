@@ -233,10 +233,13 @@ Install the joined journal, any newly derived destructive entries, graph result,
 identifier lookup, timestamps, freshness, and validity in one transaction.
 Pure copying authors no add/edit and does not alter `modifiedAt`. Synchronizing
 settled equivalent states performs no graph transition and authors no entry.
-Every actual receiver graph transition also creates a fresh receiver-local
-delivery record, even when the referenced immutable logical add/edit/validate
-was already known. Delivery is atomic with the graph transition and does not
-re-author the entry.
+For every key whose graph changes, a newly installed/authored same-key entry
+supplies a fresh local index; otherwise touch the greatest retained same-key
+`notificationWitness`. Touch each changed key once, including every dependent
+changed by deletion closure or propagated invalidation. Touch changes only the
+stored local index and commits atomically with the graph. Settled equivalent
+states learn nothing, author nothing, touch nothing, and advance neither
+watermark.
 
 ## Storage, validation, and lifecycle safety
 
@@ -257,7 +260,10 @@ Before planning, synchronization MUST reject atomically:
 6. malformed journal entries, including edit/invalidate/validate without a
    generation resolving to a same-key add witness;
 7. conflicting content at one `JournalEntryId`; or
-8. a local allocator watermark below an observed sequence.
+8. `localJournalClock` below an observed sequence;
+9. a retained entry missing exactly one unique valid local index;
+10. `localJournalIndexWatermark` below a retained local index; or
+11. any use of local index in logical equality, provenance, or merge.
 
 Before journal join or conflict planning, validate each source against its own
 pre-merge journal. Every source materialization MUST resolve its source presence
@@ -304,7 +310,8 @@ Before T can become active, validate all of the following:
 8. every materialized value resolves to the canonical current journal event;
 9. presence and generation-scoped freshness agree with the installed journal
    frontiers; and
-10. `localJournalClock` covers every installed logical entry sequence.
+10. both journal watermarks and all local-index uniqueness/inertness invariants
+    hold.
 
 Failure of any check aborts that host merge, leaves the active pointer unchanged,
 and exposes no partial target. Graph merge and long validation run in inactive
@@ -312,8 +319,8 @@ storage, not by broadening the active-replica darkroom.
 
 ### Cutover and sequential hosts
 
-T becomes active whenever either authoritative graph state, logical journal
-state, or local delivery state changes; a journal-only import therefore still
+T becomes active whenever authoritative graph state, logical journal contents,
+or receiver-local entry indexes change; a journal-only import therefore still
 uses durable inactive construction and atomic pointer cutover. Cutover may be
 skipped only when all three are unchanged.
 
@@ -324,12 +331,11 @@ failed host is recorded and does not roll back successful hosts; processing may
 continue and failures are reported together. This sequential lifecycle does not
 imply multi-host associativity, order independence, or all-to-all communication.
 
-Controlled reset is not this merge algorithm. It proposes the source graph
-unchanged, joins receiver and source journals, and applies all presence,
-generation-scoped freshness, provenance, identifier, structural, and validity
-rules in this section as rejection constraints. Any contradiction rejects the
-reset atomically; reset neither reconciles the graph nor re-authors copied
-values. The lifecycle specification defines the complete reset procedure.
+Controlled reset is not this merge algorithm. It imports source history, then
+performs a new receiver-authoritative closed-classifier mutation which establishes
+the desired semantic graph with normal add/edit/delete/invalidate/validate
+entries, reset-time value timestamps, and local indexes. The lifecycle
+specification defines the complete reset procedure.
 
 ## Required traces
 
@@ -390,7 +396,8 @@ events use author as the deterministic tie-break.
 ### Value through a carrier
 
 A authors `(A,12,K,edit,t,generation=G)`. A → B imports that entry and value; B
-allocates only a local delivery cursor. B → C transmits the same entry. All
+stores it once with a fresh local index. B → C transmits only the immutable
+entry, and C assigns its own index. All
 hosts derive `[t,A,12]`, so support referring to K survives physical movement.
 Neither B nor C emits edit.
 
@@ -520,6 +527,9 @@ along that path. With finitely many entries and hosts, eventually every host has
 every retained coordinate maximum and current-generation value/freshness
 authority witness. Compaction preserves all projections, so generation-scoped
 value, presence, and freshness frontiers stabilize identically everywhere.
+`localIndex` is semantically inert: changing it affects none of `JournalEntryId`,
+the three heads, canonical event, value revision, generation, admissibility,
+coherence, or graph merge. Only immutable entry contents gossip.
 
 ### D. DAG induction
 
@@ -538,3 +548,6 @@ common frontier and exact coherent proof rule. Thus N stabilizes. Induction
 through the finite DAG establishes equivalent values, presence, freshness,
 timestamps, identifiers up to semantic lookup, and validity relations at every
 host. Settled idempotence then makes every further synchronization a graph no-op.
+Once graph and logical history settle, no entry is learned or compacted and no
+graph key changes. Therefore no touch occurs and receiver-local indexes and
+watermarks also stop changing.

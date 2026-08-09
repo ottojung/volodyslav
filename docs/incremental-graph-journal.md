@@ -31,7 +31,7 @@ materialized→absent delete, fresh→stale invalidate, and stale→fresh valida
 There is no generic change. Graph mutation and its local entries commit
 atomically.
 
-## Merge and delivery
+## Merge and receiver-local cursor position
 
 ```text
 J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
@@ -41,20 +41,15 @@ A later entry covers an earlier notification only for the same author, key, and
 action. Canonical compaction retains coordinate maxima plus bounded value and
 freshness authority witnesses for the winning add generation. Merge is
 commutative, associative, and idempotent, and its bound is
-`O(historic keys × writers × 5)` with a constant freshness factor, excluding
-local cursor infrastructure.
+`O(historic keys × writers)` with a constant action/witness factor.
 
-Logical identity and local delivery are separate. Import preserves the remote
-entry's author and sequence. The receiver may assign a fresh opaque local cursor
-position so `possibleMaybeChanges()` exposes newly learned history, but never
-re-authors the entry merely because it learned it. Compaction retains exact
-action-specific possible-change coverage.
-
-Receiver-local delivery is independently append-or-replaced. `DeliveryHead`
-points to at most one retained `DeliveryByIndex` record per key/action; a new
-delivery atomically removes the old record, inserts a self-contained record at a
-never-reused index above the watermark, and updates the head. This bounds both
-physical maps by `O(historic keys × 5)` and leaves harmless scan gaps.
+Each retained entry is stored once with one receiver-local `localIndex`.
+Import preserves immutable contents and assigns a fresh index only when the
+entry is unknown. Touching changes only that scalar index. It never duplicates
+or re-authors the entry. `possibleMaybeChanges()` expands every qualifying entry
+to all five conservative actions, and compaction touches a surviving same-key
+witness when it removes cursor-visible history. Total stored records remain
+`O(historic keys × writers)`.
 
 ## Synchronization projections
 
