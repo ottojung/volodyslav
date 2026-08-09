@@ -212,20 +212,38 @@ a new reachable receiver state:
 3. import/join source immutable logical history normally, assigning fresh local
    indexes only to entries unknown at the receiver;
 4. raise `localJournalClock` above every observed sequence;
-5. compare the pre-reset receiver graph with the desired target using the closed
-   classifier;
-6. author receiver-local add/edit/delete/invalidate/validate entries required to
-   establish that target, with reset-time wall clock for value-changing
-   `modifiedAt` and normal generation rules;
+5. process the desired target in topological order and author a fresh receiver
+   `add` generation for every target-materialized semantic key, with every
+   sequence above the joined history and earlier reset entries;
+6. author a receiver `delete` above observed presence history for every historic
+   semantic key known to either graph/journal which the target wants absent;
 7. give new entries distinct local indexes, touch any changed key lacking fresh
    coverage, and atomically install graph, journal, and allocator watermarks.
 
-Absent-to-present reset creates a new add generation; unequal present values
-create a receiver edit in the applicable generation; target absence creates
-delete; and freshness transitions create invalidate/validate. These are genuine
-new authoritative events, not re-labeling of source events. Reset may therefore
-override newer receiver history without preserving source timestamps or storage
-identifiers when those would make the target lose.
+Every target materialization is thus a new presence generation, whether the
+receiver was absent, held a different value, or already held the same value.
+Older add, edit, invalidate, and validate entries belong to losing generations
+and are inapplicable before value or freshness selection. Reset uses ordinary
+`JournalEntry` values, not a reset-specific record type.
+
+If reset changes a semantic value, the resulting `modifiedAt` is the real reset
+wall-clock value-change time and the establishing add's `time` is exactly that
+timestamp. If the receiver already has the same semantic value, administrative
+re-generation is not a value change: reset preserves that materialization's
+`modifiedAt` and uses the preserved timestamp as the new add's `time`. Reset
+never synthesizes a future timestamp to defeat clock skew; presence-generation
+ordering supplies its authority.
+
+For a dependency graph, reset authors generations in topological order. Roots
+retain freshness only when their desired graph evidence permits it. A derived
+cache cannot reuse source incoming validity proofs against newly regenerated
+input revisions: it is installed stale with no incoming proofs unless the reset
+transaction can validate a coherent proof against the exact newly established
+direct-input `ValueRevision`s. Structural edges still come from the fixed
+schema. Before cutover, reset validates every new generation reference, value
+event and timestamp, presence/freshness frontier, identifier lookup, dependency
+closure, freshness invariant, and validity edge against the complete resulting
+graph and journal. Any failure rejects the entire reset.
 
 There is no reset-specific cursor machinery. Trace: R is absent with delete 100,
 while source S desires value V from old add 50. Reset imports source history,
@@ -233,6 +251,16 @@ then authors a new R add above all observed sequences with reset-time
 `modifiedAt`, installs V under that generation, and assigns the new add a fresh
 local index. The resulting graph/journal pair is reachable and the desired state
 wins normally.
+
+Clock-skew trace: generation G exists and B's edit `EB=(10,B)` for K has
+`generation=G`, `modifiedAt=200`, and value B. R has observed EB, contains B,
+and later resets to value A while R's monotone local clock reads 150. Reset
+authors fresh add generation `GR=(n,R)`, where `n>10`, with
+`GR.time=modifiedAt=150`. `presenceHead(K)=GR`, so EB is inapplicable before
+wall-time value comparison: A remains authoritative even though EB's timestamp
+is 200. If the target had instead remained B, GR would preserve
+`modifiedAt=200` and use `GR.time=200`; the new generation would still make the
+old history inapplicable without pretending that the equal value changed.
 
 After reset, the database is reopened through the migration gate.
 

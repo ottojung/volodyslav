@@ -63,6 +63,13 @@ There is no generic `change`. Identifier, timestamp, validity-only, dependency,
 or representation changes are not edits. `Unchanged` emits no edit. Value and
 freshness transitions may emit two entries when both classifiers apply.
 
+This classifier governs ordinary graph mutation and synchronization. Controlled
+reset is the sole administrative re-generation operation: it emits `add` for
+every target-materialized key, including a key that was already materialized,
+and `delete` for every known historic key the target leaves absent. These
+entries deliberately establish fresh presence frontiers. Reset uses the same
+`JournalEntry` shape; there is no reset-specific action or record type.
+
 ## Host-local journal clock
 
 Each writable host owns one persistent `localJournalClock: uint64`, protected

@@ -81,6 +81,25 @@ Ordinary mutations author exact classifier entries. Several entries for one key
 receive distinct local indexes, and no touch is needed unless some real
 transition lacks a freshly indexed entry. `Unchanged` remains silent.
 
+## Controlled-reset re-generation
+
+Controlled reset is an administrative exception to mechanical application of
+the ordinary classifier. After joining all receiver and source history, it
+authors a fresh receiver `add` generation for every key that the desired target
+materializes, even for a present-to-present or equal-value replacement. Each
+such add is allocated after all history observed by reset. Every historic key
+known to the joined graph/journal which the target wants absent receives a
+receiver `delete` after the observed presence history.
+
+When the desired value differs from the receiver's pre-reset value, reset is a
+real value change: the resulting `modifiedAt` and `add.time` are the same real
+reset wall-clock instant. When the values are semantically equal, re-generation
+does not constitute a value change: reset preserves the materialization's
+existing `modifiedAt` and uses exactly that timestamp as `add.time`. It never
+manufactures a future timestamp. In both cases the fresh add generation, rather
+than wall-time comparison with older generations, makes pre-reset edits and
+freshness events inapplicable.
+
 A settled equivalent synchronization authors no entry, learns no entry, touches
 nothing, changes no graph, and advances neither watermark.
 

@@ -332,10 +332,11 @@ continue and failures are reported together. This sequential lifecycle does not
 imply multi-host associativity, order independence, or all-to-all communication.
 
 Controlled reset is not this merge algorithm. It imports source history, then
-performs a new receiver-authoritative closed-classifier mutation which establishes
-the desired semantic graph with normal add/edit/delete/invalidate/validate
-entries, reset-time value timestamps, and local indexes. The lifecycle
-specification defines the complete reset procedure.
+performs receiver-authoritative re-generation. Every target-materialized key
+receives a fresh receiver add generation above all observed history; target
+absence receives a later delete. Value-changing reset uses real reset wall time,
+while equal-value re-generation preserves `modifiedAt`. The lifecycle
+specification defines the complete reset procedure and DAG validation.
 
 ## Required traces
 

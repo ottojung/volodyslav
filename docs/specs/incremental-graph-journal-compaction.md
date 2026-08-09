@@ -75,15 +75,24 @@ and database age.
 
 ## Executable bounded verification
 
-`scripts/verify-journal-spec-model.py` exhaustively checks a two-author universe
-with two add generations, generation-scoped edits, delete, invalidate, and
-validate. It checks 50 valid subsets, 34 distinct compact states, all 39,304
-merge triples, all 2,500 valid closure pairs, compaction
-idempotence/projection preservation, and the closure equation. Logical
-comparison excludes local indexes.
+`scripts/verify-journal-spec-model.py` exhaustively checks 128 valid states and
+96 distinct compact states in a two-author universe. Its deliberately chosen
+ordering classes include concurrent cross-author adds, same-author successive
+adds, an intervening delete, cross-author value/freshness heads, generation
+references, and both directions of coordinate-maximum versus winning-generation
+witness ordering. In particular, losing-generation edit, invalidate, and
+validate coordinate maxima at sequences 110, 111, and 112 coexist with required
+winning-generation witnesses at sequences 22, 23, and 24; compaction must
+retain both sides of every pair.
 
-Its cursor model exhausts 16,807 five-operation words covering installation,
-multiple keys, repeated touch, compaction removal/touch, stale cursors, and
-settled no-op. It checks 800,755 action-specific cursor obligations. At most
-three logical records exist in that universe despite arbitrary touches. These
-finite checks support but do not replace the normative proofs above.
+The verifier checks idempotence and every synchronization projection on all 128
+states, all 16,384 valid closure pairs, and all 884,736 compact-state merge
+triples for ACI. Logical comparison excludes local indexes.
+
+Its cursor model exhausts 10,000 four-operation words and checks all 40,000
+committed prefixes immediately, including unknown installation, authored
+entries, two keys, repeated touches, combined graph transition and compaction,
+stale and partial-action cursors, and settled no-op. It performs 97,151
+action-specific obligation checks. At most three logical records exist in that
+universe despite arbitrary touches. These finite checks support but do not
+replace the normative proofs above.

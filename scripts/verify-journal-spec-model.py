@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exhaustive bounded checks for the IncrementalGraph journal specification."""
 from dataclasses import dataclass
-from itertools import combinations, product
+from itertools import product
 
 ACTIONS = ("add", "edit", "delete", "invalidate", "validate")
 
@@ -18,13 +18,34 @@ class Entry:
     def id(self): return (self.sequence, self.author)
 
 G1 = Entry(1, "A", "K", "add", 10)
-E1 = Entry(2, "B", "K", "edit", 11, G1.id)
-I1 = Entry(3, "A", "K", "invalidate", 12, G1.id)
-D1 = Entry(4, "B", "K", "delete", 13)
-G2 = Entry(5, "A", "K", "add", 20)
-E2 = Entry(6, "B", "K", "edit", 20, G2.id)
-V2 = Entry(7, "A", "K", "validate", 21, G2.id)
-UNIVERSE = (G1, E1, I1, D1, G2, E2, V2)
+GX = Entry(15, "B", "K", "add", 15)       # concurrent cross-author generation
+D1 = Entry(16, "A", "K", "delete", 16)    # delete between generations
+G2 = Entry(20, "A", "K", "add", 20)       # same-author successor and winner
+
+# Losing-generation coordinate maxima exceed winning-generation witnesses.
+E_OLD = Entry(110, "A", "K", "edit", 11, G1.id)
+E_CUR = Entry(22, "A", "K", "edit", 20, G2.id)
+I_OLD = Entry(111, "A", "K", "invalidate", 12, G1.id)
+I_CUR = Entry(23, "A", "K", "invalidate", 21, G2.id)
+V_OLD = Entry(112, "B", "K", "validate", 15, GX.id)
+V_CUR = Entry(24, "B", "K", "validate", 22, G2.id)
+
+# Winning coordinate maximum exceeds a losing entry; these also create cross-author heads.
+E_LOW_OLD = Entry(2, "B", "K", "edit", 10, G1.id)
+E_HIGH_CUR = Entry(25, "B", "K", "edit", 20, G2.id)
+I_CROSS_CUR = Entry(26, "B", "K", "invalidate", 21, G2.id)
+
+# Composite atoms make every enumerated union generation-valid while representing
+# materially distinct ordering classes.
+ATOMS = (
+    frozenset((G1, E_OLD, I_OLD)),
+    frozenset((GX, V_OLD)),
+    frozenset((D1,)),
+    frozenset((G2, E_CUR, I_CUR, V_CUR)),
+    frozenset((G1, E_LOW_OLD)),
+    frozenset((G2, E_HIGH_CUR)),
+    frozenset((G2, I_CROSS_CUR)),
+)
 
 def valid(es):
     ids = {e.id: e for e in es}
@@ -71,25 +92,41 @@ def compact(es):
 def projections(es):
     p = presence(es)
     if not p or p.action != "add":
-        return (p, frozenset(), frozenset(), frozenset())
+        return (p, None, frozenset(), frozenset(), frozenset(), frozenset())
     vh = value_heads(es, p)
     canonical_inputs = frozenset(
         (t, max((e.id for e in vh if e.time == t))) for t in {e.time for e in vh})
-    return (p, vh, freshness_heads(es, p), canonical_inputs)
+    required_adds = frozenset(
+        e.generation for e in es if e.generation is not None and
+        (e in vh or e in freshness_heads(es, p)))
+    return (p, p.id, vh, canonical_inputs, freshness_heads(es, p), required_adds)
 
-VALID = [frozenset(c) for n in range(len(UNIVERSE)+1)
-         for c in combinations(UNIVERSE, n) if valid(c)]
+VALID = []
+for mask in range(1 << len(ATOMS)):
+    state = frozenset().union(*(ATOMS[i] for i in range(len(ATOMS)) if mask & (1 << i)))
+    assert valid(state)
+    VALID.append(state)
+VALID = sorted(set(VALID), key=lambda x: tuple(sorted(x)))
 COMPACT = sorted(set(map(compact, VALID)), key=lambda x: tuple(sorted(x)))
+
+# Explicitly prove the witness cases are present and retained.
+hard = frozenset().union(ATOMS[0], ATOMS[1], ATOMS[3])
+hard_compact = compact(hard)
+assert E_OLD in hard_compact and E_CUR in hard_compact
+assert I_OLD in hard_compact and I_CUR in hard_compact
+assert V_OLD in hard_compact and V_CUR in hard_compact
+assert (E_OLD.sequence > E_CUR.sequence and
+        I_OLD.sequence > I_CUR.sequence and
+        V_OLD.sequence > V_CUR.sequence)
+
 for j in VALID:
     assert compact(compact(j)) == compact(j)
     assert projections(compact(j)) == projections(j)
 for a, b in product(COMPACT, repeat=2):
-    join = compact(a | b)
-    assert join == compact(b | a)
+    assert compact(a | b) == compact(b | a)
     assert compact(a | a) == a
 for a, b, c in product(COMPACT, repeat=3):
     assert compact(compact(a | b) | c) == compact(a | compact(b | c))
-    assert compact(compact(a) | b) == compact(a | b)
 for a, b in product(VALID, repeat=2):
     assert compact(compact(a) | b) == compact(a | b)
 
@@ -122,44 +159,63 @@ def query(state, cursor):
     return {(label, action) for label, idx in state.entries
             for ordinal, action in enumerate(ACTIONS) if (idx, ordinal) > cursor}
 
-# Exhaust all operation words through depth five. Each graph action records every pre-action cursor.
-ops = ("installK1", "installK2", "installL", "touchK", "touchL", "compactK", "noop")
-states_checked = 0; obligations_checked = 0; max_records = 0
-for word in product(ops, repeat=5):
+# Exhaust every four-operation word and check obligations after every prefix.
+ops = ("installK1", "authorK2", "installL", "graphAddK", "graphDeleteK",
+       "graphInvalidateK", "graphValidateL", "compactK", "graphCompactK", "noop")
+states_checked = 0; prefixes_checked = 0; obligations_checked = 0; max_records = 0
+for word in product(ops, repeat=4):
     s = Stored((), 0); obligations = []
     for op in word:
         before = s
-        if op.startswith("install"):
-            label = op.removeprefix("install")
+        if op in ("installK1", "authorK2", "installL"):
+            label = {"installK1": "K1", "authorK2": "K2", "installL": "L"}[op]
             s = put(s, label)
             if s != before:
-                obligations += [(c, label[0], a) for c in issued_cursors(before) for a in ACTIONS]
-        elif op == "touchK" and any(k.startswith("K") for k, _ in s.entries):
-            witness = max(k for k, _ in s.entries if k.startswith("K")); s = touch(s, witness)
-            obligations += [(c, "K", a) for c in issued_cursors(before) for a in ACTIONS]
-        elif op == "touchL" and any(k.startswith("L") for k, _ in s.entries):
-            witness = max(k for k, _ in s.entries if k.startswith("L")); s = touch(s, witness)
-            obligations += [(c, "L", a) for c in issued_cursors(before) for a in ACTIONS]
+                key = "L" if op == "installL" else "K"
+                action = {"installK1": "add", "authorK2": "edit",
+                          "installL": "validate"}[op]
+                obligations += [(c, key, action) for c in issued_cursors(before)]
+        elif op.startswith("graph") and op != "graphCompactK":
+            key = "L" if op == "graphValidateL" else "K"
+            candidates = [k for k, _ in s.entries if k.startswith(key)]
+            if candidates:
+                witness = max(candidates); old_count = len(s.entries)
+                s = touch(s, witness)
+                assert len(s.entries) == old_count
+                action = {"graphAddK": "add", "graphDeleteK": "delete",
+                          "graphInvalidateK": "invalidate",
+                          "graphValidateL": "validate"}[op]
+                obligations += [(c, key, action) for c in issued_cursors(before)]
         elif op == "compactK" and all(k in dict(s.entries) for k in ("K1", "K2")):
             s = remove_and_cover(s, ("K1",), "K2")
+        elif op == "graphCompactK" and all(k in dict(s.entries) for k in ("K1", "K2")):
+            # One transaction performs a graph edit, logical removal, and one covering touch.
+            s = remove_and_cover(s, ("K1",), "K2")
+            obligations += [(c, "K", "edit") for c in issued_cursors(before)]
         elif op == "noop":
-            # Models a repeated equivalent settled synchronization.
             assert s == before
+
+        indexes = [idx for _, idx in s.entries]
+        assert len(indexes) == len(set(indexes))
+        assert all(idx <= s.watermark for idx in indexes)
         max_records = max(max_records, len(s.entries))
-    for cursor, key, action in obligations:
-        assert any(label.startswith(key) and a == action for label, a in query(s, cursor))
-        obligations_checked += 1
+        # Immediate prefix check, then preservation is rechecked after every later prefix.
+        for cursor, key, action in obligations:
+            assert any(label.startswith(key) and a == action for label, a in query(s, cursor))
+            obligations_checked += 1
+        prefixes_checked += 1
     settled = s
     for _ in range(3):
-        assert s == settled  # no graph/logical/index/watermark change
+        assert s == settled
     states_checked += 1
-assert max_records <= 3  # only K1, K2, L exist; touches never add records
+assert max_records <= 3
 
-print(f"valid logical subsets: {len(VALID)}")
+print(f"valid bounded logical states: {len(VALID)}")
 print(f"distinct compact logical states: {len(COMPACT)}")
 print(f"merge triples checked: {len(COMPACT) ** 3}")
 print(f"compaction closure pairs checked: {len(VALID) ** 2}")
 print(f"cursor operation words checked: {states_checked}")
-print(f"cursor obligations checked: {obligations_checked}")
+print(f"committed prefixes checked: {prefixes_checked}")
+print(f"cursor obligation checks across prefixes: {obligations_checked}")
 print(f"maximum stored logical records: {max_records}")
 print("all exhaustive bounded journal checks passed")
