@@ -9,16 +9,34 @@ and destructive LWW frontiers.
 ## Model
 
 ```text
-JournalEntry = {
+JournalEntry =
+    AddJournalEntry
+  | DeleteJournalEntry
+  | EditJournalEntry
+  | InvalidateJournalEntry
+  | ValidateJournalEntry
+
+JournalEntryBase = {
   author: HostFingerprint,
   sequence: uint64,
   key: NodeKey,
-  action: "add" | "edit" | "delete" | "invalidate" | "validate",
-  time: UnixTimestamp,
-  generation?: JournalEntryId // present iff action is edit/invalidate/validate
+  time: UnixTimestamp
 }
+AddJournalEntry = JournalEntryBase & { action: "add" }
+DeleteJournalEntry = JournalEntryBase & { action: "delete" }
+GenerationScopedJournalEntryBase = JournalEntryBase & {
+  generation: JournalEntryId
+}
+EditJournalEntry = GenerationScopedJournalEntryBase & { action: "edit" }
+InvalidateJournalEntry = GenerationScopedJournalEntryBase & { action: "invalidate" }
+ValidateJournalEntry = GenerationScopedJournalEntryBase & { action: "validate" }
 JournalEntryId = (sequence, author)
 ```
+
+The generation-scoped variants name the exact same-key add which established
+their materialization incarnation. Add and delete variants contain no generation
+field. The entry shape is independent of whether ordinary mutation,
+synchronization, migration, or controlled reset authored it.
 
 IDs order sequence first, author second. Each durable host owns one persistent
 `localJournalClock`, serialized by a dedicated allocator mutex. It raises its
@@ -26,10 +44,14 @@ watermark after observing remote entries and increments before authoring; IDs
 are never reused and overflow is fatal. This is journal infrastructure, not a
 materialization field or per-node clock.
 
-The exact actions are absent→materialized add, unequal materialized value edit,
-materialized→absent delete, fresh→stale invalidate, and stale→fresh validate.
-There is no generic change. Graph mutation and its local entries commit
-atomically.
+For ordinary graph mutation and synchronization, the exact actions are
+absent→materialized add, unequal materialized value edit, materialized→absent
+delete, fresh→stale invalidate, and stale→fresh validate. Controlled reset is
+the sole administrative exception: it may author a fresh add for an already-
+materialized target key to establish a new authoritative presence generation.
+This does not broaden ordinary add or permit synchronization to author a
+present→present add. There is no generic change. Graph mutation and its local
+entries commit atomically.
 
 ## Merge and receiver-local cursor position
 
@@ -50,6 +72,12 @@ or re-authors the entry. `possibleMaybeChanges()` expands every qualifying entry
 to all five conservative actions, and compaction touches a surviving same-key
 witness when it removes cursor-visible history. Total stored records remain
 `O(historic keys × writers)`.
+
+`JournalEntry.sequence` is allocated from `localJournalClock`, replicates
+unchanged, and forms logical identity with `author`. `StoredJournalEntry.localIndex`
+is allocated from the distinct `localJournalIndexWatermark`, never replicates,
+and may move when that receiver touches an existing entry. There is one logical
+distributed event sequence and one receiver-local notification position.
 
 ## Synchronization projections
 

@@ -17,6 +17,12 @@ covering possibility are allowed; action-specific false negatives are forbidden.
 delete, invalidate, validate. It is neither a `JournalEntryId` nor serializable
 or user-constructible. The baseline is before every pair.
 
+This cursor coordinate is `StoredJournalEntry.localIndex`, allocated from the
+receiver's `localJournalIndexWatermark`; it is not the replicated
+`JournalEntry.sequence` allocated from `localJournalClock`. Sequence travels
+with immutable logical history, whereas local index never leaves its receiver
+and may move when that receiver touches the entry.
+
 A query retains one fixed committed active snapshot, captures
 `localJournalIndexWatermark=H`, considers stored entries after `since` and at or
 before H, expands them, applies `NodeFilter`, and returns deterministic

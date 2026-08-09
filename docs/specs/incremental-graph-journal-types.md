@@ -7,16 +7,33 @@ graph state: current values, materialization, freshness, timestamps, and
 validity come from the IncrementalGraph.
 
 ```text
-JournalAction = "add" | "edit" | "delete" | "invalidate" | "validate"
+JournalEntry =
+    AddJournalEntry
+  | DeleteJournalEntry
+  | EditJournalEntry
+  | InvalidateJournalEntry
+  | ValidateJournalEntry
 
-JournalEntry = {
+JournalEntryBase = {
     author: HostFingerprint
     sequence: uint64
     key: NodeKey
-    action: JournalAction
     time: UnixTimestamp
-    generation?: JournalEntryId
 }
+
+AddJournalEntry = JournalEntryBase & { action: "add" }
+DeleteJournalEntry = JournalEntryBase & { action: "delete" }
+
+GenerationScopedJournalEntryBase = JournalEntryBase & {
+    generation: JournalEntryId
+}
+
+EditJournalEntry =
+    GenerationScopedJournalEntryBase & { action: "edit" }
+InvalidateJournalEntry =
+    GenerationScopedJournalEntryBase & { action: "invalidate" }
+ValidateJournalEntry =
+    GenerationScopedJournalEntryBase & { action: "validate" }
 
 JournalEntryId(E) = (E.sequence, E.author)
 ```
@@ -37,10 +54,26 @@ unsupported and prevents writable open.
 Entries are immutable. A remotely learned entry is imported byte-for-byte with
 the same author and sequence. Learning an entry never re-authors it.
 
-`generation` is the exact `JournalEntryId` of the add which established the
-materialization being edited, invalidated, or validated. It is required exactly
-for edit, invalidate, and validate and forbidden for add and delete. This
-reference is journal history only and is never stored on a graph materialization.
+The union makes generation membership structural rather than optional.
+`generation` is the exact `JournalEntryId` of the same-key `AddJournalEntry`
+which established the materialization incarnation being edited, invalidated, or
+validated. `AddJournalEntry` and `DeleteJournalEntry` have no `generation`
+field; each of the other three variants requires it. This reference is journal
+history only and is never stored on a graph materialization.
+
+For example, if `G1=(10,A)` is an add for K, every edit, invalidate, and validate
+for that incarnation contains `generation=(10,A)`, while a delete for K has no
+generation field. After a delete and later add `G2=(50,B)`, subsequent scoped
+events for the new incarnation contain `generation=(50,B)`. Events scoped to G1
+are inapplicable to G2.
+
+Action variant and authorship context are orthogonal. Ordinary mutation,
+migration, synchronization-authored destruction, and controlled reset all use
+these same variants without an origin discriminator. In particular,
+synchronization may author `DeleteJournalEntry` or an
+`InvalidateJournalEntry` carrying its required generation; normal
+synchronization never authors add, edit, or validate, while reset may author
+fresh add generations.
 
 Journal validation rejects an entry with action edit, invalidate, or validate
 unless its generation resolves to a valid same-key add in the merge input.
@@ -99,12 +132,20 @@ journal.entries: Map<JournalEntryId,StoredJournalEntry>
 localJournalIndexWatermark: uint64
 ```
 
-`localIndex` is receiver-local metadata only. It is not part of `JournalEntry`,
+`JournalEntry.sequence` is the replicated logical event coordinate. The author
+allocates it from `localJournalClock`; it travels unchanged with the entry and,
+together with `author`, forms `JournalEntryId`.
+
+`StoredJournalEntry.localIndex` is the receiver-local
+`possibleMaybeChanges()` position. Its receiver allocates it from
+`localJournalIndexWatermark`; it never replicates and may change when the
+existing stored entry is touched. It is not part of `JournalEntry`,
 `JournalEntryId`, replicated serialization, logical equality, Lamport ordering,
 provenance, graph revision identity, compaction selection, or synchronization.
-`localJournalClock` allocates logical sequences; the distinct
-`localJournalIndexWatermark` allocates cursor positions. Both overflow fatally,
-and neither allocator reuses a value.
+Thus `localJournalClock` is the allocator/watermark for the one distributed
+logical sequence, while `localJournalIndexWatermark` is the allocator/watermark
+for a receiver's notification positions. They are not competing logical journal
+sequences. Both overflow fatally, and neither allocator reuses a value.
 
 A previously unknown logical entry installed locally keeps its immutable contents
 byte-for-byte and receives:
@@ -123,7 +164,9 @@ local optimization and has no synchronization meaning.
 Every retained entry has exactly one local index; retained indexes are unique;
 the watermark covers every retained index; gaps are harmless; and indexes are
 never reused in one receiver cursor domain. Index allocation/update commits
-atomically with the graph and journal transaction which requires it.
+atomically with the graph and journal transaction which requires it. Active
+transactions read the committed index watermark and allocate/update indexes
+while holding the per-replica darkroom commit mutex, never before acquiring it.
 
 ## Persisted graph boundary
 

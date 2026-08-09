@@ -265,14 +265,29 @@ path acquires that mutex while holding darkroom. These rules prevent cycles.
 
 Normal mutation classifies its graph transition, reserves the necessary entry
 sequences, and commits graph writes, immutable `JournalEntry` values, and local
-index allocations/touches in one short darkroom batch. `localIndex` and
-`localJournalIndexWatermark` require no separate mutex: their planned values are
-private until this serialized durable commit. Aborted inactive construction
-cannot advance active cursor state. Synchronization first takes fixed
+index allocations/touches in one short darkroom batch. A transaction MUST read
+the current durable `localJournalIndexWatermark`, allocate every required fresh
+index monotonically, and update the watermark while holding the per-replica
+darkroom/commit mutex. Reading the watermark outside the darkroom and later
+committing a precomputed successor is forbidden: overlapping different-node
+pulls could otherwise choose the same index. No separate local-index mutex is
+needed.
+
+Conceptually, work that does not require final durable state may be prepared
+outside the darkroom. After acquiring it, the transaction reads the committed
+watermark, assigns `watermark+1`, `watermark+2`, and so on, writes graph changes,
+logical entries, stored-entry index changes, and the final watermark atomically,
+then releases the darkroom. Aborted construction cannot expose any advancement.
+Synchronization first takes fixed
 source snapshots, joins logical entries, and raises the allocator watermark;
 only if its deterministic decision requires a new delete/invalidate does it
 reserve a sequence. The inactive graph and exactly the journal reconciled with
 it become durable before garden cutover.
+
+An inactive synchronization or migration target may allocate privately, but
+only relative to the exact receiver watermark copied into that destination and
+under the destination's serialization boundary. No two builders may publish
+indexes into the same destination without that uniqueness boundary.
 
 `possibleMaybeChanges()` uses garden access to retain one fixed committed
 snapshot and then scans stored entries by local index through the captured index

@@ -7,6 +7,8 @@ ACTIONS = ("add", "edit", "delete", "invalidate", "validate")
 
 @dataclass(frozen=True, order=True)
 class Entry:
+    # None is only a compact Python encoding of the normative discriminated
+    # union: add/delete have no generation field; the other variants require it.
     sequence: int
     author: str
     key: str
@@ -49,9 +51,28 @@ ATOMS = (
 
 def valid(es):
     ids = {e.id: e for e in es}
-    return all(e.generation is None or
-               (e.generation in ids and ids[e.generation].action == "add" and
-                ids[e.generation].key == e.key) for e in es)
+    for e in es:
+        if e.action in ("add", "delete"):
+            if e.generation is not None:
+                return False
+            continue
+        if e.action not in ("edit", "invalidate", "validate"):
+            return False
+        if e.generation is None:
+            return False
+        if (e.generation not in ids or
+                ids[e.generation].action != "add" or
+                ids[e.generation].key != e.key):
+            return False
+    return True
+
+# The nullable Python field is rejected in every shape the normative union
+# cannot represent.
+assert not valid((G1, Entry(200, "B", "K", "add", 30, G1.id)))
+assert not valid((G1, Entry(201, "B", "K", "delete", 30, G1.id)))
+assert not valid((G1, Entry(202, "B", "K", "edit", 30)))
+assert not valid((G1, Entry(203, "B", "K", "invalidate", 30)))
+assert not valid((G1, Entry(204, "B", "K", "validate", 30)))
 
 def presence(es):
     xs = [e for e in es if e.action in ("add", "delete")]
