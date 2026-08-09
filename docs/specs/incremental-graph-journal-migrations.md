@@ -11,7 +11,8 @@ localJournalIndexWatermark
 ```
 
 It copies every retained entry and its receiver-local index exactly, then
-validates immutable ID content, generation references, canonical compaction,
+validates immutable ID content, generation and validation-causal references,
+same-author validation-context monotonicity, canonical compaction,
 logical clock coverage, unique indexes, and index-watermark coverage. It never
 imports another host's index or author ownership.
 

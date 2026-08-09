@@ -1,46 +1,71 @@
 # Logical journal compaction
 
-Compaction is a canonical function of immutable logical contents; `localIndex` is excluded from logical equality. A later sequence covers an earlier notification only at the same `(author,key,action)` coordinate.
+Compaction considers immutable `JournalEntry` contents only; `localIndex` is
+ignored. For notification coverage, E2 covers E1 when author, key, and action are
+equal and E2 has greater sequence. There is no cross-author coverage.
 
-## Canonical retained set
+## Canonical algorithm
 
-For every key K, retain: (1) every `(author,K,action)` coordinate maximum; (2) the presence maximum and value witnesses for winning add generation G; (3) each author's greatest invalidate scoped to G, reconstructing `invalidateFrontier(K,G)`; (4) each author's greatest validation scoped to G; (5) every exact invalidate named by every retained validation context; and (6) every add named by a retained generation-scoped entry.
+For each key K, compact add/delete coordinates and compute `presenceHead(K)`. If
+it is add G, retain:
 
-Reference closure also applies to coordinate-max validations for losing generations: causal references and add generations MUST remain resolvable. Compaction rejects malformed references and never leaves a dangling one. Losing-generation authority not required above may be discarded because a retained greater presence event prevents it from winning any future union; a future greater add brings its own witnesses.
+1. the maximum entry for every `(author,K,action)` coordinate;
+2. each author's greatest edit scoped to G when different from its coordinate
+   maximum;
+3. each author's greatest invalidate scoped to G, reconstructing `invalidateFrontier(K,G)`, and greatest validate scoped to G when different from coordinate maxima;
+4. every exact invalidate referenced by every retained validation causal context, including coordinate-max validations for losing generations; and
+5. every add referenced by a retained generation-scoped entry.
 
-## Causal dominance
+If presence is absent, generation-authority witnesses are empty. Invalid same-key generation references, unresolved/mismatched causal references, references not preceding their validation, and non-monotone same-author validation contexts reject the journal before selection. Reference closure leaves no dangling context. Results have canonical
+`JournalEntryId` order.
 
-For validations V1 and V2 by one durable author for the same K,G, `V1.sequence < V2.sequence` implies V1's context is componentwise no greater than V2's. The author imports immutable history monotonically, never rolls back through a supported lifecycle, and captures its complete retained frontier at each genuine validation. It therefore never forgets observed invalidate progress. Import enforces this invariant, allowing an older same-author validation to be dominated by the retained later one.
+Let G win before compaction. Every losing add H is below a retained presence
+entry. Union cannot remove that entry; a greater delete makes K absent and a
+greater add establishes new G2 while bringing its own witnesses. Thus H can
+never regain authority in a future union. It is sound to discard H's value and
+freshness authority while retaining coordinate maxima.
 
-## Preservation and ACI proof
+The algorithm preserves `presenceHead`; each winning-generation `valueHead(author,K,G)` by retaining add G and each author's greatest G-scoped edit; the exact equal-time `candidateEvents` inputs needed by `canonicalEvent(K,G)`; `invalidateFrontier(K,G)`; existence of an individual effective validation; every required generation reference; and every retained causal reference.
+
+For same author/key/generation validations, journal validity requires later contexts to be componentwise nondecreasing. Thus an older discarded validation is dominated by the retained later one: every invalidate it covered remains covered. This is an enforced input invariant, not an assumption about well-behaved hosts.
+
+## Cursor coverage when entries are removed
+
+For every K from which compaction removes entries, choose the greatest retained
+`notificationWitness(K)` and touch it once after logical compaction. Touching
+updates only its local index. It is not part of canonical selection.
+
+Let C precede an occurrence represented by removed E. Witness W receives index w
+above the transaction's previous watermark, so `C < w`; a later query sees W.
+W expands to all five actions and covers every action E could expose. A cursor at
+or beyond w has already crossed that covering possibility. Compaction therefore
+cannot create a false negative. Trace: removing old same-key entries touches one
+surviving witness; no logical duplicate is appended.
+
+## ACI closure proof
+
+Canonical compaction satisfies:
 
 ```text
 compact(compact(A) union B) = compact(A union B)
 ```
 
-A discarded coordinate loser cannot beat its retained maximum. A discarded older same-author invalidate cannot re-enter a frontier because its retained later invalidate dominates it. A discarded validation is dominated by a later same-author validation with a componentwise-greater context. Every invalidate referenced by a retained context remains present.
+A discarded coordinate loser cannot beat its retained maximum. Winning-generation value heads and equal-time canonical-event inputs remain explicit. A discarded older same-author invalidate is dominated by the retained frontier element. A discarded older same-author validation has a componentwise-dominated context by the validated monotonicity invariant. Every referenced invalidate and add remains resolvable. A delayed invalidate either adds an author coordinate or advances its frontier and defeats any validation that did not name it; this result is identical whether compaction ran before or after delivery. Partial validations never combine. Losing generations cannot regain authority, while a future greater add brings isolated value and freshness witnesses.
 
-A delayed invalidate becomes a new author frontier or beats that author's retained element. A validation lacking its exact-or-later reference then fails complete-frontier coverage identically whether compaction ran before or after delivery. Partial contexts are never combined. Losing generations cannot regain authority; a future greater add selects an isolated generation and brings its witnesses. These cases exhaust facts later union can make authoritative and prove closure. Canonical selection is deterministic and idempotent; closure plus ACI set union therefore yields commutative, associative, and idempotent merge. This conclusion depends on closure, not merely on union being ACI.
+These cases establish closure under every later union. Since compaction is canonical and idempotent, closure plus ACI set union yields commutative, associative, and idempotent logical merge. The conclusion does not follow from union alone. Logical equality excludes local indexes.
 
-## Cursor preservation and timing
+## Fully compacted bound and optional timing
 
-If compaction removes cursor-visible entries for K, its independent atomic transaction touches the greatest retained `notificationWitness(K)` above the old watermark. Its five projections cover every removed possibility, so compaction cannot create an action-specific false negative.
+Let n be the number of current or historic semantic keys represented by the compacted journal/database, and r the number of durable authors represented by compacted entries or retained causal-context references. Finite schema arity and fixed maximum serialized `ConstValue` size make `NodeKey` constant-sized.
 
-Compaction MAY run after any transaction, during maintenance, as part of synchronization, repeatedly, or at any time. It MAY be skipped for arbitrarily many ordinary mutations. Correctness never depends on timing; a crash before optional compaction leaves a valid uncompacted journal. Compaction is semantics-preserving and idempotent.
+Per key, constant actions times r coordinates use `O(r)` entries. There are at most `O(r)` retained validations relevant to generation/coordinate structure, each carrying `O(r)` context; exact invalidate references contribute at most `O(r²)`. Other value, generation, freshness, and notification witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`. One scalar `localIndex` per retained entry does not change the bound.
 
-## Fully compacted size (not a continuous bound)
-
-Let n count current or historic semantic keys represented by the compacted database/journal, and r count durable authors represented by compacted entries or retained causal references. Finite schema arity and fixed maximum serialized `ConstValue` size make `NodeKey` constant-sized here.
-
-Per key, constant actions times r coordinates use `O(r)` entries. At most `O(r)` retained validations each have an `O(r)` context; exact referenced invalidates contribute at most `O(r²)`. Other generation, value, freshness, and notification witnesses are no larger. Thus:
-
-```text
-size(compact(J)) per key = O(r²)
-size(compact(J))         = O(nr²)
-```
-
-A scalar `localIndex` does not alter the bound. **The guarantee applies only after complete canonical compaction. No operation-count-independent bound is promised for an uncompacted journal.**
+**This applies only to complete canonical compaction. No operation-count-independent bound is promised for an uncompacted journal.** Ordinary mutations may append without compacting. Compaction may run after any transaction, during maintenance or synchronization, repeatedly, at any time, or be skipped for arbitrarily many mutations. Correctness is timing-independent; a crash before optional compaction leaves valid uncompacted history. An independent compaction transaction atomically performs the witness touch described above.
 
 ## Executable bounded verification
 
-`scripts/verify-journal-spec-model.py` models several authors, generations, causal contexts, delayed and independent invalidates, partial and complete validations, same-author progress, reference closure, projections, closure, and full bounded ACI. It structurally checks quadratic scaling but does not claim to prove the analytical asymptotic bound. Its repeated-mutation trace intentionally shows raw growth while canonical size stays bounded.
+`scripts/verify-journal-spec-model.py` uses one combined six-atom universe rather than a freshness-only universe. Its composite atoms preserve every materially distinct class while keeping full ACI exhaustive: competing generations and an intervening delete; losing coordinate maxima and winning edit witnesses; cross-author heads; two-author split invalidation knowledge; complete validation; a delayed later same-author hard invalidate; later complete validation; and generation replacement.
+
+It checks 64 valid combined states and all 64 resulting compact states, 64 projection-preservation/idempotence checks, 4,096 full-universe closure pairs, and 262,144 full compact-universe ACI triples. Projections include presence/generation, value heads, equal-time canonical inputs, invalidate frontier, effective-validation existence, add references, and causal references. Negative cases reject malformed variants, observation-order violations, and backward same-author contexts.
+
+The independent cursor model remains exhaustive over 10,000 four-operation words and 40,000 committed prefixes, carrying 97,151 action-specific obligations through later prefixes. It covers unknown installation, two keys, repeated touches, stale and partial-action cursors, combined graph transition plus compaction, settled no-op, index uniqueness, and watermark coverage. A repeated same-key trace has 41 raw records and two after canonical compaction. These finite structural checks support, but do not prove, the analytical `O(nr²)` result.

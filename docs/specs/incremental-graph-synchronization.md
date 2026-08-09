@@ -293,7 +293,11 @@ Before planning, synchronization MUST reject atomically:
 4. duplicate or internally conflicting lookup entries;
 5. a value, freshness, timestamp, or validity record whose identifier is not
    covered by its source lookup;
-6. malformed journal entries, including edit/invalidate/validate without a generation resolving to a same-key add witness, or validate with an unresolved/mismatched causal invalidate reference;
+6. malformed journal entries, including edit/invalidate/validate without a
+   generation resolving to a same-key add witness; a validation causal
+   reference which is absent, mismatched, or not sequence-earlier than the
+   validation; or same-author/key/generation validations whose later context
+   forgets or moves an earlier coordinate backward;
 7. conflicting content at one `JournalEntryId`; or
 8. `localJournalClock` below an observed sequence;
 9. a retained entry missing exactly one unique valid local index;

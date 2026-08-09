@@ -76,7 +76,7 @@ generation field. After a delete and later add `G2=(50,B)`, subsequent scoped
 events for the new incarnation contain `generation=(50,B)`. Events scoped to G1
 are inapplicable to G2.
 
-`clearsInvalidates` is immutable causal evidence, not a Lamport threshold. Each mapping `A -> I` MUST resolve to a real invalidate authored by A for the validation's exact key and generation. It contains at most one reference per author: the greatest same-author invalidate in the exact transaction-visible frontier at genuine revalidation. Malformed, unresolved, or mismatched references reject the journal.
+`clearsInvalidates` is immutable causal evidence, not a Lamport threshold. Each mapping `A -> I` MUST resolve to a real invalidate authored by A for the validation's exact key and generation. It contains at most one reference per author: the greatest same-author invalidate in the exact transaction-visible frontier at genuine revalidation. Malformed, unresolved, or mismatched references reject the journal. The named invalidate must also have `I.sequence < V.sequence`; observed entries raise the validating author allocator before V is allocated. For any validations V1,V2 by the same author/key/generation with `V1.sequence < V2.sequence`, V2 MUST retain an equal-or-later reference for every coordinate in V1. It may add/advance coordinates but never forget or move backward. This is a normative journal-validity rule checked before merge and compaction.
 
 Action variant and authorship context are orthogonal. Ordinary mutation,
 migration, synchronization-authored destruction, and controlled reset all use
@@ -103,7 +103,7 @@ invalidate iff up-to-date -> potentially-outdated
 validate   iff potentially-outdated -> up-to-date
 ```
 
-There is no generic `change`. Identifier, timestamp, validity-only, dependency,
+The public classifier remains transition-based. An explicit hard `invalidate(K)` on a materialized already-stale node additionally authors an internal generation-scoped causal invalidate barrier when it removes/reasserts absence of incoming proofs; its all-actions query projection may be a permitted false positive. There is no generic `change`. Identifier, timestamp, validity-only, dependency,
 or representation changes are not edits. `Unchanged` emits no edit. Value and
 freshness transitions may emit two entries when both classifiers apply.
 

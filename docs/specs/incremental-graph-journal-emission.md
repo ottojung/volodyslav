@@ -41,6 +41,12 @@ For stale→fresh, the validate contains `clearsInvalidates`, the complete per-a
 
 Identifier-only, timestamp-only, and validity-edge-only changes emit nothing.
 
+### Explicit hard invalidation barrier
+
+The public closed classifier remains unchanged: only fresh→stale is an `invalidate` transition notification. Separately, every successful explicit public `invalidate(K)` on a materialized node that removes/reasserts absence of incoming validity proofs MUST author a new `InvalidateJournalEntry`, even if K was already stale. This internal causal barrier may create a conservative possible-change false positive.
+
+The barrier carries the materialization's exact generation G. Its sequence is reserved from `localJournalClock` after observing the transaction snapshot and is greater than all history observed by the operation. Incoming-proof removal/reassertion, graph state, the immutable barrier, receiver-local index, and watermarks commit atomically in the same darkroom batch. Each repeated explicit hard invalidation authors a fresh barrier: each call independently reasserts that the next pull must invoke the computor. Invalidation propagated by ordinary dependency mechanics continues to author only on its actual fresh→stale transition and may preserve incoming proofs. Synchronization-derived demotion follows its existing rules.
+
 ## Synchronization emission
 
 Synchronization invokes no computor and therefore cannot invent a semantic

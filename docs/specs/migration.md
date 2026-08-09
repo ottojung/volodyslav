@@ -172,7 +172,8 @@ Migration exact-copies one fixed active receiver snapshot of retained
 remote cursor metadata.
 
 Pre-cutover validation requires unique immutable logical content per ID, valid
-same-key generation references, canonical compaction, logical-clock coverage,
+same-key generation references, validation-causal reference ordering and
+same-author context monotonicity, canonical compaction, logical-clock coverage,
 exactly one unique index per retained entry, and index-watermark coverage.
 Indexes have no logical merge or provenance role; gaps are valid.
 
