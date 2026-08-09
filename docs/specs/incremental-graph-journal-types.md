@@ -146,10 +146,13 @@ together with `author`, forms `JournalEntryId`.
 existing stored entry is touched. It is not part of `JournalEntry`,
 `JournalEntryId`, replicated serialization, logical equality, Lamport ordering,
 provenance, graph revision identity, compaction selection, or synchronization.
-Thus `localJournalClock` is the allocator/watermark for the one distributed
-logical sequence, while `localJournalIndexWatermark` is the allocator/watermark
-for a receiver's notification positions. They are not competing logical journal
-sequences. Both overflow fatally, and neither allocator reuses a value.
+Thus each author uses `localJournalClock` as the allocator/watermark for its
+replicated logical sequence coordinates, while `localJournalIndexWatermark` is
+the allocator/watermark for a receiver's notification positions. Concurrent
+authors may allocate the same numeric sequence;
+`JournalEntryId=(sequence,author)` is the globally comparable identity. Sequence
+and local index are not competing logical journal coordinates. Both overflow
+fatally, and neither allocator reuses a value within its applicable domain.
 
 A previously unknown logical entry installed locally keeps its immutable contents
 byte-for-byte and receives:

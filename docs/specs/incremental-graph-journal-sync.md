@@ -171,9 +171,12 @@ values is corruption, not a hash tie-break case.
 * **Same writer/time:** A's edits at wall time 100 receive sequences 7 and 8;
   `[100,A,8]` wins.
 * **Different wall times:** A edits at 10:00 with sequence 500; B edits at 10:01
-  with sequence 20. B wins by the primary wall-time coordinate. Sequence 500 is
-  irrelevant because canonical journal ordering is consulted only for an exact
-  wall-time collision.
+  with sequence 20. B's `ValueRevision` ranks higher among the candidates being
+  compared at that selection stage because wall time is its primary coordinate.
+  Sequence 500 is irrelevant because canonical journal ordering is consulted
+  only for an exact wall-time collision. For a derived node,
+  coherence/admissibility may exclude B before that comparison; this trace does
+  not make a newer unsupported candidate win.
 * **Concurrent writers/time:** A and B each edit at 100. Sequence chooses when
   `n != m`; author chooses only when `n == m`. No source-host tie-break is
   involved.

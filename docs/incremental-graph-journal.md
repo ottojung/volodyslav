@@ -106,8 +106,12 @@ witness when it removes cursor-visible history. Total stored records remain
 `JournalEntry.sequence` is allocated from `localJournalClock`, replicates
 unchanged, and forms logical identity with `author`. `StoredJournalEntry.localIndex`
 is allocated from the distinct `localJournalIndexWatermark`, never replicates,
-and may move when that receiver touches an existing entry. There is one logical
-distributed event sequence and one receiver-local notification position.
+and may move when that receiver touches an existing entry. Each authored event
+has a replicated logical sequence coordinate and each stored entry has a
+receiver-local notification position. The sequence coordinate comes from the
+author's Lamport-style clock; concurrent authors may use the same numeric
+sequence, and globally comparable identity is
+`JournalEntryId=(sequence,author)`.
 
 For this bound, `n` is the number of current or historic semantic node keys
 represented by the database/journal, and `r` is the number of distinct durable
