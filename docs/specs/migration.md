@@ -83,14 +83,35 @@ Calling the same decision twice (except for `override` and `create`) is allowed 
 
 ### Operation semantics
 
-`keep` preserves the value, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. A stale node carried through `keep` loses its incoming proofs: persisted storage does not encode whether its staleness was explicit or propagated, so it is conservatively treated as a direct invalidation root.
+`keep` preserves the value, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. When a stale node carried through `keep` has incoming proofs before migration and migration drops them, the `proofs present before → proofs absent after` transition newly establishes hard invalidation. Migration MUST atomically author a normal generation-scoped causal invalidate above all observed journal history unless a barrier authored or installed by that exact migration decision already represents it. The same rule applies to `override`.
 
-Losing those proofs is a stale→stale hardening decision, not a silent
-validity-only change. Migration MUST atomically author a normal
-generation-scoped causal invalidate above all observed journal history unless a
-barrier authored by that same migration decision already represents it.
+Within a stale `keep`/`override` region whose nodes still have incoming proofs,
+those proofs may disappear. A stale B whose dependent C is also stale can lose
+both `A⇝B` and `B⇝C` during migration, and both newly hardened nodes must
+recompute.
 
-Within a **preexisting stale `keep`/`override` region**, every stale node loses incoming proofs, so validity edges inside the region may disappear. A stale B whose dependent C is also stale loses both `A⇝B` and `B⇝C` during migration, and both nodes must recompute.
+Already-settled hard invalidation is different. If a stale node's incoming
+proofs are already absent and an outstanding retained invalidate already
+represents the obligation, a `keep` or `override` that makes no new proof-
+removal or hardening decision carries that state silently. It authors no new
+invalidate, allocates no new local index, and advances no journal clock for this
+reason. Repeated passive migrations do not manufacture barriers merely because
+the node remains stale.
+
+```text
+before migration:
+    K stale
+    incoming proofs absent
+    retained invalidate I outstanding
+
+migration.keep(K)
+
+after migration:
+    K remains stale
+    proofs remain absent
+    I still represents the existing obligation
+    no new journal entry
+```
 
 **Migration-time propagated invalidation** is different: the migration callback explicitly calls `invalidate()` on a node, and the propagation runs in memory with full provenance. In that case outgoing proofs survive and freshness-only propagation preserves validity edges.
 
@@ -104,8 +125,10 @@ The intended use case is format migration: the database version changes the seri
 
 **Explicit invalidation** removes only the explicitly named node's incoming validity proofs. Its outgoing proofs remain intact because its stored semantic value has not changed.
 
-Migration explicit invalidation authors the same causal invalidate even when the
-node was already stale. `create(..., "potentially-outdated")` likewise authors a
+Migration explicit invalidation deliberately reasserts the obligation and
+authors a fresh causal invalidate even when the node was already stale, its
+incoming proofs were already absent, and an older outstanding invalidate
+exists. `create(..., "potentially-outdated")` likewise authors a
 barrier for its new add generation because it creates a must-recompute cache.
 These entries use no migration-specific action and follow normal allocation,
 atomicity, frontier, cursor, and compaction rules.

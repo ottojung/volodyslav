@@ -66,5 +66,8 @@ A migrated node already hard-invalidated with absent incoming proofs and an
 outstanding retained barrier may be carried without another entry when migration
 makes no new proof-removal or deliberate hardening decision. Thus the global
 invariant prevents missing obligations without creating barriers for settled
-state. Compaction treats migration-authored invalidates identically, including
+state. Repeating such a passive `keep` or `override` authors no barrier, assigns
+no local index, and advances no journal clock for this reason. An explicit
+`invalidate()` is instead a deliberate reassertion and MUST author a fresh
+barrier even from this settled starting state. Compaction treats migration-authored invalidates identically, including
 the fully compacted `O(nr²)` bound.

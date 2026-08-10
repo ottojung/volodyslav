@@ -9,9 +9,14 @@ InvalidPossibleChangeCursorError
 isInvalidPossibleChangeCursorError(object)
 ```
 
-A result means that this exact closed-classifier action may have happened to the
-semantic key after the cursor. False positives and collapse into a later
-covering possibility are allowed; action-specific false negatives are forbidden.
+A returned result means that, after the supplied receiver-local cursor, this
+receiver acquired or re-established conservative evidence requiring the stated
+closed-classifier action to be considered possible for the semantic key.
+"After the cursor" refers only to receiver-local observation/relevance order. It
+does not imply that `PossibleNodeChange.time` is later than when the cursor was
+issued: a cursor is not a wall-clock timestamp. False positives and collapse
+into a later covering possibility are allowed; action-specific false negatives
+are forbidden.
 
 `possibleMaybeChanges()` eagerly materializes the complete matching result for
 its fixed query snapshot and resolves to
@@ -161,6 +166,13 @@ is the event occurrence time. For add/edit it is necessarily the semantic
 value's `modifiedAt`; a reset with an unchanged semantic value emits no value event. There is no receiver-local
 event object, action mask, cause field, or transition timestamp.
 
+Consequently, `PossibleNodeChange.time` may precede cursor issuance. This is
+expected when old remote history is newly imported, a known witness is touched
+later, or compaction moves notification coverage to a survivor. Cursor order is
+receiver-local observation/relevance order, while `PossibleNodeChange.time`
+remains the underlying logical `JournalEntry.time`; it is not a receiver-local
+delivery or transition time.
+
 The action ordinal lets a client advance record-by-record without skipping the
 remaining projections at one index:
 
@@ -177,6 +189,51 @@ remaining projections at one index:
   entry remains identical and all five possibilities cover the actual action.
 * **Settled no-op:** receiving an already-known entry with no graph or compaction
   change neither touches it nor advances the watermark.
+
+An unknown-history trace makes the two orders explicit:
+
+```text
+t1:
+    A authors add E for K
+    E.time = t1
+
+t2:
+    B issues cursor C
+    B does not know E
+
+t3:
+    B synchronizes and first stores E
+    E receives new receiver-local localIndex > C
+
+query B since C:
+    returns conservative PossibleNodeChange(action="add", time=t1)
+```
+
+The result is after C in B's receiver-local cursor order. Its time remains t1
+because that field records the underlying logical event, not B's later
+observation/import time. There is no contradiction between those facts.
+
+A touch likewise moves only receiver-local relevance:
+
+```text
+E.time = t1
+E.localIndex = 40
+
+cursor C issued after 40
+
+later transaction touches E:
+    E.localIndex = 90
+    E.time remains t1
+
+query since C:
+    may return PossibleNodeChange(..., time=t1)
+```
+
+Here 90 answers "when did this evidence become newly relevant to this
+receiver?" and t1 answers "when did the underlying logical journal event
+occur?" The public API exposes only logical `time`; private cursor authority
+contains the receiver-local index. The issued C remains immutable, and no
+receiver-local wall timestamp is exposed.
 
 ## Cursor-coverage theorem
 
