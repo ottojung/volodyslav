@@ -85,7 +85,7 @@ effectiveValidate(V,x,G) iff V alone covers every frontier element
 ```
 
 A value event for winning generation G is usable only when it is add G or an
-edit explicitly scoped to G, its time equals graph `modifiedAt`, and it is
+edit explicitly scoped to G, its `valueModifiedAt` equals graph `modifiedAt`, and it is
 `valueHead(author,x,G)`. An unresolvable, superseded, or differently scoped
 materialization is provenance-obsolete. `ValueRevision(x,G)` is compared
 lexicographically and totally. Equal revisions with unequal `ComputedValue`s

@@ -161,6 +161,51 @@ their own telescope mutex per concrete node and create their own Transaction
 spec: every call to pullNode is structurally identical, whether top-level or
 nested.
 
+### Nighttime dependency-stability lemma
+
+Let P be an active enclosing `pull(K)` holding nighttime dome mode. If a
+recursive `pull(D)` within P returns semantic value/revision d, then D cannot
+commit a different semantic value before P releases nighttime mode. This holds
+transitively for every dependency result consumed by a parent computor.
+
+**Proof by induction on DAG height.** Semantic changes occur only through
+graph-writing operations governed by these locks. For a zero-input leaf D, its
+pull commits before returning and releases D's telescope with D fresh. A later
+`pull(D)` must serialize after that completed telescope section. It observes D
+fresh and therefore takes the fresh fast path, returning the same stored d
+without invoking a computor. External invalidation is daytime, while migration,
+reset, synchronization lifecycle construction, and cutover use incompatible
+daytime/holiday phases; none can overlap P's nighttime holder.
+
+For the induction step, assume the lemma for every direct input of derived D.
+D's successful pull recursively pulled and committed every direct input before
+computing D. By induction those inputs remain semantically stable until P ends.
+D commits before returning fresh. Any later same-node pull serializes after it,
+observes both D fresh and its dependency closure unchanged, and must take the
+fresh fast path; it cannot invoke D's computor or change D. Thus D remains
+stable. The graph is a DAG, so induction reaches every transitive dependency.
+Consequently every value used by K remains current through K's eventual
+darkroom publication. Different-node pulls may execute concurrently; it does
+not follow that already-pulled different-node semantic values may change
+arbitrarily.
+
+The alleged `D -> K` counterexample has only this reachable trace:
+
+```text
+pull(K) holds nighttime
+  pull(D) commits and returns d1; D telescope is released
+concurrent pull(D) serializes after it, sees D fresh and its closure stable,
+  takes the fresh fast path, and returns d1 (not d2)
+K computes from d1 and commits
+```
+
+Nor can an invalidate for K appear between validation sequence reservation and
+K's darkroom commit. Explicit invalidation is incompatible daytime activity;
+sync, migration, reset, and cutover use incompatible lifecycle modes; and a
+dependency change that could propagate K stale is excluded by the lemma.
+Optimistic dependency-revision retry is therefore neither required nor part of
+this protocol.
+
 ### `migration / replica cutover`
 
 1. Acquire `holidayActivity(...)`.
@@ -242,6 +287,17 @@ serializes only the persistent `localJournalClock` watermark and reservations.
 There is no per-node synchronization counter. A reservation may commit before a
 graph transaction and leave a gap if that transaction aborts; it is never
 reused.
+
+For stale-to-fresh publication, reserve the validate sequence only after the
+operation has observed the exact finalization frontier and raised its allocator
+above every referenced invalidate. The journal-clock mutex precedes darkroom in
+the lock order; once reserved, nighttime stability prevents the relevant
+frontier from advancing before the final darkroom batch. Hence every `I` in
+`V.clearsInvalidates` mechanically satisfies `I.sequence < V.sequence`. An
+aborted batch may leave V's sequence as a harmless gap. On success, each
+frontier invalidate necessarily predates the validating operation's relevant
+causal knowledge, and the one validation atomically publishes the complete
+frontier context with freshness.
 
 ### Lock order
 

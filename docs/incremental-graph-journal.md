@@ -51,17 +51,22 @@ JournalEntryBase = {
   key: NodeKey,
   time: UnixTimestamp
 }
-AddJournalEntry = JournalEntryBase & { action: "add" }
+AddJournalEntry = JournalEntryBase & { action: "add", valueModifiedAt: UnixTimestamp }
 DeleteJournalEntry = JournalEntryBase & { action: "delete" }
 GenerationScopedJournalEntryBase = JournalEntryBase & {
   generation: JournalEntryId
 }
-EditJournalEntry = GenerationScopedJournalEntryBase & { action: "edit" }
+EditJournalEntry = GenerationScopedJournalEntryBase & { action: "edit", valueModifiedAt: UnixTimestamp }
 InvalidateJournalEntry = GenerationScopedJournalEntryBase & { action: "invalidate" }
 ValidateJournalEntry = GenerationScopedJournalEntryBase & { action: "validate", clearsInvalidates: InvalidationContext }
 InvalidationContext = Map<HostFingerprint, JournalEntryId>
 JournalEntryId = (sequence, author)
 ```
+
+`JournalEntry.time` is the real wall-clock occurrence time of every journal
+event. Required add/edit `valueModifiedAt` is the represented semantic value's
+modification time and matches graph `modifiedAt`; other actions forbid it. They
+can differ on equal-value controlled reset regeneration.
 
 The generation-scoped variants name the exact same-key add which established
 their materialization incarnation. Add and delete variants contain no generation
@@ -92,7 +97,7 @@ J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
 A later entry covers an earlier notification only for the same author, key, and
 action. Canonical compaction retains coordinate maxima, exact winning-generation value witnesses, per-author invalidation frontiers and validation witnesses, causal-reference closure, and referenced adds. Validated same-author context monotonicity and future-union closure make merge commutative, associative, and idempotent. Its fully compacted bound is `O(nr²)`.
 
-Each retained entry is stored once with one receiver-local `localIndex`.
+Each retained entry is stored once with one receiver-local `localIndex` in a private, unforgeable cursor domain.
 Import preserves immutable contents and assigns a fresh index only when the
 entry is unknown. Touching changes only that scalar index. It never duplicates
 or re-authors the entry. `possibleMaybeChanges()` expands every qualifying entry
@@ -109,7 +114,7 @@ author's Lamport-style clock; concurrent authors may use the same numeric
 sequence, and globally comparable identity is
 `JournalEntryId=(sequence,author)`.
 
-For this bound, `n` is the number of current or historic semantic keys represented by the compacted database/journal, and `r` is the number of distinct durable authors represented by compacted entries or retained causal-context references. The fixed finite schema bounds arity and maximum serialized `ConstValue` size is a fixed system constant, so `NodeKey` size is constant. Per key, `O(r)` retained validations may each carry `O(r)` context; other witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`. A scalar local index does not alter it.
+For this bound, `n` is the number of current or historic semantic keys represented by the compacted database/journal, and `r` is the number of distinct durable authors represented by compacted entries or retained causal-context references. The fixed finite schema bounds arity and maximum serialized `ConstValue` size is a fixed system constant, so `NodeKey` size is constant. Per key, `O(r)` retained validations may each carry `O(r)` context; other witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`. A scalar local index and fixed-size add/edit `valueModifiedAt` do not alter it.
 
 **This guarantee applies only to complete canonical compaction.** Ordinary mutations may append immutable entries, and no operation-count-independent bound is promised for an uncompacted physical journal. Compaction may run at any time, after any transaction, during maintenance or synchronization, repeatedly, or be skipped arbitrarily long. Correctness never depends on its timing.
 ## Synchronization projections
@@ -124,8 +129,8 @@ rollback violates the supported execution model and has undefined
 synchronization behavior.
 
 For materialized x in winning add generation G, each author-specific value head
-contains only add G or edits explicitly scoped to G and must match the real
-graph `modifiedAt`. Value revisions compare `modifiedAt` first. Only when
+contains only add G or edits explicitly scoped to G and its `valueModifiedAt`
+must match the real graph `modifiedAt`. Occurrence `time` does not order values. Value revisions compare `modifiedAt` first. Only when
 multiple provenance events match that same timestamp does sequence-first
 `JournalEntryId=(sequence,author)` select the canonical origin:
 
@@ -163,6 +168,6 @@ Detailed normative requirements and proofs are split into:
 
 ## Deliberate API boundaries
 
-Computor invocation deliberately receives no journal or bootstrap cursor. `baselinePossibleNodeChange()` means only before all locally observable history in its cursor domain, not the position at which computation began. No equivalent hidden handle is exposed.
+Computor invocation deliberately receives no journal or bootstrap cursor. `graph.baselinePossibleNodeChange()` means only before all locally observable history in its cursor domain, not the position at which computation began. No equivalent hidden handle is exposed.
 
 A filtered query returning no matching changes exposes no scanned-through cursor. Its prior cursor remains the only continuation and later calls may rescan irrelevant uncompacted history. `possibleMaybeChanges()` promises conservative coverage, not amortized filtered progress.

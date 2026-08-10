@@ -25,7 +25,7 @@ greater add establishes new G2 while bringing its own witnesses. Thus H can
 never regain authority in a future union. It is sound to discard H's value and
 freshness authority while retaining coordinate maxima.
 
-The algorithm preserves `presenceHead`; each winning-generation `valueHead(author,K,G)` by retaining add G and each author's greatest G-scoped edit; the exact equal-time `candidateEvents` inputs needed by `canonicalEvent(K,G)`; `invalidateFrontier(K,G)`; existence of an individual effective validation; every required generation reference; and every retained causal reference.
+The algorithm preserves `presenceHead`; each winning-generation `valueHead(author,K,G)` by retaining add G and each author's greatest G-scoped edit; the exact equal-`valueModifiedAt` `candidateEvents` inputs needed by `canonicalEvent(K,G)`; `invalidateFrontier(K,G)`; existence of an individual effective validation; every required generation reference; and every retained causal reference.
 
 For same author/key/generation validations, journal validity requires later contexts to be componentwise nondecreasing. Thus an older discarded validation is dominated by the retained later one: every invalidate it covered remains covered. This is an enforced input invariant, not an assumption about well-behaved hosts.
 
@@ -77,3 +77,9 @@ endless barriers, combined graph transition plus compaction, settled no-op,
 index uniqueness, and watermark coverage. A repeated same-key trace has 41 raw
 records and two after canonical compaction. These finite structural checks
 support, but do not prove, the analytical `O(nr²)` result.
+
+
+Occurrence `time` remains immutable payload on every retained entry. Value-head
+and candidate-event proofs retain and compare required add/edit
+`valueModifiedAt`, never occurrence `time`. The extra fixed-size scalar does not
+change the `O(nr²)` compacted bound.

@@ -14,11 +14,13 @@ the transaction's installed journal, then increments. Multiple entries receive
 distinct increasing sequences. Aborted reservations may leave gaps but are
 never reused; overflow is fatal.
 
-For `add` and `edit`, `JournalEntry.time` MUST equal the resulting graph
-materialization's exact `timestamps[key].modifiedAt`. The mutation obtains that
-timestamp once and uses the same value for both records; two independent
-`now()` reads are forbidden. For delete, invalidate, and validate, `time` is the
-actual transition time.
+Every `JournalEntry.time` is the actual wall-clock occurrence time of its
+journal event. Every add/edit also requires `valueModifiedAt`, equal to the
+resulting graph materialization's exact `timestamps[key].modifiedAt` and used by
+value provenance. Delete/invalidate/validate forbid `valueModifiedAt`. For an
+ordinary semantic value-changing add/edit, one transition-time observation
+normally supplies both equal values, but their meanings remain independent and
+no rule relies on equality.
 
 Before changing an already-materialized value, invalidating, or revalidating,
 derive the materialization's exact establishing add ID G from the
@@ -123,12 +125,11 @@ such add is allocated after all history observed by reset. Every historic key
 known to the joined graph/journal which the target wants absent receives a
 receiver `delete` after the observed presence history.
 
-When the desired value differs from the receiver's pre-reset value, reset is a
-real value change: the resulting `modifiedAt` and `add.time` are the same real
-reset wall-clock instant. When the values are semantically equal, re-generation
-does not constitute a value change: reset preserves the materialization's
-existing `modifiedAt` and uses exactly that timestamp as `add.time`. It never
-manufactures a future timestamp. In both cases the fresh add generation, rather
+Let R be reset's real wall-clock occurrence time. When the desired value
+differs, reset sets `graph.modifiedAt=add.time=add.valueModifiedAt=R`. When the
+values are semantically equal, reset preserves old semantic modification time M,
+sets `graph.modifiedAt=add.valueModifiedAt=M`, and still sets `add.time=R`.
+Fresh generation identity establishes presence; `valueModifiedAt` does not. In both cases the fresh add generation, rather
 than wall-time comparison with older generations, makes pre-reset edits and
 freshness events inapplicable.
 

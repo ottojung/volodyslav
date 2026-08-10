@@ -8,6 +8,7 @@ durable HostFingerprint
 StoredJournalEntry collection
 localJournalClock
 localJournalIndexWatermark
+private cursorDomainIdentity
 ```
 
 It copies every retained entry and its receiver-local index exactly, then
@@ -17,7 +18,7 @@ logical clock coverage, unique indexes, and index-watermark coverage. It never
 imports another host's index or author ownership.
 
 Migration applies the exact closed classifier. New logical entries use the host
-clock, required generation, action-specific logical time, and distinct fresh
+clock, required generation, wall-clock occurrence `time`, required add/edit `valueModifiedAt`, and distinct fresh
 local indexes. Any changed key without a newly indexed entry touches its greatest
 retained witness. Graph, entries, touches, and watermarks commit atomically.
 `Unchanged`, representation-only, identifier-only, and validity-only changes are
