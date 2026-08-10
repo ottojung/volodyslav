@@ -226,6 +226,14 @@ authors may allocate the same numeric sequence;
 and local index are not competing logical journal coordinates. Both overflow
 fatally, and neither allocator reuses a value within its applicable domain.
 
+This mutable stored position is distinct from an issued cursor token. A
+`PossibleNodeChange` contains visible change payload plus an immutable hidden
+nominal snapshot copying one `(cursorDomainIdentity,localIndex,actionOrdinal)`
+position at query time. A `BaselinePossibleNodeChange` contains only its hidden
+nominal baseline snapshot. Touch may move `StoredJournalEntry.localIndex`, but it
+cannot mutate or reinterpret any already-issued snapshot. Private domain
+identity and raw numeric coordinates are never public.
+
 Each logical runtime receiver allocates one fresh private, unforgeable
 cursor-domain identity, unique from every unrelated receiver. It is runtime
 state: not part of `JournalEntry` or durable database state, not an author

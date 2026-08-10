@@ -137,14 +137,19 @@ For this bound, `n` is the number of current or historic semantic keys represent
 **This guarantee applies only to complete canonical compaction.** Ordinary mutations may append immutable entries, and no operation-count-independent bound is promised for an uncompacted physical journal. Compaction may run at any time, after any transaction, during maintenance or synchronization, repeatedly, or be skipped arbitrarily long. Correctness never depends on its timing.
 ## Synchronization projections
 
-Supported hosts have monotone system wall clocks. Wall time is the best
-available approximation of universal cross-host event order. It is the primary
+All participating hosts in a supported execution share a synchronized real wall
+clock. For value-changing events E1 and E2, if E1 occurs before E2 in real time,
+then `E1.time <= E2.time`. Finite timestamp resolution is allowed, so distinct
+events may have equal timestamps. Wall time is the intended real-time order and the primary
 coordinate inside `ValueRevision` ordering among candidates which remain
 eligible at the relevant selection stage. It does not override presence,
 canonical-event, coherence, or fallback rules. Its finite resolution permits
-equal timestamps; journal identity resolves only those collisions. Clock
-rollback violates the supported execution model and has undefined
-synchronization behavior.
+equal timestamps; journal identity resolves only those collisions. Cross-host
+clock skew, clock rollback, or any condition that can invert real event order in
+wall-clock timestamps is outside the supported execution model. Synchronization
+correctness and value-selection guarantees do not apply to such executions;
+implementations need not detect them, and Volodyslav does not detect, repair,
+compensate for, or preserve causality across unsynchronized clocks.
 
 For materialized x in winning add generation G, each author-specific value head
 contains only add G or edits explicitly scoped to G and its `time`
@@ -153,7 +158,8 @@ multiple provenance events match that same timestamp does sequence-first
 `JournalEntryId=(sequence,author)` select the canonical origin:
 
 ```text
-ValueRevision(x,G) = [modifiedAt(x), author, sequence]
+origin(x,G) = canonicalEvent(x,G)
+ValueRevision(x,G) = [modifiedAt(x), origin(x,G).sequence, origin(x,G).author]
 presenceHead(x)  = greatest add/delete by JournalEntryId
 invalidateFrontier(x,G)[A] = greatest invalidate by A scoped to G
 effectiveValidate(V,x,G) iff V alone covers every frontier invalidate by exact-or-later same-author causal reference

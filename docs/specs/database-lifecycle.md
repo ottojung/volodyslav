@@ -254,16 +254,16 @@ At reset time R, first materialization sets
 `createdAt=modifiedAt=add.time=R`. Changed materialization preserves `createdAt`,
 sets `modifiedAt=add.time=R`, and uses an add allocated above all receiver
 history observed by reset. This fresh generation makes old-generation value and
-freshness entries structurally inapplicable even if an old edit has a later wall
-time. Equal values preserve both receiver timestamps and author no value event.
+freshness entries structurally inapplicable before value ordering. Equal values
+preserve both receiver timestamps and author no value event.
 Source timestamp differences are irrelevant. Freshness and validity-only changes
 preserve `modifiedAt`.
 
 This is journal-minimal subject to reset authority: absent and equal-value states
 author no value action; deletion authors only delete; each new or genuinely
 changed value authors exactly one add. The fresh generation for a changed value
-is required to supersede already-observed old-generation history independently
-of wall-clock skew, rather than an attempt to replace receiver history.
+is required to supersede already-observed old-generation history structurally,
+rather than an attempt to replace receiver history by timestamp comparison.
 
 Freshness is classified independently: fresh-to-stale authors invalidate,
 stale-to-fresh authors validate, and equal freshness is silent. A validation is
@@ -296,11 +296,13 @@ and `modifiedAt` unchanged, and relowers the source proof so D remains fresh.
 There is no transient invalidate/revalidate cycle because classification compares
 the two committed states around one atomic coherent final construction.
 
-Clock-skew trace: generation G contains B's observed edit `EB=(10,B)` with
-`EB.time=200` and value B. Reset occurs with receiver wall time 150 and target A.
+Supported reset trace: generation G contains B's observed edit `EB=(10,B)` with
+`EB.time=200` and value B. Reset occurs later at synchronized wall time 250 with
+target A.
 Reset authors receiver add `GR=(n,R)` with `n>10` and
-`GR.time=graph.modifiedAt=150`. Presence selects GR before value ordering, so EB
-is structurally inapplicable despite its later wall time. A later union which
+`GR.time=graph.modifiedAt=250`. Presence selects GR before value ordering, so EB
+is structurally inapplicable independently of timestamp comparison. A later
+union which
 merely redelivers EB cannot resurrect B. This protects against already-observed
 history; genuinely unseen later normal synchronization remains governed by the
 ordinary synchronization rules.

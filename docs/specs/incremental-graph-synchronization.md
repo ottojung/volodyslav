@@ -65,10 +65,10 @@ reconstruction or stronger maximal-preservation property is implied.
 
 ### Clock assumptions
 
-Synchronization assumes that system wall clocks are monotone over
-IncrementalGraph operations on every supported host. Wall-clock timestamps are
-the closest available approximation of a universal temporal order between
-operations performed on different hosts and are therefore the primary
+All participating hosts in a supported execution are assumed to share a
+synchronized real wall clock. For value-changing events E1 and E2, if E1 occurs
+before E2 in real time, then `E1.time <= E2.time`. Wall-clock timestamps are
+therefore the intended real-time order and the primary
 cross-host coordinate within `ValueRevision` ordering among candidates still
 eligible at the relevant selection stage. This does not make wall time a global
 override of presence-generation applicability, collision canonicalization,
@@ -76,17 +76,20 @@ coherence classification, or fallback rules.
 
 Wall-clock timestamps have finite resolution and are not injective: distinct
 value-changing operations may receive exactly equal timestamps. The journal
-identity deterministically disambiguates those collisions. Clock rollback or
-any other violation of these assumptions is outside the supported execution
-model and gives undefined synchronization behavior. Synchronization does not
-attempt to repair it.
+identity deterministically disambiguates those collisions. Cross-host clock
+skew, clock rollback, or any condition that can invert real event order in
+wall-clock timestamps is outside the supported execution model. "Undefined"
+means that synchronization correctness and value-selection guarantees do not
+apply; implementations need not detect the condition. Volodyslav does not
+detect, repair, compensate for, or preserve causality across unsynchronized
+wall clocks.
 
 This specification uses the definitions in the journal synchronization spec:
 
 ```text
-ValueRevision(x,G) = [modifiedAt(x), modifiedBy(x,G), modifiedAtVirtual(x,G)]
-modifiedBy(x,G) = origin(x,G).author
+ValueRevision(x,G) = [modifiedAt(x), modifiedAtVirtual(x,G), modifiedBy(x,G)]
 modifiedAtVirtual(x,G) = origin(x,G).sequence
+modifiedBy(x,G) = origin(x,G).author
 
 presenceHead(x) = greatest add/delete by (sequence,author)
 invalidateFrontier(x,G)[A] = greatest invalidate by A scoped to G
@@ -105,20 +108,24 @@ These are distinct orders:
 
 ```text
 ValueRevision ordering:
-    modifiedAt first, as approximate cross-host real-time order
+    modifiedAt first, as synchronized cross-host real-time order
+    sequence second
+    author fingerprint third
 
 canonical provenance among events with equal modifiedAt:
     JournalEntryId = (sequence,author)
 ```
 
-Thus `modifiedBy` and `modifiedAtVirtual` provide exact deterministic identity
+Thus `modifiedAtVirtual` and `modifiedBy` provide exact deterministic identity
 when finite-resolution wall times collide. `modifiedAtVirtual` does not replace
-wall time and is not intended to repair a non-monotone system clock.
-For `T1 < T2`, T2 wins regardless of journal sequences. At equal T, distinct
-writer fingerprints distinguish cross-host revisions, while the journal
-sequence distinguishes repeated same-writer changes and selects the canonical
-event under sequence-first `JournalEntryId`. No hash or value-equality fallback
-is used as revision identity.
+wall time and is not intended to repair an unsynchronized system clock.
+For `T1 < T2`, T2 wins by wall time regardless of journal sequences. For equal
+T, greater sequence wins. For equal timestamp and equal sequence, greater author
+fingerprint wins because distinct concurrent authors may allocate the same
+numeric sequence. This suffix exactly matches sequence-first
+`JournalEntryId=(sequence,author)`. No hash or value-equality fallback is used as
+revision identity. Thus `[201,1,B] > [200,1000,A]`: sequence never becomes the
+primary global value clock.
 
 For an exact `modifiedAt` collision inside G, the greatest matching event by
 `JournalEntryId=(sequence,author)` is canonical. A source candidate resolves its
@@ -433,7 +440,7 @@ wall-clock timestamp.
 ### Timestamp collisions
 
 A makes two actual edits at wall time `t`. Its journal allocator produces 40 and
-41, so the distinct sequences keep `[t,A,41]` and `[t,A,40]` distinct and the
+41, so the distinct sequences keep `[t,41,A]` and `[t,40,A]` distinct and the
 sequence-first canonical event is 41. Independently A and B may each edit at
 `t`; sequence decides first and author breaks an equal-sequence tie. No
 physical-host or hash tie-break is needed.
@@ -446,10 +453,11 @@ and receives a durable delete barrier.
 
 ### Unsupported clock rollback
 
-K has an old value at `modifiedAt=12:00`. A later actual edit after system-clock
-rollback receives `modifiedAt=11:59`. This violates the monotone-clock
-assumption and has undefined synchronization semantics. Neither journal sequence
-nor any other synchronization mechanism repairs this unsupported execution.
+K has an observed value at `modifiedAt=12:00`. A later actual edit on a skewed
+host receives `modifiedAt=11:59`. This violates the synchronized-wall-clock
+assumption and is unsupported: synchronization correctness and value-selection
+guarantees do not apply. Neither journal sequence nor any other synchronization
+mechanism repairs this execution.
 
 ### Concurrent presence generations
 
@@ -457,7 +465,7 @@ A adds root K as VA at `(10,A)` and wall time 200. Concurrently B, after
 unrelated journal activity, adds VB at `(50,B)` and wall time 100. Presence is
 resolved first to B's add generation. VA is not a candidate inside that
 generation, so its wall time cannot override the presence decision; final K is
-VB with revision `[100,B,50]`.
+VB with revision `[100,50,B]`.
 
 ### Losing-generation edit collision
 
@@ -482,7 +490,7 @@ events use author as the deterministic tie-break.
 A authors `(A,12,K,edit,t,generation=G)`. A → B imports that entry and value; B
 stores it once with a fresh local index. B → C transmits only the immutable
 entry, and C assigns its own index. All
-hosts derive `[t,A,12]`, so support referring to K survives physical movement.
+hosts derive `[t,12,A]`, so support referring to K survives physical movement.
 Neither B nor C emits edit.
 
 ### Same-writer later edit
@@ -510,9 +518,9 @@ proves exact G2 inputs, and emits validate V2 scoped to G2 may restore freshness
 
 ### Unchanged
 
-D at revision `[t,A,7]` was supported by input revisions `[a1,b1]`. Inputs become
+D at revision `[t,7,A]` was supported by input revisions `[a1,b1]`. Inputs become
 `[a2,b2]`; normal recomputation returns `Unchanged` and restores both valid
-flags. D remains `[t,A,7]`, while transient `Support(D)` is now `[a2,b2]`.
+flags. D remains `[t,7,A]`, while transient `Support(D)` is now `[a2,b2]`.
 
 ### Compaction
 
@@ -557,8 +565,8 @@ satisfies IncrementalGraph correctness.
 
 **Theorem.** Let a finite set of writable hosts share one fixed finite schema and
 finite materialized dependency DAG. Suppose ordinary graph mutation becomes
-quiescent and every host satisfies the monotone-wall-clock assumptions above.
-Executions containing clock rollback are excluded. Let there be a fixed
+quiescent and every host satisfies the synchronized-wall-clock assumption above.
+Executions containing clock skew or rollback are excluded. Let there be a fixed
 connected undirected neighbor graph. For every
 neighbor edge `{A,B}`, require both directed receive operations `A <- B` and
 `B <- A` infinitely often (**directional fairness**). A receive stages the
