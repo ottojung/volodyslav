@@ -281,7 +281,10 @@ decision occurred. Conversely, removing proofs during this transaction is a new
 decision even if an older frontier barrier exists: that older barrier may have
 been cleared on an unseen host and cannot represent the later proof-removal
 decision.
-A validation which did not observe the barrier cannot cross it, regardless of ID; a later genuine normal revalidation may author validate scoped to G with the complete observed frontier.
+A validation which did not observe the barrier cannot cross it, regardless of
+ID. A later ordinary genuine graph revalidation or authoritative existing-live
+stale→fresh reset may author validate scoped to G with the complete observed
+receiver frontier. Synchronization itself never synthesizes validate.
 
 That synchronization-authored invalidate explicitly carries G. Entries for
 other generations neither satisfy nor override this barrier.

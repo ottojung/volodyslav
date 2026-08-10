@@ -101,7 +101,7 @@ generation field. After a delete and later add `G2=(50,B)`, subsequent scoped
 events for the new incarnation contain `generation=(50,B)`. Events scoped to G1
 are inapplicable to G2.
 
-`clearsInvalidates` is immutable causal evidence, not a Lamport threshold. Each mapping `A -> I` MUST resolve to a real invalidate authored by A for the validation's exact key and generation. It contains at most one reference per author: the greatest same-author invalidate in the exact transaction-visible frontier at genuine revalidation. Retained state must satisfy these structural reference preconditions in order to be interpreted. The named invalidate must also have `I.sequence < V.sequence`; observed entries raise the validating author allocator before V is allocated.
+`clearsInvalidates` is immutable causal evidence, not a Lamport threshold. Each mapping `A -> I` MUST resolve to a real invalidate authored by A for the validation's exact key and generation. It contains at most one reference per author: the greatest same-author invalidate in the exact transaction-visible frontier at ordinary graph revalidation or authoritative existing-live stale→fresh reset. Retained state must satisfy these structural reference preconditions in order to be interpreted. The named invalidate must also have `I.sequence < V.sequence`; observed entries raise the validating author allocator before V is allocated. Normal synchronization and migration do not author validate.
 
 Supported authoring additionally guarantees, for validations V1 and V2 by the
 same author, key, and generation:

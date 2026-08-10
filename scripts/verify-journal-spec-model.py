@@ -111,9 +111,16 @@ V2_BAD = Entry(101, "B", "Z", "validate", 13, GZ.id, (("A", I1_BAD.id),))
 assert not valid((GZ, I1_BAD, I2_BAD, V1_BAD, V2_BAD))  # context moves backward
 assert not valid((GZ, I1_BAD, Entry(10, "B", "Z", "validate", 12, GZ.id, (("A", I1_BAD.id),))))  # observation must precede validation
 
-def presence(es):
-    xs = [e for e in es if e.action in ("add", "delete")]
+def presence(es, key):
+    xs = [e for e in es if e.key == key and e.action in ("add", "delete")]
     return max(xs, key=lambda e: e.id) if xs else None
+
+def generation_for_materialized(es, key):
+    """Resolve current generation through canonical presence authority."""
+    p = presence(es, key)
+    assert p is not None
+    assert p.action == "add"
+    return p
 
 def value_heads(es, g):
     xs = [e for e in es if (e.action == "add" and e.id == g.id) or
@@ -154,7 +161,7 @@ def compact(es):
         k = (e.author, e.key, e.action)
         if k not in maxima or maxima[k].sequence < e.sequence: maxima[k] = e
     keep = set(maxima.values())
-    p = presence(es)
+    p = presence(es, "K")
     if p and p.action == "add":
         keep |= set(value_heads(es, p))
         keep |= set(invalidate_frontier(es, p))
@@ -166,7 +173,7 @@ def compact(es):
     return frozenset(keep)
 
 def projections(es):
-    p = presence(es)
+    p = presence(es, "K")
     if not p or p.action != "add":
         return (p, None, frozenset(), frozenset(), frozenset(), False, frozenset(), frozenset())
     vh = value_heads(es, p)
@@ -303,9 +310,9 @@ def reset(state, target_nodes, target_input_edges, target_validity, now):
             authored.append(Entry(clock, "R", key, "add", now))
         else:
             identifier = old.identifier; created = old.created_at
-            modified = old.modified_at; generation = next(
-                (e.id for e in reversed(state.journal + tuple(authored))
-                 if e.key == key and e.action == "add"), None)
+            modified = old.modified_at
+            generation = generation_for_materialized(
+                state.journal + tuple(authored), key).id
         candidate = ResetNode(identifier, value, created, modified, fresh)
         prospective = dict(final); prospective[key] = candidate
         final_hard = hard_stale(key, prospective, target_input_edges,
@@ -355,8 +362,10 @@ for current, target in product((ABSENT, "A", "B"), repeat=2):
         if current == target:
             assert node.modified_at == 10 and result is initial
         else:
-            value_event = next(e for e in reversed(result.journal)
-                               if e.action in ("add", "edit"))
+            value_events = [e for e in result.journal[len(initial.journal):]
+                            if e.action in ("add", "edit")]
+            assert len(value_events) == 1
+            value_event = value_events[0]
             assert value_event.time == node.modified_at == 100
 
 # Freshness-only transitions preserve semantic modification time. Validation
@@ -440,8 +449,46 @@ skew_reset = reset(skew_state, {"K": ("A", True)},
 reset_add = skew_reset.journal[-1]
 assert reset_add.action == "add" and reset_add.sequence > skew_edit.sequence
 assert reset_add.time == dict(skew_reset.nodes)["K"].modified_at == 150
-assert presence(skew_reset.journal) == reset_add
+assert presence(skew_reset.journal, "K") == reset_add
 assert skew_edit not in value_heads(skew_reset.journal, reset_add)
+
+# Physical tuple order is not presence authority. G1 is learned after the
+# winning G2 and its invalidate, but its lower JournalEntryId remains losing.
+delayed_g2 = Entry(20, "A", "K", "add", 20)
+delayed_i2 = Entry(21, "A", "K", "invalidate", 21, delayed_g2.id)
+delayed_g1 = Entry(10, "B", "K", "add", 10)
+delayed_state = ResetState(
+    (("K", ResetNode("receiver-K", "A", 20, 20, False)),),
+    frozenset(), frozenset(), (delayed_g2, delayed_i2, delayed_g1),
+    21, 3, object(), 2)
+assert delayed_state.journal[-1] == delayed_g1
+assert presence(delayed_state.journal, "K") == delayed_g2
+assert generation_for_materialized(delayed_state.journal, "K") == delayed_g2
+delayed_reset = reset(delayed_state, {"K": ("A", True)},
+                      frozenset(), frozenset(), 30)
+delayed_validate = delayed_reset.journal[-1]
+assert delayed_validate.action == "validate"
+assert delayed_validate.generation == delayed_g2.id
+assert covers(delayed_validate, delayed_i2)
+assert valid(delayed_reset.journal)
+assert dict(delayed_reset.nodes)["K"].modified_at == 20
+assert not any(e.action in ("add", "edit")
+               for e in delayed_reset.journal[len(delayed_state.journal):])
+
+# Materialized graph state without an add-valued winning presence head is not a
+# supported model state and cannot silently acquire a null generation.
+invalid_presence = ResetState(
+    (("K", ResetNode("receiver-K", "A", 20, 20, False)),),
+    frozenset(), frozenset(),
+    (delayed_g2, Entry(30, "A", "K", "delete", 30)),
+    30, 2, object(), 2)
+invalid_presence_rejected = False
+try:
+    reset(invalid_presence, {"K": ("A", True)},
+          frozenset(), frozenset(), 40)
+except AssertionError:
+    invalid_presence_rejected = True
+assert invalid_presence_rejected
 
 @dataclass(frozen=True)
 class Stored:
@@ -582,7 +629,7 @@ print(f"cursor obligation checks across prefixes: {obligations_checked}")
 print(f"maximum stored logical records: {max_records}")
 print("raw repeated-mutation records: 41; compact records: 2")
 print("minimal semantic reset matrix cases: 9")
-print("reset freshness, derived hard-stale, dependency, skew, and idempotence traces: 12")
+print("reset freshness, derived hard-stale, dependency, ordering, skew, and idempotence traces: 14")
 print("two-domain rejection assertions: 4 (including 2 foreign baselines)")
 print("same-process cutover preservation assertions: 1")
 print("new-runtime cursor-domain replacement assertions: 1")

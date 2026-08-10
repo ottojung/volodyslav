@@ -132,7 +132,7 @@ author's Lamport-style clock; concurrent authors may use the same numeric
 sequence, and globally comparable identity is
 `JournalEntryId=(sequence,author)`.
 
-For this bound, `n` is the number of current or historic semantic keys represented by the compacted database/journal, and `r` is the number of distinct durable authors represented by compacted entries or retained causal-context references. The fixed finite schema bounds arity and maximum serialized `ConstValue` size is a fixed system constant, so `NodeKey` size is constant. Per key, `O(r)` retained validations may each carry `O(r)` context; other witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`. A scalar local index do not alter it.
+For this bound, `n` is the number of current or historic semantic keys represented by the compacted database/journal, and `r` is the number of distinct durable authors represented by compacted entries or retained causal-context references. The fixed finite schema bounds arity and maximum serialized `ConstValue` size is a fixed system constant, so `NodeKey` size is constant. Per key, `O(r)` retained validations may each carry `O(r)` context; other witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`. A scalar local index does not alter it.
 
 **This guarantee applies only to complete canonical compaction.** Ordinary mutations may append immutable entries, and no operation-count-independent bound is promised for an uncompacted physical journal. Compaction may run at any time, after any transaction, during maintenance or synchronization, repeatedly, or be skipped arbitrarily long. Correctness never depends on its timing.
 ## Synchronization projections
@@ -170,9 +170,26 @@ Presence resolves before value selection. When the joined presence head is an ad
 
 A materialization is hard-invalidated when it requires genuine later normal revalidation rather than cache-only reuse. No graph-writing path may newly establish or deliberately reassert that obligation without a generation-scoped causal invalidate allocated after its observed history, unless the same causal decision already installed such a barrier. This includes explicit `invalidate(K)` on an already-stale node, synchronization stale→stale proof removal, migration hardening, and lifecycle hardening of stale proofless caches. Settled hard-invalidated state with an outstanding retained barrier is merely carried, so synchronization does not author endlessly. Public transition classification remains fresh→stale; an internal barrier may conservatively project a false positive.
 
-A validation is authored only by genuine normal stale→fresh revalidation, captures the exact transaction-visible frontier atomically, and clears barriers only when it individually covers all of them. Contexts never combine, an unseen or delayed invalidate remains outstanding, and old generations are isolated. Synchronization never authors validate and never lets journal evidence manufacture graph validity.
+A `ValidateJournalEntry` may be authored by ordinary genuine stale→fresh graph
+revalidation or by existing-live controlled reset when authoritative semantic
+reconciliation changes the receiver from stale to fresh. Both capture the exact
+transaction-visible receiver-local frontier, require coherent final graph
+validity, allocate after every referenced invalidate, and commit atomically with
+the fresh graph state. Contexts never combine, an unseen or delayed invalidate
+remains outstanding, and old generations are isolated. Normal synchronization
+never authors validate and never lets journal evidence manufacture graph
+validity. Reset uses the ordinary validation action without an origin flag.
 
-Same-author validation contexts are normatively componentwise nondecreasing and journals are rejected before merge if a later context forgets or moves a coordinate backward, or if any reference is absent, mismatched, or not sequence-earlier than its validation.
+Supported authoring makes same-author/key/generation validation contexts
+componentwise nondecreasing. A visible later context which forgets or moves a
+coordinate backward is corrupted or unsupported history; an implementation MAY
+reject it defensively while the evidence remains. Compaction need not retain
+arbitrary forensic evidence solely to make every past monotonicity violation
+detectable. This optional diagnosis is distinct from structural interpretation:
+every retained context coordinate `A -> I` MUST resolve to an existing retained
+invalidate I authored by A for the validation's exact key and generation, with
+`I.sequence < V.sequence`. An absent or mismatched retained reference cannot be
+interpreted and MUST be rejected.
 
 Synchronization invokes no computor. Copying a value imports its original add/edit entry and emits no semantic value revision. Synchronization may derive a conservative delete or invalidate and authors it after observed causal history without repeatedly re-authoring a known barrier.
 Detailed normative requirements and proofs are split into:

@@ -37,7 +37,7 @@ generation. `Unchanged` still emits no edit.
 | fresh | stale | `invalidate` |
 | stale | fresh | `validate` |
 
-For stale→fresh, the validate contains `clearsInvalidates`, the complete per-author invalidation frontier for its key/generation in the exact transaction-visible journal snapshot. Graph freshness and this immutable context commit atomically. A validate is forbidden on any other path.
+For stale→fresh, the validate contains `clearsInvalidates`, the complete per-author invalidation frontier for its key/generation in the exact transaction-visible journal snapshot. Graph freshness and this immutable context commit atomically. This entry may be authored by ordinary genuine graph revalidation or by existing-live controlled reset's authoritative stale→fresh reconciliation. Both require coherent final validity and allocate after every referenced invalidate. No other path may author validate; in particular, normal synchronization and migration do not.
 
 Identifier-only, timestamp-only, and validity-edge-only changes emit nothing.
 
@@ -88,8 +88,9 @@ representing barrier. Each such sequence is greater than every entry observed by
 that synchronization operation, and graph/proof state, joined journal, stored
 entry/index, and watermarks are installed atomically. A settled obligation
 already represented by an outstanding retained barrier is propagated, not
-re-authored. Synchronization never synthesizes `validate`; only normal graph
-revalidation with coherent validity evidence may do that.
+re-authored. Synchronization never synthesizes `validate`; ordinary graph
+revalidation and the existing-live reset rule below are the only supported
+authors.
 
 A synchronization-authored invalidate sets `generation` to the final joined add
 generation whose selected materialization it demotes. It cannot be emitted when
