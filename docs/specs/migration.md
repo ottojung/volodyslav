@@ -179,8 +179,12 @@ If no previous version is found, the migration is a no-op.
 
 Migration exact-copies one fixed active receiver snapshot of retained
 `StoredJournalEntry` values, their local indexes, `localJournalClock`, and
-`localJournalIndexWatermark`. It preserves the durable author and never imports
-remote cursor metadata.
+`localJournalIndexWatermark`. Separately, same-process inactive construction
+threads the running receiver's private cursor-domain identity into the target;
+the identity is never persisted or read from synchronization state. This
+preserves the logical receiver domain across in-process cutover and never
+imports remote cursor metadata. A new runtime restoration allocates a new
+domain.
 
 Pre-cutover validation requires unique immutable logical content per ID, valid
 same-key generation references, validation-causal reference ordering and

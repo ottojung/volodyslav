@@ -78,9 +78,22 @@ The synchronization repository is part of creation even when the resulting datab
 
 When local live state is absent, Volodyslav first asks whether the synchronization repository contains the current synchronized state previously published for this same host and writer. The synchronization lifecycle must recognize the selected branch as the branch assigned to the current host/writer.
 
-This is **absent-state self-restoration**, not reset of an existing database. It restores and validates the authoritative graph together with the durable local `HostFingerprint`, compacted stored journal entries with their local indexes, `localJournalClock`, and `localJournalIndexWatermark`. The restored author must be the branch owner, the logical clock must cover every observed sequence, and the index watermark must cover every retained local index. Gaps are harmless.
+This is **absent-state self-restoration**, not reset of an existing database. It
+restores and validates the authoritative graph together with the durable local
+`HostFingerprint`, compacted stored journal entries with their receiver-local
+indexes, `localJournalClock`, and `localJournalIndexWatermark`. The restored
+author must be the branch owner, the logical clock must cover every observed
+sequence, and the index watermark must cover every retained local index. Gaps
+are harmless. Cursor-domain identity is not synchronization content and MUST
+NOT be restored from the repository.
 
-Restoration resumes previously emitted state. It MUST NOT classify the restored graph as an empty-to-restored transition and MUST NOT emit `add` for every restored materialization. The restored counters and cursor history are installed through the normal durable cutover, after which the database is reopened and passed through the migration gate.
+Restoration resumes previously emitted durable state. It MUST NOT classify the
+restored graph as an empty-to-restored transition or emit `add` for every
+restored materialization. The new runtime receiver allocates a fresh private
+cursor-domain identity after installing the restored entries, indexes,
+watermark, and host/journal-clock state. Public cursor tokens are
+non-serializable and process-local, so cursors from a destroyed runtime need not
+survive; an artificially retained old token is foreign to the new receiver.
 
 The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable author fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 
@@ -227,12 +240,19 @@ and are inapplicable before value or freshness selection. Reset uses ordinary
 `JournalEntry` values, not a reset-specific record type.
 
 If reset changes a semantic value, the resulting `modifiedAt` is the real reset
-wall-clock value-change time and the establishing add's `time` is exactly that
-timestamp. If the receiver already has the same semantic value, administrative
+wall-clock value-change time and the establishing add's `time` and
+`valueModifiedAt` are exactly that timestamp. If the receiver already has the same semantic value, administrative
 re-generation is not a value change: reset preserves that materialization's
-`modifiedAt` and uses the preserved timestamp as the new add's `time`. Reset
-never synthesizes a future timestamp to defeat clock skew; presence-generation
+`modifiedAt`, uses it as the new add's `valueModifiedAt`, and uses the real reset
+occurrence time as the new add's `time`. Reset never synthesizes a semantic
+modification timestamp to defeat clock skew; presence-generation
 ordering supplies its authority.
+
+Equal-value reset trace: old `graph.modifiedAt=M=100`; reset occurs at
+`R=1000`. The fresh generation has `add.time=1000` and
+`add.valueModifiedAt=graph.modifiedAt=100`. Candidate-event resolution therefore
+matches the fresh add to semantic time 100, while every `PossibleNodeChange`
+projected from it correctly reports occurrence `time=1000`.
 
 For a dependency graph, reset authors generations in topological order. Roots
 retain freshness only when their desired graph evidence permits it. A derived
@@ -260,10 +280,11 @@ Clock-skew trace: generation G exists and B's edit `EB=(10,B)` for K has
 `generation=G`, `modifiedAt=200`, and value B. R has observed EB, contains B,
 and later resets to value A while R's monotone local clock reads 150. Reset
 authors fresh add generation `GR=(n,R)`, where `n>10`, with
-`GR.time=modifiedAt=150`. `presenceHead(K)=GR`, so EB is inapplicable before
+`GR.time=GR.valueModifiedAt=modifiedAt=150`. `presenceHead(K)=GR`, so EB is inapplicable before
 wall-time value comparison: A remains authoritative even though EB's timestamp
 is 200. If the target had instead remained B, GR would preserve
-`modifiedAt=200` and use `GR.time=200`; the new generation would still make the
+`modifiedAt=200`, use `GR.valueModifiedAt=200`, and record the later reset
+occurrence in `GR.time`; the new generation would still make the
 old history inapplicable without pretending that the equal value changed.
 
 After reset, the database is reopened through the migration gate.

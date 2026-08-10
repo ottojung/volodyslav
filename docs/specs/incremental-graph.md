@@ -594,7 +594,7 @@ type Computor = (
 ) => Promise<ComputedValue | Unchanged>;
 ```
 
-**Normative API boundary:** Computor invocation deliberately receives no journal cursor. The runtime exposes neither a computation-position nor bootstrap cursor. `baselinePossibleNodeChange()` means only before all locally observable journal history in this cursor domain; it is not the position at which the invocation started and is not a substitute. No raw journal index, `journalGet`, context object, or hidden graph handle is provided.
+**Normative API boundary:** Computor invocation deliberately receives no journal cursor. The runtime exposes neither a computation-position nor bootstrap cursor. `graph.baselinePossibleNodeChange()` means only before all locally observable journal history in this cursor domain; it is not the position at which the invocation started and is not a substitute. No raw journal index, `journalGet`, context object, or hidden graph handle is provided.
 
 **Note on Return Type:** Computors MAY return `Unchanged` as an optimization sentinel. However, `Unchanged` is NOT part of the semantic `Outcomes` set (see §1.1). When a computor returns `Unchanged`, it is semantically equivalent to returning the current stored value (which must be a `ComputedValue`). The `pull()` operation always returns `Promise<ComputedValue>` — the `Unchanged` sentinel is handled internally and never exposed to callers.
 
@@ -625,6 +625,7 @@ type Computor = (
 | `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 | `MissingTimestampError` | `nodeKey: string` | `getCreationTime`/`getModificationTime` called for a node with no recorded timestamps (public API) |
+| `InvalidPossibleChangeCursorError` | none | `possibleMaybeChanges()` receives a `since` cursor from another receiver cursor domain |
 
 **REQ-ERR-01 (Error Type Guards):** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value: unknown): value is InvalidExpressionError`).
 
@@ -639,12 +640,18 @@ freshness sublevel. The public journal API consists of:
 
 - `graph.possibleMaybeChanges({ since, to })` — Queries possible node changes since a previously observed position, restricted to nodes matching the given filter. Returns `Promise<Array<PossibleNodeChange>>`. The `since` parameter accepts `PossibleNodeChange | BaselinePossibleNodeChange`; the `to` parameter is a `NodeFilter`. See `docs/specs/incremental-graph-journal-api.md` for the full specification.
 
-- `baselinePossibleNodeChange()` — Returns an opaque
+- `graph.baselinePossibleNodeChange()` — Returns a receiver-domain-bound opaque
   `BaselinePossibleNodeChange` sentinel strictly before every real local
   journal position. When passed as `since` to
   `graph.possibleMaybeChanges`, scanning starts from the first journal entry.
-  This is a standalone function, not an `IncrementalGraph` method. The raw
-  physical `JournalIndex` is not part of the public API.
+  A baseline from another graph rejects with
+  `InvalidPossibleChangeCursorError`. The raw physical `JournalIndex` and private
+  cursor-domain identity are not part of the public API.
+
+- `InvalidPossibleChangeCursorError` — Thrown deterministically before scanning
+  when `since` belongs to another receiver cursor domain. It has no additional
+  required fields. Per §3.5, the public
+  `isInvalidPossibleChangeCursorError(value)` guard uses `instanceof`.
 
 Journal notification has no false negatives for those three dimensions, but it
 may have false positives and collapse repeated occurrences of one exact action.

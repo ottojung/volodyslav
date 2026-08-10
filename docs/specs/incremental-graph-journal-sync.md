@@ -65,7 +65,7 @@ valueEvents(x,G) = add G itself, plus edits for x whose generation == G
 
 candidateEvents(x,G) = E such that
     E is in valueEvents(x,G) &&
-    E.time == graph.timestamps[x].modifiedAt &&
+    E.valueModifiedAt == graph.timestamps[x].modifiedAt &&
     E == valueHead(E.author,x,G)
 
 canonicalEvent(x,G) = greatest candidate by JournalEntryId

@@ -21,15 +21,20 @@ JournalEntryBase = {
     time: UnixTimestamp
 }
 
-AddJournalEntry = JournalEntryBase & { action: "add" }
+AddJournalEntry = JournalEntryBase & {
+    action: "add"
+    valueModifiedAt: UnixTimestamp
+}
 DeleteJournalEntry = JournalEntryBase & { action: "delete" }
 
 GenerationScopedJournalEntryBase = JournalEntryBase & {
     generation: JournalEntryId
 }
 
-EditJournalEntry =
-    GenerationScopedJournalEntryBase & { action: "edit" }
+EditJournalEntry = GenerationScopedJournalEntryBase & {
+    action: "edit"
+    valueModifiedAt: UnixTimestamp
+}
 InvalidateJournalEntry =
     GenerationScopedJournalEntryBase & { action: "invalidate" }
 ValidateJournalEntry =
@@ -44,6 +49,12 @@ JournalEntryId(E) = (E.sequence, E.author)
 ```
 
 Entry IDs are ordered lexicographically, sequence first and author second.
+`JournalEntry.time` is always the real wall-clock time at which that journal
+event occurred. `valueModifiedAt` is always present on add/edit and is forbidden
+on delete/invalidate/validate; it is the semantic value-modification timestamp
+represented by that value event and equals the resulting graph
+`timestamps[key].modifiedAt`. The concepts can differ: an equal-value controlled
+reset authors an add now while preserving the value's earlier modification time.
 `HostFingerprint` is the durable writer fingerprint established by the host
 lifecycle. It is not a hostname. `NodeIdentifier` already embeds its allocating
 host fingerprint and receives no additional discriminator.
@@ -148,6 +159,9 @@ StoredJournalEntry = {
 
 journal.entries: Map<JournalEntryId,StoredJournalEntry>
 localJournalIndexWatermark: uint64
+
+runtime receiver state (never serialized):
+    cursorDomainIdentity: private runtime identity
 ```
 
 `JournalEntry.sequence` is the replicated logical event coordinate. The author
@@ -167,6 +181,22 @@ authors may allocate the same numeric sequence;
 `JournalEntryId=(sequence,author)` is the globally comparable identity. Sequence
 and local index are not competing logical journal coordinates. Both overflow
 fatally, and neither allocator reuses a value within its applicable domain.
+
+Each logical runtime receiver allocates one fresh private, unforgeable
+cursor-domain identity, unique from every unrelated receiver. It is runtime
+state: not part of `JournalEntry` or durable database state, not an author
+fingerprint, journal clock, or replica name, not remotely replicated, not
+serialized into Git/synchronization state, and not user-accessible. Object
+identity, an unexported symbol, or an equivalent private mechanism may implement
+it.
+
+Supported synchronization, migration, or reset inactive construction within the
+same running receiver threads this identity through the construction path with
+copied indexes and watermark, so in-process cutover preserves issued cursors.
+New process/startup restoration may restore entries, receiver-local indexes,
+watermark, and durable host/clock state, but MUST allocate a new domain identity.
+Old public cursor tokens are non-serializable and process-local, so continuity
+across runtime destruction/recreation is neither meaningful nor guaranteed.
 
 A previously unknown logical entry installed locally keeps its immutable contents
 byte-for-byte and receives:
@@ -211,6 +241,6 @@ The fixed finite schema bounds node arity, and the maximum serialized size of a
 `ConstValue` is treated as a fixed system constant. Consequently a `NodeKey`,
 including its bounded-arity binding values, has constant size in this analysis.
 
-The normative guarantee is `size(compact(J)) = O(nr²)`. Constant action coordinates use `O(r)` entries per key; at most `O(r)` retained validations each carry an `O(r)` context, including exact causal references. Other witnesses are no larger. A scalar local index does not alter the result.
+The normative guarantee is `size(compact(J)) = O(nr²)`. Constant action coordinates use `O(r)` entries per key; at most `O(r)` retained validations each carry an `O(r)` context, including exact causal references. Other witnesses are no larger. A scalar local index and the fixed-size `valueModifiedAt` scalar on each retained add/edit do not alter the result.
 
 This applies exclusively to fully canonical compacted state. Ordinary mutations may append immutable entries and skip compaction arbitrarily long, so no operation-count-independent bound is promised for an uncompacted physical journal.

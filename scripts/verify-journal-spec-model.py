@@ -16,26 +16,29 @@ class Entry:
     time: int
     generation: tuple[int, str] | None = None
     clears: tuple[tuple[str, tuple[int, str]], ...] = ()
+    # Normative add/edit variants require this scalar; the other variants
+    # forbid it.  Keeping it last lets malformed shapes be exercised directly.
+    value_modified_at: int | None = None
 
     @property
     def id(self): return (self.sequence, self.author)
 
-G1 = Entry(1, "A", "K", "add", 10)
-GX = Entry(15, "B", "K", "add", 15)       # concurrent cross-author generation
+G1 = Entry(1, "A", "K", "add", 10, value_modified_at=10)
+GX = Entry(15, "B", "K", "add", 15, value_modified_at=15)       # concurrent cross-author generation
 D1 = Entry(16, "A", "K", "delete", 16)    # delete between generations
-G2 = Entry(20, "A", "K", "add", 20)       # same-author successor and winner
+G2 = Entry(20, "A", "K", "add", 20, value_modified_at=20)       # same-author successor and winner
 
 # Losing-generation coordinate maxima exceed winning-generation witnesses.
-E_OLD = Entry(110, "A", "K", "edit", 11, G1.id)
-E_CUR = Entry(22, "A", "K", "edit", 20, G2.id)
+E_OLD = Entry(110, "A", "K", "edit", 11, G1.id, value_modified_at=11)
+E_CUR = Entry(22, "A", "K", "edit", 20, G2.id, value_modified_at=20)
 I_OLD = Entry(111, "A", "K", "invalidate", 12, G1.id)
 I_CUR = Entry(23, "A", "K", "invalidate", 21, G2.id)
 V_OLD = Entry(112, "B", "K", "validate", 15, GX.id)
 V_CUR = Entry(24, "B", "K", "validate", 22, G2.id, (("A", I_CUR.id),))
 
 # Winning coordinate maximum exceeds a losing entry; these also create cross-author heads.
-E_LOW_OLD = Entry(2, "B", "K", "edit", 10, G1.id)
-E_HIGH_CUR = Entry(25, "B", "K", "edit", 20, G2.id)
+E_LOW_OLD = Entry(2, "B", "K", "edit", 10, G1.id, value_modified_at=10)
+E_HIGH_CUR = Entry(25, "B", "K", "edit", 20, G2.id, value_modified_at=20)
 I_CROSS_CUR = Entry(26, "B", "K", "invalidate", 21, G2.id)
 
 # Causal freshness classes coexist with value/presence history. I_HARD models
@@ -70,8 +73,10 @@ def valid(es):
     for e in es:
         if e.action in ("add", "delete"):
             if e.generation is not None or e.clears: return False
+            if (e.action == "add") != (e.value_modified_at is not None): return False
             continue
         if e.action not in ("edit", "invalidate", "validate"): return False
+        if (e.action == "edit") != (e.value_modified_at is not None): return False
         if e.generation is None or e.generation not in ids: return False
         if ids[e.generation].action != "add" or ids[e.generation].key != e.key: return False
         if e.action != "validate" and e.clears: return False
@@ -98,7 +103,7 @@ assert not valid((G1, Entry(203, "B", "K", "invalidate", 30)))
 assert not valid((G1, Entry(204, "B", "K", "validate", 30)))
 
 I1_BAD = Entry(10, "A", "Z", "invalidate", 10, (1, "A"))
-GZ = Entry(1, "A", "Z", "add", 1)
+GZ = Entry(1, "A", "Z", "add", 1, value_modified_at=1)
 I2_BAD = Entry(11, "A", "Z", "invalidate", 11, GZ.id)
 V1_BAD = Entry(100, "B", "Z", "validate", 12, GZ.id, (("A", I2_BAD.id),))
 V2_BAD = Entry(101, "B", "Z", "validate", 13, GZ.id, (("A", I1_BAD.id),))
@@ -164,8 +169,8 @@ def projections(es):
     if not p or p.action != "add":
         return (p, None, frozenset(), frozenset(), frozenset(), False, frozenset(), frozenset())
     vh = value_heads(es, p)
-    canonical_inputs = frozenset((t, max(e.id for e in vh if e.time == t))
-                                 for t in {e.time for e in vh})
+    canonical_inputs = frozenset((t, max(e.id for e in vh if e.value_modified_at == t))
+                                 for t in {e.value_modified_at for e in vh})
     frontier = invalidate_frontier(es, p)
     vals = validation_heads(es, p)
     maxima = {}
@@ -234,34 +239,80 @@ for sequence in range(200, 240):
 assert len(raw_repeated) == 41
 assert len(compact(raw_repeated)) == 2
 
+# Equal-value reset: occurrence time describes the newly authored reset event,
+# while value provenance continues to match the preserved semantic timestamp.
+G_RESET = Entry(300, "R", "K", "add", 1000, value_modified_at=100)
+assert G_RESET.time == 1000
+assert G_RESET.value_modified_at == 100
+assert [e for e in value_heads({G_RESET}, G_RESET)
+        if e.value_modified_at == 100] == [G_RESET]
+assert G_RESET.time != G_RESET.value_modified_at
+
 @dataclass(frozen=True)
 class Stored:
     entries: tuple[tuple[str, int], ...]  # logical id -> local index, encoded as label/index
     watermark: int
+    domain: object
 
 def put(state, label):
     d = dict(state.entries)
     if label in d: return state
     w = state.watermark + 1; d[label] = w
-    return Stored(tuple(sorted(d.items())), w)
+    return Stored(tuple(sorted(d.items())), w, state.domain)
 
 def touch(state, label):
     d = dict(state.entries); w = state.watermark + 1; d[label] = w
-    return Stored(tuple(sorted(d.items())), w)
+    return Stored(tuple(sorted(d.items())), w, state.domain)
 
 def remove_and_cover(state, removed, witness):
     d = dict(state.entries)
     for x in removed: d.pop(x, None)
-    base = Stored(tuple(sorted(d.items())), state.watermark)
+    base = Stored(tuple(sorted(d.items())), state.watermark, state.domain)
     return touch(base, witness)
 
 def issued_cursors(state):
-    return [(-1, len(ACTIONS)-1)] + [
-        (idx, ordinal) for _, idx in state.entries for ordinal in range(len(ACTIONS))]
+    return [(state.domain, -1, len(ACTIONS)-1)] + [
+        (state.domain, idx, ordinal) for _, idx in state.entries for ordinal in range(len(ACTIONS))]
 
 def query(state, cursor):
+    domain, cursor_index, cursor_ordinal = cursor
+    if domain is not state.domain:
+        raise InvalidPossibleChangeCursorError
     return {(label, action) for label, idx in state.entries
-            for ordinal, action in enumerate(ACTIONS) if (idx, ordinal) > cursor}
+            for ordinal, action in enumerate(ACTIONS)
+            if (idx, ordinal) > (cursor_index, cursor_ordinal)}
+
+class InvalidPossibleChangeCursorError(Exception):
+    pass
+
+# Receiver domains reject foreign cursors before interpreting either baselines
+# or enormous numeric positions. Same-process cutover preserves private runtime
+# identity; new-runtime restoration deliberately replaces it.
+DOMAIN_A = object(); DOMAIN_B = object()
+A1 = put(Stored((), 0, DOMAIN_A), "K1")
+B = put(Stored((), 0, DOMAIN_B), "K1")
+cursor_a = (DOMAIN_A, 10_000, len(ACTIONS) - 1)
+cursor_b = (DOMAIN_B, 10_000, len(ACTIONS) - 1)
+baseline_a = issued_cursors(A1)[0]
+baseline_b = issued_cursors(B)[0]
+for receiver, foreign in ((A1, cursor_b), (B, cursor_a),
+                          (A1, baseline_b), (B, baseline_a)):
+    try:
+        query(receiver, foreign)
+        raise AssertionError("foreign cursor accepted")
+    except InvalidPossibleChangeCursorError:
+        pass
+A1_cursor = issued_cursors(A1)[-1]
+A2 = Stored(A1.entries, A1.watermark, A1.domain)
+assert query(A2, A1_cursor) == query(A1, A1_cursor)
+
+NEW_RUNTIME_DOMAIN = object()
+A_RESTORED = Stored(A1.entries, A1.watermark, NEW_RUNTIME_DOMAIN)
+try:
+    query(A_RESTORED, A1_cursor)
+    raise AssertionError("old-runtime cursor accepted after restoration")
+except InvalidPossibleChangeCursorError:
+    pass
 
 # Exhaust every four-operation word and check obligations after every prefix.
 ops = ("installK1", "authorK2", "installL", "graphAddK", "graphDeleteK",
@@ -269,7 +320,7 @@ ops = ("installK1", "authorK2", "installL", "graphAddK", "graphDeleteK",
        "compactK", "graphCompactK", "noop")
 states_checked = 0; prefixes_checked = 0; obligations_checked = 0; max_records = 0
 for word in product(ops, repeat=4):
-    s = Stored((), 0); obligations = []
+    s = Stored((), 0, DOMAIN_A); obligations = []
     for op in word:
         before = s
         if op in ("installK1", "authorK2", "installL"):
@@ -335,4 +386,8 @@ print(f"committed prefixes checked: {prefixes_checked}")
 print(f"cursor obligation checks across prefixes: {obligations_checked}")
 print(f"maximum stored logical records: {max_records}")
 print("raw repeated-mutation records: 41; compact records: 2")
+print("occurrence/value-time reset assertions: 4")
+print("two-domain rejection assertions: 4 (including 2 foreign baselines)")
+print("same-process cutover preservation assertions: 1")
+print("new-runtime cursor-domain replacement assertions: 1")
 print("all exhaustive bounded journal checks passed")

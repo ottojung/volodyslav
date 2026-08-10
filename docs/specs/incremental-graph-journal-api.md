@@ -2,8 +2,10 @@
 
 ```text
 graph.possibleMaybeChanges({ since, to })
-baselinePossibleNodeChange()
+graph.baselinePossibleNodeChange()
 PossibleNodeChange { nodeName, bindings, action, time }
+InvalidPossibleChangeCursorError
+isInvalidPossibleChangeCursorError(object)
 ```
 
 A result means that this exact closed-classifier action may have happened to the
@@ -12,10 +14,20 @@ covering possibility are allowed; action-specific false negatives are forbidden.
 
 ## Cursor and query
 
-`since` is an opaque same-process cursor conceptually
-`(localIndex,actionOrdinal)`, where the ordinal uses the fixed order add, edit,
-delete, invalidate, validate. It is neither a `JournalEntryId` nor serializable
-or user-constructible. The baseline is before every pair.
+`since` is an opaque cursor conceptually
+`(cursorDomainIdentity,localIndex,actionOrdinal)`, where the ordinal uses the
+fixed order add, edit, delete, invalidate, validate. It is neither a
+`JournalEntryId` nor serializable or user-constructible.
+`graph.baselinePossibleNodeChange()` returns its receiver domain's opaque
+`(domain,before-all-history)` position; there is no universal baseline.
+
+Before interpreting either numeric coordinate, `possibleMaybeChanges()` MUST
+compare the token's private domain identity with its receiver. A foreign token,
+including another receiver's baseline, deterministically rejects with
+`InvalidPossibleChangeCursorError`; it is never clamped, numerically
+reinterpreted, or treated as baseline. This dedicated public API error is exported with the obvious
+`isInvalidPossibleChangeCursorError(object)` `instanceof` type guard. Raw
+positions and domain identity are never exposed.
 
 This cursor coordinate is `StoredJournalEntry.localIndex`, allocated from the
 receiver's `localJournalIndexWatermark`; it is not the replicated
@@ -36,9 +48,12 @@ PossibleActions(E) = { add, edit, delete, invalidate, validate }
 PossibleNodeChange.time = E.entry.time
 ```
 
-All five records use E's semantic key and immutable logical time. The local
+All five records use E's semantic key and immutable occurrence time. The local
 index answers when this possibility became relevant to this receiver; `time`
-answers when the underlying logical event occurred. There is no receiver-local
+answers when the underlying journal event occurred in real wall-clock time. It
+is not necessarily the semantic value's `modifiedAt`: for an equal-value reset
+at R preserving old M, the new add and its possible changes have `time=R` while
+`add.valueModifiedAt=graph.modifiedAt=M`. There is no receiver-local
 event object, action mask, cause field, or transition timestamp.
 
 The action ordinal lets a client advance record-by-record without skipping the
@@ -60,14 +75,15 @@ remaining projections at one index:
 
 ## Cursor-coverage theorem
 
-For every successful transaction T and key K with at least one actual closed-
+For every cursor C issued by receiver cursor domain R before a successful
+transaction T, and every key K with at least one actual closed-
 classifier transition, either T installs/authors an unknown entry for K or it
 touches the greatest retained `JournalEntryId` for K,
 `notificationWitness(K)`. Do this once per changed key, not once per action. If
 an entry for K already receives a fresh index in T, no extra touch is needed.
 Graph changes and index updates commit atomically.
 
-For any cursor C issued before T:
+For that same-domain cursor C:
 
 ```text
 C <= oldWatermark < witness.localIndex
@@ -80,12 +96,21 @@ its old watermark. Induction over transactions proves no action-specific false
 negative. Touching one entry a million times retains one logical entry and one
 scalar index.
 
-Inactive construction copies every retained local index and the watermark from
-one fixed receiver snapshot before allocating above it. Thus same-process cursors
-remain comparable across cutover; remote indexes never participate.
+Inactive construction inside the same running receiver copies every retained
+local index and watermark from one fixed snapshot and threads that receiver's
+runtime-only cursor-domain identity through the construction path. Domain,
+entries/indexes, and watermark are published as one in-process cutover state, so
+cursors issued before supported synchronization, migration, or reset cutover
+remain valid afterward. Remote indexes and identities never participate.
+
+A new process/startup receiver allocates a new identity even when self-restoring
+entries, indexes, and watermark from synchronization state. Cursor tokens are
+non-serializable and process-local, so no cross-runtime continuity is promised;
+if an old token is artificially retained, the new receiver rejects it as
+foreign before interpreting its numeric position.
 
 ## Deliberate cursor limitations
 
-Computor invocation does not receive a journal cursor, and the runtime exposes no computation-position or bootstrap cursor. This omission is deliberate. `baselinePossibleNodeChange()` means only before all locally observable history in this cursor domain; it is not the position at which a computor began and is not a substitute. No raw `JournalIndex`, `journalGet`, computor context, hidden graph handle, or bootstrap cursor is part of this API.
+Computor invocation does not receive a journal cursor, and the runtime exposes no computation-position or bootstrap cursor. This omission is deliberate. `graph.baselinePossibleNodeChange()` means only before all locally observable history in this cursor domain; it is not the position at which a computor began and is not a substitute. No raw `JournalIndex`, `journalGet`, computor context, hidden graph handle, or bootstrap cursor is part of this API.
 
 A filtered query that scans through internal watermark H but returns no matching change produces no reusable cursor. The caller's previous cursor remains its only continuation and later queries may reconsider the same excluded entries. This is intentional. `possibleMaybeChanges()` guarantees conservative change coverage, not amortized filtered scan progress. No `scannedThrough` value and no `O(number of newly unseen matching changes)` guarantee is promised. Reconstructible indexes MAY optimize this without changing cursor semantics. Query cost may depend on uncompacted journal size.
