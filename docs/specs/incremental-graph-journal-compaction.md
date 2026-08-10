@@ -1,5 +1,16 @@
 # Logical journal compaction
 
+## Proof domain
+
+This specification uses the
+[journal supported-state boundary](incremental-graph-journal-types.md#supported-state-boundary),
+which inherits the lifecycle definition in `database-lifecycle.md`. Every
+preservation, dominance, freshness, closure, and merge claim below quantifies
+over supported reachable journal states and deliveries/unions that are
+supported protocol states, not arbitrary sets of fabricated entries.
+Compaction need not preserve discarded evidence solely to diagnose a past or
+future corrupted/unsupported history.
+
 Compaction considers immutable `JournalEntry` contents only; `localIndex` is
 ignored. For notification coverage, E2 covers E1 when author, key, and action are
 equal and E2 has greater sequence. There is no cross-author coverage.
@@ -16,7 +27,12 @@ it is add G, retain:
 4. every exact invalidate referenced by every retained validation causal context, including coordinate-max validations for losing generations; and
 5. every add referenced by a retained generation-scoped entry.
 
-If presence is absent, generation-authority witnesses are empty. Invalid same-key generation references, unresolved/mismatched causal references, references not preceding their validation, and non-monotone same-author validation contexts reject the journal before selection. Reference closure leaves no dangling context. Results have canonical
+If presence is absent, generation-authority witnesses are empty. Retained
+generation and causal references must be structurally resolvable and meaningful
+before selection. Implementations MAY also reject non-monotone contexts and
+other corruption defensively when evidence is available, but compaction
+correctness does not require complete diagnosis of unsupported history.
+Reference closure leaves no dangling retained context. Results have canonical
 `JournalEntryId` order.
 
 Let G win before compaction. Every losing add H is below a retained presence
@@ -27,7 +43,11 @@ freshness authority while retaining coordinate maxima.
 
 The algorithm preserves `presenceHead`; each winning-generation `valueHead(author,K,G)` by retaining add G and each author's greatest G-scoped edit; the exact equal-`valueModifiedAt` `candidateEvents` inputs needed by `canonicalEvent(K,G)`; `invalidateFrontier(K,G)`; existence of an individual effective validation; every required generation reference; and every retained causal reference.
 
-For same author/key/generation validations, journal validity requires later contexts to be componentwise nondecreasing. Thus an older discarded validation is dominated by the retained later one: every invalidate it covered remains covered. This is an enforced input invariant, not an assumption about well-behaved hosts.
+For same author/key/generation validations, supported authoring makes later
+contexts componentwise nondecreasing. Thus an older discarded validation is
+dominated by the retained later one: every invalidate it covered remains
+covered. This is a reachable-state invariant guaranteed by a correct durable
+author, not a claim about arbitrary structurally constructible entries.
 
 ## Cursor coverage when entries are removed
 
@@ -44,15 +64,21 @@ surviving witness; no logical duplicate is appended.
 
 ## ACI closure proof
 
-Canonical compaction satisfies:
+For supported reachable journal states A and B whose delivery/union is a
+supported protocol state, canonical compaction satisfies:
 
 ```text
 compact(compact(A) union B) = compact(A union B)
 ```
 
-A discarded coordinate loser cannot beat its retained maximum. Winning-generation value heads and equal-time canonical-event inputs remain explicit. A discarded older same-author invalidate is dominated by the retained frontier element. A discarded older same-author validation has a componentwise-dominated context by the validated monotonicity invariant. Every referenced invalidate and add remains resolvable. A delayed invalidate either adds an author coordinate or advances its frontier and defeats any validation that did not name it; this result is identical whether compaction ran before or after delivery. Partial validations never combine. Losing generations cannot regain authority, while a future greater add brings isolated value and freshness witnesses.
+A discarded coordinate loser cannot beat its retained maximum. Winning-generation value heads and equal-time canonical-event inputs remain explicit. A discarded older same-author invalidate is dominated by the retained frontier element. A discarded older same-author validation has a componentwise-dominated context by the supported-authoring monotonicity invariant. Every referenced invalidate and add remains resolvable. A delayed supported invalidate either adds an author coordinate or advances its frontier and defeats any validation that did not name it; this result is identical whether compaction ran before or after delivery. Partial validations never combine. Losing generations cannot regain authority, while a future greater add brings isolated value and freshness witnesses. Delayed delivery of another supported history cannot expose a same-author regression because no supported durable author can create one.
 
-These cases establish closure under every later union. Since compaction is canonical and idempotent, closure plus ACI set union yields commutative, associative, and idempotent logical merge. The conclusion does not follow from union alone. Logical equality excludes local indexes.
+These cases establish closure under every later supported union. Since
+compaction is canonical and idempotent on this domain, closure plus ACI set union
+yields commutative, associative, and idempotent logical merge for supported
+histories. These are not algebraic claims over arbitrary sets of
+`JournalEntry` values. The conclusion does not follow from union alone. Logical
+equality excludes local indexes.
 
 ## Fully compacted bound and optional timing
 
@@ -64,9 +90,23 @@ Per key, constant actions times r coordinates use `O(r)` entries. There are at m
 
 ## Executable bounded verification
 
-`scripts/verify-journal-spec-model.py` uses one combined six-atom universe rather than a freshness-only universe. Its composite atoms preserve every materially distinct class while keeping full ACI exhaustive: competing generations and an intervening delete; losing coordinate maxima and winning edit witnesses; cross-author heads; two-author split invalidation knowledge; complete validation; a delayed later same-author hard invalidate; later complete validation; and generation replacement.
+`scripts/verify-journal-spec-model.py` uses one combined six-atom bounded
+supported-state universe rather than a freshness-only universe. Its composite
+atoms preserve every materially distinct supported class while keeping ACI
+exhaustive within that universe: competing generations and an intervening
+delete; losing coordinate maxima and winning edit witnesses; cross-author
+heads; two-author split invalidation knowledge; complete validation; a delayed
+later same-author hard invalidate; later complete validation; and generation
+replacement.
 
-It checks 64 valid combined states and all 64 resulting compact states, 64 projection-preservation/idempotence checks, 4,096 full-universe closure pairs, and 262,144 full compact-universe ACI triples. Projections include presence/generation, value heads, equal-time canonical inputs, invalidate frontier, effective-validation existence, add references, and causal references. Negative cases reject malformed variants, observation-order violations, and backward same-author contexts.
+It checks 64 supported combined states and all 64 resulting compact states, 64
+projection-preservation/idempotence checks, 4,096 supported-universe closure
+pairs, and 262,144 compact supported-universe ACI triples. Projections include
+presence/generation, value heads, equal-time canonical inputs, invalidate
+frontier, effective-validation existence, add references, and causal
+references. Negative cases exercise defensive validation of malformed variants,
+observation-order violations, and backward same-author contexts; they are not a
+completeness proof for corruption detection.
 
 The independent cursor model remains exhaustive and now covers 20,736
 four-operation words and 82,944 committed prefixes, carrying 189,449

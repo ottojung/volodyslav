@@ -13,11 +13,15 @@ localJournalIndexWatermark
 Within one running receiver, migration separately threads the receiver's
 runtime-only cursor-domain identity into the inactive target; it never reads or
 writes that identity as database or synchronization content. It copies every
-retained entry and its receiver-local index exactly, then
-validates immutable ID content, generation and validation-causal references,
-same-author validation-context monotonicity, canonical compaction,
-logical clock coverage, unique indexes, and index-watermark coverage. It never
-imports another host's index or author ownership.
+retained entry and its receiver-local index exactly, then checks the structural
+invariants required to load retained state: generation and retained
+validation-causal references, canonical compaction, logical clock coverage,
+unique indexes, and index-watermark coverage. It MAY also check immutable-ID
+conflicts and same-author validation-context monotonicity defensively when the
+relevant evidence remains. These checks do not promise complete diagnosis of
+corrupted/unsupported history after compaction. It never imports another host's
+index or author ownership and uses the
+[journal supported-state boundary](incremental-graph-journal-types.md#supported-state-boundary).
 
 Migration applies the exact closed classifier. New logical entries use the host
 clock, required generation, wall-clock occurrence `time`, required add/edit `valueModifiedAt`, and distinct fresh
