@@ -94,7 +94,7 @@ effectiveValidate(V,x,G) iff V alone covers every frontier element
 ```
 
 A value event for winning generation G is usable only when it is add G or an
-edit explicitly scoped to G, its `valueModifiedAt` equals graph `modifiedAt`, and it is
+edit explicitly scoped to G, its `time` equals graph `modifiedAt`, and it is
 `valueHead(author,x,G)`. An unresolvable, superseded, or differently scoped
 materialization is provenance-obsolete. `ValueRevision(x,G)` is compared
 lexicographically and totally. Equal revisions with unequal `ComputedValue`s
@@ -281,7 +281,10 @@ decision occurred. Conversely, removing proofs during this transaction is a new
 decision even if an older frontier barrier exists: that older barrier may have
 been cleared on an unseen host and cannot represent the later proof-removal
 decision.
-A validation which did not observe the barrier cannot cross it, regardless of ID; a later genuine normal revalidation may author validate scoped to G with the complete observed frontier.
+A validation which did not observe the barrier cannot cross it, regardless of
+ID. A later ordinary genuine graph revalidation or authoritative existing-live
+stale→fresh reset may author validate scoped to G with the complete observed
+receiver frontier. Synchronization itself never synthesizes validate.
 
 That synchronization-authored invalidate explicitly carries G. Entries for
 other generations neither satisfy nor override this barrier.
@@ -407,12 +410,16 @@ failed host is recorded and does not roll back successful hosts; processing may
 continue and failures are reported together. This sequential lifecycle does not
 imply multi-host associativity, order independence, or all-to-all communication.
 
-Controlled reset is not this merge algorithm. It imports source history, then
-performs receiver-authoritative re-generation. Every target-materialized key
-receives a fresh receiver add generation above all observed history; target
-absence receives a later delete. Value-changing reset uses real reset wall time,
-while equal-value re-generation preserves `modifiedAt`. The lifecycle
-specification defines the complete reset procedure and DAG validation.
+Controlled reset is not this merge algorithm. Existing-live reset does not join
+the selected source journal. It atomically reconciles only source semantic
+presence, values, freshness, and relowered validity, retaining receiver history
+and identifiers for surviving keys. It authors add for absent-to-present, a
+fresh add generation above observed receiver history for unequal
+present-to-present, and delete for present-to-absent; equal values author nothing
+and preserve receiver timestamps. The changed-value generation boundary makes
+observed old-generation edits inapplicable before wall-time comparison.
+The complete lifecycle procedure and proof obligations are specified in the
+lifecycle specification.
 
 ## Required traces
 
