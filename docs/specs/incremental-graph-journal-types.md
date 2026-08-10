@@ -227,20 +227,24 @@ and local index are not competing logical journal coordinates. Both overflow
 fatally, and neither allocator reuses a value within its applicable domain.
 
 This mutable stored position is distinct from an issued cursor token. A
-`PossibleNodeChange` contains visible change payload plus an immutable hidden
-nominal snapshot copying one `(cursorDomainIdentity,localIndex,actionOrdinal)`
-position at query time. A `BaselinePossibleNodeChange` contains only its hidden
-nominal baseline snapshot. Touch may move `StoredJournalEntry.localIndex`, but it
-cannot mutate or reinterpret any already-issued snapshot. Private domain
-identity and raw numeric coordinates are never public.
+`PossibleNodeChange` contains visible change payload while its exact object
+identity is registered with an immutable snapshot copying one
+`(cursorDomainIdentity,localIndex,actionOrdinal)` position at query time. A
+`BaselinePossibleNodeChange` is likewise registered with its private baseline
+snapshot. Registration and snapshots reside in genuinely private runtime state,
+not reflectable properties of the public objects. Touch may move
+`StoredJournalEntry.localIndex`, but it cannot mutate or reinterpret any
+already-issued snapshot. Private domain identity and raw numeric coordinates are
+never public.
 
 Each logical runtime receiver allocates one fresh private, unforgeable
 cursor-domain identity, unique from every unrelated receiver. It is runtime
 state: not part of `JournalEntry` or durable database state, not an author
 fingerprint, journal clock, or replica name, not remotely replicated, not
 serialized into Git/synchronization state, and not user-accessible. Object
-identity, an unexported symbol, or an equivalent private mechanism may implement
-it.
+identity, an unexported symbol retained only inside private runtime state, or an
+equivalent private mechanism may implement it. The identity MUST NOT appear as a
+reflectable property value on a public cursor token.
 
 Supported synchronization, migration, or reset inactive construction within the
 same running receiver threads this identity through the construction path with

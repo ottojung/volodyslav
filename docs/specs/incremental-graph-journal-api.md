@@ -32,32 +32,68 @@ interface PossibleNodeChange {
   readonly bindings: BindingEnvironment;
   readonly action: "add" | "edit" | "delete" | "invalidate" | "validate";
   readonly time: DateTime;
-  readonly [possibleNodeChangeCursorBrand]: PossibleChangeCursorSnapshot;
+  readonly [possibleNodeChangeCursorBrand]: never; // nominal typing only
 }
 
 interface BaselinePossibleNodeChange {
-  readonly [possibleNodeChangeCursorBrand]: BaselineCursorSnapshot;
+  readonly [possibleNodeChangeCursorBrand]: never; // nominal typing only
 }
 ```
 
-The declarations are conceptual, not a mandated runtime representation. A
-module-private symbol property, private class field, `WeakMap`, or equivalent
-non-forgeable mechanism MAY carry the snapshot. The brand symbol, domain
-identity, numeric index, and ordinal MUST NOT be exported or otherwise exposed
-to ordinary callers. Callers can receive and pass tokens back, while runtime
-code can recover their hidden snapshots.
+The declarations are conceptual, not a mandated compile-time encoding. The
+private `unique symbol` is only a TypeScript nominal brand; it MUST NOT carry the
+runtime snapshot as a symbol-keyed property on the public object. Symbol-keyed
+properties are reflectable through `Object.getOwnPropertySymbols()`, so an
+unexported symbol binding alone does not provide runtime opacity.
 
-Consequently normal external TypeScript MUST reject structural fabrication of
-either type. In particular `{ nodeName, bindings, action, time }` does not
-type-check as `PossibleNodeChange` because it lacks the inaccessible nominal
-component, and no visible object literal type-checks as
-`BaselinePossibleNodeChange`. JavaScript, `any`, casts, stale objects, and tokens
-from other graphs still require runtime validation.
+The actual cursor snapshot MUST instead reside in genuinely private runtime
+state: for example, a module-private `WeakMap<object, CursorSnapshot>`,
+inaccessible class-private state with non-public construction, or another
+mechanism providing equivalent runtime opacity. Both possible-change and
+baseline tokens use this private-token-store principle. Conceptually:
+
+```text
+privateCursorSnapshots: WeakMap<object, CursorSnapshot>
+
+construct token:
+    token = public readonly payload object
+    privateCursorSnapshots.set(token, immutable snapshot)
+
+consume token:
+    snapshot = privateCursorSnapshots.get(token)
+    if snapshot is absent:
+        reject InvalidPossibleChangeCursorError
+    if snapshot.cursorDomainIdentity != receiver.cursorDomainIdentity:
+        reject InvalidPossibleChangeCursorError
+```
+
+The token object itself exposes no snapshot coordinates. Callers can receive,
+replay, and pass a legitimate token back unchanged, while only runtime code can
+recover its registered snapshot. The brand symbol, domain identity, numeric
+index, and ordinal MUST NOT be exported or otherwise exposed to ordinary
+callers.
+
+These mechanisms provide independent guarantees. At the TypeScript boundary,
+normal external code cannot structurally fabricate either nominal token type.
+In particular `{ nodeName, bindings, action, time }` does not type-check as
+`PossibleNodeChange` because it lacks the inaccessible nominal component, and no
+visible object literal type-checks as `BaselinePossibleNodeChange`. At runtime,
+JavaScript objects, `any`, casts, stale objects, and clones have no cursor
+authority unless the exact object is registered in private runtime state.
 
 Implementation verification MUST include negative compile-time cases for both
-structural forgeries, plus runtime tests for foreign change tokens, foreign
-baselines, same-process cutover continuity, new-runtime rejection, and an issued
-token retaining its copied index after the stored witness is touched.
+structural forgeries and runtime tests proving all of the following:
+
+1. a plain structural object is rejected;
+2. an object supplied through a cast or `any` is rejected;
+3. a clone of a real token without its private runtime registration is rejected;
+4. inspecting every ordinary own property name and symbol of a real token does
+   not reveal its cursor domain, index, or ordinal;
+5. foreign real tokens, including foreign baselines, are rejected;
+6. an original legitimate token remains valid; and
+7. touching its stored witness does not change its captured position.
+
+Tests MUST also retain same-process cutover continuity and new-runtime rejection.
 
 The hidden snapshot is conceptually
 `(cursorDomainIdentity,localIndex,actionOrdinal)`, where the ordinal uses the
