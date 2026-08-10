@@ -287,16 +287,43 @@ For storage analysis:
 
 ```text
 n = number of current or historic semantic node keys represented by the
-    database/journal
+    compacted journal
 r = number of distinct durable authors represented by compacted entries or
     retained causal-context references
 a = 5 journal actions, a fixed constant
+C = maximum serialized size of one ConstValue, a fixed system constant
+K = maximum serialized size of one NodeKey, a fixed system constant
+d = maximum number of distinct direct semantic inputs of any node, a fixed
+    system constant
 ```
 
-The fixed finite schema bounds node arity, and the maximum serialized size of a
-`ConstValue` is treated as a fixed system constant. Consequently a `NodeKey`,
-including its bounded-arity binding values, has constant size in this analysis.
+These are storage-model assumptions, not consequences of the semantic types.
+`SimpleValue` and its `ConstValue` subtype permit recursively structured values
+and do not intrinsically bound string, array, record, nesting, or serialized
+size, so its definition does not establish C. The `NodeKey` format is
+implementation-defined and its identity-preservation contract does not bound
+encoding overhead, so that contract does not establish K. Bounded C, fixed
+finite schema arity, and an intended bounded-overhead key encoding are
+compatible with bounded K, but K remains a separate explicit premise. Graph
+finiteness does not establish d because in-degree could grow with n. A fixed
+finite schema with finitely many direct input positions per node definition is
+compatible with bounded d, but d also remains an explicit premise. C, K, and d
+are all assumed bounded independently of n and r; no runtime limit is implied.
 
-The normative guarantee is `size(compact(J)) = O(nr²)`. Constant action coordinates use `O(r)` entries per key; at most `O(r)` retained validations each carry an `O(r)` context, including exact causal references. Other witnesses are no larger. A scalar local index does not alter the result.
+The normative guarantee remains `size(compact(J)) = O(nr²)`, asymptotically in
+n and r. Journal entries contain `NodeKey` values and causal metadata, so this
+journal-only bound assumes fixed K. Hidden constants may also depend on the
+fixed number of action classes and fixed-size `HostFingerprint` /
+`JournalEntryId` representations. Constant action coordinates use `O(r)`
+entries per key; at most `O(r)` retained validations each carry an `O(r)`
+context, including exact causal references. Other journal witnesses are no
+larger. A scalar local index does not alter the result. The theorem does not
+claim independence from arbitrarily growing key encodings.
+
+The broader persisted IncrementalGraph state may also store dependency,
+validity, and per-input information whose per-node width is bounded under fixed
+d. That graph state is not part of `J`, so d is not needed to count
+`compact(J)`. No total byte bound for all persisted graph state is asserted
+here; such a bound would also have to account for `ComputedValue` payload size.
 
 This applies exclusively to fully canonical compacted state. Ordinary mutations may append immutable entries and skip compaction arbitrarily long, so no operation-count-independent bound is promised for an uncompacted physical journal.
