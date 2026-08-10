@@ -159,7 +159,9 @@ StoredJournalEntry = {
 
 journal.entries: Map<JournalEntryId,StoredJournalEntry>
 localJournalIndexWatermark: uint64
-cursorDomainIdentity: private runtime identity
+
+runtime receiver state (never serialized):
+    cursorDomainIdentity: private runtime identity
 ```
 
 `JournalEntry.sequence` is the replicated logical event coordinate. The author
@@ -180,15 +182,21 @@ authors may allocate the same numeric sequence;
 and local index are not competing logical journal coordinates. Both overflow
 fatally, and neither allocator reuses a value within its applicable domain.
 
-Each logical receiver history has one private, unforgeable cursor-domain
-identity, unique from every unrelated IncrementalGraph/database receiver. It is
-local API/runtime identity: not an author fingerprint, journal clock, replica
-name, remotely replicated value, or user-constructible token. It remains stable
-for the receiver's lifetime. Supported inactive construction and cutover copy
-this identity together with retained indexes and the watermark; remote
-synchronization neither imports nor changes it. A genuinely different receiver
-gets a new identity. Object identity, an unexported symbol, or an equivalent
-private mechanism may implement these semantics.
+Each logical runtime receiver allocates one fresh private, unforgeable
+cursor-domain identity, unique from every unrelated receiver. It is runtime
+state: not part of `JournalEntry` or durable database state, not an author
+fingerprint, journal clock, or replica name, not remotely replicated, not
+serialized into Git/synchronization state, and not user-accessible. Object
+identity, an unexported symbol, or an equivalent private mechanism may implement
+it.
+
+Supported synchronization, migration, or reset inactive construction within the
+same running receiver threads this identity through the construction path with
+copied indexes and watermark, so in-process cutover preserves issued cursors.
+New process/startup restoration may restore entries, receiver-local indexes,
+watermark, and durable host/clock state, but MUST allocate a new domain identity.
+Old public cursor tokens are non-serializable and process-local, so continuity
+across runtime destruction/recreation is neither meaningful nor guaranteed.
 
 A previously unknown logical entry installed locally keeps its immutable contents
 byte-for-byte and receives:

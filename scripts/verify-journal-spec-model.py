@@ -285,23 +285,34 @@ def query(state, cursor):
 class InvalidPossibleChangeCursorError(Exception):
     pass
 
-# Receiver domains reject foreign cursors before interpreting even an enormous
-# numeric position. Supported cutover preserves the private identity and local
-# positions, so an old cursor remains meaningful on the replacement receiver.
+# Receiver domains reject foreign cursors before interpreting either baselines
+# or enormous numeric positions. Same-process cutover preserves private runtime
+# identity; new-runtime restoration deliberately replaces it.
 DOMAIN_A = object(); DOMAIN_B = object()
 A1 = put(Stored((), 0, DOMAIN_A), "K1")
 B = put(Stored((), 0, DOMAIN_B), "K1")
 cursor_a = (DOMAIN_A, 10_000, len(ACTIONS) - 1)
 cursor_b = (DOMAIN_B, 10_000, len(ACTIONS) - 1)
-for receiver, foreign in ((A1, cursor_b), (B, cursor_a)):
+baseline_a = issued_cursors(A1)[0]
+baseline_b = issued_cursors(B)[0]
+for receiver, foreign in ((A1, cursor_b), (B, cursor_a),
+                          (A1, baseline_b), (B, baseline_a)):
     try:
         query(receiver, foreign)
         raise AssertionError("foreign cursor accepted")
     except InvalidPossibleChangeCursorError:
         pass
-A1_cursor = issued_cursors(A1)[0]
+A1_cursor = issued_cursors(A1)[-1]
 A2 = Stored(A1.entries, A1.watermark, A1.domain)
 assert query(A2, A1_cursor) == query(A1, A1_cursor)
+
+NEW_RUNTIME_DOMAIN = object()
+A_RESTORED = Stored(A1.entries, A1.watermark, NEW_RUNTIME_DOMAIN)
+try:
+    query(A_RESTORED, A1_cursor)
+    raise AssertionError("old-runtime cursor accepted after restoration")
+except InvalidPossibleChangeCursorError:
+    pass
 
 # Exhaust every four-operation word and check obligations after every prefix.
 ops = ("installK1", "authorK2", "installL", "graphAddK", "graphDeleteK",
@@ -376,5 +387,7 @@ print(f"cursor obligation checks across prefixes: {obligations_checked}")
 print(f"maximum stored logical records: {max_records}")
 print("raw repeated-mutation records: 41; compact records: 2")
 print("occurrence/value-time reset assertions: 4")
-print("two-domain rejection assertions: 2; cutover assertions: 1")
+print("two-domain rejection assertions: 4 (including 2 foreign baselines)")
+print("same-process cutover preservation assertions: 1")
+print("new-runtime cursor-domain replacement assertions: 1")
 print("all exhaustive bounded journal checks passed")

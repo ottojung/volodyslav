@@ -78,9 +78,22 @@ The synchronization repository is part of creation even when the resulting datab
 
 When local live state is absent, Volodyslav first asks whether the synchronization repository contains the current synchronized state previously published for this same host and writer. The synchronization lifecycle must recognize the selected branch as the branch assigned to the current host/writer.
 
-This is **absent-state self-restoration**, not reset of an existing database. It restores and validates the authoritative graph together with the durable local `HostFingerprint`, compacted stored journal entries with their local indexes, `localJournalClock`, `localJournalIndexWatermark`, and the private cursor-domain identity. The restored author must be the branch owner, the logical clock must cover every observed sequence, and the index watermark must cover every retained local index. Gaps are harmless.
+This is **absent-state self-restoration**, not reset of an existing database. It
+restores and validates the authoritative graph together with the durable local
+`HostFingerprint`, compacted stored journal entries with their receiver-local
+indexes, `localJournalClock`, and `localJournalIndexWatermark`. The restored
+author must be the branch owner, the logical clock must cover every observed
+sequence, and the index watermark must cover every retained local index. Gaps
+are harmless. Cursor-domain identity is not synchronization content and MUST
+NOT be restored from the repository.
 
-Restoration resumes previously emitted state. It MUST NOT classify the restored graph as an empty-to-restored transition and MUST NOT emit `add` for every restored materialization. The restored counters and cursor history are installed through the normal durable cutover, after which the database is reopened and passed through the migration gate.
+Restoration resumes previously emitted durable state. It MUST NOT classify the
+restored graph as an empty-to-restored transition or emit `add` for every
+restored materialization. The new runtime receiver allocates a fresh private
+cursor-domain identity after installing the restored entries, indexes,
+watermark, and host/journal-clock state. Public cursor tokens are
+non-serializable and process-local, so cursors from a destroyed runtime need not
+survive; an artificially retained old token is foreign to the new receiver.
 
 The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable author fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 

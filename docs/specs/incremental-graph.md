@@ -625,6 +625,7 @@ type Computor = (
 | `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 | `MissingTimestampError` | `nodeKey: string` | `getCreationTime`/`getModificationTime` called for a node with no recorded timestamps (public API) |
+| `InvalidPossibleChangeCursorError` | none | `possibleMaybeChanges()` receives a `since` cursor from another receiver cursor domain |
 
 **REQ-ERR-01 (Error Type Guards):** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value: unknown): value is InvalidExpressionError`).
 
@@ -647,9 +648,10 @@ freshness sublevel. The public journal API consists of:
   `InvalidPossibleChangeCursorError`. The raw physical `JournalIndex` and private
   cursor-domain identity are not part of the public API.
 
-- `InvalidPossibleChangeCursorError` — Returned/rejected deterministically before
-  scanning when `since` belongs to another receiver cursor domain. The public
-  `isInvalidPossibleChangeCursorError(object)` guard uses `instanceof`.
+- `InvalidPossibleChangeCursorError` — Thrown deterministically before scanning
+  when `since` belongs to another receiver cursor domain. It has no additional
+  required fields. Per §3.5, the public
+  `isInvalidPossibleChangeCursorError(value)` guard uses `instanceof`.
 
 Journal notification has no false negatives for those three dimensions, but it
 may have false positives and collapse repeated occurrences of one exact action.

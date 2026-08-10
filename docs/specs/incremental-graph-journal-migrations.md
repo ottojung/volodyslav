@@ -8,10 +8,12 @@ durable HostFingerprint
 StoredJournalEntry collection
 localJournalClock
 localJournalIndexWatermark
-private cursorDomainIdentity
 ```
 
-It copies every retained entry and its receiver-local index exactly, then
+Within one running receiver, migration separately threads the receiver's
+runtime-only cursor-domain identity into the inactive target; it never reads or
+writes that identity as database or synchronization content. It copies every
+retained entry and its receiver-local index exactly, then
 validates immutable ID content, generation and validation-causal references,
 same-author validation-context monotonicity, canonical compaction,
 logical clock coverage, unique indexes, and index-watermark coverage. It never

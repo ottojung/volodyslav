@@ -96,12 +96,18 @@ its old watermark. Induction over transactions proves no action-specific false
 negative. Touching one entry a million times retains one logical entry and one
 scalar index.
 
-Inactive construction copies every retained local index and the watermark from
-one fixed receiver snapshot, and preserves that snapshot's cursor-domain
-identity, before allocating above it. Domain, entries/indexes, and watermark are
-published as one cutover state. Thus cursors issued by the old active receiver
-remain valid on the supported replacement; remote indexes and remote identity
-never participate. An unrelated receiver has another domain and rejects them.
+Inactive construction inside the same running receiver copies every retained
+local index and watermark from one fixed snapshot and threads that receiver's
+runtime-only cursor-domain identity through the construction path. Domain,
+entries/indexes, and watermark are published as one in-process cutover state, so
+cursors issued before supported synchronization, migration, or reset cutover
+remain valid afterward. Remote indexes and identities never participate.
+
+A new process/startup receiver allocates a new identity even when self-restoring
+entries, indexes, and watermark from synchronization state. Cursor tokens are
+non-serializable and process-local, so no cross-runtime continuity is promised;
+if an old token is artificially retained, the new receiver rejects it as
+foreign before interpreting its numeric position.
 
 ## Deliberate cursor limitations
 

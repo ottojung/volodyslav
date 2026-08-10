@@ -161,50 +161,87 @@ their own telescope mutex per concrete node and create their own Transaction
 spec: every call to pullNode is structurally identical, whether top-level or
 nested.
 
+### Fresh dependency-cone lemma
+
+In every reachable state, if a derived node D is up-to-date, every direct
+incoming validity proof required for D is present and coherent. A direct
+input's semantic value change or invalidation consumes that proof and propagates
+`potentially-outdated` through the validity edge before the input can later
+publish another value. Applying this invariant inductively over the DAG shows
+that a fresh D cannot have a transitive ancestor which is already stale in a
+way capable of a later value-changing pull while D remains fresh.
+
+The in-flight case follows from the same invariant. Consider `A -> D -> K` when
+`pull(K)` reaches a fresh D. A value-changing `pull(A)` invokes A's computor only
+if it observed A stale. In every reachable state that staleness has already
+consumed and propagated through the complete validity edges toward fresh
+transitive dependants, so D could not simultaneously take its fresh fast path.
+If D was stale and its restoration overlapped A's pull, D recursively pulls A,
+contends on A's telescope, and waits for A's publication before D computes and
+becomes fresh. If A was fresh when the competing pull acquired its telescope,
+that pull is itself a fast-path no-op. DAG induction generalizes these three
+outcomes to every ancestor in D's dependency cone.
+
 ### Nighttime dependency-stability lemma
 
 Let P be an active enclosing `pull(K)` holding nighttime dome mode. If a
-recursive `pull(D)` within P returns semantic value/revision d, then D cannot
-commit a different semantic value before P releases nighttime mode. This holds
-transitively for every dependency result consumed by a parent computor.
+recursive `pull(D)` within P returns semantic value/revision d, whether by
+recomputation or the up-to-date fast path, D cannot commit a different semantic
+value before P releases nighttime mode. This holds transitively for every
+dependency result consumed by a parent computor.
 
 **Proof by induction on DAG height.** Semantic changes occur only through
-graph-writing operations governed by these locks. For a zero-input leaf D, its
-pull commits before returning and releases D's telescope with D fresh. A later
-`pull(D)` must serialize after that completed telescope section. It observes D
-fresh and therefore takes the fresh fast path, returning the same stored d
-without invoking a computor. External invalidation is daytime, while migration,
-reset, synchronization lifecycle construction, and cutover use incompatible
-daytime/holiday phases; none can overlap P's nighttime holder.
+graph-writing operations governed by these locks. External invalidation is
+daytime, while synchronization construction, migration, reset, and cutover use
+incompatible daytime/holiday phases; none can overlap P's nighttime holder.
+Same-node pulls serialize on the node's telescope.
 
-For the induction step, assume the lemma for every direct input of derived D.
-D's successful pull recursively pulled and committed every direct input before
-computing D. By induction those inputs remain semantically stable until P ends.
-D commits before returning fresh. Any later same-node pull serializes after it,
-observes both D fresh and its dependency closure unchanged, and must take the
-fresh fast path; it cannot invoke D's computor or change D. Thus D remains
-stable. The graph is a DAG, so induction reaches every transitive dependency.
+For a zero-input leaf D, distinguish the two pull paths. If D was stale, its
+pull computes, commits before returning, and releases D's telescope with D
+fresh. A later `pull(D)` serializes after it and takes the fresh fast path. If D
+was already fresh, the current pull itself takes that fast path; any later pull
+also serializes and returns the same stored d. No compatible nighttime operation
+can make a fresh leaf stale or change its semantic value, so D is stable in
+both cases.
+
+For the induction step, assume the theorem for every direct input of derived D:
+
+1. **D was stale.** `pull(D)` recursively pulls every distinct direct input.
+   Those same-node dependency pulls serialize through their telescopes and each
+   finishes before D computes. By induction every returned input remains stable
+   through P. D publishes from those stable inputs, commits before returning,
+   and becomes fresh. A later same-node pull sees D and its inputs fresh and is
+   a fast-path no-op.
+2. **D was already fresh.** `pull(D)` returns cached d without recursively
+   pulling its inputs. By the fresh dependency-cone lemma, every required direct
+   validity proof is present and no stale or value-changing in-flight ancestor
+   can coexist with that fresh state. Every competing ancestor pull either
+   already propagated staleness so D cannot fast-return, is waited for by D's
+   stale recursive path, or observes its own node fresh and changes nothing.
+   Thus D's entire dependency cone and cached d remain stable through P.
+
+The graph is a DAG, so induction reaches every transitive dependency.
 Consequently every value used by K remains current through K's eventual
 darkroom publication. Different-node pulls may execute concurrently; it does
 not follow that already-pulled different-node semantic values may change
-arbitrarily.
+arbitrarily. No optimistic revision retry is needed.
 
-The alleged `D -> K` counterexample has only this reachable trace:
+The alleged `D -> K` counterexample therefore has only this reachable trace:
 
 ```text
 pull(K) holds nighttime
-  pull(D) commits and returns d1; D telescope is released
-concurrent pull(D) serializes after it, sees D fresh and its closure stable,
+  pull(D) either publishes d1 from stable recursively pulled inputs,
+          or fast-returns d1 from a valid fresh dependency cone
+  D telescope is released
+concurrent pull(D) serializes after it, sees D fresh and its cone stable,
   takes the fresh fast path, and returns d1 (not d2)
 K computes from d1 and commits
 ```
 
-Nor can an invalidate for K appear between validation sequence reservation and
-K's darkroom commit. Explicit invalidation is incompatible daytime activity;
-sync, migration, reset, and cutover use incompatible lifecycle modes; and a
-dependency change that could propagate K stale is excluded by the lemma.
-Optimistic dependency-revision retry is therefore neither required nor part of
-this protocol.
+An attempted in-flight `A -> D -> K` trace likewise cannot publish stale K:
+A's pre-existing staleness has already made D stale; otherwise A's competing
+pull is a fresh no-op. If D is stale, its recursive `pull(A)` waits on A's
+telescope and consumes A's published result before D returns to K.
 
 ### `migration / replica cutover`
 
@@ -288,16 +325,22 @@ There is no per-node synchronization counter. A reservation may commit before a
 graph transaction and leave a gap if that transaction aborts; it is never
 reused.
 
-For stale-to-fresh publication, reserve the validate sequence only after the
-operation has observed the exact finalization frontier and raised its allocator
-above every referenced invalidate. The journal-clock mutex precedes darkroom in
-the lock order; once reserved, nighttime stability prevents the relevant
-frontier from advancing before the final darkroom batch. Hence every `I` in
-`V.clearsInvalidates` mechanically satisfies `I.sequence < V.sequence`. An
-aborted batch may leave V's sequence as a harmless gap. On success, each
-frontier invalidate necessarily predates the validating operation's relevant
-causal knowledge, and the one validation atomically publishes the complete
-frontier context with freshness.
+For stale-to-fresh publication, K first observes its exact relevant
+`invalidateFrontier(K,G)`. The journal-clock mutex raises `localJournalClock`
+above every referenced invalidate and then reserves V's sequence, so every
+`I` in `V.clearsInvalidates` mechanically satisfies
+`I.sequence < V.sequence`.
+
+From reservation through darkroom publication, the completed nighttime
+stability theorem—not darkroom serialization alone—keeps that relevant frontier
+fixed. Explicit invalidation is incompatible daytime work. Synchronization,
+migration, reset, and cutover use incompatible lifecycle modes. Dependency
+value transitions capable of invalidating K are excluded for both stale
+recursive pulls and fresh fast-path dependency cones. Another `pull(K)`
+serializes on K's telescope and cannot author an intervening barrier. Therefore
+no new invalidate for K can commit between reservation and the atomic
+freshness/context publication. An aborted publication exposes no validation and
+may leave only the reserved sequence as a harmless unused gap.
 
 ### Lock order
 
