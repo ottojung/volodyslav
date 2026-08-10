@@ -83,19 +83,26 @@ equality excludes local indexes.
 ## Fully compacted bound and optional timing
 
 Let n be the number of current or historic semantic keys represented by the
-compacted journal/database, and r the number of durable authors represented by
+compacted journal, and r the number of durable authors represented by
 compacted entries or retained causal-context references. The storage model
-assumes two limits bounded independently of n and r: C, the maximum serialized
-size of one `ConstValue`; and d, the maximum number of distinct direct semantic
-inputs of any node. These are explicit fixed-system-constant assumptions. The
-recursive semantic `ConstValue` type does not itself bound strings, arrays,
-records, nesting, or serialized size, and graph finiteness does not itself bound
-in-degree. With fixed finite schema arity and assumed C, serialized `NodeKey`
-size is `O(1)` with respect to n and r. A fixed finite schema with finitely many
-direct input positions is compatible with assumed d, but does not replace the
-asymptotic assumption.
+assumes C, the maximum serialized size of one `ConstValue`; K, the maximum
+serialized size of one `NodeKey`; and d, the maximum number of distinct direct
+semantic inputs of any node, are fixed system constants independent of n and r.
+These are deliberate premises, not type-system conclusions. The recursive
+semantic `ConstValue` type does not establish C. The implementation-defined
+`NodeKey` identity contract does not bound encoding overhead and therefore does
+not establish K. Fixed schema arity, bounded C, and an intended bounded-overhead
+key encoding are compatible with bounded K, but K is itself an explicit
+premise. Graph finiteness does not establish d because in-degree may grow with
+n.
 
-Per key, constant actions times r coordinates use `O(r)` entries. There are at most `O(r)` retained validations relevant to generation/coordinate structure, each carrying `O(r)` context; exact invalidate references contribute at most `O(r²)`. Dependency/validity relationships and per-input evidence have constant width under d. Other value, generation, freshness, and notification witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`, asymptotically in n and r. Its hidden constants may depend on C, d, the fixed number of journal action classes, and fixed-size `HostFingerprint` / `JournalEntryId` representations. It does not claim independence from arbitrarily growing key payload size or dependency fan-in. One scalar `localIndex` per retained entry does not change the bound.
+Per key, constant actions times r coordinates use `O(r)` entries. There are at most `O(r)` retained validations relevant to generation/coordinate structure, each carrying `O(r)` context; exact invalidate references contribute at most `O(r²)`. Other journal generation, freshness, and notification witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`, asymptotically in n and r under fixed K. Its hidden constants may depend on K, the fixed number of journal action classes, and fixed-size `HostFingerprint` / `JournalEntryId` representations. It does not claim independence from arbitrarily growing key encodings. One scalar `localIndex` per retained entry does not change the bound.
+
+Persisted graph dependency/validity relationships and per-input evidence are
+outside `J`. Their per-node width is bounded in the broader storage model under
+fixed d, but d is not a premise needed to count the logical compacted journal.
+This specification does not state a total byte bound for persisted graph state;
+such a bound would also need to account for `ComputedValue` payload size.
 
 **This applies only to complete canonical compaction. No operation-count-independent bound is promised for an uncompacted journal.** Ordinary mutations may append without compacting. Compaction may run after any transaction, during maintenance or synchronization, repeatedly, at any time, or be skipped for arbitrarily many mutations. Correctness is timing-independent; a crash before optional compaction leaves valid uncompacted history. An independent compaction transaction atomically performs the witness touch described above.
 
@@ -129,9 +136,11 @@ index uniqueness, and watermark coverage. A repeated same-key trace has 41 raw
 records and two after canonical compaction. These finite structural checks
 support, but do not prove, the analytical `O(nr²)` result. The executable model
 counts retained records and causal/context references in a finite universe; it
-does not prove byte bounds for arbitrary `ConstValue` payloads or establish a
-universal graph in-degree bound. The byte-size conclusion additionally relies
-on the analytical fixed-C and fixed-d storage assumptions above.
+does not prove byte bounds for arbitrary `ConstValue` or `NodeKey` payloads or
+establish a universal graph in-degree bound. The journal byte-size conclusion
+additionally relies on the analytical fixed-K assumption above. Fixed C and d
+remain premises of the broader storage model, not facts proved by the verifier
+or steps required to count `compact(J)`.
 
 
 Occurrence `time` remains immutable payload on every retained entry. Value-head
