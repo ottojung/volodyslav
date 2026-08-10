@@ -200,7 +200,11 @@ Compaction preserves each winning-generation author value head and the exact
 same-time candidates satisfying `E.time == graph.modifiedAt`. Therefore it
 preserves canonical event and ValueRevision, and its canonical closure/ACI proof
 is unchanged. The retained causal contexts still yield the analytical
-`size(compact(J))=O(nr²)` bound; uncompacted operation history remains unbounded.
+`size(compact(J))=O(nr²)` bound in n and r under the journal storage model's
+explicit fixed maximum serialized `ConstValue`/`NodeKey` size and fixed maximum
+direct graph in-degree assumptions; uncompacted operation history remains
+unbounded. Those limits are modeling assumptions rather than consequences of
+the semantic type system.
 
 ## Stable value identity invariant
 

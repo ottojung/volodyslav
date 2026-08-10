@@ -291,12 +291,30 @@ n = number of current or historic semantic node keys represented by the
 r = number of distinct durable authors represented by compacted entries or
     retained causal-context references
 a = 5 journal actions, a fixed constant
+C = maximum serialized size of one ConstValue, a fixed system constant
+d = maximum number of distinct direct semantic inputs of any node, a fixed
+    system constant
 ```
 
-The fixed finite schema bounds node arity, and the maximum serialized size of a
-`ConstValue` is treated as a fixed system constant. Consequently a `NodeKey`,
-including its bounded-arity binding values, has constant size in this analysis.
+These are storage-model assumptions, not consequences of the semantic types.
+`SimpleValue` and its `ConstValue` subtype permit recursively structured values
+and do not intrinsically bound string, array, record, nesting, or serialized
+size. The analysis nevertheless treats C as bounded independently of n and r.
+With fixed finite schema arity, serialized `NodeKey` size is therefore `O(1)`
+with respect to n and r. The analysis likewise assumes d is bounded
+independently of n and r; graph finiteness alone would not imply this because
+in-degree could grow with n. A fixed finite schema with finitely many direct
+input positions per node definition is compatible with that explicit model
+assumption.
 
-The normative guarantee is `size(compact(J)) = O(nr²)`. Constant action coordinates use `O(r)` entries per key; at most `O(r)` retained validations each carry an `O(r)` context, including exact causal references. Other witnesses are no larger. A scalar local index does not alter the result.
+The normative guarantee remains `size(compact(J)) = O(nr²)`, asymptotically in
+n and r under those fixed constants. Hidden constants may depend on C, d, the
+fixed number of action classes, and fixed-size `HostFingerprint` /
+`JournalEntryId` representations. Constant action coordinates use `O(r)`
+entries per key; at most `O(r)` retained validations each carry an `O(r)`
+context, including exact causal references. Dependency/validity relationships
+and per-input evidence are constant-width under d. Other witnesses are no
+larger. A scalar local index does not alter the result. The theorem does not
+claim independence from arbitrarily growing key payloads or dependency fan-in.
 
 This applies exclusively to fully canonical compacted state. Ordinary mutations may append immutable entries and skip compaction arbitrarily long, so no operation-count-independent bound is promised for an uncompacted physical journal.

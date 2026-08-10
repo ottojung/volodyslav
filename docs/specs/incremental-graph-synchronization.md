@@ -45,7 +45,9 @@ available in its two reachable source snapshots and retained logical history.
 Insufficient evidence is handled conservatively. Synchronization invokes no
 computor and invents no `ComputedValue`; journal merge is ACI; bilateral gossip
 is decentralized; journal notifications have no action-specific false
-negatives; and fully compacted journal storage is `O(nr²)` under the journal size model; uncompacted storage may grow with operations.
+negatives; and fully compacted journal storage is `O(nr²)` in n and r under the
+journal size model's explicit fixed serialized-value/key-size and direct
+graph-in-degree assumptions; uncompacted storage may grow with operations.
 
 The journal does not provide complete historical input-version provenance for
 cached derived values. For D with direct inputs I1...Ik, synchronization is not

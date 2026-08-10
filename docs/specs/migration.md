@@ -186,11 +186,25 @@ preserves the logical receiver domain across in-process cutover and never
 imports remote cursor metadata. A new runtime restoration allocates a new
 domain.
 
-Pre-cutover validation requires unique immutable logical content per ID, valid
-same-key generation references, validation-causal reference ordering and
-same-author context monotonicity, canonical compaction, logical-clock coverage,
-exactly one unique index per retained entry, and index-watermark coverage.
-Indexes have no logical merge or provenance role; gaps are valid.
+Pre-cutover validation requires valid same-key generation references; retained
+validation-causal references that resolve, match key/generation/author, and
+name an invalidate preceding the validation sequence; logical-clock coverage;
+exactly one unique valid index per retained entry; and index-watermark coverage.
+Indexes have no logical merge or provenance role; gaps are valid. An
+implementation MAY defensively reject visible immutable-ID conflicts,
+same-author validation-context regression, or another supported-authoring
+violation when enough evidence remains. Those best-effort diagnostics are not
+preconditions for a supported migration: compaction may have discarded the
+relevant history.
+
+A structurally valid journal produced by supported lifecycle transitions is a
+supported migration input whether canonical compaction has run or not.
+Migration copies retained entries and local indexes exactly and does not
+implicitly compact them. It authors, indexes, or touches only the entries that
+the migration's semantic transitions ordinarily require. In particular, a
+journal-silent migration preserves all old local indexes and needs no
+compaction witness touch. An independently requested compaction is a separate
+operation governed by the ordinary compaction cursor-coverage rules.
 
 Migration classifies old/new semantic graph states normally. `create` authors
 add with `add.time=createdAt=modifiedAt`; delete and genuine freshness changes

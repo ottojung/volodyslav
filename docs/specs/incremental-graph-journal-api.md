@@ -13,6 +13,15 @@ A result means that this exact closed-classifier action may have happened to the
 semantic key after the cursor. False positives and collapse into a later
 covering possibility are allowed; action-specific false negatives are forbidden.
 
+`possibleMaybeChanges()` eagerly materializes the complete matching result for
+its fixed query snapshot and resolves to
+`Promise<Array<PossibleNodeChange>>`. It is not an `AsyncIterable` or
+`AsyncIterator` API. The implementation retains one committed active snapshot,
+captures its watermark, identifies and expands qualifying entries through that
+watermark, filters them, constructs immutable nominal tokens, and returns the
+complete deterministically ordered array. A large requested range may therefore
+produce a large eager array; this API does not add streaming or pagination.
+
 ## Cursor and query
 
 `PossibleNodeChange` and `BaselinePossibleNodeChange` are opaque nominal public
