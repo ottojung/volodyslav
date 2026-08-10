@@ -1,5 +1,24 @@
 # IncrementalGraph journal
 
+## Supported-state boundary
+
+The journal protocol is specified for graph and journal states produced by
+supported Volodyslav lifecycle transitions, using the definition of supported
+and corrupted or unsupported state in
+[`database-lifecycle.md`](specs/database-lifecycle.md#11-corruption-model).
+Journal correctness, synchronization, compaction, convergence, freshness,
+provenance, and cursor-coverage guarantees quantify only over those states and
+over history deliveries and unions that can arise between them.
+
+A journal state that requires violation of the authoring, lifecycle, locking,
+clock, immutability, or causal-context invariants is therefore corrupted or
+unsupported under that lifecycle definition. Unless a specification explicitly
+says otherwise, the protocol does not guarantee its detection, rejection,
+recovery, convergence, or preservation as forensic evidence. Implementations
+MAY detect and reject such corruption defensively, but those checks are not the
+semantic correctness contract, and compaction need not retain evidence solely
+for later corruption diagnosis.
+
 The IncrementalGraph journal is immutable logical history and possible-change
 notification infrastructure. It is not authoritative graph state. The graph
 continues to own current values, freshness, wall-clock timestamps, identifiers,
@@ -16,7 +35,8 @@ snapshots and retained history defined here. When that evidence is insufficient,
 the specified conservative stale/delete rules apply.
 
 Synchronization never invokes computors or invents a `ComputedValue`. Logical
-journal merge is commutative, associative, and idempotent. Reconciliation is
+journal merge is commutative, associative, and idempotent over supported
+histories whose delivery is a supported protocol state. Reconciliation is
 pairwise and decentralized, requires neither a leader nor all-to-all exchange,
 and permits hosts to be unavailable for arbitrary periods subject to the host
 lifecycle and directional-fairness assumptions. `possibleMaybeChanges()` has no

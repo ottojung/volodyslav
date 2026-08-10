@@ -6,6 +6,27 @@ The journal is notification and history infrastructure. It is not authoritative
 graph state: current values, materialization, freshness, timestamps, and
 validity come from the IncrementalGraph.
 
+### Supported-state boundary
+
+This specification inherits the definition of supported and corrupted or
+unsupported database state from
+[`database-lifecycle.md`](database-lifecycle.md#11-corruption-model). Journal
+correctness, synchronization, compaction, convergence, freshness, provenance,
+and cursor-coverage guarantees range only over states produced by supported
+Volodyslav lifecycle transitions and deliveries or unions that can arise
+between those states. An arbitrary mathematical set of structurally
+constructible `JournalEntry` values is not necessarily a supported journal
+history.
+
+A state requiring violation of an authoring, lifecycle, locking, clock,
+immutability, or causal-context invariant is corrupted or unsupported in the
+lifecycle specification's sense. Unless explicitly specified otherwise, the
+protocol promises neither detection, rejection, recovery, convergence, nor
+preservation of forensic evidence for such a state. Implementations MAY retain
+cheap defensive rejection checks, but semantic correctness does not depend on
+their completeness and compaction need not preserve evidence solely for future
+corruption diagnosis.
+
 ```text
 JournalEntry =
     AddJournalEntry
@@ -62,10 +83,12 @@ host fingerprint and receives no additional discriminator.
 There is no separate journal membership domain. Supported host creation
 allocates one globally unique durable `HostFingerprint`; restoration may resume
 it only from that host's current synchronized state. Reset, migration, and
-copying never transfer ownership. Synchronization validates that every author
-is a well-formed supported host fingerprint and that one `JournalEntryId` has only
-one immutable content. Duplicate ownership or rollback under the same author is
-unsupported and prevents writable open.
+copying never transfer ownership. Supported authoring makes every author a
+well-formed supported host fingerprint and gives one immutable content to each
+`JournalEntryId`. Implementations MAY check these facts defensively when the
+relevant evidence is available. Duplicate ownership or rollback under the same
+author is corrupted or unsupported under the lifecycle definition; complete
+historical detection after compaction is not promised.
 
 The journal has no fixed closed writer-membership domain. A supported new host
 may introduce a new durable `HostFingerprint`, so storage is not bounded
@@ -87,7 +110,38 @@ generation field. After a delete and later add `G2=(50,B)`, subsequent scoped
 events for the new incarnation contain `generation=(50,B)`. Events scoped to G1
 are inapplicable to G2.
 
-`clearsInvalidates` is immutable causal evidence, not a Lamport threshold. Each mapping `A -> I` MUST resolve to a real invalidate authored by A for the validation's exact key and generation. It contains at most one reference per author: the greatest same-author invalidate in the exact transaction-visible frontier at genuine revalidation. Malformed, unresolved, or mismatched references reject the journal. The named invalidate must also have `I.sequence < V.sequence`; observed entries raise the validating author allocator before V is allocated. For any validations V1,V2 by the same author/key/generation with `V1.sequence < V2.sequence`, V2 MUST retain an equal-or-later reference for every coordinate in V1. It may add/advance coordinates but never forget or move backward. This is a normative journal-validity rule checked before merge and compaction.
+`clearsInvalidates` is immutable causal evidence, not a Lamport threshold. Each mapping `A -> I` MUST resolve to a real invalidate authored by A for the validation's exact key and generation. It contains at most one reference per author: the greatest same-author invalidate in the exact transaction-visible frontier at genuine revalidation. Retained state must satisfy these structural reference preconditions in order to be interpreted. The named invalidate must also have `I.sequence < V.sequence`; observed entries raise the validating author allocator before V is allocated.
+
+Supported authoring additionally guarantees, for validations V1 and V2 by the
+same author, key, and generation:
+
+```text
+V1.sequence < V2.sequence
+    =>
+V1.clearsInvalidates <=componentwise V2.clearsInvalidates
+```
+
+A correct durable author never forgets an invalidation already observed. V2
+may add or advance coordinates but cannot forget or move one backward. This is
+a supported-authoring and reachable-state invariant; it justifies later
+same-author validation dominance during compaction. It is not an obligation for
+compacted state to retain discarded validations so that every remote point in
+an arbitrarily fabricated past remains diagnosable.
+
+For example, this history for one author B, key K, and generation G is outside
+the supported model:
+
+```text
+V10 clears X:I5
+V15 clears X:I4
+V20 clears X:I6
+```
+
+The `I5 -> I4` transition regresses B's causal knowledge and cannot be authored
+through the supported protocol. Compaction therefore need not retain V10 merely
+so a later-delivered corrupted V15 can be diagnosed. A defensive validator MAY
+reject this history when the conflicting evidence is available; complete
+historical detection after compaction is not promised.
 
 Action variant and authorship context are orthogonal. Ordinary mutation,
 migration, synchronization-authored destruction, and controlled reset all use

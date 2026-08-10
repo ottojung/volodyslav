@@ -138,7 +138,11 @@ nothing, changes no graph, and advances neither watermark.
 
 ## Reachability invariant
 
-All correctness arguments range over snapshots reachable through atomic normal
-mutations, migrations that preserve these invariants, and the synchronization
-protocol. Arbitrary mismatched graph/journal pairs are corrupt inputs, not
-ordinary conflicts.
+All correctness arguments use the
+[journal supported-state boundary](incremental-graph-journal-types.md#supported-state-boundary)
+and therefore range over snapshots reachable through atomic normal mutations,
+migrations that preserve these invariants, and the synchronization protocol.
+Arbitrary mismatched graph/journal pairs are corrupted or unsupported under the
+definition in `database-lifecycle.md`, not ordinary conflicts. Defensive
+validation MAY reject some such inputs, but complete detection is not a protocol
+correctness obligation.

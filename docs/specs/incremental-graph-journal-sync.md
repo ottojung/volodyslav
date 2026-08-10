@@ -1,5 +1,22 @@
 # Logical journal synchronization
 
+## Supported-state boundary
+
+This specification inherits the supported and corrupted/unsupported state
+definition from
+[`database-lifecycle.md`](database-lifecycle.md#11-corruption-model), as applied
+by the [journal types specification](incremental-graph-journal-types.md#supported-state-boundary).
+Synchronization, convergence, projection, provenance, freshness, and merge-law
+guarantees quantify only over supported reachable graph/journal states and
+deliveries or unions that can arise between them. Fabricated, manually edited,
+rolled-back, or otherwise unsupported histories are outside that correctness
+contract.
+
+Structural preconditions needed to interpret retained entries remain normative.
+Implementations MAY reject additional corruption defensively, but complete
+detection, recovery, and preservation of forensic evidence are not promised;
+compaction does not have to retain evidence solely for a later diagnosis.
+
 ## Merge
 
 Only immutable logical entries replicate. Receiver-local `localIndex` values,
@@ -9,10 +26,23 @@ Only immutable logical entries replicate. Receiver-local `localIndex` values,
 J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
 ```
 
-Inputs must have the same schema, valid durable authors, valid actions and keys,
-and unique content for every `JournalEntryId`. Every edit/invalidate/validate must carry a generation resolving to a valid same-key add in the validated merge input. Every validation context coordinate `A -> I` must resolve I in that input; I must be a same-key, same-generation invalidate authored by A, and `I.sequence < V.sequence`. For every two validations V1,V2 with the same author, key, and generation and `V1.sequence < V2.sequence`, V2 must contain an equal-or-later same-author invalidate reference for every coordinate in V1. It may add or advance coordinates, but never forget or move one backward. Journals violating either causal-reference rule are rejected atomically before merge or compaction. Two entries
-with one ID but different content are corruption and reject the operation
-atomically and symmetrically. Remote entries never transfer author ownership.
+Supported inputs have the same schema, valid durable authors, valid actions and
+keys, and one immutable content for every `JournalEntryId`. Every retained
+edit/invalidate/validate must carry a generation resolving to a valid same-key
+add in the merge input. Every retained validation context coordinate `A -> I`
+must resolve I in that input; I must be a same-key, same-generation invalidate
+authored by A, and `I.sequence < V.sequence`. These are structural
+preconditions required to interpret the retained state.
+
+For every two validations V1,V2 with the same author, key, and generation and
+`V1.sequence < V2.sequence`, supported authoring guarantees that V2 contains an
+equal-or-later same-author invalidate reference for every coordinate in V1. It
+may add or advance coordinates, but never forget or move one backward. A
+validator MAY reject a visible violation. Likewise, two entries with one ID but
+different content are corrupted or unsupported and MAY be rejected atomically
+and symmetrically. These defensive checks do not promise detection after
+compaction has legitimately discarded the conflicting historical evidence.
+Remote entries never transfer author ownership.
 
 The receiver imports an unknown entry unchanged, stores it once, and assigns a
 fresh local index. The sender's index is ignored. An already-known entry is not
@@ -20,14 +50,16 @@ moved merely because it was received again.
 
 ## ACI proof
 
-Compaction retains every coordinate maximum plus, for the sole winning presence
+For supported reachable states and supported deliveries/unions, compaction
+retains every coordinate maximum plus, for the sole winning presence
 generation G, the bounded value/freshness-authority witnesses defined in the
 compaction specification. Presence maxima are monotone: a discarded losing
 generation can never win after union with more entries. Thus both the winning G
 and its witness selection are canonical functions of set union. Set union is
 commutative, associative, and idempotent; inserting this canonical closure after
 either parenthesization produces the same maxima and G witnesses. Canonical
-ordering is only a representation function. Therefore logical merge is:
+ordering is only a representation function. Therefore, for supported reachable
+A and B whose union is a supported protocol state, logical merge is:
 
 ```text
 compact(compact(A) ∪ B) = compact(A ∪ B)
@@ -35,7 +67,8 @@ compact(compact(A) ∪ B) = compact(A ∪ B)
 
 Coordinate losers cannot beat retained maxima, and a losing generation cannot
 become winning after union because its greater retained presence head cannot
-disappear. A future winning add brings its own authority witnesses. Therefore:
+disappear. A future winning add brings its own authority witnesses. On the same
+supported-state domain, therefore:
 
 ```text
 J1 ⊔ J2 = J2 ⊔ J1

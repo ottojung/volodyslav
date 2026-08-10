@@ -2,6 +2,15 @@
 
 ## Scope and state boundary
 
+This specification inherits supported and corrupted/unsupported state from
+[`database-lifecycle.md`](database-lifecycle.md#11-corruption-model) through the
+[journal supported-state boundary](incremental-graph-journal-types.md#supported-state-boundary).
+Its correctness and convergence claims quantify only over supported reachable
+snapshots and history deliveries/unions that can arise between them, not
+arbitrary structurally constructible journal sets. Defensive validation MAY
+reject additional corruption, but complete detection, recovery, and
+preservation of forensic evidence are not promised.
+
 Synchronization is decentralized bilateral reconciliation of two complete,
 reachable snapshots:
 
@@ -315,16 +324,22 @@ Before planning, synchronization MUST reject atomically:
 4. duplicate or internally conflicting lookup entries;
 5. a value, freshness, timestamp, or validity record whose identifier is not
    covered by its source lookup;
-6. malformed journal entries, including edit/invalidate/validate without a
+6. retained journal entries which cannot be structurally interpreted, including
+   edit/invalidate/validate without a
    generation resolving to a same-key add witness; a validation causal
    reference which is absent, mismatched, or not sequence-earlier than the
-   validation; or same-author/key/generation validations whose later context
-   forgets or moves an earlier coordinate backward;
-7. conflicting content at one `JournalEntryId`; or
-8. `localJournalClock` below an observed sequence;
-9. a retained entry missing exactly one unique valid local index;
-10. `localJournalIndexWatermark` below a retained local index; or
-11. any use of local index in logical equality, provenance, or merge.
+   validation;
+7. `localJournalClock` below an observed sequence;
+8. a retained entry missing exactly one unique valid local index;
+9. `localJournalIndexWatermark` below a retained local index; or
+10. any use of local index in logical equality, provenance, or merge.
+
+When evidence is simultaneously available, an implementation MAY additionally
+reject conflicting immutable content at one `JournalEntryId` or
+same-author/key/generation validations whose later context forgets or moves an
+earlier coordinate backward. These cheap defensive checks diagnose corrupted
+or unsupported input; they are not a completeness guarantee, and canonical
+compaction need not preserve discarded history solely to make them possible.
 
 Before journal join or conflict planning, validate each source against its own
 pre-merge journal. Every source materialization MUST resolve its source presence
@@ -581,7 +596,8 @@ measure; the proof does not assume that Lamport order implies observation.
 
 ### C. Journal gossip converges
 
-After the final entry, logical merge is commutative, associative, and idempotent.
+After the final entry in the supported execution described by this theorem,
+logical merge is commutative, associative, and idempotent.
 For any retained entry and any target host, connectedness gives a finite path;
 directional fairness eventually carries the entry through receives oriented
 along that path. With finitely many entries and hosts, eventually every host has

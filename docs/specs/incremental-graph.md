@@ -484,6 +484,8 @@ interface IncrementalGraph {
   getModificationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
 
   // Journal API (read-only)
+  baselinePossibleNodeChange(): BaselinePossibleNodeChange;
+
   possibleMaybeChanges({ since, to }: {
     since: PossibleNodeChange | BaselinePossibleNodeChange,
     to: NodeFilter,

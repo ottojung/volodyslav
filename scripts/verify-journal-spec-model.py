@@ -70,6 +70,10 @@ ATOMS = (
 
 def valid(es):
     ids = {e.id: e for e in es}
+    # Defensive corruption check: exact immutable duplicates are harmless, but
+    # distinct contents claiming one logical ID are unsupported input. This is
+    # hardening, not part of the supported-state algebra proof below.
+    if any(ids[e.id] != e for e in es): return False
     for e in es:
         if e.action in ("add", "delete"):
             if e.generation is not None or e.clears: return False
@@ -101,6 +105,9 @@ assert not valid((G1, Entry(201, "B", "K", "delete", 30, G1.id)))
 assert not valid((G1, Entry(202, "B", "K", "edit", 30)))
 assert not valid((G1, Entry(203, "B", "K", "invalidate", 30)))
 assert not valid((G1, Entry(204, "B", "K", "validate", 30)))
+# Supported allocation and immutable authoring cannot produce this conflict.
+assert not valid((G1, Entry(1, "A", "K", "add", 11,
+                            value_modified_at=11)))
 
 I1_BAD = Entry(10, "A", "Z", "invalidate", 10, (1, "A"))
 GZ = Entry(1, "A", "Z", "add", 1, value_modified_at=1)
@@ -183,6 +190,11 @@ def projections(es):
     required_causal = frozenset(ref for e in retained_scoped for _, ref in e.clears)
     return (p, p.id, vh, canonical_inputs, frontier, effective(es, p), required_adds, required_causal)
 
+# This model enumerates bounded histories satisfying the supported journal
+# authoring/lifecycle invariants. Algebra and projection assertions quantify
+# over that supported-state universe; they intentionally do not prove detection
+# or recovery for arbitrary fabricated/corrupted Entry sets. Negative checks
+# above are defensive validation examples, not a completeness proof.
 VALID = []
 for mask in range(1 << len(ATOMS)):
     state = frozenset().union(*(ATOMS[i] for i in range(len(ATOMS)) if mask & (1 << i)))
@@ -376,7 +388,7 @@ for word in product(ops, repeat=4):
     states_checked += 1
 assert max_records <= 4
 
-print(f"valid combined logical states: {len(VALID)}")
+print(f"supported combined logical states: {len(VALID)}")
 print(f"projection preservation checks: {len(VALID)}")
 print(f"distinct compact logical states: {len(COMPACT)}")
 print(f"merge triples checked: {len(COMPACT) ** 3}")
