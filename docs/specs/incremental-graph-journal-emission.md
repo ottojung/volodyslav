@@ -117,10 +117,13 @@ transition lacks a freshly indexed entry. `Unchanged` remains silent.
 
 Existing-live reset retains receiver journal history and does not join the
 selected source journal. It constructs the complete semantic target atomically,
-then applies the ordinary closed classifier. Absent-to-present authors add,
-present-to-absent authors delete, unequal present-to-present authors edit, and
-equal present values author no value event. Add/edit time equals reset-time
-`modifiedAt`; equal values preserve `createdAt` and `modifiedAt`.
+then applies its minimal authoritative classifier. Absent-to-present authors add,
+present-to-absent authors delete, and unequal present-to-present authors a fresh
+add generation allocated above all observed receiver history. Equal present
+values author no value event. A reset value event has `add.time` equal to
+reset-time `modifiedAt`; equal values preserve `createdAt` and `modifiedAt`.
+The changed-value generation boundary prevents an already-observed old edit from
+resurrecting through wall-time ordering after later redelivery.
 
 Fresh-to-stale authors invalidate and stale-to-fresh authors a generation-scoped
 validate naming the complete observed receiver frontier. Stale-to-stale proof

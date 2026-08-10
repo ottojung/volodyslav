@@ -410,9 +410,11 @@ imply multi-host associativity, order independence, or all-to-all communication.
 Controlled reset is not this merge algorithm. Existing-live reset does not join
 the selected source journal. It atomically reconciles only source semantic
 presence, values, freshness, and relowered validity, retaining receiver history
-and identifiers for surviving keys. The ordinary closed classifier authors add
-only for absent-to-present, edit for unequal present-to-present, and delete for
-present-to-absent; equal values author nothing and preserve receiver timestamps.
+and identifiers for surviving keys. It authors add for absent-to-present, a
+fresh add generation above observed receiver history for unequal
+present-to-present, and delete for present-to-absent; equal values author nothing
+and preserve receiver timestamps. The changed-value generation boundary makes
+observed old-generation edits inapplicable before wall-time comparison.
 The complete lifecycle procedure and proof obligations are specified in the
 lifecycle specification.
 

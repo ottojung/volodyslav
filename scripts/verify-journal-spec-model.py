@@ -252,11 +252,11 @@ class ResetNode:
     created_at: int
     modified_at: int
     fresh: bool
-    hard_stale: bool = False
 
 @dataclass(frozen=True)
 class ResetState:
     nodes: tuple[tuple[str, ResetNode], ...]
+    input_edges: frozenset[tuple[str, str]]
     validity: frozenset[tuple[str, str]]
     journal: tuple[Entry, ...]
     clock: int
@@ -264,7 +264,25 @@ class ResetState:
     cursor: object
     next_identifier: int
 
-def reset(state, target_nodes, target_validity, now, proof_harden=()):
+def hard_stale(key, nodes, input_edges, validity):
+    """Derive whether a stale materialization requires normal recomputation."""
+    node = nodes[key]
+    inputs = {source for source, dependent in input_edges if dependent == key}
+    return (not node.fresh and
+            (not inputs or any((source, key) not in validity for source in inputs)))
+
+def valid_semantic_graph(nodes, input_edges, validity):
+    if not input_edges.issuperset(validity): return False
+    if any(source not in nodes or dependent not in nodes
+           for source, dependent in input_edges): return False
+    for key, node in nodes.items():
+        if node.fresh:
+            inputs = {source for source, dependent in input_edges if dependent == key}
+            if any(not nodes[source].fresh for source in inputs): return False
+            if any((source, key) not in validity for source in inputs): return False
+    return True
+
+def reset(state, target_nodes, target_input_edges, target_validity, now):
     """Model one atomic authoritative semantic reconciliation."""
     before = dict(state.nodes); final = {}; authored = []
     clock = state.clock
@@ -274,10 +292,13 @@ def reset(state, target_nodes, target_validity, now, proof_harden=()):
             if old is not None:
                 clock += 1; authored.append(Entry(clock, "R", key, "delete", now))
             continue
-        value, fresh, hard_stale = desired
-        if old is None:
+        value, fresh = desired
+        value_changed = old is None or old.value != value
+        if value_changed:
             identifier = f"receiver-{state.next_identifier + len([n for k, n in final.items() if k not in before])}"
+            if old is not None: identifier = old.identifier
             created = modified = now
+            if old is not None: created = old.created_at
             clock += 1; generation = (clock, "R")
             authored.append(Entry(clock, "R", key, "add", now))
         else:
@@ -285,10 +306,12 @@ def reset(state, target_nodes, target_validity, now, proof_harden=()):
             modified = old.modified_at; generation = next(
                 (e.id for e in reversed(state.journal + tuple(authored))
                  if e.key == key and e.action == "add"), None)
-            if old.value != value:
-                modified = now; clock += 1
-                authored.append(Entry(clock, "R", key, "edit", now, generation))
-        value_changed = old is None or old.value != value
+        candidate = ResetNode(identifier, value, created, modified, fresh)
+        prospective = dict(final); prospective[key] = candidate
+        final_hard = hard_stale(key, prospective, target_input_edges,
+                                target_validity)
+        old_hard = (old is not None and
+                    hard_stale(key, before, state.input_edges, state.validity))
         if old is not None and old.fresh and not fresh:
             clock += 1; authored.append(Entry(clock, "R", key, "invalidate", now, generation))
         elif old is not None and not old.fresh and fresh:
@@ -296,14 +319,17 @@ def reset(state, target_nodes, target_validity, now, proof_harden=()):
                                            next(e for e in state.journal + tuple(authored) if e.id == generation))
             clears = tuple(sorted((e.author, e.id) for e in frontier))
             clock += 1; authored.append(Entry(clock, "R", key, "validate", now, generation, clears))
-        elif not fresh and (key in proof_harden or (hard_stale and value_changed)):
+        elif not fresh and final_hard and (value_changed or not old_hard):
             clock += 1; authored.append(Entry(clock, "R", key, "invalidate", now, generation))
-        final[key] = ResetNode(identifier, value, created, modified, fresh, hard_stale)
+        final[key] = candidate
     translated_validity = frozenset(target_validity)
-    changed = (final != before or translated_validity != state.validity or authored)
+    assert valid_semantic_graph(final, target_input_edges, translated_validity)
+    changed = (final != before or target_input_edges != state.input_edges or
+               translated_validity != state.validity or authored)
     if not changed:
         return state
-    return ResetState(tuple(sorted(final.items())), translated_validity,
+    return ResetState(tuple(sorted(final.items())), target_input_edges,
+                      translated_validity,
                       state.journal + tuple(authored), clock,
                       state.watermark + len(authored), state.cursor,
                       state.next_identifier + sum(k not in before for k in final))
@@ -314,15 +340,15 @@ ABSENT = None
 for current, target in product((ABSENT, "A", "B"), repeat=2):
     initial_entries = () if current is None else (Entry(1, "R", "K", "add", 10),)
     initial_nodes = () if current is None else (("K", ResetNode("receiver-1", current, 10, 10, True)),)
-    initial = ResetState(initial_nodes, frozenset(), initial_entries,
+    initial = ResetState(initial_nodes, frozenset(), frozenset(), initial_entries,
                          len(initial_entries), len(initial_entries), object(), 2)
-    desired = {} if target is None else {"K": (target, True, False)}
-    result = reset(initial, desired, frozenset(), 100)
+    desired = {} if target is None else {"K": (target, True)}
+    result = reset(initial, desired, frozenset(), frozenset(), 100)
     actions = [e.action for e in result.journal[len(initial.journal):]
                if e.action in ("add", "edit", "delete")]
     expected = ([] if current == target else
                 ["add"] if current is None else
-                ["delete"] if target is None else ["edit"])
+                ["delete"] if target is None else ["add"])
     assert actions == expected
     if target is not None:
         node = dict(result.nodes)["K"]
@@ -339,23 +365,20 @@ for current, target in product((ABSENT, "A", "B"), repeat=2):
 base_add = Entry(1, "R", "K", "add", 10)
 old_invalidate = Entry(2, "R", "K", "invalidate", 20, base_add.id)
 fresh_state = ResetState((("K", ResetNode("receiver-1", "A", 10, 10, True)),),
-                         frozenset(), (base_add,), 1, 1, object(), 2)
-stale = reset(fresh_state, {"K": ("A", False, False)}, frozenset(), 100)
+                         frozenset(), frozenset(), (base_add,), 1, 1, object(), 2)
+stale = reset(fresh_state, {"K": ("A", False)}, frozenset(), frozenset(), 100)
 assert dict(stale.nodes)["K"].modified_at == 10 and stale.journal[-1].action == "invalidate"
-old_stale = ResetState((("K", ResetNode("receiver-1", "A", 10, 10, False, True)),),
-                       frozenset(), (base_add, old_invalidate), 2, 2, object(), 2)
-fresh = reset(old_stale, {"K": ("A", True, False)}, frozenset(), 100)
+old_stale = ResetState((("K", ResetNode("receiver-1", "A", 10, 10, False)),),
+                       frozenset(), frozenset(), (base_add, old_invalidate), 2, 2, object(), 2)
+fresh = reset(old_stale, {"K": ("A", True)}, frozenset(), frozenset(), 100)
 assert fresh.journal[-1].action == "validate"
 assert dict(fresh.journal[-1].clears) == {"R": old_invalidate.id}
-hardened = reset(old_stale, {"K": ("A", False, True)}, frozenset(), 100, ("K",))
-assert hardened.journal[-1].action == "invalidate" and hardened.journal[-1].sequence > old_invalidate.sequence
-
 # A changed hard-stale value receives a post-value barrier. A validation which
 # can clear only the old frontier cannot cover the new obligation.
-changed_stale = reset(old_stale, {"K": ("B", False, True)}, frozenset(), 100)
-edit, new_barrier = changed_stale.journal[-2:]
-assert edit.action == "edit" and new_barrier.action == "invalidate"
-assert edit.sequence < new_barrier.sequence and not covers(
+changed_stale = reset(old_stale, {"K": ("B", False)}, frozenset(), frozenset(), 100)
+new_add, new_barrier = changed_stale.journal[-2:]
+assert new_add.action == "add" and new_barrier.action == "invalidate"
+assert new_add.sequence < new_barrier.sequence and not covers(
     Entry(99, "U", "K", "validate", 99, base_add.id,
           (("R", old_invalidate.id),)), new_barrier)
 
@@ -364,20 +387,61 @@ assert edit.sequence < new_barrier.sequence and not covers(
 dep_state = ResetState((
     ("A", ResetNode("receiver-A", "a1", 10, 10, True)),
     ("D", ResetNode("receiver-D", "d", 20, 20, True))),
-    frozenset({("A", "D")}),
+    frozenset({("A", "D")}), frozenset({("A", "D")}),
     (Entry(1, "R", "A", "add", 10), Entry(2, "R", "D", "add", 20)),
     2, 2, object(), 3)
-dep_reset = reset(dep_state, {"A": ("a2", True, False),
-                              "D": ("d", True, False)},
-                  frozenset({("A", "D")}), 100)
+dep_reset = reset(dep_state, {"A": ("a2", True),
+                              "D": ("d", True)},
+                  frozenset({("A", "D")}), frozenset({("A", "D")}), 100)
 dep_actions = [(e.key, e.action) for e in dep_reset.journal[len(dep_state.journal):]]
-assert dep_actions == [("A", "edit")]
+assert dep_actions == [("A", "add")]
 assert dict(dep_reset.nodes)["D"].modified_at == 20
 assert dict(dep_reset.nodes)["D"].fresh and dep_reset.validity == frozenset({("A", "D")})
 
 # Complete idempotence includes graph, journal, identity, allocators and cursor.
-assert reset(dep_reset, {"A": ("a2", True, False), "D": ("d", True, False)},
-             frozenset({("A", "D")}), 200) is dep_reset
+assert reset(dep_reset, {"A": ("a2", True), "D": ("d", True)},
+             frozenset({("A", "D")}), frozenset({("A", "D")}), 200) is dep_reset
+
+# Hard-staleness is derived rather than stored. A stale zero-input node needs
+# normal computation, while a stale derived node with all incoming proofs can
+# be cache-only revalidated. Proof edges outside the dependency graph or with
+# absent endpoints are rejected before relowering.
+assert hard_stale("K", dict(old_stale.nodes), frozenset(), frozenset())
+derived_nodes = {
+    "A": ResetNode("receiver-A", "a", 10, 10, True),
+    "D": ResetNode("receiver-D", "d", 20, 20, False),
+}
+assert not hard_stale("D", derived_nodes, frozenset({("A", "D")}),
+                      frozenset({("A", "D")}))
+assert hard_stale("D", derived_nodes, frozenset({("A", "D")}), frozenset())
+assert not valid_semantic_graph(derived_nodes, frozenset({("A", "D")}),
+                                frozenset({("X", "D")}))
+harden_add_a = Entry(1, "R", "A", "add", 10)
+harden_add_d = Entry(2, "R", "D", "add", 20)
+hardenable = ResetState(tuple(sorted(derived_nodes.items())),
+                        frozenset({("A", "D")}),
+                        frozenset({("A", "D")}),
+                        (harden_add_a, harden_add_d), 2, 2, object(), 3)
+hardened = reset(hardenable, {"A": ("a", True), "D": ("d", False)},
+                 frozenset({("A", "D")}), frozenset(), 100)
+assert hardened.journal[-1].action == "invalidate"
+assert hardened.journal[-1].generation == harden_add_d.id
+
+# A changed-value reset add is a fresh presence generation above every observed
+# receiver entry. An already-observed edit with a later wall time belongs to the
+# old generation and cannot resurrect through subsequent journal union.
+skew_add = Entry(1, "B", "K", "add", 100)
+skew_edit = Entry(10, "B", "K", "edit", 200, skew_add.id)
+skew_state = ResetState(
+    (("K", ResetNode("receiver-K", "B", 100, 200, True)),),
+    frozenset(), frozenset(), (skew_add, skew_edit), 10, 2, object(), 2)
+skew_reset = reset(skew_state, {"K": ("A", True)},
+                   frozenset(), frozenset(), 150)
+reset_add = skew_reset.journal[-1]
+assert reset_add.action == "add" and reset_add.sequence > skew_edit.sequence
+assert reset_add.time == dict(skew_reset.nodes)["K"].modified_at == 150
+assert presence(skew_reset.journal) == reset_add
+assert skew_edit not in value_heads(skew_reset.journal, reset_add)
 
 @dataclass(frozen=True)
 class Stored:
@@ -518,7 +582,7 @@ print(f"cursor obligation checks across prefixes: {obligations_checked}")
 print(f"maximum stored logical records: {max_records}")
 print("raw repeated-mutation records: 41; compact records: 2")
 print("minimal semantic reset matrix cases: 9")
-print("reset freshness, hard-stale, dependency, and idempotence traces: 6")
+print("reset freshness, derived hard-stale, dependency, skew, and idempotence traces: 12")
 print("two-domain rejection assertions: 4 (including 2 foreign baselines)")
 print("same-process cutover preservation assertions: 1")
 print("new-runtime cursor-domain replacement assertions: 1")

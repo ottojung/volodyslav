@@ -169,9 +169,9 @@ This follows by lifecycle induction:
   validate preserve both modifiedAt and origin; delete leaves no surviving
   obligation;
 * existing-live reset preserves origin and modifiedAt for an equal value, sets
-  add time and modifiedAt together for a new materialization, sets edit time and
-  modifiedAt together for a changed materialization, and has no surviving value
-  after deletion;
+  add time and modifiedAt together for a new or changed materialization, gives a
+  changed value a fresh generation above observed history, and has no surviving
+  value after deletion;
 * synchronization authors no value event. It copies the selected source value,
   modifiedAt, and provenance; the induction hypothesis on that supported source
   gives `source.origin.time == source.modifiedAt`, including equal-valued

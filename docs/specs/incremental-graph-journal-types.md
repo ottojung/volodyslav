@@ -138,8 +138,9 @@ Action variant and authorship context are orthogonal. Ordinary mutation,
 migration, synchronization-authored destruction, and controlled reset all use
 these same variants without an origin discriminator. In particular,
 synchronization may author `DeleteJournalEntry` or an
-`InvalidateJournalEntry` carrying its required generation; normal synchronization never authors add, edit, or validate, while reset uses
-the ordinary closed classifier.
+`InvalidateJournalEntry` carrying its required generation; normal synchronization
+never authors add, edit, or validate. Reset uses these variants with its narrow
+changed-value fresh-generation rule.
 
 Journal validation rejects an entry with action edit, invalidate, or validate
 unless its generation resolves to a valid same-key add in the merge input.
@@ -169,10 +170,10 @@ already represented by an outstanding barrier is merely carried. There is no gen
 or representation changes are not edits. `Unchanged` emits no edit. Value and
 freshness transitions may emit two entries when both classifiers apply.
 
-This classifier governs ordinary graph mutation, synchronization, migration,
-and controlled reset. Reset compares committed receiver state with one
-atomically constructed semantic target: equal values are silent, unequal
-present values emit edit, new materializations emit add, and removed
+This classifier governs ordinary graph mutation, synchronization, and migration.
+Controlled reset has one narrow presence-authority rule: unequal present values
+receive a fresh add generation above all receiver history observed by reset.
+Equal values remain silent, new materializations emit add, and removed
 materializations emit delete. Reset uses no reset-specific record type.
 
 ## Host-local journal clock

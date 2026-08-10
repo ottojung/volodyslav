@@ -247,13 +247,23 @@ absent            absent             none
 absent            value B            add
 value A           absent             delete
 value A           value A            none
-value A           unequal value B    edit
+value A           unequal value B    add new generation
 ```
 
-At reset time R, add sets `createdAt=modifiedAt=add.time=R`; edit preserves
-`createdAt` and sets `modifiedAt=edit.time=R`. Equal values preserve both
-receiver timestamps and author no value event. Source timestamp differences are
-irrelevant. Freshness and validity-only changes preserve `modifiedAt`.
+At reset time R, first materialization sets
+`createdAt=modifiedAt=add.time=R`. Changed materialization preserves `createdAt`,
+sets `modifiedAt=add.time=R`, and uses an add allocated above all receiver
+history observed by reset. This fresh generation makes old-generation value and
+freshness entries structurally inapplicable even if an old edit has a later wall
+time. Equal values preserve both receiver timestamps and author no value event.
+Source timestamp differences are irrelevant. Freshness and validity-only changes
+preserve `modifiedAt`.
+
+This is journal-minimal subject to reset authority: absent and equal-value states
+author no value action; deletion authors only delete; each new or genuinely
+changed value authors exactly one add. The fresh generation for a changed value
+is required to supersede already-observed old-generation history independently
+of wall-clock skew, rather than an attempt to replace receiver history.
 
 Freshness is classified independently: fresh-to-stale authors invalidate,
 stale-to-fresh authors validate, and equal freshness is silent. A validation is
@@ -263,7 +273,7 @@ invalidate, and commits with the coherent final proof state. A later unseen
 invalidate is not named and therefore still defeats it. Stale-to-stale proof
 hardening authors an internal invalidate only when reset creates or deliberately
 reasserts a must-recompute obligation. Any newly written hard-stale value gets a
-fresh generation-scoped invalidate after its add/edit; this prevents an unseen
+fresh generation-scoped invalidate after its add; this prevents an unseen
 validation clearing an old barrier from validating the new value. A newly
 materialized hard-stale node likewise receives add then invalidate. Settled
 hard-stale state is carried without gratuitous barriers.
@@ -281,19 +291,29 @@ synchronization remains conservative and requires exact journal-derived
 `ValueRevision`; this reset proof does not weaken it.
 
 For `A -> D`, if the receiver has fresh `A=a1,D=d` and the source has fresh
-`A=a2,D=d` plus `A ⇝ D`, reset edits A, leaves D's value and `modifiedAt`
-unchanged, and relowers the source proof so D remains fresh. There is no transient
-invalidate/revalidate cycle because classification compares the two committed
-states around one atomic coherent final construction.
+`A=a2,D=d` plus `A ⇝ D`, reset gives A a fresh add generation, leaves D's value
+and `modifiedAt` unchanged, and relowers the source proof so D remains fresh.
+There is no transient invalidate/revalidate cycle because classification compares
+the two committed states around one atomic coherent final construction.
+
+Clock-skew trace: generation G contains B's observed edit `EB=(10,B)` with
+`EB.time=200` and value B. Reset occurs with receiver wall time 150 and target A.
+Reset authors receiver add `GR=(n,R)` with `n>10` and
+`GR.time=graph.modifiedAt=150`. Presence selects GR before value ordering, so EB
+is structurally inapplicable despite its later wall time. A later union which
+merely redelivers EB cannot resurrect B. This protects against already-observed
+history; genuinely unseen later normal synchronization remains governed by the
+ordinary synchronization rules.
 
 Reset is fully idempotent: if `R1=reset(R0,S)`, then `reset(R1,S)==R1` for every
 receiver field reset may mutate. The second operation authors no entry, changes
 no semantic state, timestamp, identifier, witness, index, watermark, clock, or
 cursor. Source journal, identifier, and timestamp differences cannot defeat this
 theorem because they are outside target equivalence. This follows directly from
-the closed classifiers: all values, presence, freshness, validity, and hard-stale
-proof obligations already equal the target, and identifier allocation occurs
-only for absent-to-present transitions.
+the classifiers: all values, presence, freshness, validity, and hard-stale proof
+obligations already equal the target, and identifier allocation occurs only for
+absent-to-present transitions; the fresh journal generation for a changed value
+retains the surviving receiver identifier.
 
 Reset establishes S now; it is not an anti-future-synchronization epoch. Later
 ordinary synchronization may learn history, select provenance metadata and

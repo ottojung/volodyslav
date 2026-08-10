@@ -98,9 +98,10 @@ watermark after observing remote entries and increments before authoring; IDs
 are never reused and overflow is fatal. This is journal infrastructure, not a
 materialization field or per-node clock.
 
-For graph mutation and controlled reset, the exact value/presence actions are
-absent→materialized add, unequal materialized value edit, materialized→absent
-delete, fresh→stale invalidate, and stale→fresh validate. An equal present value
+Ordinary graph mutation uses absent→materialized add, unequal materialized value
+edit, materialized→absent delete, fresh→stale invalidate, and stale→fresh
+validate. Controlled reset differs only for an unequal present value: it authors
+a fresh add generation above observed receiver history. An equal present value
 is silent and preserves timestamps. Normal synchronization copies existing
 values and provenance instead of authoring add/edit. There is no generic change.
 Graph mutation and its local entries commit atomically.
