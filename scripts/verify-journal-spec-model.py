@@ -130,6 +130,31 @@ def value_heads(es, g):
         if e.author not in out or out[e.author].sequence < e.sequence: out[e.author] = e
     return frozenset(out.values())
 
+def canonical_event(events, modified_at):
+    """Select equal-wall-time provenance by JournalEntryId=(sequence, author)."""
+    return max((e for e in events if e.time == modified_at), key=lambda e: e.id)
+
+def value_revision(event):
+    """Order supported value events by wall time, sequence, then author."""
+    return (event.time, event.sequence, event.author)
+
+# This verifier quantifies only over executions satisfying the synchronized
+# wall-clock assumption. It models finite-resolution equality, not skew repair.
+REV_G = (1, "R")
+REV_SEQUENCE_10 = Entry(10, "A", "R", "edit", 200, REV_G)
+REV_SEQUENCE_11 = Entry(11, "B", "R", "edit", 200, REV_G)
+assert canonical_event((REV_SEQUENCE_10, REV_SEQUENCE_11), 200) == REV_SEQUENCE_11
+assert value_revision(REV_SEQUENCE_11) > value_revision(REV_SEQUENCE_10)
+REV_AUTHOR_A = Entry(12, "A", "R", "edit", 200, REV_G)
+REV_AUTHOR_B = Entry(12, "B", "R", "edit", 200, REV_G)
+assert canonical_event((REV_AUTHOR_A, REV_AUTHOR_B), 200) == REV_AUTHOR_B
+assert value_revision(REV_AUTHOR_B) > value_revision(REV_AUTHOR_A)
+REV_TIME_200 = Entry(1000, "A", "R", "edit", 200, REV_G)
+REV_TIME_201 = Entry(1, "B", "R", "edit", 201, REV_G)
+assert value_revision(REV_TIME_201) > value_revision(REV_TIME_200)
+assert tuple(map(value_revision, (REV_SEQUENCE_11, REV_AUTHOR_B))) == (
+    (200, 11, "B"), (200, 12, "B"))
+
 def invalidate_frontier(es, g):
     out = {}
     for e in es:
@@ -437,20 +462,20 @@ assert hardened.journal[-1].action == "invalidate"
 assert hardened.journal[-1].generation == harden_add_d.id
 
 # A changed-value reset add is a fresh presence generation above every observed
-# receiver entry. An already-observed edit with a later wall time belongs to the
-# old generation and cannot resurrect through subsequent journal union.
-skew_add = Entry(1, "B", "K", "add", 100)
-skew_edit = Entry(10, "B", "K", "edit", 200, skew_add.id)
-skew_state = ResetState(
+# receiver entry. The synchronized later reset occurs at time 250; generation
+# authority, rather than timestamp comparison, makes the old edit inapplicable.
+reset_generation_add = Entry(1, "B", "K", "add", 100)
+reset_generation_edit = Entry(10, "B", "K", "edit", 200, reset_generation_add.id)
+reset_generation_state = ResetState(
     (("K", ResetNode("receiver-K", "B", 100, 200, True)),),
-    frozenset(), frozenset(), (skew_add, skew_edit), 10, 2, object(), 2)
-skew_reset = reset(skew_state, {"K": ("A", True)},
-                   frozenset(), frozenset(), 150)
-reset_add = skew_reset.journal[-1]
-assert reset_add.action == "add" and reset_add.sequence > skew_edit.sequence
-assert reset_add.time == dict(skew_reset.nodes)["K"].modified_at == 150
-assert presence(skew_reset.journal, "K") == reset_add
-assert skew_edit not in value_heads(skew_reset.journal, reset_add)
+    frozenset(), frozenset(), (reset_generation_add, reset_generation_edit), 10, 2, object(), 2)
+reset_generation_result = reset(reset_generation_state, {"K": ("A", True)},
+                                frozenset(), frozenset(), 250)
+reset_add = reset_generation_result.journal[-1]
+assert reset_add.action == "add" and reset_add.sequence > reset_generation_edit.sequence
+assert reset_add.time == dict(reset_generation_result.nodes)["K"].modified_at == 250
+assert presence(reset_generation_result.journal, "K") == reset_add
+assert reset_generation_edit not in value_heads(reset_generation_result.journal, reset_add)
 
 # Physical tuple order is not presence authority. G1 is learned after the
 # winning G2 and its invalidate, but its lower JournalEntryId remains losing.
@@ -548,6 +573,16 @@ A1_cursor = issued_cursors(A1)[-1]
 A2 = Stored(A1.entries, A1.watermark, A1.domain)
 assert query(A2, A1_cursor) == query(A1, A1_cursor)
 
+# An issued token snapshots its numeric position. Touch moves only the retained
+# witness: querying from the old token still starts after index 1, not index 2.
+snapshot_state = put(Stored((), 0, DOMAIN_A), "K-snapshot")
+snapshot_cursor = issued_cursors(snapshot_state)[-1]
+touched_snapshot_state = touch(snapshot_state, "K-snapshot")
+assert snapshot_cursor[1] == 1
+assert dict(touched_snapshot_state.entries)["K-snapshot"] == 2
+assert query(touched_snapshot_state, snapshot_cursor) == {
+    ("K-snapshot", action) for action in ACTIONS}
+
 NEW_RUNTIME_DOMAIN = object()
 A_RESTORED = Stored(A1.entries, A1.watermark, NEW_RUNTIME_DOMAIN)
 try:
@@ -629,7 +664,9 @@ print(f"cursor obligation checks across prefixes: {obligations_checked}")
 print(f"maximum stored logical records: {max_records}")
 print("raw repeated-mutation records: 41; compact records: 2")
 print("minimal semantic reset matrix cases: 9")
-print("reset freshness, derived hard-stale, dependency, ordering, skew, and idempotence traces: 14")
+print("reset freshness, derived hard-stale, dependency, ordering, and idempotence traces: 14")
+print("ValueRevision order assertions: 7 (including support-vector identity)")
+print("immutable issued-cursor snapshot assertions: 3")
 print("two-domain rejection assertions: 4 (including 2 foreign baselines)")
 print("same-process cutover preservation assertions: 1")
 print("new-runtime cursor-domain replacement assertions: 1")

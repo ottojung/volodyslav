@@ -104,8 +104,17 @@ candidateEvents(x,G) = E such that
 canonicalEvent(x,G) = greatest candidate by JournalEntryId
                       = greatest by (E.sequence,E.author)
 origin(x,G) = canonicalEvent(x,G)
-ValueRevision(x,G) = [modifiedAt(x), origin(x,G).author, origin(x,G).sequence]
+ValueRevision(x,G) = [modifiedAt(x), origin(x,G).sequence, origin(x,G).author]
 ```
+
+This is the one and only `ValueRevision` total order: lexicographic
+`(modifiedAt,sequence,author)`. For unequal timestamps, greater `modifiedAt`
+wins. At equal time, greater sequence wins; at equal time and sequence, greater
+author fingerprint wins. The suffix is exactly the
+`JournalEntryId=(sequence,author)` order used by `canonicalEvent`. Sequence
+remains Lamport-style observation order, immutable entry identity and
+provenance, and an exact-time collision coordinate; it never overrides a
+different wall timestamp.
 
 Within this already equal-`modifiedAt` candidate set, sequence is primary
 because it preserves observed-before order; author only breaks genuinely
@@ -182,7 +191,7 @@ This follows by lifecycle induction:
   actual modification time for edit time and modifiedAt;
 * self-restoration resumes durable state without re-authoring values.
 
-Thus `ValueRevision=[graph.modifiedAt,origin.author,origin.sequence]` has
+Thus `ValueRevision=[graph.modifiedAt,origin.sequence,origin.author]` has
 `origin.time` as its first coordinate. Finite-resolution equal-time collisions
 remain disambiguated by sequence-first `JournalEntryId`; sequence is not the
 primary ordering coordinate across wall times.
@@ -216,8 +225,8 @@ In every reachable snapshot, two admissible materializations with equal
 
 Thus `ValueRevision` is collision-free over reachable admissible states. Its
 lexicographic tuple is a strict deterministic total order: timestamps decide
-first, different simultaneous authors second, repeated same-author changes at
-one timestamp third. This external revision-tuple comparison is not provenance
+first, sequence decides simultaneous events second, and author breaks an equal
+numeric-sequence tie third. This external revision-tuple comparison is not provenance
 recovery: matching same-time journal events were already reduced to one
 canonical event by sequence-first `JournalEntryId`. Equal revision with unequal
 values is corruption, not a hash tie-break case.
@@ -225,7 +234,7 @@ values is corruption, not a hash tie-break case.
 ## Traces
 
 * **Same writer/time:** A's edits at wall time 100 receive sequences 7 and 8;
-  `[100,A,8]` wins.
+  `[100,8,A]` wins.
 * **Different wall times:** A edits at 10:00 with sequence 500; B edits at 10:01
   with sequence 20. B's `ValueRevision` ranks higher among the candidates being
   compared at that selection stage because wall time is its primary coordinate.
@@ -242,7 +251,7 @@ values is corruption, not a hash tie-break case.
 * **Concurrent adds:** A adds K at `(10,A)` with `modifiedAt=200`; B adds K at
   `(50,B)` with `modifiedAt=100`. Joined presence chooses B's generation, so A's
   bytes are inadmissible despite their later wall time. The result uses B's
-  value and derives `[100,B,50]`; presence and value cannot name different
+  value and derives `[100,50,B]`; presence and value cannot name different
   generations.
 * **Concurrent old-generation validation:** A validates old G1 with
   `V=(100,A,generation=G1)`. Concurrently B establishes newer winning
@@ -268,7 +277,7 @@ values is corruption, not a hash tie-break case.
   101. LWW presence selects G. Freshness differs: a concurrent validation cannot
   clear an unseen invalidate regardless of its ID because its causal context
   does not name that barrier.
-* **Carrier independence:** A's `[100,A,8]` travels A → B → C. B and C import
+* **Carrier independence:** A's `[100,8,A]` travels A → B → C. B and C import
   the entry and allocate their own local indexes but author no edit. All three
   compare the same revision.
 * **Same-writer supersession:** A's retained head is edit 12. A host carrying

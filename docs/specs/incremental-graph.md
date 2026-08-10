@@ -473,6 +473,18 @@ function makeIncrementalGraph(
 
 ### 3.2 IncrementalGraph Interface
 
+`PossibleNodeChange` and `BaselinePossibleNodeChange` are opaque nominal public
+types branded at compile time by a module-private, unexported `unique symbol`
+(or an equivalent non-forgeable type declaration). That symbol is not a runtime
+snapshot carrier; cursor authority resides in genuinely private runtime state
+such as a module-private `WeakMap`. The former combines the visible readonly
+`{nodeName, bindings, action, time}` payload with a private immutable cursor
+snapshot; the latter carries a private immutable baseline snapshot. External
+TypeScript callers cannot construct either type structurally, and raw domain,
+local-index, and action-ordinal coordinates are not public. The complete type,
+snapshot, and runtime-validation contract is in
+`incremental-graph-journal-api.md`.
+
 ```typescript
 interface IncrementalGraph {
   // Mutation and computation
