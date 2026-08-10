@@ -16,29 +16,26 @@ class Entry:
     time: int
     generation: tuple[int, str] | None = None
     clears: tuple[tuple[str, tuple[int, str]], ...] = ()
-    # Normative add/edit variants require this scalar; the other variants
-    # forbid it.  Keeping it last lets malformed shapes be exercised directly.
-    value_modified_at: int | None = None
 
     @property
     def id(self): return (self.sequence, self.author)
 
-G1 = Entry(1, "A", "K", "add", 10, value_modified_at=10)
-GX = Entry(15, "B", "K", "add", 15, value_modified_at=15)       # concurrent cross-author generation
+G1 = Entry(1, "A", "K", "add", 10)
+GX = Entry(15, "B", "K", "add", 15)       # concurrent cross-author generation
 D1 = Entry(16, "A", "K", "delete", 16)    # delete between generations
-G2 = Entry(20, "A", "K", "add", 20, value_modified_at=20)       # same-author successor and winner
+G2 = Entry(20, "A", "K", "add", 20)       # same-author successor and winner
 
 # Losing-generation coordinate maxima exceed winning-generation witnesses.
-E_OLD = Entry(110, "A", "K", "edit", 11, G1.id, value_modified_at=11)
-E_CUR = Entry(22, "A", "K", "edit", 20, G2.id, value_modified_at=20)
+E_OLD = Entry(110, "A", "K", "edit", 11, G1.id)
+E_CUR = Entry(22, "A", "K", "edit", 20, G2.id)
 I_OLD = Entry(111, "A", "K", "invalidate", 12, G1.id)
 I_CUR = Entry(23, "A", "K", "invalidate", 21, G2.id)
 V_OLD = Entry(112, "B", "K", "validate", 15, GX.id)
 V_CUR = Entry(24, "B", "K", "validate", 22, G2.id, (("A", I_CUR.id),))
 
 # Winning coordinate maximum exceeds a losing entry; these also create cross-author heads.
-E_LOW_OLD = Entry(2, "B", "K", "edit", 10, G1.id, value_modified_at=10)
-E_HIGH_CUR = Entry(25, "B", "K", "edit", 20, G2.id, value_modified_at=20)
+E_LOW_OLD = Entry(2, "B", "K", "edit", 10, G1.id)
+E_HIGH_CUR = Entry(25, "B", "K", "edit", 20, G2.id)
 I_CROSS_CUR = Entry(26, "B", "K", "invalidate", 21, G2.id)
 
 # Causal freshness classes coexist with value/presence history. I_HARD models
@@ -77,10 +74,8 @@ def valid(es):
     for e in es:
         if e.action in ("add", "delete"):
             if e.generation is not None or e.clears: return False
-            if (e.action == "add") != (e.value_modified_at is not None): return False
             continue
         if e.action not in ("edit", "invalidate", "validate"): return False
-        if (e.action == "edit") != (e.value_modified_at is not None): return False
         if e.generation is None or e.generation not in ids: return False
         if ids[e.generation].action != "add" or ids[e.generation].key != e.key: return False
         if e.action != "validate" and e.clears: return False
@@ -106,11 +101,10 @@ assert not valid((G1, Entry(202, "B", "K", "edit", 30)))
 assert not valid((G1, Entry(203, "B", "K", "invalidate", 30)))
 assert not valid((G1, Entry(204, "B", "K", "validate", 30)))
 # Supported allocation and immutable authoring cannot produce this conflict.
-assert not valid((G1, Entry(1, "A", "K", "add", 11,
-                            value_modified_at=11)))
+assert not valid((G1, Entry(1, "A", "K", "add", 11)))
 
 I1_BAD = Entry(10, "A", "Z", "invalidate", 10, (1, "A"))
-GZ = Entry(1, "A", "Z", "add", 1, value_modified_at=1)
+GZ = Entry(1, "A", "Z", "add", 1)
 I2_BAD = Entry(11, "A", "Z", "invalidate", 11, GZ.id)
 V1_BAD = Entry(100, "B", "Z", "validate", 12, GZ.id, (("A", I2_BAD.id),))
 V2_BAD = Entry(101, "B", "Z", "validate", 13, GZ.id, (("A", I1_BAD.id),))
@@ -176,8 +170,8 @@ def projections(es):
     if not p or p.action != "add":
         return (p, None, frozenset(), frozenset(), frozenset(), False, frozenset(), frozenset())
     vh = value_heads(es, p)
-    canonical_inputs = frozenset((t, max(e.id for e in vh if e.value_modified_at == t))
-                                 for t in {e.value_modified_at for e in vh})
+    canonical_inputs = frozenset((t, max(e.id for e in vh if e.time == t))
+                                 for t in {e.time for e in vh})
     frontier = invalidate_frontier(es, p)
     vals = validation_heads(es, p)
     maxima = {}
@@ -251,14 +245,139 @@ for sequence in range(200, 240):
 assert len(raw_repeated) == 41
 assert len(compact(raw_repeated)) == 2
 
-# Equal-value reset: occurrence time describes the newly authored reset event,
-# while value provenance continues to match the preserved semantic timestamp.
-G_RESET = Entry(300, "R", "K", "add", 1000, value_modified_at=100)
-assert G_RESET.time == 1000
-assert G_RESET.value_modified_at == 100
-assert [e for e in value_heads({G_RESET}, G_RESET)
-        if e.value_modified_at == 100] == [G_RESET]
-assert G_RESET.time != G_RESET.value_modified_at
+@dataclass(frozen=True)
+class ResetNode:
+    identifier: str
+    value: str
+    created_at: int
+    modified_at: int
+    fresh: bool
+    hard_stale: bool = False
+
+@dataclass(frozen=True)
+class ResetState:
+    nodes: tuple[tuple[str, ResetNode], ...]
+    validity: frozenset[tuple[str, str]]
+    journal: tuple[Entry, ...]
+    clock: int
+    watermark: int
+    cursor: object
+    next_identifier: int
+
+def reset(state, target_nodes, target_validity, now, proof_harden=()):
+    """Model one atomic authoritative semantic reconciliation."""
+    before = dict(state.nodes); final = {}; authored = []
+    clock = state.clock
+    for key in sorted(set(before) | set(target_nodes)):
+        old = before.get(key); desired = target_nodes.get(key)
+        if desired is None:
+            if old is not None:
+                clock += 1; authored.append(Entry(clock, "R", key, "delete", now))
+            continue
+        value, fresh, hard_stale = desired
+        if old is None:
+            identifier = f"receiver-{state.next_identifier + len([n for k, n in final.items() if k not in before])}"
+            created = modified = now
+            clock += 1; generation = (clock, "R")
+            authored.append(Entry(clock, "R", key, "add", now))
+        else:
+            identifier = old.identifier; created = old.created_at
+            modified = old.modified_at; generation = next(
+                (e.id for e in reversed(state.journal + tuple(authored))
+                 if e.key == key and e.action == "add"), None)
+            if old.value != value:
+                modified = now; clock += 1
+                authored.append(Entry(clock, "R", key, "edit", now, generation))
+        value_changed = old is None or old.value != value
+        if old is not None and old.fresh and not fresh:
+            clock += 1; authored.append(Entry(clock, "R", key, "invalidate", now, generation))
+        elif old is not None and not old.fresh and fresh:
+            frontier = invalidate_frontier(state.journal + tuple(authored),
+                                           next(e for e in state.journal + tuple(authored) if e.id == generation))
+            clears = tuple(sorted((e.author, e.id) for e in frontier))
+            clock += 1; authored.append(Entry(clock, "R", key, "validate", now, generation, clears))
+        elif not fresh and (key in proof_harden or (hard_stale and value_changed)):
+            clock += 1; authored.append(Entry(clock, "R", key, "invalidate", now, generation))
+        final[key] = ResetNode(identifier, value, created, modified, fresh, hard_stale)
+    translated_validity = frozenset(target_validity)
+    changed = (final != before or translated_validity != state.validity or authored)
+    if not changed:
+        return state
+    return ResetState(tuple(sorted(final.items())), translated_validity,
+                      state.journal + tuple(authored), clock,
+                      state.watermark + len(authored), state.cursor,
+                      state.next_identifier + sum(k not in before for k in final))
+
+# Exhaust the closed reset value/presence matrix. Value equality is semantic;
+# timestamps do not participate in target equality.
+ABSENT = None
+for current, target in product((ABSENT, "A", "B"), repeat=2):
+    initial_entries = () if current is None else (Entry(1, "R", "K", "add", 10),)
+    initial_nodes = () if current is None else (("K", ResetNode("receiver-1", current, 10, 10, True)),)
+    initial = ResetState(initial_nodes, frozenset(), initial_entries,
+                         len(initial_entries), len(initial_entries), object(), 2)
+    desired = {} if target is None else {"K": (target, True, False)}
+    result = reset(initial, desired, frozenset(), 100)
+    actions = [e.action for e in result.journal[len(initial.journal):]
+               if e.action in ("add", "edit", "delete")]
+    expected = ([] if current == target else
+                ["add"] if current is None else
+                ["delete"] if target is None else ["edit"])
+    assert actions == expected
+    if target is not None:
+        node = dict(result.nodes)["K"]
+        if current == target:
+            assert node.modified_at == 10 and result is initial
+        else:
+            value_event = next(e for e in reversed(result.journal)
+                               if e.action in ("add", "edit"))
+            assert value_event.time == node.modified_at == 100
+
+# Freshness-only transitions preserve semantic modification time. Validation
+# names the complete receiver-local frontier; stale proof hardening emits a
+# new barrier even without a public freshness transition.
+base_add = Entry(1, "R", "K", "add", 10)
+old_invalidate = Entry(2, "R", "K", "invalidate", 20, base_add.id)
+fresh_state = ResetState((("K", ResetNode("receiver-1", "A", 10, 10, True)),),
+                         frozenset(), (base_add,), 1, 1, object(), 2)
+stale = reset(fresh_state, {"K": ("A", False, False)}, frozenset(), 100)
+assert dict(stale.nodes)["K"].modified_at == 10 and stale.journal[-1].action == "invalidate"
+old_stale = ResetState((("K", ResetNode("receiver-1", "A", 10, 10, False, True)),),
+                       frozenset(), (base_add, old_invalidate), 2, 2, object(), 2)
+fresh = reset(old_stale, {"K": ("A", True, False)}, frozenset(), 100)
+assert fresh.journal[-1].action == "validate"
+assert dict(fresh.journal[-1].clears) == {"R": old_invalidate.id}
+hardened = reset(old_stale, {"K": ("A", False, True)}, frozenset(), 100, ("K",))
+assert hardened.journal[-1].action == "invalidate" and hardened.journal[-1].sequence > old_invalidate.sequence
+
+# A changed hard-stale value receives a post-value barrier. A validation which
+# can clear only the old frontier cannot cover the new obligation.
+changed_stale = reset(old_stale, {"K": ("B", False, True)}, frozenset(), 100)
+edit, new_barrier = changed_stale.journal[-2:]
+assert edit.action == "edit" and new_barrier.action == "invalidate"
+assert edit.sequence < new_barrier.sequence and not covers(
+    Entry(99, "U", "K", "validate", 99, base_add.id,
+          (("R", old_invalidate.id),)), new_barrier)
+
+# Dependency validity is relowered by semantic key. The unchanged dependent
+# keeps its receiver identifier and timestamp while remaining coherently fresh.
+dep_state = ResetState((
+    ("A", ResetNode("receiver-A", "a1", 10, 10, True)),
+    ("D", ResetNode("receiver-D", "d", 20, 20, True))),
+    frozenset({("A", "D")}),
+    (Entry(1, "R", "A", "add", 10), Entry(2, "R", "D", "add", 20)),
+    2, 2, object(), 3)
+dep_reset = reset(dep_state, {"A": ("a2", True, False),
+                              "D": ("d", True, False)},
+                  frozenset({("A", "D")}), 100)
+dep_actions = [(e.key, e.action) for e in dep_reset.journal[len(dep_state.journal):]]
+assert dep_actions == [("A", "edit")]
+assert dict(dep_reset.nodes)["D"].modified_at == 20
+assert dict(dep_reset.nodes)["D"].fresh and dep_reset.validity == frozenset({("A", "D")})
+
+# Complete idempotence includes graph, journal, identity, allocators and cursor.
+assert reset(dep_reset, {"A": ("a2", True, False), "D": ("d", True, False)},
+             frozenset({("A", "D")}), 200) is dep_reset
 
 @dataclass(frozen=True)
 class Stored:
@@ -398,7 +517,8 @@ print(f"committed prefixes checked: {prefixes_checked}")
 print(f"cursor obligation checks across prefixes: {obligations_checked}")
 print(f"maximum stored logical records: {max_records}")
 print("raw repeated-mutation records: 41; compact records: 2")
-print("occurrence/value-time reset assertions: 4")
+print("minimal semantic reset matrix cases: 9")
+print("reset freshness, hard-stale, dependency, and idempotence traces: 6")
 print("two-domain rejection assertions: 4 (including 2 foreign baselines)")
 print("same-process cutover preservation assertions: 1")
 print("new-runtime cursor-domain replacement assertions: 1")

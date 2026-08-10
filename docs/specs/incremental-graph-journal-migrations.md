@@ -24,7 +24,7 @@ index or author ownership and uses the
 [journal supported-state boundary](incremental-graph-journal-types.md#supported-state-boundary).
 
 Migration applies the exact closed classifier. New logical entries use the host
-clock, required generation, wall-clock occurrence `time`, required add/edit `valueModifiedAt`, and distinct fresh
+clock, required generation, wall-clock occurrence `time` (equal to resulting `modifiedAt` for add/edit), and distinct fresh
 local indexes. Any changed key without a newly indexed entry touches its greatest
 retained witness. Graph, entries, touches, and watermarks commit atomically.
 `Unchanged`, representation-only, identifier-only, and validity-only changes are

@@ -42,20 +42,14 @@ JournalEntryBase = {
     time: UnixTimestamp
 }
 
-AddJournalEntry = JournalEntryBase & {
-    action: "add"
-    valueModifiedAt: UnixTimestamp
-}
+AddJournalEntry = JournalEntryBase & { action: "add" }
 DeleteJournalEntry = JournalEntryBase & { action: "delete" }
 
 GenerationScopedJournalEntryBase = JournalEntryBase & {
     generation: JournalEntryId
 }
 
-EditJournalEntry = GenerationScopedJournalEntryBase & {
-    action: "edit"
-    valueModifiedAt: UnixTimestamp
-}
+EditJournalEntry = GenerationScopedJournalEntryBase & { action: "edit" }
 InvalidateJournalEntry =
     GenerationScopedJournalEntryBase & { action: "invalidate" }
 ValidateJournalEntry =
@@ -71,12 +65,9 @@ JournalEntryId(E) = (E.sequence, E.author)
 
 Entry IDs are ordered lexicographically, sequence first and author second.
 `JournalEntry.time` is always the real wall-clock time at which that journal
-event occurred. `valueModifiedAt` is always present on add/edit and is forbidden
-on delete/invalidate/validate; it is the semantic value-modification timestamp
-represented by that value event and equals the resulting graph
-`timestamps[key].modifiedAt`. The concepts can differ: an equal-value controlled
-reset authors an add now while preserving the value's earlier modification time.
-`HostFingerprint` is the durable writer fingerprint established by the host
+event occurred. For add/edit, that occurrence is the semantic value creation or
+modification, and the entry time equals the resulting graph
+`timestamps[key].modifiedAt`. `HostFingerprint` is the durable writer fingerprint established by the host
 lifecycle. It is not a hostname. `NodeIdentifier` already embeds its allocating
 host fingerprint and receives no additional discriminator.
 
@@ -147,9 +138,8 @@ Action variant and authorship context are orthogonal. Ordinary mutation,
 migration, synchronization-authored destruction, and controlled reset all use
 these same variants without an origin discriminator. In particular,
 synchronization may author `DeleteJournalEntry` or an
-`InvalidateJournalEntry` carrying its required generation; normal
-synchronization never authors add, edit, or validate, while reset may author
-fresh add generations.
+`InvalidateJournalEntry` carrying its required generation; normal synchronization never authors add, edit, or validate, while reset uses
+the ordinary closed classifier.
 
 Journal validation rejects an entry with action edit, invalidate, or validate
 unless its generation resolves to a valid same-key add in the merge input.
@@ -179,12 +169,11 @@ already represented by an outstanding barrier is merely carried. There is no gen
 or representation changes are not edits. `Unchanged` emits no edit. Value and
 freshness transitions may emit two entries when both classifiers apply.
 
-This classifier governs ordinary graph mutation and synchronization. Controlled
-reset is the sole administrative re-generation operation: it emits `add` for
-every target-materialized key, including a key that was already materialized,
-and `delete` for every known historic key the target leaves absent. These
-entries deliberately establish fresh presence frontiers. Reset uses the same
-`JournalEntry` shape; there is no reset-specific action or record type.
+This classifier governs ordinary graph mutation, synchronization, migration,
+and controlled reset. Reset compares committed receiver state with one
+atomically constructed semantic target: equal values are silent, unequal
+present values emit edit, new materializations emit add, and removed
+materializations emit delete. Reset uses no reset-specific record type.
 
 ## Host-local journal clock
 
@@ -295,6 +284,6 @@ The fixed finite schema bounds node arity, and the maximum serialized size of a
 `ConstValue` is treated as a fixed system constant. Consequently a `NodeKey`,
 including its bounded-arity binding values, has constant size in this analysis.
 
-The normative guarantee is `size(compact(J)) = O(nr²)`. Constant action coordinates use `O(r)` entries per key; at most `O(r)` retained validations each carry an `O(r)` context, including exact causal references. Other witnesses are no larger. A scalar local index and the fixed-size `valueModifiedAt` scalar on each retained add/edit do not alter the result.
+The normative guarantee is `size(compact(J)) = O(nr²)`. Constant action coordinates use `O(r)` entries per key; at most `O(r)` retained validations each carry an `O(r)` context, including exact causal references. Other witnesses are no larger. A scalar local index does not alter the result.
 
 This applies exclusively to fully canonical compacted state. Ordinary mutations may append immutable entries and skip compaction arbitrarily long, so no operation-count-independent bound is promised for an uncompacted physical journal.

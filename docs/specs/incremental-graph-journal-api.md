@@ -51,9 +51,8 @@ PossibleNodeChange.time = E.entry.time
 All five records use E's semantic key and immutable occurrence time. The local
 index answers when this possibility became relevant to this receiver; `time`
 answers when the underlying journal event occurred in real wall-clock time. It
-is not necessarily the semantic value's `modifiedAt`: for an equal-value reset
-at R preserving old M, the new add and its possible changes have `time=R` while
-`add.valueModifiedAt=graph.modifiedAt=M`. There is no receiver-local
+is the event occurrence time. For add/edit it is necessarily the semantic
+value's `modifiedAt`; a reset with an unchanged semantic value emits no value event. There is no receiver-local
 event object, action mask, cause field, or transition timestamp.
 
 The action ordinal lets a client advance record-by-record without skipping the

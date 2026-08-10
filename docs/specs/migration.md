@@ -192,9 +192,12 @@ same-author context monotonicity, canonical compaction, logical-clock coverage,
 exactly one unique index per retained entry, and index-watermark coverage.
 Indexes have no logical merge or provenance role; gaps are valid.
 
-Migration classifies old/new semantic graph states normally and authors exact
-add/edit/delete/invalidate/validate entries. Each gets a fresh logical sequence
-and local index; a changed key without a newly indexed entry has its greatest
+Migration classifies old/new semantic graph states normally. `create` authors
+add with `add.time=createdAt=modifiedAt`; delete and genuine freshness changes
+author their ordinary actions. `keep`, `invalidate`, and semantic-preserving
+`override` create no value event and preserve `modifiedAt`; representation-only
+bytes are not an edit. Each authored entry gets a fresh logical sequence and
+local index; a changed key without a newly indexed entry has its greatest
 retained witness touched. All graph, journal, index, and allocator changes commit
 atomically. Migration never seeds graph authority from journal history.
 

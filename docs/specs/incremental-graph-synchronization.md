@@ -94,7 +94,7 @@ effectiveValidate(V,x,G) iff V alone covers every frontier element
 ```
 
 A value event for winning generation G is usable only when it is add G or an
-edit explicitly scoped to G, its `valueModifiedAt` equals graph `modifiedAt`, and it is
+edit explicitly scoped to G, its `time` equals graph `modifiedAt`, and it is
 `valueHead(author,x,G)`. An unresolvable, superseded, or differently scoped
 materialization is provenance-obsolete. `ValueRevision(x,G)` is compared
 lexicographically and totally. Equal revisions with unequal `ComputedValue`s
@@ -407,12 +407,14 @@ failed host is recorded and does not roll back successful hosts; processing may
 continue and failures are reported together. This sequential lifecycle does not
 imply multi-host associativity, order independence, or all-to-all communication.
 
-Controlled reset is not this merge algorithm. It imports source history, then
-performs receiver-authoritative re-generation. Every target-materialized key
-receives a fresh receiver add generation above all observed history; target
-absence receives a later delete. Value-changing reset uses real reset wall time,
-while equal-value re-generation preserves `modifiedAt`. The lifecycle
-specification defines the complete reset procedure and DAG validation.
+Controlled reset is not this merge algorithm. Existing-live reset does not join
+the selected source journal. It atomically reconciles only source semantic
+presence, values, freshness, and relowered validity, retaining receiver history
+and identifiers for surviving keys. The ordinary closed classifier authors add
+only for absent-to-present, edit for unequal present-to-present, and delete for
+present-to-absent; equal values author nothing and preserve receiver timestamps.
+The complete lifecycle procedure and proof obligations are specified in the
+lifecycle specification.
 
 ## Required traces
 

@@ -15,12 +15,10 @@ distinct increasing sequences. Aborted reservations may leave gaps but are
 never reused; overflow is fatal.
 
 Every `JournalEntry.time` is the actual wall-clock occurrence time of its
-journal event. Every add/edit also requires `valueModifiedAt`, equal to the
-resulting graph materialization's exact `timestamps[key].modifiedAt` and used by
-value provenance. Delete/invalidate/validate forbid `valueModifiedAt`. For an
-ordinary semantic value-changing add/edit, one transition-time observation
-normally supplies both equal values, but their meanings remain independent and
-no rule relies on equality.
+journal event. For add/edit the occurrence is semantic creation/modification, so
+`entry.time == graph.timestamps[key].modifiedAt` in the committed state.
+Delete/invalidate/validate record their own event occurrence without changing
+`modifiedAt`.
 
 Before changing an already-materialized value, invalidating, or revalidating,
 derive the materialization's exact establishing add ID G from the
@@ -115,26 +113,22 @@ Ordinary mutations author exact classifier entries. Several entries for one key
 receive distinct local indexes, and no touch is needed unless some real
 transition lacks a freshly indexed entry. `Unchanged` remains silent.
 
-## Controlled-reset re-generation
+## Controlled-reset reconciliation
 
-Controlled reset is an administrative exception to mechanical application of
-the ordinary classifier. After joining all receiver and source history, it
-authors a fresh receiver `add` generation for every key that the desired target
-materializes, even for a present-to-present or equal-value replacement. Each
-such add is allocated after all history observed by reset. Every historic key
-known to the joined graph/journal which the target wants absent receives a
-receiver `delete` after the observed presence history.
+Existing-live reset retains receiver journal history and does not join the
+selected source journal. It constructs the complete semantic target atomically,
+then applies the ordinary closed classifier. Absent-to-present authors add,
+present-to-absent authors delete, unequal present-to-present authors edit, and
+equal present values author no value event. Add/edit time equals reset-time
+`modifiedAt`; equal values preserve `createdAt` and `modifiedAt`.
 
-Let R be reset's real wall-clock occurrence time. When the desired value
-differs, reset sets `graph.modifiedAt=add.time=add.valueModifiedAt=R`. When the
-values are semantically equal, reset preserves old semantic modification time M,
-sets `graph.modifiedAt=add.valueModifiedAt=M`, and still sets `add.time=R`.
-Fresh generation identity establishes presence; `valueModifiedAt` does not. In both cases the fresh add generation, rather
-than wall-time comparison with older generations, makes pre-reset edits and
-freshness events inapplicable.
-
-A settled equivalent synchronization authors no entry, learns no entry, touches
-nothing, changes no graph, and advances neither watermark.
+Fresh-to-stale authors invalidate and stale-to-fresh authors a generation-scoped
+validate naming the complete observed receiver frontier. Stale-to-stale proof
+hardening may author the required internal barrier. A newly written hard-stale
+value always receives an invalidate after its value event. Source validity is
+relowered by semantic key onto final receiver identifiers and commits with final
+freshness. No intermediate state emits, and an identical second reset is wholly
+silent, including indexes, clocks, watermarks, touches, and cursors.
 
 ## Reachability invariant
 

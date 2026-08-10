@@ -216,78 +216,89 @@ After an initiated synchronization, Volodyslav attempts to reopen the local data
 
 ### 7.4 Existing-live controlled reset
 
-Reset is an authoritative semantic mutation, not ordinary synchronization and
-not byte-for-byte restoration. It establishes a desired source semantic graph as
-a new reachable receiver state:
+Existing-live controlled reset is an authoritative semantic graph reconciliation:
+for a stable receiver snapshot R and structurally valid, schema-compatible source
+snapshot S, its postcondition is `SemanticGraph(reset(R,S)) == SemanticGraph(S)`.
+The semantic target, keyed by `NodeKey`, consists only of materialization
+presence, `ComputedValue`, freshness, and validity relationships. Source journal
+history, host and physical identity, identifiers, timestamps, local clocks,
+indexes, watermarks, and cursor domains are not target state.
 
-1. snapshot the desired source semantic graph;
-2. preserve the receiver's durable `HostFingerprint`;
-3. import/join source immutable logical history normally, assigning fresh local
-   indexes only to entries unknown at the receiver;
-4. raise `localJournalClock` above every observed sequence;
-5. process the desired target in topological order and author a fresh receiver
-   `add` generation for every target-materialized semantic key, with every
-   sequence above the joined history and earlier reset entries;
-6. author a receiver `delete` above observed presence history for every historic
-   semantic key known to either graph/journal which the target wants absent;
-7. give new entries distinct local indexes, touch any changed key lacking fresh
-   coverage, and atomically install graph, journal, and allocator watermarks.
+Reset does **not** join or import the selected source journal. It retains the
+receiver journal and authors receiver-local entries only for committed
+before-to-final transitions. Source-history differences alone cause no graph
+write, generation, index, touch, timestamp, clock, watermark, or cursor change.
+Absent-state self-restoration is different: it resumes this host's durable
+graph, journal, and clock rather than reconciling an existing live receiver.
 
-Every target materialization is thus a new presence generation, whether the
-receiver was absent, held a different value, or already held the same value.
-Older add, edit, invalidate, and validate entries belong to losing generations
-and are inapplicable before value or freshness selection. Reset uses ordinary
-`JournalEntry` values, not a reset-specific record type.
+The operation runs against stable receiver and source snapshots in an inactive
+target. It validates source structure and schema compatibility, maps source
+identifiers to semantic keys, retains receiver identifiers for surviving keys,
+allocates ordinary receiver identifiers only for new materializations, constructs
+all final values/freshness/validity, applies timestamps, classifies transitions,
+authors required local entries, validates the complete graph+journal, and cuts
+over atomically. No computor runs and intermediate construction emits nothing.
 
-If reset changes a semantic value, the resulting `modifiedAt` is the real reset
-wall-clock value-change time and the establishing add's `time` and
-`valueModifiedAt` are exactly that timestamp. If the receiver already has the same semantic value, administrative
-re-generation is not a value change: reset preserves that materialization's
-`modifiedAt`, uses it as the new add's `valueModifiedAt`, and uses the real reset
-occurrence time as the new add's `time`. Reset never synthesizes a semantic
-modification timestamp to defeat clock skew; presence-generation
-ordering supplies its authority.
+The value/presence classifier uses normative deep `isEqual` equality:
 
-Equal-value reset trace: old `graph.modifiedAt=M=100`; reset occurs at
-`R=1000`. The fresh generation has `add.time=1000` and
-`add.valueModifiedAt=graph.modifiedAt=100`. Candidate-event resolution therefore
-matches the fresh add to semantic time 100, while every `PossibleNodeChange`
-projected from it correctly reports occurrence `time=1000`.
+```text
+receiver          target             action
+absent            absent             none
+absent            value B            add
+value A           absent             delete
+value A           value A            none
+value A           unequal value B    edit
+```
 
-For a dependency graph, reset authors generations in topological order. Roots
-retain freshness only when their desired graph evidence permits it. A derived
-cache cannot reuse source incoming validity proofs against newly regenerated
-input revisions: it is installed stale with no incoming proofs unless the reset
-transaction can validate a coherent proof against the exact newly established
-direct-input `ValueRevision`s. Every such hard-invalidated derived cache also
-receives an invalidate scoped to its newly authored add generation and allocated
-after all history observed by reset; the barrier commits atomically with reset
-state and local cursor metadata. Thus regeneration cannot create a must-recompute
-cache represented only by an add. Structural edges still come from the fixed
-schema. Before cutover, reset validates every new generation reference, value
-event and timestamp, presence/freshness frontier, identifier lookup, dependency
-closure, freshness invariant, and validity edge against the complete resulting
-graph and journal. Any failure rejects the entire reset.
+At reset time R, add sets `createdAt=modifiedAt=add.time=R`; edit preserves
+`createdAt` and sets `modifiedAt=edit.time=R`. Equal values preserve both
+receiver timestamps and author no value event. Source timestamp differences are
+irrelevant. Freshness and validity-only changes preserve `modifiedAt`.
 
-There is no reset-specific cursor machinery. Trace: R is absent with delete 100,
-while source S desires value V from old add 50. Reset imports source history,
-then authors a new R add above all observed sequences with reset-time
-`modifiedAt`, installs V under that generation, and assigns the new add a fresh
-local index. The resulting graph/journal pair is reachable and the desired state
-wins normally.
+Freshness is classified independently: fresh-to-stale authors invalidate,
+stale-to-fresh authors validate, and equal freshness is silent. A validation is
+scoped to the surviving generation, names the complete receiver-local
+`invalidateFrontier(K,G)` visible to reset, is allocated after every named
+invalidate, and commits with the coherent final proof state. A later unseen
+invalidate is not named and therefore still defeats it. Stale-to-stale proof
+hardening authors an internal invalidate only when reset creates or deliberately
+reasserts a must-recompute obligation. Any newly written hard-stale value gets a
+fresh generation-scoped invalidate after its add/edit; this prevents an unseen
+validation clearing an old barrier from validating the new value. A newly
+materialized hard-stale node likewise receives add then invalidate. Settled
+hard-stale state is carried without gratuitous barriers.
 
-Clock-skew trace: generation G exists and B's edit `EB=(10,B)` for K has
-`generation=G`, `modifiedAt=200`, and value B. R has observed EB, contains B,
-and later resets to value A while R's monotone local clock reads 150. Reset
-authors fresh add generation `GR=(n,R)`, where `n>10`, with
-`GR.time=GR.valueModifiedAt=modifiedAt=150`. `presenceHead(K)=GR`, so EB is inapplicable before
-wall-time value comparison: A remains authoritative even though EB's timestamp
-is 200. If the target had instead remained B, GR would preserve
-`modifiedAt=200`, use `GR.valueModifiedAt=200`, and record the later reset
-occurrence in `GR.time`; the new generation would still make the
-old history inapplicable without pretending that the equal value changed.
+Source validity is transported as an administrative semantic proof, not copied
+by physical identifier or journal revision. Each source edge `D ⇝ N` is lowered
+to `(NodeKey(D),NodeKey(N))`, then raised to the final receiver identifiers.
+Source support proves N valid against source D; reset establishes equal final
+semantic values for D and N under the compatible dependency schema, so the
+relowered edge is sound. Source dependency closure therefore becomes final
+receiver dependency closure, and the source clean-node invariant transfers:
+each copied-fresh node has fresh direct inputs and every required incoming edge.
+Stale nodes retain exactly the source evidence transportable this way. Ordinary
+synchronization remains conservative and requires exact journal-derived
+`ValueRevision`; this reset proof does not weaken it.
 
-After reset, the database is reopened through the migration gate.
+For `A -> D`, if the receiver has fresh `A=a1,D=d` and the source has fresh
+`A=a2,D=d` plus `A ⇝ D`, reset edits A, leaves D's value and `modifiedAt`
+unchanged, and relowers the source proof so D remains fresh. There is no transient
+invalidate/revalidate cycle because classification compares the two committed
+states around one atomic coherent final construction.
+
+Reset is fully idempotent: if `R1=reset(R0,S)`, then `reset(R1,S)==R1` for every
+receiver field reset may mutate. The second operation authors no entry, changes
+no semantic state, timestamp, identifier, witness, index, watermark, clock, or
+cursor. Source journal, identifier, and timestamp differences cannot defeat this
+theorem because they are outside target equivalence. This follows directly from
+the closed classifiers: all values, presence, freshness, validity, and hard-stale
+proof obligations already equal the target, and identifier allocation occurs
+only for absent-to-present transitions.
+
+Reset establishes S now; it is not an anti-future-synchronization epoch. Later
+ordinary synchronization may learn history, select provenance metadata and
+timestamps, change freshness, or conservatively stale/delete caches. The operation introduces
+no epoch, reset ID, tombstone vector, history summary, or cursor mechanism.
 
 ### 7.5 Counter continuity during self-restoration
 
@@ -447,7 +458,9 @@ Implementations and future changes MUST preserve the following lifecycle propert
 10. Tests and diagnostics SHOULD distinguish incompatibility, failed preconditions, corruption, and unsupported manipulation rather than using those terms interchangeably.
 11. New recovery, import, or restore behavior MUST be implemented as a Volodyslav-controlled lifecycle transition. Documentation alone MUST NOT redefine raw file manipulation as supported.
 12. Storage refactors MAY change physical artifacts without changing this specification, provided these lifecycle preconditions, transitions, and postconditions remain true.
-13. Existing-live reset MUST preserve the receiving host's complete journal state.
+13. Existing-live reset MUST retain the receiving host's prior journal, MUST NOT
+    import the selected source journal, and may append only required local
+    transition entries.
 14. Absent-state self-restoration MUST restore the same host's current published clock and continue its counters without empty-graph classification.
 15. Raw cross-host copying of a live database remains unsupported; copied writer metadata does not establish ownership.
 

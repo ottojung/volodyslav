@@ -41,7 +41,7 @@ greater add establishes new G2 while bringing its own witnesses. Thus H can
 never regain authority in a future union. It is sound to discard H's value and
 freshness authority while retaining coordinate maxima.
 
-The algorithm preserves `presenceHead`; each winning-generation `valueHead(author,K,G)` by retaining add G and each author's greatest G-scoped edit; the exact equal-`valueModifiedAt` `candidateEvents` inputs needed by `canonicalEvent(K,G)`; `invalidateFrontier(K,G)`; existence of an individual effective validation; every required generation reference; and every retained causal reference.
+The algorithm preserves `presenceHead`; each winning-generation `valueHead(author,K,G)` by retaining add G and each author's greatest G-scoped edit; the exact equal-`time` `candidateEvents` inputs needed by `canonicalEvent(K,G)`; `invalidateFrontier(K,G)`; existence of an individual effective validation; every required generation reference; and every retained causal reference.
 
 For same author/key/generation validations, supported authoring makes later
 contexts componentwise nondecreasing. Thus an older discarded validation is
@@ -120,6 +120,5 @@ support, but do not prove, the analytical `O(nr²)` result.
 
 
 Occurrence `time` remains immutable payload on every retained entry. Value-head
-and candidate-event proofs retain and compare required add/edit
-`valueModifiedAt`, never occurrence `time`. The extra fixed-size scalar does not
-change the `O(nr²)` compacted bound.
+and candidate-event proofs retain the exact equal-time inputs satisfying
+`E.time == graph.modifiedAt`. This does not change the `O(nr²)` compacted bound.

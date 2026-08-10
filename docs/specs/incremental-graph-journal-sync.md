@@ -98,7 +98,7 @@ valueEvents(x,G) = add G itself, plus edits for x whose generation == G
 
 candidateEvents(x,G) = E such that
     E is in valueEvents(x,G) &&
-    E.valueModifiedAt == graph.timestamps[x].modifiedAt &&
+    E.time == graph.timestamps[x].modifiedAt &&
     E == valueHead(E.author,x,G)
 
 canonicalEvent(x,G) = greatest candidate by JournalEntryId
@@ -157,6 +157,41 @@ notification-coordinate maximum or have a greater sequence, author, or wall
 time.
 
 Compaction preservation is proved in the compaction specification.
+
+## Value-event timestamp theorem
+
+In every supported reachable graph/journal state, the origin add/edit E for a
+materialized value satisfies `E.time == graph.timestamps[key].modifiedAt`.
+This follows by lifecycle induction:
+
+* normal first materialization sets `add.time=createdAt=modifiedAt`; changed
+  recomputation sets `edit.time=modifiedAt`; `Unchanged`, invalidate, and
+  validate preserve both modifiedAt and origin; delete leaves no surviving
+  obligation;
+* existing-live reset preserves origin and modifiedAt for an equal value, sets
+  add time and modifiedAt together for a new materialization, sets edit time and
+  modifiedAt together for a changed materialization, and has no surviving value
+  after deletion;
+* synchronization authors no value event. It copies the selected source value,
+  modifiedAt, and provenance; the induction hypothesis on that supported source
+  gives `source.origin.time == source.modifiedAt`, including equal-valued
+  metadata-only selection of a different remote revision;
+* migration `create` sets `add.time=createdAt=modifiedAt`; keep, invalidate, and
+  semantic-preserving override preserve modifiedAt and origin and author no
+  value event. A future genuinely semantic migration edit must use the same
+  actual modification time for edit time and modifiedAt;
+* self-restoration resumes durable state without re-authoring values.
+
+Thus `ValueRevision=[graph.modifiedAt,origin.author,origin.sequence]` has
+`origin.time` as its first coordinate. Finite-resolution equal-time collisions
+remain disambiguated by sequence-first `JournalEntryId`; sequence is not the
+primary ordering coordinate across wall times.
+
+Compaction preserves each winning-generation author value head and the exact
+same-time candidates satisfying `E.time == graph.modifiedAt`. Therefore it
+preserves canonical event and ValueRevision, and its canonical closure/ACI proof
+is unchanged. The retained causal contexts still yield the analytical
+`size(compact(J))=O(nr²)` bound; uncompacted operation history remains unbounded.
 
 ## Stable value identity invariant
 
