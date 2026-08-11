@@ -80,12 +80,34 @@ When local live state is absent, Volodyslav first asks whether the synchronizati
 
 This is **absent-state self-restoration**, not reset of an existing database. It
 restores and validates the authoritative graph together with the durable local
-`HostFingerprint`, compacted stored journal entries with their receiver-local
-indexes, `localJournalClock`, and `localJournalIndexWatermark`. The restored
-author must be the branch owner, the logical clock must cover every observed
-sequence, and the index watermark must cover every retained local index. Gaps
-are harmless. Cursor-domain identity is not synchronization content and MUST
-NOT be restored from the repository.
+`HostFingerprint`, retained stored journal entries with their receiver-local
+indexes, `localJournalClock`, and `localJournalIndexWatermark`. Absent-state
+self-restoration accepts the retained journal representation published by a
+supported synchronization checkpoint whether or not canonical compaction ran
+before that checkpoint. It preserves the collection and its indexes exactly:
+restoration neither requires `J == compact(J)` nor implicitly compacts, authors,
+re-authors, merges, or migrates journal history.
+
+Before installation, restoration validates the ordinary load structure:
+
+- the durable `HostFingerprint` belongs to the selected host/writer branch;
+- retained generation references resolve correctly;
+- retained validation causal references resolve correctly and match the
+  required key, generation, and author;
+- every referenced invalidate sequence precedes its validation sequence;
+- `localJournalClock` covers every retained or otherwise observed sequence;
+- every retained `StoredJournalEntry` has exactly one valid receiver-local
+  index, and retained indexes are unique; and
+- `localJournalIndexWatermark` covers every retained index. Index gaps are
+  allowed.
+
+Canonical compacted form, surviving same-author historical monotonicity
+evidence, and complete diagnosis of unsupported history are not restoration
+preconditions. Defensive corruption checks remain optional at the supported-
+state boundary. Canonical form is storage normalization, not validity:
+canonical does not imply valid, and non-canonical does not imply invalid. A
+supported uncompacted journal remains supported state; manually forged or
+corrupted history remains unsupported even if it happens to be canonical.
 
 Restoration resumes previously emitted durable state. It MUST NOT classify the
 restored graph as an empty-to-restored transition or emit `add` for every
@@ -205,6 +227,17 @@ Normal synchronization performs these lifecycle steps:
 9. Reopen the application database and run the migration gate before exposing it again.
 
 The merge resolves state according to graph timestamps and dependency semantics, not textual repository merge rules. Locally newer state is retained, remotely newer compatible state may be taken, and affected derived state may be invalidated so that it is recomputed from the merged dependencies. A successful merge preserves graph coherence and does not make a partially constructed target active.
+
+Checkpointing serializes the stable current supported receiver state as it
+exists. Canonical compaction is optional maintenance and is not a prerequisite
+for checkpoint publication, staging, normal open/load, migration, or
+self-restoration. A checkpoint may therefore contain compacted or uncompacted
+retained journal history. In particular, a supported trace may retain
+superseded same-coordinate entries `E1`, `E2`, and `E3`, checkpoint all three,
+and later restore all three with their original local indexes, watermark,
+durable `HostFingerprint`, and `localJournalClock`. Restoration accepts that
+state without discarding the entries that a separate `compact(J)` would remove,
+then allocates a fresh runtime cursor domain.
 
 ### 7.3 Per-host failure behavior
 

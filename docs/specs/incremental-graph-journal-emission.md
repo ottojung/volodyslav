@@ -66,6 +66,14 @@ same invariant when they harden stale materializations. Equivalent lifecycle
 paths MUST do likewise; there is no migration- or synchronization-specific
 journal action.
 
+Conversely, passively carrying a stale materialization whose incoming proofs
+are already absent and whose obligation is already represented by an
+outstanding retained barrier neither newly establishes nor deliberately
+reasserts hard invalidation, so it authors no barrier. Thus proof removal during
+migration `keep`/`override`, explicit `invalidate()`, and
+`create(..., "potentially-outdated")` require barriers, while an already-settled
+passive carry does not.
+
 The barrier carries the materialization's exact generation G. Its sequence is reserved from `localJournalClock` after observing the transaction snapshot and is greater than all history observed by the operation. Incoming-proof removal/reassertion, graph state, the immutable barrier, receiver-local index, and watermarks commit atomically in the same darkroom batch. Each repeated explicit hard invalidation authors a fresh barrier: each call independently reasserts that the next pull must invoke the computor. Invalidation propagated by ordinary dependency mechanics may preserve complete validity proofs and continues to author only on its actual fresh→stale transition; such freshness-only propagation does not newly establish hard invalidation.
 
 ## Synchronization emission
