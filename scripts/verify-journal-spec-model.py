@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Bounded journal model; integer times are ordered/equal DateTime atoms."""
-"""Exhaustive bounded checks for the IncrementalGraph journal specification."""
+"""Exhaustive bounded checks for the IncrementalGraph journal specification.
+
+Integer time atoms model ordered/equal millisecond UnixTimestamp values.
+"""
 from dataclasses import dataclass
 from itertools import product
 

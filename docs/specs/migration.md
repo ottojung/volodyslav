@@ -236,7 +236,8 @@ compaction witness touch. An independently requested compaction is a separate
 operation governed by the ordinary compaction cursor-coverage rules.
 
 Migration classifies old/new semantic graph states normally. `create` authors
-add with `add.time=createdAt=modifiedAt`; delete and genuine freshness changes
+add with `add.time=toUnixTimestamp(createdAt)=toUnixTimestamp(modifiedAt)`;
+delete and genuine freshness changes
 author their ordinary actions. `keep`, `invalidate`, and semantic-preserving
 `override` create no value event and preserve `modifiedAt`; representation-only
 bytes are not an edit. Each authored entry gets a fresh logical sequence and

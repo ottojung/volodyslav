@@ -96,7 +96,7 @@ key encoding are compatible with bounded K, but K is itself an explicit
 premise. Graph finiteness does not establish d because in-degree may grow with
 n.
 
-Per key, constant actions times r coordinates use `O(r)` entries. There are at most `O(r)` retained validations relevant to generation/coordinate structure, each carrying `O(r)` context; exact invalidate references contribute at most `O(r²)`. Other journal generation, freshness, and notification witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`, asymptotically in n and r under fixed K. Its hidden constants may depend on K, the fixed number of journal action classes, and fixed-size `HostFingerprint` / `JournalEntryId` representations. It does not claim independence from arbitrarily growing key encodings. One scalar `localIndex` per retained entry does not change the bound.
+Per key, constant actions times r coordinates use `O(r)` entries. There are at most `O(r)` retained validations relevant to generation/coordinate structure, each carrying `O(r)` context; exact invalidate references contribute at most `O(r²)`. Other journal generation, freshness, and notification witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`, asymptotically in n and r under fixed K. Its hidden constants may depend on K, the fixed number of journal action classes, the fixed maximum serialized `DatabaseFingerprint` size F, and fixed-width `UnixTimestamp`, sequence, local-index, and `JournalEntryId` scalar coordinates. It does not claim independence from arbitrarily growing key or fingerprint encodings: fixed F is an explicit journal storage-model assumption. One scalar `localIndex` per retained entry does not change the bound.
 
 Persisted graph dependency/validity relationships and per-input evidence are
 outside `J`. Their per-node width is bounded in the broader storage model under
@@ -145,4 +145,5 @@ or steps required to count `compact(J)`.
 
 Occurrence `time` remains immutable payload on every retained entry. Value-head
 and candidate-event proofs retain the exact equal-time inputs satisfying
-`E.time == graph.modifiedAt`. This does not change the `O(nr²)` compacted bound.
+`E.time == toUnixTimestamp(graph.modifiedAt)`. This does not change the
+`O(nr²)` compacted bound.

@@ -54,6 +54,13 @@ interface BaselinePossibleNodeChange {
 }
 ```
 
+`PossibleNodeChange.time` is the application-facing `DateTime`
+`fromUnixTimestamp(E.time)` for its underlying journal entry E. The conversion
+is exact at millisecond precision, so
+`toUnixTimestamp(change.time) == E.time`. It is the original logical event
+instant, not a receiver-local observation or delivery time; consequently a
+change returned after a cursor may represent an earlier wall-clock instant.
+
 The declarations are conceptual, not a mandated compile-time encoding. The
 private `unique symbol` is only a TypeScript nominal brand; it MUST NOT carry the
 runtime snapshot as a symbol-keyed property on the public object. Symbol-keyed

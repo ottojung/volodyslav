@@ -7,9 +7,9 @@ database. It serves as the namespace suffix in node identifiers
 (`<base36-index>-<fingerprint>`), making them globally unique across hosts
 even when the same local index values are allocated.
 
-This same value is the journal `HostFingerprint`: journal formulas use that
-name for the database fingerprint's role as durable entry author. There is no
-second journal identity or storage location.
+The canonical type name for this existing value is `DatabaseFingerprint`.
+Journal entries use the authoring host's `DatabaseFingerprint` directly; there
+is no journal-specific identity or second storage location.
 
 Each host obtains a distinct fingerprint through a supported lifecycle
 transition (fresh creation). The fingerprint is stored in replica-global
@@ -102,7 +102,7 @@ remote hosts during sync/reset. However:
 
 - **Normal sync merge**: A host's staged snapshot may contain a different
   fingerprint. The local active replica keeps its own fingerprint; the
-  remote host fingerprint is not adopted. Merge does not modify the local
+  remote database fingerprint is not adopted. Merge does not modify the local
   fingerprint.
 
 - **Reset/import into existing live DB**: The snapshot may contain a remote

@@ -10,7 +10,7 @@ Migration builds authoritative graph state independently, starting from one
 fixed receiver snapshot containing:
 
 ```text
-durable IncrementalGraph database fingerprint (journal HostFingerprint)
+durable DatabaseFingerprint
 StoredJournalEntry collection
 localJournalClock
 localJournalIndexWatermark
@@ -49,7 +49,8 @@ journal-silent migration leaves their indexes unchanged; a genuine graph
 transition adds or touches only the normal witness for that transition.
 
 Migration applies the exact closed classifier. New logical entries use the host
-clock, required generation, wall-clock occurrence `time` (equal to resulting `modifiedAt` for add/edit), and distinct fresh
+clock, required generation, wall-clock occurrence `time` (equal to
+`toUnixTimestamp(resulting modifiedAt)` for add/edit), and distinct fresh
 local indexes. Any changed key without a newly indexed entry touches its greatest
 retained witness. Graph, entries, touches, and watermarks commit atomically.
 `Unchanged`, representation-only, identifier-only, and validity-only changes are

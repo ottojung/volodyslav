@@ -92,7 +92,8 @@ wall clocks.
 This specification uses the definitions in the journal synchronization spec:
 
 ```text
-ValueRevision(x,G) = [modifiedAt(x), modifiedAtVirtual(x,G), modifiedBy(x,G)]
+modifiedAtUnix(x) = toUnixTimestamp(graph.timestamps[x].modifiedAt)
+ValueRevision(x,G) = [modifiedAtUnix(x), modifiedAtVirtual(x,G), modifiedBy(x,G)]
 modifiedAtVirtual(x,G) = origin(x,G).sequence
 modifiedBy(x,G) = origin(x,G).author
 
@@ -102,7 +103,7 @@ effectiveValidate(V,x,G) iff V alone covers every frontier element
 ```
 
 A value event for winning generation G is usable only when it is add G or an
-edit explicitly scoped to G, its `time` equals graph `modifiedAt`, and it is
+edit explicitly scoped to G, its `time` equals `modifiedAtUnix(x)`, and it is
 `valueHead(author,x,G)`. An unresolvable, superseded, or differently scoped
 materialization is provenance-obsolete. `ValueRevision(x,G)` is compared
 lexicographically and totally. Equal revisions with unequal `ComputedValue`s
@@ -113,11 +114,11 @@ These are distinct orders:
 
 ```text
 ValueRevision ordering:
-    modifiedAt first, as synchronized cross-host real-time order
+    modifiedAtUnix first, as synchronized cross-host real-time order
     sequence second
-    author fingerprint third
+    author database fingerprint third
 
-canonical provenance among events with equal modifiedAt:
+canonical provenance among events with equal modifiedAtUnix:
     JournalEntryId = (sequence,author)
 ```
 
@@ -126,13 +127,13 @@ when finite-resolution wall times collide. `modifiedAtVirtual` does not replace
 wall time and is not intended to repair an unsynchronized system clock.
 For `T1 < T2`, T2 wins by wall time regardless of journal sequences. For equal
 T, greater sequence wins. For equal timestamp and equal sequence, greater author
-fingerprint wins because distinct concurrent authors may allocate the same
+database fingerprint wins because distinct concurrent authors may allocate the same
 numeric sequence. This suffix exactly matches sequence-first
 `JournalEntryId=(sequence,author)`. No hash or value-equality fallback is used as
 revision identity. Thus `[201,1,B] > [200,1000,A]`: sequence never becomes the
 primary global value clock.
 
-For an exact `modifiedAt` collision inside G, the greatest matching event by
+For an exact `modifiedAtUnix` collision inside G, the greatest matching event by
 `JournalEntryId=(sequence,author)` is canonical. A source candidate resolves its
 alleged event from its own pre-merge reachable snapshot and is admissible after
 journal join only if that event is `canonicalEvent(x,G)`. Selection MUST NOT keep another

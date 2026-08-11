@@ -89,7 +89,7 @@ When local live state is absent, Volodyslav first asks whether the synchronizati
 
 This is **absent-state self-restoration**, not reset of an existing database. It
 restores and validates the authoritative graph together with the durable local
-IncrementalGraph database fingerprint (also the journal `HostFingerprint`),
+`DatabaseFingerprint`,
 retained stored journal entries with their receiver-local
 indexes, `localJournalClock`, and `localJournalIndexWatermark`. Absent-state
 self-restoration accepts the retained journal representation published by a
@@ -100,7 +100,7 @@ re-authors, merges, or migrates journal history.
 
 Before installation, restoration validates the ordinary load structure:
 
-- the durable database fingerprint (the journal `HostFingerprint`) belongs to
+- the durable `DatabaseFingerprint` belongs to
   the selected host/writer branch;
 - retained generation references resolve correctly;
 - retained validation causal references resolve correctly and match the
@@ -128,11 +128,11 @@ watermark, and host/journal-clock state. Public cursor tokens are
 non-serializable and process-local, so cursors from a destroyed runtime need not
 survive; an artificially retained old token is foreign to the new receiver.
 
-The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable author fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
+The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable database fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's fresh durable IncrementalGraph database fingerprint, which is also the journal `HostFingerprint`, together with persistent `localJournalClock` before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their writer identities.
+If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's fresh durable `DatabaseFingerprint` together with persistent `localJournalClock` before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 
@@ -246,7 +246,7 @@ self-restoration. A checkpoint may therefore contain compacted or uncompacted
 retained journal history. In particular, a supported trace may retain
 superseded same-coordinate entries `E1`, `E2`, and `E3`, checkpoint all three,
 and later restore all three with their original local indexes, watermark,
-durable database fingerprint (the journal `HostFingerprint`), and
+durable `DatabaseFingerprint`, and
 `localJournalClock`. Restoration accepts that
 state without discarding the entries that a separate `compact(J)` would remove,
 then allocates a fresh runtime cursor domain.
@@ -345,7 +345,7 @@ Supported reset trace: generation G contains B's observed edit `EB=(10,B)` with
 `EB.time=200` and value B. Reset occurs later at synchronized wall time 250 with
 target A.
 Reset authors receiver add `GR=(n,R)` with `n>10` and
-`GR.time=graph.modifiedAt=250`. Presence selects GR before value ordering, so EB
+`GR.time=toUnixTimestamp(graph.modifiedAt)=250`. Presence selects GR before value ordering, so EB
 is structurally inapplicable independently of timestamp comparison. A later
 union which
 merely redelivers EB cannot resurrect B. This protects against already-observed
@@ -370,7 +370,7 @@ no epoch, reset ID, tombstone vector, history summary, or cursor mechanism.
 ### 7.5 Counter continuity during self-restoration
 
 A writer MUST never resume authoritative mutation with a local action sequence
-at or below a sequence it previously authored with the same `HostFingerprint`.
+at or below a sequence it previously authored with the same `DatabaseFingerprint`.
 
 ```text
 A previously published:

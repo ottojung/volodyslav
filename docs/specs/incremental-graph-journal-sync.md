@@ -96,27 +96,30 @@ valueHead(author,x,G) = greatest applicable value event by sequence
 
 valueEvents(x,G) = add G itself, plus edits for x whose generation == G
 
+modifiedAtUnix(x) =
+    toUnixTimestamp(graph.timestamps[x].modifiedAt)
+
 candidateEvents(x,G) = E such that
     E is in valueEvents(x,G) &&
-    E.time == graph.timestamps[x].modifiedAt &&
+    E.time == modifiedAtUnix(x) &&
     E == valueHead(E.author,x,G)
 
 canonicalEvent(x,G) = greatest candidate by JournalEntryId
                       = greatest by (E.sequence,E.author)
 origin(x,G) = canonicalEvent(x,G)
-ValueRevision(x,G) = [modifiedAt(x), origin(x,G).sequence, origin(x,G).author]
+ValueRevision(x,G) = [modifiedAtUnix(x), origin(x,G).sequence, origin(x,G).author]
 ```
 
-The first coordinate is the graph timestamp's nominal `DateTime`. Journal and
-graph timestamps use the same domain: `E.time == modifiedAt` compares the
-represented instant rather than object identity, and `<` compares instants in
-chronological order. Separate lossless deserializations of the same instant are
-therefore equal for `candidateEvents` and `ValueRevision`.
+The first coordinate is a signed 64-bit millisecond `UnixTimestamp`.
+`candidateEvents` uses integer equality and `ValueRevision` uses signed integer
+order for that coordinate. Two graph values whose `toMillis()` results are equal
+project to the same journal instant.
 
 This is the one and only `ValueRevision` total order: lexicographic
-`(modifiedAt,sequence,author)`. For unequal timestamps, greater `modifiedAt`
+`(modifiedAtUnix,sequence,author)`. For unequal timestamps, greater
+`modifiedAtUnix`
 wins. At equal time, greater sequence wins; at equal time and sequence, greater
-author fingerprint wins. The suffix is exactly the
+database fingerprint wins. The suffix is exactly the
 `JournalEntryId=(sequence,author)` order used by `canonicalEvent`. Sequence
 remains Lamport-style observation order, immutable entry identity and
 provenance, and an exact-time collision coordinate; it never overrides a
@@ -176,11 +179,13 @@ Compaction preservation is proved in the compaction specification.
 ## Value-event timestamp theorem
 
 In every supported reachable graph/journal state, the origin add/edit E for a
-materialized value satisfies `E.time == graph.timestamps[key].modifiedAt`.
+materialized value satisfies
+`E.time == toUnixTimestamp(graph.timestamps[key].modifiedAt)`.
 This follows by lifecycle induction:
 
-* normal first materialization sets `add.time=createdAt=modifiedAt`; changed
-  recomputation sets `edit.time=modifiedAt`; `Unchanged`, invalidate, and
+* normal first materialization sets `add.time` to the Unix projection of equal
+  `createdAt` and `modifiedAt`; changed recomputation sets `edit.time` to the
+  Unix projection of `modifiedAt`; `Unchanged`, invalidate, and
   validate preserve both modifiedAt and origin; delete leaves no surviving
   obligation;
 * existing-live reset preserves origin and modifiedAt for an equal value, sets
@@ -189,21 +194,23 @@ This follows by lifecycle induction:
   value after deletion;
 * synchronization authors no value event. It copies the selected source value,
   modifiedAt, and provenance; the induction hypothesis on that supported source
-  gives `source.origin.time == source.modifiedAt`, including equal-valued
+  gives `source.origin.time == toUnixTimestamp(source.modifiedAt)`, including equal-valued
   metadata-only selection of a different remote revision;
-* migration `create` sets `add.time=createdAt=modifiedAt`; keep, invalidate, and
+* migration `create` sets `add.time` to the Unix projection of equal `createdAt`
+  and `modifiedAt`; keep, invalidate, and
   semantic-preserving override preserve modifiedAt and origin and author no
   value event. A future genuinely semantic migration edit must use the same
   actual modification time for edit time and modifiedAt;
 * self-restoration resumes durable state without re-authoring values.
 
-Thus `ValueRevision=[graph.modifiedAt,origin.sequence,origin.author]` has
+Thus `ValueRevision=[modifiedAtUnix,origin.sequence,origin.author]` has
 `origin.time` as its first coordinate. Finite-resolution equal-time collisions
 remain disambiguated by sequence-first `JournalEntryId`; sequence is not the
 primary ordering coordinate across wall times.
 
 Compaction preserves each winning-generation author value head and the exact
-same-time candidates satisfying `E.time == graph.modifiedAt`. Therefore it
+same-time candidates satisfying
+`E.time == toUnixTimestamp(graph.modifiedAt)`. Therefore it
 preserves canonical event and ValueRevision, and its canonical closure/ACI proof
 is unchanged. The retained causal contexts still yield the analytical
 `size(compact(J))=O(nr²)` bound in n and r under the journal storage model's
