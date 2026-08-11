@@ -8,6 +8,14 @@ validity come from the IncrementalGraph.
 
 ### Supported-state boundary
 
+The [journal entry-point scope](../incremental-graph-journal.md#implementationrollout-scope)
+is normative here. A supported state means one produced by lifecycle
+transitions of an implementation satisfying these specifications, not every
+database produced by every historical Volodyslav implementation. Pre-journal
+implementation states are outside this journal-state universe until a rollout
+establishes the journal-enabled representation; that rollout is a deployment
+compatibility concern, not a journal transition.
+
 This specification inherits the definition of supported and corrupted or
 unsupported database state from
 [`database-lifecycle.md`](database-lifecycle.md#11-corruption-model). Journal
@@ -39,7 +47,7 @@ JournalEntryBase = {
     author: HostFingerprint
     sequence: uint64
     key: NodeKey
-    time: UnixTimestamp
+    time: DateTime
 }
 
 AddJournalEntry = JournalEntryBase & { action: "add" }
@@ -67,12 +75,30 @@ Entry IDs are ordered lexicographically, sequence first and author second.
 `JournalEntry.time` is always the real wall-clock time at which that journal
 event occurred. For add/edit, that occurrence is the semantic value creation or
 modification, and the entry time equals the resulting graph
-`timestamps[key].modifiedAt`. `HostFingerprint` is the durable writer fingerprint established by the host
-lifecycle. It is not a hostname. `NodeIdentifier` already embeds its allocating
-host fingerprint and receives no additional discriminator.
+`timestamps[key].modifiedAt`.
+
+Conceptually, `type HostFingerprint = DatabaseFingerprint`.
+`HostFingerprint` is the existing IncrementalGraph database allocation
+fingerprint specified by
+[`incremental-graph-fingerprint.md`](incremental-graph-fingerprint.md) and
+stored at `rendered/r/global/fingerprint`. The journal name describes its role
+as the durable author of locally authored entries; it is not an additional
+identity or storage requirement. Database fingerprint, graph allocation
+fingerprint, `NodeIdentifier` fingerprint, and journal `HostFingerprint` are
+the same underlying value viewed in different roles. It is not a hostname, and
+`NodeIdentifier` receives no additional discriminator.
+
+Journal timestamps, `PossibleNodeChange.time`, and graph
+`timestamps { createdAt, modifiedAt }` inhabit the same nominal `DateTime`
+domain. Equality in provenance predicates, including `candidateEvents` and
+`E.time == modifiedAt`, is semantic equality of the represented instant rather
+than JavaScript object identity. Ordering is chronological `DateTime` ordering.
+Persistence MUST round-trip the value losslessly at the precision used by graph
+timestamps; its serialization representation is not the semantic type.
 
 There is no separate journal membership domain. Supported host creation
-allocates one globally unique durable `HostFingerprint`; restoration may resume
+allocates one globally unique durable database fingerprint (the journal
+`HostFingerprint`); restoration may resume
 it only from that host's current synchronized state. Reset, migration, and
 copying never transfer ownership. Supported authoring makes every author a
 well-formed supported host fingerprint and gives one immutable content to each

@@ -1,5 +1,11 @@
 # Incremental Graph Migration
 
+This database-version migration operates within the target journal-enabled
+persistent model after the journal subsystem has been established. Upgrading a
+database created by a pre-journal implementation is an implementation rollout
+concern outside this semantic migration specification; see the journal
+[implementation/rollout scope](../incremental-graph-journal.md#implementationrollout-scope).
+
 This document describes the **migration system** for upgrading incremental-graph database state between application versions.
 
 > Note: this migration flow always performs a replica cutover on success. Even

@@ -1,10 +1,16 @@
 # Journal during migration
 
+This migration specification applies only after the journal subsystem has been
+established. It does not describe upgrading a database created by a pre-journal
+implementation; database-version migration here operates within the target
+journal-enabled persistent model described by the journal
+[implementation/rollout scope](../incremental-graph-journal.md#implementationrollout-scope).
+
 Migration builds authoritative graph state independently, starting from one
 fixed receiver snapshot containing:
 
 ```text
-durable HostFingerprint
+durable IncrementalGraph database fingerprint (journal HostFingerprint)
 StoredJournalEntry collection
 localJournalClock
 localJournalIndexWatermark

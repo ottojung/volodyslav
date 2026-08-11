@@ -107,6 +107,12 @@ origin(x,G) = canonicalEvent(x,G)
 ValueRevision(x,G) = [modifiedAt(x), origin(x,G).sequence, origin(x,G).author]
 ```
 
+The first coordinate is the graph timestamp's nominal `DateTime`. Journal and
+graph timestamps use the same domain: `E.time == modifiedAt` compares the
+represented instant rather than object identity, and `<` compares instants in
+chronological order. Separate lossless deserializations of the same instant are
+therefore equal for `candidateEvents` and `ValueRevision`.
+
 This is the one and only `ValueRevision` total order: lexicographic
 `(modifiedAt,sequence,author)`. For unequal timestamps, greater `modifiedAt`
 wins. At equal time, greater sequence wins; at equal time and sequence, greater

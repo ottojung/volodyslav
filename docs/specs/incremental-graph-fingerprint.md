@@ -7,6 +7,10 @@ database. It serves as the namespace suffix in node identifiers
 (`<base36-index>-<fingerprint>`), making them globally unique across hosts
 even when the same local index values are allocated.
 
+This same value is the journal `HostFingerprint`: journal formulas use that
+name for the database fingerprint's role as durable entry author. There is no
+second journal identity or storage location.
+
 Each host obtains a distinct fingerprint through a supported lifecycle
 transition (fresh creation). The fingerprint is stored in replica-global
 metadata and is generated once during first database initialization. It never

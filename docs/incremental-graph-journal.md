@@ -1,14 +1,34 @@
 # IncrementalGraph journal
 
+## Implementation/rollout scope
+
+These specifications define the supported lifecycle of a journal-enabled
+IncrementalGraph implementation. They do not define the one-time software
+rollout from an older implementation which predates the journal subsystem.
+
+A database produced by an implementation that does not implement the journal
+specification is not a supported reachable journal state merely because it was
+valid under an earlier implementation. The implementation project introducing
+the journal is responsible for establishing the required initial
+journal-enabled persistent state before operating such a database under these
+semantics. That deployment and upgrade mechanism is outside this specification;
+it is not a journal synchronization or database-version migration transition.
+
 ## Supported-state boundary
 
 The journal protocol is specified for graph and journal states produced by
-supported Volodyslav lifecycle transitions, using the definition of supported
+supported lifecycle transitions of an implementation satisfying these
+specifications, using the definition of supported
 and corrupted or unsupported state in
 [`database-lifecycle.md`](specs/database-lifecycle.md#11-corruption-model).
 Journal correctness, synchronization, compaction, convergence, freshness,
 provenance, and cursor-coverage guarantees quantify only over those states and
 over history deliveries and unions that can arise between them.
+
+Legacy implementation states are outside this specification's journal-state
+universe. This classification does not call those databases operationally
+corrupt: upgrading them into this universe is a deployment compatibility
+concern outside the journal semantics.
 
 A journal state that requires violation of the authoring, lifecycle, locking,
 clock, immutability, or causal-context invariants is therefore corrupted or
@@ -69,7 +89,7 @@ JournalEntryBase = {
   author: HostFingerprint,
   sequence: uint64,
   key: NodeKey,
-  time: UnixTimestamp
+  time: DateTime
 }
 AddJournalEntry = JournalEntryBase & { action: "add" }
 DeleteJournalEntry = JournalEntryBase & { action: "delete" }
@@ -86,6 +106,13 @@ JournalEntryId = (sequence, author)
 `JournalEntry.time` is the real wall-clock occurrence time of every journal
 event. For add/edit, the event is semantic creation/modification, so `time`
 matches graph `modifiedAt`.
+
+`HostFingerprint` is a semantic name for the existing IncrementalGraph database
+allocation fingerprint specified by
+[`incremental-graph-fingerprint.md`](specs/incremental-graph-fingerprint.md),
+not another stored identity. Journal and graph timestamps inhabit the same
+nominal `DateTime` domain. Equality is equality of the represented instant, not
+JavaScript object identity; ordering is chronological.
 
 The generation-scoped variants name the exact same-key add which established
 their materialization incarnation. Add and delete variants contain no generation
