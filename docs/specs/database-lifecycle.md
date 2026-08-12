@@ -22,6 +22,15 @@ Other persistent subsystems, such as assets and runtime scheduler state, have th
 
 Normative terms such as **MUST**, **MUST NOT**, **SHOULD**, and **MAY** describe the supported model. A statement that a state "cannot happen" means that it cannot happen through a supported Volodyslav lifecycle transition.
 
+For the journal subsystem, "supported" means produced by lifecycle transitions
+of a journal-enabled implementation satisfying the journal specifications. As
+specified by the journal's
+[implementation/rollout scope](../incremental-graph-journal.md#implementationrollout-scope),
+a state created by pre-journal software is outside that journal-state universe
+until deployment establishes the target persistent representation. This is not
+an operational declaration that an older database is corrupt; its upgrade is a
+deployment compatibility concern outside these semantic lifecycle transitions.
+
 ## 2. Lifecycle states and transitions
 
 At the lifecycle level, a database is in one of these states:
@@ -80,7 +89,8 @@ When local live state is absent, Volodyslav first asks whether the synchronizati
 
 This is **absent-state self-restoration**, not reset of an existing database. It
 restores and validates the authoritative graph together with the durable local
-`HostFingerprint`, retained stored journal entries with their receiver-local
+`DatabaseFingerprint`,
+retained stored journal entries with their receiver-local
 indexes, `localJournalClock`, and `localJournalIndexWatermark`. Absent-state
 self-restoration accepts the retained journal representation published by a
 supported synchronization checkpoint whether or not canonical compaction ran
@@ -90,7 +100,8 @@ re-authors, merges, or migrates journal history.
 
 Before installation, restoration validates the ordinary load structure:
 
-- the durable `HostFingerprint` belongs to the selected host/writer branch;
+- the durable `DatabaseFingerprint` belongs to
+  the selected host/writer branch;
 - retained generation references resolve correctly;
 - retained validation causal references resolve correctly and match the
   required key, generation, and author;
@@ -117,11 +128,11 @@ watermark, and host/journal-clock state. Public cursor tokens are
 non-serializable and process-local, so cursors from a destroyed runtime need not
 survive; an artificially retained old token is foreign to the new receiver.
 
-The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable author fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
+The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable database fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions a fresh graph allocation fingerprint and the host's durable `HostFingerprint` and persistent `localJournalClock` before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their writer identities.
+If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's fresh durable `DatabaseFingerprint` together with persistent `localJournalClock` before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 
@@ -235,7 +246,8 @@ self-restoration. A checkpoint may therefore contain compacted or uncompacted
 retained journal history. In particular, a supported trace may retain
 superseded same-coordinate entries `E1`, `E2`, and `E3`, checkpoint all three,
 and later restore all three with their original local indexes, watermark,
-durable `HostFingerprint`, and `localJournalClock`. Restoration accepts that
+durable `DatabaseFingerprint`, and
+`localJournalClock`. Restoration accepts that
 state without discarding the entries that a separate `compact(J)` would remove,
 then allocates a fresh runtime cursor domain.
 
@@ -333,7 +345,7 @@ Supported reset trace: generation G contains B's observed edit `EB=(10,B)` with
 `EB.time=200` and value B. Reset occurs later at synchronized wall time 250 with
 target A.
 Reset authors receiver add `GR=(n,R)` with `n>10` and
-`GR.time=graph.modifiedAt=250`. Presence selects GR before value ordering, so EB
+`GR.time=toUnixTimestamp(graph.modifiedAt)=250`. Presence selects GR before value ordering, so EB
 is structurally inapplicable independently of timestamp comparison. A later
 union which
 merely redelivers EB cannot resurrect B. This protects against already-observed
@@ -358,7 +370,7 @@ no epoch, reset ID, tombstone vector, history summary, or cursor mechanism.
 ### 7.5 Counter continuity during self-restoration
 
 A writer MUST never resume authoritative mutation with a local action sequence
-at or below a sequence it previously authored with the same `HostFingerprint`.
+at or below a sequence it previously authored with the same `DatabaseFingerprint`.
 
 ```text
 A previously published:

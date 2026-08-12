@@ -94,9 +94,10 @@ semantic `ConstValue` type does not establish C. The implementation-defined
 not establish K. Fixed schema arity, bounded C, and an intended bounded-overhead
 key encoding are compatible with bounded K, but K is itself an explicit
 premise. Graph finiteness does not establish d because in-degree may grow with
-n.
+n. `DatabaseFingerprint` is not another premise: every compliant value has the
+normatively bounded 16-character lowercase ASCII representation.
 
-Per key, constant actions times r coordinates use `O(r)` entries. There are at most `O(r)` retained validations relevant to generation/coordinate structure, each carrying `O(r)` context; exact invalidate references contribute at most `O(r²)`. Other journal generation, freshness, and notification witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`, asymptotically in n and r under fixed K. Its hidden constants may depend on K, the fixed number of journal action classes, and fixed-size `HostFingerprint` / `JournalEntryId` representations. It does not claim independence from arbitrarily growing key encodings. One scalar `localIndex` per retained entry does not change the bound.
+Per key, constant actions times r coordinates use `O(r)` entries. There are at most `O(r)` retained validations relevant to generation/coordinate structure, each carrying `O(r)` context; exact invalidate references contribute at most `O(r²)`. Other journal generation, freshness, and notification witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`, asymptotically in n and r under fixed K. Its hidden constants may depend on K, the fixed number of journal action classes, fixed-width `UnixTimestamp`, sequence, and local-index scalar coordinates. A `JournalEntryId` has bounded serialized size because its sequence is fixed-width and its author has the normatively bounded `DatabaseFingerprint` representation. Bounded structural encoding overhead does not require another asymptotic parameter; an arbitrarily growing fingerprint representation is non-compliant. One scalar `localIndex` per retained entry does not change the bound.
 
 Persisted graph dependency/validity relationships and per-input evidence are
 outside `J`. Their per-node width is bounded in the broader storage model under
@@ -137,12 +138,15 @@ records and two after canonical compaction. These finite structural checks
 support, but do not prove, the analytical `O(nr²)` result. The executable model
 counts retained records and causal/context references in a finite universe; it
 does not prove byte bounds for arbitrary `ConstValue` or `NodeKey` payloads or
-establish a universal graph in-degree bound. The journal byte-size conclusion
-additionally relies on the analytical fixed-K assumption above. Fixed C and d
+establish a universal graph in-degree bound. `DatabaseFingerprint` size follows
+from its normative format rather than this model. The journal byte-size
+conclusion additionally relies on the analytical fixed-K assumption above.
+Fixed C and d
 remain premises of the broader storage model, not facts proved by the verifier
 or steps required to count `compact(J)`.
 
 
 Occurrence `time` remains immutable payload on every retained entry. Value-head
 and candidate-event proofs retain the exact equal-time inputs satisfying
-`E.time == graph.modifiedAt`. This does not change the `O(nr²)` compacted bound.
+`E.time == toUnixTimestamp(graph.modifiedAt)`. This does not change the
+`O(nr²)` compacted bound.

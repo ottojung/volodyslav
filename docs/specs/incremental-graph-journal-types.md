@@ -8,6 +8,14 @@ validity come from the IncrementalGraph.
 
 ### Supported-state boundary
 
+The [journal entry-point scope](../incremental-graph-journal.md#implementationrollout-scope)
+is normative here. A supported state means one produced by lifecycle
+transitions of an implementation satisfying these specifications, not every
+database produced by every historical Volodyslav implementation. Pre-journal
+implementation states are outside this journal-state universe until a rollout
+establishes the journal-enabled representation; that rollout is a deployment
+compatibility concern, not a journal transition.
+
 This specification inherits the definition of supported and corrupted or
 unsupported database state from
 [`database-lifecycle.md`](database-lifecycle.md#11-corruption-model). Journal
@@ -36,7 +44,7 @@ JournalEntry =
   | ValidateJournalEntry
 
 JournalEntryBase = {
-    author: HostFingerprint
+    author: DatabaseFingerprint
     sequence: uint64
     key: NodeKey
     time: UnixTimestamp
@@ -58,7 +66,7 @@ ValidateJournalEntry =
         clearsInvalidates: InvalidationContext
     }
 
-InvalidationContext = Map<HostFingerprint, JournalEntryId>
+InvalidationContext = Map<DatabaseFingerprint, JournalEntryId>
 
 JournalEntryId(E) = (E.sequence, E.author)
 ```
@@ -66,23 +74,69 @@ JournalEntryId(E) = (E.sequence, E.author)
 Entry IDs are ordered lexicographically, sequence first and author second.
 `JournalEntry.time` is always the real wall-clock time at which that journal
 event occurred. For add/edit, that occurrence is the semantic value creation or
-modification, and the entry time equals the resulting graph
-`timestamps[key].modifiedAt`. `HostFingerprint` is the durable writer fingerprint established by the host
-lifecycle. It is not a hostname. `NodeIdentifier` already embeds its allocating
-host fingerprint and receives no additional discriminator.
+modification, and the entry time equals
+`toUnixTimestamp(timestamps[key].modifiedAt)`. Delete, invalidate, and validate
+use their actual event occurrence instant without changing graph `modifiedAt`.
+
+`DatabaseFingerprint` is the existing IncrementalGraph database allocation
+fingerprint specified by
+[`incremental-graph-fingerprint.md`](incremental-graph-fingerprint.md) and
+stored at `rendered/r/global/fingerprint`. Each host H owns one
+`DatabaseFingerprint(H)`. A locally authored entry uses that local database
+fingerprint as `author`, independently of the affected node's identifier.
+Every `NodeIdentifier` allocated by H embeds `DatabaseFingerprint(H)`, but a
+receiver may store identifiers allocated by remote hosts after synchronization.
+Consequently, an arbitrary stored `NodeIdentifier` need not embed the
+receiver's fingerprint, and its suffix MUST NOT determine the author of a
+locally authored entry.
+
+`UnixTimestamp` has a signed 64-bit persistent representation counting
+milliseconds since `1970-01-01T00:00:00Z`. A valid `UnixTimestamp` is only a
+value in that representation for which the project's `DateTime` abstraction can
+represent the exact instant and round-trip the exact integer millisecond. Its
+equality is integer equality and its order is signed integer order. It is
+timezone-free, canonical, fixed-width, and has millisecond precision. Journal
+wall-clock identity and ordering use that precision; distinct events represented
+in one millisecond may have equal timestamps and are disambiguated by
+`(sequence, author)`.
+
+The graph and application timestamp type remains nominal `DateTime`. The
+normative exact conversions are:
+
+```text
+toUnixTimestamp(dt: DateTime): UnixTimestamp = dt.toMillis()
+fromUnixTimestamp(t: UnixTimestamp): DateTime = DateTime for instant t in UTC
+toUnixTimestamp(fromUnixTimestamp(t)) == t
+```
+
+`toUnixTimestamp` accepts only a `DateTime` whose `toMillis()` is an integer in
+the signed 64-bit range and is exactly representable by `DateTime`.
+`fromUnixTimestamp` is total only over valid `UnixTimestamp` values, not over
+all raw signed 64-bit integers. The graph's supported timestamp precision is
+milliseconds. UTC is the canonical construction zone for
+`fromUnixTimestamp`. Journal comparisons operate only on the resulting signed
+integers.
+
+A persisted raw signed 64-bit value outside this valid domain is malformed
+journal state and load validation MUST reject it immediately. It MUST NOT be
+clamped, rounded, approximated, normalized, or retained until a later API
+conversion fails. Supported authoring obtains event time from the supported
+`DateTime`/clock API and passes through `toUnixTimestamp`, so it cannot author an
+invalid value. Import preserves the already-valid immutable timestamp of a
+supported remote entry.
 
 There is no separate journal membership domain. Supported host creation
-allocates one globally unique durable `HostFingerprint`; restoration may resume
+allocates one globally unique durable `DatabaseFingerprint`; restoration may resume
 it only from that host's current synchronized state. Reset, migration, and
 copying never transfer ownership. Supported authoring makes every author a
-well-formed supported host fingerprint and gives one immutable content to each
+well-formed supported `DatabaseFingerprint` and gives one immutable content to each
 `JournalEntryId`. Implementations MAY check these facts defensively when the
 relevant evidence is available. Duplicate ownership or rollback under the same
 author is corrupted or unsupported under the lifecycle definition; complete
 historical detection after compaction is not promised.
 
 The journal has no fixed closed writer-membership domain. A supported new host
-may introduce a new durable `HostFingerprint`, so storage is not bounded
+may introduce a new durable `DatabaseFingerprint`, so storage is not bounded
 independently of the number of durable authors represented in retained history.
 
 Entries are immutable. A remotely learned entry is imported byte-for-byte with
@@ -304,17 +358,24 @@ size, so its definition does not establish C. The `NodeKey` format is
 implementation-defined and its identity-preservation contract does not bound
 encoding overhead, so that contract does not establish K. Bounded C, fixed
 finite schema arity, and an intended bounded-overhead key encoding are
-compatible with bounded K, but K remains a separate explicit premise. Graph
+compatible with bounded K, but K remains a separate explicit premise. Every
+compliant `DatabaseFingerprint` is exactly 16 lowercase ASCII letters, so its
+serialized payload is normatively bounded rather than assumed. Graph
 finiteness does not establish d because in-degree could grow with n. A fixed
 finite schema with finitely many direct input positions per node definition is
 compatible with bounded d, but d also remains an explicit premise. C, K, and d
 are all assumed bounded independently of n and r; no runtime limit is implied.
 
 The normative guarantee remains `size(compact(J)) = O(nr²)`, asymptotically in
-n and r. Journal entries contain `NodeKey` values and causal metadata, so this
+n and r. Journal entries contain `NodeKey` values, `DatabaseFingerprint`
+authors, and causal metadata, so this
 journal-only bound assumes fixed K. Hidden constants may also depend on the
-fixed number of action classes and fixed-size `HostFingerprint` /
-`JournalEntryId` representations. Constant action coordinates use `O(r)`
+fixed number of action classes and fixed-width `UnixTimestamp`, sequence, and
+local-index scalar coordinates. `DatabaseFingerprint` payloads are bounded by
+their normative 16-character ASCII representation.
+A `JournalEntryId` is bounded because it combines a fixed-width sequence with a
+normatively bounded `DatabaseFingerprint`; it is not a separate premise.
+Constant action coordinates use `O(r)`
 entries per key; at most `O(r)` retained validations each carry an `O(r)`
 context, including exact causal references. Other journal witnesses are no
 larger. A scalar local index does not alter the result. The theorem does not

@@ -1,14 +1,34 @@
 # IncrementalGraph journal
 
+## Implementation/rollout scope
+
+These specifications define the supported lifecycle of a journal-enabled
+IncrementalGraph implementation. They do not define the one-time software
+rollout from an older implementation which predates the journal subsystem.
+
+A database produced by an implementation that does not implement the journal
+specification is not a supported reachable journal state merely because it was
+valid under an earlier implementation. The implementation project introducing
+the journal is responsible for establishing the required initial
+journal-enabled persistent state before operating such a database under these
+semantics. That deployment and upgrade mechanism is outside this specification;
+it is not a journal synchronization or database-version migration transition.
+
 ## Supported-state boundary
 
 The journal protocol is specified for graph and journal states produced by
-supported Volodyslav lifecycle transitions, using the definition of supported
+supported lifecycle transitions of an implementation satisfying these
+specifications, using the definition of supported
 and corrupted or unsupported state in
 [`database-lifecycle.md`](specs/database-lifecycle.md#11-corruption-model).
 Journal correctness, synchronization, compaction, convergence, freshness,
 provenance, and cursor-coverage guarantees quantify only over those states and
 over history deliveries and unions that can arise between them.
+
+Legacy implementation states are outside this specification's journal-state
+universe. This classification does not call those databases operationally
+corrupt: upgrading them into this universe is a deployment compatibility
+concern outside the journal semantics.
 
 A journal state that requires violation of the authoring, lifecycle, locking,
 clock, immutability, or causal-context invariants is therefore corrupted or
@@ -66,7 +86,7 @@ JournalEntry =
   | ValidateJournalEntry
 
 JournalEntryBase = {
-  author: HostFingerprint,
+  author: DatabaseFingerprint,
   sequence: uint64,
   key: NodeKey,
   time: UnixTimestamp
@@ -79,13 +99,27 @@ GenerationScopedJournalEntryBase = JournalEntryBase & {
 EditJournalEntry = GenerationScopedJournalEntryBase & { action: "edit" }
 InvalidateJournalEntry = GenerationScopedJournalEntryBase & { action: "invalidate" }
 ValidateJournalEntry = GenerationScopedJournalEntryBase & { action: "validate", clearsInvalidates: InvalidationContext }
-InvalidationContext = Map<HostFingerprint, JournalEntryId>
+InvalidationContext = Map<DatabaseFingerprint, JournalEntryId>
 JournalEntryId = (sequence, author)
 ```
 
 `JournalEntry.time` is the real wall-clock occurrence time of every journal
 event. For add/edit, the event is semantic creation/modification, so `time`
-matches graph `modifiedAt`.
+equals `toUnixTimestamp(graph.modifiedAt)`. Delete, invalidate, and validate
+use their actual occurrence instant and do not modify graph `modifiedAt`.
+
+`DatabaseFingerprint` is the existing IncrementalGraph database allocation
+fingerprint specified by
+[`incremental-graph-fingerprint.md`](specs/incremental-graph-fingerprint.md).
+Locally authored entries use the authoring database's own fingerprint, not the
+fingerprint suffix of the affected node's selected `NodeIdentifier`.
+`UnixTimestamp` uses a signed 64-bit integer count of milliseconds since the
+Unix epoch as its persistent representation. Valid values are the subset for
+which the project `DateTime` can represent the exact instant and round-trip the
+exact millisecond. Graph `DateTime` values project through
+`toUnixTimestamp(dt) = dt.toMillis()`; the inverse produces the same instant as
+a UTC `DateTime`. A raw int64 outside that exact domain is malformed journal
+state and MUST be rejected during load.
 
 The generation-scoped variants name the exact same-key add which established
 their materialization incarnation. Add and delete variants contain no generation
@@ -132,9 +166,9 @@ author's Lamport-style clock; concurrent authors may use the same numeric
 sequence, and globally comparable identity is
 `JournalEntryId=(sequence,author)`.
 
-For this bound, `n` is the number of current or historic semantic keys represented by the compacted journal, and `r` is the number of distinct durable authors represented by compacted entries or retained causal-context references. The storage model explicitly assumes that maximum serialized `ConstValue` size C, maximum serialized `NodeKey` size K, and maximum direct graph in-degree d are fixed system constants independent of n and r. These are assumptions, not consequences of the contracts: recursively structured `ConstValue` has no intrinsic semantic size bound, the implementation-defined identity-preserving `NodeKey` format does not bound encoding overhead, and a finite graph may have in-degree that grows with n. Bounded C, fixed finite schema arity, and the intended bounded-overhead key encoding are compatible with bounded K, but K is a separate premise.
+For this bound, `n` is the number of current or historic semantic keys represented by the compacted journal, and `r` is the number of distinct durable authors represented by compacted entries or retained causal-context references. The storage model explicitly assumes that maximum serialized `ConstValue` size C, maximum serialized `NodeKey` size K, and maximum direct graph in-degree d are fixed system constants independent of n and r. These are assumptions, not consequences of the contracts: recursively structured `ConstValue` has no intrinsic semantic size bound, the implementation-defined identity-preserving `NodeKey` format does not bound encoding overhead, and a finite graph may have in-degree that grows with n. Bounded C, fixed finite schema arity, and the intended bounded-overhead key encoding are compatible with bounded K, but K is a separate premise. `DatabaseFingerprint` is different: its normative representation is exactly 16 lowercase ASCII letters, so compliant values are bounded by contract.
 
-The journal theorem uses fixed K because journal entries contain keys; it does not use d to count persisted graph relationships, which are outside `J`. Per key, `O(r)` retained validations may each carry `O(r)` context; other journal witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`, asymptotically in n and r. Hidden constants may depend on K, the fixed action classes, and fixed-size `HostFingerprint` / `JournalEntryId` representations. Separately, fixed d bounds the per-node width of dependency/validity and per-input information in the broader persisted graph-state model. No total byte bound for all persisted graph state is claimed because that would also require accounting for `ComputedValue` payload size. A scalar local index does not alter the compacted-journal bound.
+The journal theorem uses fixed K because journal entries contain keys; it does not use d to count persisted graph relationships, which are outside `J`. Per key, `O(r)` retained validations may each carry `O(r)` context; other journal witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`, asymptotically in n and r under fixed K. Hidden constants may depend on K, the fixed action classes, and fixed-width `UnixTimestamp`, sequence, and local-index scalar coordinates. `DatabaseFingerprint` is normatively bounded, and `JournalEntryId` is bounded because it combines a fixed-width sequence with that bounded author. Separately, fixed d bounds the per-node width of dependency/validity and per-input information in the broader persisted graph-state model. No total byte bound for all persisted graph state is claimed because that would also require accounting for `ComputedValue` payload size. A scalar local index does not alter the compacted-journal bound.
 
 **This guarantee applies only to complete canonical compaction.** Ordinary mutations may append immutable entries, and no operation-count-independent bound is promised for an uncompacted physical journal. Compaction may run at any time, after any transaction, during maintenance or synchronization, repeatedly, or be skipped arbitrarily long. Correctness never depends on its timing.
 ## Synchronization projections
@@ -153,15 +187,16 @@ correctness and value-selection guarantees do not apply to such executions;
 implementations need not detect them, and Volodyslav does not detect, repair,
 compensate for, or preserve causality across unsynchronized clocks.
 
-For materialized x in winning add generation G, each author-specific value head
+For materialized x in winning add generation G, define
+`modifiedAtUnix(x)=toUnixTimestamp(graph.timestamps[x].modifiedAt)`. Each author-specific value head
 contains only add G or edits explicitly scoped to G and its `time`
-must match the real graph `modifiedAt`. Wall time orders values; sequence only disambiguates equal times. Value revisions compare `modifiedAt` first. Only when
+must match `modifiedAtUnix(x)`. Wall time orders values; sequence only disambiguates equal times. Value revisions compare `modifiedAtUnix` first. Only when
 multiple provenance events match that same timestamp does sequence-first
 `JournalEntryId=(sequence,author)` select the canonical origin:
 
 ```text
 origin(x,G) = canonicalEvent(x,G)
-ValueRevision(x,G) = [modifiedAt(x), origin(x,G).sequence, origin(x,G).author]
+ValueRevision(x,G) = [modifiedAtUnix(x), origin(x,G).sequence, origin(x,G).author]
 presenceHead(x)  = greatest add/delete by JournalEntryId
 invalidateFrontier(x,G)[A] = greatest invalidate by A scoped to G
 effectiveValidate(V,x,G) iff V alone covers every frontier invalidate by exact-or-later same-author causal reference

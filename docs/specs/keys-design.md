@@ -81,7 +81,7 @@ following properties:
 - stable for the lifetime of that materialized node in storage
 - round-trippable as a nominal type
 - suitable for direct use as persisted key content and as a filesystem path segment
-- matches `/^[0-9a-z]+-[a-z]{9,}$/` (full-string match)
+- matches `/^[0-9a-z]+-[a-z]{16}$/` (full-string match)
 
 ### Format
 
@@ -90,7 +90,8 @@ following properties:
 ```
 
 - The index prefix is a base36 integer (characters `0-9a-z`), no padding or alignment.
-- The fingerprint is a lowercase ASCII string of at least 9 characters (`[a-z]{9,}`).
+- The `DatabaseFingerprint` is exactly 16 lowercase ASCII letters
+  (`[a-z]{16}`).
 - The separator is a single hyphen `-`.
 
 ### Character set
@@ -107,7 +108,7 @@ or any other punctuation besides the single separator hyphen.
 
 ### Format is specification-only
 
-The format regex `/^[0-9a-z]+-[a-z]{9,}$/` is a specification invariant only.
+The format regex `/^[0-9a-z]+-[a-z]{16}$/` is a specification invariant only.
 Runtime code does not validate the documented format at internal conversion
 boundaries. Every identifier in the system originates from `makeNodeIdentifier()`,
 which assembles it from components that are valid by construction (a fingerprint
@@ -118,10 +119,10 @@ internal boundaries would be redundant.
 
 ### Example values
 
-- `1-abcdefghi`
-- `2-abcdefghi`
-- `z-abcdefghi`
-- `10-abcdefghi`
+- `1-abcdefghijklmnop`
+- `2-abcdefghijklmnop`
+- `z-abcdefghijklmnop`
+- `10-abcdefghijklmnop`
 
 ### Allocation
 

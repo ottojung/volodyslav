@@ -16,7 +16,8 @@ never reused; overflow is fatal.
 
 Every `JournalEntry.time` is the actual wall-clock occurrence time of its
 journal event. For add/edit the occurrence is semantic creation/modification, so
-`entry.time == graph.timestamps[key].modifiedAt` in the committed state.
+`entry.time == toUnixTimestamp(graph.timestamps[key].modifiedAt)` in the
+committed state.
 Delete/invalidate/validate record their own event occurrence without changing
 `modifiedAt`.
 

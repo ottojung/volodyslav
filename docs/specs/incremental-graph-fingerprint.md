@@ -7,6 +7,10 @@ database. It serves as the namespace suffix in node identifiers
 (`<base36-index>-<fingerprint>`), making them globally unique across hosts
 even when the same local index values are allocated.
 
+The canonical type name for this existing value is `DatabaseFingerprint`.
+Journal entries use the authoring host's `DatabaseFingerprint` directly; there
+is no journal-specific identity or second storage location.
+
 Each host obtains a distinct fingerprint through a supported lifecycle
 transition (fresh creation). The fingerprint is stored in replica-global
 metadata and is generated once during first database initialization. It never
@@ -63,12 +67,19 @@ onto a new concurrently-writing host" transition.
 
 ## Format
 
-The fingerprint is a lowercase ASCII string of at least 9 characters and is
-runtime validated against the full-string pattern `/^[a-z]{9,}$/`. Any
-persisted fingerprint loaded from active replica metadata, replica-switch
-target metadata, a rendered snapshot used for restore/reset, or the standalone
-snapshot migration path must satisfy this pattern. Missing or malformed values
-fail hard instead of being silently accepted or replaced.
+A `DatabaseFingerprint` is exactly 16 lowercase ASCII letters. Every compliant
+implementation MUST generate, persist, import, and validate the one canonical
+full-string representation `/^[a-z]{16}$/`; fresh creation uses
+`random.basicString(capabilities)` at its fixed default length of 16. The length
+is not configurable.
+
+Every fingerprint loaded from active replica metadata, replica-switch target
+metadata, a rendered snapshot used for restore/reset, or the standalone
+snapshot migration path MUST satisfy this representation. A missing, shorter,
+longer, uppercase, non-ASCII, digit-containing, or otherwise malformed value is
+invalid persistent state and MUST be rejected rather than accepted, replaced,
+or normalized. An implementation with unbounded fingerprint representations is
+non-compliant.
 
 ## Lifecycle
 
@@ -98,7 +109,7 @@ remote hosts during sync/reset. However:
 
 - **Normal sync merge**: A host's staged snapshot may contain a different
   fingerprint. The local active replica keeps its own fingerprint; the
-  remote host fingerprint is not adopted. Merge does not modify the local
+  remote database fingerprint is not adopted. Merge does not modify the local
   fingerprint.
 
 - **Reset/import into existing live DB**: The snapshot may contain a remote

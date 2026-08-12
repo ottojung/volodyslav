@@ -226,6 +226,13 @@ darkroom publication. Different-node pulls may execute concurrently; it does
 not follow that already-pulled different-node semantic values may change
 arbitrarily. No optimistic revision retry is needed.
 
+The bounded verifier includes distinct return and telescope-release steps for
+D, followed by reacquisition after K has consumed D but before K publishes. It
+reaches this second same-node pull after both the first pull's fresh fast path
+and its stale dependency-settling path, and asserts that the second invocation
+can only fast-return the same semantic value consumed by K. Reachability
+counters make these checks non-vacuous.
+
 The alleged `D -> K` counterexample therefore has only this reachable trace:
 
 ```text

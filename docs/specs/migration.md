@@ -1,5 +1,11 @@
 # Incremental Graph Migration
 
+This database-version migration operates within the target journal-enabled
+persistent model after the journal subsystem has been established. Upgrading a
+database created by a pre-journal implementation is an implementation rollout
+concern outside this semantic migration specification; see the journal
+[implementation/rollout scope](../incremental-graph-journal.md#implementationrollout-scope).
+
 This document describes the **migration system** for upgrading incremental-graph database state between application versions.
 
 > Note: this migration flow always performs a replica cutover on success. Even
@@ -230,7 +236,8 @@ compaction witness touch. An independently requested compaction is a separate
 operation governed by the ordinary compaction cursor-coverage rules.
 
 Migration classifies old/new semantic graph states normally. `create` authors
-add with `add.time=createdAt=modifiedAt`; delete and genuine freshness changes
+add with `add.time=toUnixTimestamp(createdAt)=toUnixTimestamp(modifiedAt)`;
+delete and genuine freshness changes
 author their ordinary actions. `keep`, `invalidate`, and semantic-preserving
 `override` create no value event and preserve `modifiedAt`; representation-only
 bytes are not an edit. Each authored entry gets a fresh logical sequence and
