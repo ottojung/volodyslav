@@ -71,6 +71,15 @@ InvalidationContext = Map<DatabaseFingerprint, JournalEntryId>
 JournalEntryId(E) = (E.sequence, E.author)
 ```
 
+`JournalEntry.key` remains exactly the existing `NodeKey` semantic-key type; no
+journal-specific key type or duplicated `{nodeName, bindings}` payload exists.
+The canonical, reversible, and durable key contract is specified in
+[`keys-design.md`](keys-design.md#canonical-reversible-semantic-identity).
+Authoring deeply snapshots the key's semantic contents (or provides equivalent
+alias isolation) and makes the key and every nested array/record immutable for
+the lifetime of the entry. Later mutation of source bindings cannot alter the
+entry. Import preserves the same immutable logical key unchanged.
+
 Entry IDs are ordered lexicographically, sequence first and author second.
 `JournalEntry.time` is always the real wall-clock time at which that journal
 event occurred. For add/edit, that occurrence is the semantic value creation or

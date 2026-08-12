@@ -54,6 +54,25 @@ interface BaselinePossibleNodeChange {
 }
 ```
 
+Every returned `PossibleNodeChange` is reachably immutable, not merely
+compile-time `readonly`. Construction MUST isolate the visible payload from
+mutable query, journal, and caller-owned sources by a deep semantic snapshot or
+by safely sharing an already deeply immutable decoded `JournalEntry.key`. The
+token object, `bindings` array, and every array or record nested anywhere in a
+binding MUST be frozen or otherwise impossible for a caller to mutate. Its
+visible semantic key therefore remains stable permanently. A caller MUST NOT be
+able to mutate retained journal state through a returned token.
+
+Implementation tests MUST attempt at least `change.bindings.push(...)`,
+assignment to `change.bindings[0]`, assignment to a nested record property, and
+`push(...)` on a nested array. Each attempt must fail or have no effect. After
+all attempts, the change still describes its original `NodeKey`, the exact
+token remains valid with its original private cursor registration, retained
+journal history is unchanged, and later queries observe the original semantic
+key. Tests MUST also mutate nested source bindings after authoring a journal key
+and prove that decoding the retained `JournalEntry.key` returns the pre-mutation
+value.
+
 `PossibleNodeChange.time` is the application-facing `DateTime`
 `fromUnixTimestamp(E.time)` for its underlying journal entry E. The conversion
 is exact at millisecond precision, so

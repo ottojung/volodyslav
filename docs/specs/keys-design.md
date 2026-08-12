@@ -16,8 +16,9 @@ node addressing. It describes the model as it is meant to be.
 
 ## Terms
 
-- **NodeKey**: the schema-derived identity of a concrete node instance, based on
-  `(head, args)`
+- **NodeKey**: the canonical semantic identity of a concrete node instance,
+  derived from `(head, args)`; in implementation documents `NodeKeyString`
+  denotes its serialized representation where a string representation is needed
 - **NodeIdentifier**: the deterministic persisted identifier attached to a materialized node
 - **graph-state sublevels**: `values`, `freshness`, `valid`,
   `timestamps`
@@ -158,7 +159,19 @@ This applies to:
 - validity sets are sorted by `NodeIdentifier` (lexicographic), never by `NodeKey`
 - render/scan paths use direct identifier path segments
 - graph-state path encoding/decoding must not reconstruct `NodeKey` values
-- `NodeKeyString` may persist only inside explicit lookup metadata (`identifiers_keys_map`)
+- `NodeKey` and `NodeKeyString` MUST NOT address graph-state sublevels or occur
+  inside graph validity/storage structures
+
+Persistent semantic keys are permitted only in explicit semantic-identity
+metadata whose contract requires them:
+
+- `identifiers_keys_map`, as the materialized-node identity bijection; and
+- immutable `JournalEntry.key`, as retained semantic journal history.
+
+The second location does not make journal entries graph state and does not
+restore key-addressed graph records. In particular, `values[id]`,
+`freshness[id]`, `timestamps[id]`, and `valid[id]` remain exclusively
+`NodeIdentifier`-addressed.
 
 ### Lookup metadata
 
@@ -171,7 +184,10 @@ persisted identity:
 These functions operate on the `/${current_replica}/global/identifiers_keys_map` database value.
 Here `${current_replica}` is the replica name of the current database instance, for example `x` or `y`.
 
-`NodeKeyString` may remain persisted only in this lookup table at `/${current_replica}/global/identifiers_keys_map`.
+Within graph storage, `NodeKeyString` may remain persisted only in this lookup
+table at `/${current_replica}/global/identifiers_keys_map`. The journal's
+separate permitted use is `JournalEntry.key`; it is semantic history rather
+than graph-state addressing.
 
 The map is the materialized-node identity table, with a strict invariant:
 
@@ -209,8 +225,100 @@ Delete removes:
 - `nodeKeyToId(nodeKey)`
 - `nodeIdToKey(id)`
 
+It does not remove retained journal entries carrying that `NodeKey`.
+
 Migration preserves identifiers for `keep`, `override`, and `invalidate`, and allocates
 fresh identifiers for `create` using the same fingerprint/index scheme.
+
+## Canonical, reversible semantic identity
+
+For every valid semantic node instance, a compliant `NodeKey` is self-contained:
+it deterministically recovers the same `NodeName` and binding environment. The
+physical encoding is implementation-defined, but an operation equivalent to
+`decodeNodeKey` MUST satisfy:
+
+```text
+decodeNodeKey(makeNodeKey(nodeName, bindings)) ==semantic
+    { nodeName, bindings }
+```
+
+Semantic equality means the same `NodeName`, equal binding lengths, and
+`isEqual(decoded.bindings[i], bindings[i])` at every position. Decoding MUST NOT
+consult `identifiers_keys_map`, a `NodeIdentifier`, or current materialization
+state.
+
+For any valid node instances A and B:
+
+```text
+A ==semantic B  iff  NodeKey(A) == NodeKey(B)
+```
+
+Thus semantically equal instances produce the same canonical key and
+semantically unequal instances produce different keys, including when bindings
+contain nested arrays or records. Equality here is key-value equality, never
+JavaScript object identity. Journal same-key grouping, per-key history,
+`presenceHead(K)`, `candidateEvents(K)`, `notificationWitness(K)`, and
+compaction coordinates rely on this equivalence.
+
+Once K is persisted in supported journal history, every later supported
+implementation and database migration MUST decode K as exactly the same
+`(nodeName, bindings)`. A migration MUST NOT silently reinterpret K or rewrite
+an immutable `JournalEntry.key` merely because an internal encoding changes.
+Supported future implementations therefore preserve decoding compatibility for
+persisted keys. Deliberately changing the encoding requires a separately
+specified compatibility/versioning mechanism.
+
+Authoring a journal entry MUST take a deep semantic snapshot of its `NodeKey`,
+or otherwise guarantee equivalent isolation, so no caller-owned array or record
+remains a mutable alias. The key and every publicly reachable nested value are
+immutable for the entry's lifetime. Remote import preserves that same logical
+key unchanged.
+
+### De-materialization trace
+
+```text
+K = NodeKey(foo, [{ id: 7 }])
+
+t1:
+    K is materialized
+    identifiers_keys_map contains K <-> N
+    the journal retains E with E.key = K
+
+t2:
+    K is de-materialized
+    graph-state records for N are deleted
+    the identifiers_keys_map entry for K/N is deleted
+    E remains retained
+
+later:
+    possibleMaybeChanges() processes E
+    decodeNodeKey(E.key)
+        -> nodeName = foo
+        -> bindings = [{ id: 7 }]
+```
+
+The last step uses no `NodeIdentifier`, `identifiers_keys_map`, or current graph
+materialization. A `NodeIdentifier` is the storage identity of a materialization
+and may disappear with it; a `NodeKey` is semantic identity and may outlive it
+in journal history. Synchronization may reconcile identifiers without changing
+the key, and `JournalEntry.key` is never derived from a selected identifier.
+
+### Current encoding audit
+
+The current implementation serializes `{head,args}` with JSON. That byte layout
+is not normative. It round-trips ordinary finite numbers, strings, booleans,
+arrays, and records, but it does not yet satisfy the complete contract above:
+
+- record property insertion order affects `JSON.stringify`, although
+  `isEqual` treats records with the same properties as equal, so serialization
+  is not canonical for those values; and
+- the declared `ConstValue` number domain does not exclude `NaN`, positive
+  infinity, or negative infinity. JSON converts these values to `null`, which
+  is not injective and changes semantic identity.
+
+These are implementation gaps to be closed when the target NodeKey contract is
+implemented. They do not narrow or redefine `ConstValue`, and they do not make
+today's JSON representation normative.
 
 ### last_node_index
 
