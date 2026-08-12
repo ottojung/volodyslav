@@ -355,11 +355,14 @@ compatible with bounded d, but d also remains an explicit premise. C, K, F, and 
 are all assumed bounded independently of n and r; no runtime limit is implied.
 
 The normative guarantee remains `size(compact(J)) = O(nr²)`, asymptotically in
-n and r. Journal entries contain `NodeKey` values and causal metadata, so this
-journal-only bound assumes fixed K. Hidden constants may also depend on the
+n and r. Journal entries contain `NodeKey` values, `DatabaseFingerprint`
+authors, and causal metadata, so this
+journal-only bound assumes fixed K and F. Hidden constants may also depend on the
 fixed number of action classes, fixed maximum `DatabaseFingerprint` size F,
-and fixed-width `UnixTimestamp`, sequence, local-index, and `JournalEntryId`
-scalar coordinates. Constant action coordinates use `O(r)`
+and fixed-width `UnixTimestamp`, sequence, and local-index scalar coordinates.
+A `JournalEntryId` is bounded because it combines a fixed-width sequence with a
+`DatabaseFingerprint` bounded by F; it is not a separate fixed-width premise.
+Constant action coordinates use `O(r)`
 entries per key; at most `O(r)` retained validations each carry an `O(r)`
 context, including exact causal references. Other journal witnesses are no
 larger. A scalar local index does not alter the result. The theorem does not
