@@ -67,12 +67,19 @@ onto a new concurrently-writing host" transition.
 
 ## Format
 
-The fingerprint is a lowercase ASCII string of at least 9 characters and is
-runtime validated against the full-string pattern `/^[a-z]{9,}$/`. Any
-persisted fingerprint loaded from active replica metadata, replica-switch
-target metadata, a rendered snapshot used for restore/reset, or the standalone
-snapshot migration path must satisfy this pattern. Missing or malformed values
-fail hard instead of being silently accepted or replaced.
+A `DatabaseFingerprint` is exactly 16 lowercase ASCII letters. Every compliant
+implementation MUST generate, persist, import, and validate the one canonical
+full-string representation `/^[a-z]{16}$/`; fresh creation uses
+`random.basicString(capabilities)` at its fixed default length of 16. The length
+is not configurable.
+
+Every fingerprint loaded from active replica metadata, replica-switch target
+metadata, a rendered snapshot used for restore/reset, or the standalone
+snapshot migration path MUST satisfy this representation. A missing, shorter,
+longer, uppercase, non-ASCII, digit-containing, or otherwise malformed value is
+invalid persistent state and MUST be rejected rather than accepted, replaced,
+or normalized. An implementation with unbounded fingerprint representations is
+non-compliant.
 
 ## Lifecycle
 

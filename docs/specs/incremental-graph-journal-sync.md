@@ -214,12 +214,13 @@ same-time candidates satisfying
 preserves canonical event and ValueRevision, and its canonical closure/ACI proof
 is unchanged. The retained causal contexts still yield the analytical
 `size(compact(J))=O(nr²)` bound in n and r under the journal storage model's
-explicit fixed maximum serialized `NodeKey` size K and fixed maximum serialized
-`DatabaseFingerprint` size F; uncompacted operation history remains unbounded.
+explicit fixed maximum serialized `NodeKey` size K; uncompacted operation
+history remains unbounded. `DatabaseFingerprint` is already bounded by its
+normative 16-character ASCII representation.
 The broader storage model also assumes fixed maximum serialized `ConstValue`
 size C and fixed maximum direct graph in-degree d, but neither is needed to
-count `compact(J)` once K and F are assumed; the dependency/validity state
-governed by d is outside `J`. C, K, F, and d are
+count `compact(J)` once K is assumed; the dependency/validity state governed by
+d is outside `J`. C, K, and d are
 modeling assumptions rather than
 consequences of the semantic types, implementation-defined key contract, or
 graph finiteness.

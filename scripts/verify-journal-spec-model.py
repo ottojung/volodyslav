@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Exhaustive bounded checks for the IncrementalGraph journal specification.
 
-Integer time atoms model ordered/equal millisecond UnixTimestamp values.
+Integer time atoms model valid supported ordered/equal millisecond
+UnixTimestamp values, not arbitrary signed 64-bit persistence values.
 """
 from dataclasses import dataclass
 from itertools import product

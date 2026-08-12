@@ -1,8 +1,8 @@
 /**
- * Persisted allocation fingerprints contain only lowercase ASCII letters and
- * are at least nine characters long.
+ * Persisted allocation fingerprints contain exactly sixteen lowercase ASCII
+ * letters.
  */
-const FINGERPRINT_PATTERN = /^[a-z]{9,}$/;
+const FINGERPRINT_PATTERN = /^[a-z]{16}$/;
 
 /**
  * Thrown when persisted replica or snapshot metadata does not contain a valid
@@ -16,7 +16,7 @@ class InvalidFingerprintError extends Error {
     constructor(context, value) {
         super(
             `Invalid fingerprint in ${context}: expected a string matching ` +
-            `/^[a-z]{9,}$/, got ${JSON.stringify(value)}`
+            `/^[a-z]{16}$/, got ${JSON.stringify(value)}`
         );
         this.name = 'InvalidFingerprintError';
         this.context = context;

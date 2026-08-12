@@ -113,9 +113,13 @@ fingerprint specified by
 [`incremental-graph-fingerprint.md`](specs/incremental-graph-fingerprint.md).
 Locally authored entries use the authoring database's own fingerprint, not the
 fingerprint suffix of the affected node's selected `NodeIdentifier`.
-`UnixTimestamp` is a signed 64-bit integer count of milliseconds since the Unix
-epoch. Graph `DateTime` values project through `toUnixTimestamp(dt) =
-dt.toMillis()`; the inverse produces the same instant as a UTC `DateTime`.
+`UnixTimestamp` uses a signed 64-bit integer count of milliseconds since the
+Unix epoch as its persistent representation. Valid values are the subset for
+which the project `DateTime` can represent the exact instant and round-trip the
+exact millisecond. Graph `DateTime` values project through
+`toUnixTimestamp(dt) = dt.toMillis()`; the inverse produces the same instant as
+a UTC `DateTime`. A raw int64 outside that exact domain is malformed journal
+state and MUST be rejected during load.
 
 The generation-scoped variants name the exact same-key add which established
 their materialization incarnation. Add and delete variants contain no generation
@@ -162,9 +166,9 @@ author's Lamport-style clock; concurrent authors may use the same numeric
 sequence, and globally comparable identity is
 `JournalEntryId=(sequence,author)`.
 
-For this bound, `n` is the number of current or historic semantic keys represented by the compacted journal, and `r` is the number of distinct durable authors represented by compacted entries or retained causal-context references. The storage model explicitly assumes that maximum serialized `ConstValue` size C, maximum serialized `NodeKey` size K, maximum serialized `DatabaseFingerprint` size F, and maximum direct graph in-degree d are fixed system constants independent of n and r. These are assumptions, not consequences of the contracts: recursively structured `ConstValue` has no intrinsic semantic size bound, the implementation-defined identity-preserving `NodeKey` format does not bound encoding overhead, the accepted database-fingerprint format has no intrinsic maximum length, and a finite graph may have in-degree that grows with n. Bounded C, fixed finite schema arity, and the intended bounded-overhead key encoding are compatible with bounded K, but K and F are separate premises.
+For this bound, `n` is the number of current or historic semantic keys represented by the compacted journal, and `r` is the number of distinct durable authors represented by compacted entries or retained causal-context references. The storage model explicitly assumes that maximum serialized `ConstValue` size C, maximum serialized `NodeKey` size K, and maximum direct graph in-degree d are fixed system constants independent of n and r. These are assumptions, not consequences of the contracts: recursively structured `ConstValue` has no intrinsic semantic size bound, the implementation-defined identity-preserving `NodeKey` format does not bound encoding overhead, and a finite graph may have in-degree that grows with n. Bounded C, fixed finite schema arity, and the intended bounded-overhead key encoding are compatible with bounded K, but K is a separate premise. `DatabaseFingerprint` is different: its normative representation is exactly 16 lowercase ASCII letters, so compliant values are bounded by contract.
 
-The journal theorem uses fixed K and F because journal entries contain keys and database-fingerprint authors; it does not use d to count persisted graph relationships, which are outside `J`. Per key, `O(r)` retained validations may each carry `O(r)` context; other journal witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`, asymptotically in n and r under fixed K and F. Hidden constants may depend on K, F, the fixed action classes, and fixed-width `UnixTimestamp`, sequence, and local-index scalar coordinates. A `JournalEntryId` is bounded because it combines a fixed-width sequence with an author bounded by F, not because it is independently fixed-width. Separately, fixed d bounds the per-node width of dependency/validity and per-input information in the broader persisted graph-state model. No total byte bound for all persisted graph state is claimed because that would also require accounting for `ComputedValue` payload size. A scalar local index does not alter the compacted-journal bound.
+The journal theorem uses fixed K because journal entries contain keys; it does not use d to count persisted graph relationships, which are outside `J`. Per key, `O(r)` retained validations may each carry `O(r)` context; other journal witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`, asymptotically in n and r under fixed K. Hidden constants may depend on K, the fixed action classes, and fixed-width `UnixTimestamp`, sequence, and local-index scalar coordinates. `DatabaseFingerprint` is normatively bounded, and `JournalEntryId` is bounded because it combines a fixed-width sequence with that bounded author. Separately, fixed d bounds the per-node width of dependency/validity and per-input information in the broader persisted graph-state model. No total byte bound for all persisted graph state is claimed because that would also require accounting for `ComputedValue` payload size. A scalar local index does not alter the compacted-journal bound.
 
 **This guarantee applies only to complete canonical compaction.** Ordinary mutations may append immutable entries, and no operation-count-independent bound is promised for an uncompacted physical journal. Compaction may run at any time, after any transaction, during maintenance or synchronization, repeatedly, or be skipped arbitrarily long. Correctness never depends on its timing.
 ## Synchronization projections
