@@ -295,7 +295,8 @@ Each logical runtime receiver allocates one fresh private, unforgeable
 cursor-domain identity, unique from every unrelated receiver. It is runtime
 state: not part of `JournalEntry` or durable database state, not an author
 fingerprint, journal clock, or replica name, not remotely replicated, not
-serialized into Git/synchronization state, and not user-accessible. Object
+serialized into durable or replicated synchronization state, and not
+user-accessible. Object
 identity, an unexported symbol retained only inside private runtime state, or an
 equivalent private mechanism may implement it. The identity MUST NOT appear as a
 reflectable property value on a public cursor token.

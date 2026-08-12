@@ -362,10 +362,10 @@ Before journal join or conflict planning, validate each source against its own
 pre-merge journal. Every source materialization MUST resolve its source presence
 generation, a current generation-scoped value event matching its `modifiedAt`,
 and a `ValueRevision` whose event belongs to that generation. Its source
-freshness and validity must agree with the effective-validation barrier for N,G and ordinary graph
-invariants. Failure is corrupt source state and rejects that host merge; it MUST
-NOT be converted into an unusable candidate, absence, or a new destructive
-entry.
+freshness and validity must agree with the effective-validation barrier for N,G
+and ordinary graph invariants. Failure is corrupt source state and rejects that
+source merge; it MUST NOT be converted into an unusable candidate, absence, or a
+new destructive entry.
 
 Different identifiers for the same semantic key are expected, not corruption.
 For a surviving selected candidate, its source identifier is preferred. If the
@@ -406,23 +406,25 @@ Before T can become active, validate all of the following:
 10. both journal watermarks and all local-index uniqueness/inertness invariants
     hold.
 
-Failure of any check aborts that host merge, leaves the active pointer unchanged,
-and exposes no partial target. Graph merge and long validation run in inactive
-storage, not by broadening the active-replica darkroom.
+Failure of any check aborts that source merge, leaves the active pointer
+unchanged, and exposes no partial target. Graph merge and long validation run in
+inactive storage, not by broadening the active-replica darkroom.
 
-### Cutover and sequential hosts
+### Cutover and sequential sources
 
 T becomes active whenever authoritative graph state, logical journal contents,
 or receiver-local entry indexes change; a journal-only import therefore still
 uses durable inactive construction and atomic pointer cutover. Cutover may be
 skipped only when all three are unchanged.
 
-Normal synchronization may process multiple host branches sequentially. Each
-host merge reads the active result of prior successful merges, validates its own
-complete result before cutover, and cleans its staging storage afterward. A
-failed host is recorded and does not roll back successful hosts; processing may
-continue and failures are reported together. This sequential lifecycle does not
-imply multi-host associativity, order independence, or all-to-all communication.
+Normal synchronization may process multiple source snapshots sequentially,
+regardless of how a transport discovers or delivers them. Each source merge
+reads the active result of prior successful merges, validates its own complete
+result before cutover, and cleans its staging storage afterward. A failed source
+is recorded and does not roll back successful sources; processing may continue
+and failures are reported together. This sequential lifecycle does not imply
+multi-source associativity, order independence, or all-to-all communication,
+and it requires no repository, branch, or other transport-specific container.
 
 Controlled reset is not this merge algorithm. Existing-live reset does not join
 the selected source journal. It atomically reconciles only source semantic
