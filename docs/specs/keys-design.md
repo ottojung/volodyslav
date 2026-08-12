@@ -119,10 +119,10 @@ internal boundaries would be redundant.
 
 ### Example values
 
-- `1-abcdefghi`
-- `2-abcdefghi`
-- `z-abcdefghi`
-- `10-abcdefghi`
+- `1-abcdefghijklmnop`
+- `2-abcdefghijklmnop`
+- `z-abcdefghijklmnop`
+- `10-abcdefghijklmnop`
 
 ### Allocation
 

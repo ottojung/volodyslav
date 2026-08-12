@@ -2,7 +2,8 @@
  * Persisted allocation fingerprints contain exactly sixteen lowercase ASCII
  * letters.
  */
-const FINGERPRINT_PATTERN = /^[a-z]{16}$/;
+const DATABASE_FINGERPRINT_LENGTH = 16;
+const FINGERPRINT_PATTERN = new RegExp(`^[a-z]{${DATABASE_FINGERPRINT_LENGTH}}$`);
 
 /**
  * Thrown when persisted replica or snapshot metadata does not contain a valid
@@ -56,6 +57,7 @@ function isInvalidFingerprintError(object) {
 }
 
 module.exports = {
+    DATABASE_FINGERPRINT_LENGTH,
     FINGERPRINT_PATTERN,
     isInvalidFingerprintError,
     isValidFingerprint,

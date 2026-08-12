@@ -242,10 +242,21 @@ describe("synchronizeNoLock", () => {
      * @returns {string}
      */
     function makeDistinctTestFingerprint(localFingerprint, preferred) {
-        return preferred === localFingerprint
-            ? `${preferred}x`
+        const result = preferred === localFingerprint
+            ? `${preferred.slice(0, -1)}${preferred.endsWith('a') ? 'b' : 'a'}`
             : preferred;
+        expect(result).toMatch(/^[a-z]{16}$/);
+        expect(result).not.toBe(localFingerprint);
+        return result;
     }
+
+    test("distinct test fingerprints remain canonical when the preferred value collides", () => {
+        const localFingerprint = 'aaaaaaaaaaaaaaaa';
+        expect(makeDistinctTestFingerprint(localFingerprint, localFingerprint))
+            .toBe('aaaaaaaaaaaaaaab');
+        expect(makeDistinctTestFingerprint(localFingerprint, 'bbbbbbbbbbbbbbbb'))
+            .toBe('bbbbbbbbbbbbbbbb');
+    });
 
     /**
      * Write the local graph scheme and return the local database fingerprint.
@@ -313,7 +324,7 @@ describe("synchronizeNoLock", () => {
         const capabilities = getTestCapabilities();
         const localFingerprint = await writeLocalGraphScheme(capabilities);
         const bobFingerprint = makeDistinctTestFingerprint(localFingerprint, 'bobbobbbbbbbbbbb');
-        const zedFingerprint = makeDistinctTestFingerprint(localFingerprint, 'zedzedzed');
+        const zedFingerprint = makeDistinctTestFingerprint(localFingerprint, 'zedzedzedzedzedz');
         const bobNodeArgs = '{"head":"event","args":["bob"]}';
         const bobNodeIdentifier = 'bobbbbbbbbbbbbbb';
         const bobTimestampsKey = `!x!!timestamps!${bobNodeIdentifier}`;
@@ -345,7 +356,7 @@ describe("synchronizeNoLock", () => {
                     ['!x!!global!version', "incompatible-version"],
                     ['!x!!global!fingerprint', zedFingerprint],
                     ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
-                    ['!x!!global!identifiers_keys_map', [['z-abcdefghi', '{"head":"event","args":["zed"]}']]],
+                    ['!x!!global!identifiers_keys_map', [['z-zedzedzedzedzedz', '{"head":"event","args":["zed"]}']]],
                     ['!x!!global!graph_scheme', graphSchemeJson],
                 ],
             },
@@ -360,6 +371,8 @@ describe("synchronizeNoLock", () => {
 
         expect(isSyncMergeAggregateError(error)).toBe(true);
         expect(error.message).toMatch("Failed to merge generators database branches:\n- zed:");
+        expect(error.message).toContain("version mismatch");
+        expect(error.message).toContain("remote=incompatible-version");
 
         const reopened = await getRootDatabase(capabilities);
         try {

@@ -24,7 +24,10 @@ const {
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
 const { makeNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
-const { requireValidFingerprint } = require('./fingerprint');
+const {
+    DATABASE_FINGERPRINT_LENGTH,
+    requireValidFingerprint,
+} = require('./fingerprint');
 
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
@@ -130,14 +133,14 @@ function assertNeverReplicaName(name) {
 
 /**
  * Database for storing node output values.
- * Key: persisted node identifier (e.g., "1-abcdefghi")
+ * Key: persisted node identifier (e.g., "1-abcdefghijklmnop")
  * Value: the computed value (object with type field)
  * @typedef {GenericDatabase<ComputedValue, NodeIdentifier>} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
- * Key: persisted node identifier (e.g., "1-abcdefghi")
+ * Key: persisted node identifier (e.g., "1-abcdefghijklmnop")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
  * @typedef {GenericDatabase<Freshness, NodeIdentifier>} FreshnessDatabase
  */
@@ -567,7 +570,13 @@ class RootDatabaseClass {
     async writeEmptyIdentifierLookup() {
         await this._computed.globalSublevel.put(IDENTIFIERS_KEY, []);
         await this._computed.globalSublevel.put(LAST_NODE_INDEX_KEY, 0);
-        const fingerprint = random.basicString({ seed: this._seed });
+        const fingerprint = requireValidFingerprint(
+            random.basicString(
+                { seed: this._seed },
+                DATABASE_FINGERPRINT_LENGTH
+            ),
+            'fresh replica fingerprint generation'
+        );
         await this._computed.globalSublevel.put('fingerprint', fingerprint);
         this._computed.fingerprint = fingerprint;
     }
@@ -680,7 +689,13 @@ class RootDatabaseClass {
                 await globalSublevel.put(IDENTIFIERS_KEY, []);
                 await globalSublevel.put(LAST_NODE_INDEX_KEY, 0);
                 if (!fingerprint) {
-                    fingerprint = random.basicString({ seed: this._seed });
+                    fingerprint = requireValidFingerprint(
+                        random.basicString(
+                            { seed: this._seed },
+                            DATABASE_FINGERPRINT_LENGTH
+                        ),
+                        'fresh replica-switch target fingerprint generation'
+                    );
                 }
                 await globalSublevel.put('fingerprint', fingerprint);
             } else {
