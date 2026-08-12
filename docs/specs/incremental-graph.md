@@ -24,7 +24,14 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-07 (NodeInstance):** A specific node identified by a `NodeName` and `BindingEnvironment`. Conceptually: `{ nodeName: NodeName, bindings: BindingEnvironment }`. Notation: `nodeName@bindings`.
 
-**TERM-08 (NodeKey):** A string key used for storage, derived from `(nodeName, bindings)`.
+**TERM-08 (NodeKey):** The canonical semantic identity of one concrete node
+instance, derived from its `NodeName` and `BindingEnvironment`. Two valid node
+instances have equal `NodeKey` values if and only if their `NodeName` values are
+equal and their bindings are position-wise equal under `isEqual`. A `NodeKey`
+is self-contained and reversibly determines that same `NodeName` and
+`BindingEnvironment`. `NodeKeyString` names its serialized string
+representation where persistence or indexing requires one; `NodeIdentifier`
+is instead the persisted storage identity of one materialization.
 
 **TERM-09 (NodeValue):** Computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
 
@@ -41,7 +48,7 @@ A materialization persists across restarts unless an explicit closure-preserving
 
 **TERM-11 (Computor):** Async function: `(inputs: Array<ComputedValue>, oldValue: ComputedValue | undefined, bindings: Array<ConstValue>) => Promise<ComputedValue | Unchanged>`.
 
-**DEF-OUTCOMES-01 (Outcomes Set):** For any schema node definition and arguments `(inputs, oldValue, bindings)`, `Outcomes(nodeName, bindings, inputs, oldValue) ⊆ ComputedValue` (equivalently `Outcomes(NodeInstance, inputs, oldValue)`) represents the set of all semantic values that could be produced by the computor in any permitted execution context. This set may be infinite. `Unchanged` is not part of `Outcomes`—it is an optimization sentinel only. `NodeKey` may be used as a storage key derived from the node instance, but it is not a semantic argument to `Outcomes`.
+**DEF-OUTCOMES-01 (Outcomes Set):** For any schema node definition and arguments `(inputs, oldValue, bindings)`, `Outcomes(nodeName, bindings, inputs, oldValue) ⊆ ComputedValue` (equivalently `Outcomes(NodeInstance, inputs, oldValue)`) represents the set of all semantic values that could be produced by the computor in any permitted execution context. This set may be infinite. `Unchanged` is not part of `Outcomes`—it is an optimization sentinel only. `NodeKey` identifies the node instance but is not a semantic argument to `Outcomes`; storage requiring a serialized key uses `NodeKeyString`.
 
 **DEF-COMP-INVOKE-01 (Computor Invocation):** When the operational semantics "invokes a computor", it nondeterministically selects `r ∈ Outcomes(...)` and treats `r` as the returned value of the Promise. In implementation, this corresponds to executing the computor function, which may produce different results on different invocations for nondeterministic computors.
 

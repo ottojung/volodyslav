@@ -182,7 +182,8 @@ For every qualifying stored entry E:
 
 ```text
 PossibleActions(E) = { add, edit, delete, invalidate, validate }
-PossibleNodeChange.time = E.entry.time
+PossibleNodeChange.time = fromUnixTimestamp(E.entry.time)
+toUnixTimestamp(PossibleNodeChange.time) = E.entry.time
 ```
 
 All five records use E's semantic key and immutable occurrence time. The local

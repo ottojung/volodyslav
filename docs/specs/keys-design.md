@@ -31,7 +31,16 @@ Public concrete-node operations remain `NodeKey`-addressed (`head + args` / `Nod
 
 - Public callers and HTTP routes provide semantic keys (`head + args` / `NodeKey`).
 - At public method entry, `IncrementalGraph` resolves to `NodeIdentifier` immediately.
-- All logic below that boundary (storage, recompute, invalidation propagation, migration, sync, render, scan) is identifier-native.
+- Concrete graph-state and materialization logic below that boundary is
+  identifier-native. This includes storage, recomputation, invalidation
+  propagation, graph migration payloads, synchronization of graph state, and
+  render/scan graph-state paths.
+
+The journal is a distinct semantic-history subsystem. Its logical
+`JournalEntry.key` deliberately remains `NodeKey`, allowing history to be
+grouped by semantic node and projected back to public `nodeName` and `bindings`
+after both the materialization and its `NodeIdentifier` disappear. This is not
+`NodeKey`-addressed graph state.
 
 `nodeKeyToId(nodeKey)` and `nodeIdToKey(id)` are internal/lower-level translation helpers,
 not public `IncrementalGraph` methods and not HTTP API operations.
@@ -45,7 +54,9 @@ await graph.pull(head, args);
 await graph.invalidate(head, args);
 ```
 
-Internal workflow converts once at the boundary, then stays identifier-native.
+Internal graph-state workflow converts once at the boundary, then stays
+identifier-native. Journal authoring may retain the semantic `NodeKey` as the
+entry's immutable logical key.
 
 No mixed model is allowed where storage-layer concrete-node operations remain `NodeKey`-addressed after boundary conversion.
 
@@ -167,6 +178,10 @@ metadata whose contract requires them:
 
 - `identifiers_keys_map`, as the materialized-node identity bijection; and
 - immutable `JournalEntry.key`, as retained semantic journal history.
+
+`JournalEntry.key` has logical type `NodeKey`. Its persistent representation may
+use the implementation's `NodeKeyString` serialization, without making either
+form a graph-state address.
 
 The second location does not make journal entries graph state and does not
 restore key-addressed graph records. In particular, `values[id]`,
@@ -306,19 +321,34 @@ the key, and `JournalEntry.key` is never derived from a selected identifier.
 ### Current encoding audit
 
 The current implementation serializes `{head,args}` with JSON. That byte layout
-is not normative. It round-trips ordinary finite numbers, strings, booleans,
-arrays, and records, but it does not yet satisfy the complete contract above:
+is not normative. Record property order is semantically significant because
+IncrementalGraph `isEqual` compares record keys positionally. A `NodeKey`
+encoding MUST preserve that order and MUST NOT sort record properties if doing
+so would identify records which `isEqual` considers unequal. The current JSON
+representation's preservation of object enumeration order is compatible with
+this part of the contract.
 
-- record property insertion order affects `JSON.stringify`, although
-  `isEqual` treats records with the same properties as equal, so serialization
-  is not canonical for those values; and
-- the declared `ConstValue` number domain does not exclude `NaN`, positive
-  infinity, or negative infinity. JSON converts these values to `null`, which
-  is not injective and changes semantic identity.
+The JSON representation does not yet satisfy the complete contract because the
+declared `ConstValue` number domain does not exclude `NaN`, positive
+infinity, or negative infinity. JSON converts these values to `null`, which
+is not injective and changes semantic identity. `[NaN]`, `[Infinity]`, and
+`[-Infinity]` therefore all serialize with `null` in the corresponding position
+and cannot decode as their original, semantically distinct number values. The
+target contract continues to cover the existing `ConstValue` domain; a later
+encoding must distinguish every valid value losslessly.
 
-These are implementation gaps to be closed when the target NodeKey contract is
-implemented. They do not narrow or redefine `ConstValue`, and they do not make
-today's JSON representation normative.
+There is a separate comparator mismatch in the current implementation:
+`compareConstValue` sorts record keys, and therefore `compareConstValue(a,b) ===
+0` (and potentially `compareNodeKey(a,b) === 0`) can hold for records whose
+property orders make them unequal under normative `isEqual`. `NodeKey` semantic
+equality is defined by IncrementalGraph `isEqual`, not comparator zero. A
+journal implementation MUST NOT use comparator zero as a same-key test unless
+the comparator has first been made consistent with normative semantic equality.
+
+The non-finite-number serialization and comparator-equivalence mismatches are
+implementation gaps to be closed when the target `NodeKey` contract is
+implemented. They do not narrow or redefine `ConstValue`, redefine `isEqual`,
+or make today's JSON representation normative.
 
 ### last_node_index
 

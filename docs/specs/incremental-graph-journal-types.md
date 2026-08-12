@@ -79,6 +79,9 @@ Authoring deeply snapshots the key's semantic contents (or provides equivalent
 alias isolation) and makes the key and every nested array/record immutable for
 the lifetime of the entry. Later mutation of source bindings cannot alter the
 entry. Import preserves the same immutable logical key unchanged.
+Restored or imported entries MUST establish this immutable representation before
+decoded key contents can be shared with public results; already-immutable data
+may be safely shared without an unnecessary additional copy.
 
 Entry IDs are ordered lexicographically, sequence first and author second.
 `JournalEntry.time` is always the real wall-clock time at which that journal
