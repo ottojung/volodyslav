@@ -313,17 +313,7 @@ observing I1.
 
 ### 7. Atomic installation and no-op
 
-Install the joined journal, any newly derived destructive entries, graph result,
-identifier lookup, timestamps, freshness, and validity in one transaction.
-Pure copying authors no add/edit and does not alter `modifiedAt`. Synchronizing
-settled equivalent states performs no graph transition and authors no entry.
-For every key whose graph changes, a newly installed/authored same-key entry
-supplies a fresh local index; otherwise touch the greatest retained same-key
-`notificationWitness`. Touch each changed key once, including every dependent
-changed by deletion closure or propagated invalidation. Touch changes only the
-stored local index and commits atomically with the graph. Settled equivalent
-states learn nothing, author nothing, touch nothing, and advance neither
-watermark.
+Install graph, logical entries, notification records, both allocators, durable high-watermark and coverage frontier atomically. Apply the receiver-to-final and newly-adopted source-to-final coverage rules from the journal sync specification. An imported same-key record above the applicable threshold is sufficient; otherwise append one final-state witness. Raw occurrence receipt is silent. Pure copying authors no add/edit and does not alter `modifiedAt`. Settled equivalent states with no newer source coverage append nothing.
 
 ## Storage, validation, and lifecycle safety
 
@@ -347,9 +337,9 @@ Before planning, synchronization MUST reject atomically:
    reference which is absent, mismatched, or not sequence-earlier than the
    validation;
 7. `localJournalClock` below an observed sequence;
-8. a retained entry missing exactly one unique valid local index;
-9. `localJournalIndexWatermark` below a retained local index; or
-10. any use of local index in logical equality, provenance, or merge.
+8. one notification index naming different immutable contents;
+9. `journalRecordHighWatermark` below a surviving record index; or
+10. non-monotone or invalid cursor-coverage metadata.
 
 When evidence is simultaneously available, an implementation MAY additionally
 reject conflicting immutable content at one `JournalEntryId` or
@@ -403,8 +393,7 @@ Before T can become active, validate all of the following:
 8. every materialized value resolves to the canonical current journal event;
 9. presence and generation-scoped freshness agree with the installed journal
    frontiers; and
-10. both journal watermarks and all local-index uniqueness/inertness invariants
-    hold.
+10. both allocators, the record high-watermark, and monotone cursor-coverage invariants hold.
 
 Failure of any check aborts that source merge, leaves the active pointer
 unchanged, and exposes no partial target. Graph merge and long validation run in
@@ -412,8 +401,7 @@ inactive storage, not by broadening the active-replica darkroom.
 
 ### Cutover and sequential sources
 
-T becomes active whenever authoritative graph state, logical journal contents,
-or receiver-local entry indexes change; a journal-only import therefore still
+T becomes active whenever authoritative graph state, logical journal contents, notification records, high-watermark, or coverage frontier changes; a journal-only import therefore still
 uses durable inactive construction and atomic pointer cutover. Cutover may be
 skipped only when all three are unchanged.
 
@@ -628,9 +616,7 @@ along that path. With finitely many entries and hosts, eventually every host has
 every retained coordinate maximum and current-generation value/freshness
 authority witness. Compaction preserves all projections, so generation-scoped
 value, presence, and freshness frontiers stabilize identically everywhere.
-`localIndex` is semantically inert: changing it affects none of `JournalEntryId`,
-the three heads, canonical event, value revision, generation, admissibility,
-coherence, or graph merge. Only immutable entry contents gossip.
+Notification record order and multiplicity are semantically inert to `JournalEntryId`, the three heads, canonical event, value revision, generation, admissibility, coherence, and graph merge. Immutable entries and records gossip in their distinct layers.
 
 ### D. DAG induction
 
@@ -649,6 +635,4 @@ common frontier and exact coherent proof rule. Thus N stabilizes. Induction
 through the finite DAG establishes equivalent values, presence, freshness,
 timestamps, identifiers up to semantic lookup, and validity relations at every
 host. Settled idempotence then makes every further synchronization a graph no-op.
-Once graph and logical history settle, no entry is learned or compacted and no
-graph key changes. Therefore no touch occurs and receiver-local indexes and
-watermarks also stop changing.
+Once graph, logical history, notification maxima, and coverage propagation settle, raw occurrence receipt is silent and no record, allocator, high-watermark, or frontier changes. Repeated synchronization is a fixed point.

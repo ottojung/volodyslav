@@ -90,11 +90,10 @@ When local live state is absent, Volodyslav first asks whether the synchronizati
 This is **absent-state self-restoration**, not reset of an existing database. It
 restores and validates the authoritative graph together with the durable local
 `DatabaseFingerprint`,
-retained stored journal entries with their receiver-local
-indexes, `localJournalClock`, and `localJournalIndexWatermark`. Absent-state
+logical journal entries, notification records, `localJournalClock`, `localJournalRecordClock`, `journalRecordHighWatermark`, and `cursorCoverageFrontier`. Absent-state
 self-restoration accepts the retained journal representation published by a
 supported synchronization checkpoint whether or not canonical compaction ran
-before that checkpoint. It preserves the collection and its indexes exactly:
+before that checkpoint. It preserves both immutable collections and their coordinates exactly:
 restoration neither requires `J == compact(J)` nor implicitly compacts, authors,
 re-authors, merges, or migrates journal history.
 
@@ -107,10 +106,9 @@ Before installation, restoration validates the ordinary load structure:
   required key, generation, and author;
 - every referenced invalidate sequence precedes its validation sequence;
 - `localJournalClock` covers every retained or otherwise observed sequence;
-- every retained `StoredJournalEntry` has exactly one valid receiver-local
-  index, and retained indexes are unique; and
-- `localJournalIndexWatermark` covers every retained index. Index gaps are
-  allowed.
+- every notification index names one immutable record;
+- the record high-watermark covers every retained record; and
+- the coverage frontier is componentwise valid and its local coordinate covers the high-watermark. Coordinate gaps are allowed.
 
 Canonical compacted form, surviving same-author historical monotonicity
 evidence, and complete diagnosis of unsupported history are not restoration
@@ -120,19 +118,13 @@ canonical does not imply valid, and non-canonical does not imply invalid. A
 supported uncompacted journal remains supported state; manually forged or
 corrupted history remains unsupported even if it happens to be canonical.
 
-Restoration resumes previously emitted durable state. It MUST NOT classify the
-restored graph as an empty-to-restored transition or emit `add` for every
-restored materialization. The new runtime receiver allocates a fresh private
-cursor-domain identity after installing the restored entries, indexes,
-watermark, and host/journal-clock state. Public cursor tokens are
-non-serializable and process-local, so cursors from a destroyed runtime need not
-survive; an artificially retained old token is foreign to the new receiver.
+Restoration resumes previously emitted durable state and MUST NOT classify the restored graph as an empty-to-restored transition. Durable encoded cursors preserve their exact immutable position and authority across restart.
 
 The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable database fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's fresh durable `DatabaseFingerprint` together with persistent `localJournalClock` before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
+If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's fresh durable `DatabaseFingerprint` together with persistent logical and notification allocators, record high-watermark, and local coverage coordinate before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 
@@ -239,17 +231,7 @@ Normal synchronization performs these lifecycle steps:
 
 The merge resolves state according to graph timestamps and dependency semantics, not textual repository merge rules. Locally newer state is retained, remotely newer compatible state may be taken, and affected derived state may be invalidated so that it is recomputed from the merged dependencies. A successful merge preserves graph coherence and does not make a partially constructed target active.
 
-Checkpointing serializes the stable current supported receiver state as it
-exists. Canonical compaction is optional maintenance and is not a prerequisite
-for checkpoint publication, staging, normal open/load, migration, or
-self-restoration. A checkpoint may therefore contain compacted or uncompacted
-retained journal history. In particular, a supported trace may retain
-superseded same-coordinate entries `E1`, `E2`, and `E3`, checkpoint all three,
-and later restore all three with their original local indexes, watermark,
-durable `DatabaseFingerprint`, and
-`localJournalClock`. Restoration accepts that
-state without discarding the entries that a separate `compact(J)` would remove,
-then allocates a fresh runtime cursor domain.
+Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so both logical and notification history may be uncompacted. It preserves immutable coordinates, both allocators, the record high-watermark, coverage frontier, and durable fingerprint exactly. Restoration neither compacts nor renumbers and durable cursors retain meaning.
 
 ### 7.3 Per-host failure behavior
 
@@ -265,14 +247,11 @@ Existing-live controlled reset is an authoritative semantic graph reconciliation
 for a stable receiver snapshot R and structurally valid, schema-compatible source
 snapshot S, its postcondition is `SemanticGraph(reset(R,S)) == SemanticGraph(S)`.
 The semantic target, keyed by `NodeKey`, consists only of materialization
-presence, `ComputedValue`, freshness, and validity relationships. Source journal
-history, host and physical identity, identifiers, timestamps, local clocks,
-indexes, watermarks, and cursor domains are not target state.
+presence, `ComputedValue`, freshness, and validity relationships. Source logical journal history, host and physical identity, identifiers, timestamps, and allocator ownership are not semantic target state.
 
-Reset does **not** join or import the selected source journal. It retains the
-receiver journal and authors receiver-local entries only for committed
+Reset does **not** join source logical history as graph authority. It retains receiver logical authority but imports source notification records, high-watermark and coverage frontier, and authors receiver logical entries only for committed
 before-to-final transitions. Source-history differences alone cause no graph
-write, generation, index, touch, timestamp, clock, watermark, or cursor change.
+write, generation, notification, timestamp, clock, watermark, frontier, or cursor change.
 Absent-state self-restoration is different: it resumes this host's durable
 graph, journal, and clock rather than reconciling an existing live receiver.
 
@@ -387,7 +366,7 @@ A edits K:
 
 B previously observed 10:
     journal merge retains 11 over covered edit 10
-    B stores the unchanged logical entry with a fresh localIndex
+    B imports the unchanged logical entry and its immutable notification record
 ```
 
 The rollback below is invalid because sequence reuse makes the new edit conflict with immutable history:

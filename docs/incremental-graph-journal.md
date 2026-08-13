@@ -140,37 +140,31 @@ is silent and preserves timestamps. Normal synchronization copies existing
 values and provenance instead of authoring add/edit. There is no generic change.
 Graph mutation and its local entries commit atomically.
 
-## Merge and receiver-local cursor position
+## Logical merge and global notification order
 
-```text
-J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
-```
+Logical merge remains `compact(entries(J1) union entries(J2))`, with the existing
+future-union closure, ACI proof, presence generations and causal semantics. The
+logical compacted bound remains `O(nr²)`. Notification state is separate:
+immutable `JournalRecord {index,key,time}` values are globally ordered by
+`JournalIndex=(appendSequence,appender)`, unioned and compacted to the greatest
+record per semantic key. This notification semilattice is independently ACI.
 
-A later entry covers an earlier notification only for the same author, key, and
-action. Canonical compaction retains coordinate maxima, exact winning-generation value witnesses, per-author invalidation frontiers and validation witnesses, causal-reference closure, and referenced adds. Validated same-author context monotonicity and future-union closure make merge commutative, associative, and idempotent. Its fully compacted bound is `O(nr²)`.
+A durable, independent `localJournalRecordClock` allocates append sequences after
+dominating observed remote notification state. A monotone
+`journalRecordHighWatermark` survives deletion, restart, migration and sync. A
+monotone `cursorCoverageFrontier` records which issuing-host snapshots are safe
+to interpret. These notification coordinates never influence logical conflict
+ordering. Fully compacted notifications are `O(n)`, coverage is `O(r)`, and the
+combined compacted bound remains `O(nr²)`; uncompacted history has no
+operation-count-independent bound.
 
-Each retained entry is stored once with one receiver-local `localIndex` in a private, unforgeable cursor domain.
-Import preserves immutable contents and assigns a fresh index only when the
-entry is unknown. Touching changes only that scalar index. It never duplicates
-or re-authors the entry. `possibleMaybeChanges()` expands every qualifying entry
-to all five conservative actions, and compaction touches a surviving same-key
-witness when it removes cursor-visible history. This touch preserves cursor coverage without adding a logical record. The physical uncompacted journal has no operation-count-independent bound.
+A cursor is a durable opaque serialization of an immutable global position plus
+issuer coverage metadata. Querying is read-only and expands each surviving
+record to all five actions. Max-per-key notification compaction is pure deletion:
+it never moves a cursor or high-watermark, and a deleted cursor position is an
+ordinary gap. Cross-host tokens are accepted only after the target's coverage
+frontier reaches their issuing snapshot.
 
-`JournalEntry.sequence` is allocated from `localJournalClock`, replicates
-unchanged, and forms logical identity with `author`. `StoredJournalEntry.localIndex`
-is allocated from the distinct `localJournalIndexWatermark`, never replicates,
-and may move when that receiver touches an existing entry. Each authored event
-has a replicated logical sequence coordinate and each stored entry has a
-receiver-local notification position. The sequence coordinate comes from the
-author's Lamport-style clock; concurrent authors may use the same numeric
-sequence, and globally comparable identity is
-`JournalEntryId=(sequence,author)`.
-
-For this bound, `n` is the number of current or historic semantic keys represented by the compacted journal, and `r` is the number of distinct durable authors represented by compacted entries or retained causal-context references. The storage model explicitly assumes that maximum serialized `ConstValue` size C, maximum serialized `NodeKey` size K, and maximum direct graph in-degree d are fixed system constants independent of n and r. These are assumptions, not consequences of the contracts: recursively structured `ConstValue` has no intrinsic semantic size bound, the implementation-defined identity-preserving `NodeKey` format does not bound encoding overhead, and a finite graph may have in-degree that grows with n. Bounded C, fixed finite schema arity, and the intended bounded-overhead key encoding are compatible with bounded K, but K is a separate premise. `DatabaseFingerprint` is different: its normative representation is exactly 16 lowercase ASCII letters, so compliant values are bounded by contract.
-
-The journal theorem uses fixed K because journal entries contain keys; it does not use d to count persisted graph relationships, which are outside `J`. Per key, `O(r)` retained validations may each carry `O(r)` context; other journal witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`, asymptotically in n and r under fixed K. Hidden constants may depend on K, the fixed action classes, and fixed-width `UnixTimestamp`, sequence, and local-index scalar coordinates. `DatabaseFingerprint` is normatively bounded, and `JournalEntryId` is bounded because it combines a fixed-width sequence with that bounded author. Separately, fixed d bounds the per-node width of dependency/validity and per-input information in the broader persisted graph-state model. No total byte bound for all persisted graph state is claimed because that would also require accounting for `ComputedValue` payload size. A scalar local index does not alter the compacted-journal bound.
-
-**This guarantee applies only to complete canonical compaction.** Ordinary mutations may append immutable entries, and no operation-count-independent bound is promised for an uncompacted physical journal. Compaction may run at any time, after any transaction, during maintenance or synchronization, repeatedly, or be skipped arbitrarily long. Correctness never depends on its timing.
 ## Synchronization projections
 
 All participating hosts in a supported execution share a synchronized real wall
@@ -246,6 +240,6 @@ Detailed normative requirements and proofs are split into:
 
 ## Deliberate API boundaries
 
-Computor invocation deliberately receives no journal or bootstrap cursor. `graph.baselinePossibleNodeChange()` means only before all locally observable history in its cursor domain, not the position at which computation began. No equivalent hidden handle is exposed.
+Computor invocation deliberately receives no journal or bootstrap cursor. `graph.baselinePossibleNodeChange()` is the universal before-all notification position, not the position at which computation began. No equivalent hidden handle is exposed.
 
 A filtered query returning no matching changes exposes no scanned-through cursor. Its prior cursor remains the only continuation and later calls may rescan irrelevant uncompacted history. `possibleMaybeChanges()` promises conservative coverage, not amortized filtered progress.

@@ -75,73 +75,52 @@ migration `keep`/`override`, explicit `invalidate()`, and
 `create(..., "potentially-outdated")` require barriers, while an already-settled
 passive carry does not.
 
-The barrier carries the materialization's exact generation G. Its sequence is reserved from `localJournalClock` after observing the transaction snapshot and is greater than all history observed by the operation. Incoming-proof removal/reassertion, graph state, the immutable barrier, receiver-local index, and watermarks commit atomically in the same darkroom batch. Each repeated explicit hard invalidation authors a fresh barrier: each call independently reasserts that the next pull must invoke the computor. Invalidation propagated by ordinary dependency mechanics may preserve complete validity proofs and continues to author only on its actual fresh→stale transition; such freshness-only propagation does not newly establish hard invalidation.
+The barrier carries the materialization's exact generation G. Its sequence is reserved from `localJournalClock` after observing the transaction snapshot and is greater than all history observed by the operation. Incoming-proof removal/reassertion, graph state, immutable barrier, notification record, allocators, high-watermark, and frontier commit atomically in the same darkroom batch. Each repeated explicit hard invalidation authors a fresh barrier: each call independently reasserts that the next pull must invoke the computor. Invalidation propagated by ordinary dependency mechanics may preserve complete validity proofs and continues to author only on its actual fresh→stale transition; such freshness-only propagation does not newly establish hard invalidation.
 
-## Synchronization emission
+## Notification emission and synchronization coverage
 
-Synchronization invokes no computor and therefore cannot invent a semantic
-`ComputedValue`. Copying or selecting an existing value imports its originating
-`add`/`edit` history unchanged and MUST NOT author an `add` or `edit`. An unknown
-import receives a receiver-local index on its single stored entry.
+Every authored logical entry atomically appends a self-contained record using its
+key and time. A notification-relevant transition not otherwise covered appends
+one final-state same-key witness; this creates no logical event and changes no
+graph timestamp. `Unchanged` is wholly silent.
 
-Synchronization can derive genuinely new conservative facts:
+For synchronization fixed snapshots R (receiver), S (source), and final F, let HR
+and HS be their durable record high-watermarks. Compare the canonical compacted
+logical per-key view plus materialization presence, `ComputedValue` when present,
+freshness, and hard-invalidation/proof-sufficiency state. Identifier-, encoding-,
+timestamp-, and harmless-validity-only differences are excluded.
 
-* deleting incompatible caches or a joined generation for which no valid source
-  carries usable bytes; and
-* invalidating a cache whose freshness proof cannot safely survive.
+For each K where `NotificationView(R,K) != NotificationView(F,K)`, F must contain
+a same-key record above HR. An imported record may satisfy this; otherwise append
+one final witness. If S contributes any strictly newer coverage-frontier
+coordinate, then for each K where `NotificationView(S,K) !=
+NotificationView(F,K)`, F must additionally contain a same-key record above HS.
+Use the greater threshold when both apply. Raise the record allocator above all
+observed high-watermarks before appending. Only after all graph, logical and
+notification effects are ready may coverage advance componentwise and its local
+coordinate be set to the final high-watermark. Everything commits atomically.
 
-For a newly caused delete transition it authors `delete`. For fresh→stale
-demotion or stale→stale proof removal which newly establishes hard invalidation,
-it authors `invalidate` unless the same causal decision installed an exact
-representing barrier. Each such sequence is greater than every entry observed by
-that synchronization operation, and graph/proof state, joined journal, stored
-entry/index, and watermarks are installed atomically. A settled obligation
-already represented by an outstanding retained barrier is propagated, not
-re-authored. Synchronization never synthesizes `validate`; ordinary graph
-revalidation and the existing-live reset rule below are the only supported
-authors.
-
-A synchronization-authored invalidate sets `generation` to the final joined add
-generation whose selected materialization it demotes. It cannot be emitted when
-final presence is absent or the add generation is unresolved.
-
-Logical emission and receiver-local cursor indexing are one stored-journal
-operation. Every newly authored entry receives a distinct increasing
-`localIndex` above the pre-transaction `localJournalIndexWatermark`. Every newly
-installed remote entry does likewise while retaining immutable logical contents.
-Receiving an already-known entry alone does nothing.
-
-For synchronization, compute the compacted logical result and all graph
-transitions first. For each changed semantic key K, a newly installed/authored
-entry for K supplies fresh cursor coverage; otherwise touch the greatest retained
-`notificationWitness(K)` exactly once. This includes every structurally deleted
-or transitively invalidated dependent whose graph state changed. The graph,
-logical entries, local-index changes, and both allocator watermarks commit
-atomically.
-
-Ordinary mutations author exact classifier entries. Several entries for one key
-receive distinct local indexes, and no touch is needed unless some real
-transition lacks a freshly indexed entry. `Unchanged` remains silent.
+Raw record receipt is silent. Synchronizing unchanged S twice adds nothing the
+second time because S contributes no newer frontier and R's view no longer
+changes. In the opposite direction, importing a reconciliation record needs no
+echo when the final state equals its source; only a genuine source-to-final
+difference requires a later record. Therefore quiescent repeated synchronization
+is a fixed point. Synchronization still invokes no computor, copies value
+provenance rather than authoring add/edit, and authors logical delete/invalidate
+only under the existing classifier and hard-invalidation invariant.
 
 ## Controlled-reset reconciliation
 
-Existing-live reset retains receiver journal history and does not join the
-selected source journal. It constructs the complete semantic target atomically,
-then applies its minimal authoritative classifier. Absent-to-present authors add,
-present-to-absent authors delete, and unequal present-to-present authors a fresh
-add generation allocated above all observed receiver history. Equal present
-values author no value event. A reset value event has `add.time` equal to
-reset-time `modifiedAt`; equal values preserve `createdAt` and `modifiedAt`.
-The changed-value generation boundary prevents an already-observed old edit from
-resurrecting through wall-time ordering after later redelivery.
-
-Fresh-to-stale authors invalidate and stale-to-fresh authors a generation-scoped
-validate naming the complete observed receiver frontier. Stale-to-stale proof
-hardening may author the required internal barrier. A newly written hard-stale
-value always receives an invalidate after its value event. Source validity is
-relowered by semantic key onto final receiver identifiers and commits with final
-freshness. No intermediate state emits, and an identical second reset is wholly
-silent, including indexes, clocks, watermarks, touches, and cursors.
+Reset retains receiver-owned logical authority and does not join source logical
+history. It does merge source records, source high-watermark, and source coverage
+frontier, while retaining receiver fingerprint and ownership of both local
+allocators. It raises its record allocator above imported positions and applies
+the same source-to-final coverage rule. Self-contained `(key,time)` payloads can
+cover historical keys even where no source logical witness is retained. Local
+reset add/delete/invalidate/validate entries and their records commit atomically.
+An identical repeated reset is silent after coverage is incorporated. Existing
+presence-generation, timestamp, freshness and causal-validation reset rules are
+unchanged.
 
 ## Reachability invariant
 

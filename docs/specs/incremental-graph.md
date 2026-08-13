@@ -475,13 +475,7 @@ function makeIncrementalGraph(
 
 `PossibleNodeChange` and `BaselinePossibleNodeChange` are opaque nominal public
 types branded at compile time by a module-private, unexported `unique symbol`
-(or an equivalent non-forgeable type declaration). That symbol is not a runtime
-snapshot carrier; cursor authority resides in genuinely private runtime state
-such as a module-private `WeakMap`. The former combines the visible readonly
-`{nodeName, bindings, action, time}` payload with a private immutable cursor
-snapshot; the latter carries a private immutable baseline snapshot. External
-TypeScript callers cannot construct either type structurally, and raw domain,
-local-index, and action-ordinal coordinates are not public. The complete type,
+(or an equivalent non-forgeable type declaration). That symbol is not a runtime snapshot carrier. Cursor authority uses the canonical versioned journal-owned codec and durable opaque metadata. The former combines visible readonly `{nodeName, bindings, action, time}` with an immutable cursor position; the latter is universal baseline authority. External TypeScript callers cannot construct either type structurally, and raw indexes, issuer metadata, watermarks, and ordinals are not ordinary public fields. The complete type,
 snapshot, and runtime-validation contract is in
 `incremental-graph-journal-api.md`.
 
@@ -608,7 +602,7 @@ type Computor = (
 ) => Promise<ComputedValue | Unchanged>;
 ```
 
-**Normative API boundary:** Computor invocation deliberately receives no journal cursor. The runtime exposes neither a computation-position nor bootstrap cursor. `graph.baselinePossibleNodeChange()` means only before all locally observable journal history in this cursor domain; it is not the position at which the invocation started and is not a substitute. No raw journal index, `journalGet`, context object, or hidden graph handle is provided.
+**Normative API boundary:** Computor invocation deliberately receives no journal cursor. The runtime exposes neither a computation-position nor bootstrap cursor. `graph.baselinePossibleNodeChange()` means only at the universal before-all notification position; it is not the position at which the invocation started and is not a substitute. No raw journal index, `journalGet`, context object, or hidden graph handle is provided.
 
 **Note on Return Type:** Computors MAY return `Unchanged` as an optimization sentinel. However, `Unchanged` is NOT part of the semantic `Outcomes` set (see §1.1). When a computor returns `Unchanged`, it is semantically equivalent to returning the current stored value (which must be a `ComputedValue`). The `pull()` operation always returns `Promise<ComputedValue>` — the `Unchanged` sentinel is handled internally and never exposed to callers.
 
@@ -639,7 +633,7 @@ type Computor = (
 | `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 | `MissingTimestampError` | `nodeKey: string` | `getCreationTime`/`getModificationTime` called for a node with no recorded timestamps (public API) |
-| `InvalidPossibleChangeCursorError` | none | `possibleMaybeChanges()` receives a `since` cursor from another receiver cursor domain |
+| `InvalidPossibleChangeCursorError` | none | `possibleMaybeChanges()` receives malformed cursor authority or a token whose issuer coverage is not established |
 
 **REQ-ERR-01 (Error Type Guards):** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value: unknown): value is InvalidExpressionError`).
 
@@ -654,18 +648,18 @@ freshness sublevel. The public journal API consists of:
 
 - `graph.possibleMaybeChanges({ since, to })` — Queries possible node changes since a previously observed position, restricted to nodes matching the given filter. Returns `Promise<Array<PossibleNodeChange>>`. The `since` parameter accepts `PossibleNodeChange | BaselinePossibleNodeChange`; the `to` parameter is a `NodeFilter`. See `docs/specs/incremental-graph-journal-api.md` for the full specification.
 
-- `graph.baselinePossibleNodeChange()` — Returns a receiver-domain-bound opaque
-  `BaselinePossibleNodeChange` sentinel strictly before every real local
-  journal position. When passed as `since` to
-  `graph.possibleMaybeChanges`, scanning starts from the first journal entry.
-  A baseline from another graph rejects with
-  `InvalidPossibleChangeCursorError`. The raw physical `JournalIndex` and private
-  cursor-domain identity are not part of the public API.
+- `graph.baselinePossibleNodeChange()` — Returns the universal opaque before-all
+  sentinel. It needs no issuer coverage and starts scanning at the first
+  surviving notification record.
 
-- `InvalidPossibleChangeCursorError` — Thrown deterministically before scanning
-  when `since` belongs to another receiver cursor domain. It has no additional
-  required fields. Per §3.5, the public
-  `isInvalidPossibleChangeCursorError(value)` guard uses `instanceof`.
+- `possibleChangeTokenToString(token)` and `stringToPossibleChangeToken(string)`
+  provide canonical, versioned, validated durable token conversion without
+  exposing raw indexes or coverage metadata.
+
+- `InvalidPossibleChangeCursorError` — Thrown for malformed authority or when
+  `cursorCoverageFrontier[token.issuedBy]` does not reach the token's issuance
+  high-watermark. The query rejects before scanning and performs no write. Its
+  public type guard uses `instanceof`.
 
 Journal notification has no false negatives for those three dimensions, but it
 may have false positives and collapse repeated occurrences of one exact action.
@@ -740,8 +734,7 @@ freshness action is emitted because freshness did not change. Extending the
 observable surface requires a separate explicit contract change rather than
 broadening an existing action.
 
-The journal type system, emission rules, synchronization model, migration
-interaction and receiver-local stored-entry cursor rules are specified in:
+The journal type system, emission rules, synchronization model, migration interaction and durable global notification/cursor rules are specified in:
 
 ```text
 docs/specs/incremental-graph-journal-types.md
@@ -840,7 +833,7 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 | `listMaterializedNodes()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
 | `getCreationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
 | `getModificationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `possibleMaybeChanges()` | `enterGarden` (shared garden access) | Daytime and nighttime methods; ordinary atomic journal emission and local-index updates; does not acquire `DOME_ACTIVITY_KEY` or darkroom; structural operations excluded by garden; replica cutover serialized via `closeGarden` + `holiday` |
+| `possibleMaybeChanges()` | `enterGarden` (shared garden access) | Daytime and nighttime methods; read-only fixed notification snapshot; never allocates or updates journal state; does not acquire `DOME_ACTIVITY_KEY` or darkroom; structural operations excluded by garden; replica cutover serialized via `closeGarden` + `holiday` |
 | `getSchemas()` | none (in-memory read) | Everything |
 | `getSchemaByHead()` | none (in-memory read) | Everything |
 | `getDbVersion()` | none (in-memory read) | Everything |
