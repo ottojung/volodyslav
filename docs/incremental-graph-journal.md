@@ -101,6 +101,14 @@ InvalidateJournalEntry = GenerationScopedJournalEntryBase & { action: "invalidat
 ValidateJournalEntry = GenerationScopedJournalEntryBase & { action: "validate", clearsInvalidates: InvalidationContext }
 InvalidationContext = Map<DatabaseFingerprint, JournalEntryId>
 JournalEntryId = (sequence, author)
+JournalIndex = (appendSequence, appender)
+JournalRecord = {
+  index: JournalIndex,
+  key: NodeKey,
+  nodeName: NodeName,
+  bindings: BindingEnvironment,
+  time: UnixTimestamp
+}
 ```
 
 `JournalEntry.time` is the real wall-clock occurrence time of every journal
@@ -145,7 +153,7 @@ Graph mutation and its local entries commit atomically.
 Logical merge remains `compact(entries(J1) union entries(J2))`, with the existing
 future-union closure, ACI proof, presence generations and causal semantics. The
 logical compacted bound remains `O(nr²)`. Notification state is separate:
-immutable `JournalRecord {index,key,time}` values are globally ordered by
+immutable `JournalRecord {index,key,nodeName,bindings,time}` values are globally ordered by
 `JournalIndex=(appendSequence,appender)`, unioned and compacted to the greatest
 record per semantic key. This notification semilattice is independently ACI.
 

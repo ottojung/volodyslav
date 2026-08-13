@@ -268,7 +268,13 @@ ordering uses a separate coordinate:
 
 ```text
 JournalIndex = (appendSequence: uint64, appender: DatabaseFingerprint)
-JournalRecord = { index: JournalIndex, key: NodeKey, time: UnixTimestamp }
+JournalRecord = {
+    index: JournalIndex,
+    key: NodeKey,
+    nodeName: NodeName,
+    bindings: BindingEnvironment,
+    time: UnixTimestamp
+}
 ```
 
 Indexes compare lexicographically by append sequence and then appender. They are
@@ -279,12 +285,16 @@ independent. Notification replay cannot affect logical identity, presence,
 `ValueRevision`, conflict resolution, or validation causality.
 
 `JournalRecord` is immutable, self-contained conservative notification evidence,
-not graph authority. It carries no action and need not reference retained
-logical evidence. Its `time` is witness time, not append time. Every query
-projects it to add, edit, delete, invalidate, and validate. A logical entry E is
-notified with `(E.key,E.time)`. A conservative reappend uses the post-operation
-`notificationWitness(K).time`; reset may instead copy the greatest merged
-same-key record's `(key,time)` where no final logical witness is retained.
+not graph authority. It carries the complete semantic address needed to apply a
+`NodeFilter` and construct public results after graph and logical evidence have
+been deleted. `key` MUST equal the implementation's identity-preserving
+`NodeKey(nodeName,bindings)` result; storage-load and merge validation reject a
+mismatch. This does not require `NodeKey` itself to be reversible. The record
+carries no action and need not reference retained logical evidence. Its `time` is
+witness time, not append time. Every query projects it to add, edit, delete,
+invalidate, and validate. A logical entry E is
+notified with `(E.key,E.nodeName,E.bindings,E.time)`. A conservative reappend uses the post-operation
+`notificationWitness(K).time`; reset may instead copy the greatest merged same-key record's `(key,nodeName,bindings,time)` where no final logical witness is retained.
 
 Each writable host durably owns `localJournalRecordClock`. Sequences are never
 reused; gaps are harmless; overflow is fatal. Before appending after remote
@@ -351,7 +361,7 @@ size, so its definition does not establish C. The `NodeKey` format is
 implementation-defined and its identity-preservation contract does not bound
 encoding overhead, so that contract does not establish K. Bounded C, fixed
 finite schema arity, and an intended bounded-overhead key encoding are
-compatible with bounded K, but K remains a separate explicit premise. Every
+compatible with bounded K, but K remains a separate explicit premise. The same fixed finite schema bounds `NodeName` size and binding count; fixed C then bounds the complete `(nodeName,bindings)` address stored redundantly in each notification record. Every
 compliant `DatabaseFingerprint` is exactly 16 lowercase ASCII letters, so its
 serialized payload is normatively bounded rather than assumed. Graph
 finiteness does not establish d because in-degree could grow with n. A fixed

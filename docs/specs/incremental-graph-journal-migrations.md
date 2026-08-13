@@ -45,7 +45,7 @@ genuine freshness changes author their ordinary actions. `keep`, ordinary
 `invalidate`, and semantic-preserving `override` create no value event and
 preserve `modifiedAt`; representation-, identifier-, timestamp-, and harmless
 validity-only changes are silent. `Unchanged` is silent. Every authored logical
-entry uses the host logical clock and atomically appends its `(key,time)` record.
+entry uses the host logical clock and atomically appends its `(key,nodeName,bindings,time)` record.
 Any notification-relevant changed key not already covered by such a record gets
 one final-state record after the pre-migration high-watermark. Aborted inactive
 construction exposes no committed allocator advancement; reserved gaps are

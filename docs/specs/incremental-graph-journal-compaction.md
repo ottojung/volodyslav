@@ -123,8 +123,10 @@ r = number of durable fingerprints represented by compacted logical entries,
 
 The existing fixed C, K, and d assumptions and bounded fingerprint contract
 remain as defined in the types specification. Broadening n and r cannot weaken
-the logical bound proved below: compact logical history is still `O(nr²)`. Fully
-compacted notifications retain at most one bounded record per represented key,
+the logical bound proved below: compact logical history is still `O(nr²)`. Fully compacted notifications retain at most one record per represented key.
+Each record's semantic address is bounded under fixed finite schema arity,
+bounded schema node names, fixed C for every binding `ConstValue`, and fixed K
+for its redundant identity-preserving `NodeKey`; therefore notifications are
 `O(n)`. Coverage and token-verification metadata retain at most one bounded
 coordinate/key per represented fingerprint, `O(r)`; allocators, local signing
 key, and high-watermark are constant-size. Thus, for `r >= 1`, total compacted

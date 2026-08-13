@@ -79,8 +79,7 @@ The barrier carries the materialization's exact generation G. Its sequence is re
 
 ## Notification emission and synchronization coverage
 
-Every authored logical entry atomically appends a self-contained record using its
-key and time. A notification-relevant transition not otherwise covered appends
+Every authored logical entry atomically appends a self-contained record using the operation's semantic address `(key,nodeName,bindings)` and the entry time. The key must equal the identity-preserving key derived from that address. A notification-relevant transition not otherwise covered appends
 one final-state same-key witness; this creates no logical event and changes no
 graph timestamp. `Unchanged` is wholly silent.
 
@@ -113,7 +112,7 @@ only under the existing classifier and hard-invalidation invariant.
 
 Reset retains receiver-owned logical authority and does not join source logical
 history. It does merge source records, source high-watermark, and source coverage frontier and issuer token-verification keys, while retaining receiver fingerprint, local Ed25519 private signing key, and ownership of both local allocators. It raises its record allocator above imported positions and applies
-the same source-to-final coverage rule. Self-contained `(key,time)` payloads can
+the same source-to-final coverage rule. Self-contained `(key,nodeName,bindings,time)` payloads can
 cover historical keys even where no source logical witness is retained. Local
 reset add/delete/invalidate/validate entries and their records commit atomically.
 An identical repeated reset is silent after coverage is incorporated. Existing

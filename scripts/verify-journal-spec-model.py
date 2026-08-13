@@ -535,6 +535,8 @@ class Index:
 class Record:
     index: Index
     key: str
+    node_name: str
+    bindings: tuple[str, ...]
     time: int
 
 @dataclass(frozen=True)
@@ -546,6 +548,8 @@ class Token:
     position: tuple[Index, int]
     issued_by: str
     issued_at_high_watermark: Index
+    signed_payload: str = ""
+    signature: str = ""
 
 @dataclass(frozen=True)
 class NotificationState:
@@ -569,7 +573,14 @@ class InvalidPossibleChangeCursorError(Exception):
 def valid_fingerprint(value):
     return len(value) == 16 and value.isascii() and value.isalpha() and value.islower()
 
+def node_key(node_name, bindings):
+    return node_name + ":" + ",".join(bindings)
+
+def valid_record(record):
+    return record.key == node_key(record.node_name, record.bindings)
+
 def compact_n(records):
+    assert all(valid_record(record) for record in records)
     winners = {}
     for record in records:
         if record.key not in winners or record.index > winners[record.key].index:
@@ -584,6 +595,11 @@ def projections(records, cursor=(BASE, -1), keys=None):
                  if keys is None or r.key in keys
                  for ordinal, action in enumerate(ACTIONS)
                  if (r.index, ordinal) > cursor)
+
+def issue_token(record, ordinal, issuer, high):
+    """Derive every public field from a self-contained surviving record."""
+    return Token(record.node_name, record.bindings, ACTIONS[ordinal], record.time,
+                 (record.index, ordinal), issuer, high)
 
 def token_payload(token):
     index, ordinal = token.position
@@ -611,7 +627,7 @@ def canonical_uint64(value):
         raise InvalidPossibleChangeCursorError
     return result
 
-def token_from_string(value, verification_keys):
+def token_from_string(value):
     fields = value.split("|")
     if len(fields) != 12 or fields[0] != "v1":
         raise InvalidPossibleChangeCursorError
@@ -628,15 +644,16 @@ def token_from_string(value, verification_keys):
             raise InvalidPossibleChangeCursorError
         if index > high or not valid_fingerprint(high.appender):
             raise InvalidPossibleChangeCursorError
-        public_key = verification_keys[issuer]
-        if (public_key, "|".join(fields[:11]), fields[11]) not in SIGNATURE_ORACLE:
-            raise InvalidPossibleChangeCursorError
-        return Token(node_name, bindings, action, time, (index, ordinal), issuer, high)
+        return Token(node_name, bindings, action, time, (index, ordinal), issuer, high,
+                     "|".join(fields[:11]), fields[11])
     except (KeyError, ValueError, IndexError):
         raise InvalidPossibleChangeCursorError
 
 def query_n(state, token, keys=None):
     if token.position[0] > token.issued_at_high_watermark:
+        raise InvalidPossibleChangeCursorError
+    public_key = dict(state.verification_keys).get(token.issued_by)
+    if (public_key, token.signed_payload, token.signature) not in SIGNATURE_ORACLE:
         raise InvalidPossibleChangeCursorError
     if dict(state.coverage).get(token.issued_by, BASE) < token.issued_at_high_watermark:
         raise InvalidPossibleChangeCursorError
@@ -663,7 +680,11 @@ def synchronize(receiver, source, final_views):
     for key, threshold in thresholds.items():
         if not any(r.key == key and r.index > threshold for r in merged):
             clock = max(clock, threshold.sequence) + 1
-            merged.add(Record(Index(clock, receiver.host), key, clock))
+            witnesses = [record for record in merged if record.key == key]
+            if not witnesses: raise AssertionError("notification view lacks semantic address witness")
+            witness = max(witnesses, key=lambda record: record.index)
+            merged.add(Record(Index(clock, receiver.host), key, witness.node_name,
+                              witness.bindings, witness.time))
     high = max(receiver.high, source.high, max((r.index for r in merged), default=BASE))
     coverage = dict(receiver.coverage)
     for host, watermark in source.coverage: coverage[host] = max(coverage.get(host, BASE), watermark)
@@ -677,12 +698,12 @@ def synchronize(receiver, source, final_views):
         receiver.signing_key, tuple(sorted(final_views)))
 
 # Positional stability, gaps, ordinals, and notification ACI/deletion transparency.
-records = frozenset(Record(Index(n, FP_A), key, n) for n, key in ((10,"K"),(20,"B"),(30,"C"),(40,"D")))
-old_cursor = (Index(10, FP_A), 4); compacted = compact_n(records | {Record(Index(50,FP_A),"K",10)})
-assert [r.key for r,o,a in projections(compacted, old_cursor) if o == 0] == ["B","C","D","K"]
+records = frozenset(Record(Index(n, FP_A), node_key("node-" + key.lower(), ()), "node-" + key.lower(), (), n) for n, key in ((10,"K"),(20,"B"),(30,"C"),(40,"D")))
+old_cursor = (Index(10, FP_A), 4); compacted = compact_n(records | {Record(Index(50,FP_A), node_key("node-k", ()), "node-k", (), 10)})
+assert [r.node_name for r,o,a in projections(compacted, old_cursor) if o == 0] == ["node-b","node-c","node-d","node-k"]
 assert projections(compacted, (Index(11,FP_A),4))
-assert [a for r,o,a in projections({Record(Index(10,FP_A),"K",10)}, (Index(10,FP_A),1))] == list(ACTIONS[2:])
-universe = tuple(Record(Index(i,a),k,i) for i,a,k in ((1,FP_A,"K"),(2,FP_A,"K"),(2,FP_B,"L"),(3,FP_A,"L")))
+assert [a for r,o,a in projections({Record(Index(10,FP_A), node_key("node-k", ()), "node-k", (), 10)}, (Index(10,FP_A),1))] == list(ACTIONS[2:])
+universe = tuple(Record(Index(i,a),node_key("node-" + k.lower(), ()),"node-" + k.lower(),(),i) for i,a,k in ((1,FP_A,"K"),(2,FP_A,"K"),(2,FP_B,"L"),(3,FP_A,"L")))
 sets = [frozenset(universe[i] for i in range(4) if mask & (1<<i)) for mask in range(16)]
 compaction_checks = deletion_checks = 0
 for n in sets:
@@ -699,9 +720,11 @@ for a in sets:
     for c in sets: assert merge_n(merge_n(a,b),c) == merge_n(a,merge_n(b,c))
 
 # Authenticated codec and every normative impossible-token rejection.
-a = make_state(FP_A, [Record(Index(100,FP_A),"K",50)], [("K","source")])
-token = Token("node", ("binding",), "validate", 50, (Index(100,FP_A),4), FP_A, a.high)
-encoded = model_sign(token, a.signing_key); decoded = token_from_string(encoded, dict(a.verification_keys)); assert decoded == token
+a = make_state(FP_A, [Record(Index(100,FP_A), node_key("node-k", ()), "node-k", (), 50)], [(node_key("node-k", ()),"source")])
+source_record = next(record for record in a.records if record.key == node_key("node-k", ()))
+token = issue_token(source_record, 4, FP_A, a.high)
+assert (token.node_name, token.bindings, token.action, token.time) == (source_record.node_name, source_record.bindings, "validate", source_record.time)
+encoded = model_sign(token, a.signing_key); decoded = token_from_string(encoded); assert decoded.node_name == token.node_name and decoded.bindings == token.bindings and decoded.action == token.action and decoded.time == token.time and decoded.position == token.position and decoded.issued_by == token.issued_by and decoded.issued_at_high_watermark == token.issued_at_high_watermark
 invalid_tokens = [
     Token("node", (), "validate", 50, (Index(100,FP_A),5),FP_A,a.high),
     Token("node", (), "validate", 50, (Index(UINT64_MAX+1,FP_A),4),FP_A,Index(UINT64_MAX+1,FP_A)),
@@ -713,35 +736,36 @@ invalid_token_checks = 0
 for invalid in invalid_tokens:
     try:
         fabricated = model_sign(invalid, a.signing_key)
-        token_from_string(fabricated, dict(a.verification_keys))
+        token_from_string(fabricated)
         raise AssertionError("invalid token accepted")
     except (InvalidPossibleChangeCursorError, KeyError):
         invalid_token_checks += 1
-tampered = encoded.replace("|100|", "|099|", 1)
-try: token_from_string(tampered, dict(a.verification_keys)); raise AssertionError("tampered token accepted")
+tampered = encoded.replace("|100|", "|99|", 1)
+tampered_token = token_from_string(tampered)
+try: query_n(a, tampered_token); raise AssertionError("tampered token accepted")
 except InvalidPossibleChangeCursorError: invalid_token_checks += 1
 
 # Coverage, sync, high-watermark, restart, and graph-silent controlled reset.
-b0 = make_state(FP_B, [Record(Index(90,FP_B),"K",40)], [("K","receiver")])
+b0 = make_state(FP_B, [Record(Index(90,FP_B), node_key("node-k", ()), "node-k", (), 40)], [(node_key("node-k", ()),"receiver")])
 try: query_n(b0, decoded); raise AssertionError("uncovered token accepted")
 except InvalidPossibleChangeCursorError: pass
-b_equal = synchronize(b0,a,(("K","source"),)); assert query_n(b_equal,decoded) == ()
-b_diff = synchronize(b0,a,(("K","final-B"),)); assert query_n(b_diff,decoded)
-assert any(r.key == "K" and r.index > a.high for r in b_diff.records)
-source150 = make_state(FP_A,[Record(Index(150,FP_A),"K",50)],[("K","source")])
-assert max(r.index for r in synchronize(b0,source150,(("K","source"),)).records if r.key=="K") == Index(150,FP_A)
-assert synchronize(b_diff,a,(("K","final-B"),)) == b_diff
+b_equal = synchronize(b0,a,((node_key("node-k", ()),"source"),)); assert query_n(b_equal,decoded) == ()
+b_diff = synchronize(b0,a,((node_key("node-k", ()),"final-B"),)); assert query_n(b_diff,decoded)
+assert any(r.key == node_key("node-k", ()) and r.index > a.high for r in b_diff.records)
+source150 = make_state(FP_A,[Record(Index(150,FP_A), node_key("node-k", ()), "node-k", (), 50)],[(node_key("node-k", ()),"source")])
+assert max(r.index for r in synchronize(b0,source150,((node_key("node-k", ()),"source"),)).records if r.key==node_key("node-k", ())) == Index(150,FP_A)
+assert synchronize(b_diff,a,((node_key("node-k", ()),"final-B"),)) == b_diff
 # Full public payload and hidden authority round-trip without consulting the record.
 recordless_restored = NotificationState(a.host,frozenset(),a.clock,a.high,a.coverage,a.verification_keys,a.signing_key,a.views)
-round_tripped = token_from_string(encoded,dict(recordless_restored.verification_keys))
+round_tripped = token_from_string(encoded)
 assert (round_tripped.node_name, round_tripped.bindings, round_tripped.action, round_tripped.time) == (token.node_name, token.bindings, token.action, token.time)
 assert round_tripped.position == token.position and query_n(recordless_restored,round_tripped) == ()
 restored = NotificationState(a.host,a.records,a.clock,a.high,a.coverage,a.verification_keys,a.signing_key,a.views)
-assert query_n(restored,token_from_string(encoded,dict(restored.verification_keys))) == query_n(a,decoded)
+assert query_n(restored,token_from_string(encoded)) == query_n(a,decoded)
 # Once foreign lineage is covered, local append, compaction, and restart preserve it.
 foreign_covered = b_equal
 local_clock = max(foreign_covered.clock, foreign_covered.high.sequence) + 1
-local_record = Record(Index(local_clock, FP_B), "L", 60)
+local_record = Record(Index(local_clock, FP_B), node_key("node-l", ()), "node-l", (), 60)
 foreign_coverage = dict(foreign_covered.coverage); foreign_coverage[FP_B] = local_record.index
 foreign_covered = NotificationState(FP_B, foreign_covered.records | {local_record}, local_clock,
     local_record.index, tuple(sorted(foreign_coverage.items())), foreign_covered.verification_keys,
@@ -754,13 +778,13 @@ foreign_covered = NotificationState(FP_B, foreign_covered.records, foreign_cover
     foreign_covered.signing_key, foreign_covered.views)
 assert dict(foreign_covered.coverage)[FP_A] >= token.issued_at_high_watermark
 assert query_n(foreign_covered, decoded) == query_n(foreign_covered, round_tripped)
-reset_receiver = make_state(FP_R,[],[("K","source")]) # graph already equal
-reset_final = synchronize(reset_receiver,a,(("K","source"),))
+reset_receiver = make_state(FP_R,[],[(node_key("node-k", ()),"source")]) # graph already equal
+reset_final = synchronize(reset_receiver,a,((node_key("node-k", ()),"source"),))
 assert reset_final.views == reset_receiver.views and dict(reset_final.coverage)[FP_A] >= a.high
-assert query_n(reset_final,decoded) == () and synchronize(reset_final,a,(("K","source"),)) == reset_final
-high_state = make_state(FP_A,[Record(Index(500,FP_A),"K",1),Record(Index(600,FP_A),"K",2)],[("K","A")])
+assert query_n(reset_final,decoded) == () and synchronize(reset_final,a,((node_key("node-k", ()),"source"),)) == reset_final
+high_state = make_state(FP_A,[Record(Index(500,FP_A), node_key("node-k", ()), "node-k", (), 1),Record(Index(600,FP_A), node_key("node-k", ()), "node-k", (), 2)],[(node_key("node-k", ()),"A")])
 high_state = NotificationState(FP_A,compact_n(high_state.records),600,high_state.high,high_state.coverage,high_state.verification_keys,high_state.signing_key,high_state.views)
-replayed = synchronize(high_state,make_state(FP_C,[Record(Index(50,FP_C),"K",1)],[("K","C")]),(("K","C"),))
+replayed = synchronize(high_state,make_state(FP_C,[Record(Index(50,FP_C), node_key("node-k", ()), "node-k", (), 1)],[(node_key("node-k", ()),"C")]),((node_key("node-k", ()),"C"),))
 assert max(r.index for r in replayed.records) > Index(600,FP_A)
 
 # Exhaust transition words and preserve every action obligation through later
@@ -774,16 +798,18 @@ for word in product(ops, repeat=4):
         before = state
         if op in ("appendK","appendL","appendM","migrationK","migrationL","resetK","resetL"):
             key = "L" if op in ("appendL","migrationL","resetL") else ("M" if op == "appendM" else "K")
-            clock = max(state.clock,state.high.sequence)+1; record=Record(Index(clock,FP_A),key,clock)
+            record_key = node_key("node-" + key.lower(), ())
+            clock = max(state.clock,state.high.sequence)+1; record=Record(Index(clock,FP_A),node_key("node-" + key.lower(), ()),"node-" + key.lower(),(),clock)
             coverage = dict(state.coverage); coverage[state.host] = record.index
             state = NotificationState(FP_A,state.records|{record},clock,record.index,
                 tuple(sorted(coverage.items())),state.verification_keys,state.signing_key,state.views)
-            obligations += [(cursor,key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
+            obligations += [(cursor,record_key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
         elif op in ("syncK","syncL"):
             key = "L" if op == "syncL" else "K"
-            source = make_state(FP_B,[Record(Index(max(1,state.high.sequence+1),FP_B),key,1)],[(key,"remote")])
-            state = synchronize(state,source,((key,"remote"),))
-            obligations += [(cursor,key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
+            record_key = node_key("node-" + key.lower(), ())
+            source = make_state(FP_B,[Record(Index(max(1,state.high.sequence+1),FP_B),node_key("node-" + key.lower(), ()),"node-" + key.lower(),(),1)],[(record_key,"remote")])
+            state = synchronize(state,source,((record_key,"remote"),))
+            obligations += [(cursor,record_key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
         elif op == "compact":
             state = NotificationState(state.host,compact_n(state.records),state.clock,state.high,state.coverage,state.verification_keys,state.signing_key,state.views)
         elif op == "restart":
