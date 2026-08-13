@@ -15,7 +15,7 @@ localJournalClock
 localJournalRecordClock
 journalRecordHighWatermark
 cursorCoverageFrontier
-cursor-token signing key and verification-key registry
+local Ed25519 private signing key and public verification-key registry
 ```
 
 It does not renumber records or change immutable contents. Before cutover it

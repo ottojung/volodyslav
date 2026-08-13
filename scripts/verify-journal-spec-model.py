@@ -7,7 +7,6 @@ UnixTimestamp values, not arbitrary signed 64-bit persistence values.
 from dataclasses import dataclass
 from itertools import product
 import hashlib
-import hmac
 
 ACTIONS = ("add", "edit", "delete", "invalidate", "validate")
 
@@ -540,6 +539,10 @@ class Record:
 
 @dataclass(frozen=True)
 class Token:
+    node_name: str
+    bindings: tuple[str, ...]
+    action: str
+    time: int
     position: tuple[Index, int]
     issued_by: str
     issued_at_high_watermark: Index
@@ -556,7 +559,9 @@ class NotificationState:
     views: tuple[tuple[str, str], ...] = ()
 
 BASE = Index(0, "")
-KEYS = {FP_A: "key-a", FP_B: "key-b", FP_C: "key-c", FP_R: "key-r"}
+PRIVATE_KEYS = {FP_A: "private-a", FP_B: "private-b", FP_C: "private-c", FP_R: "private-r"}
+PUBLIC_KEYS = {FP_A: "public-a", FP_B: "public-b", FP_C: "public-c", FP_R: "public-r"}
+SIGNATURE_ORACLE = set()
 
 class InvalidPossibleChangeCursorError(Exception):
     pass
@@ -582,14 +587,21 @@ def projections(records, cursor=(BASE, -1), keys=None):
 
 def token_payload(token):
     index, ordinal = token.position
-    return "|".join(("v1", str(index.sequence), index.appender, str(ordinal),
-                     token.issued_by, str(token.issued_at_high_watermark.sequence),
+    return "|".join(("v1", token.node_name, ",".join(token.bindings), token.action,
+                     str(token.time), str(index.sequence), index.appender,
+                     str(ordinal), token.issued_by,
+                     str(token.issued_at_high_watermark.sequence),
                      token.issued_at_high_watermark.appender))
 
-def token_string(token, signing_key):
+def model_sign(token, private_key):
+    """Register an abstract Ed25519 signature; cryptography is outside this model."""
     payload = token_payload(token)
-    tag = hmac.new(signing_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return payload + "|" + tag
+    issuer = token.issued_by
+    if PRIVATE_KEYS[issuer] != private_key:
+        raise InvalidPossibleChangeCursorError
+    signature = hashlib.sha512((private_key + "\0" + payload).encode()).hexdigest()
+    SIGNATURE_ORACLE.add((PUBLIC_KEYS[issuer], payload, signature))
+    return payload + "|" + signature
 
 def canonical_uint64(value):
     if not value or (len(value) > 1 and value[0] == "0") or not value.isascii() or not value.isdecimal():
@@ -601,24 +613,25 @@ def canonical_uint64(value):
 
 def token_from_string(value, verification_keys):
     fields = value.split("|")
-    if len(fields) != 8 or fields[0] != "v1":
+    if len(fields) != 12 or fields[0] != "v1":
         raise InvalidPossibleChangeCursorError
     try:
-        sequence = canonical_uint64(fields[1]); ordinal = int(fields[3])
-        high_sequence = canonical_uint64(fields[5])
-        index = Index(sequence, fields[2]); high = Index(high_sequence, fields[6])
-        issuer = fields[4]
-        if fields[3] != str(ordinal) or not 0 <= ordinal < len(ACTIONS):
+        node_name, bindings, action = fields[1], tuple(filter(None, fields[2].split(","))), fields[3]
+        time = canonical_uint64(fields[4]); sequence = canonical_uint64(fields[5])
+        ordinal = int(fields[7]); high_sequence = canonical_uint64(fields[9])
+        index = Index(sequence, fields[6]); high = Index(high_sequence, fields[10]); issuer = fields[8]
+        if not node_name or "|" in node_name or fields[7] != str(ordinal) or not 0 <= ordinal < len(ACTIONS):
+            raise InvalidPossibleChangeCursorError
+        if action not in ACTIONS or action != ACTIONS[ordinal]:
             raise InvalidPossibleChangeCursorError
         if not valid_fingerprint(index.appender) or not valid_fingerprint(issuer):
             raise InvalidPossibleChangeCursorError
-        if index > high or high.appender == "" or not valid_fingerprint(high.appender):
+        if index > high or not valid_fingerprint(high.appender):
             raise InvalidPossibleChangeCursorError
-        key = verification_keys[issuer]
-        expected = hmac.new(key.encode(), "|".join(fields[:7]).encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected, fields[7]):
+        public_key = verification_keys[issuer]
+        if (public_key, "|".join(fields[:11]), fields[11]) not in SIGNATURE_ORACLE:
             raise InvalidPossibleChangeCursorError
-        return Token((index, ordinal), issuer, high)
+        return Token(node_name, bindings, action, time, (index, ordinal), issuer, high)
     except (KeyError, ValueError, IndexError):
         raise InvalidPossibleChangeCursorError
 
@@ -633,7 +646,7 @@ def make_state(host, records=(), views=()):
     records = frozenset(records); high = max((r.index for r in records), default=BASE)
     return NotificationState(host, records,
         max((r.index.sequence for r in records), default=0), high,
-        ((host, high),), ((host, KEYS[host]),), KEYS[host], tuple(sorted(views)))
+        ((host, high),), ((host, PUBLIC_KEYS[host]),), PRIVATE_KEYS[host], tuple(sorted(views)))
 
 def synchronize(receiver, source, final_views):
     merged = set(receiver.records | source.records)
@@ -687,20 +700,23 @@ for a in sets:
 
 # Authenticated codec and every normative impossible-token rejection.
 a = make_state(FP_A, [Record(Index(100,FP_A),"K",50)], [("K","source")])
-token = Token((Index(100,FP_A),4), FP_A, a.high)
-encoded = token_string(token, a.signing_key); decoded = token_from_string(encoded, dict(a.verification_keys)); assert decoded == token
+token = Token("node", ("binding",), "validate", 50, (Index(100,FP_A),4), FP_A, a.high)
+encoded = model_sign(token, a.signing_key); decoded = token_from_string(encoded, dict(a.verification_keys)); assert decoded == token
 invalid_tokens = [
-    Token((Index(100,FP_A),5),FP_A,a.high),
-    Token((Index(UINT64_MAX+1,FP_A),4),FP_A,Index(UINT64_MAX+1,FP_A)),
-    Token((Index(101,FP_A),4),FP_A,a.high),
-    Token((Index(100,"bad"),4),FP_A,a.high),
-    Token((Index(100,FP_A),4),"bad",a.high),
+    Token("node", (), "validate", 50, (Index(100,FP_A),5),FP_A,a.high),
+    Token("node", (), "validate", 50, (Index(UINT64_MAX+1,FP_A),4),FP_A,Index(UINT64_MAX+1,FP_A)),
+    Token("node", (), "validate", 50, (Index(101,FP_A),4),FP_A,a.high),
+    Token("node", (), "validate", 50, (Index(100,"bad"),4),FP_A,a.high),
+    Token("node", (), "validate", 50, (Index(100,FP_A),4),"bad",a.high),
 ]
 invalid_token_checks = 0
 for invalid in invalid_tokens:
-    fabricated = token_string(invalid, a.signing_key)
-    try: token_from_string(fabricated, dict(a.verification_keys)); raise AssertionError("invalid token accepted")
-    except InvalidPossibleChangeCursorError: invalid_token_checks += 1
+    try:
+        fabricated = model_sign(invalid, a.signing_key)
+        token_from_string(fabricated, dict(a.verification_keys))
+        raise AssertionError("invalid token accepted")
+    except (InvalidPossibleChangeCursorError, KeyError):
+        invalid_token_checks += 1
 tampered = encoded.replace("|100|", "|099|", 1)
 try: token_from_string(tampered, dict(a.verification_keys)); raise AssertionError("tampered token accepted")
 except InvalidPossibleChangeCursorError: invalid_token_checks += 1
@@ -715,8 +731,29 @@ assert any(r.key == "K" and r.index > a.high for r in b_diff.records)
 source150 = make_state(FP_A,[Record(Index(150,FP_A),"K",50)],[("K","source")])
 assert max(r.index for r in synchronize(b0,source150,(("K","source"),)).records if r.key=="K") == Index(150,FP_A)
 assert synchronize(b_diff,a,(("K","final-B"),)) == b_diff
+# Full public payload and hidden authority round-trip without consulting the record.
+recordless_restored = NotificationState(a.host,frozenset(),a.clock,a.high,a.coverage,a.verification_keys,a.signing_key,a.views)
+round_tripped = token_from_string(encoded,dict(recordless_restored.verification_keys))
+assert (round_tripped.node_name, round_tripped.bindings, round_tripped.action, round_tripped.time) == (token.node_name, token.bindings, token.action, token.time)
+assert round_tripped.position == token.position and query_n(recordless_restored,round_tripped) == ()
 restored = NotificationState(a.host,a.records,a.clock,a.high,a.coverage,a.verification_keys,a.signing_key,a.views)
 assert query_n(restored,token_from_string(encoded,dict(restored.verification_keys))) == query_n(a,decoded)
+# Once foreign lineage is covered, local append, compaction, and restart preserve it.
+foreign_covered = b_equal
+local_clock = max(foreign_covered.clock, foreign_covered.high.sequence) + 1
+local_record = Record(Index(local_clock, FP_B), "L", 60)
+foreign_coverage = dict(foreign_covered.coverage); foreign_coverage[FP_B] = local_record.index
+foreign_covered = NotificationState(FP_B, foreign_covered.records | {local_record}, local_clock,
+    local_record.index, tuple(sorted(foreign_coverage.items())), foreign_covered.verification_keys,
+    foreign_covered.signing_key, foreign_covered.views)
+foreign_covered = NotificationState(FP_B, compact_n(foreign_covered.records), foreign_covered.clock,
+    foreign_covered.high, foreign_covered.coverage, foreign_covered.verification_keys,
+    foreign_covered.signing_key, foreign_covered.views)
+foreign_covered = NotificationState(FP_B, foreign_covered.records, foreign_covered.clock,
+    foreign_covered.high, foreign_covered.coverage, foreign_covered.verification_keys,
+    foreign_covered.signing_key, foreign_covered.views)
+assert dict(foreign_covered.coverage)[FP_A] >= token.issued_at_high_watermark
+assert query_n(foreign_covered, decoded) == query_n(foreign_covered, round_tripped)
 reset_receiver = make_state(FP_R,[],[("K","source")]) # graph already equal
 reset_final = synchronize(reset_receiver,a,(("K","source"),))
 assert reset_final.views == reset_receiver.views and dict(reset_final.coverage)[FP_A] >= a.high
@@ -738,8 +775,9 @@ for word in product(ops, repeat=4):
         if op in ("appendK","appendL","appendM","migrationK","migrationL","resetK","resetL"):
             key = "L" if op in ("appendL","migrationL","resetL") else ("M" if op == "appendM" else "K")
             clock = max(state.clock,state.high.sequence)+1; record=Record(Index(clock,FP_A),key,clock)
+            coverage = dict(state.coverage); coverage[state.host] = record.index
             state = NotificationState(FP_A,state.records|{record},clock,record.index,
-                ((FP_A,record.index),),state.verification_keys,state.signing_key,state.views)
+                tuple(sorted(coverage.items())),state.verification_keys,state.signing_key,state.views)
             obligations += [(cursor,key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
         elif op in ("syncK","syncL"):
             key = "L" if op == "syncL" else "K"
@@ -756,6 +794,10 @@ for word in product(ops, repeat=4):
             # covering record; otherwise a later same-key all-actions record exists.
             assert any(r.key == key and (r.index,ACTIONS.index(action)) > cursor for r in state.records)
             obligations_checked += 1
+        old_coverage, new_coverage = dict(before.coverage), dict(state.coverage)
+        assert all(new_coverage.get(host, BASE) >= watermark for host, watermark in old_coverage.items())
+        assert new_coverage[state.host] == state.high
+        assert set(new_coverage) <= set(dict(state.verification_keys))
         assert state.high >= max((r.index for r in state.records),default=BASE)
         prefixes_checked += 1
     words_checked += 1
@@ -780,6 +822,9 @@ print(f"notification compaction pair checks: {compaction_checks}")
 print(f"notification associative merge triples: {len(sets) ** 3}")
 print(f"deletion-transparency cursor/filter checks: {deletion_checks}")
 print(f"authenticated invalid-token rejection checks: {invalid_token_checks}")
+print("full-payload recordless round-trip checks: 1")
+print("foreign-coverage append/compact/restart persistence traces: 1")
+print(f"componentwise coverage/key-metadata prefix checks: {prefixes_checked}")
 print(f"notification transition words checked: {words_checked}")
 print(f"notification transition prefixes checked: {prefixes_checked}")
 print(f"action-specific obligation checks: {obligations_checked}")

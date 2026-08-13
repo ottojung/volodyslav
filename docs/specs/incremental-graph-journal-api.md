@@ -21,6 +21,7 @@ false negatives are forbidden.
 ordinary public fields. Internally a non-baseline token contains:
 
 ```text
+visible payload = { nodeName, bindings, action, time }
 position = (JournalIndex, actionOrdinal)
 issuedBy = querying receiver's DatabaseFingerprint
 issuedAtHighWatermark = fixed snapshot's journalRecordHighWatermark
@@ -30,16 +31,33 @@ issuedAtHighWatermark = fixed snapshot's journalRecordHighWatermark
 edit, delete, invalidate, validate. Baseline is a universal before-all position
 and needs no issuer coverage.
 
-The journal-owned string codec is canonical, versioned, authenticated by the
-issuing journal's durable signing key, validated on decode, and durable across
-restart. The receiver verifies the authentication tag with the unique issuer key
-transported alongside that issuer's coverage lineage. A caller who merely knows
-the encoding cannot create cursor authority; changing any authenticated field
-rejects. It preserves the exact position, issuer and issuance
-high-watermark without exposing them as ordinary token fields. Malformed strings, invalid authentication tags,
-plain structural fabrications, clones without authority, and unknown versions
-reject with `InvalidPossibleChangeCursorError`; a legitimate encoded and decoded
-token retains full authority. Runtime object identity is not authority.
+The journal-owned string codec preserves and authenticates the complete token:
+version, visible payload, immutable position, issuer, and issuance high-watermark.
+`nodeName`, `bindings`, and `time` use their existing canonical project codecs;
+`action` uses its canonical closed-action spelling. Decode therefore reconstructs
+the same public `PossibleNodeChange`, without consulting a `JournalRecord` which
+may no longer exist. Normatively:
+
+```text
+stringToPossibleChangeToken(possibleChangeTokenToString(change))
+    has exactly change.nodeName, change.bindings, change.action, change.time
+    and exactly change's hidden position, issuedBy, issuedAtHighWatermark
+```
+
+The format is versioned and uses Ed25519: each durable issuer owns a 32-byte
+private signing key which never replicates and a matching 32-byte public
+verification key which travels with its coverage lineage. The signature is the
+canonical 64-byte Ed25519 signature over a domain-separation prefix and every
+canonical encoded field. Keys and signatures use unpadded base64url, rejecting
+non-canonical encodings. A fingerprint maps to exactly one public key in
+supported state. Only the issuer can mint authority; synchronized receivers can
+verify but cannot sign as that issuer.
+
+Malformed strings, invalid signatures, structural fabrications, unknown versions,
+or changed visible/hidden fields reject with
+`InvalidPossibleChangeCursorError`. A legitimate encoded and decoded token
+retains its complete payload and authority across restart. Runtime object
+identity is not authority.
 
 A cursor is an immutable cut in global notification order. It never follows a
 logical entry or notification record. A token for `(I,ordinal)` forever means
@@ -58,11 +76,10 @@ issuedAtHighWatermark.appendSequence is uint64
 position.index.appender is a valid DatabaseFingerprint
 issuedBy is a valid DatabaseFingerprint
 position.index <= issuedAtHighWatermark
-issuer authentication verifies over every encoded field, including version
+issuer Ed25519 signature verifies over the domain prefix and every encoded field, including the complete visible payload and version
 ```
 
-Integer parsing rejects signs, overflow, alternate non-canonical spellings, and
-trailing data. Baseline has exactly one canonical encoding and carries no
+Integer parsing rejects signs, overflow, alternate non-canonical spellings, and trailing data. Payload decoding validates the exact runtime shapes and canonical encodings required by `NodeName`, `BindingEnvironment`, the action union, and `DateTime`. Baseline has exactly one canonical encoding and carries no
 position or issuer metadata. A parseable string which fails any condition has no
 authority and raises `InvalidPossibleChangeCursorError`. These conditions make
 `P.index <= HA` a checked token invariant rather than an assumption of the

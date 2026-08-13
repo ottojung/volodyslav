@@ -90,7 +90,7 @@ When local live state is absent, Volodyslav first asks whether the synchronizati
 This is **absent-state self-restoration**, not reset of an existing database. It
 restores and validates the authoritative graph together with the durable local
 `DatabaseFingerprint`,
-logical journal entries, notification records, `localJournalClock`, `localJournalRecordClock`, `journalRecordHighWatermark`, `cursorCoverageFrontier`, and durable cursor-token signing/verification keys. Absent-state
+logical journal entries, notification records, `localJournalClock`, `localJournalRecordClock`, `journalRecordHighWatermark`, `cursorCoverageFrontier`, and durable local Ed25519 private signing key and public verification-key registry. Absent-state
 self-restoration accepts the retained journal representation published by a
 supported synchronization checkpoint whether or not canonical compaction ran
 before that checkpoint. It preserves both immutable collections and their coordinates exactly:
@@ -124,7 +124,7 @@ The supported source is the host's current synchronized state, not an arbitrary 
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's fresh durable `DatabaseFingerprint` together with persistent logical and notification allocators, record high-watermark, local coverage coordinate, and local cursor-token signing/verification key pair before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
+If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's fresh durable `DatabaseFingerprint` together with persistent logical and notification allocators, record high-watermark, local coverage coordinate, and local Ed25519 private/public cursor-token key pair before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 

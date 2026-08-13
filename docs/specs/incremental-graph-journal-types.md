@@ -257,9 +257,9 @@ localJournalRecordClock: uint64
 journalRecordHighWatermark: Baseline | JournalIndex
 cursorCoverageFrontier:
     Map<DatabaseFingerprint, Baseline | JournalIndex>
-localCursorTokenSigningKey: CursorTokenSigningKey
+localCursorTokenSigningKey: Ed25519PrivateKey
 cursorTokenVerificationKeys:
-    Map<DatabaseFingerprint, CursorTokenVerificationKey>
+    Map<DatabaseFingerprint, Ed25519PublicKey>
 ```
 
 `JournalEntry.sequence`, allocated from `localJournalClock`, is the replicated
@@ -307,9 +307,7 @@ after every commit. Coordinate `frontier[H]=W` proves this receiver can interpre
 tokens issued by H at a high-watermark no greater than W. Notification records
 and coverage frontiers replicate; the matching issuer verification-key mapping
 travels with every represented frontier lineage. A fingerprint associated with
-two different verification keys is corrupted/unsupported state. The local
-signing key and its matching verification key are durable across restart and
-migration. Logical equality ignores notification multiplicity and token-key
+two different verification keys is corrupted/unsupported state. The local 32-byte Ed25519 private key and matching 32-byte public key are durable across restart and migration. Private keys never replicate; only public verification keys do. Logical equality ignores notification multiplicity and token-key
 metadata.
 
 At every supported commit: every logical ID and notification index names one
