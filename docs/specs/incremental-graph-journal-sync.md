@@ -326,9 +326,7 @@ Receiver continuity requires a same-key record above HR whenever R's view differ
 from F. A merged source record above HR is sufficient. Source portability is
 required only when S contributes a newer coverage coordinate; then each key whose
 S view differs from F needs a record above HS. The greater threshold satisfies
-both. The allocator first dominates observed high-watermarks. Records, graph,
-logical entries, allocator, high-watermark, and componentwise frontier advance
-commit atomically.
+both. The allocator first dominates observed high-watermarks. Records, graph, logical entries, allocator, high-watermark, componentwise frontier advance, and newly adopted issuer verification keys commit atomically. A key conflict for one durable issuer fingerprint is corrupted state.
 
 Trace: receiver watermark 100 receives old K evidence and changes K; absent a
 merged K record above 100 it appends K above 100. Conversely source record K@150

@@ -257,6 +257,9 @@ localJournalRecordClock: uint64
 journalRecordHighWatermark: Baseline | JournalIndex
 cursorCoverageFrontier:
     Map<DatabaseFingerprint, Baseline | JournalIndex>
+localCursorTokenSigningKey: CursorTokenSigningKey
+cursorTokenVerificationKeys:
+    Map<DatabaseFingerprint, CursorTokenVerificationKey>
 ```
 
 `JournalEntry.sequence`, allocated from `localJournalClock`, is the replicated
@@ -302,15 +305,19 @@ cursorCoverageFrontier[localFingerprint] == journalRecordHighWatermark
 
 after every commit. Coordinate `frontier[H]=W` proves this receiver can interpret
 tokens issued by H at a high-watermark no greater than W. Notification records
-and coverage frontiers replicate; logical equality ignores notification
-multiplicity.
+and coverage frontiers replicate; the matching issuer verification-key mapping
+travels with every represented frontier lineage. A fingerprint associated with
+two different verification keys is corrupted/unsupported state. The local
+signing key and its matching verification key are durable across restart and
+migration. Logical equality ignores notification multiplicity and token-key
+metadata.
 
 At every supported commit: every logical ID and notification index names one
 immutable content; appenders are valid durable fingerprints and never reuse a
 sequence; both watermark and frontier are monotone; the local record clock
 dominates every observed sequence required before its next append; each local
 notification-relevant transition has a same-key record after the old
-high-watermark; newly adopted cursor lineage is covered before its frontier
+high-watermark; newly adopted cursor lineage and its authenticated verification key are covered before its frontier
 advances; notification compaction retains each represented key's greatest
 record; gaps are valid; logical semantics ignore notification order and
 multiplicity; and cursor queries do not mutate state. Violations are
@@ -327,10 +334,11 @@ Synchronization never advances `modifiedAt` merely because bytes were copied.
 For storage analysis:
 
 ```text
-n = number of current or historic semantic node keys represented by the
-    compacted journal
-r = number of distinct durable authors represented by compacted entries or
-    retained causal-context references
+n = number of current or historic semantic node keys represented by either the
+    compacted logical journal or compacted notification journal
+r = number of durable fingerprints represented by compacted logical entries,
+    retained causal-context references, cursorCoverageFrontier, or the
+    cursor-token verification-key registry
 a = 5 journal actions, a fixed constant
 C = maximum serialized size of one ConstValue, a fixed system constant
 K = maximum serialized size of one NodeKey, a fixed system constant

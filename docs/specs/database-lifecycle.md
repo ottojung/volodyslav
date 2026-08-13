@@ -90,7 +90,7 @@ When local live state is absent, Volodyslav first asks whether the synchronizati
 This is **absent-state self-restoration**, not reset of an existing database. It
 restores and validates the authoritative graph together with the durable local
 `DatabaseFingerprint`,
-logical journal entries, notification records, `localJournalClock`, `localJournalRecordClock`, `journalRecordHighWatermark`, and `cursorCoverageFrontier`. Absent-state
+logical journal entries, notification records, `localJournalClock`, `localJournalRecordClock`, `journalRecordHighWatermark`, `cursorCoverageFrontier`, and durable cursor-token signing/verification keys. Absent-state
 self-restoration accepts the retained journal representation published by a
 supported synchronization checkpoint whether or not canonical compaction ran
 before that checkpoint. It preserves both immutable collections and their coordinates exactly:
@@ -124,7 +124,7 @@ The supported source is the host's current synchronized state, not an arbitrary 
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's fresh durable `DatabaseFingerprint` together with persistent logical and notification allocators, record high-watermark, and local coverage coordinate before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
+If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's fresh durable `DatabaseFingerprint` together with persistent logical and notification allocators, record high-watermark, local coverage coordinate, and local cursor-token signing/verification key pair before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 
@@ -231,7 +231,7 @@ Normal synchronization performs these lifecycle steps:
 
 The merge resolves state according to graph timestamps and dependency semantics, not textual repository merge rules. Locally newer state is retained, remotely newer compatible state may be taken, and affected derived state may be invalidated so that it is recomputed from the merged dependencies. A successful merge preserves graph coherence and does not make a partially constructed target active.
 
-Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so both logical and notification history may be uncompacted. It preserves immutable coordinates, both allocators, the record high-watermark, coverage frontier, and durable fingerprint exactly. Restoration neither compacts nor renumbers and durable cursors retain meaning.
+Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so both logical and notification history may be uncompacted. It preserves immutable coordinates, both allocators, the record high-watermark, coverage frontier, cursor-token key material, and durable fingerprint exactly. Restoration neither compacts nor renumbers and durable cursors retain meaning.
 
 ### 7.3 Per-host failure behavior
 
@@ -249,9 +249,18 @@ snapshot S, its postcondition is `SemanticGraph(reset(R,S)) == SemanticGraph(S)`
 The semantic target, keyed by `NodeKey`, consists only of materialization
 presence, `ComputedValue`, freshness, and validity relationships. Source logical journal history, host and physical identity, identifiers, timestamps, and allocator ownership are not semantic target state.
 
-Reset does **not** join source logical history as graph authority. It retains receiver logical authority but imports source notification records, high-watermark and coverage frontier, and authors receiver logical entries only for committed
-before-to-final transitions. Source-history differences alone cause no graph
-write, generation, notification, timestamp, clock, watermark, frontier, or cursor change.
+Reset does **not** join source logical history as graph authority. It retains
+receiver logical authority and authors receiver logical entries only for
+committed before-to-final semantic transitions. Differences solely in source
+logical history cause no graph transition or receiver logical entry.
+
+Notification infrastructure is independent of logical authority. Reset merges
+source notification records, source high-watermark, source coverage frontier,
+and issuer token-verification metadata even when the semantic graph is already
+equal. Thus a graph-silent reset may still change notification records,
+high-watermark, frontier, verification registry, or notification allocator. Once
+those maxima and coordinates are incorporated, repeating the identical reset is
+silent.
 Absent-state self-restoration is different: it resumes this host's durable
 graph, journal, and clock rather than reconciling an existing live receiver.
 

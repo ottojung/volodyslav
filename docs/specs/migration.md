@@ -208,7 +208,7 @@ If no previous version is found, the migration is a no-op.
 
 Migration preserves logical entries, notification records, `localJournalClock`,
 `localJournalRecordClock`, `journalRecordHighWatermark`,
-`cursorCoverageFrontier`, and the durable fingerprint without renumbering. It
+`cursorCoverageFrontier`, cursor-token signing/verification keys, and the durable fingerprint without renumbering. It
 accepts supported uncompacted state and does not implicitly compact. Durable
 tokens preserve meaning across cutover and restart.
 

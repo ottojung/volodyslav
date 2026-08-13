@@ -17,8 +17,7 @@ false negatives are forbidden.
 ## Opaque durable cursor tokens
 
 `PossibleNodeChange` exposes only `nodeName`, `bindings`, `action`, and `time`.
-`BaselinePossibleNodeChange` exposes no coordinate. Both remain nominal,
-non-user-constructible abstractions; raw indexes and authority metadata are not
+`BaselinePossibleNodeChange` exposes no coordinate. Both remain nominal and structurally non-constructible through the typed object API; raw indexes and authority metadata are not
 ordinary public fields. Internally a non-baseline token contains:
 
 ```text
@@ -31,9 +30,13 @@ issuedAtHighWatermark = fixed snapshot's journalRecordHighWatermark
 edit, delete, invalidate, validate. Baseline is a universal before-all position
 and needs no issuer coverage.
 
-The journal-owned string codec is canonical, versioned, validated on decode and
-durable across restart. It preserves the exact position, issuer and issuance
-high-watermark without exposing them as ordinary token fields. Malformed strings,
+The journal-owned string codec is canonical, versioned, authenticated by the
+issuing journal's durable signing key, validated on decode, and durable across
+restart. The receiver verifies the authentication tag with the unique issuer key
+transported alongside that issuer's coverage lineage. A caller who merely knows
+the encoding cannot create cursor authority; changing any authenticated field
+rejects. It preserves the exact position, issuer and issuance
+high-watermark without exposing them as ordinary token fields. Malformed strings, invalid authentication tags,
 plain structural fabrications, clones without authority, and unknown versions
 reject with `InvalidPossibleChangeCursorError`; a legitimate encoded and decoded
 token retains full authority. Runtime object identity is not authority.
@@ -45,7 +48,27 @@ same-key record is appended. Queries compare coordinates directly and MUST NOT
 look up evidence to derive where a cursor is now. Missing positions are ordinary
 gaps.
 
-Before interpreting a non-baseline position, the receiver requires:
+Before coverage comparison, decoding a non-baseline token MUST establish all of
+these conditions:
+
+```text
+0 <= actionOrdinal < 5
+position.index.appendSequence is uint64
+issuedAtHighWatermark.appendSequence is uint64
+position.index.appender is a valid DatabaseFingerprint
+issuedBy is a valid DatabaseFingerprint
+position.index <= issuedAtHighWatermark
+issuer authentication verifies over every encoded field, including version
+```
+
+Integer parsing rejects signs, overflow, alternate non-canonical spellings, and
+trailing data. Baseline has exactly one canonical encoding and carries no
+position or issuer metadata. A parseable string which fails any condition has no
+authority and raises `InvalidPossibleChangeCursorError`. These conditions make
+`P.index <= HA` a checked token invariant rather than an assumption of the
+cross-host theorem.
+
+Before interpreting a validated non-baseline position, the receiver requires:
 
 ```text
 cursorCoverageFrontier[token.issuedBy] >= token.issuedAtHighWatermark

@@ -343,7 +343,7 @@ release construction locks
 No path reverses this order. Exclusive synchronization, migration and reset keep
 their existing inactive-construction phases. The darkroom remains short: work is
 prepared first, allocator values are reserved under their mutex, and final graph,
-logical entries, notification records, high-watermark, and coverage frontier are
+logical entries, notification records, high-watermark, coverage frontier, and newly adopted issuer verification keys are
 committed atomically under darkroom finalization. Aborted reservations leave
 harmless gaps. This does not widen the darkroom or weaken dome/telescope
 serialization.

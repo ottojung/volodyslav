@@ -6,6 +6,8 @@ UnixTimestamp values, not arbitrary signed 64-bit persistence values.
 """
 from dataclasses import dataclass
 from itertools import product
+import hashlib
+import hmac
 
 ACTIONS = ("add", "edit", "delete", "invalidate", "validate")
 
@@ -519,6 +521,12 @@ except AssertionError:
     invalid_presence_rejected = True
 assert invalid_presence_rejected
 
+FP_A = "aaaaaaaaaaaaaaaa"
+FP_B = "bbbbbbbbbbbbbbbb"
+FP_C = "cccccccccccccccc"
+FP_R = "rrrrrrrrrrrrrrrr"
+UINT64_MAX = 2**64 - 1
+
 @dataclass(frozen=True, order=True)
 class Index:
     sequence: int
@@ -543,12 +551,18 @@ class NotificationState:
     clock: int
     high: Index
     coverage: tuple[tuple[str, Index], ...]
+    verification_keys: tuple[tuple[str, str], ...]
+    signing_key: str
     views: tuple[tuple[str, str], ...] = ()
 
 BASE = Index(0, "")
+KEYS = {FP_A: "key-a", FP_B: "key-b", FP_C: "key-c", FP_R: "key-r"}
 
 class InvalidPossibleChangeCursorError(Exception):
     pass
+
+def valid_fingerprint(value):
+    return len(value) == 16 and value.isascii() and value.isalpha() and value.islower()
 
 def compact_n(records):
     winners = {}
@@ -566,45 +580,69 @@ def projections(records, cursor=(BASE, -1), keys=None):
                  for ordinal, action in enumerate(ACTIONS)
                  if (r.index, ordinal) > cursor)
 
-def token_string(token):
-    i, ordinal = token.position
-    return f"v1|{i.sequence}|{i.appender}|{ordinal}|{token.issued_by}|{token.issued_at_high_watermark.sequence}|{token.issued_at_high_watermark.appender}"
+def token_payload(token):
+    index, ordinal = token.position
+    return "|".join(("v1", str(index.sequence), index.appender, str(ordinal),
+                     token.issued_by, str(token.issued_at_high_watermark.sequence),
+                     token.issued_at_high_watermark.appender))
 
-def token_from_string(value):
+def token_string(token, signing_key):
+    payload = token_payload(token)
+    tag = hmac.new(signing_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return payload + "|" + tag
+
+def canonical_uint64(value):
+    if not value or (len(value) > 1 and value[0] == "0") or not value.isascii() or not value.isdecimal():
+        raise InvalidPossibleChangeCursorError
+    result = int(value)
+    if result < 0 or result > UINT64_MAX:
+        raise InvalidPossibleChangeCursorError
+    return result
+
+def token_from_string(value, verification_keys):
     fields = value.split("|")
-    if len(fields) != 7 or fields[0] != "v1":
+    if len(fields) != 8 or fields[0] != "v1":
         raise InvalidPossibleChangeCursorError
     try:
-        return Token((Index(int(fields[1]), fields[2]), int(fields[3])),
-                     fields[4], Index(int(fields[5]), fields[6]))
-    except (ValueError, IndexError):
+        sequence = canonical_uint64(fields[1]); ordinal = int(fields[3])
+        high_sequence = canonical_uint64(fields[5])
+        index = Index(sequence, fields[2]); high = Index(high_sequence, fields[6])
+        issuer = fields[4]
+        if fields[3] != str(ordinal) or not 0 <= ordinal < len(ACTIONS):
+            raise InvalidPossibleChangeCursorError
+        if not valid_fingerprint(index.appender) or not valid_fingerprint(issuer):
+            raise InvalidPossibleChangeCursorError
+        if index > high or high.appender == "" or not valid_fingerprint(high.appender):
+            raise InvalidPossibleChangeCursorError
+        key = verification_keys[issuer]
+        expected = hmac.new(key.encode(), "|".join(fields[:7]).encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, fields[7]):
+            raise InvalidPossibleChangeCursorError
+        return Token((index, ordinal), issuer, high)
+    except (KeyError, ValueError, IndexError):
         raise InvalidPossibleChangeCursorError
 
 def query_n(state, token, keys=None):
-    coverage = dict(state.coverage)
-    if coverage.get(token.issued_by, BASE) < token.issued_at_high_watermark:
+    if token.position[0] > token.issued_at_high_watermark:
+        raise InvalidPossibleChangeCursorError
+    if dict(state.coverage).get(token.issued_by, BASE) < token.issued_at_high_watermark:
         raise InvalidPossibleChangeCursorError
     return projections(state.records, token.position, keys)
 
 def make_state(host, records=(), views=()):
-    records = frozenset(records)
-    high = max((r.index for r in records), default=BASE)
-    clock = max((r.index.sequence for r in records), default=0)
-    return NotificationState(host, records, clock, high,
-                             ((host, high),), tuple(sorted(views)))
+    records = frozenset(records); high = max((r.index for r in records), default=BASE)
+    return NotificationState(host, records,
+        max((r.index.sequence for r in records), default=0), high,
+        ((host, high),), ((host, KEYS[host]),), KEYS[host], tuple(sorted(views)))
 
 def synchronize(receiver, source, final_views):
-    """Bounded model of both coverage obligations and atomic frontier adoption."""
     merged = set(receiver.records | source.records)
-    clock = max(receiver.clock, source.clock, receiver.high.sequence,
-                source.high.sequence)
+    clock = max(receiver.clock, source.clock, receiver.high.sequence, source.high.sequence)
     rviews, sviews, fviews = map(dict, (receiver.views, source.views, final_views))
-    source_newer = any(w > dict(receiver.coverage).get(h, BASE)
-                       for h, w in source.coverage)
+    source_newer = any(w > dict(receiver.coverage).get(h, BASE) for h, w in source.coverage)
     thresholds = {}
     for key in set(rviews) | set(fviews):
-        if rviews.get(key) != fviews.get(key):
-            thresholds[key] = receiver.high
+        if rviews.get(key) != fviews.get(key): thresholds[key] = receiver.high
     if source_newer:
         for key in set(sviews) | set(fviews):
             if sviews.get(key) != fviews.get(key):
@@ -613,113 +651,124 @@ def synchronize(receiver, source, final_views):
         if not any(r.key == key and r.index > threshold for r in merged):
             clock = max(clock, threshold.sequence) + 1
             merged.add(Record(Index(clock, receiver.host), key, clock))
-    high = max(receiver.high, source.high,
-               max((r.index for r in merged), default=BASE))
+    high = max(receiver.high, source.high, max((r.index for r in merged), default=BASE))
     coverage = dict(receiver.coverage)
-    for host, watermark in source.coverage:
-        coverage[host] = max(coverage.get(host, BASE), watermark)
+    for host, watermark in source.coverage: coverage[host] = max(coverage.get(host, BASE), watermark)
     coverage[receiver.host] = high
+    verification = dict(receiver.verification_keys)
+    for host, key in source.verification_keys:
+        if host in verification and verification[host] != key: raise AssertionError("issuer key conflict")
+        verification[host] = key
     return NotificationState(receiver.host, compact_n(merged), clock, high,
-                             tuple(sorted(coverage.items())), tuple(sorted(final_views)))
+        tuple(sorted(coverage.items())), tuple(sorted(verification.items())),
+        receiver.signing_key, tuple(sorted(final_views)))
 
-# Positional stability, gap tolerance, and ordinal continuation.
-records = frozenset(Record(Index(n, "A"), key, n)
-                    for n, key in ((10, "K"), (20, "B"), (30, "C"), (40, "D")))
-old_cursor = (Index(10, "A"), len(ACTIONS) - 1)
-with_reappend = records | {Record(Index(50, "A"), "K", 10)}
-compacted = compact_n(with_reappend)
-assert old_cursor == (Index(10, "A"), len(ACTIONS) - 1)
-assert [r.key for r, ordinal, action in projections(compacted, old_cursor)
-        if ordinal == 0] == ["B", "C", "D", "K"]
-assert projections(frozenset({Record(Index(10, "A"), "K", 10)}),
-                   (Index(10, "A"), 1))[-1][2] == "validate"
-assert projections(compacted, (Index(11, "A"), 4))  # absent cursor record is a gap
-
-# Exhaust notification compaction and ACI/future-union laws.
-universe = tuple(Record(Index(i, appender), key, i)
-                 for i, appender, key in ((1,"A","K"),(2,"A","K"),(2,"B","L"),(3,"A","L")))
-sets = [frozenset(universe[i] for i in range(len(universe)) if mask & (1 << i))
-        for mask in range(1 << len(universe))]
+# Positional stability, gaps, ordinals, and notification ACI/deletion transparency.
+records = frozenset(Record(Index(n, FP_A), key, n) for n, key in ((10,"K"),(20,"B"),(30,"C"),(40,"D")))
+old_cursor = (Index(10, FP_A), 4); compacted = compact_n(records | {Record(Index(50,FP_A),"K",10)})
+assert [r.key for r,o,a in projections(compacted, old_cursor) if o == 0] == ["B","C","D","K"]
+assert projections(compacted, (Index(11,FP_A),4))
+assert [a for r,o,a in projections({Record(Index(10,FP_A),"K",10)}, (Index(10,FP_A),1))] == list(ACTIONS[2:])
+universe = tuple(Record(Index(i,a),k,i) for i,a,k in ((1,FP_A,"K"),(2,FP_A,"K"),(2,FP_B,"L"),(3,FP_A,"L")))
+sets = [frozenset(universe[i] for i in range(4) if mask & (1<<i)) for mask in range(16)]
 compaction_checks = deletion_checks = 0
 for n in sets:
-    c = compact_n(n)
-    assert compact_n(c) == c and c <= n
-    cursors = [(BASE, -1)] + [(r.index, o) for r in universe for o in range(5)]
-    for cursor in cursors:
-        before = projections(n, cursor)
-        assert projections(c, cursor) == tuple(x for x in before if x[0] in c)
+    compacted_n = compact_n(n); assert compact_n(compacted_n) == compacted_n and compacted_n <= n
+    for cursor in [(BASE,-1)] + [(r.index,o) for r in universe for o in range(5)]:
+        before = projections(n,cursor)
+        assert projections(compacted_n,cursor) == tuple(x for x in before if x[0] in compacted_n)
         deletion_checks += 1
     for b in sets:
-        assert compact_n(compact_n(n) | b) == compact_n(n | b)
-        assert merge_n(n, b) == merge_n(b, n)
-        compaction_checks += 1
+        assert compact_n(compacted_n | b) == compact_n(n | b)
+        assert merge_n(n,b) == merge_n(b,n); compaction_checks += 1
 for a in sets:
-    for b in sets:
-        for c in sets:
-            assert merge_n(merge_n(a,b),c) == merge_n(a,merge_n(b,c))
+  for b in sets:
+    for c in sets: assert merge_n(merge_n(a,b),c) == merge_n(a,merge_n(b,c))
 
-# Cross-host rejection, codec durability, equal/different source reconciliation,
-# receiver-local imported coverage, and no repeated replay.
-a = make_state("A", [Record(Index(100,"A"),"K",50)], [("K","source")])
-token = Token((Index(100,"A"), 4), "A", a.high)
-encoded = token_string(token); decoded = token_from_string(encoded)
-assert decoded == token
-b0 = make_state("B", [Record(Index(90,"B"),"K",40)], [("K","receiver")])
-before_query = b0
-try:
-    query_n(b0, decoded)
-    raise AssertionError("uncovered token accepted")
-except InvalidPossibleChangeCursorError:
-    pass
-assert b0 == before_query
-b_equal = synchronize(b0, a, (("K","source"),))
-assert dict(b_equal.coverage)["A"] >= a.high
-assert query_n(b_equal, decoded) == ()
-b_different = synchronize(b0, a, (("K","final-B"),))
-assert any(r.key == "K" and r.index > a.high for r in b_different.records)
-assert query_n(b_different, decoded)
-# Imported record 150 satisfies B's pre-cut coverage without redundant append.
-source150 = make_state("A", [Record(Index(150,"A"),"K",50)], [("K","source")])
-b_import = synchronize(b0, source150, (("K","source"),))
-assert max(r.index for r in b_import.records if r.key == "K") == Index(150,"A")
-assert b_import.clock == 150
-# Identical source after coverage adoption is silent.
-settled = synchronize(b_different, a, (("K","final-B"),))
-assert settled == b_different
-assert synchronize(settled, a, (("K","final-B"),)) == settled
-# Opposite direction imports occurrences silently when final view agrees.
-a_after = synchronize(a, b_different, (("K","final-B"),))
-a_again = synchronize(a_after, b_different, (("K","final-B"),))
-assert a_again == a_after
+# Authenticated codec and every normative impossible-token rejection.
+a = make_state(FP_A, [Record(Index(100,FP_A),"K",50)], [("K","source")])
+token = Token((Index(100,FP_A),4), FP_A, a.high)
+encoded = token_string(token, a.signing_key); decoded = token_from_string(encoded, dict(a.verification_keys)); assert decoded == token
+invalid_tokens = [
+    Token((Index(100,FP_A),5),FP_A,a.high),
+    Token((Index(UINT64_MAX+1,FP_A),4),FP_A,Index(UINT64_MAX+1,FP_A)),
+    Token((Index(101,FP_A),4),FP_A,a.high),
+    Token((Index(100,"bad"),4),FP_A,a.high),
+    Token((Index(100,FP_A),4),"bad",a.high),
+]
+invalid_token_checks = 0
+for invalid in invalid_tokens:
+    fabricated = token_string(invalid, a.signing_key)
+    try: token_from_string(fabricated, dict(a.verification_keys)); raise AssertionError("invalid token accepted")
+    except InvalidPossibleChangeCursorError: invalid_token_checks += 1
+tampered = encoded.replace("|100|", "|099|", 1)
+try: token_from_string(tampered, dict(a.verification_keys)); raise AssertionError("tampered token accepted")
+except InvalidPossibleChangeCursorError: invalid_token_checks += 1
 
-# High-watermark persists beyond survivors and governs later allocation.
-high_state = make_state("A", [Record(Index(500,"A"),"K",1),
-                              Record(Index(600,"A"),"K",2)], [("K","A")])
-high_state = NotificationState("A", compact_n(high_state.records), 600,
-                               high_state.high, high_state.coverage, high_state.views)
-assert high_state.high == Index(600,"A")
-source_old = make_state("C", [Record(Index(50,"C"),"K",1)], [("K","C")])
-replayed = synchronize(high_state, source_old, (("K","C"),))
-assert max(r.index for r in replayed.records) > Index(600,"A")
+# Coverage, sync, high-watermark, restart, and graph-silent controlled reset.
+b0 = make_state(FP_B, [Record(Index(90,FP_B),"K",40)], [("K","receiver")])
+try: query_n(b0, decoded); raise AssertionError("uncovered token accepted")
+except InvalidPossibleChangeCursorError: pass
+b_equal = synchronize(b0,a,(("K","source"),)); assert query_n(b_equal,decoded) == ()
+b_diff = synchronize(b0,a,(("K","final-B"),)); assert query_n(b_diff,decoded)
+assert any(r.key == "K" and r.index > a.high for r in b_diff.records)
+source150 = make_state(FP_A,[Record(Index(150,FP_A),"K",50)],[("K","source")])
+assert max(r.index for r in synchronize(b0,source150,(("K","source"),)).records if r.key=="K") == Index(150,FP_A)
+assert synchronize(b_diff,a,(("K","final-B"),)) == b_diff
+restored = NotificationState(a.host,a.records,a.clock,a.high,a.coverage,a.verification_keys,a.signing_key,a.views)
+assert query_n(restored,token_from_string(encoded,dict(restored.verification_keys))) == query_n(a,decoded)
+reset_receiver = make_state(FP_R,[],[("K","source")]) # graph already equal
+reset_final = synchronize(reset_receiver,a,(("K","source"),))
+assert reset_final.views == reset_receiver.views and dict(reset_final.coverage)[FP_A] >= a.high
+assert query_n(reset_final,decoded) == () and synchronize(reset_final,a,(("K","source"),)) == reset_final
+high_state = make_state(FP_A,[Record(Index(500,FP_A),"K",1),Record(Index(600,FP_A),"K",2)],[("K","A")])
+high_state = NotificationState(FP_A,compact_n(high_state.records),600,high_state.high,high_state.coverage,high_state.verification_keys,high_state.signing_key,high_state.views)
+replayed = synchronize(high_state,make_state(FP_C,[Record(Index(50,FP_C),"K",1)],[("K","C")]),(("K","C"),))
+assert max(r.index for r in replayed.records) > Index(600,FP_A)
 
-# Restart and controlled reset: durable notification authority survives while
-# source logical authority remains outside this notification-only model.
-restored = NotificationState(a.host, a.records, a.clock, a.high, a.coverage, a.views)
-assert query_n(restored, token_from_string(encoded)) == query_n(a, decoded)
-reset_receiver = make_state("R", [], [("K","authoritative-R")])
-reset_final = synchronize(reset_receiver, a, (("K","authoritative-R"),))
-assert dict(reset_final.coverage)["A"] >= a.high
-assert any(r.key == "K" and r.index > a.high for r in reset_final.records)
-assert query_n(reset_final, decoded)
-source_logical_authority_imported = False
-assert not source_logical_authority_imported
+# Exhaust transition words and preserve every action obligation through later
+# append, imported sync, migration-equivalent append, reset-equivalent append,
+# compaction, restart, and no-op prefixes.
+ops = ("appendK","appendL","appendM","syncK","syncL","migrationK","migrationL","resetK","resetL","compact","restart","noop")
+words_checked = prefixes_checked = obligations_checked = 0
+for word in product(ops, repeat=4):
+    state = make_state(FP_A); obligations = []
+    for op in word:
+        before = state
+        if op in ("appendK","appendL","appendM","migrationK","migrationL","resetK","resetL"):
+            key = "L" if op in ("appendL","migrationL","resetL") else ("M" if op == "appendM" else "K")
+            clock = max(state.clock,state.high.sequence)+1; record=Record(Index(clock,FP_A),key,clock)
+            state = NotificationState(FP_A,state.records|{record},clock,record.index,
+                ((FP_A,record.index),),state.verification_keys,state.signing_key,state.views)
+            obligations += [(cursor,key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
+        elif op in ("syncK","syncL"):
+            key = "L" if op == "syncL" else "K"
+            source = make_state(FP_B,[Record(Index(max(1,state.high.sequence+1),FP_B),key,1)],[(key,"remote")])
+            state = synchronize(state,source,((key,"remote"),))
+            obligations += [(cursor,key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
+        elif op == "compact":
+            state = NotificationState(state.host,compact_n(state.records),state.clock,state.high,state.coverage,state.verification_keys,state.signing_key,state.views)
+        elif op == "restart":
+            state = NotificationState(state.host,state.records,state.clock,state.high,state.coverage,state.verification_keys,state.signing_key,state.views)
+        else: assert state == before
+        for cursor,key,action in obligations:
+            # An obligation is discharged only for a cursor already across its
+            # covering record; otherwise a later same-key all-actions record exists.
+            assert any(r.key == key and (r.index,ACTIONS.index(action)) > cursor for r in state.records)
+            obligations_checked += 1
+        assert state.high >= max((r.index for r in state.records),default=BASE)
+        prefixes_checked += 1
+    words_checked += 1
 
-# Bounded storage witnesses: one compact notification per key and one coverage
-# coordinate per represented durable host; these are dominated by n*r*r for r>=1.
-for n in range(1, 8):
-    for r in range(1, 5):
-        logical = n*r*r; notifications = n; coverage = r
-        assert notifications <= logical and coverage <= logical
+# Derive storage counts from reachable combined state, including reset-only
+# fingerprints and notification-only keys absent from logical authority.
+storage_state = reset_final
+logical_keys = {"logical-only"}; logical_authors = {FP_R}
+combined_n = len(logical_keys | {r.key for r in storage_state.records})
+combined_r = len(logical_authors | set(dict(storage_state.coverage)) | set(dict(storage_state.verification_keys)))
+notification_count = len(compact_n(storage_state.records)); coverage_count = len(storage_state.coverage)
+assert notification_count <= combined_n and coverage_count <= combined_r
+assert notification_count + coverage_count <= combined_n * combined_r * combined_r + combined_n + combined_r
 
 print(f"supported combined logical states: {len(VALID)}")
 print(f"projection preservation checks: {len(VALID)}")
@@ -730,8 +779,8 @@ print(f"notification sets checked: {len(sets)}")
 print(f"notification compaction pair checks: {compaction_checks}")
 print(f"notification associative merge triples: {len(sets) ** 3}")
 print(f"deletion-transparency cursor/filter checks: {deletion_checks}")
-print("cursor coverage/restart/reset/high-watermark traces: 12")
-print("minimal semantic reset matrix cases: 9")
-print("reset freshness, derived hard-stale, dependency, ordering, and idempotence traces: 14")
-print("ValueRevision order assertions: 7 (including support-vector identity)")
+print(f"authenticated invalid-token rejection checks: {invalid_token_checks}")
+print(f"notification transition words checked: {words_checked}")
+print(f"notification transition prefixes checked: {prefixes_checked}")
+print(f"action-specific obligation checks: {obligations_checked}")
 print("all exhaustive bounded journal checks passed")

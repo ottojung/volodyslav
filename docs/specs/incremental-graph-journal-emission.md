@@ -112,9 +112,7 @@ only under the existing classifier and hard-invalidation invariant.
 ## Controlled-reset reconciliation
 
 Reset retains receiver-owned logical authority and does not join source logical
-history. It does merge source records, source high-watermark, and source coverage
-frontier, while retaining receiver fingerprint and ownership of both local
-allocators. It raises its record allocator above imported positions and applies
+history. It does merge source records, source high-watermark, and source coverage frontier and issuer token-verification keys, while retaining receiver fingerprint, local token-signing key, and ownership of both local allocators. It raises its record allocator above imported positions and applies
 the same source-to-final coverage rule. Self-contained `(key,time)` payloads can
 cover historical keys even where no source logical witness is retained. Local
 reset add/delete/invalidate/validate entries and their records commit atomically.
