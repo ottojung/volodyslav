@@ -19,8 +19,7 @@ compaction does not have to retain evidence solely for a later diagnosis.
 
 ## Merge
 
-Only immutable logical entries replicate. Receiver-local `localIndex` values,
-`localJournalIndexWatermark`, and harmless gaps do not.
+Immutable logical entries and immutable notification records replicate as distinct layers. Logical merge ignores notification occurrence multiplicity; notification merge takes the union and canonical greatest record per semantic key. Harmless coordinate gaps remain valid.
 
 ```text
 J1 ⊔ J2 = compact(entries(J1) ∪ entries(J2))
@@ -44,9 +43,7 @@ and symmetrically. These defensive checks do not promise detection after
 compaction has legitimately discarded the conflicting historical evidence.
 Remote entries never transfer author ownership.
 
-The receiver imports an unknown entry unchanged, stores it once, and assigns a
-fresh local index. The sender's index is ignored. An already-known entry is not
-moved merely because it was received again.
+The receiver imports an unknown logical entry unchanged. It may also import a remote notification record byte-for-byte. Equal indexes with unequal record contents are corrupted state. Receipt of a new occurrence alone is silent and never causes an echo reappend.
 
 ## ACI proof
 
@@ -77,9 +74,7 @@ J ⊔ J = J
 ```
 
 These laws apply to logical journal merge, not to the complete graph merge.
-They also exclude local indexes: changing an index affects no logical equality,
-head, canonical event, value revision, generation, candidate, coherence, or graph
-merge decision.
+They exclude notification records: their order and multiplicity affect no logical equality, head, canonical event, value revision, generation, candidate, coherence, or graph merge decision.
 
 After accepting a peer journal, a writable host durably raises
 `localJournalClock` to at least the greatest observed sequence before allocating
@@ -300,8 +295,7 @@ values is corruption, not a hash tie-break case.
   101. LWW presence selects G. Freshness differs: a concurrent validation cannot
   clear an unseen invalidate regardless of its ID because its causal context
   does not name that barrier.
-* **Carrier independence:** A's `[100,8,A]` travels A → B → C. B and C import
-  the entry and allocate their own local indexes but author no edit. All three
+* **Carrier independence:** A's `[100,8,A]` travels A → B → C. B and C import the logical entry and notification evidence but author no edit. All three
   compare the same revision.
 * **Same-writer supersession:** A's retained head is edit 12. A host carrying
   A's edit 8 cannot resolve it as a candidate, even if its timestamp is large;
@@ -313,3 +307,40 @@ values is corruption, not a hash tie-break case.
 * **Observed and split invalidations:** a genuine validation naming I may clear it subject to graph coherence. If `I_A` and `I_C` exist, validations separately naming one each do not combine; one later validation naming both is required.
 * **Later same-author invalidate:** a validation naming `I_A1` does not cover later `I_A2`; a later validation may name I_A2 and thereby also cover I_A1.
 * **Already-stale explicit invalidation:** A's propagated I0 leaves K stale with incoming proofs. B observes I0, revalidates, and authors V0 naming I0. A has not observed V0; its later explicit `invalidate(K)` removes incoming proofs and authors new generation-scoped I1 even though freshness stays stale. On merge, V0 does not name I1, so I1 remains outstanding and recomputation is mandatory. Repeating explicit hard invalidation repeats proof removal and authors a fresh causal barrier each time.
+
+## Notification synchronization theorem
+
+For fixed snapshots R, S and reconciled F, notification merge is:
+
+```text
+compactNotifications(R.records union S.records union records authored by sync)
+```
+
+Let HR and HS be the independent durable high-watermarks. The canonical
+`NotificationView(X,K)` contains compacted logical view, materialization
+presence/value, freshness, and hard-invalidation/proof-sufficiency differences
+which the classifier treats as notifying; silent representation or timestamp
+differences are excluded.
+
+Receiver continuity requires a same-key record above HR whenever R's view differs
+from F. A merged source record above HR is sufficient. Source portability is
+required only when S contributes a newer coverage coordinate; then each key whose
+S view differs from F needs a record above HS. The greater threshold satisfies
+both. The allocator first dominates observed high-watermarks. Records, graph, logical entries, allocator, high-watermark, and componentwise frontier advance commit atomically.
+
+Trace: receiver watermark 100 receives old K evidence and changes K; absent a
+merged K record above 100 it appends K above 100. Conversely source record K@150
+already covers receiver cut 100, so adopting it causes no redundant append. A
+source token issued at watermark 100 becomes usable on B only after B either
+adopts A's state or, when B differs on K, appends K above 100 before advancing
+`frontier[A]`. Disconnected C below 100 rejects without writing.
+
+There is no echo loop. Once B has adopted A's frontier, the unchanged A adds no
+new coordinate on repetition. When A later imports B's reconciliation record,
+receipt alone is silent; if final A equals B it imports without echo, and only a
+genuine difference requires a new later record. Once semantics and frontier
+propagation quiesce, alternating synchronization appends nothing.
+
+A source which once observed index 500 retains a high-watermark at least 500
+after deleting that record. A receiver needing replay after synchronizing that
+source allocates above 500, not above merely the surviving records.

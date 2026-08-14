@@ -519,159 +519,311 @@ except AssertionError:
     invalid_presence_rejected = True
 assert invalid_presence_rejected
 
+FP_A = "aaaaaaaaaaaaaaaa"
+FP_B = "bbbbbbbbbbbbbbbb"
+FP_C = "cccccccccccccccc"
+FP_R = "rrrrrrrrrrrrrrrr"
+UINT64_MAX = 2**64 - 1
+
+@dataclass(frozen=True, order=True)
+class Index:
+    sequence: int
+    appender: str
+
+@dataclass(frozen=True, order=True)
+class Record:
+    index: Index
+    key: str
+    node_name: str
+    bindings: tuple[str, ...]
+    time: int
+
 @dataclass(frozen=True)
-class Stored:
-    entries: tuple[tuple[str, int], ...]  # logical id -> local index, encoded as label/index
-    watermark: int
-    domain: object
+class Token:
+    node_name: str
+    bindings: tuple[str, ...]
+    action: str
+    time: int
+    position: tuple[Index, int]
+    issued_by: str
+    issued_at_high_watermark: Index
 
-def put(state, label):
-    d = dict(state.entries)
-    if label in d: return state
-    w = state.watermark + 1; d[label] = w
-    return Stored(tuple(sorted(d.items())), w, state.domain)
+@dataclass(frozen=True)
+class NotificationState:
+    host: str
+    records: frozenset[Record]
+    clock: int
+    high: Index
+    coverage: tuple[tuple[str, Index], ...]
+    views: tuple[tuple[str, str], ...] = ()
 
-def touch(state, label):
-    d = dict(state.entries); w = state.watermark + 1; d[label] = w
-    return Stored(tuple(sorted(d.items())), w, state.domain)
-
-def remove_and_cover(state, removed, witness):
-    d = dict(state.entries)
-    for x in removed: d.pop(x, None)
-    base = Stored(tuple(sorted(d.items())), state.watermark, state.domain)
-    return touch(base, witness)
-
-def issued_cursors(state):
-    return [(state.domain, -1, len(ACTIONS)-1)] + [
-        (state.domain, idx, ordinal) for _, idx in state.entries for ordinal in range(len(ACTIONS))]
-
-def query(state, cursor):
-    domain, cursor_index, cursor_ordinal = cursor
-    if domain is not state.domain:
-        raise InvalidPossibleChangeCursorError
-    return {(label, action) for label, idx in state.entries
-            for ordinal, action in enumerate(ACTIONS)
-            if (idx, ordinal) > (cursor_index, cursor_ordinal)}
+BASE = Index(0, "")
 
 class InvalidPossibleChangeCursorError(Exception):
     pass
 
-# Receiver domains reject foreign cursors before interpreting either baselines
-# or enormous numeric positions. Same-process cutover preserves private runtime
-# identity; new-runtime restoration deliberately replaces it.
-DOMAIN_A = object(); DOMAIN_B = object()
-A1 = put(Stored((), 0, DOMAIN_A), "K1")
-B = put(Stored((), 0, DOMAIN_B), "K1")
-cursor_a = (DOMAIN_A, 10_000, len(ACTIONS) - 1)
-cursor_b = (DOMAIN_B, 10_000, len(ACTIONS) - 1)
-baseline_a = issued_cursors(A1)[0]
-baseline_b = issued_cursors(B)[0]
-for receiver, foreign in ((A1, cursor_b), (B, cursor_a),
-                          (A1, baseline_b), (B, baseline_a)):
+def valid_fingerprint(value):
+    return len(value) == 16 and value.isascii() and value.isalpha() and value.islower()
+
+def node_key(node_name, bindings):
+    return node_name + ":" + ",".join(bindings)
+
+def valid_record(record):
+    return record.key == node_key(record.node_name, record.bindings)
+
+def compact_n(records):
+    assert all(valid_record(record) for record in records)
+    winners = {}
+    for record in records:
+        if record.key not in winners or record.index > winners[record.key].index:
+            winners[record.key] = record
+    return frozenset(winners.values())
+
+def merge_n(a, b):
+    return compact_n(a | b)
+
+def projections(records, cursor=(BASE, -1), keys=None):
+    return tuple((r, ordinal, action) for r in sorted(records)
+                 if keys is None or r.key in keys
+                 for ordinal, action in enumerate(ACTIONS)
+                 if (r.index, ordinal) > cursor)
+
+def issue_token(record, ordinal, issuer, high):
+    """Derive every public field from a self-contained surviving record."""
+    return Token(record.node_name, record.bindings, ACTIONS[ordinal], record.time,
+                 (record.index, ordinal), issuer, high)
+
+def token_payload(token):
+    index, ordinal = token.position
+    return "|".join(("v1", token.node_name, ",".join(token.bindings), token.action,
+                     str(token.time), str(index.sequence), index.appender,
+                     str(ordinal), token.issued_by,
+                     str(token.issued_at_high_watermark.sequence),
+                     token.issued_at_high_watermark.appender))
+
+def token_string(token):
+    return token_payload(token)
+
+def canonical_uint64(value):
+    if not value or (len(value) > 1 and value[0] == "0") or not value.isascii() or not value.isdecimal():
+        raise InvalidPossibleChangeCursorError
+    result = int(value)
+    if result < 0 or result > UINT64_MAX:
+        raise InvalidPossibleChangeCursorError
+    return result
+
+def token_from_string(value):
+    fields = value.split("|")
+    if len(fields) != 11 or fields[0] != "v1":
+        raise InvalidPossibleChangeCursorError
     try:
-        query(receiver, foreign)
-        raise AssertionError("foreign cursor accepted")
-    except InvalidPossibleChangeCursorError:
-        pass
-A1_cursor = issued_cursors(A1)[-1]
-A2 = Stored(A1.entries, A1.watermark, A1.domain)
-assert query(A2, A1_cursor) == query(A1, A1_cursor)
+        node_name, bindings, action = fields[1], tuple(filter(None, fields[2].split(","))), fields[3]
+        time = canonical_uint64(fields[4]); sequence = canonical_uint64(fields[5])
+        ordinal = int(fields[7]); high_sequence = canonical_uint64(fields[9])
+        index = Index(sequence, fields[6]); high = Index(high_sequence, fields[10]); issuer = fields[8]
+        if not node_name or "|" in node_name or fields[7] != str(ordinal) or not 0 <= ordinal < len(ACTIONS):
+            raise InvalidPossibleChangeCursorError
+        if action not in ACTIONS or action != ACTIONS[ordinal]:
+            raise InvalidPossibleChangeCursorError
+        if not valid_fingerprint(index.appender) or not valid_fingerprint(issuer):
+            raise InvalidPossibleChangeCursorError
+        if index > high or not valid_fingerprint(high.appender):
+            raise InvalidPossibleChangeCursorError
+        return Token(node_name, bindings, action, time, (index, ordinal), issuer, high)
+    except (KeyError, ValueError, IndexError):
+        raise InvalidPossibleChangeCursorError
 
-# An issued token snapshots its numeric position. Touch moves only the retained
-# witness: querying from the old token still starts after index 1, not index 2.
-snapshot_state = put(Stored((), 0, DOMAIN_A), "K-snapshot")
-snapshot_cursor = issued_cursors(snapshot_state)[-1]
-touched_snapshot_state = touch(snapshot_state, "K-snapshot")
-assert snapshot_cursor[1] == 1
-assert dict(touched_snapshot_state.entries)["K-snapshot"] == 2
-assert query(touched_snapshot_state, snapshot_cursor) == {
-    ("K-snapshot", action) for action in ACTIONS}
+def query_n(state, token, keys=None):
+    if token.position[0] > token.issued_at_high_watermark:
+        raise InvalidPossibleChangeCursorError
+    if dict(state.coverage).get(token.issued_by, BASE) < token.issued_at_high_watermark:
+        raise InvalidPossibleChangeCursorError
+    return projections(state.records, token.position, keys)
 
-NEW_RUNTIME_DOMAIN = object()
-A_RESTORED = Stored(A1.entries, A1.watermark, NEW_RUNTIME_DOMAIN)
-try:
-    query(A_RESTORED, A1_cursor)
-    raise AssertionError("old-runtime cursor accepted after restoration")
-except InvalidPossibleChangeCursorError:
-    pass
+def make_state(host, records=(), views=()):
+    records = frozenset(records); high = max((r.index for r in records), default=BASE)
+    return NotificationState(host, records,
+        max((r.index.sequence for r in records), default=0), high,
+        ((host, high),), tuple(sorted(views)))
 
-# Exhaust every four-operation word and check obligations after every prefix.
-ops = ("installK1", "authorK2", "installL", "graphAddK", "graphDeleteK",
-       "graphInvalidateK", "graphValidateL", "syncHardenK", "migrationHardenK",
-       "compactK", "graphCompactK", "noop")
-states_checked = 0; prefixes_checked = 0; obligations_checked = 0; max_records = 0
+def synchronize(receiver, source, final_views):
+    merged = set(receiver.records | source.records)
+    clock = max(receiver.clock, source.clock, receiver.high.sequence, source.high.sequence)
+    rviews, sviews, fviews = map(dict, (receiver.views, source.views, final_views))
+    source_newer = any(w > dict(receiver.coverage).get(h, BASE) for h, w in source.coverage)
+    thresholds = {}
+    for key in set(rviews) | set(fviews):
+        if rviews.get(key) != fviews.get(key): thresholds[key] = receiver.high
+    if source_newer:
+        for key in set(sviews) | set(fviews):
+            if sviews.get(key) != fviews.get(key):
+                thresholds[key] = max(thresholds.get(key, BASE), source.high)
+    for key, threshold in thresholds.items():
+        if not any(r.key == key and r.index > threshold for r in merged):
+            clock = max(clock, threshold.sequence) + 1
+            witnesses = [record for record in merged if record.key == key]
+            if not witnesses: raise AssertionError("notification view lacks semantic address witness")
+            witness = max(witnesses, key=lambda record: record.index)
+            merged.add(Record(Index(clock, receiver.host), key, witness.node_name,
+                              witness.bindings, witness.time))
+    high = max(receiver.high, source.high, max((r.index for r in merged), default=BASE))
+    coverage = dict(receiver.coverage)
+    for host, watermark in source.coverage: coverage[host] = max(coverage.get(host, BASE), watermark)
+    coverage[receiver.host] = high
+    return NotificationState(receiver.host, compact_n(merged), clock, high,
+        tuple(sorted(coverage.items())), tuple(sorted(final_views)))
+
+# Positional stability, gaps, ordinals, and notification ACI/deletion transparency.
+records = frozenset(Record(Index(n, FP_A), node_key("node-" + key.lower(), ()), "node-" + key.lower(), (), n) for n, key in ((10,"K"),(20,"B"),(30,"C"),(40,"D")))
+old_cursor = (Index(10, FP_A), 4); compacted = compact_n(records | {Record(Index(50,FP_A), node_key("node-k", ()), "node-k", (), 10)})
+assert [r.node_name for r,o,a in projections(compacted, old_cursor) if o == 0] == ["node-b","node-c","node-d","node-k"]
+assert projections(compacted, (Index(11,FP_A),4))
+assert [a for r,o,a in projections({Record(Index(10,FP_A), node_key("node-k", ()), "node-k", (), 10)}, (Index(10,FP_A),1))] == list(ACTIONS[2:])
+universe = tuple(Record(Index(i,a),node_key("node-" + k.lower(), ()),"node-" + k.lower(),(),i) for i,a,k in ((1,FP_A,"K"),(2,FP_A,"K"),(2,FP_B,"L"),(3,FP_A,"L")))
+sets = [frozenset(universe[i] for i in range(4) if mask & (1<<i)) for mask in range(16)]
+compaction_checks = deletion_checks = 0
+for n in sets:
+    compacted_n = compact_n(n); assert compact_n(compacted_n) == compacted_n and compacted_n <= n
+    for cursor in [(BASE,-1)] + [(r.index,o) for r in universe for o in range(5)]:
+        before = projections(n,cursor)
+        assert projections(compacted_n,cursor) == tuple(x for x in before if x[0] in compacted_n)
+        deletion_checks += 1
+    for b in sets:
+        assert compact_n(compacted_n | b) == compact_n(n | b)
+        assert merge_n(n,b) == merge_n(b,n); compaction_checks += 1
+for a in sets:
+  for b in sets:
+    for c in sets: assert merge_n(merge_n(a,b),c) == merge_n(a,merge_n(b,c))
+
+# Canonical codec and every normative structurally impossible-token rejection.
+a = make_state(FP_A, [Record(Index(100,FP_A), node_key("node-k", ()), "node-k", (), 50)], [(node_key("node-k", ()),"source")])
+source_record = next(record for record in a.records if record.key == node_key("node-k", ()))
+token = issue_token(source_record, 4, FP_A, a.high)
+assert (token.node_name, token.bindings, token.action, token.time) == (source_record.node_name, source_record.bindings, "validate", source_record.time)
+encoded = token_string(token); decoded = token_from_string(encoded); assert decoded.node_name == token.node_name and decoded.bindings == token.bindings and decoded.action == token.action and decoded.time == token.time and decoded.position == token.position and decoded.issued_by == token.issued_by and decoded.issued_at_high_watermark == token.issued_at_high_watermark
+invalid_tokens = [
+    Token("node", (), "validate", 50, (Index(100,FP_A),5),FP_A,a.high),
+    Token("node", (), "validate", 50, (Index(UINT64_MAX+1,FP_A),4),FP_A,Index(UINT64_MAX+1,FP_A)),
+    Token("node", (), "validate", 50, (Index(101,FP_A),4),FP_A,a.high),
+    Token("node", (), "validate", 50, (Index(100,"bad"),4),FP_A,a.high),
+    Token("node", (), "validate", 50, (Index(100,FP_A),4),"bad",a.high),
+]
+invalid_token_checks = 0
+for invalid in invalid_tokens:
+    try:
+        fabricated = token_string(invalid)
+        token_from_string(fabricated)
+        raise AssertionError("invalid token accepted")
+    except (InvalidPossibleChangeCursorError, KeyError):
+        invalid_token_checks += 1
+fabricated_progress = encoded.replace("|100|", "|99|", 1)
+fabricated_token = token_from_string(fabricated_progress)
+assert query_n(a, fabricated_token) == query_n(a, fabricated_token)
+assert fabricated_token.position[0] == Index(99, FP_A)
+
+# Coverage, sync, high-watermark, restart, and graph-silent controlled reset.
+b0 = make_state(FP_B, [Record(Index(90,FP_B), node_key("node-k", ()), "node-k", (), 40)], [(node_key("node-k", ()),"receiver")])
+try: query_n(b0, decoded); raise AssertionError("uncovered token accepted")
+except InvalidPossibleChangeCursorError: pass
+b_equal = synchronize(b0,a,((node_key("node-k", ()),"source"),)); assert query_n(b_equal,decoded) == ()
+b_diff = synchronize(b0,a,((node_key("node-k", ()),"final-B"),)); assert query_n(b_diff,decoded)
+assert any(r.key == node_key("node-k", ()) and r.index > a.high for r in b_diff.records)
+source150 = make_state(FP_A,[Record(Index(150,FP_A), node_key("node-k", ()), "node-k", (), 50)],[(node_key("node-k", ()),"source")])
+assert max(r.index for r in synchronize(b0,source150,((node_key("node-k", ()),"source"),)).records if r.key==node_key("node-k", ())) == Index(150,FP_A)
+assert synchronize(b_diff,a,((node_key("node-k", ()),"final-B"),)) == b_diff
+# Full public payload and hidden authority round-trip without consulting the record.
+recordless_restored = NotificationState(a.host,frozenset(),a.clock,a.high,a.coverage,a.views)
+round_tripped = token_from_string(encoded)
+assert (round_tripped.node_name, round_tripped.bindings, round_tripped.action, round_tripped.time) == (token.node_name, token.bindings, token.action, token.time)
+assert round_tripped.position == token.position and query_n(recordless_restored,round_tripped) == ()
+restored = NotificationState(a.host,a.records,a.clock,a.high,a.coverage,a.views)
+assert query_n(restored,token_from_string(encoded)) == query_n(a,decoded)
+# Once foreign lineage is covered, local append, compaction, and restart preserve it.
+foreign_covered = b_equal
+local_clock = max(foreign_covered.clock, foreign_covered.high.sequence) + 1
+local_record = Record(Index(local_clock, FP_B), node_key("node-l", ()), "node-l", (), 60)
+foreign_coverage = dict(foreign_covered.coverage); foreign_coverage[FP_B] = local_record.index
+foreign_covered = NotificationState(FP_B, foreign_covered.records | {local_record}, local_clock,
+    local_record.index, tuple(sorted(foreign_coverage.items())), foreign_covered.views)
+foreign_covered = NotificationState(FP_B, compact_n(foreign_covered.records), foreign_covered.clock,
+    foreign_covered.high, foreign_covered.coverage, foreign_covered.views)
+foreign_covered = NotificationState(FP_B, foreign_covered.records, foreign_covered.clock,
+    foreign_covered.high, foreign_covered.coverage, foreign_covered.views)
+assert dict(foreign_covered.coverage)[FP_A] >= token.issued_at_high_watermark
+assert query_n(foreign_covered, decoded) == query_n(foreign_covered, round_tripped)
+reset_receiver = make_state(FP_R,[],[(node_key("node-k", ()),"source")]) # graph already equal
+reset_final = synchronize(reset_receiver,a,((node_key("node-k", ()),"source"),))
+assert reset_final.views == reset_receiver.views and dict(reset_final.coverage)[FP_A] >= a.high
+assert query_n(reset_final,decoded) == () and synchronize(reset_final,a,((node_key("node-k", ()),"source"),)) == reset_final
+high_state = make_state(FP_A,[Record(Index(500,FP_A), node_key("node-k", ()), "node-k", (), 1),Record(Index(600,FP_A), node_key("node-k", ()), "node-k", (), 2)],[(node_key("node-k", ()),"A")])
+high_state = NotificationState(FP_A,compact_n(high_state.records),600,high_state.high,high_state.coverage,high_state.views)
+replayed = synchronize(high_state,make_state(FP_C,[Record(Index(50,FP_C), node_key("node-k", ()), "node-k", (), 1)],[(node_key("node-k", ()),"C")]),((node_key("node-k", ()),"C"),))
+assert max(r.index for r in replayed.records) > Index(600,FP_A)
+
+# Exhaust transition words and preserve every action obligation through later
+# append, imported sync, migration-equivalent append, reset-equivalent append,
+# compaction, restart, and no-op prefixes.
+ops = ("appendK","appendL","appendM","syncK","syncL","migrationK","migrationL","resetK","resetL","compact","restart","noop")
+words_checked = prefixes_checked = obligations_checked = 0
 for word in product(ops, repeat=4):
-    s = Stored((), 0, DOMAIN_A); obligations = []
+    state = make_state(FP_A); obligations = []
     for op in word:
-        before = s
-        if op in ("installK1", "authorK2", "installL"):
-            label = {"installK1": "K1", "authorK2": "K2", "installL": "L"}[op]
-            s = put(s, label)
-            if s != before:
-                key = "L" if op == "installL" else "K"
-                action = {"installK1": "add", "authorK2": "edit",
-                          "installL": "validate"}[op]
-                obligations += [(c, key, action) for c in issued_cursors(before)]
-        elif op in ("syncHardenK", "migrationHardenK"):
-            # A stale-to-stale hardening decision authors one barrier. Repeating
-            # the settled same decision carries it instead of authoring forever.
-            candidates = [k for k, _ in s.entries if k.startswith("K")]
-            if candidates:
-                label = "KS" if op == "syncHardenK" else "KM"
-                s = put(s, label)
-                if s != before:
-                    obligations += [(c, "K", "invalidate")
-                                    for c in issued_cursors(before)]
-        elif op.startswith("graph") and op != "graphCompactK":
-            key = "L" if op == "graphValidateL" else "K"
-            candidates = [k for k, _ in s.entries if k.startswith(key)]
-            if candidates:
-                witness = max(candidates); old_count = len(s.entries)
-                s = touch(s, witness)
-                assert len(s.entries) == old_count
-                action = {"graphAddK": "add", "graphDeleteK": "delete",
-                          "graphInvalidateK": "invalidate",
-                          "graphValidateL": "validate"}[op]
-                obligations += [(c, key, action) for c in issued_cursors(before)]
-        elif op == "compactK" and all(k in dict(s.entries) for k in ("K1", "K2")):
-            s = remove_and_cover(s, ("K1",), "K2")
-        elif op == "graphCompactK" and all(k in dict(s.entries) for k in ("K1", "K2")):
-            # One transaction performs a graph edit, logical removal, and one covering touch.
-            s = remove_and_cover(s, ("K1",), "K2")
-            obligations += [(c, "K", "edit") for c in issued_cursors(before)]
-        elif op == "noop":
-            assert s == before
-
-        indexes = [idx for _, idx in s.entries]
-        assert len(indexes) == len(set(indexes))
-        assert all(idx <= s.watermark for idx in indexes)
-        max_records = max(max_records, len(s.entries))
-        # Immediate prefix check, then preservation is rechecked after every later prefix.
-        for cursor, key, action in obligations:
-            assert any(label.startswith(key) and a == action for label, a in query(s, cursor))
+        before = state
+        if op in ("appendK","appendL","appendM","migrationK","migrationL","resetK","resetL"):
+            key = "L" if op in ("appendL","migrationL","resetL") else ("M" if op == "appendM" else "K")
+            record_key = node_key("node-" + key.lower(), ())
+            clock = max(state.clock,state.high.sequence)+1; record=Record(Index(clock,FP_A),node_key("node-" + key.lower(), ()),"node-" + key.lower(),(),clock)
+            coverage = dict(state.coverage); coverage[state.host] = record.index
+            state = NotificationState(FP_A,state.records|{record},clock,record.index,
+                tuple(sorted(coverage.items())),state.views)
+            obligations += [(cursor,record_key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
+        elif op in ("syncK","syncL"):
+            key = "L" if op == "syncL" else "K"
+            record_key = node_key("node-" + key.lower(), ())
+            source = make_state(FP_B,[Record(Index(max(1,state.high.sequence+1),FP_B),node_key("node-" + key.lower(), ()),"node-" + key.lower(),(),1)],[(record_key,"remote")])
+            state = synchronize(state,source,((record_key,"remote"),))
+            obligations += [(cursor,record_key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
+        elif op == "compact":
+            state = NotificationState(state.host,compact_n(state.records),state.clock,state.high,state.coverage,state.views)
+        elif op == "restart":
+            state = NotificationState(state.host,state.records,state.clock,state.high,state.coverage,state.views)
+        else: assert state == before
+        for cursor,key,action in obligations:
+            # An obligation is discharged only for a cursor already across its
+            # covering record; otherwise a later same-key all-actions record exists.
+            assert any(r.key == key and (r.index,ACTIONS.index(action)) > cursor for r in state.records)
             obligations_checked += 1
+        old_coverage, new_coverage = dict(before.coverage), dict(state.coverage)
+        assert all(new_coverage.get(host, BASE) >= watermark for host, watermark in old_coverage.items())
+        assert new_coverage[state.host] == state.high
+        assert state.high >= max((r.index for r in state.records),default=BASE)
         prefixes_checked += 1
-    settled = s
-    for _ in range(3):
-        assert s == settled
-    states_checked += 1
-assert max_records <= 4
+    words_checked += 1
+
+# Derive storage counts from reachable combined state, including reset-only
+# fingerprints and notification-only keys absent from logical authority.
+storage_state = reset_final
+logical_keys = {"logical-only"}; logical_authors = {FP_R}
+combined_n = len(logical_keys | {r.key for r in storage_state.records})
+combined_r = len(logical_authors | set(dict(storage_state.coverage)))
+notification_count = len(compact_n(storage_state.records)); coverage_count = len(storage_state.coverage)
+assert notification_count <= combined_n and coverage_count <= combined_r
+assert notification_count + coverage_count <= combined_n * combined_r * combined_r + combined_n + combined_r
 
 print(f"supported combined logical states: {len(VALID)}")
 print(f"projection preservation checks: {len(VALID)}")
 print(f"distinct compact logical states: {len(COMPACT)}")
 print(f"merge triples checked: {len(COMPACT) ** 3}")
 print(f"compaction closure pairs checked: {len(VALID) ** 2}")
-print(f"cursor operation words checked: {states_checked}")
-print(f"committed prefixes checked: {prefixes_checked}")
-print(f"cursor obligation checks across prefixes: {obligations_checked}")
-print(f"maximum stored logical records: {max_records}")
-print("raw repeated-mutation records: 41; compact records: 2")
-print("minimal semantic reset matrix cases: 9")
-print("reset freshness, derived hard-stale, dependency, ordering, and idempotence traces: 14")
-print("ValueRevision order assertions: 7 (including support-vector identity)")
-print("immutable issued-cursor snapshot assertions: 3")
-print("two-domain rejection assertions: 4 (including 2 foreign baselines)")
-print("same-process cutover preservation assertions: 1")
-print("new-runtime cursor-domain replacement assertions: 1")
+print(f"notification sets checked: {len(sets)}")
+print(f"notification compaction pair checks: {compaction_checks}")
+print(f"notification associative merge triples: {len(sets) ** 3}")
+print(f"deletion-transparency cursor/filter checks: {deletion_checks}")
+print(f"structurally invalid-token rejection checks: {invalid_token_checks}")
+print("full-payload recordless round-trip checks: 1")
+print("foreign-coverage append/compact/restart persistence traces: 1")
+print(f"componentwise coverage prefix checks: {prefixes_checked}")
+print(f"notification transition words checked: {words_checked}")
+print(f"notification transition prefixes checked: {prefixes_checked}")
+print(f"action-specific obligation checks: {obligations_checked}")
 print("all exhaustive bounded journal checks passed")

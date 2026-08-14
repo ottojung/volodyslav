@@ -206,46 +206,20 @@ If no previous version is found, the migration is a no-op.
 
 ## Journal interaction
 
-Migration exact-copies one fixed active receiver snapshot of retained
-`StoredJournalEntry` values, their local indexes, `localJournalClock`, and
-`localJournalIndexWatermark`. Separately, same-process inactive construction
-threads the running receiver's private cursor-domain identity into the target;
-the identity is never persisted or read from synchronization state. This
-preserves the logical receiver domain across in-process cutover and never
-imports remote cursor metadata. A new runtime restoration allocates a new
-domain.
+Migration preserves logical entries, notification records, `localJournalClock`,
+`localJournalRecordClock`, `journalRecordHighWatermark`,
+`cursorCoverageFrontier`, and the durable fingerprint without renumbering. It
+accepts supported uncompacted state and does not implicitly compact. Durable
+tokens preserve meaning across cutover and restart.
 
-Pre-cutover validation requires valid same-key generation references; retained
-validation-causal references that resolve, match key/generation/author, and
-name an invalidate preceding the validation sequence; logical-clock coverage;
-exactly one unique valid index per retained entry; and index-watermark coverage.
-Indexes have no logical merge or provenance role; gaps are valid. An
-implementation MAY defensively reject visible immutable-ID conflicts,
-same-author validation-context regression, or another supported-authoring
-violation when enough evidence remains. Those best-effort diagnostics are not
-preconditions for a supported migration: compaction may have discarded the
-relevant history.
-
-A structurally valid journal produced by supported lifecycle transitions is a
-supported migration input whether canonical compaction has run or not.
-Migration copies retained entries and local indexes exactly and does not
-implicitly compact them. It authors, indexes, or touches only the entries that
-the migration's semantic transitions ordinarily require. In particular, a
-journal-silent migration preserves all old local indexes and needs no
-compaction witness touch. An independently requested compaction is a separate
-operation governed by the ordinary compaction cursor-coverage rules.
-
-Migration classifies old/new semantic graph states normally. `create` authors
-add with `add.time=toUnixTimestamp(createdAt)=toUnixTimestamp(modifiedAt)`;
-delete and genuine freshness changes
-author their ordinary actions. `keep`, `invalidate`, and semantic-preserving
-`override` create no value event and preserve `modifiedAt`; representation-only
-bytes are not an edit. Each authored entry gets a fresh logical sequence and
-local index; a changed key without a newly indexed entry has its greatest
-retained witness touched. All graph, journal, index, and allocator changes commit
-atomically. Migration never seeds graph authority from journal history.
-
-Detailed rules are in `docs/specs/incremental-graph-journal-migrations.md`.
+The ordinary classifier governs semantic changes. A journal-silent migration
+changes no notification metadata. A notifying transition authors its logical
+entry where required and ensures one same-key record after the pre-transition
+high-watermark. Representation-only changes remain silent; `keep`, invalidate,
+and semantic-preserving override preserve `modifiedAt`. Graph, logical history,
+records, allocators, high-watermark and frontier commit atomically. Migration
+never seeds graph authority from notification evidence. Detailed rules are in
+`docs/specs/incremental-graph-journal-migrations.md`.
 
 ## Atomicity guarantee
 

@@ -1,4 +1,4 @@
-# Logical journal compaction
+# Journal compaction
 
 ## Proof domain
 
@@ -11,9 +11,7 @@ supported protocol states, not arbitrary sets of fabricated entries.
 Compaction need not preserve discarded evidence solely to diagnose a past or
 future corrupted/unsupported history.
 
-Compaction considers immutable `JournalEntry` contents only; `localIndex` is
-ignored. For notification coverage, E2 covers E1 when author, key, and action are
-equal and E2 has greater sequence. There is no cross-author coverage.
+Compaction considers immutable `JournalEntry` contents only. Notification records, indexes, watermarks, and coverage are a separate layer and do not participate in logical selection.
 
 ## Canonical algorithm
 
@@ -49,19 +47,6 @@ dominated by the retained later one: every invalidate it covered remains
 covered. This is a reachable-state invariant guaranteed by a correct durable
 author, not a claim about arbitrary structurally constructible entries.
 
-## Cursor coverage when entries are removed
-
-For every K from which compaction removes entries, choose the greatest retained
-`notificationWitness(K)` and touch it once after logical compaction. Touching
-updates only its local index. It is not part of canonical selection.
-
-Let C precede an occurrence represented by removed E. Witness W receives index w
-above the transaction's previous watermark, so `C < w`; a later query sees W.
-W expands to all five actions and covers every action E could expose. A cursor at
-or beyond w has already crossed that covering possibility. Compaction therefore
-cannot create a false negative. Trace: removing old same-key entries touches one
-surviving witness; no logical duplicate is appended.
-
 ## ACI closure proof
 
 For supported reachable journal states A and B whose delivery/union is a
@@ -77,76 +62,84 @@ These cases establish closure under every later supported union. Since
 compaction is canonical and idempotent on this domain, closure plus ACI set union
 yields commutative, associative, and idempotent logical merge for supported
 histories. These are not algebraic claims over arbitrary sets of
-`JournalEntry` values. The conclusion does not follow from union alone. Logical
-equality excludes local indexes.
+`JournalEntry` values. The conclusion does not follow from union alone. Logical equality excludes the complete notification layer.
 
-## Fully compacted bound and optional timing
+## Notification compaction
 
-Let n be the number of current or historic semantic keys represented by the
-compacted journal, and r the number of durable authors represented by
-compacted entries or retained causal-context references. The storage model
-assumes C, the maximum serialized size of one `ConstValue`; K, the maximum
-serialized size of one `NodeKey`; and d, the maximum number of distinct direct
-semantic inputs of any node, are fixed system constants independent of n and r.
-These are deliberate premises, not type-system conclusions. The recursive
-semantic `ConstValue` type does not establish C. The implementation-defined
-`NodeKey` identity contract does not bound encoding overhead and therefore does
-not establish K. Fixed schema arity, bounded C, and an intended bounded-overhead
-key encoding are compatible with bounded K, but K is itself an explicit
-premise. Graph finiteness does not establish d because in-degree may grow with
-n. `DatabaseFingerprint` is not another premise: every compliant value has the
-normatively bounded 16-character lowercase ASCII representation.
+Notification compaction is separate:
 
-Per key, constant actions times r coordinates use `O(r)` entries. There are at most `O(r)` retained validations relevant to generation/coordinate structure, each carrying `O(r)` context; exact invalidate references contribute at most `O(r²)`. Other journal generation, freshness, and notification witnesses are no larger. Therefore `size(compact(J)) = O(nr²)`, asymptotically in n and r under fixed K. Its hidden constants may depend on K, the fixed number of journal action classes, fixed-width `UnixTimestamp`, sequence, and local-index scalar coordinates. A `JournalEntryId` has bounded serialized size because its sequence is fixed-width and its author has the normatively bounded `DatabaseFingerprint` representation. Bounded structural encoding overhead does not require another asymptotic parameter; an arbitrarily growing fingerprint representation is non-compliant. One scalar `localIndex` per retained entry does not change the bound.
+```text
+compactNotifications(N) =
+    for each semantic NodeKey, retain its greatest-index JournalRecord
+```
 
-Persisted graph dependency/validity relationships and per-input evidence are
-outside `J`. Their per-node width is bounded in the broader storage model under
-fixed d, but d is not a premise needed to count the logical compacted journal.
-This specification does not state a total byte bound for persisted graph state;
-such a bound would also need to account for `ComputedValue` payload size.
+It is pure deletion: `compactNotifications(N) subset-of N`. It creates or
+changes no record, index, logical entry, cursor, allocator, high-watermark,
+coverage coordinate. It may run independently,
+during synchronization or maintenance, repeatedly, or never. Uncompacted
+records may grow with operation count.
 
-**This applies only to complete canonical compaction. No operation-count-independent bound is promised for an uncompacted journal.** Ordinary mutations may append without compacting. Compaction may run after any transaction, during maintenance or synchronization, repeatedly, at any time, or be skipped for arbitrarily many mutations. Correctness is timing-independent; a crash before optional compaction leaves valid uncompacted history. An independent compaction transaction atomically performs the witness touch described above.
+For each deleted same-key R the retained W satisfies `W.index > R.index` and
+projects all five actions. Thus max-per-key compaction is canonical and:
 
-## Executable bounded verification
+```text
+compactN(compactN(A) union B) == compactN(A union B)
+```
 
-`scripts/verify-journal-spec-model.py` uses one combined six-atom bounded
-supported-state universe rather than a freshness-only universe. Its composite
-atoms preserve every materially distinct supported class while keeping ACI
-exhaustive within that universe: competing generations and an intervening
-delete; losing coordinate maxima and winning edit witnesses; cross-author
-heads; two-author split invalidation knowledge; complete validation; a delayed
-later same-author hard invalidate; later complete validation; and generation
-replacement.
+Union plus compaction is commutative, associative, and idempotent. Resent old
+occurrences cannot resurrect in canonical compact state.
 
-It checks 64 supported combined states and all 64 resulting compact states, 64
-projection-preservation/idempotence checks, 4,096 supported-universe closure
-pairs, and 262,144 compact supported-universe ACI triples. Projections include
-presence/generation, value heads, equal-time canonical inputs, invalidate
-frontier, effective-validation existence, add references, and causal
-references. Negative cases exercise defensive validation of malformed variants,
-observation-order violations, and backward same-author contexts; they are not a
-completeness proof for corruption detection.
+## Deletion transparency and notification safety
 
-The independent cursor model remains exhaustive and now covers 20,736
-four-operation words and 82,944 committed prefixes, carrying 189,449
-action-specific obligations through later prefixes. It covers unknown
-installation, two keys, repeated touches, stale and partial-action cursors,
-synchronization and migration stale→stale hardening, settled repetition without
-endless barriers, combined graph transition plus compaction, settled no-op,
-index uniqueness, and watermark coverage. A repeated same-key trace has 41 raw
-records and two after canonical compaction. These finite structural checks
-support, but do not prove, the analytical `O(nr²)` result. The executable model
-counts retained records and causal/context references in a finite universe; it
-does not prove byte bounds for arbitrary `ConstValue` or `NodeKey` payloads or
-establish a universal graph in-degree bound. `DatabaseFingerprint` size follows
-from its normative format rather than this model. The journal byte-size
-conclusion additionally relies on the analytical fixed-K assumption above.
-Fixed C and d
-remain premises of the broader storage model, not facts proved by the verifier
-or steps required to count `compact(J)`.
+Let `results(N,C,F)` be the ordered query sequence. For every valid cursor and
+filter, if `N' = compactNotifications(N)`:
 
+```text
+results(N', C, F) =
+    the subsequence of results(N, C, F)
+    whose underlying JournalRecord survives in N'
+```
 
-Occurrence `time` remains immutable payload on every retained entry. Value-head
-and candidate-event proofs retain the exact equal-time inputs satisfying
-`E.time == toUnixTimestamp(graph.modifiedAt)`. This does not change the
-`O(nr²)` compacted bound.
+No survivor changes position or crosses a cursor cut; no cursor is rebased; a
+cursor naming a deleted record remains valid. Compaction may remove future work
+but never claims consumer progress.
+
+If deleted R covered an action obligation, retained same-key W has `C < R < W`
+for every cursor not past R and expands to all actions. Notification compaction
+therefore introduces no action-specific false negative. W's witness time may
+replace the precise transition time because this API is conservative.
+
+## Combined compacted storage theorem
+
+For the combined durable journal state define:
+
+```text
+n = number of current or historic semantic keys represented by either the
+    compacted logical journal or compacted notification journal
+r = number of durable fingerprints represented by compacted logical entries,
+    retained causal references, or cursorCoverageFrontier
+```
+
+The existing fixed C, K, and d assumptions and bounded fingerprint contract
+remain as defined in the types specification. Broadening n and r cannot weaken
+the logical bound proved below: compact logical history is still `O(nr²)`. Fully compacted notifications retain at most one record per represented key.
+Each record's semantic address is bounded under fixed finite schema arity,
+bounded schema node names, fixed C for every binding `ConstValue`, and fixed K
+for its redundant identity-preserving `NodeKey`; therefore notifications are
+`O(n)`. Coverage metadata retains at most one bounded coordinate per represented fingerprint, `O(r)`; allocators and the high-watermark are constant-size. Thus, for `r >= 1`, total compacted
+journal and cursor metadata remain `O(nr²)`. Application-owned persisted tokens
+are not journal storage. No operation-count-independent bound applies to either
+uncompacted history.
+
+## Optional timing and executable evidence
+
+Logical and notification compaction may run after any transaction, during
+maintenance or synchronization, repeatedly, or be skipped. Correctness is
+timing-independent and a crash before optional compaction leaves valid
+uncompacted state. Notification compaction performs no covering append.
+
+The executable model exhausts the retained logical supported-state universe and
+the bounded notification semilattice, and additionally exhausts bounded words of
+notification transitions while carrying action-specific obligations. These
+finite checks support, but do not replace, the analytical future-union, storage,
+and cursor proofs.

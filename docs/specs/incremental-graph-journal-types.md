@@ -245,90 +245,89 @@ graph clock and not a per-node counter.
 5. Concurrent authors may use the same sequence; author breaks the tie.
 6. Overflow is fatal and wrapping is forbidden.
 
-## Stored entries and receiver-local cursor metadata
+## Durable logical and notification journals
 
-Each retained logical entry is stored exactly once:
+Logical history and notification occurrences are distinct persistent structures:
 
 ```text
-StoredJournalEntry = {
-    entry: JournalEntry
-    localIndex: uint64
+logicalJournal.entries: Map<JournalEntryId, JournalEntry>
+notificationJournal.records: Map<JournalIndex, JournalRecord>
+localJournalClock: uint64
+localJournalRecordClock: uint64
+journalRecordHighWatermark: Baseline | JournalIndex
+cursorCoverageFrontier:
+    Map<DatabaseFingerprint, Baseline | JournalIndex>
+```
+
+`JournalEntry.sequence`, allocated from `localJournalClock`, is the replicated
+logical event coordinate and forms `JournalEntryId` with `author`. Notification
+ordering uses a separate coordinate:
+
+```text
+JournalIndex = (appendSequence: uint64, appender: DatabaseFingerprint)
+JournalRecord = {
+    index: JournalIndex,
+    key: NodeKey,
+    nodeName: NodeName,
+    bindings: BindingEnvironment,
+    time: UnixTimestamp
 }
-
-journal.entries: Map<JournalEntryId,StoredJournalEntry>
-localJournalIndexWatermark: uint64
-
-runtime receiver state (never serialized):
-    cursorDomainIdentity: private runtime identity
 ```
 
-`JournalEntry.sequence` is the replicated logical event coordinate. The author
-allocates it from `localJournalClock`; it travels unchanged with the entry and,
-together with `author`, forms `JournalEntryId`.
+Indexes compare lexicographically by append sequence and then appender. They are
+globally comparable, immutable, and replicated. `appender` is the durable
+fingerprint of the appending host. The append sequence is never
+`JournalEntry.sequence`: the allocators and all conflict semantics are
+independent. Notification replay cannot affect logical identity, presence,
+`ValueRevision`, conflict resolution, or validation causality.
 
-`StoredJournalEntry.localIndex` is the receiver-local
-`possibleMaybeChanges()` position. Its receiver allocates it from
-`localJournalIndexWatermark`; it never replicates and may change when the
-existing stored entry is touched. It is not part of `JournalEntry`,
-`JournalEntryId`, replicated serialization, logical equality, Lamport ordering,
-provenance, graph revision identity, compaction selection, or synchronization.
-Thus each author uses `localJournalClock` as the allocator/watermark for its
-replicated logical sequence coordinates, while `localJournalIndexWatermark` is
-the allocator/watermark for a receiver's notification positions. Concurrent
-authors may allocate the same numeric sequence;
-`JournalEntryId=(sequence,author)` is the globally comparable identity. Sequence
-and local index are not competing logical journal coordinates. Both overflow
-fatally, and neither allocator reuses a value within its applicable domain.
+`JournalRecord` is immutable, self-contained conservative notification evidence,
+not graph authority. It carries the complete semantic address needed to apply a
+`NodeFilter` and construct public results after graph and logical evidence have
+been deleted. `key` MUST equal the implementation's identity-preserving
+`NodeKey(nodeName,bindings)` result; storage-load and merge validation reject a
+mismatch. This does not require `NodeKey` itself to be reversible. The record
+carries no action and need not reference retained logical evidence. Its `time` is
+witness time, not append time. Every query projects it to add, edit, delete,
+invalidate, and validate. A logical entry E is
+notified with `(E.key,E.nodeName,E.bindings,E.time)`. A conservative reappend uses the post-operation
+`notificationWitness(K).time`; reset may instead copy the greatest merged same-key record's `(key,nodeName,bindings,time)` where no final logical witness is retained.
 
-This mutable stored position is distinct from an issued cursor token. A
-`PossibleNodeChange` contains visible change payload while its exact object
-identity is registered with an immutable snapshot copying one
-`(cursorDomainIdentity,localIndex,actionOrdinal)` position at query time. A
-`BaselinePossibleNodeChange` is likewise registered with its private baseline
-snapshot. Registration and snapshots reside in genuinely private runtime state,
-not reflectable properties of the public objects. Touch may move
-`StoredJournalEntry.localIndex`, but it cannot mutate or reinterpret any
-already-issued snapshot. Private domain identity and raw numeric coordinates are
-never public.
+Each writable host durably owns `localJournalRecordClock`. Sequences are never
+reused; gaps are harmless; overflow is fatal. Before appending after remote
+observation, the allocator is raised above every observed append sequence and
+the new index is `(incrementedClock,localFingerprint)`. Every local append is
+strictly greater than the current high-watermark. Concurrent equal numeric
+sequences are ordered by appender. One mutex may protect both allocators, but
+their stored values and meanings remain separate.
 
-Each logical runtime receiver allocates one fresh private, unforgeable
-cursor-domain identity, unique from every unrelated receiver. It is runtime
-state: not part of `JournalEntry` or durable database state, not an author
-fingerprint, journal clock, or replica name, not remotely replicated, not
-serialized into durable or replicated synchronization state, and not
-user-accessible. Object
-identity, an unexported symbol retained only inside private runtime state, or an
-equivalent private mechanism may implement it. The identity MUST NOT appear as a
-reflectable property value on a public cursor token.
-
-Supported synchronization, migration, or reset inactive construction within the
-same running receiver threads this identity through the construction path with
-copied indexes and watermark, so in-process cutover preserves issued cursors.
-New process/startup restoration may restore entries, receiver-local indexes,
-watermark, and durable host/clock state, but MUST allocate a new domain identity.
-Old public cursor tokens are non-serializable and process-local, so continuity
-across runtime destruction/recreation is neither meaningful nor guaranteed.
-
-A previously unknown logical entry installed locally keeps its immutable contents
-byte-for-byte and receives:
+`journalRecordHighWatermark` is the greatest index ever incorporated. It never
+decreases, is at least every surviving record, survives compaction, restart,
+migration, restoration and synchronization, and may name a deleted record. It
+cannot be reconstructed from survivors. The coverage frontier is monotone and:
 
 ```text
-localJournalIndexWatermark += 1
-stored.localIndex = localJournalIndexWatermark
+cursorCoverageFrontier[localFingerprint] == journalRecordHighWatermark
 ```
 
-A sender's index is never imported. Receiving an already-known entry does not
-move it. `touch(E)` increments the local index watermark and updates only E's
-single stored `localIndex`; it never deletes, duplicates, replaces, or re-authors
-E's logical contents. A reconstructible secondary index is permitted only as a
-local optimization and has no synchronization meaning.
+after every commit. Coordinate `frontier[H]=W` proves this receiver can interpret
+tokens issued by H at a high-watermark no greater than W. Notification records
+and coverage frontiers replicate. Serialized tokens are
+canonical progress claims rather than security capabilities: a caller may
+construct a structurally valid claim and thereby skip its own work, but cannot
+make an uncovered issuer lineage admissible. Logical equality ignores
+notification multiplicity.
 
-Every retained entry has exactly one local index; retained indexes are unique;
-the watermark covers every retained index; gaps are harmless; and indexes are
-never reused in one receiver cursor domain. Index allocation/update commits
-atomically with the graph and journal transaction which requires it. Active
-transactions read the committed index watermark and allocate/update indexes
-while holding the per-replica darkroom commit mutex, never before acquiring it.
+At every supported commit: every logical ID and notification index names one
+immutable content; appenders are valid durable fingerprints and never reuse a
+sequence; both watermark and frontier are monotone; the local record clock
+dominates every observed sequence required before its next append; each local
+notification-relevant transition has a same-key record after the old
+high-watermark; newly adopted cursor lineage is covered before its frontier
+advances; notification compaction retains each represented key's greatest
+record; gaps are valid; logical semantics ignore notification order and
+multiplicity; and cursor queries do not mutate state. Violations are
+corrupted/unsupported state.
 
 ## Persisted graph boundary
 
@@ -341,10 +340,10 @@ Synchronization never advances `modifiedAt` merely because bytes were copied.
 For storage analysis:
 
 ```text
-n = number of current or historic semantic node keys represented by the
-    compacted journal
-r = number of distinct durable authors represented by compacted entries or
-    retained causal-context references
+n = number of current or historic semantic node keys represented by either the
+    compacted logical journal or compacted notification journal
+r = number of durable fingerprints represented by compacted logical entries,
+    retained causal-context references or cursorCoverageFrontier
 a = 5 journal actions, a fixed constant
 C = maximum serialized size of one ConstValue, a fixed system constant
 K = maximum serialized size of one NodeKey, a fixed system constant
@@ -359,7 +358,7 @@ size, so its definition does not establish C. The `NodeKey` format is
 implementation-defined and its identity-preservation contract does not bound
 encoding overhead, so that contract does not establish K. Bounded C, fixed
 finite schema arity, and an intended bounded-overhead key encoding are
-compatible with bounded K, but K remains a separate explicit premise. Every
+compatible with bounded K, but K remains a separate explicit premise. The same fixed finite schema bounds `NodeName` size and binding count; fixed C then bounds the complete `(nodeName,bindings)` address stored redundantly in each notification record. Every
 compliant `DatabaseFingerprint` is exactly 16 lowercase ASCII letters, so its
 serialized payload is normatively bounded rather than assumed. Graph
 finiteness does not establish d because in-degree could grow with n. A fixed
@@ -372,14 +371,14 @@ n and r. Journal entries contain `NodeKey` values, `DatabaseFingerprint`
 authors, and causal metadata, so this
 journal-only bound assumes fixed K. Hidden constants may also depend on the
 fixed number of action classes and fixed-width `UnixTimestamp`, sequence, and
-local-index scalar coordinates. `DatabaseFingerprint` payloads are bounded by
+notification-index scalar coordinates. `DatabaseFingerprint` payloads are bounded by
 their normative 16-character ASCII representation.
 A `JournalEntryId` is bounded because it combines a fixed-width sequence with a
 normatively bounded `DatabaseFingerprint`; it is not a separate premise.
 Constant action coordinates use `O(r)`
 entries per key; at most `O(r)` retained validations each carry an `O(r)`
 context, including exact causal references. Other journal witnesses are no
-larger. A scalar local index does not alter the result. The theorem does not
+larger. The separate compact notification and coverage metadata add only `O(n+r)` and do not alter the result. The theorem does not
 claim independence from arbitrarily growing key encodings.
 
 The broader persisted IncrementalGraph state may also store dependency,

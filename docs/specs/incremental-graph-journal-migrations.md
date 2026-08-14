@@ -1,80 +1,72 @@
 # Journal during migration
 
-This migration specification applies only after the journal subsystem has been
-established. It does not describe upgrading a database created by a pre-journal
-implementation; database-version migration here operates within the target
-journal-enabled persistent model described by the journal
-[implementation/rollout scope](../incremental-graph-journal.md#implementationrollout-scope).
+This specification applies only after the journal subsystem exists. It does not
+describe upgrading a pre-journal database; that remains outside the
+[rollout scope](../incremental-graph-journal.md#implementationrollout-scope).
 
-Migration builds authoritative graph state independently, starting from one
-fixed receiver snapshot containing:
+Migration builds authoritative graph state from one fixed receiver snapshot and
+preserves exactly:
 
 ```text
 durable DatabaseFingerprint
-StoredJournalEntry collection
+logical JournalEntry collection
+notification JournalRecord collection
 localJournalClock
-localJournalIndexWatermark
+localJournalRecordClock
+journalRecordHighWatermark
+cursorCoverageFrontier
 ```
 
-Within one running receiver, migration separately threads the receiver's
-runtime-only cursor-domain identity into the inactive target; it never reads or
-writes that identity as database or synchronization content. It copies every
-retained entry and its receiver-local index exactly, then checks the structural
-invariants required to load retained state: generation and retained
-validation-causal reference resolution, identity, and ordering; logical clock
-coverage; unique valid indexes; and index-watermark coverage. It MAY also check
-immutable-ID conflicts and same-author validation-context monotonicity
-defensively when the relevant evidence remains. These checks do not promise complete diagnosis of
-corrupted/unsupported history after compaction, and absence of discarded
-evidence is not migration failure. It never imports another host's
-index or author ownership and uses the
-[journal supported-state boundary](incremental-graph-journal-types.md#supported-state-boundary).
+It does not renumber records or change immutable contents. Before cutover it
+checks generation and retained causal-reference resolution, identity and
+ordering; logical-clock and record-clock coverage; unique immutable content per
+`JournalEntryId` and `JournalIndex`; high-watermark coverage; and a monotone
+frontier. It MAY additionally diagnose visible immutable-ID conflicts or validation-context regression. Compaction may have
+legitimately removed historical evidence, so these checks do not promise
+complete diagnosis beyond the supported-state boundary.
 
-A supported migration MUST accept a structurally valid supported journal even
-when it contains uncompacted history. Non-canonical representation is not
-corruption, and cutover does not require `J == compact(J)`. Migration does not
-run an implicit compaction pass, create notification-witness touches merely for
-compaction, or move local indexes for otherwise unchanged keys. It copies the
-retained history and indexes, then authors, indexes, or touches only what its
-semantic migration transitions require. Thus a journal-silent same-process
-migration retains the cursor domain, entries, indexes, and watermark unchanged;
-real migration activity may advance the watermark only through its ordinary
-entry/touch rules. An independently requested compaction remains a separate
-operation with the ordinary compaction cursor-coverage rules.
+A supported migration MUST accept structurally valid uncompacted history.
+Non-canonical representation is not corruption and cutover does not require
+either journal to equal its compact form. Migration never runs implicit logical
+or notification compaction and a journal-silent migration preserves all entries,
+records, coordinates, allocators, watermark, frontier, and token authority.
+Independent maintenance compaction remains a separate operation.
 
-For example, a reachable journal may contain several superseded entries at one
-same-author/key/action coordinate because compaction has been skipped. Migration
-may exact-copy all of them and cut over successfully without compacting. A
-journal-silent migration leaves their indexes unchanged; a genuine graph
-transition adds or touches only the normal witness for that transition.
+For example, several superseded logical entries and notification occurrences may
+be copied and cut over unchanged. Supported process restart and same-host
+self-restoration likewise preserve encoded cursor validity. Rollback to an older
+checkpoint under the same durable writer identity remains unsupported.
 
-Migration applies the exact closed classifier. New logical entries use the host
-clock, required generation, wall-clock occurrence `time` (equal to
-`toUnixTimestamp(resulting modifiedAt)` for add/edit), and distinct fresh
-local indexes. Any changed key without a newly indexed entry touches its greatest
-retained witness. Graph, entries, touches, and watermarks commit atomically.
-`Unchanged`, representation-only, identifier-only, and validity-only changes are
-silent. Aborted inactive construction exposes no index advancement and index
-values are never reused after publication.
+Migration applies the exact closed classifier. `create` authors add with
+`add.time=toUnixTimestamp(createdAt)=toUnixTimestamp(modifiedAt)`; delete and
+genuine freshness changes author their ordinary actions. `keep`, ordinary
+`invalidate`, and semantic-preserving `override` create no value event and
+preserve `modifiedAt`; representation-, identifier-, timestamp-, and harmless
+validity-only changes are silent. `Unchanged` is silent. Every authored logical
+entry uses the host logical clock and atomically appends its `(key,nodeName,bindings,time)` record.
+Any notification-relevant changed key not already covered by such a record gets
+one final-state record after the pre-migration high-watermark. Aborted inactive
+construction exposes no committed allocator advancement; reserved gaps are
+harmless and sequences are never reused after publication.
 
-The closed transition classifier is not sufficient when migration hardens an
-already-stale cache. Whenever `keep` or `override` discards a stale node's
-incoming proofs, explicit migration `invalidate()` removes/reasserts those
-proofs, or `create(..., "potentially-outdated")` establishes a must-recompute
-materialization, migration authors an ordinary generation-scoped
-`InvalidateJournalEntry` unless a barrier produced by that same migration
-decision already represents the exact obligation. The barrier uses the existing
-generation (or the new create add generation), is allocated above every journal
-entry observed by migration, participates normally in `invalidateFrontier`, and
-commits atomically with graph/proof state, its fresh local index, and both
-watermarks. Migration introduces no special action.
+The closed classifier is not sufficient when migration hardens an already-stale
+cache. Whenever `keep` or `override` discards incoming proofs, explicit migration
+`invalidate()` removes or reasserts them, or
+`create(...,"potentially-outdated")` establishes a must-recompute
+materialization, migration authors an ordinary generation-scoped invalidate
+unless that same decision already produced the exact barrier. It uses the
+existing generation (or new add generation), is allocated above all observed
+logical history, participates normally in `invalidateFrontier`, and commits with
+graph/proof state and its notification record. There is no migration action.
 
-A migrated node already hard-invalidated with absent incoming proofs and an
-outstanding retained barrier may be carried without another entry when migration
-makes no new proof-removal or deliberate hardening decision. Thus the global
-invariant prevents missing obligations without creating barriers for settled
-state. Repeating such a passive `keep` or `override` authors no barrier, assigns
-no local index, and advances no journal clock for this reason. An explicit
-`invalidate()` is instead a deliberate reassertion and MUST author a fresh
-barrier even from this settled starting state. Compaction treats migration-authored invalidates identically, including
-the fully compacted `O(nr²)` bound.
+A node already hard-invalidated with absent incoming proofs and an outstanding
+barrier may be carried silently when migration makes no new proof-removal or
+hardening decision. Repeating passive `keep` or `override` authors nothing and
+advances neither allocator. Explicit `invalidate()` is a deliberate reassertion
+and MUST author a fresh barrier and record even from settled state.
+
+Graph, logical entries, notification records, allocators, high-watermark,
+frontier required by a migration commit atomically.
+Migration never seeds graph authority from notification records and never invokes
+computors. Logical compaction treats migration entries identically; notification
+compaction treats their records identically.

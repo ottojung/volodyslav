@@ -323,79 +323,38 @@ compatibility rules.
 
 ## Journal integration without weakening graph locking
 
-The observatory model is unchanged. Computor execution remains outside the
-short darkroom; neither journal merge nor clock allocation broadens it.
-
-Each writable host additionally has one dedicated **journal clock mutex**. It
-serializes only the persistent `localJournalClock` watermark and reservations.
-There is no per-node synchronization counter. A reservation may commit before a
-graph transaction and leave a gap if that transaction aborts; it is never
-reused.
-
-For stale-to-fresh publication, K first observes its exact relevant
-`invalidateFrontier(K,G)`. The journal-clock mutex raises `localJournalClock`
-above every referenced invalidate and then reserves V's sequence, so every
-`I` in `V.clearsInvalidates` mechanically satisfies
-`I.sequence < V.sequence`.
-
-From reservation through darkroom publication, the completed nighttime
-stability theorem—not darkroom serialization alone—keeps that relevant frontier
-fixed. Explicit invalidation is incompatible daytime work. Synchronization,
-migration, reset, and cutover use incompatible lifecycle modes. Dependency
-value transitions capable of invalidating K are excluded for both stale
-recursive pulls and fresh fast-path dependency cones. Another `pull(K)`
-serializes on K's telescope and cannot author an intervening barrier. Therefore
-no new invalidate for K can commit between reservation and the atomic
-freshness/context publication. An aborted publication exposes no validation and
-may leave only the reserved sequence as a harmless unused gap.
+The logical and notification allocators are distinct durable counters. One
+dedicated journal allocator mutex MAY serialize both, provided their values and
+semantics never influence one another. Notification replay never allocates a
+logical ID or affects graph conflict ordering.
 
 ### Lock order
 
-The only permitted nesting order is:
-
 ```text
-dome mode (daytime/nighttime/holiday)
-  -> telescope, when pull observes a concrete node
-    -> journal clock mutex, only when an entry must be authored
-      -> darkroom/replica commit mutex
+dome mode
+  -> telescope when applicable
+    -> journal allocator mutex when allocation is required
+      -> darkroom commit mutex
 
 release construction locks
-  -> garden close for the final active-pointer switch
+  -> garden close for final active-pointer switch
 ```
 
-`enterGarden` may be used under holiday to retain a fixed source snapshot, but
-must be released before inactive construction. Code never requests
-`closeGarden` while holding `enterGarden`, telescope, journal-clock, or darkroom.
-No path acquires telescope or dome while holding the journal-clock mutex, and no
-path acquires that mutex while holding darkroom. These rules prevent cycles.
+No path reverses this order. Exclusive synchronization, migration and reset keep
+their existing inactive-construction phases. The darkroom remains short: work is
+prepared first, allocator values are reserved under their mutex, and final graph,
+logical entries, notification records, high-watermark, and coverage frontier are
+committed atomically under darkroom finalization. Aborted reservations leave
+harmless gaps. This does not widen the darkroom or weaken dome/telescope
+serialization.
 
-Normal mutation classifies its graph transition, reserves the necessary entry
-sequences, and commits graph writes, immutable `JournalEntry` values, and local
-index allocations/touches in one short darkroom batch. For stale→fresh, while holding the telescope and final darkroom serialization, it reads the exact transaction-visible `invalidateFrontier(K,G)` and commits that complete `clearsInvalidates` context atomically with freshness. An invalidate committed before this validation linearization point cannot be omitted; one serialized afterward remains outside the context and outstanding. Every graph-writing path which newly establishes or deliberately reasserts hard invalidation—including explicit invalidation, synchronization, migration, and reset—uses its applicable construction locks and final darkroom serialization to atomically remove/omit incoming proofs and author a generation-scoped causal barrier after observed history. Settled state already represented by an outstanding barrier needs no new entry. A transaction MUST read
-the current durable `localJournalIndexWatermark`, allocate every required fresh
-index monotonically, and update the watermark while holding the per-replica
-darkroom/commit mutex. Reading the watermark outside the darkroom and later
-committing a precomputed successor is forbidden: overlapping different-node
-pulls could otherwise choose the same index. No separate local-index mutex is
-needed.
+Validation reads the transaction-visible invalidate frontier and commits its
+complete causal context with freshness. Hard invalidation similarly commits its
+barrier after observed logical history. Notification records for those entries
+commit in the same transaction. Sync raises the notification allocator above
+observed high-watermarks before required replay and advances coverage only in the
+final atomic commit.
 
-Conceptually, work that does not require final durable state may be prepared
-outside the darkroom. After acquiring it, the transaction reads the committed
-watermark, assigns `watermark+1`, `watermark+2`, and so on, writes graph changes,
-logical entries, stored-entry index changes, and the final watermark atomically,
-then releases the darkroom. Aborted construction cannot expose any advancement.
-Synchronization first takes fixed
-source snapshots, joins logical entries, and raises the allocator watermark;
-only if its deterministic decision requires a new delete/invalidate does it
-reserve a sequence. The inactive graph and exactly the journal reconciled with
-it become durable before garden cutover.
-
-An inactive synchronization or migration target may allocate privately, but
-only relative to the exact receiver watermark copied into that destination and
-under the destination's serialization boundary. No two builders may publish
-indexes into the same destination without that uniqueness boundary.
-
-`possibleMaybeChanges()` uses garden access to retain one fixed committed
-snapshot and then scans stored entries by local index through the captured index
-watermark. It needs no telescope, dome phase beyond ordinary inspection access,
-or journal-clock mutex.
+`possibleMaybeChanges()` takes one committed read snapshot. It never acquires the
+writer allocator, appends a record, changes a watermark/frontier, or invokes a
+computor.
