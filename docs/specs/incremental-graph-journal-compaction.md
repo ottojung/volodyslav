@@ -11,7 +11,7 @@ supported protocol states, not arbitrary sets of fabricated entries.
 Compaction need not preserve discarded evidence solely to diagnose a past or
 future corrupted/unsupported history.
 
-Compaction considers immutable `JournalEntry` contents only. Notification records, indexes, watermarks, coverage, and cursor-token authentication metadata are a separate layer and do not participate in logical selection.
+Compaction considers immutable `JournalEntry` contents only. Notification records, indexes, watermarks, and coverage are a separate layer and do not participate in logical selection.
 
 ## Canonical algorithm
 
@@ -75,7 +75,7 @@ compactNotifications(N) =
 
 It is pure deletion: `compactNotifications(N) subset-of N`. It creates or
 changes no record, index, logical entry, cursor, allocator, high-watermark,
-coverage coordinate, or token-verification metadata. It may run independently,
+coverage coordinate. It may run independently,
 during synchronization or maintenance, repeatedly, or never. Uncompacted
 records may grow with operation count.
 
@@ -117,8 +117,7 @@ For the combined durable journal state define:
 n = number of current or historic semantic keys represented by either the
     compacted logical journal or compacted notification journal
 r = number of durable fingerprints represented by compacted logical entries,
-    retained causal references, cursorCoverageFrontier, or cursor-token
-    verification metadata
+    retained causal references, or cursorCoverageFrontier
 ```
 
 The existing fixed C, K, and d assumptions and bounded fingerprint contract
@@ -127,9 +126,7 @@ the logical bound proved below: compact logical history is still `O(nr²)`. Full
 Each record's semantic address is bounded under fixed finite schema arity,
 bounded schema node names, fixed C for every binding `ConstValue`, and fixed K
 for its redundant identity-preserving `NodeKey`; therefore notifications are
-`O(n)`. Coverage and token-verification metadata retain at most one bounded
-coordinate/key per represented fingerprint, `O(r)`; allocators, local signing
-key, and high-watermark are constant-size. Thus, for `r >= 1`, total compacted
+`O(n)`. Coverage metadata retains at most one bounded coordinate per represented fingerprint, `O(r)`; allocators and the high-watermark are constant-size. Thus, for `r >= 1`, total compacted
 journal and cursor metadata remain `O(nr²)`. Application-owned persisted tokens
 are not journal storage. No operation-count-independent bound applies to either
 uncompacted history.

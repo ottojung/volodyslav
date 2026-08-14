@@ -31,12 +31,13 @@ issuedAtHighWatermark = fixed snapshot's journalRecordHighWatermark
 edit, delete, invalidate, validate. Baseline is a universal before-all position
 and needs no issuer coverage.
 
-The journal-owned global string codec parses and preserves the complete signed token:
-version, visible payload, immutable position, issuer, and issuance high-watermark.
-`nodeName`, `bindings`, and `time` use their existing canonical project codecs;
-`action` uses its canonical closed-action spelling. Decode therefore reconstructs
-the same public `PossibleNodeChange`, without consulting a `JournalRecord` which
-may no longer exist. Normatively:
+The journal-owned string codec is an ordinary opaque persistence format, not a
+security capability. Its canonical, versioned representation contains the
+complete visible payload, immutable position, issuer, and issuance
+high-watermark. `nodeName`, `bindings`, and `time` use their existing canonical
+project codecs; `action` uses its canonical closed-action spelling. Decode
+therefore reconstructs the same public `PossibleNodeChange` without consulting a
+`JournalRecord` which may no longer exist. Normatively:
 
 ```text
 stringToPossibleChangeToken(possibleChangeTokenToString(change))
@@ -44,28 +45,15 @@ stringToPossibleChangeToken(possibleChangeTokenToString(change))
     and exactly change's hidden position, issuedBy, issuedAtHighWatermark
 ```
 
-The format is versioned and uses Ed25519: each durable issuer owns a 32-byte
-private signing key which never replicates and a matching 32-byte public
-verification key which travels with its coverage lineage. The signature is the canonical 64-byte Ed25519 signature over a
-domain-separation prefix and every canonical encoded field. Keys and signatures use unpadded base64url, rejecting
-non-canonical encodings. A fingerprint maps to exactly one public key in
-supported state. Only the issuer can mint authority; synchronized receivers can verify but cannot
-sign as that issuer. Query construction signs each newly returned
-`PossibleNodeChange`. `possibleChangeTokenToString` returns the canonical signed
-representation already carried by either a newly issued or decoded token; it does
-not re-sign a foreign token.
-
-`stringToPossibleChangeToken(string)` is deliberately receiver-independent. It
-validates canonical encoding, version, payload shapes, ordinals, coordinates,
-and fingerprints, and preserves the signature bytes, but it does not claim
-cursor authority and does not verify an issuer key. Malformed or structurally
-invalid strings reject there. The receiver-bound
-`possibleMaybeChanges({since,...})` verifies the preserved Ed25519 signature
-against its `cursorTokenVerificationKeys[issuedBy]` and then checks coverage.
-Unknown issuers, missing keys, invalid signatures, or any changed visible/hidden
-field reject with `InvalidPossibleChangeCursorError` before scanning. A
-legitimate encoded and decoded token retains its complete payload and authority
-across restart. Runtime object identity is not authority.
+`stringToPossibleChangeToken(string)` validates canonical encoding, version,
+payload shapes, ordinals, coordinates, and fingerprints. Malformed or
+structurally invalid strings reject with `InvalidPossibleChangeCursorError`.
+A structurally valid fabricated string is a caller-supplied claim about that
+caller's own progress. It may cause that caller to skip work, just as persisting
+the wrong legitimate cursor would; this API provides no authenticity guarantee or protection against deliberate progress fabrication. Such a claim
+still cannot pass on a disconnected receiver unless its declared issuer and
+issuance high-watermark satisfy the receiver's coverage frontier. Runtime object
+identity is not authority.
 
 A cursor is an immutable cut in global notification order. It never follows a
 logical entry or notification record. A token for `(I,ordinal)` forever means
@@ -84,7 +72,6 @@ issuedAtHighWatermark.appendSequence is uint64
 position.index.appender is a valid DatabaseFingerprint
 issuedBy is a valid DatabaseFingerprint
 position.index <= issuedAtHighWatermark
-signature is a canonical 64-byte Ed25519 signature encoding
 ```
 
 Integer parsing rejects signs, overflow, alternate non-canonical spellings, and trailing data. Payload decoding validates the exact runtime shapes and canonical encodings required by `NodeName`, `BindingEnvironment`, the action union, and `DateTime`. Baseline has exactly one canonical encoding and carries no
@@ -94,14 +81,9 @@ authority and raises `InvalidPossibleChangeCursorError`. These conditions make
 cross-host theorem.
 
 Before interpreting a structurally decoded non-baseline position, the receiver
-requires both:
+requires:
 
 ```text
-Ed25519Verify(
-    cursorTokenVerificationKeys[token.issuedBy],
-    token.canonicalSignedBytes,
-    token.signature
-)
 cursorCoverageFrontier[token.issuedBy] >= token.issuedAtHighWatermark
 ```
 
@@ -127,8 +109,7 @@ For each `JournalRecord R`, apply the filter directly to its self-contained
 Apply `NodeFilter` and return exactly projections greater than `since.position`,
 ordered by `JournalIndex` then ordinal. A cursor partway through one record still
 sees its later ordinals. Each result privately captures its projection position,
-local fingerprint as issuer, captured high-watermark, and issuer signature, and
-exposes the record's semantic address and witness time:
+local fingerprint as issuer and captured high-watermark, and exposes the record's semantic address and witness time:
 
 ```text
 nodeName, bindings, action,

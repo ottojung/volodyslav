@@ -6,7 +6,6 @@ UnixTimestamp values, not arbitrary signed 64-bit persistence values.
 """
 from dataclasses import dataclass
 from itertools import product
-import hashlib
 
 ACTIONS = ("add", "edit", "delete", "invalidate", "validate")
 
@@ -548,8 +547,6 @@ class Token:
     position: tuple[Index, int]
     issued_by: str
     issued_at_high_watermark: Index
-    signed_payload: str = ""
-    signature: str = ""
 
 @dataclass(frozen=True)
 class NotificationState:
@@ -558,14 +555,9 @@ class NotificationState:
     clock: int
     high: Index
     coverage: tuple[tuple[str, Index], ...]
-    verification_keys: tuple[tuple[str, str], ...]
-    signing_key: str
     views: tuple[tuple[str, str], ...] = ()
 
 BASE = Index(0, "")
-PRIVATE_KEYS = {FP_A: "private-a", FP_B: "private-b", FP_C: "private-c", FP_R: "private-r"}
-PUBLIC_KEYS = {FP_A: "public-a", FP_B: "public-b", FP_C: "public-c", FP_R: "public-r"}
-SIGNATURE_ORACLE = set()
 
 class InvalidPossibleChangeCursorError(Exception):
     pass
@@ -609,15 +601,8 @@ def token_payload(token):
                      str(token.issued_at_high_watermark.sequence),
                      token.issued_at_high_watermark.appender))
 
-def model_sign(token, private_key):
-    """Register an abstract Ed25519 signature; cryptography is outside this model."""
-    payload = token_payload(token)
-    issuer = token.issued_by
-    if PRIVATE_KEYS[issuer] != private_key:
-        raise InvalidPossibleChangeCursorError
-    signature = hashlib.sha512((private_key + "\0" + payload).encode()).hexdigest()
-    SIGNATURE_ORACLE.add((PUBLIC_KEYS[issuer], payload, signature))
-    return payload + "|" + signature
+def token_string(token):
+    return token_payload(token)
 
 def canonical_uint64(value):
     if not value or (len(value) > 1 and value[0] == "0") or not value.isascii() or not value.isdecimal():
@@ -629,7 +614,7 @@ def canonical_uint64(value):
 
 def token_from_string(value):
     fields = value.split("|")
-    if len(fields) != 12 or fields[0] != "v1":
+    if len(fields) != 11 or fields[0] != "v1":
         raise InvalidPossibleChangeCursorError
     try:
         node_name, bindings, action = fields[1], tuple(filter(None, fields[2].split(","))), fields[3]
@@ -644,16 +629,12 @@ def token_from_string(value):
             raise InvalidPossibleChangeCursorError
         if index > high or not valid_fingerprint(high.appender):
             raise InvalidPossibleChangeCursorError
-        return Token(node_name, bindings, action, time, (index, ordinal), issuer, high,
-                     "|".join(fields[:11]), fields[11])
+        return Token(node_name, bindings, action, time, (index, ordinal), issuer, high)
     except (KeyError, ValueError, IndexError):
         raise InvalidPossibleChangeCursorError
 
 def query_n(state, token, keys=None):
     if token.position[0] > token.issued_at_high_watermark:
-        raise InvalidPossibleChangeCursorError
-    public_key = dict(state.verification_keys).get(token.issued_by)
-    if (public_key, token.signed_payload, token.signature) not in SIGNATURE_ORACLE:
         raise InvalidPossibleChangeCursorError
     if dict(state.coverage).get(token.issued_by, BASE) < token.issued_at_high_watermark:
         raise InvalidPossibleChangeCursorError
@@ -663,7 +644,7 @@ def make_state(host, records=(), views=()):
     records = frozenset(records); high = max((r.index for r in records), default=BASE)
     return NotificationState(host, records,
         max((r.index.sequence for r in records), default=0), high,
-        ((host, high),), ((host, PUBLIC_KEYS[host]),), PRIVATE_KEYS[host], tuple(sorted(views)))
+        ((host, high),), tuple(sorted(views)))
 
 def synchronize(receiver, source, final_views):
     merged = set(receiver.records | source.records)
@@ -689,13 +670,8 @@ def synchronize(receiver, source, final_views):
     coverage = dict(receiver.coverage)
     for host, watermark in source.coverage: coverage[host] = max(coverage.get(host, BASE), watermark)
     coverage[receiver.host] = high
-    verification = dict(receiver.verification_keys)
-    for host, key in source.verification_keys:
-        if host in verification and verification[host] != key: raise AssertionError("issuer key conflict")
-        verification[host] = key
     return NotificationState(receiver.host, compact_n(merged), clock, high,
-        tuple(sorted(coverage.items())), tuple(sorted(verification.items())),
-        receiver.signing_key, tuple(sorted(final_views)))
+        tuple(sorted(coverage.items())), tuple(sorted(final_views)))
 
 # Positional stability, gaps, ordinals, and notification ACI/deletion transparency.
 records = frozenset(Record(Index(n, FP_A), node_key("node-" + key.lower(), ()), "node-" + key.lower(), (), n) for n, key in ((10,"K"),(20,"B"),(30,"C"),(40,"D")))
@@ -719,12 +695,12 @@ for a in sets:
   for b in sets:
     for c in sets: assert merge_n(merge_n(a,b),c) == merge_n(a,merge_n(b,c))
 
-# Authenticated codec and every normative impossible-token rejection.
+# Canonical codec and every normative structurally impossible-token rejection.
 a = make_state(FP_A, [Record(Index(100,FP_A), node_key("node-k", ()), "node-k", (), 50)], [(node_key("node-k", ()),"source")])
 source_record = next(record for record in a.records if record.key == node_key("node-k", ()))
 token = issue_token(source_record, 4, FP_A, a.high)
 assert (token.node_name, token.bindings, token.action, token.time) == (source_record.node_name, source_record.bindings, "validate", source_record.time)
-encoded = model_sign(token, a.signing_key); decoded = token_from_string(encoded); assert decoded.node_name == token.node_name and decoded.bindings == token.bindings and decoded.action == token.action and decoded.time == token.time and decoded.position == token.position and decoded.issued_by == token.issued_by and decoded.issued_at_high_watermark == token.issued_at_high_watermark
+encoded = token_string(token); decoded = token_from_string(encoded); assert decoded.node_name == token.node_name and decoded.bindings == token.bindings and decoded.action == token.action and decoded.time == token.time and decoded.position == token.position and decoded.issued_by == token.issued_by and decoded.issued_at_high_watermark == token.issued_at_high_watermark
 invalid_tokens = [
     Token("node", (), "validate", 50, (Index(100,FP_A),5),FP_A,a.high),
     Token("node", (), "validate", 50, (Index(UINT64_MAX+1,FP_A),4),FP_A,Index(UINT64_MAX+1,FP_A)),
@@ -735,15 +711,15 @@ invalid_tokens = [
 invalid_token_checks = 0
 for invalid in invalid_tokens:
     try:
-        fabricated = model_sign(invalid, a.signing_key)
+        fabricated = token_string(invalid)
         token_from_string(fabricated)
         raise AssertionError("invalid token accepted")
     except (InvalidPossibleChangeCursorError, KeyError):
         invalid_token_checks += 1
-tampered = encoded.replace("|100|", "|99|", 1)
-tampered_token = token_from_string(tampered)
-try: query_n(a, tampered_token); raise AssertionError("tampered token accepted")
-except InvalidPossibleChangeCursorError: invalid_token_checks += 1
+fabricated_progress = encoded.replace("|100|", "|99|", 1)
+fabricated_token = token_from_string(fabricated_progress)
+assert query_n(a, fabricated_token) == query_n(a, fabricated_token)
+assert fabricated_token.position[0] == Index(99, FP_A)
 
 # Coverage, sync, high-watermark, restart, and graph-silent controlled reset.
 b0 = make_state(FP_B, [Record(Index(90,FP_B), node_key("node-k", ()), "node-k", (), 40)], [(node_key("node-k", ()),"receiver")])
@@ -756,11 +732,11 @@ source150 = make_state(FP_A,[Record(Index(150,FP_A), node_key("node-k", ()), "no
 assert max(r.index for r in synchronize(b0,source150,((node_key("node-k", ()),"source"),)).records if r.key==node_key("node-k", ())) == Index(150,FP_A)
 assert synchronize(b_diff,a,((node_key("node-k", ()),"final-B"),)) == b_diff
 # Full public payload and hidden authority round-trip without consulting the record.
-recordless_restored = NotificationState(a.host,frozenset(),a.clock,a.high,a.coverage,a.verification_keys,a.signing_key,a.views)
+recordless_restored = NotificationState(a.host,frozenset(),a.clock,a.high,a.coverage,a.views)
 round_tripped = token_from_string(encoded)
 assert (round_tripped.node_name, round_tripped.bindings, round_tripped.action, round_tripped.time) == (token.node_name, token.bindings, token.action, token.time)
 assert round_tripped.position == token.position and query_n(recordless_restored,round_tripped) == ()
-restored = NotificationState(a.host,a.records,a.clock,a.high,a.coverage,a.verification_keys,a.signing_key,a.views)
+restored = NotificationState(a.host,a.records,a.clock,a.high,a.coverage,a.views)
 assert query_n(restored,token_from_string(encoded)) == query_n(a,decoded)
 # Once foreign lineage is covered, local append, compaction, and restart preserve it.
 foreign_covered = b_equal
@@ -768,14 +744,11 @@ local_clock = max(foreign_covered.clock, foreign_covered.high.sequence) + 1
 local_record = Record(Index(local_clock, FP_B), node_key("node-l", ()), "node-l", (), 60)
 foreign_coverage = dict(foreign_covered.coverage); foreign_coverage[FP_B] = local_record.index
 foreign_covered = NotificationState(FP_B, foreign_covered.records | {local_record}, local_clock,
-    local_record.index, tuple(sorted(foreign_coverage.items())), foreign_covered.verification_keys,
-    foreign_covered.signing_key, foreign_covered.views)
+    local_record.index, tuple(sorted(foreign_coverage.items())), foreign_covered.views)
 foreign_covered = NotificationState(FP_B, compact_n(foreign_covered.records), foreign_covered.clock,
-    foreign_covered.high, foreign_covered.coverage, foreign_covered.verification_keys,
-    foreign_covered.signing_key, foreign_covered.views)
+    foreign_covered.high, foreign_covered.coverage, foreign_covered.views)
 foreign_covered = NotificationState(FP_B, foreign_covered.records, foreign_covered.clock,
-    foreign_covered.high, foreign_covered.coverage, foreign_covered.verification_keys,
-    foreign_covered.signing_key, foreign_covered.views)
+    foreign_covered.high, foreign_covered.coverage, foreign_covered.views)
 assert dict(foreign_covered.coverage)[FP_A] >= token.issued_at_high_watermark
 assert query_n(foreign_covered, decoded) == query_n(foreign_covered, round_tripped)
 reset_receiver = make_state(FP_R,[],[(node_key("node-k", ()),"source")]) # graph already equal
@@ -783,7 +756,7 @@ reset_final = synchronize(reset_receiver,a,((node_key("node-k", ()),"source"),))
 assert reset_final.views == reset_receiver.views and dict(reset_final.coverage)[FP_A] >= a.high
 assert query_n(reset_final,decoded) == () and synchronize(reset_final,a,((node_key("node-k", ()),"source"),)) == reset_final
 high_state = make_state(FP_A,[Record(Index(500,FP_A), node_key("node-k", ()), "node-k", (), 1),Record(Index(600,FP_A), node_key("node-k", ()), "node-k", (), 2)],[(node_key("node-k", ()),"A")])
-high_state = NotificationState(FP_A,compact_n(high_state.records),600,high_state.high,high_state.coverage,high_state.verification_keys,high_state.signing_key,high_state.views)
+high_state = NotificationState(FP_A,compact_n(high_state.records),600,high_state.high,high_state.coverage,high_state.views)
 replayed = synchronize(high_state,make_state(FP_C,[Record(Index(50,FP_C), node_key("node-k", ()), "node-k", (), 1)],[(node_key("node-k", ()),"C")]),((node_key("node-k", ()),"C"),))
 assert max(r.index for r in replayed.records) > Index(600,FP_A)
 
@@ -802,7 +775,7 @@ for word in product(ops, repeat=4):
             clock = max(state.clock,state.high.sequence)+1; record=Record(Index(clock,FP_A),node_key("node-" + key.lower(), ()),"node-" + key.lower(),(),clock)
             coverage = dict(state.coverage); coverage[state.host] = record.index
             state = NotificationState(FP_A,state.records|{record},clock,record.index,
-                tuple(sorted(coverage.items())),state.verification_keys,state.signing_key,state.views)
+                tuple(sorted(coverage.items())),state.views)
             obligations += [(cursor,record_key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
         elif op in ("syncK","syncL"):
             key = "L" if op == "syncL" else "K"
@@ -811,9 +784,9 @@ for word in product(ops, repeat=4):
             state = synchronize(state,source,((record_key,"remote"),))
             obligations += [(cursor,record_key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
         elif op == "compact":
-            state = NotificationState(state.host,compact_n(state.records),state.clock,state.high,state.coverage,state.verification_keys,state.signing_key,state.views)
+            state = NotificationState(state.host,compact_n(state.records),state.clock,state.high,state.coverage,state.views)
         elif op == "restart":
-            state = NotificationState(state.host,state.records,state.clock,state.high,state.coverage,state.verification_keys,state.signing_key,state.views)
+            state = NotificationState(state.host,state.records,state.clock,state.high,state.coverage,state.views)
         else: assert state == before
         for cursor,key,action in obligations:
             # An obligation is discharged only for a cursor already across its
@@ -823,7 +796,6 @@ for word in product(ops, repeat=4):
         old_coverage, new_coverage = dict(before.coverage), dict(state.coverage)
         assert all(new_coverage.get(host, BASE) >= watermark for host, watermark in old_coverage.items())
         assert new_coverage[state.host] == state.high
-        assert set(new_coverage) <= set(dict(state.verification_keys))
         assert state.high >= max((r.index for r in state.records),default=BASE)
         prefixes_checked += 1
     words_checked += 1
@@ -833,7 +805,7 @@ for word in product(ops, repeat=4):
 storage_state = reset_final
 logical_keys = {"logical-only"}; logical_authors = {FP_R}
 combined_n = len(logical_keys | {r.key for r in storage_state.records})
-combined_r = len(logical_authors | set(dict(storage_state.coverage)) | set(dict(storage_state.verification_keys)))
+combined_r = len(logical_authors | set(dict(storage_state.coverage)))
 notification_count = len(compact_n(storage_state.records)); coverage_count = len(storage_state.coverage)
 assert notification_count <= combined_n and coverage_count <= combined_r
 assert notification_count + coverage_count <= combined_n * combined_r * combined_r + combined_n + combined_r
@@ -847,10 +819,10 @@ print(f"notification sets checked: {len(sets)}")
 print(f"notification compaction pair checks: {compaction_checks}")
 print(f"notification associative merge triples: {len(sets) ** 3}")
 print(f"deletion-transparency cursor/filter checks: {deletion_checks}")
-print(f"authenticated invalid-token rejection checks: {invalid_token_checks}")
+print(f"structurally invalid-token rejection checks: {invalid_token_checks}")
 print("full-payload recordless round-trip checks: 1")
 print("foreign-coverage append/compact/restart persistence traces: 1")
-print(f"componentwise coverage/key-metadata prefix checks: {prefixes_checked}")
+print(f"componentwise coverage prefix checks: {prefixes_checked}")
 print(f"notification transition words checked: {words_checked}")
 print(f"notification transition prefixes checked: {prefixes_checked}")
 print(f"action-specific obligation checks: {obligations_checked}")

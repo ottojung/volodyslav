@@ -15,15 +15,13 @@ localJournalClock
 localJournalRecordClock
 journalRecordHighWatermark
 cursorCoverageFrontier
-local Ed25519 private signing key and public verification-key registry
 ```
 
 It does not renumber records or change immutable contents. Before cutover it
 checks generation and retained causal-reference resolution, identity and
 ordering; logical-clock and record-clock coverage; unique immutable content per
-`JournalEntryId` and `JournalIndex`; high-watermark coverage; monotone frontier;
-and consistent issuer verification keys. It MAY additionally diagnose visible
-immutable-ID conflicts or validation-context regression. Compaction may have
+`JournalEntryId` and `JournalIndex`; high-watermark coverage; and a monotone
+frontier. It MAY additionally diagnose visible immutable-ID conflicts or validation-context regression. Compaction may have
 legitimately removed historical evidence, so these checks do not promise
 complete diagnosis beyond the supported-state boundary.
 
@@ -68,7 +66,7 @@ advances neither allocator. Explicit `invalidate()` is a deliberate reassertion
 and MUST author a fresh barrier and record even from settled state.
 
 Graph, logical entries, notification records, allocators, high-watermark,
-frontier, and token-key metadata required by a migration commit atomically.
+frontier required by a migration commit atomically.
 Migration never seeds graph authority from notification records and never invokes
 computors. Logical compaction treats migration entries identically; notification
 compaction treats their records identically.

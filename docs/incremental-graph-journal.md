@@ -159,7 +159,7 @@ record per semantic key. This notification semilattice is independently ACI.
 
 A durable, independent `localJournalRecordClock` allocates append sequences after
 dominating observed remote notification state. A monotone
-`journalRecordHighWatermark` survives deletion, restart, migration and sync. A monotone `cursorCoverageFrontier` records which issuing-host snapshots are safe to interpret, and durable issuer verification keys authenticate serialized authority. These notification coordinates never influence logical conflict
+`journalRecordHighWatermark` survives deletion, restart, migration and sync. A monotone `cursorCoverageFrontier` records which issuing-host snapshots are safe to interpret. Serialized cursors are canonical progress claims, not security capabilities. These notification coordinates never influence logical conflict
 ordering. Fully compacted notifications are `O(n)`, coverage is `O(r)`, and the
 combined compacted bound remains `O(nr²)`; uncompacted history has no
 operation-count-independent bound.
