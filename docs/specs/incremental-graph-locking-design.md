@@ -342,15 +342,17 @@ release construction locks
 
 No path reverses this order. Exclusive synchronization, migration and reset keep
 their existing inactive-construction phases. The darkroom remains short: work is
-prepared first, allocator values are tentatively chosen under their mutex, and final graph,
-logical entries, notification records, high-watermark, and coverage frontier are
-committed atomically under darkroom finalization. A choice published by that
-commit is permanently non-reusable and committed counters never move backwards.
-An abort before publication exposes neither durable allocator advancement nor a
-durable coordinate, and a later transaction MAY choose that number. Harmless
-gaps are permitted only when committed allocator progression skips numbers.
-This does not widen the darkroom or weaken dome/telescope
-serialization.
+prepared first and allocator values are tentatively chosen under their mutex.
+The final graph, logical entries, notification records, `localJournalClock`,
+`localJournalRecordClock`, high-watermark, and coverage frontier are committed
+atomically under darkroom finalization. A choice published by that commit is
+permanently non-reusable and committed counters never move backwards. An abort
+before publication exposes neither durable allocator advancement nor a durable
+coordinate, and a later transaction MAY choose that number. Allocation-number
+gaps caused by allocator behavior are permitted only when committed allocator
+progression skips numbers; notification compaction may independently leave holes
+among surviving coordinates. This does not widen the darkroom or weaken
+dome/telescope serialization.
 
 Validation reads the transaction-visible invalidate frontier and commits its
 complete causal context with freshness. Hard invalidation similarly commits its

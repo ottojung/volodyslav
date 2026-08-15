@@ -314,9 +314,11 @@ notification coordinates raises this allocator as required before a later local
 append. An append sequence
 that becomes part of committed durable state is published and is never reused;
 a tentative append that aborts before publication has no durable index and MAY
-be selected again. The counter never moves backwards in committed state. Gaps
-are harmless when committed allocator progression skips numbers; transient
-aborted choices need not create durable gaps. Overflow is fatal and wrapping is
+be selected again. The counter never moves backwards in committed state.
+Allocation-number gaps caused by allocator behavior are harmless and arise only
+when committed allocator progression skips numbers; transient aborted choices
+need not create durable gaps. Compaction may independently leave holes in the
+surviving notification-coordinate set. Overflow is fatal and wrapping is
 forbidden. Before appending after remote
 observation, the allocator is raised above every observed append sequence and
 the new index is `(incrementedClock,localFingerprint)`. Every local append is

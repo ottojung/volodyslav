@@ -49,8 +49,10 @@ Any notification-relevant changed key not already covered by such a record gets
 one final-state record after the pre-migration high-watermark. Aborted inactive
 construction exposes no committed allocator advancement or durable coordinate,
 so either allocator MAY later select the same tentative number. Published
-logical and notification coordinates are never reused. Harmless gaps arise only
-when committed allocator progression skips numbers.
+logical and notification coordinates are never reused. When allocator behavior
+creates a harmless allocation-number gap, that gap arises from committed
+allocator progression skipping numbers. Notification compaction may
+independently leave holes among surviving coordinates.
 
 The closed classifier is not sufficient when migration hardens an already-stale
 cache. Whenever `keep` or `override` discards incoming proofs, explicit migration
