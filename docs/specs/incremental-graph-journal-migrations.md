@@ -47,8 +47,10 @@ validity-only changes are silent. `Unchanged` is silent. Every authored logical
 entry uses the host logical clock and atomically appends its `(key,nodeName,bindings,time)` record.
 Any notification-relevant changed key not already covered by such a record gets
 one final-state record after the pre-migration high-watermark. Aborted inactive
-construction exposes no committed allocator advancement; reserved gaps are
-harmless and sequences are never reused after publication.
+construction exposes no committed allocator advancement or durable coordinate,
+so either allocator MAY later select the same tentative number. Published
+logical and notification coordinates are never reused. Harmless gaps arise only
+when committed allocator progression skips numbers.
 
 The closed classifier is not sufficient when migration hardens an already-stale
 cache. Whenever `keep` or `override` discards incoming proofs, explicit migration

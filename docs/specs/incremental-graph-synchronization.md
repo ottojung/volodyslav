@@ -415,15 +415,17 @@ multi-source associativity, order independence, or all-to-all communication,
 and it requires no repository, branch, or other transport-specific container.
 
 Controlled reset is not this merge algorithm. Existing-live reset does not join
-the selected source journal. It atomically reconciles only source semantic
-presence, values, freshness, and relowered validity, retaining receiver history
+the selected source logical journal as graph authority. It atomically reconciles
+source semantic presence, values, freshness, and relowered validity, retaining receiver history
 and identifiers for surviving keys. It authors add for absent-to-present, a
 fresh add generation above observed receiver history for unequal
 present-to-present, and delete for present-to-absent; equal values author nothing
 and preserve receiver timestamps. The changed-value generation boundary makes
 observed old-generation edits inapplicable before wall-time comparison.
-The complete lifecycle procedure and proof obligations are specified in the
-lifecycle specification.
+Independently, reset merges source notification records, record high-watermark,
+and cursor-coverage frontier under the notification-coverage rules, including
+when the semantic graph is already equal. The complete lifecycle procedure and
+proof obligations are specified in the lifecycle specification.
 
 ## Required traces
 
@@ -485,10 +487,15 @@ events use author as the deterministic tie-break.
 ### Value through a carrier
 
 A authors `(A,12,K,edit,t,generation=G)`. A → B imports that entry and value; B
-stores it once with a fresh local index. B → C transmits only the immutable
-entry, and C assigns its own index. All
-hosts derive `[t,12,A]`, so support referring to K survives physical movement.
-Neither B nor C emits edit.
+retains the logical entry's exact `(sequence=12,author=A)` identity. Any
+notification record traveling with it likewise retains its exact immutable
+`JournalIndex=(appendSequence,appender)` on B and C. Raw receipt is silent and
+does not cause an echo reappend. B → C transmits the same immutable logical
+entry and any retained notification record without renumbering either. All hosts
+derive `[t,12,A]`, so support referring to K survives physical movement. Neither
+B nor C emits edit. If ordinary notification-coverage reconciliation requires B
+or C to append evidence, that evidence is a new, independent receiver-owned
+`JournalRecord`, not a new index for the imported occurrence.
 
 ### Same-writer later edit
 
