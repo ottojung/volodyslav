@@ -247,7 +247,9 @@ Existing-live controlled reset is an authoritative semantic graph reconciliation
 for a stable receiver snapshot R and structurally valid, schema-compatible source
 snapshot S, its postcondition is `SemanticGraph(reset(R,S)) == SemanticGraph(S)`.
 The semantic target, keyed by `NodeKey`, consists only of materialization
-presence, `ComputedValue`, freshness, and validity relationships. Source logical journal history, host and physical identity, identifiers, timestamps, and allocator ownership are not semantic target state.
+presence, `ComputedValue`, freshness, and validity relationships. Source logical
+journal history, host and physical identity, identifiers, timestamps, and
+allocator ownership are not semantic target state.
 
 Reset does **not** join source logical history as graph authority. It retains
 receiver logical authority and authors receiver logical entries only for
@@ -255,22 +257,23 @@ committed before-to-final semantic transitions. Differences solely in source
 logical history cause no graph transition or receiver logical entry.
 
 Notification infrastructure is independent of logical authority. Reset merges
-source notification records, source high-watermark, source coverage frontier,
+source notification records, source high-watermark, and source coverage frontier,
 even when the semantic graph is already
 equal. Thus a graph-silent reset may still change notification records,
 high-watermark, frontier, or notification allocator. Once
 those maxima and coordinates are incorporated, repeating the identical reset is
 silent.
 Absent-state self-restoration is different: it resumes this host's durable
-graph, journal, and clock rather than reconciling an existing live receiver.
+graph, logical and notification journals, and both allocator clocks rather than
+reconciling an existing live receiver.
 
 The operation runs against stable receiver and source snapshots in an inactive
 target. It validates source structure and schema compatibility, maps source
 identifiers to semantic keys, retains receiver identifiers for surviving keys,
 allocates ordinary receiver identifiers only for new materializations, constructs
 all final values/freshness/validity, applies timestamps, classifies transitions,
-authors required local entries, validates the complete graph+journal, and cuts
-over atomically. No computor runs and intermediate construction emits nothing.
+authors required local entries, validates the complete graph and both journals,
+and cuts over atomically. No computor runs and intermediate construction emits nothing.
 
 The value/presence classifier uses normative deep `isEqual` equality:
 
@@ -292,8 +295,8 @@ preserve both receiver timestamps and author no value event.
 Source timestamp differences are irrelevant. Freshness and validity-only changes
 preserve `modifiedAt`.
 
-This is journal-minimal subject to reset authority: absent and equal-value states
-author no value action; deletion authors only delete; each new or genuinely
+This is logical-journal-minimal subject to reset authority: absent and equal-value
+states author no value action; deletion authors only delete; each new or genuinely
 changed value authors exactly one add. The fresh generation for a changed value
 is required to supersede already-observed old-generation history structurally,
 rather than an attempt to replace receiver history by timestamp comparison.
@@ -535,9 +538,12 @@ Implementations and future changes MUST preserve the following lifecycle propert
 10. Tests and diagnostics SHOULD distinguish incompatibility, failed preconditions, corruption, and unsupported manipulation rather than using those terms interchangeably.
 11. New recovery, import, or restore behavior MUST be implemented as a Volodyslav-controlled lifecycle transition. Documentation alone MUST NOT redefine raw file manipulation as supported.
 12. Storage refactors MAY change physical artifacts without changing this specification, provided these lifecycle preconditions, transitions, and postconditions remain true.
-13. Existing-live reset MUST retain the receiving host's prior journal, MUST NOT
-    import the selected source journal, and may append only required local
-    transition entries.
+13. Existing-live reset MUST retain the receiving host's prior logical journal
+    and MUST NOT import source logical entries as graph authority. It may author
+    only the receiver-local logical transition entries required by reset.
+    Independently, it merges source notification records,
+    `journalRecordHighWatermark`, and `cursorCoverageFrontier` as specified by
+    the controlled-reset procedure.
 14. Absent-state self-restoration MUST restore the same host's current published clock and continue its counters without empty-graph classification.
 15. Raw cross-host copying of a live database remains unsupported; copied writer metadata does not establish ownership.
 

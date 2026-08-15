@@ -236,14 +236,24 @@ Each writable host owns one persistent `localJournalClock: uint64`, protected
 by a dedicated allocator mutex. It is a journal-only Lamport-style clock, not a
 graph clock and not a per-node counter.
 
-1. Sequences are never reused, including after an aborted reservation.
-2. Importing or observing entries raises the allocator watermark to at least
+1. A sequence that becomes part of committed durable state is published and
+   is never reused. A tentative allocation in a transaction that aborts before
+   publication has no durable journal identity and MAY be selected again.
+2. The counter never moves backwards in committed state. Importing or observing
+   entries raises the allocator watermark to at least
    their maximum sequence.
 3. Allocation increments the watermark and uses the result.
 4. Consequently, if `E2` is authored after observing `E1`, then
    `E2.sequence > E1.sequence`.
 5. Concurrent authors may use the same sequence; author breaks the tie.
 6. Overflow is fatal and wrapping is forbidden.
+
+For example, if durable `localJournalClock` is 10, an aborted transaction may
+tentatively choose 11 and leave the durable clock at 10 through restart. A later
+transaction may validly publish 11 because the aborted choice never became a
+journal identity. The identical rule applies to `localJournalRecordClock`: an
+aborted tentative append sequence is reusable, while a committed
+`JournalIndex.appendSequence` is permanently non-reusable by its appender.
 
 ## Durable logical and notification journals
 
@@ -299,8 +309,17 @@ preserves that witness's time. Reset may copy the greatest merged same-key
 record's `(key,nodeName,bindings,time)` where no final logical witness is
 retained.
 
-Each writable host durably owns `localJournalRecordClock`. Sequences are never
-reused; gaps are harmless; overflow is fatal. Before appending after remote
+Each writable host durably owns `localJournalRecordClock`. Observing imported
+notification coordinates raises this allocator as required before a later local
+append. An append sequence
+that becomes part of committed durable state is published and is never reused;
+a tentative append that aborts before publication has no durable index and MAY
+be selected again. The counter never moves backwards in committed state.
+Allocation-number gaps caused by allocator behavior are harmless and arise only
+when committed allocator progression skips numbers; transient aborted choices
+need not create durable gaps. Compaction may independently leave holes in the
+surviving notification-coordinate set. Overflow is fatal and wrapping is
+forbidden. Before appending after remote
 observation, the allocator is raised above every observed append sequence and
 the new index is `(incrementedClock,localFingerprint)`. Every local append is
 strictly greater than the current high-watermark. Concurrent equal numeric
@@ -326,7 +345,7 @@ notification multiplicity.
 
 At every supported commit: every logical ID and notification index names one
 immutable content; appenders are valid durable fingerprints and never reuse a
-sequence; both watermark and frontier are monotone; the local record clock
+published sequence; both watermark and frontier are monotone; the local record clock
 dominates every observed sequence required before its next append; each local
 notification-relevant transition has a same-key record after the old
 high-watermark; newly adopted cursor lineage is covered before its frontier

@@ -227,7 +227,7 @@ In every reachable snapshot, two admissible materializations with equal
 
 * Base case: an atomic add establishes G; an atomic edit names its resolved G.
   Each commits exactly its value and real `modifiedAt`, and one author never
-  reuses the sequence.
+  reuses a published sequence.
 * Local step: before authoring a changed value event E2, the allocator watermark
   is at least every observed sequence. Therefore E2 has a greater sequence than
   every observed same-G event E1. If E1 and E2 share wall time, E2 is still the

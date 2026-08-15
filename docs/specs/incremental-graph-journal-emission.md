@@ -8,11 +8,15 @@ Intermediate states do not emit. The graph mutation and every locally authored
 entry commit atomically; a reachable committed snapshot never contains one
 without the other.
 
-Before authoring, reserve one sequence per entry from the dedicated host-local
-journal-clock allocator. The allocator first observes the maximum sequence in
-the transaction's installed journal, then increments. Multiple entries receive
-distinct increasing sequences. Aborted reservations may leave gaps but are
-never reused; overflow is fatal.
+Before authoring, tentatively choose one sequence per entry from the dedicated
+host-local journal-clock allocator. The allocator first observes the maximum
+sequence in the transaction's installed journal, then increments. Multiple
+entries receive distinct increasing sequences. The entries and resulting
+allocator value become durable atomically. Published sequences are never reused,
+but a transaction that aborts before publication exposes no durable coordinate
+or allocator advancement, so its tentative sequence MAY be chosen later.
+Committed allocator progression MAY skip numbers and create harmless gaps.
+Overflow is fatal and wrapping is forbidden.
 
 Every `JournalEntry.time` is the actual wall-clock occurrence time of its
 journal event. For add/edit the occurrence is semantic creation/modification, so
@@ -75,7 +79,7 @@ migration `keep`/`override`, explicit `invalidate()`, and
 `create(..., "potentially-outdated")` require barriers, while an already-settled
 passive carry does not.
 
-The barrier carries the materialization's exact generation G. Its sequence is reserved from `localJournalClock` after observing the transaction snapshot and is greater than all history observed by the operation. Incoming-proof removal/reassertion, graph state, immutable barrier, notification record, allocators, high-watermark, and frontier commit atomically in the same darkroom batch. Each repeated explicit hard invalidation authors a fresh barrier: each call independently reasserts that the next pull must invoke the computor. Invalidation propagated by ordinary dependency mechanics may preserve complete validity proofs and continues to author only on its actual fresh→stale transition; such freshness-only propagation does not newly establish hard invalidation.
+The barrier carries the materialization's exact generation G. Its sequence is tentatively chosen from `localJournalClock` after observing the transaction snapshot and is greater than all history observed by the operation. Incoming-proof removal/reassertion, graph state, immutable barrier, notification record, allocators, high-watermark, and frontier commit atomically in the same darkroom batch. Each repeated explicit hard invalidation authors a fresh barrier: each call independently reasserts that the next pull must invoke the computor. Invalidation propagated by ordinary dependency mechanics may preserve complete validity proofs and continues to author only on its actual fresh→stale transition; such freshness-only propagation does not newly establish hard invalidation.
 
 ## Notification emission and synchronization coverage
 
