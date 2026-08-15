@@ -7,6 +7,7 @@ UnixTimestamp values, not arbitrary signed 64-bit persistence values.
 from dataclasses import dataclass
 from itertools import product
 import json
+from pathlib import Path
 
 ACTIONS = ("add", "edit", "delete", "invalidate", "validate")
 
@@ -569,11 +570,35 @@ class InvalidPossibleChangeCursorError(Exception):
 def valid_fingerprint(value):
     return len(value) == 16 and value.isascii() and value.isalpha() and value.islower()
 
+def js_compatible_string(value):
+    """Combine UTF-16 surrogate pairs as JavaScript does before serialization."""
+    result = []
+    index = 0
+    while index < len(value):
+        codepoint = ord(value[index])
+        if 0xD800 <= codepoint <= 0xDBFF and index + 1 < len(value):
+            following = ord(value[index + 1])
+            if 0xDC00 <= following <= 0xDFFF:
+                result.append(chr(0x10000 + ((codepoint - 0xD800) << 10) + following - 0xDC00))
+                index += 2
+                continue
+        result.append(value[index])
+        index += 1
+    return "".join(result)
+
 def node_key(node_name, bindings):
     # Mirrors production serializeNodeKey(): property order is head then args,
-    # and JSON.stringify emits compact JSON while preserving Unicode text.
-    return json.dumps({"head": node_name, "args": list(bindings)},
-                      separators=(",", ":"), ensure_ascii=False)
+    # JSON.stringify emits compact JSON, preserves Unicode text, and escapes
+    # lone UTF-16 surrogates using lowercase hexadecimal escape sequences.
+    serialized = json.dumps({
+        "head": js_compatible_string(node_name),
+        "args": [js_compatible_string(binding) for binding in bindings],
+    }, separators=(",", ":"), ensure_ascii=False)
+    return "".join(
+        "\\u" + format(ord(character), "04x")
+        if 0xD800 <= ord(character) <= 0xDFFF else character
+        for character in serialized
+    )
 
 # Semantic addresses that delimiter-based encodings conflate remain distinct.
 assert node_key("node", ("a,b",)) != node_key("node", ("a", "b"))
@@ -584,6 +609,13 @@ assert node_key("node|:,\"\\", delimiter_bindings) == (
     '{"head":"node|:,\\"\\\\","args":["|",":",",","\\"","\\\\","|:,\\"\\\\"]}'
 )
 assert node_key("nøde", ("café",)) == '{"head":"nøde","args":["café"]}'
+node_key_vectors = json.loads(
+    (Path(__file__).parent / "fixtures" / "node-key-serialization.json").read_text(encoding="utf-8")
+)
+assert all(
+    node_key(vector["nodeName"], tuple(vector["bindings"])) == vector["serialized"]
+    for vector in node_key_vectors
+)
 
 def valid_record(record):
     return record.key == node_key(record.node_name, record.bindings)
