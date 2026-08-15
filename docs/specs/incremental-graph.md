@@ -633,7 +633,7 @@ type Computor = (
 | `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 | `MissingTimestampError` | `nodeKey: string` | `getCreationTime`/`getModificationTime` called for a node with no recorded timestamps (public API) |
-| `InvalidPossibleChangeCursorError` | none | `possibleMaybeChanges()` receives malformed cursor authority or a token whose issuer coverage is not established |
+| `InvalidPossibleChangeCursorError` | none | `possibleMaybeChanges()` receives a structurally malformed cursor or a token whose issuer coverage is not established |
 
 **REQ-ERR-01 (Error Type Guards):** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value: unknown): value is InvalidExpressionError`).
 
@@ -656,7 +656,7 @@ freshness sublevel. The public journal API consists of:
   provide canonical, versioned, validated durable token conversion without
   exposing raw indexes or coverage metadata.
 
-- `InvalidPossibleChangeCursorError` — Thrown for malformed authority or when
+- `InvalidPossibleChangeCursorError` — Thrown for a structurally malformed token or when
   `cursorCoverageFrontier[token.issuedBy]` does not reach the token's issuance
   high-watermark. The query rejects before scanning and performs no write. Its
   public type guard uses `instanceof`.

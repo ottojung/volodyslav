@@ -289,9 +289,15 @@ been deleted. `key` MUST equal the implementation's identity-preserving
 mismatch. This does not require `NodeKey` itself to be reversible. The record
 carries no action and need not reference retained logical evidence. Its `time` is
 witness time, not append time. Every query projects it to add, edit, delete,
-invalidate, and validate. A logical entry E is
-notified with `(E.key,E.nodeName,E.bindings,E.time)`. A conservative reappend uses the post-operation
-`notificationWitness(K).time`; reset may instead copy the greatest merged same-key record's `(key,nodeName,bindings,time)` where no final logical witness is retained.
+invalidate, and validate. When logical entry E is authored for the operation's
+known semantic address `(key,nodeName,bindings)`, the operation appends
+`JournalRecord {index,key,nodeName,bindings,time:E.time}`. Logical entries do not
+carry `nodeName` or `bindings`, and `NodeKey` need not be reversible. A
+conservative reappend without a new logical event uses a retained self-contained
+same-key notification witness or the known final-state semantic address and
+preserves that witness's time. Reset may copy the greatest merged same-key
+record's `(key,nodeName,bindings,time)` where no final logical witness is
+retained.
 
 Each writable host durably owns `localJournalRecordClock`. Sequences are never
 reused; gaps are harmless; overflow is fatal. Before appending after remote

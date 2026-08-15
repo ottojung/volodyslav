@@ -171,6 +171,22 @@ it never moves a cursor or high-watermark, and a deleted cursor position is an
 ordinary gap. Cross-host tokens are accepted only after the target's coverage
 frontier reaches their issuing snapshot.
 
+Existing-live controlled reset is an external administrative intervention, not
+a continuously running reconciliation protocol. All global convergence and
+quiescent-fixed-point claims assume eventual reset quiescence (finite reset
+churn): only finitely many existing-live controlled resets occur in the relevant
+execution suffix, or equivalently after some point no new controlled reset is
+invoked while the system is allowed to converge. Ordinary synchronization may
+continue arbitrarily often afterward. Every supported reset remains
+individually safe and atomic, completed-reset cursor guarantees remain intact,
+and the same receiver resetting again from the exact already-incorporated source
+without intervening relevant change is silent. After the last externally
+invoked reset, repeated ordinary synchronization of unchanged supported hosts
+reaches a fixed point and appends no notification records. Infinite alternating
+reset churn is outside only that liveness premise, not the supported-state or
+per-reset safety contract; restart, migration, and compaction safety are
+unchanged.
+
 ## Synchronization projections
 
 All participating hosts in a supported execution share a synchronized real wall

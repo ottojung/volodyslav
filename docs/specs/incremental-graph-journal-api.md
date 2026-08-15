@@ -17,8 +17,10 @@ false negatives are forbidden.
 ## Opaque durable cursor tokens
 
 `PossibleNodeChange` exposes only `nodeName`, `bindings`, `action`, and `time`.
-`BaselinePossibleNodeChange` exposes no coordinate. Both remain nominal and structurally non-constructible through the typed object API; raw indexes and authority metadata are not
-ordinary public fields. Internally a non-baseline token contains:
+`BaselinePossibleNodeChange` exposes no coordinate. Both remain nominal and
+structurally non-constructible through the typed object API; raw indexes and
+continuation metadata are not ordinary public fields. Internally a non-baseline
+token contains:
 
 ```text
 visible payload = { nodeName, bindings, action, time }
@@ -74,9 +76,12 @@ issuedBy is a valid DatabaseFingerprint
 position.index <= issuedAtHighWatermark
 ```
 
-Integer parsing rejects signs, overflow, alternate non-canonical spellings, and trailing data. Payload decoding validates the exact runtime shapes and canonical encodings required by `NodeName`, `BindingEnvironment`, the action union, and `DateTime`. Baseline has exactly one canonical encoding and carries no
-position or issuer metadata. A parseable string which fails any condition has no
-authority and raises `InvalidPossibleChangeCursorError`. These conditions make
+Integer parsing rejects signs, overflow, alternate non-canonical spellings, and
+trailing data. Payload decoding validates the exact runtime shapes and canonical
+encodings required by `NodeName`, `BindingEnvironment`, the action union, and
+`DateTime`. Baseline has exactly one canonical encoding and carries no position
+or issuer metadata. A parseable string which fails any condition is structurally
+invalid and raises `InvalidPossibleChangeCursorError`. These conditions make
 `P.index <= HA` a checked token invariant rather than an assumption of the
 cross-host theorem.
 

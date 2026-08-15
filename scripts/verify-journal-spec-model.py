@@ -6,6 +6,7 @@ UnixTimestamp values, not arbitrary signed 64-bit persistence values.
 """
 from dataclasses import dataclass
 from itertools import product
+import json
 
 ACTIONS = ("add", "edit", "delete", "invalidate", "validate")
 
@@ -524,6 +525,8 @@ FP_B = "bbbbbbbbbbbbbbbb"
 FP_C = "cccccccccccccccc"
 FP_R = "rrrrrrrrrrrrrrrr"
 UINT64_MAX = 2**64 - 1
+INT64_MIN = -(2**63)
+INT64_MAX = 2**63 - 1
 
 @dataclass(frozen=True, order=True)
 class Index:
@@ -555,7 +558,8 @@ class NotificationState:
     clock: int
     high: Index
     coverage: tuple[tuple[str, Index], ...]
-    views: tuple[tuple[str, str], ...] = ()
+    semantic_views: tuple[tuple[str, str], ...] = ()
+    logical_views: tuple[tuple[str, frozenset[str]], ...] = ()
 
 BASE = Index(0, "")
 
@@ -595,11 +599,10 @@ def issue_token(record, ordinal, issuer, high):
 
 def token_payload(token):
     index, ordinal = token.position
-    return "|".join(("v1", token.node_name, ",".join(token.bindings), token.action,
-                     str(token.time), str(index.sequence), index.appender,
-                     str(ordinal), token.issued_by,
-                     str(token.issued_at_high_watermark.sequence),
-                     token.issued_at_high_watermark.appender))
+    return json.dumps(["v1", token.node_name, list(token.bindings), token.action,
+        str(token.time), str(index.sequence), index.appender, str(ordinal),
+        token.issued_by, str(token.issued_at_high_watermark.sequence),
+        token.issued_at_high_watermark.appender], separators=(",", ":"))
 
 def token_string(token):
     return token_payload(token)
@@ -612,16 +615,33 @@ def canonical_uint64(value):
         raise InvalidPossibleChangeCursorError
     return result
 
+def canonical_int64(value):
+    digits = value[1:] if value.startswith("-") else value
+    if (not digits or not digits.isascii() or not digits.isdecimal()
+            or (len(digits) > 1 and digits[0] == "0")
+            or value.startswith("-0") or value.startswith("+")):
+        raise InvalidPossibleChangeCursorError
+    result = int(value)
+    if result < INT64_MIN or result > INT64_MAX:
+        raise InvalidPossibleChangeCursorError
+    return result
+
 def token_from_string(value):
-    fields = value.split("|")
-    if len(fields) != 11 or fields[0] != "v1":
+    try:
+        fields = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        raise InvalidPossibleChangeCursorError
+    if (not isinstance(fields, list) or len(fields) != 11 or fields[0] != "v1"
+            or not all(isinstance(field, str) for field in fields[:2] + fields[3:])
+            or not isinstance(fields[2], list)
+            or not all(isinstance(binding, str) for binding in fields[2])):
         raise InvalidPossibleChangeCursorError
     try:
-        node_name, bindings, action = fields[1], tuple(filter(None, fields[2].split(","))), fields[3]
-        time = canonical_uint64(fields[4]); sequence = canonical_uint64(fields[5])
+        node_name, bindings, action = fields[1], tuple(fields[2]), fields[3]
+        time = canonical_int64(fields[4]); sequence = canonical_uint64(fields[5])
         ordinal = int(fields[7]); high_sequence = canonical_uint64(fields[9])
         index = Index(sequence, fields[6]); high = Index(high_sequence, fields[10]); issuer = fields[8]
-        if not node_name or "|" in node_name or fields[7] != str(ordinal) or not 0 <= ordinal < len(ACTIONS):
+        if not node_name or fields[7] != str(ordinal) or not 0 <= ordinal < len(ACTIONS):
             raise InvalidPossibleChangeCursorError
         if action not in ACTIONS or action != ACTIONS[ordinal]:
             raise InvalidPossibleChangeCursorError
@@ -629,7 +649,10 @@ def token_from_string(value):
             raise InvalidPossibleChangeCursorError
         if index > high or not valid_fingerprint(high.appender):
             raise InvalidPossibleChangeCursorError
-        return Token(node_name, bindings, action, time, (index, ordinal), issuer, high)
+        token = Token(node_name, bindings, action, time, (index, ordinal), issuer, high)
+        if token_payload(token) != value:
+            raise InvalidPossibleChangeCursorError
+        return token
     except (KeyError, ValueError, IndexError):
         raise InvalidPossibleChangeCursorError
 
@@ -640,23 +663,38 @@ def query_n(state, token, keys=None):
         raise InvalidPossibleChangeCursorError
     return projections(state.records, token.position, keys)
 
-def make_state(host, records=(), views=()):
+def make_state(host, records=(), semantic_views=(), logical_views=()):
     records = frozenset(records); high = max((r.index for r in records), default=BASE)
     return NotificationState(host, records,
         max((r.index.sequence for r in records), default=0), high,
-        ((host, high),), tuple(sorted(views)))
+        ((host, high),), tuple(sorted(semantic_views)), tuple(sorted(logical_views)))
 
-def synchronize(receiver, source, final_views):
+def combined_view(state, key):
+    return (dict(state.semantic_views).get(key), dict(state.logical_views).get(key))
+
+def join_logical_views(receiver, source):
+    receiver_views, source_views = map(dict,
+        (receiver.logical_views, source.logical_views))
+    return tuple(sorted((key,
+        receiver_views.get(key, frozenset()) | source_views.get(key, frozenset()))
+        for key in set(receiver_views) | set(source_views)))
+
+def reconcile_notifications(receiver, source, final_semantic_views, final_logical_views):
     merged = set(receiver.records | source.records)
     clock = max(receiver.clock, source.clock, receiver.high.sequence, source.high.sequence)
-    rviews, sviews, fviews = map(dict, (receiver.views, source.views, final_views))
+    final_state = NotificationState(receiver.host, frozenset(), 0, BASE, (),
+        tuple(sorted(final_semantic_views)), tuple(sorted(final_logical_views)))
     source_newer = any(w > dict(receiver.coverage).get(h, BASE) for h, w in source.coverage)
     thresholds = {}
-    for key in set(rviews) | set(fviews):
-        if rviews.get(key) != fviews.get(key): thresholds[key] = receiver.high
+    keys = set(dict(receiver.semantic_views)) | set(dict(receiver.logical_views))
+    keys |= set(dict(final_state.semantic_views)) | set(dict(final_state.logical_views))
+    for key in keys:
+        if combined_view(receiver, key) != combined_view(final_state, key):
+            thresholds[key] = receiver.high
     if source_newer:
-        for key in set(sviews) | set(fviews):
-            if sviews.get(key) != fviews.get(key):
+        source_keys = set(dict(source.semantic_views)) | set(dict(source.logical_views)) | keys
+        for key in source_keys:
+            if combined_view(source, key) != combined_view(final_state, key):
                 thresholds[key] = max(thresholds.get(key, BASE), source.high)
     for key, threshold in thresholds.items():
         if not any(r.key == key and r.index > threshold for r in merged):
@@ -671,7 +709,26 @@ def synchronize(receiver, source, final_views):
     for host, watermark in source.coverage: coverage[host] = max(coverage.get(host, BASE), watermark)
     coverage[receiver.host] = high
     return NotificationState(receiver.host, compact_n(merged), clock, high,
-        tuple(sorted(coverage.items())), tuple(sorted(final_views)))
+        tuple(sorted(coverage.items())), tuple(sorted(final_semantic_views)),
+        tuple(sorted(final_logical_views)))
+
+def synchronize(receiver, source, final_semantic_views):
+    """Ordinary sync derives its canonical logical view by semilattice join."""
+    return reconcile_notifications(receiver, source, final_semantic_views,
+        join_logical_views(receiver, source))
+
+def controlled_reset(receiver, source):
+    """Replace semantic state while retaining receiver-owned logical authority."""
+    final_semantic = source.semantic_views
+    logical = dict(receiver.logical_views)
+    receiver_semantic, source_semantic = map(dict,
+        (receiver.semantic_views, source.semantic_views))
+    for key in set(receiver_semantic) | set(source_semantic):
+        if receiver_semantic.get(key) != source_semantic.get(key):
+            reset_effect = receiver.host + "-reset-" + str(source_semantic.get(key))
+            logical[key] = logical.get(key, frozenset()) | {reset_effect}
+    return reconcile_notifications(receiver, source, final_semantic,
+        tuple(logical.items()))
 
 # Positional stability, gaps, ordinals, and notification ACI/deletion transparency.
 records = frozenset(Record(Index(n, FP_A), node_key("node-" + key.lower(), ()), "node-" + key.lower(), (), n) for n, key in ((10,"K"),(20,"B"),(30,"C"),(40,"D")))
@@ -701,8 +758,18 @@ source_record = next(record for record in a.records if record.key == node_key("n
 token = issue_token(source_record, 4, FP_A, a.high)
 assert (token.node_name, token.bindings, token.action, token.time) == (source_record.node_name, source_record.bindings, "validate", source_record.time)
 encoded = token_string(token); decoded = token_from_string(encoded); assert decoded.node_name == token.node_name and decoded.bindings == token.bindings and decoded.action == token.action and decoded.time == token.time and decoded.position == token.position and decoded.issued_by == token.issued_by and decoded.issued_at_high_watermark == token.issued_at_high_watermark
+pre_epoch_token = Token(token.node_name, token.bindings, token.action, -1,
+    token.position, token.issued_by, token.issued_at_high_watermark)
+assert token_from_string(token_string(pre_epoch_token)).time == -1
+for arbitrary_bindings in (("a,b",), ("",), ("a|b",)):
+    binding_token = Token(token.node_name, arbitrary_bindings, token.action,
+        token.time, token.position, token.issued_by,
+        token.issued_at_high_watermark)
+    assert token_from_string(token_string(binding_token)).bindings == arbitrary_bindings
 invalid_tokens = [
     Token("node", (), "validate", 50, (Index(100,FP_A),5),FP_A,a.high),
+    Token("node", (), "validate", INT64_MIN-1, (Index(100,FP_A),4),FP_A,a.high),
+    Token("node", (), "validate", INT64_MAX+1, (Index(100,FP_A),4),FP_A,a.high),
     Token("node", (), "validate", 50, (Index(UINT64_MAX+1,FP_A),4),FP_A,Index(UINT64_MAX+1,FP_A)),
     Token("node", (), "validate", 50, (Index(101,FP_A),4),FP_A,a.high),
     Token("node", (), "validate", 50, (Index(100,"bad"),4),FP_A,a.high),
@@ -716,7 +783,9 @@ for invalid in invalid_tokens:
         raise AssertionError("invalid token accepted")
     except (InvalidPossibleChangeCursorError, KeyError):
         invalid_token_checks += 1
-fabricated_progress = encoded.replace("|100|", "|99|", 1)
+fabricated_progress = token_string(Token(token.node_name, token.bindings,
+    token.action, token.time, (Index(99, FP_A), token.position[1]),
+    token.issued_by, token.issued_at_high_watermark))
 fabricated_token = token_from_string(fabricated_progress)
 assert query_n(a, fabricated_token) == query_n(a, fabricated_token)
 assert fabricated_token.position[0] == Index(99, FP_A)
@@ -731,12 +800,14 @@ assert any(r.key == node_key("node-k", ()) and r.index > a.high for r in b_diff.
 source150 = make_state(FP_A,[Record(Index(150,FP_A), node_key("node-k", ()), "node-k", (), 50)],[(node_key("node-k", ()),"source")])
 assert max(r.index for r in synchronize(b0,source150,((node_key("node-k", ()),"source"),)).records if r.key==node_key("node-k", ())) == Index(150,FP_A)
 assert synchronize(b_diff,a,((node_key("node-k", ()),"final-B"),)) == b_diff
-# Full public payload and hidden authority round-trip without consulting the record.
-recordless_restored = NotificationState(a.host,frozenset(),a.clock,a.high,a.coverage,a.views)
+# Full public payload and continuation-metadata round-trip without consulting the record.
+recordless_restored = NotificationState(a.host,frozenset(),a.clock,a.high,a.coverage,
+    a.semantic_views,a.logical_views)
 round_tripped = token_from_string(encoded)
 assert (round_tripped.node_name, round_tripped.bindings, round_tripped.action, round_tripped.time) == (token.node_name, token.bindings, token.action, token.time)
 assert round_tripped.position == token.position and query_n(recordless_restored,round_tripped) == ()
-restored = NotificationState(a.host,a.records,a.clock,a.high,a.coverage,a.views)
+restored = NotificationState(a.host,a.records,a.clock,a.high,a.coverage,
+    a.semantic_views,a.logical_views)
 assert query_n(restored,token_from_string(encoded)) == query_n(a,decoded)
 # Once foreign lineage is covered, local append, compaction, and restart preserve it.
 foreign_covered = b_equal
@@ -744,19 +815,82 @@ local_clock = max(foreign_covered.clock, foreign_covered.high.sequence) + 1
 local_record = Record(Index(local_clock, FP_B), node_key("node-l", ()), "node-l", (), 60)
 foreign_coverage = dict(foreign_covered.coverage); foreign_coverage[FP_B] = local_record.index
 foreign_covered = NotificationState(FP_B, foreign_covered.records | {local_record}, local_clock,
-    local_record.index, tuple(sorted(foreign_coverage.items())), foreign_covered.views)
+    local_record.index, tuple(sorted(foreign_coverage.items())),
+    foreign_covered.semantic_views, foreign_covered.logical_views)
 foreign_covered = NotificationState(FP_B, compact_n(foreign_covered.records), foreign_covered.clock,
-    foreign_covered.high, foreign_covered.coverage, foreign_covered.views)
+    foreign_covered.high, foreign_covered.coverage, foreign_covered.semantic_views,
+    foreign_covered.logical_views)
 foreign_covered = NotificationState(FP_B, foreign_covered.records, foreign_covered.clock,
-    foreign_covered.high, foreign_covered.coverage, foreign_covered.views)
+    foreign_covered.high, foreign_covered.coverage, foreign_covered.semantic_views,
+    foreign_covered.logical_views)
 assert dict(foreign_covered.coverage)[FP_A] >= token.issued_at_high_watermark
 assert query_n(foreign_covered, decoded) == query_n(foreign_covered, round_tripped)
-reset_receiver = make_state(FP_R,[],[(node_key("node-k", ()),"source")]) # graph already equal
-reset_final = synchronize(reset_receiver,a,((node_key("node-k", ()),"source"),))
-assert reset_final.views == reset_receiver.views and dict(reset_final.coverage)[FP_A] >= a.high
-assert query_n(reset_final,decoded) == () and synchronize(reset_final,a,((node_key("node-k", ()),"source"),)) == reset_final
+# Controlled reset keeps semantic and canonical logical views conceptually
+# separate: source semantics replace receiver semantics, while receiver-owned
+# logical history survives and only receiver-authored reset effects are added.
+key_k = node_key("node-k", ())
+reset_receiver = make_state(FP_R, [], [(key_k,"source")],
+    [(key_k,frozenset({"receiver-history"}))])
+reset_source = make_state(FP_A, a.records, [(key_k,"source")],
+    [(key_k,frozenset({"source-history"}))])
+reset_final = controlled_reset(reset_receiver, reset_source)
+assert reset_final.semantic_views == reset_source.semantic_views
+assert reset_final.logical_views == reset_receiver.logical_views
+assert dict(reset_final.coverage)[FP_A] >= reset_source.high
+reset_continuation = query_n(reset_final,decoded)
+assert reset_continuation
+
+# Same receiver + exact already-incorporated source + no relevant change is
+# silent across logical events, replay, allocator, high-watermark and frontier.
+reset_repeated = controlled_reset(reset_final, reset_source)
+assert reset_repeated == reset_final
+
+# Infinite alternating existing-live reset is an external administrative
+# schedule outside the fixed-point theorem's eventual-reset-quiescence premise.
+# Equal semantic graphs with distinct legitimate receiver-owned logical views
+# remain supported; alternating reset can conservatively replay and advance
+# coverage because each receiver retains its own logical authority.
+alt_a = make_state(FP_A,
+    [Record(Index(200,FP_A),key_k,"node-k",(),50)],
+    [(key_k,"equal-semantics")],[(key_k,frozenset({"A-history"}))])
+alt_b = make_state(FP_B,
+    [Record(Index(200,FP_B),key_k,"node-k",(),50)],
+    [(key_k,"equal-semantics")],[(key_k,frozenset({"B-history"}))])
+alternating_advances = 0
+for receiver_is_a in (True, False, True, False):
+    before = alt_a if receiver_is_a else alt_b
+    source = alt_b if receiver_is_a else alt_a
+    after = controlled_reset(before, source)
+    assert after.semantic_views == source.semantic_views
+    assert after.logical_views == before.logical_views
+    if after.high > before.high:
+        alternating_advances += 1
+    if receiver_is_a:
+        alt_a = after
+    else:
+        alt_b = after
+assert alternating_advances > 0
+
+# Once externally invoked resets stop, ordinary synchronization joins both
+# logical journals. Alternate both directions until the semantic/logical views,
+# records, allocators, high-watermarks, and coverage frontiers stabilize.
+for ordinary_round in range(8):
+    before_round = (alt_a, alt_b)
+    alt_a = synchronize(alt_a, alt_b, alt_a.semantic_views)
+    alt_b = synchronize(alt_b, alt_a, alt_b.semantic_views)
+    if (alt_a, alt_b) == before_round:
+        break
+else:
+    raise AssertionError("ordinary synchronization did not settle after resets stopped")
+assert ordinary_round > 0
+assert alt_a.logical_views == alt_b.logical_views
+assert dict(alt_a.logical_views)[key_k] == frozenset({"A-history", "B-history"})
+unchanged_a = synchronize(alt_a, alt_b, alt_a.semantic_views)
+unchanged_b = synchronize(alt_b, unchanged_a, alt_b.semantic_views)
+assert unchanged_a == alt_a and unchanged_b == alt_b
 high_state = make_state(FP_A,[Record(Index(500,FP_A), node_key("node-k", ()), "node-k", (), 1),Record(Index(600,FP_A), node_key("node-k", ()), "node-k", (), 2)],[(node_key("node-k", ()),"A")])
-high_state = NotificationState(FP_A,compact_n(high_state.records),600,high_state.high,high_state.coverage,high_state.views)
+high_state = NotificationState(FP_A,compact_n(high_state.records),600,high_state.high,
+    high_state.coverage,high_state.semantic_views,high_state.logical_views)
 replayed = synchronize(high_state,make_state(FP_C,[Record(Index(50,FP_C), node_key("node-k", ()), "node-k", (), 1)],[(node_key("node-k", ()),"C")]),((node_key("node-k", ()),"C"),))
 assert max(r.index for r in replayed.records) > Index(600,FP_A)
 
@@ -775,7 +909,7 @@ for word in product(ops, repeat=4):
             clock = max(state.clock,state.high.sequence)+1; record=Record(Index(clock,FP_A),node_key("node-" + key.lower(), ()),"node-" + key.lower(),(),clock)
             coverage = dict(state.coverage); coverage[state.host] = record.index
             state = NotificationState(FP_A,state.records|{record},clock,record.index,
-                tuple(sorted(coverage.items())),state.views)
+                tuple(sorted(coverage.items())),state.semantic_views,state.logical_views)
             obligations += [(cursor,record_key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
         elif op in ("syncK","syncL"):
             key = "L" if op == "syncL" else "K"
@@ -784,9 +918,11 @@ for word in product(ops, repeat=4):
             state = synchronize(state,source,((record_key,"remote"),))
             obligations += [(cursor,record_key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
         elif op == "compact":
-            state = NotificationState(state.host,compact_n(state.records),state.clock,state.high,state.coverage,state.views)
+            state = NotificationState(state.host,compact_n(state.records),state.clock,state.high,
+                state.coverage,state.semantic_views,state.logical_views)
         elif op == "restart":
-            state = NotificationState(state.host,state.records,state.clock,state.high,state.coverage,state.views)
+            state = NotificationState(state.host,state.records,state.clock,state.high,
+                state.coverage,state.semantic_views,state.logical_views)
         else: assert state == before
         for cursor,key,action in obligations:
             # An obligation is discharged only for a cursor already across its
@@ -820,6 +956,7 @@ print(f"notification compaction pair checks: {compaction_checks}")
 print(f"notification associative merge triples: {len(sets) ** 3}")
 print(f"deletion-transparency cursor/filter checks: {deletion_checks}")
 print(f"structurally invalid-token rejection checks: {invalid_token_checks}")
+print("arbitrary-binding token round-trip checks: 3")
 print("full-payload recordless round-trip checks: 1")
 print("foreign-coverage append/compact/restart persistence traces: 1")
 print(f"componentwise coverage prefix checks: {prefixes_checked}")
