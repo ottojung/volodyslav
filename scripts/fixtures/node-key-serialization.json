@@ -1,0 +1,76 @@
+[
+  {
+    "description": "comma in one binding",
+    "nodeName": "node",
+    "bindings": [
+      "a,b"
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[\"a,b\"]}"
+  },
+  {
+    "description": "comma across two bindings",
+    "nodeName": "node",
+    "bindings": [
+      "a",
+      "b"
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[\"a\",\"b\"]}"
+  },
+  {
+    "description": "single empty binding",
+    "nodeName": "node",
+    "bindings": [
+      ""
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[\"\"]}"
+  },
+  {
+    "description": "no bindings",
+    "nodeName": "node",
+    "bindings": [],
+    "serialized": "{\"head\":\"node\",\"args\":[]}"
+  },
+  {
+    "description": "delimiters and escapes",
+    "nodeName": "node|:,\"\\",
+    "bindings": [
+      "|",
+      ":",
+      ",",
+      "\"",
+      "\\",
+      "|:,\"\\"
+    ],
+    "serialized": "{\"head\":\"node|:,\\\"\\\\\",\"args\":[\"|\",\":\",\",\",\"\\\"\",\"\\\\\",\"|:,\\\"\\\\\"]}"
+  },
+  {
+    "description": "ordinary Unicode",
+    "nodeName": "nøde",
+    "bindings": [
+      "café"
+    ],
+    "serialized": "{\"head\":\"nøde\",\"args\":[\"café\"]}"
+  },
+  {
+    "description": "lone high surrogate",
+    "nodeName": "node",
+    "bindings": [
+      "\ud800"
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[\"\\ud800\"]}"
+  },
+  {
+    "description": "lone low surrogate",
+    "nodeName": "\udfff",
+    "bindings": [],
+    "serialized": "{\"head\":\"\\udfff\",\"args\":[]}"
+  },
+  {
+    "description": "UTF-16 surrogate pair",
+    "nodeName": "node",
+    "bindings": [
+      "😀"
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[\"😀\"]}"
+  }
+]

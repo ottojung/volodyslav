@@ -118,7 +118,7 @@ canonical does not imply valid, and non-canonical does not imply invalid. A
 supported uncompacted journal remains supported state; manually forged or
 corrupted history remains unsupported even if it happens to be canonical.
 
-Restoration resumes previously emitted durable state and MUST NOT classify the restored graph as an empty-to-restored transition. Durable encoded cursors preserve their exact immutable position and authority across restart.
+Restoration resumes previously emitted durable state and MUST NOT classify the restored graph as an empty-to-restored transition. Durable encoded cursors preserve their exact immutable position and coverage metadata across restart, so each encoded cursor remains valid wherever its issuer coverage requirement is satisfied.
 
 The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable database fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 

@@ -29,7 +29,8 @@ A supported migration MUST accept structurally valid uncompacted history.
 Non-canonical representation is not corruption and cutover does not require
 either journal to equal its compact form. Migration never runs implicit logical
 or notification compaction and a journal-silent migration preserves all entries,
-records, coordinates, allocators, watermark, frontier, and token authority.
+records, coordinates, allocators, watermark, frontier, and cursor continuation
+validity.
 Independent maintenance compaction remains a separate operation.
 
 For example, several superseded logical entries and notification occurrences may
