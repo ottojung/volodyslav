@@ -524,6 +524,8 @@ FP_B = "bbbbbbbbbbbbbbbb"
 FP_C = "cccccccccccccccc"
 FP_R = "rrrrrrrrrrrrrrrr"
 UINT64_MAX = 2**64 - 1
+INT64_MIN = -(2**63)
+INT64_MAX = 2**63 - 1
 
 @dataclass(frozen=True, order=True)
 class Index:
@@ -556,7 +558,7 @@ class NotificationState:
     high: Index
     coverage: tuple[tuple[str, Index], ...]
     semantic_views: tuple[tuple[str, str], ...] = ()
-    logical_views: tuple[tuple[str, str], ...] = ()
+    logical_views: tuple[tuple[str, frozenset[str]], ...] = ()
 
 BASE = Index(0, "")
 
@@ -613,13 +615,24 @@ def canonical_uint64(value):
         raise InvalidPossibleChangeCursorError
     return result
 
+def canonical_int64(value):
+    digits = value[1:] if value.startswith("-") else value
+    if (not digits or not digits.isascii() or not digits.isdecimal()
+            or (len(digits) > 1 and digits[0] == "0")
+            or value.startswith("-0") or value.startswith("+")):
+        raise InvalidPossibleChangeCursorError
+    result = int(value)
+    if result < INT64_MIN or result > INT64_MAX:
+        raise InvalidPossibleChangeCursorError
+    return result
+
 def token_from_string(value):
     fields = value.split("|")
     if len(fields) != 11 or fields[0] != "v1":
         raise InvalidPossibleChangeCursorError
     try:
         node_name, bindings, action = fields[1], tuple(filter(None, fields[2].split(","))), fields[3]
-        time = canonical_uint64(fields[4]); sequence = canonical_uint64(fields[5])
+        time = canonical_int64(fields[4]); sequence = canonical_uint64(fields[5])
         ordinal = int(fields[7]); high_sequence = canonical_uint64(fields[9])
         index = Index(sequence, fields[6]); high = Index(high_sequence, fields[10]); issuer = fields[8]
         if not node_name or "|" in node_name or fields[7] != str(ordinal) or not 0 <= ordinal < len(ACTIONS):
@@ -650,9 +663,14 @@ def make_state(host, records=(), semantic_views=(), logical_views=()):
 def combined_view(state, key):
     return (dict(state.semantic_views).get(key), dict(state.logical_views).get(key))
 
-def synchronize(receiver, source, final_semantic_views, final_logical_views=None):
-    if final_logical_views is None:
-        final_logical_views = source.logical_views
+def join_logical_views(receiver, source):
+    receiver_views, source_views = map(dict,
+        (receiver.logical_views, source.logical_views))
+    return tuple(sorted((key,
+        receiver_views.get(key, frozenset()) | source_views.get(key, frozenset()))
+        for key in set(receiver_views) | set(source_views)))
+
+def reconcile_notifications(receiver, source, final_semantic_views, final_logical_views):
     merged = set(receiver.records | source.records)
     clock = max(receiver.clock, source.clock, receiver.high.sequence, source.high.sequence)
     final_state = NotificationState(receiver.host, frozenset(), 0, BASE, (),
@@ -685,6 +703,11 @@ def synchronize(receiver, source, final_semantic_views, final_logical_views=None
         tuple(sorted(coverage.items())), tuple(sorted(final_semantic_views)),
         tuple(sorted(final_logical_views)))
 
+def synchronize(receiver, source, final_semantic_views):
+    """Ordinary sync derives its canonical logical view by semilattice join."""
+    return reconcile_notifications(receiver, source, final_semantic_views,
+        join_logical_views(receiver, source))
+
 def controlled_reset(receiver, source):
     """Replace semantic state while retaining receiver-owned logical authority."""
     final_semantic = source.semantic_views
@@ -693,8 +716,10 @@ def controlled_reset(receiver, source):
         (receiver.semantic_views, source.semantic_views))
     for key in set(receiver_semantic) | set(source_semantic):
         if receiver_semantic.get(key) != source_semantic.get(key):
-            logical[key] = receiver.host + "-reset-" + str(source_semantic.get(key))
-    return synchronize(receiver, source, final_semantic, tuple(logical.items()))
+            reset_effect = receiver.host + "-reset-" + str(source_semantic.get(key))
+            logical[key] = logical.get(key, frozenset()) | {reset_effect}
+    return reconcile_notifications(receiver, source, final_semantic,
+        tuple(logical.items()))
 
 # Positional stability, gaps, ordinals, and notification ACI/deletion transparency.
 records = frozenset(Record(Index(n, FP_A), node_key("node-" + key.lower(), ()), "node-" + key.lower(), (), n) for n, key in ((10,"K"),(20,"B"),(30,"C"),(40,"D")))
@@ -724,8 +749,13 @@ source_record = next(record for record in a.records if record.key == node_key("n
 token = issue_token(source_record, 4, FP_A, a.high)
 assert (token.node_name, token.bindings, token.action, token.time) == (source_record.node_name, source_record.bindings, "validate", source_record.time)
 encoded = token_string(token); decoded = token_from_string(encoded); assert decoded.node_name == token.node_name and decoded.bindings == token.bindings and decoded.action == token.action and decoded.time == token.time and decoded.position == token.position and decoded.issued_by == token.issued_by and decoded.issued_at_high_watermark == token.issued_at_high_watermark
+pre_epoch_token = Token(token.node_name, token.bindings, token.action, -1,
+    token.position, token.issued_by, token.issued_at_high_watermark)
+assert token_from_string(token_string(pre_epoch_token)).time == -1
 invalid_tokens = [
     Token("node", (), "validate", 50, (Index(100,FP_A),5),FP_A,a.high),
+    Token("node", (), "validate", INT64_MIN-1, (Index(100,FP_A),4),FP_A,a.high),
+    Token("node", (), "validate", INT64_MAX+1, (Index(100,FP_A),4),FP_A,a.high),
     Token("node", (), "validate", 50, (Index(UINT64_MAX+1,FP_A),4),FP_A,Index(UINT64_MAX+1,FP_A)),
     Token("node", (), "validate", 50, (Index(101,FP_A),4),FP_A,a.high),
     Token("node", (), "validate", 50, (Index(100,"bad"),4),FP_A,a.high),
@@ -783,8 +813,10 @@ assert query_n(foreign_covered, decoded) == query_n(foreign_covered, round_tripp
 # separate: source semantics replace receiver semantics, while receiver-owned
 # logical history survives and only receiver-authored reset effects are added.
 key_k = node_key("node-k", ())
-reset_receiver = make_state(FP_R, [], [(key_k,"source")], [(key_k,"receiver-history")])
-reset_source = make_state(FP_A, a.records, [(key_k,"source")], [(key_k,"source-history")])
+reset_receiver = make_state(FP_R, [], [(key_k,"source")],
+    [(key_k,frozenset({"receiver-history"}))])
+reset_source = make_state(FP_A, a.records, [(key_k,"source")],
+    [(key_k,frozenset({"source-history"}))])
 reset_final = controlled_reset(reset_receiver, reset_source)
 assert reset_final.semantic_views == reset_source.semantic_views
 assert reset_final.logical_views == reset_receiver.logical_views
@@ -804,10 +836,10 @@ assert reset_repeated == reset_final
 # coverage because each receiver retains its own logical authority.
 alt_a = make_state(FP_A,
     [Record(Index(200,FP_A),key_k,"node-k",(),50)],
-    [(key_k,"equal-semantics")],[(key_k,"A-history")])
+    [(key_k,"equal-semantics")],[(key_k,frozenset({"A-history"}))])
 alt_b = make_state(FP_B,
     [Record(Index(200,FP_B),key_k,"node-k",(),50)],
-    [(key_k,"equal-semantics")],[(key_k,"B-history")])
+    [(key_k,"equal-semantics")],[(key_k,frozenset({"B-history"}))])
 alternating_advances = 0
 for receiver_is_a in (True, False, True, False):
     before = alt_a if receiver_is_a else alt_b
@@ -823,12 +855,23 @@ for receiver_is_a in (True, False, True, False):
         alt_b = after
 assert alternating_advances > 0
 
-# Once externally invoked resets stop, ordinary synchronization may continue
-# arbitrarily often and unchanged supported state reaches a silent fixed point.
-settled_once = synchronize(alt_a, alt_b, alt_a.semantic_views, alt_a.logical_views)
-settled_twice = synchronize(settled_once, alt_b,
-    settled_once.semantic_views, settled_once.logical_views)
-assert settled_twice == settled_once
+# Once externally invoked resets stop, ordinary synchronization joins both
+# logical journals. Alternate both directions until the semantic/logical views,
+# records, allocators, high-watermarks, and coverage frontiers stabilize.
+for ordinary_round in range(8):
+    before_round = (alt_a, alt_b)
+    alt_a = synchronize(alt_a, alt_b, alt_a.semantic_views)
+    alt_b = synchronize(alt_b, alt_a, alt_b.semantic_views)
+    if (alt_a, alt_b) == before_round:
+        break
+else:
+    raise AssertionError("ordinary synchronization did not settle after resets stopped")
+assert ordinary_round > 0
+assert alt_a.logical_views == alt_b.logical_views
+assert dict(alt_a.logical_views)[key_k] == frozenset({"A-history", "B-history"})
+unchanged_a = synchronize(alt_a, alt_b, alt_a.semantic_views)
+unchanged_b = synchronize(alt_b, unchanged_a, alt_b.semantic_views)
+assert unchanged_a == alt_a and unchanged_b == alt_b
 high_state = make_state(FP_A,[Record(Index(500,FP_A), node_key("node-k", ()), "node-k", (), 1),Record(Index(600,FP_A), node_key("node-k", ()), "node-k", (), 2)],[(node_key("node-k", ()),"A")])
 high_state = NotificationState(FP_A,compact_n(high_state.records),600,high_state.high,
     high_state.coverage,high_state.semantic_views,high_state.logical_views)
