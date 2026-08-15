@@ -6,6 +6,7 @@ UnixTimestamp values, not arbitrary signed 64-bit persistence values.
 """
 from dataclasses import dataclass
 from itertools import product
+import json
 
 ACTIONS = ("add", "edit", "delete", "invalidate", "validate")
 
@@ -598,11 +599,10 @@ def issue_token(record, ordinal, issuer, high):
 
 def token_payload(token):
     index, ordinal = token.position
-    return "|".join(("v1", token.node_name, ",".join(token.bindings), token.action,
-                     str(token.time), str(index.sequence), index.appender,
-                     str(ordinal), token.issued_by,
-                     str(token.issued_at_high_watermark.sequence),
-                     token.issued_at_high_watermark.appender))
+    return json.dumps(["v1", token.node_name, list(token.bindings), token.action,
+        str(token.time), str(index.sequence), index.appender, str(ordinal),
+        token.issued_by, str(token.issued_at_high_watermark.sequence),
+        token.issued_at_high_watermark.appender], separators=(",", ":"))
 
 def token_string(token):
     return token_payload(token)
@@ -627,15 +627,21 @@ def canonical_int64(value):
     return result
 
 def token_from_string(value):
-    fields = value.split("|")
-    if len(fields) != 11 or fields[0] != "v1":
+    try:
+        fields = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        raise InvalidPossibleChangeCursorError
+    if (not isinstance(fields, list) or len(fields) != 11 or fields[0] != "v1"
+            or not all(isinstance(field, str) for field in fields[:2] + fields[3:])
+            or not isinstance(fields[2], list)
+            or not all(isinstance(binding, str) for binding in fields[2])):
         raise InvalidPossibleChangeCursorError
     try:
-        node_name, bindings, action = fields[1], tuple(filter(None, fields[2].split(","))), fields[3]
+        node_name, bindings, action = fields[1], tuple(fields[2]), fields[3]
         time = canonical_int64(fields[4]); sequence = canonical_uint64(fields[5])
         ordinal = int(fields[7]); high_sequence = canonical_uint64(fields[9])
         index = Index(sequence, fields[6]); high = Index(high_sequence, fields[10]); issuer = fields[8]
-        if not node_name or "|" in node_name or fields[7] != str(ordinal) or not 0 <= ordinal < len(ACTIONS):
+        if not node_name or fields[7] != str(ordinal) or not 0 <= ordinal < len(ACTIONS):
             raise InvalidPossibleChangeCursorError
         if action not in ACTIONS or action != ACTIONS[ordinal]:
             raise InvalidPossibleChangeCursorError
@@ -643,7 +649,10 @@ def token_from_string(value):
             raise InvalidPossibleChangeCursorError
         if index > high or not valid_fingerprint(high.appender):
             raise InvalidPossibleChangeCursorError
-        return Token(node_name, bindings, action, time, (index, ordinal), issuer, high)
+        token = Token(node_name, bindings, action, time, (index, ordinal), issuer, high)
+        if token_payload(token) != value:
+            raise InvalidPossibleChangeCursorError
+        return token
     except (KeyError, ValueError, IndexError):
         raise InvalidPossibleChangeCursorError
 
@@ -752,6 +761,11 @@ encoded = token_string(token); decoded = token_from_string(encoded); assert deco
 pre_epoch_token = Token(token.node_name, token.bindings, token.action, -1,
     token.position, token.issued_by, token.issued_at_high_watermark)
 assert token_from_string(token_string(pre_epoch_token)).time == -1
+for arbitrary_bindings in (("a,b",), ("",), ("a|b",)):
+    binding_token = Token(token.node_name, arbitrary_bindings, token.action,
+        token.time, token.position, token.issued_by,
+        token.issued_at_high_watermark)
+    assert token_from_string(token_string(binding_token)).bindings == arbitrary_bindings
 invalid_tokens = [
     Token("node", (), "validate", 50, (Index(100,FP_A),5),FP_A,a.high),
     Token("node", (), "validate", INT64_MIN-1, (Index(100,FP_A),4),FP_A,a.high),
@@ -769,7 +783,9 @@ for invalid in invalid_tokens:
         raise AssertionError("invalid token accepted")
     except (InvalidPossibleChangeCursorError, KeyError):
         invalid_token_checks += 1
-fabricated_progress = encoded.replace("|100|", "|99|", 1)
+fabricated_progress = token_string(Token(token.node_name, token.bindings,
+    token.action, token.time, (Index(99, FP_A), token.position[1]),
+    token.issued_by, token.issued_at_high_watermark))
 fabricated_token = token_from_string(fabricated_progress)
 assert query_n(a, fabricated_token) == query_n(a, fabricated_token)
 assert fabricated_token.position[0] == Index(99, FP_A)
@@ -940,6 +956,7 @@ print(f"notification compaction pair checks: {compaction_checks}")
 print(f"notification associative merge triples: {len(sets) ** 3}")
 print(f"deletion-transparency cursor/filter checks: {deletion_checks}")
 print(f"structurally invalid-token rejection checks: {invalid_token_checks}")
+print("arbitrary-binding token round-trip checks: 3")
 print("full-payload recordless round-trip checks: 1")
 print("foreign-coverage append/compact/restart persistence traces: 1")
 print(f"componentwise coverage prefix checks: {prefixes_checked}")
