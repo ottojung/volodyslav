@@ -475,7 +475,7 @@ function makeIncrementalGraph(
 
 `PossibleNodeChange` and `BaselinePossibleNodeChange` are opaque nominal public
 types branded at compile time by a module-private, unexported `unique symbol`
-(or an equivalent non-forgeable type declaration). That symbol is not a runtime snapshot carrier. Cursor authority uses the canonical versioned journal-owned codec and durable opaque metadata. The former combines visible readonly `{nodeName, bindings, action, time}` with an immutable cursor position; the latter is universal baseline authority. External TypeScript callers cannot construct either type structurally, and raw indexes, issuer metadata, watermarks, and ordinals are not ordinary public fields. The complete type,
+(or an equivalent non-forgeable type declaration). That symbol is not a runtime snapshot carrier. Cursor meaning uses the canonical versioned journal-owned codec and durable opaque metadata. A possible-change cursor combines visible readonly `{nodeName, bindings, action, time}` with an immutable cursor position; the baseline is a universal before-all sentinel. External TypeScript callers cannot construct either type structurally, and raw indexes, issuer metadata, watermarks, and ordinals are not ordinary public fields. The complete type,
 snapshot, and runtime-validation contract is in
 `incremental-graph-journal-api.md`.
 

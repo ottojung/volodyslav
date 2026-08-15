@@ -570,7 +570,20 @@ def valid_fingerprint(value):
     return len(value) == 16 and value.isascii() and value.isalpha() and value.islower()
 
 def node_key(node_name, bindings):
-    return node_name + ":" + ",".join(bindings)
+    # Mirrors production serializeNodeKey(): property order is head then args,
+    # and JSON.stringify emits compact JSON while preserving Unicode text.
+    return json.dumps({"head": node_name, "args": list(bindings)},
+                      separators=(",", ":"), ensure_ascii=False)
+
+# Semantic addresses that delimiter-based encodings conflate remain distinct.
+assert node_key("node", ("a,b",)) != node_key("node", ("a", "b"))
+assert node_key("node", ("",)) != node_key("node", ())
+delimiter_bindings = ("|", ":", ",", '"', "\\", "|:,\"\\")
+assert len({node_key("node", (binding,)) for binding in delimiter_bindings}) == len(delimiter_bindings)
+assert node_key("node|:,\"\\", delimiter_bindings) == (
+    '{"head":"node|:,\\"\\\\","args":["|",":",",","\\"","\\\\","|:,\\"\\\\"]}'
+)
+assert node_key("nøde", ("café",)) == '{"head":"nøde","args":["café"]}'
 
 def valid_record(record):
     return record.key == node_key(record.node_name, record.bindings)
