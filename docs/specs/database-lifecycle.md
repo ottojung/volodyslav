@@ -340,15 +340,37 @@ merely redelivers EB cannot resurrect B. This protects against already-observed
 history; genuinely unseen later normal synchronization remains governed by the
 ordinary synchronization rules.
 
-Reset is fully idempotent: if `R1=reset(R0,S)`, then `reset(R1,S)==R1` for every
-receiver field reset may mutate. The second operation authors no entry, changes
-no semantic state, timestamp, identifier, witness, index, watermark, clock, or
-cursor. Source journal, identifier, and timestamp differences cannot defeat this
-theorem because they are outside target equivalence. This follows directly from
-the classifiers: all values, presence, freshness, validity, and hard-stale proof
-obligations already equal the target, and identifier allocation occurs only for
-absent-to-present transitions; the fresh journal generation for a changed value
-retains the surviving receiver identifier.
+Same-receiver reset is idempotent once the exact source is already incorporated:
+if `R1=reset(R0,S)`, then, with no intervening relevant change,
+`reset(R1,S)==R1` for every receiver field reset may mutate. The second operation
+authors no entry, changes no semantic state, timestamp, identifier, witness,
+index, watermark, clock, coverage coordinate, or cursor. This follows directly
+from the classifiers and incorporated notification maxima: all values, presence,
+freshness, validity, hard-stale proof obligations, source records,
+high-watermark, and coverage coordinates already equal or are covered by the
+target. Identifier allocation occurs only for absent-to-present transitions;
+the fresh journal generation for a changed value retains the surviving receiver
+identifier.
+
+Existing-live controlled reset is an external administrative intervention, not
+a continuously running reconciliation protocol. All global convergence and
+quiescent-fixed-point claims assume eventual reset quiescence (finite reset
+churn): in the relevant execution suffix, only finitely many existing-live
+controlled resets occur. Equivalently, after some point no new controlled reset
+is invoked while the system is being allowed to converge. Ordinary
+synchronization may continue to run arbitrarily often after that point.
+
+Safety and liveness are separate. Every supported reset is individually correct
+and atomic, and its completed-reset cursor no-false-negative guarantees hold.
+After the last externally invoked controlled reset, repeated ordinary
+synchronization of unchanged supported state eventually performs no more
+notification replay. Continually alternating resets between hosts with
+different legitimate receiver-owned logical histories may keep causing
+conservative replay and frontier advancement. Such an infinite invocation
+schedule is outside the fixed-point theorem's environmental assumption; its
+states and individual resets remain supported. This assumption does not weaken
+same-receiver repeated-reset silence, ordinary synchronization fixed-point
+behavior after resets stop, or restart, migration, and compaction safety.
 
 Reset establishes S now; it is not an anti-future-synchronization epoch. Later
 ordinary synchronization may learn history, select provenance metadata and

@@ -316,11 +316,12 @@ For fixed snapshots R, S and reconciled F, notification merge is:
 compactNotifications(R.records union S.records union records authored by sync)
 ```
 
-Let HR and HS be the independent durable high-watermarks. The canonical
-`NotificationView(X,K)` contains compacted logical view, materialization
-presence/value, freshness, and hard-invalidation/proof-sufficiency differences
-which the classifier treats as notifying; silent representation or timestamp
-differences are excluded.
+Let HR and HS be the independent durable high-watermarks. The combined notifying
+view for `(X,K)` consists of the canonical compacted logical view plus
+materialization presence/value, freshness, and hard-invalidation/proof-sufficiency
+differences which the classifier treats as notifying; silent representation or
+timestamp differences are excluded. These remain conceptually distinct: reset
+may replace semantic state while retaining receiver-owned logical history.
 
 Receiver continuity requires a same-key record above HR whenever R's view differs
 from F. A merged source record above HR is sufficient. Source portability is
@@ -338,8 +339,31 @@ adopts A's state or, when B differs on K, appends K above 100 before advancing
 There is no echo loop. Once B has adopted A's frontier, the unchanged A adds no
 new coordinate on repetition. When A later imports B's reconciliation record,
 receipt alone is silent; if final A equals B it imports without echo, and only a
-genuine difference requires a new later record. Once semantics and frontier
-propagation quiesce, alternating synchronization appends nothing.
+genuine difference requires a new later record. After semantic activity and
+externally invoked resets stop, repeated ordinary synchronization of unchanged
+hosts reaches a fixed point and appends no new notification records. Raw record
+receipt remains silent, and a source whose coverage frontier is already
+incorporated contributes no new portability obligation merely because it is
+synchronized again.
+
+Existing-live controlled reset is an external administrative intervention, not
+a continuously running reconciliation protocol. All global convergence and
+quiescent-fixed-point claims assume eventual reset quiescence (finite reset
+churn): in the relevant execution suffix, only finitely many existing-live
+controlled resets occur. Equivalently, after some point no new controlled reset
+is invoked while the system is being allowed to converge. Ordinary
+synchronization may continue arbitrarily often after that point.
+
+This is a liveness premise, not a safety qualification. Every supported reset is
+individually correct and atomic, and its cursor no-false-negative obligations
+hold when it completes. Repeating the exact same already-incorporated source on
+the same receiver with no intervening relevant change is silent. After the last
+reset, ordinary synchronization of unchanged supported state settles. An
+execution which continually alternates externally invoked resets between hosts
+with different retained receiver-owned logical histories is outside only the
+fixed-point theorem's environmental premise; all of its individual states and
+completed resets remain supported. Restart, migration, and compaction safety are
+unaffected.
 
 A source which once observed index 500 retains a high-watermark at least 500
 after deleting that record. A receiver needing replay after synchronizing that

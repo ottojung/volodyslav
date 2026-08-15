@@ -89,11 +89,11 @@ logical per-key view plus materialization presence, `ComputedValue` when present
 freshness, and hard-invalidation/proof-sufficiency state. Identifier-, encoding-,
 timestamp-, and harmless-validity-only differences are excluded.
 
-For each K where `NotificationView(R,K) != NotificationView(F,K)`, F must contain
+For each K where the combined notifying view of R differs from that of F, F must contain
 a same-key record above HR. An imported record may satisfy this; otherwise append
 one final witness. If S contributes any strictly newer coverage-frontier
-coordinate, then for each K where `NotificationView(S,K) !=
-NotificationView(F,K)`, F must additionally contain a same-key record above HS.
+coordinate, then for each K where the combined notifying view of S differs from
+that of F, F must additionally contain a same-key record above HS.
 Use the greater threshold when both apply. Raise the record allocator above all
 observed high-watermarks before appending. Only after all graph, logical and
 notification effects are ready may coverage advance componentwise and its local
@@ -103,8 +103,10 @@ Raw record receipt is silent. Synchronizing unchanged S twice adds nothing the
 second time because S contributes no newer frontier and R's view no longer
 changes. In the opposite direction, importing a reconciliation record needs no
 echo when the final state equals its source; only a genuine source-to-final
-difference requires a later record. Therefore quiescent repeated synchronization
-is a fixed point. Synchronization still invokes no computor, copies value
+difference requires a later record. Therefore, after semantic activity and
+externally invoked resets stop, repeated ordinary synchronization of unchanged
+hosts reaches a fixed point and appends no new notification records.
+Synchronization still invokes no computor, copies value
 provenance rather than authoring add/edit, and authors logical delete/invalidate
 only under the existing classifier and hard-invalidation invariant.
 
@@ -118,6 +120,18 @@ reset add/delete/invalidate/validate entries and their records commit atomically
 An identical repeated reset is silent after coverage is incorporated. Existing
 presence-generation, timestamp, freshness and causal-validation reset rules are
 unchanged.
+
+Existing-live controlled reset is an external administrative intervention, not
+a continuously running reconciliation protocol. Global convergence and
+quiescent-fixed-point claims assume eventual reset quiescence (finite reset
+churn): in the relevant execution suffix, only finitely many existing-live
+controlled resets occur. Equivalently, after some point no new controlled reset
+is invoked while the system is being allowed to converge; ordinary
+synchronization may continue arbitrarily often after that point. This liveness
+premise does not weaken the safety or atomicity of any completed reset, its
+cursor no-false-negative guarantee, same-receiver repeated-reset silence,
+ordinary synchronization fixed points after resets stop, or
+restart/migration/compaction safety.
 
 ## Reachability invariant
 
