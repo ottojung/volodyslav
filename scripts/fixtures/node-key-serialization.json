@@ -45,11 +45,11 @@
   },
   {
     "description": "ordinary Unicode",
-    "nodeName": "nøde",
+    "nodeName": "n\u00f8de",
     "bindings": [
-      "café"
+      "caf\u00e9"
     ],
-    "serialized": "{\"head\":\"nøde\",\"args\":[\"café\"]}"
+    "serialized": "{\"head\":\"n\u00f8de\",\"args\":[\"caf\u00e9\"]}"
   },
   {
     "description": "lone high surrogate",
@@ -69,8 +69,86 @@
     "description": "UTF-16 surrogate pair",
     "nodeName": "node",
     "bindings": [
-      "😀"
+      "\ud83d\ude00"
     ],
-    "serialized": "{\"head\":\"node\",\"args\":[\"😀\"]}"
+    "serialized": "{\"head\":\"node\",\"args\":[\"\ud83d\ude00\"]}"
+  },
+  {
+    "description": "number binding",
+    "nodeName": "node",
+    "bindings": [
+      42
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[42]}"
+  },
+  {
+    "description": "true binding",
+    "nodeName": "node",
+    "bindings": [
+      true
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[true]}"
+  },
+  {
+    "description": "false binding",
+    "nodeName": "node",
+    "bindings": [
+      false
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[false]}"
+  },
+  {
+    "description": "nested array binding",
+    "nodeName": "node",
+    "bindings": [
+      [
+        1,
+        2
+      ]
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[[1,2]]}"
+  },
+  {
+    "description": "record binding",
+    "nodeName": "node",
+    "bindings": [
+      {
+        "id": 5
+      }
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[{\"id\":5}]}"
+  },
+  {
+    "description": "nested records and arrays",
+    "nodeName": "node",
+    "bindings": [
+      {
+        "nested": [
+          true,
+          "x",
+          3
+        ],
+        "record": {
+          "empty": []
+        }
+      }
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[{\"nested\":[true,\"x\",3],\"record\":{\"empty\":[]}}]}"
+  },
+  {
+    "description": "empty array binding",
+    "nodeName": "node",
+    "bindings": [
+      []
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[[]]}"
+  },
+  {
+    "description": "empty record binding",
+    "nodeName": "node",
+    "bindings": [
+      {}
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[{}]}"
   }
 ]
