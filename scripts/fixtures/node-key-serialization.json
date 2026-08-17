@@ -243,5 +243,44 @@
       }
     ],
     "serialized": "{\"head\":\"node\",\"args\":[{\"nested\":[1,{\"2\":1e-7,\"10\":1e+21,\"tail\":9007199254740992}]}]}"
+  },
+  {
+    "description": "ordinary fraction below one",
+    "nodeName": "node",
+    "bindings": [
+      0.5
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[0.5]}"
+  },
+  {
+    "description": "fixed fraction below one",
+    "nodeName": "node",
+    "bindings": [
+      0.0001
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[0.0001]}"
+  },
+  {
+    "description": "negative fraction below one",
+    "nodeName": "node",
+    "bindings": [
+      -0.5
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[-0.5]}"
+  },
+  {
+    "description": "nested fraction below one",
+    "nodeName": "node",
+    "bindings": [
+      {
+        "nested": [
+          0.5,
+          {
+            "fraction": -0.0001
+          }
+        ]
+      }
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[{\"nested\":[0.5,{\"fraction\":-0.0001}]}]}"
   }
 ]

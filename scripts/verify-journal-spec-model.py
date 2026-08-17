@@ -620,8 +620,10 @@ def js_number_to_string(value):
     mantissa, exponent_text = (source.split("e") + ["0"])[:2] if "e" in source else (source, "0")
     exponent = int(exponent_text)
     integer, _, fraction = mantissa.partition(".")
-    digits = (integer + fraction).lstrip("0")
-    decimal_position = len(integer) + exponent
+    untrimmed_digits = integer + fraction
+    digits = untrimmed_digits.lstrip("0")
+    leading_zeroes = len(untrimmed_digits) - len(digits)
+    decimal_position = len(integer) + exponent - leading_zeroes
     magnitude = abs(value)
     if magnitude >= 1e21 or magnitude < 1e-6:
         coefficient = digits[0] + (("." + digits[1:]) if len(digits) > 1 else "")
@@ -917,8 +919,10 @@ assert token_from_string(token_string(pre_epoch_token)).time == -1
 representative_bindings = tuple(
     tuple(const_value_from_json(value) for value in bindings)
     for bindings in (
-        (42,), (True,), (False,), ("a,b",), ("",), ("a|b",),
+        (42,), (0.5,), (0.0001,), (-0.5,), (True,), (False,),
+        ("a,b",), ("",), ("a|b",),
         ([1, 2],), ({"id": 5},), ({"nested": [True, "x", 3]},),
+        ({"nested_fraction": [0.5]},),
         ([],), ({},),
     )
 )
