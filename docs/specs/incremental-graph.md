@@ -14,7 +14,12 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-03 (SimpleValue):** A value type defined recursively as: `number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them (see DEF-EQUAL-01). Excludes `undefined`, `null`, functions, and symbols.
 
-**TERM-04 (ConstValue):** A subtype of `SimpleValue`.
+**TERM-04 (ConstValue):** A persistence-safe subtype of `SimpleValue`. Its
+numeric leaves are finite JavaScript Numbers; `NaN`, positive infinity, and
+negative infinity remain valid numeric `SimpleValue`/`ComputedValue` values but
+are not `ConstValue` values because JSON persistence would replace them with
+`null`. All string, boolean, array, and record alternatives otherwise follow
+the recursive `SimpleValue` definition.
 
 **TERM-05 (ComputedValue):** A subtype of `SimpleValue`.
 

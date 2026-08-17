@@ -581,6 +581,10 @@ class ArrayValue:
     values: tuple[object, ...]
 
 @dataclass(frozen=True)
+class NumberValue:
+    value: float
+
+@dataclass(frozen=True)
 class ObjectValue:
     entries: tuple[tuple[str, object], ...]
 
@@ -588,21 +592,84 @@ def const_value_from_json(value):
     """Validate JSON-decoded data and construct the one recursive value model."""
     if isinstance(value, bool) or isinstance(value, str):
         return value
-    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
-        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        number = float(value)
+        if math.isfinite(number):
+            return NumberValue(number)
     if isinstance(value, list):
         return ArrayValue(tuple(const_value_from_json(item) for item in value))
     if isinstance(value, dict) and all(isinstance(key, str) for key in value):
         return ObjectValue(tuple((key, const_value_from_json(item)) for key, item in value.items()))
     raise InvalidPossibleChangeCursorError
 
-def const_value_to_json(value):
-    """Return JSON data from a value admitted by const_value_from_json()."""
+for invalid_number in (float("nan"), float("inf"), float("-inf")):
+    try:
+        const_value_from_json(invalid_number)
+        raise AssertionError("non-finite ConstValue accepted")
+    except InvalidPossibleChangeCursorError:
+        pass
+
+def js_number_to_string(value):
+    """Format one finite IEEE-754 binary64 value as ECMAScript Number text."""
+    if value == 0:
+        return "0"
+    negative = value < 0
+    source = repr(abs(value)).lower()
+    if source.endswith(".0"):
+        source = source[:-2]
+    mantissa, exponent_text = (source.split("e") + ["0"])[:2] if "e" in source else (source, "0")
+    exponent = int(exponent_text)
+    integer, _, fraction = mantissa.partition(".")
+    digits = (integer + fraction).lstrip("0")
+    decimal_position = len(integer) + exponent
+    magnitude = abs(value)
+    if magnitude >= 1e21 or magnitude < 1e-6:
+        coefficient = digits[0] + (("." + digits[1:]) if len(digits) > 1 else "")
+        rendered = coefficient + "e" + ("+" if decimal_position - 1 >= 0 else "") + str(decimal_position - 1)
+    elif decimal_position <= 0:
+        rendered = "0." + "0" * (-decimal_position) + digits
+    elif decimal_position >= len(digits):
+        rendered = digits + "0" * (decimal_position - len(digits))
+    else:
+        rendered = digits[:decimal_position] + "." + digits[decimal_position:]
+    return ("-" if negative else "") + rendered
+
+def js_array_index(key):
+    """Return a JavaScript array-index property key's numeric value, if any."""
+    if not key or (len(key) > 1 and key[0] == "0") or not key.isascii() or not key.isdecimal():
+        return None
+    value = int(key)
+    return value if value < 2**32 - 1 else None
+
+def js_string(value):
+    encoded = json.dumps(js_compatible_string(value), ensure_ascii=False, separators=(",", ":"))
+    return "".join(
+        "\\u" + format(ord(character), "04x")
+        if 0xD800 <= ord(character) <= 0xDFFF else character
+        for character in encoded
+    )
+
+def js_json_stringify(value):
+    """Serialize the modeled ConstValue subset with JSON.stringify semantics."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return js_string(value)
+    if isinstance(value, NumberValue):
+        return js_number_to_string(value.value)
     if isinstance(value, ArrayValue):
-        return [const_value_to_json(item) for item in value.values]
+        return "[" + ",".join(js_json_stringify(item) for item in value.values) + "]"
     if isinstance(value, ObjectValue):
-        return {key: const_value_to_json(item) for key, item in value.entries}
-    return value
+        indexed = sorted(
+            ((index, key, item) for key, item in value.entries
+             if (index := js_array_index(key)) is not None),
+            key=lambda entry: entry[0],
+        )
+        ordinary = ((key, item) for key, item in value.entries if js_array_index(key) is None)
+        entries = [(key, item) for _, key, item in indexed] + list(ordinary)
+        return "{" + ",".join(js_string(key) + ":" + js_json_stringify(item)
+            for key, item in entries) + "}"
+    raise InvalidPossibleChangeCursorError
 
 def js_compatible_string(value):
     """Combine UTF-16 surrogate pairs as JavaScript does before serialization."""
@@ -624,15 +691,8 @@ def node_key(node_name, bindings):
     # Mirrors production serializeNodeKey(): property order is head then args,
     # JSON.stringify emits compact JSON, preserves Unicode text, and escapes
     # lone UTF-16 surrogates using lowercase hexadecimal escape sequences.
-    serialized = json.dumps({
-        "head": js_compatible_string(node_name),
-        "args": [const_value_to_json(binding) for binding in bindings],
-    }, separators=(",", ":"), ensure_ascii=False)
-    return "".join(
-        "\\u" + format(ord(character), "04x")
-        if 0xD800 <= ord(character) <= 0xDFFF else character
-        for character in serialized
-    )
+    return "{" + js_string("head") + ":" + js_string(node_name) + "," \
+        + js_string("args") + ":" + js_json_stringify(ArrayValue(tuple(bindings))) + "}"
 
 # Semantic addresses that delimiter-based encodings conflate remain distinct.
 assert node_key("node", ("a,b",)) != node_key("node", ("a", "b"))
@@ -678,11 +738,11 @@ def issue_token(record, ordinal, issuer, high):
 
 def token_payload(token):
     index, ordinal = token.position
-    return json.dumps(["v1", token.node_name,
-        [const_value_to_json(binding) for binding in token.bindings], token.action,
-        str(token.time), str(index.sequence), index.appender, str(ordinal),
-        token.issued_by, str(token.issued_at_high_watermark.sequence),
-        token.issued_at_high_watermark.appender], separators=(",", ":"))
+    return js_json_stringify(ArrayValue(("v1", token.node_name,
+        ArrayValue(tuple(token.bindings)), token.action, str(token.time),
+        str(index.sequence), index.appender, str(ordinal), token.issued_by,
+        str(token.issued_at_high_watermark.sequence),
+        token.issued_at_high_watermark.appender)))
 
 def token_string(token):
     return token_payload(token)
@@ -854,12 +914,13 @@ encoded = token_string(token); decoded = token_from_string(encoded); assert deco
 pre_epoch_token = Token(token.node_name, token.bindings, token.action, -1,
     token.position, token.issued_by, token.issued_at_high_watermark)
 assert token_from_string(token_string(pre_epoch_token)).time == -1
-representative_bindings = (
-    (42,), (True,), (False,), ("a,b",), ("",), ("a|b",),
-    (ArrayValue((1, 2)),),
-    (ObjectValue((("id", 5),)),),
-    (ObjectValue((("nested", ArrayValue((True, "x", 3))),)),),
-    (ArrayValue(()),), (ObjectValue(()),),
+representative_bindings = tuple(
+    tuple(const_value_from_json(value) for value in bindings)
+    for bindings in (
+        (42,), (True,), (False,), ("a,b",), ("",), ("a|b",),
+        ([1, 2],), ({"id": 5},), ({"nested": [True, "x", 3]},),
+        ([],), ({},),
+    )
 )
 for bindings in representative_bindings:
     binding_token = Token(token.node_name, bindings, token.action,

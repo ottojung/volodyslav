@@ -150,5 +150,98 @@
       {}
     ],
     "serialized": "{\"head\":\"node\",\"args\":[{}]}"
+  },
+  {
+    "description": "integer-valued floating number",
+    "nodeName": "node",
+    "bindings": [
+      1.0
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[1]}"
+  },
+  {
+    "description": "smallest fixed-notation magnitude",
+    "nodeName": "node",
+    "bindings": [
+      1e-06
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[0.000001]}"
+  },
+  {
+    "description": "below fixed-notation magnitude",
+    "nodeName": "node",
+    "bindings": [
+      1e-07
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[1e-7]}"
+  },
+  {
+    "description": "largest fixed-notation magnitude example",
+    "nodeName": "node",
+    "bindings": [
+      1e+20
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[100000000000000000000]}"
+  },
+  {
+    "description": "exponential-notation magnitude boundary",
+    "nodeName": "node",
+    "bindings": [
+      1e+21
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[1e+21]}"
+  },
+  {
+    "description": "largest consecutive integer",
+    "nodeName": "node",
+    "bindings": [
+      9007199254740991
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[9007199254740991]}"
+  },
+  {
+    "description": "first non-consecutive integer",
+    "nodeName": "node",
+    "bindings": [
+      9007199254740992
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[9007199254740992]}"
+  },
+  {
+    "description": "integer rounded by JavaScript Number",
+    "nodeName": "node",
+    "bindings": [
+      9007199254740993
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[9007199254740992]}"
+  },
+  {
+    "description": "integer-index record key ordering",
+    "nodeName": "node",
+    "bindings": [
+      {
+        "2": "two",
+        "1": "one",
+        "ordinary": true
+      }
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[{\"1\":\"one\",\"2\":\"two\",\"ordinary\":true}]}"
+  },
+  {
+    "description": "nested numeric and property-order boundaries",
+    "nodeName": "node",
+    "bindings": [
+      {
+        "nested": [
+          1.0,
+          {
+            "10": 1e+21,
+            "2": 1e-07,
+            "tail": 9007199254740993
+          }
+        ]
+      }
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[{\"nested\":[1,{\"2\":1e-7,\"10\":1e+21,\"tail\":9007199254740992}]}]}"
   }
 ]
