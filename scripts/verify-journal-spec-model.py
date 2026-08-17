@@ -7,6 +7,8 @@ UnixTimestamp values, not arbitrary signed 64-bit persistence values.
 from dataclasses import dataclass
 from itertools import product
 import json
+import math
+import re
 from pathlib import Path
 
 ACTIONS = ("add", "edit", "delete", "invalidate", "validate")
@@ -539,13 +541,13 @@ class Record:
     index: Index
     key: str
     node_name: str
-    bindings: tuple[str, ...]
+    bindings: tuple[object, ...]
     time: int
 
 @dataclass(frozen=True)
 class Token:
     node_name: str
-    bindings: tuple[str, ...]
+    bindings: tuple[object, ...]
     action: str
     time: int
     position: tuple[Index, int]
@@ -570,6 +572,107 @@ class InvalidPossibleChangeCursorError(Exception):
 def valid_fingerprint(value):
     return len(value) == 16 and value.isascii() and value.isalpha() and value.islower()
 
+def valid_node_name(value):
+    """Mirror the canonical ident grammar owned by incremental_graph/expr.js."""
+    return isinstance(value, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value) is not None
+
+@dataclass(frozen=True)
+class ArrayValue:
+    values: tuple[object, ...]
+
+@dataclass(frozen=True)
+class NumberValue:
+    value: float
+
+@dataclass(frozen=True)
+class ObjectValue:
+    entries: tuple[tuple[str, object], ...]
+
+def const_value_from_json(value):
+    """Validate JSON-decoded data and construct the one recursive value model."""
+    if isinstance(value, bool) or isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        number = float(value)
+        if math.isfinite(number):
+            return NumberValue(number)
+    if isinstance(value, list):
+        return ArrayValue(tuple(const_value_from_json(item) for item in value))
+    if isinstance(value, dict) and all(isinstance(key, str) for key in value):
+        return ObjectValue(tuple((key, const_value_from_json(item)) for key, item in value.items()))
+    raise InvalidPossibleChangeCursorError
+
+for invalid_number in (float("nan"), float("inf"), float("-inf")):
+    try:
+        const_value_from_json(invalid_number)
+        raise AssertionError("non-finite ConstValue accepted")
+    except InvalidPossibleChangeCursorError:
+        pass
+
+def js_number_to_string(value):
+    """Format one finite IEEE-754 binary64 value as ECMAScript Number text."""
+    if value == 0:
+        return "0"
+    negative = value < 0
+    source = repr(abs(value)).lower()
+    if source.endswith(".0"):
+        source = source[:-2]
+    mantissa, exponent_text = (source.split("e") + ["0"])[:2] if "e" in source else (source, "0")
+    exponent = int(exponent_text)
+    integer, _, fraction = mantissa.partition(".")
+    untrimmed_digits = integer + fraction
+    digits = untrimmed_digits.lstrip("0")
+    leading_zeroes = len(untrimmed_digits) - len(digits)
+    decimal_position = len(integer) + exponent - leading_zeroes
+    magnitude = abs(value)
+    if magnitude >= 1e21 or magnitude < 1e-6:
+        coefficient = digits[0] + (("." + digits[1:]) if len(digits) > 1 else "")
+        rendered = coefficient + "e" + ("+" if decimal_position - 1 >= 0 else "") + str(decimal_position - 1)
+    elif decimal_position <= 0:
+        rendered = "0." + "0" * (-decimal_position) + digits
+    elif decimal_position >= len(digits):
+        rendered = digits + "0" * (decimal_position - len(digits))
+    else:
+        rendered = digits[:decimal_position] + "." + digits[decimal_position:]
+    return ("-" if negative else "") + rendered
+
+def js_array_index(key):
+    """Return a JavaScript array-index property key's numeric value, if any."""
+    if not key or (len(key) > 1 and key[0] == "0") or not key.isascii() or not key.isdecimal():
+        return None
+    value = int(key)
+    return value if value < 2**32 - 1 else None
+
+def js_string(value):
+    encoded = json.dumps(js_compatible_string(value), ensure_ascii=False, separators=(",", ":"))
+    return "".join(
+        "\\u" + format(ord(character), "04x")
+        if 0xD800 <= ord(character) <= 0xDFFF else character
+        for character in encoded
+    )
+
+def js_json_stringify(value):
+    """Serialize the modeled ConstValue subset with JSON.stringify semantics."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return js_string(value)
+    if isinstance(value, NumberValue):
+        return js_number_to_string(value.value)
+    if isinstance(value, ArrayValue):
+        return "[" + ",".join(js_json_stringify(item) for item in value.values) + "]"
+    if isinstance(value, ObjectValue):
+        indexed = sorted(
+            ((index, key, item) for key, item in value.entries
+             if (index := js_array_index(key)) is not None),
+            key=lambda entry: entry[0],
+        )
+        ordinary = ((key, item) for key, item in value.entries if js_array_index(key) is None)
+        entries = [(key, item) for _, key, item in indexed] + list(ordinary)
+        return "{" + ",".join(js_string(key) + ":" + js_json_stringify(item)
+            for key, item in entries) + "}"
+    raise InvalidPossibleChangeCursorError
+
 def js_compatible_string(value):
     """Combine UTF-16 surrogate pairs as JavaScript does before serialization."""
     result = []
@@ -590,15 +693,8 @@ def node_key(node_name, bindings):
     # Mirrors production serializeNodeKey(): property order is head then args,
     # JSON.stringify emits compact JSON, preserves Unicode text, and escapes
     # lone UTF-16 surrogates using lowercase hexadecimal escape sequences.
-    serialized = json.dumps({
-        "head": js_compatible_string(node_name),
-        "args": [js_compatible_string(binding) for binding in bindings],
-    }, separators=(",", ":"), ensure_ascii=False)
-    return "".join(
-        "\\u" + format(ord(character), "04x")
-        if 0xD800 <= ord(character) <= 0xDFFF else character
-        for character in serialized
-    )
+    return "{" + js_string("head") + ":" + js_string(node_name) + "," \
+        + js_string("args") + ":" + js_json_stringify(ArrayValue(tuple(bindings))) + "}"
 
 # Semantic addresses that delimiter-based encodings conflate remain distinct.
 assert node_key("node", ("a,b",)) != node_key("node", ("a", "b"))
@@ -613,7 +709,7 @@ node_key_vectors = json.loads(
     (Path(__file__).parent / "fixtures" / "node-key-serialization.json").read_text(encoding="utf-8")
 )
 assert all(
-    node_key(vector["nodeName"], tuple(vector["bindings"])) == vector["serialized"]
+    node_key(vector["nodeName"], tuple(const_value_from_json(value) for value in vector["bindings"])) == vector["serialized"]
     for vector in node_key_vectors
 )
 
@@ -644,10 +740,11 @@ def issue_token(record, ordinal, issuer, high):
 
 def token_payload(token):
     index, ordinal = token.position
-    return json.dumps(["v1", token.node_name, list(token.bindings), token.action,
-        str(token.time), str(index.sequence), index.appender, str(ordinal),
-        token.issued_by, str(token.issued_at_high_watermark.sequence),
-        token.issued_at_high_watermark.appender], separators=(",", ":"))
+    return js_json_stringify(ArrayValue(("v1", token.node_name,
+        ArrayValue(tuple(token.bindings)), token.action, str(token.time),
+        str(index.sequence), index.appender, str(ordinal), token.issued_by,
+        str(token.issued_at_high_watermark.sequence),
+        token.issued_at_high_watermark.appender)))
 
 def token_string(token):
     return token_payload(token)
@@ -671,22 +768,35 @@ def canonical_int64(value):
         raise InvalidPossibleChangeCursorError
     return result
 
+timestamp_vectors = json.loads(
+    (Path(__file__).parent / "fixtures" / "unix-timestamp-domain.json").read_text(encoding="utf-8")
+)
+TIMESTAMP_MIN = int(next(vector["value"] for vector in timestamp_vectors if vector["description"] == "minimum exact timestamp"))
+TIMESTAMP_MAX = int(next(vector["value"] for vector in timestamp_vectors if vector["description"] == "maximum exact timestamp"))
+
+def canonical_unix_timestamp(value):
+    result = canonical_int64(value)
+    if result < TIMESTAMP_MIN or result > TIMESTAMP_MAX:
+        raise InvalidPossibleChangeCursorError
+    return result
+
 def token_from_string(value):
     try:
-        fields = json.loads(value)
-    except (json.JSONDecodeError, TypeError):
+        fields = json.loads(value, parse_constant=lambda _constant: (_ for _ in ()).throw(ValueError()))
+    except (TypeError, ValueError):
         raise InvalidPossibleChangeCursorError
     if (not isinstance(fields, list) or len(fields) != 11 or fields[0] != "v1"
             or not all(isinstance(field, str) for field in fields[:2] + fields[3:])
-            or not isinstance(fields[2], list)
-            or not all(isinstance(binding, str) for binding in fields[2])):
+            or not isinstance(fields[2], list)):
         raise InvalidPossibleChangeCursorError
     try:
-        node_name, bindings, action = fields[1], tuple(fields[2]), fields[3]
-        time = canonical_int64(fields[4]); sequence = canonical_uint64(fields[5])
+        node_name = fields[1]
+        bindings = tuple(const_value_from_json(binding) for binding in fields[2])
+        action = fields[3]
+        time = canonical_unix_timestamp(fields[4]); sequence = canonical_uint64(fields[5])
         ordinal = int(fields[7]); high_sequence = canonical_uint64(fields[9])
         index = Index(sequence, fields[6]); high = Index(high_sequence, fields[10]); issuer = fields[8]
-        if not node_name or fields[7] != str(ordinal) or not 0 <= ordinal < len(ACTIONS):
+        if not valid_node_name(node_name) or fields[7] != str(ordinal) or not 0 <= ordinal < len(ACTIONS):
             raise InvalidPossibleChangeCursorError
         if action not in ACTIONS or action != ACTIONS[ordinal]:
             raise InvalidPossibleChangeCursorError
@@ -698,7 +808,7 @@ def token_from_string(value):
         if token_payload(token) != value:
             raise InvalidPossibleChangeCursorError
         return token
-    except (KeyError, ValueError, IndexError):
+    except (KeyError, ValueError, IndexError, InvalidPossibleChangeCursorError):
         raise InvalidPossibleChangeCursorError
 
 def query_n(state, token, keys=None):
@@ -776,12 +886,12 @@ def controlled_reset(receiver, source):
         tuple(logical.items()))
 
 # Positional stability, gaps, ordinals, and notification ACI/deletion transparency.
-records = frozenset(Record(Index(n, FP_A), node_key("node-" + key.lower(), ()), "node-" + key.lower(), (), n) for n, key in ((10,"K"),(20,"B"),(30,"C"),(40,"D")))
-old_cursor = (Index(10, FP_A), 4); compacted = compact_n(records | {Record(Index(50,FP_A), node_key("node-k", ()), "node-k", (), 10)})
-assert [r.node_name for r,o,a in projections(compacted, old_cursor) if o == 0] == ["node-b","node-c","node-d","node-k"]
+records = frozenset(Record(Index(n, FP_A), node_key("node_" + key.lower(), ()), "node_" + key.lower(), (), n) for n, key in ((10,"K"),(20,"B"),(30,"C"),(40,"D")))
+old_cursor = (Index(10, FP_A), 4); compacted = compact_n(records | {Record(Index(50,FP_A), node_key("node_k", ()), "node_k", (), 10)})
+assert [r.node_name for r,o,a in projections(compacted, old_cursor) if o == 0] == ["node_b","node_c","node_d","node_k"]
 assert projections(compacted, (Index(11,FP_A),4))
-assert [a for r,o,a in projections({Record(Index(10,FP_A), node_key("node-k", ()), "node-k", (), 10)}, (Index(10,FP_A),1))] == list(ACTIONS[2:])
-universe = tuple(Record(Index(i,a),node_key("node-" + k.lower(), ()),"node-" + k.lower(),(),i) for i,a,k in ((1,FP_A,"K"),(2,FP_A,"K"),(2,FP_B,"L"),(3,FP_A,"L")))
+assert [a for r,o,a in projections({Record(Index(10,FP_A), node_key("node_k", ()), "node_k", (), 10)}, (Index(10,FP_A),1))] == list(ACTIONS[2:])
+universe = tuple(Record(Index(i,a),node_key("node_" + k.lower(), ()),"node_" + k.lower(),(),i) for i,a,k in ((1,FP_A,"K"),(2,FP_A,"K"),(2,FP_B,"L"),(3,FP_A,"L")))
 sets = [frozenset(universe[i] for i in range(4) if mask & (1<<i)) for mask in range(16)]
 compaction_checks = deletion_checks = 0
 for n in sets:
@@ -797,24 +907,46 @@ for a in sets:
   for b in sets:
     for c in sets: assert merge_n(merge_n(a,b),c) == merge_n(a,merge_n(b,c))
 
-# Canonical codec and every normative structurally impossible-token rejection.
-a = make_state(FP_A, [Record(Index(100,FP_A), node_key("node-k", ()), "node-k", (), 50)], [(node_key("node-k", ()),"source")])
-source_record = next(record for record in a.records if record.key == node_key("node-k", ()))
+# Canonical codec checks and representative structurally invalid-token rejections.
+a = make_state(FP_A, [Record(Index(100,FP_A), node_key("node_k", ()), "node_k", (), 50)], [(node_key("node_k", ()),"source")])
+source_record = next(record for record in a.records if record.key == node_key("node_k", ()))
 token = issue_token(source_record, 4, FP_A, a.high)
 assert (token.node_name, token.bindings, token.action, token.time) == (source_record.node_name, source_record.bindings, "validate", source_record.time)
 encoded = token_string(token); decoded = token_from_string(encoded); assert decoded.node_name == token.node_name and decoded.bindings == token.bindings and decoded.action == token.action and decoded.time == token.time and decoded.position == token.position and decoded.issued_by == token.issued_by and decoded.issued_at_high_watermark == token.issued_at_high_watermark
 pre_epoch_token = Token(token.node_name, token.bindings, token.action, -1,
     token.position, token.issued_by, token.issued_at_high_watermark)
 assert token_from_string(token_string(pre_epoch_token)).time == -1
-for arbitrary_bindings in (("a,b",), ("",), ("a|b",)):
-    binding_token = Token(token.node_name, arbitrary_bindings, token.action,
+representative_bindings = tuple(
+    tuple(const_value_from_json(value) for value in bindings)
+    for bindings in (
+        (42,), (0.5,), (0.0001,), (-0.5,), (True,), (False,),
+        ("a,b",), ("",), ("a|b",),
+        ([1, 2],), ({"id": 5},), ({"nested": [True, "x", 3]},),
+        ({"nested_fraction": [0.5]},),
+        ([],), ({},),
+    )
+)
+for bindings in representative_bindings:
+    binding_token = Token(token.node_name, bindings, token.action,
         token.time, token.position, token.issued_by,
         token.issued_at_high_watermark)
-    assert token_from_string(token_string(binding_token)).bindings == arbitrary_bindings
+    assert token_from_string(token_string(binding_token)).bindings == bindings
+for valid_name in ("node", "_node", "node_1", "A"):
+    named_token = Token(valid_name, (), token.action, token.time, token.position,
+        token.issued_by, token.issued_at_high_watermark)
+    assert token_from_string(token_string(named_token)).node_name == valid_name
+for vector in timestamp_vectors:
+    timestamp_token = Token(token.node_name, (), token.action, int(vector["value"]),
+        token.position, token.issued_by, token.issued_at_high_watermark)
+    try:
+        assert token_from_string(token_string(timestamp_token)).time == int(vector["value"])
+        assert vector["valid"]
+    except InvalidPossibleChangeCursorError:
+        assert not vector["valid"]
 invalid_tokens = [
     Token("node", (), "validate", 50, (Index(100,FP_A),5),FP_A,a.high),
-    Token("node", (), "validate", INT64_MIN-1, (Index(100,FP_A),4),FP_A,a.high),
-    Token("node", (), "validate", INT64_MAX+1, (Index(100,FP_A),4),FP_A,a.high),
+    Token("node", (), "validate", TIMESTAMP_MIN-1, (Index(100,FP_A),4),FP_A,a.high),
+    Token("node", (), "validate", TIMESTAMP_MAX+1, (Index(100,FP_A),4),FP_A,a.high),
     Token("node", (), "validate", 50, (Index(UINT64_MAX+1,FP_A),4),FP_A,Index(UINT64_MAX+1,FP_A)),
     Token("node", (), "validate", 50, (Index(101,FP_A),4),FP_A,a.high),
     Token("node", (), "validate", 50, (Index(100,"bad"),4),FP_A,a.high),
@@ -828,6 +960,22 @@ for invalid in invalid_tokens:
         raise AssertionError("invalid token accepted")
     except (InvalidPossibleChangeCursorError, KeyError):
         invalid_token_checks += 1
+def replace_token_field(field_index, field_value):
+    fields = json.loads(encoded)
+    fields[field_index] = field_value
+    return json.dumps(fields, separators=(",", ":"))
+
+malformed_payloads = [
+    *(replace_token_field(1, name) for name in ("", "bad name", "1node", "node-name", "node()")),
+    replace_token_field(2, [None]),
+    replace_token_field(2, [{"nested": [True, None]}]),
+]
+for malformed in malformed_payloads:
+    try:
+        token_from_string(malformed)
+        raise AssertionError("malformed token accepted")
+    except InvalidPossibleChangeCursorError:
+        invalid_token_checks += 1
 fabricated_progress = token_string(Token(token.node_name, token.bindings,
     token.action, token.time, (Index(99, FP_A), token.position[1]),
     token.issued_by, token.issued_at_high_watermark))
@@ -836,15 +984,15 @@ assert query_n(a, fabricated_token) == query_n(a, fabricated_token)
 assert fabricated_token.position[0] == Index(99, FP_A)
 
 # Coverage, sync, high-watermark, restart, and graph-silent controlled reset.
-b0 = make_state(FP_B, [Record(Index(90,FP_B), node_key("node-k", ()), "node-k", (), 40)], [(node_key("node-k", ()),"receiver")])
+b0 = make_state(FP_B, [Record(Index(90,FP_B), node_key("node_k", ()), "node_k", (), 40)], [(node_key("node_k", ()),"receiver")])
 try: query_n(b0, decoded); raise AssertionError("uncovered token accepted")
 except InvalidPossibleChangeCursorError: pass
-b_equal = synchronize(b0,a,((node_key("node-k", ()),"source"),)); assert query_n(b_equal,decoded) == ()
-b_diff = synchronize(b0,a,((node_key("node-k", ()),"final-B"),)); assert query_n(b_diff,decoded)
-assert any(r.key == node_key("node-k", ()) and r.index > a.high for r in b_diff.records)
-source150 = make_state(FP_A,[Record(Index(150,FP_A), node_key("node-k", ()), "node-k", (), 50)],[(node_key("node-k", ()),"source")])
-assert max(r.index for r in synchronize(b0,source150,((node_key("node-k", ()),"source"),)).records if r.key==node_key("node-k", ())) == Index(150,FP_A)
-assert synchronize(b_diff,a,((node_key("node-k", ()),"final-B"),)) == b_diff
+b_equal = synchronize(b0,a,((node_key("node_k", ()),"source"),)); assert query_n(b_equal,decoded) == ()
+b_diff = synchronize(b0,a,((node_key("node_k", ()),"final-B"),)); assert query_n(b_diff,decoded)
+assert any(r.key == node_key("node_k", ()) and r.index > a.high for r in b_diff.records)
+source150 = make_state(FP_A,[Record(Index(150,FP_A), node_key("node_k", ()), "node_k", (), 50)],[(node_key("node_k", ()),"source")])
+assert max(r.index for r in synchronize(b0,source150,((node_key("node_k", ()),"source"),)).records if r.key==node_key("node_k", ())) == Index(150,FP_A)
+assert synchronize(b_diff,a,((node_key("node_k", ()),"final-B"),)) == b_diff
 # Full public payload and continuation-metadata round-trip without consulting the record.
 recordless_restored = NotificationState(a.host,frozenset(),a.clock,a.high,a.coverage,
     a.semantic_views,a.logical_views)
@@ -857,7 +1005,7 @@ assert query_n(restored,token_from_string(encoded)) == query_n(a,decoded)
 # Once foreign lineage is covered, local append, compaction, and restart preserve it.
 foreign_covered = b_equal
 local_clock = max(foreign_covered.clock, foreign_covered.high.sequence) + 1
-local_record = Record(Index(local_clock, FP_B), node_key("node-l", ()), "node-l", (), 60)
+local_record = Record(Index(local_clock, FP_B), node_key("node_l", ()), "node_l", (), 60)
 foreign_coverage = dict(foreign_covered.coverage); foreign_coverage[FP_B] = local_record.index
 foreign_covered = NotificationState(FP_B, foreign_covered.records | {local_record}, local_clock,
     local_record.index, tuple(sorted(foreign_coverage.items())),
@@ -873,7 +1021,7 @@ assert query_n(foreign_covered, decoded) == query_n(foreign_covered, round_tripp
 # Controlled reset keeps semantic and canonical logical views conceptually
 # separate: source semantics replace receiver semantics, while receiver-owned
 # logical history survives and only receiver-authored reset effects are added.
-key_k = node_key("node-k", ())
+key_k = node_key("node_k", ())
 reset_receiver = make_state(FP_R, [], [(key_k,"source")],
     [(key_k,frozenset({"receiver-history"}))])
 reset_source = make_state(FP_A, a.records, [(key_k,"source")],
@@ -896,10 +1044,10 @@ assert reset_repeated == reset_final
 # remain supported; alternating reset can conservatively replay and advance
 # coverage because each receiver retains its own logical authority.
 alt_a = make_state(FP_A,
-    [Record(Index(200,FP_A),key_k,"node-k",(),50)],
+    [Record(Index(200,FP_A),key_k,"node_k",(),50)],
     [(key_k,"equal-semantics")],[(key_k,frozenset({"A-history"}))])
 alt_b = make_state(FP_B,
-    [Record(Index(200,FP_B),key_k,"node-k",(),50)],
+    [Record(Index(200,FP_B),key_k,"node_k",(),50)],
     [(key_k,"equal-semantics")],[(key_k,frozenset({"B-history"}))])
 alternating_advances = 0
 for receiver_is_a in (True, False, True, False):
@@ -933,10 +1081,10 @@ assert dict(alt_a.logical_views)[key_k] == frozenset({"A-history", "B-history"})
 unchanged_a = synchronize(alt_a, alt_b, alt_a.semantic_views)
 unchanged_b = synchronize(alt_b, unchanged_a, alt_b.semantic_views)
 assert unchanged_a == alt_a and unchanged_b == alt_b
-high_state = make_state(FP_A,[Record(Index(500,FP_A), node_key("node-k", ()), "node-k", (), 1),Record(Index(600,FP_A), node_key("node-k", ()), "node-k", (), 2)],[(node_key("node-k", ()),"A")])
+high_state = make_state(FP_A,[Record(Index(500,FP_A), node_key("node_k", ()), "node_k", (), 1),Record(Index(600,FP_A), node_key("node_k", ()), "node_k", (), 2)],[(node_key("node_k", ()),"A")])
 high_state = NotificationState(FP_A,compact_n(high_state.records),600,high_state.high,
     high_state.coverage,high_state.semantic_views,high_state.logical_views)
-replayed = synchronize(high_state,make_state(FP_C,[Record(Index(50,FP_C), node_key("node-k", ()), "node-k", (), 1)],[(node_key("node-k", ()),"C")]),((node_key("node-k", ()),"C"),))
+replayed = synchronize(high_state,make_state(FP_C,[Record(Index(50,FP_C), node_key("node_k", ()), "node_k", (), 1)],[(node_key("node_k", ()),"C")]),((node_key("node_k", ()),"C"),))
 assert max(r.index for r in replayed.records) > Index(600,FP_A)
 
 # Exhaust transition words and preserve every action obligation through later
@@ -950,16 +1098,16 @@ for word in product(ops, repeat=4):
         before = state
         if op in ("appendK","appendL","appendM","migrationK","migrationL","resetK","resetL"):
             key = "L" if op in ("appendL","migrationL","resetL") else ("M" if op == "appendM" else "K")
-            record_key = node_key("node-" + key.lower(), ())
-            clock = max(state.clock,state.high.sequence)+1; record=Record(Index(clock,FP_A),node_key("node-" + key.lower(), ()),"node-" + key.lower(),(),clock)
+            record_key = node_key("node_" + key.lower(), ())
+            clock = max(state.clock,state.high.sequence)+1; record=Record(Index(clock,FP_A),node_key("node_" + key.lower(), ()),"node_" + key.lower(),(),clock)
             coverage = dict(state.coverage); coverage[state.host] = record.index
             state = NotificationState(FP_A,state.records|{record},clock,record.index,
                 tuple(sorted(coverage.items())),state.semantic_views,state.logical_views)
             obligations += [(cursor,record_key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
         elif op in ("syncK","syncL"):
             key = "L" if op == "syncL" else "K"
-            record_key = node_key("node-" + key.lower(), ())
-            source = make_state(FP_B,[Record(Index(max(1,state.high.sequence+1),FP_B),node_key("node-" + key.lower(), ()),"node-" + key.lower(),(),1)],[(record_key,"remote")])
+            record_key = node_key("node_" + key.lower(), ())
+            source = make_state(FP_B,[Record(Index(max(1,state.high.sequence+1),FP_B),node_key("node_" + key.lower(), ()),"node_" + key.lower(),(),1)],[(record_key,"remote")])
             state = synchronize(state,source,((record_key,"remote"),))
             obligations += [(cursor,record_key,action) for cursor in [(BASE,-1)]+[(r.index,o) for r in before.records for o in range(5)] for action in ACTIONS]
         elif op == "compact":
@@ -1001,7 +1149,7 @@ print(f"notification compaction pair checks: {compaction_checks}")
 print(f"notification associative merge triples: {len(sets) ** 3}")
 print(f"deletion-transparency cursor/filter checks: {deletion_checks}")
 print(f"structurally invalid-token rejection checks: {invalid_token_checks}")
-print("arbitrary-binding token round-trip checks: 3")
+print(f"representative recursive-binding token round-trip checks: {len(representative_bindings)}")
 print("full-payload recordless round-trip checks: 1")
 print("foreign-coverage append/compact/restart persistence traces: 1")
 print(f"componentwise coverage prefix checks: {prefixes_checked}")

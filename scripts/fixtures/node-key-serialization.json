@@ -45,11 +45,11 @@
   },
   {
     "description": "ordinary Unicode",
-    "nodeName": "nøde",
+    "nodeName": "n\u00f8de",
     "bindings": [
-      "café"
+      "caf\u00e9"
     ],
-    "serialized": "{\"head\":\"nøde\",\"args\":[\"café\"]}"
+    "serialized": "{\"head\":\"n\u00f8de\",\"args\":[\"caf\u00e9\"]}"
   },
   {
     "description": "lone high surrogate",
@@ -69,8 +69,218 @@
     "description": "UTF-16 surrogate pair",
     "nodeName": "node",
     "bindings": [
-      "😀"
+      "\ud83d\ude00"
     ],
-    "serialized": "{\"head\":\"node\",\"args\":[\"😀\"]}"
+    "serialized": "{\"head\":\"node\",\"args\":[\"\ud83d\ude00\"]}"
+  },
+  {
+    "description": "number binding",
+    "nodeName": "node",
+    "bindings": [
+      42
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[42]}"
+  },
+  {
+    "description": "true binding",
+    "nodeName": "node",
+    "bindings": [
+      true
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[true]}"
+  },
+  {
+    "description": "false binding",
+    "nodeName": "node",
+    "bindings": [
+      false
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[false]}"
+  },
+  {
+    "description": "nested array binding",
+    "nodeName": "node",
+    "bindings": [
+      [
+        1,
+        2
+      ]
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[[1,2]]}"
+  },
+  {
+    "description": "record binding",
+    "nodeName": "node",
+    "bindings": [
+      {
+        "id": 5
+      }
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[{\"id\":5}]}"
+  },
+  {
+    "description": "nested records and arrays",
+    "nodeName": "node",
+    "bindings": [
+      {
+        "nested": [
+          true,
+          "x",
+          3
+        ],
+        "record": {
+          "empty": []
+        }
+      }
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[{\"nested\":[true,\"x\",3],\"record\":{\"empty\":[]}}]}"
+  },
+  {
+    "description": "empty array binding",
+    "nodeName": "node",
+    "bindings": [
+      []
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[[]]}"
+  },
+  {
+    "description": "empty record binding",
+    "nodeName": "node",
+    "bindings": [
+      {}
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[{}]}"
+  },
+  {
+    "description": "integer-valued floating number",
+    "nodeName": "node",
+    "bindings": [
+      1.0
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[1]}"
+  },
+  {
+    "description": "smallest fixed-notation magnitude",
+    "nodeName": "node",
+    "bindings": [
+      1e-06
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[0.000001]}"
+  },
+  {
+    "description": "below fixed-notation magnitude",
+    "nodeName": "node",
+    "bindings": [
+      1e-07
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[1e-7]}"
+  },
+  {
+    "description": "largest fixed-notation magnitude example",
+    "nodeName": "node",
+    "bindings": [
+      1e+20
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[100000000000000000000]}"
+  },
+  {
+    "description": "exponential-notation magnitude boundary",
+    "nodeName": "node",
+    "bindings": [
+      1e+21
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[1e+21]}"
+  },
+  {
+    "description": "largest consecutive integer",
+    "nodeName": "node",
+    "bindings": [
+      9007199254740991
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[9007199254740991]}"
+  },
+  {
+    "description": "first non-consecutive integer",
+    "nodeName": "node",
+    "bindings": [
+      9007199254740992
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[9007199254740992]}"
+  },
+  {
+    "description": "integer rounded by JavaScript Number",
+    "nodeName": "node",
+    "bindings": [
+      9007199254740993
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[9007199254740992]}"
+  },
+  {
+    "description": "integer-index record key ordering",
+    "nodeName": "node",
+    "bindings": [
+      {
+        "2": "two",
+        "1": "one",
+        "ordinary": true
+      }
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[{\"1\":\"one\",\"2\":\"two\",\"ordinary\":true}]}"
+  },
+  {
+    "description": "nested numeric and property-order boundaries",
+    "nodeName": "node",
+    "bindings": [
+      {
+        "nested": [
+          1.0,
+          {
+            "10": 1e+21,
+            "2": 1e-07,
+            "tail": 9007199254740993
+          }
+        ]
+      }
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[{\"nested\":[1,{\"2\":1e-7,\"10\":1e+21,\"tail\":9007199254740992}]}]}"
+  },
+  {
+    "description": "ordinary fraction below one",
+    "nodeName": "node",
+    "bindings": [
+      0.5
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[0.5]}"
+  },
+  {
+    "description": "fixed fraction below one",
+    "nodeName": "node",
+    "bindings": [
+      0.0001
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[0.0001]}"
+  },
+  {
+    "description": "negative fraction below one",
+    "nodeName": "node",
+    "bindings": [
+      -0.5
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[-0.5]}"
+  },
+  {
+    "description": "nested fraction below one",
+    "nodeName": "node",
+    "bindings": [
+      {
+        "nested": [
+          0.5,
+          {
+            "fraction": -0.0001
+          }
+        ]
+      }
+    ],
+    "serialized": "{\"head\":\"node\",\"args\":[{\"nested\":[0.5,{\"fraction\":-0.0001}]}]}"
   }
 ]

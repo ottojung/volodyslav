@@ -126,7 +126,7 @@ the logical bound proved below: compact logical history is still `O(nr²)`. Full
 Each record's semantic address is bounded under fixed finite schema arity,
 bounded schema node names, fixed C for every binding `ConstValue`, and fixed K
 for its redundant identity-preserving `NodeKey`; therefore notifications are
-`O(n)`. Coverage metadata retains at most one bounded coordinate per represented fingerprint, `O(r)`; allocators and the high-watermark are constant-size. Thus, for `r >= 1`, total compacted
+`O(n)`. Coverage metadata retains at most one bounded coordinate per represented fingerprint, `O(r)`; allocators and the high-watermark are constant-size. Thus, for `n > 0` and `r >= 1`, total compacted
 journal and cursor metadata remain `O(nr²)`. Application-owned persisted tokens
 are not journal storage. No operation-count-independent bound applies to either
 uncompacted history.
