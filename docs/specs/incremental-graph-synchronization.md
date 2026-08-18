@@ -45,8 +45,7 @@ available in its two reachable source snapshots and retained journal history.
 Insufficient evidence is handled conservatively. Synchronization invokes no
 computor and invents no `ComputedValue`; journal merge is ACI; bilateral gossip
 is decentralized; journal notifications have no action-specific false
-negatives; and fully compacted journal storage is `O(nr²)` in n and r under the
-journal size model's explicit fixed maximum serialized `NodeKey` size K;
+negatives; and fully compacted journal plus coverage storage is `O(nr²+r)`, reducing to `O(nr²)` for `n>0,r>=1`, under the journal size model's explicit fixed maximum serialized semantic-address size;
 `DatabaseFingerprint` is already bounded by its normative 16-character ASCII
 representation, and uncompacted storage may grow with operations. The broader storage model also assumes fixed maximum
 serialized `ConstValue` size C and fixed direct graph
@@ -90,17 +89,15 @@ apply; implementations need not detect the condition. Volodyslav does not
 detect, repair, compensate for, or preserve causality across unsynchronized
 wall clocks.
 
-This specification uses the definitions in the journal synchronization spec:
+This specification uses the exact definitions in the [journal synchronization specification](incremental-graph-journal-sync.md#logical-projection), including `presenceHead`, `generation`, `valueEvents`, `valueHead`, `candidateEvents`, `canonicalEvent`, `origin`, `ValueRevision`, `covers`, both invalidation frontiers, `freshnessEffective`, and `hardnessCleared`. In shorthand:
 
 ```text
 modifiedAtUnix(x) = toUnixTimestamp(graph.timestamps[x].modifiedAt)
-ValueRevision(x,G) = [modifiedAtUnix(x), modifiedAtVirtual(x,G), modifiedBy(x,G)]
-modifiedAtVirtual(x,G) = origin(x,G).sequence
-modifiedBy(x,G) = origin(x,G).author
-
-presenceHead(x) = greatest add/delete by (sequence,author)
-hardInvalidateFrontier(x,G)[A] = greatest outstanding hard invalidate by A scoped to G
-effectiveValidate(V,x,G) iff V alone covers every frontier element
+ValueRevision(x,G) = [modifiedAtUnix(x), origin(x,G).sequence, origin(x,G).author]
+invalidateFrontier(x,G)[A] = greatest invalidate of either mode by A
+hardInvalidateFrontier(x,G)[A] = greatest hard invalidate by A
+freshnessEffective(V,x,G) iff V alone covers every all-mode frontier member
+hardnessCleared(V,x,G) iff V alone covers every hard-frontier member
 ```
 
 A value event for winning generation G is usable only when it is add G or an
@@ -149,7 +146,7 @@ the joined head says present but no source carries usable bytes for that
 presence generation, the result is absent; a genuinely new decision emits a
 delete barrier.
 
-For final add generation G, every per-author hard invalidate is an independent barrier; soft invalidates are excluded. A validation permits journal freshness only if its immutable `clearsHardInvalidates` context names the exact frontier invalidate (or a later same-author invalidate) for every author. Numeric entry order is not observation and contexts from separate validations MUST NOT be combined. Even one effective validation only permits freshness when ordinary exact graph validity is coherent. Other-generation contexts have no authority.
+For final add generation G, `invalidateFrontier` contains every author's greatest invalidate of either mode, while `hardInvalidateFrontier` contains every author's greatest hard invalidate. A validation permits journal freshness only when it individually covers the complete all-mode frontier. It clears must-recompute authority when it individually covers the hard frontier. Numeric order is not observation and contexts from separate validations MUST NOT be combined. Freshness additionally requires ordinary exact graph coherence. Other-generation contexts have no authority; an empty hard frontier is non-hard without any validation.
 
 ## Transient support
 
@@ -258,58 +255,21 @@ it without authoring another.
 
 ### 5. Validity reconstruction
 
-Never union `valid`. Rebuild incoming validity edges only from a coherent source
-proof against the exact final direct-input revisions. A stale fallback retains
-no incoming proof not established coherent. Structural dependency edges come
-from the graph scheme, never from `valid`.
+Never union `valid`. Rebuild incoming validity edges only from coherent source proof against exact final direct-input revisions. Structural dependency edges come from the schema.
 
-If no single validation covers the complete `hardInvalidateFrontier(N,G)`, N is a direct
-invalidation root: final N is stale and synchronization transports **no incoming
-validity proofs into N**, even if an older fresh source is otherwise coherent.
-This applies equally to locally and synchronization-authored invalidations. A
-later normal pull must recompute or revalidate through the normal graph rules
-before it may emit `validate` and restore incoming proofs.
+Determine hard state first. If `hardInvalidateFrontier(N,G)` is nonempty and no single validation is `hardnessCleared`, N is hard-stale and receives no incoming proofs. If the hard frontier is empty or individually cleared but no validation is `freshnessEffective` because a later soft invalidate remains uncovered, N is stale-soft: coherent reusable proofs may remain or be transported, and cache-only revalidation remains possible. A freshness-effective validation can permit fresh state only with ordinary exact graph coherence.
 
-### 6. Freshness
+### 6. Freshness and synchronization authoring
 
-A selected node is final-fresh only if:
+The all-mode frontier prevents an old validation from crossing a delayed soft invalidate. The hard subset separately determines must-recompute authority. Partial validations never combine.
 
-1. one applicable validation individually covers the complete `hardInvalidateFrontier(N,G)` when that frontier is nonempty;
-2. selected-source validity is coherent with exact final inputs; and
-3. every ordinary clean-node invariant holds.
+An imported applicable uncovered hard barrier is sufficient authority. Synchronization enforces it and removes or declines proofs silently; it MUST NOT author a receiver echo. A new receiver hard invalidate is authored only when this transaction establishes must-recompute for a reason not represented by any applicable uncovered hard barrier in the merged journal—for example, stale-soft proof removal caused by a newly discovered incoherent final input when the hard frontier is empty or cleared. Settled represented hard state is silent. Synchronization never synthesizes validate.
 
-Otherwise it is stale. Whenever synchronization removes or declines incoming
-proofs in a way that newly makes a materialized N require genuine normal
-recomputation/revalidation, it establishes hard invalidation. This includes
-fresh→stale demotion and stale→stale hardening of a propagated-stale cache whose
-incoming proofs had still permitted cache-only revalidation. The transaction
-MUST author exactly one invalidate for G after all observed journal history,
-unless an entry installed or authored by this same causal decision already
-represents that exact new obligation. It never synthesizes validate.
+Imported-barrier trace: S has hard I_S and no proofs; R has the same generation/value and reusable proofs. `R <- S` imports I_S, leaves D hard-stale, removes/declines R's proofs, and authors no I_R. Any validation that observed I_S remains capable of clearing exactly that authority.
 
-Synchronization does not author endless barriers for a settled node. If N was
-already hard-invalidated before the transaction, its proofs remain absent, and
-the retained frontier already contains the outstanding barrier representing
-that obligation, synchronization merely carries that barrier. No new hardening
-decision occurred. Conversely, removing proofs during this transaction is a new
-decision even if an older frontier barrier exists: that older barrier may have
-been cleared on an unseen host and cannot represent the later proof-removal
-decision.
-A validation which did not observe the barrier cannot cross it, regardless of
-ID. A later ordinary genuine graph revalidation or authoritative existing-live
-stale→fresh reset may author validate scoped to G with the complete observed
-receiver frontier. Synchronization itself never synthesizes validate.
+Soft-after-validation trace: B's D is fresh under V1. A later authors soft S2 after an input becomes stale without changing its ValueRevision, retaining D's proofs. `B <- A` finds V1 does not cover S2, so D is stale-soft, retains coherent proofs, and authors no hard invalidate.
 
-That synchronization-authored invalidate explicitly carries G. Entries for
-other generations neither satisfy nor override this barrier.
-
-Trace: A has propagated I0, is stale, and retains incoming proofs. B observes I0,
-cache-revalidates, and authors V0 clearing I0. A has not seen V0. Synchronizing A
-with C (which also lacks V0) finds no effective validation and removes N's
-incoming proofs. Although freshness remains stale, this is hardening, so the
-transaction authors I1 above all observed history. Later union with B includes
-I1; V0 does not cover I1, and N remains stale until genuine validation after
-observing I1.
+Local-hardening trace: A propagated soft I0 and remains cache-revalidatable. A receive discovers final-input incoherence requiring proof removal, while no uncovered hard barrier represents that reason. It authors one hard I1. Reverse receive imports I1 unchanged. Later receives enforce it silently until one validation individually clears it.
 
 ### 7. Atomic installation and no-op
 

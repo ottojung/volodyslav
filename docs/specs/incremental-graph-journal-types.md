@@ -2,6 +2,10 @@
 
 This document defines the durable replicated journal model. It is normative.
 
+## Supported-state boundary
+
+The algebra and proofs quantify over **supported reachable histories**: histories produced by the authoring, synchronization, migration, reset, restoration, and compaction rules in these specifications. Every entry has a valid immutable identity and shape; address, generation, and causal references resolve exactly; same-author clocks and validation knowledge are monotone; graph state agrees with journal-derived presence, value provenance, and freshness; and lifecycle atomicity holds. Corrupt, forged, rolled-back, or partially installed state is rejected and is outside the proof domain. Compacted and uncompacted forms of a supported history are both supported.
+
 ## One immutable journal
 
 A database stores exactly one physical replicated collection:
@@ -11,7 +15,7 @@ journal[JournalEntryId] = JournalEntry
 JournalEntryId = (sequence, author)
 ```
 
-`JournalEntryId` is ordered lexicographically by unsigned sequence and then fingerprint. Physical insertion order has no meaning. An imported entry retains its exact ID and immutable contents. Two different contents under one ID are corruption.
+IDs are ordered lexicographically by unsigned sequence then fingerprint. Physical insertion order has no meaning. Import preserves exact ID and contents; different contents under one ID are corruption.
 
 ```text
 JournalEntryBase = {
@@ -22,12 +26,9 @@ JournalEntryBase = {
     bindings: BindingEnvironment
     time: UnixTimestamp
 }
-
 AddJournalEntry = JournalEntryBase & { action: "add" }
 DeleteJournalEntry = JournalEntryBase & { action: "delete" }
-GenerationScopedJournalEntryBase = JournalEntryBase & {
-    generation: JournalEntryId
-}
+GenerationScopedJournalEntryBase = JournalEntryBase & { generation: JournalEntryId }
 EditJournalEntry = GenerationScopedJournalEntryBase & { action: "edit" }
 InvalidateJournalEntry = GenerationScopedJournalEntryBase & {
     action: "invalidate"
@@ -35,18 +36,18 @@ InvalidateJournalEntry = GenerationScopedJournalEntryBase & {
 }
 ValidateJournalEntry = GenerationScopedJournalEntryBase & {
     action: "validate"
-    clearsHardInvalidates: HardInvalidationContext
+    clearsInvalidates: InvalidationContext
 }
+InvalidationContext = Map<DatabaseFingerprint, JournalEntryId>
 JournalEntry = AddJournalEntry | DeleteJournalEntry | EditJournalEntry
              | InvalidateJournalEntry | ValidateJournalEntry
-HardInvalidationContext = Map<DatabaseFingerprint, JournalEntryId>
 ```
 
-Every loader, import validator, migration, and merge boundary MUST check `key == NodeKey(nodeName, bindings)` using the production identity-preserving serializer. `NodeKey` need not be reversible. It also checks the closed action shape, valid fingerprints and uint64 values, exact immutable identity, valid timestamps, and that each generation reference resolves to a same-key add. A validation context may reference only an earlier hard invalidate of its exact key and generation, at most one per author. A later validation by the same author/key/generation cannot regress any observed coordinate.
+Every load, import, migration, and merge validates `key == NodeKey(nodeName, bindings)` with the production identity-preserving serializer. `NodeKey` need not be reversible. It validates the closed variant shape, fingerprint, uint64, timestamp, immutable identity, and all references. Each generation-scoped entry names a same-key add. Each validation reference names an earlier same-key, same-generation invalidate of the stated author, of either mode, with at most one coordinate per author. Later validation contexts by one author/key/generation cannot regress an observed coordinate.
 
-An add establishes a presence generation. Edit, invalidate, and validate are scoped to that exact add; delete is not. Every event has exactly the public action named by its variant. `mode` refines internal invalidation semantics but both modes expose public action `invalidate`.
+Every event exposes exactly its variant action. Soft and hard modes both expose `invalidate`; mode is internal causal meaning. Add creates a generation. Edit, invalidate, and validate are scoped to it; delete is not.
 
-For add/edit, `time` is the semantic value event time and equals graph `modifiedAt`; an authority-fence add which preserves an equal value preserves the source snapshot's intended value timestamp as its add `time`. Delete/invalidate/validate use their actual event time without changing `modifiedAt`. `ValueRevision=(time,sequence,author)` remains wall-time-first; exact equal-time provenance is selected canonically by ID.
+For ordinary add/edit, `time` equals the semantic value event's graph `modifiedAt`. An equal-value reset authority-fence add preserves the intended source snapshot value timestamp. Delete/invalidate/validate use occurrence time without changing `modifiedAt`. `ValueRevision=(time,sequence,author)` remains wall-time-first and exact equal-time provenance is canonical by ID.
 
 ## Coverage and allocator
 
@@ -55,29 +56,40 @@ JournalCoverage = Map<DatabaseFingerprint, uint64>
 journalCoverage: JournalCoverage
 ```
 
-A missing coordinate is zero. `journalCoverage[A]=n` proves that the host has a complete account of A-authored notification obligations through n, although compaction may have removed exact events. It is prefix coverage, not retention. Allocator gaps are closed non-events and are allowed. Coverage is durable and componentwise monotone, and every retained E satisfies `journalCoverage[E.author] >= E.sequence`.
-
-Each writer owns a durable `localJournalClock`. Before local authoring it observes the maximum imported sequence according to the Lamport allocator rule, advances, and publishes once. Aborted reserved values remain gaps. After every atomic commit:
+Missing means zero. `journalCoverage[A]=n` proves complete account of A-authored polling obligations through n although exact events may be compacted. It is prefix coverage, not retention. Gaps are closed non-events. Coverage is durable, componentwise monotone, and dominates every retained event. Each writer has durable `localJournalClock`; observed sequences raise it before local authoring, and committed skips remain gaps. After each atomic commit:
 
 ```text
 journalCoverage[localFingerprint] == localJournalClock
 ```
 
-Thus no sequence at or below that coordinate can later become a new local event. Coverage is journal metadata, not graph state. Rollback while retaining the same fingerprint is unsupported.
+Rollback under the same fingerprint is unsupported.
 
-## Invalidation semantics
+## Two invalidation frontiers
 
-A **soft invalidate** records a real freshness transition caused by ordinary dependency propagation while sufficient incoming proofs remain. The cached value and proofs remain cache-revalidatable. It is an exact invalidate notification, but is neither a must-recompute root nor part of causal hard-invalidation state and cannot revoke another host's proofs.
+A soft invalidate is a real stale transition while reusable incoming proofs remain. It blocks an older validation from making the node fresh, but creates no must-recompute authority and does not itself revoke proofs.
 
-A **hard invalidate** establishes or deliberately reasserts a must-recompute obligation: cached data may remain as `oldValue`, but cache-only reuse cannot make it fresh. Explicit invalidate, proof-removing synchronization or migration, reset hardening, and stale-to-stale hardening author hard invalidates. One causal decision authors one invalidate; hard mode replaces rather than accompanies soft mode. Settled state carrying an outstanding hard barrier is silent.
+A hard invalidate establishes or deliberately reasserts must-recompute state. Cached bytes may remain as `oldValue`, but cache-only reuse cannot make them fresh. Explicit invalidation, unrepresented proof-removal/hardening decisions, migration hardening, and reset hardening author hard mode. One decision emits one invalidate. Settled state already represented by an applicable uncovered hard barrier is silent.
 
 ```text
+invalidateFrontier(K,G)[A] =
+    greatest invalidate of either mode by A for K,G
+
 hardInvalidateFrontier(K,G)[A] =
-    greatest outstanding hard invalidate by A for K,G
+    greatest hard invalidate by A for K,G
 ```
 
-Only hard invalidates participate. `clearsHardInvalidates` contains only hard barriers actually observed by that validation. A soft-only stale-to-fresh cache revalidation may validate with an empty context. A validation is effective only when its context covers every coordinate of the applicable hard frontier. Graph state remains authoritative for current value, freshness, and validity.
+For validation V, `covers(V,I)` holds when V is for I's key/generation and `V.clearsInvalidates[I.author]` names an invalidate by that author for the same key/generation whose sequence is at least I's sequence. Then:
 
-## Atomicity and corruption boundary
+```text
+freshnessEffective(V,K,G)
+    iff V individually covers every member of invalidateFrontier(K,G)
 
-Graph state, journal, coverage, allocator, generation/provenance metadata, and schema version are installed atomically. A crash exposes the complete before-state or complete after-state. Malformed identity, address, reference, timestamp, or monotonicity data is corruption and is rejected before semantic use. Supported restoration resumes only the exact durable state belonging to its fingerprint.
+hardnessCleared(V,K,G)
+    iff V individually covers every member of hardInvalidateFrontier(K,G)
+```
+
+Contexts from multiple validations never combine. An uncovered soft-only frontier yields stale but cache-revalidatable state. An uncovered hard member yields stale must-recompute state. A validation covering hard barriers but missing a later soft invalidate yields stale-soft. Complete all-frontier coverage may permit freshness, subject to ordinary graph coherence. An empty hard frontier is vacuously non-hard; avoiding hard state does not require any validation.
+
+## Atomicity
+
+Graph, journal, coverage, allocator, provenance/generation metadata, and schema version install atomically. A crash exposes the complete before-state or after-state. Structural failure is corruption and is rejected before semantic use.

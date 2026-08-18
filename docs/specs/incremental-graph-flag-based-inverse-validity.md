@@ -534,11 +534,7 @@ The merge validity algorithm does **not** mint proofs. It derives transient
 support from a source's preexisting flags and journal-backed value revisions,
 then classifies nodes without an exact final proof set as direct roots.
 
-A node for which no single validation covers the complete `hardInvalidateFrontier(N,G)`
-is always a direct invalidation root. It receives no incoming validity proofs,
-even when a coherent older fresh source contains them. The journal does not
-distinguish explicit from propagated invalidation causes, so this conservative
-revocation applies to both during synchronization.
+A node with an uncovered member of `hardInvalidateFrontier(N,G)` is a hard invalidation root and receives no incoming proofs. An uncovered soft-only member of `invalidateFrontier(N,G)` instead makes the node stale while coherent proofs may remain cache-revalidatable. Journal invalidate mode distinguishes these cases; an older validation cannot cross either frontier.
 
 1. **Exact revision proof transport**: Candidate N from snapshot S has known
    support only when `S.valid[D].has(N)` exists for every distinct direct input

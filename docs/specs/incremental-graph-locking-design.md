@@ -349,8 +349,7 @@ gaps caused by allocator behavior are permitted only when committed allocator
 progression skips numbers; journal compaction may leave holes among surviving entries. This does not widen the darkroom or weaken
 dome/telescope serialization.
 
-Validation reads the transaction-visible hard-invalidate frontier and commits its
-complete causal context with freshness. Hard invalidation similarly commits its barrier after observed journal history. Sync raises the receiver allocator above observed sequences before local authoring and advances coverage only in the final atomic commit.
+Validation reads the transaction-visible all-mode invalidate frontier and commits its complete `clearsInvalidates` causal context with freshness. Hardness evaluation separately reads the hard subset. Hard invalidation similarly commits its barrier after observed journal history. Sync raises the receiver allocator above observed sequences before local authoring and advances coverage only in the final atomic commit.
 
 `possibleMaybeChanges()` takes one committed read snapshot. It never acquires the
 writer allocator, appends an entry, changes coverage, or invokes a

@@ -1,18 +1,16 @@
 # IncrementalGraph journal emission
 
-Every committed semantic event authors one precise entry in the single journal and atomically advances local clock and local coverage. Imported facts are never reauthored merely because they crossed hosts.
+Every committed semantic event authors one precise entry in the single journal and atomically advances local clock and coverage. Imports retain identity and never count as authoring.
 
-| operation | event |
+| decision | precise event |
 |---|---|
 | absent to materialized | add |
 | materialized value changed | edit |
 | materialized to absent | delete |
-| fresh to stale with sufficient reusable proofs | soft invalidate |
-| newly established/reasserted must-recompute state | hard invalidate |
+| real fresh-to-stale propagation with reusable proofs | soft invalidate |
+| newly established/reasserted must-recompute without an applicable uncovered hard barrier | hard invalidate |
 | stale to fresh | validate |
 
-`Unchanged`, identifier-only changes, representation changes, and copying remote value/provenance author no edit. One decision that establishes hard invalidation authors only hard mode. Explicit public invalidation may reassert hard mode even stale-to-stale. Ordinary propagated staleness authors soft mode. Settled hard state with an outstanding barrier authors nothing. Normal synchronization never runs a computor and never synthesizes validate.
+`Unchanged`, identifier/representation changes, copied remote value/provenance, and enforcement of an imported uncovered barrier emit nothing. One causal decision emits one invalidate. Settled hard state is silent.
 
-Every event includes its semantic address and satisfies the key/address invariant. Generation-scoped events name the active add. A validation captures exactly the observed hard frontier in `clearsHardInvalidates`; soft invalidates are excluded. Cache-only recovery after soft-only staleness may therefore validate with an empty context.
-
-Allocation observes durable remote maxima, advances the Lamport clock, and closes skipped values through local coverage. Event, graph transition, clock, coverage, and references commit atomically.
+Every event carries a validated address and generation when scoped. A validation records the complete transaction-visible `invalidateFrontier`, including soft and hard entries, in `clearsInvalidates`. It can become freshness-effective only as one complete context; contexts never combine. A cache-only recovery after soft staleness observes and clears that soft entry. Allocation observes remote maxima and commits graph, event, allocator, coverage, and references atomically.
