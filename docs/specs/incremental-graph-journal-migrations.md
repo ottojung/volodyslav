@@ -1,9 +1,17 @@
 # IncrementalGraph journal migration
 
-Migration atomically transforms schema, graph, the single journal, coverage, allocator, fingerprint, and related metadata. It validates addresses, variants, generations, all-mode causal contexts, and the supported-state boundary before installation.
+Migration atomically transforms graph, the one journal, coverage, lazy allocator, fingerprint, schema, identifiers, and metadata. It validates the supported-state boundary.
 
-A real propagated fresh-to-stale transition with sufficient proofs emits soft invalidate. Removing proofs or newly establishing must-recompute emits hard invalidate only when no applicable uncovered hard barrier already represents that obligation. Enforcing or carrying an existing barrier is silent. Settled hard state never reauthors endlessly. Stale-to-fresh migration authors validate only if that lifecycle explicitly performs authoritative revalidation; its `clearsInvalidates` captures the complete observed all-mode frontier. Otherwise migration does not synthesize validate.
+Newly materializing an absent NodeKey allocates a fresh NodeIdentifier and authors:
 
-Coverage never regresses; the local coordinate equals the durable clock and dominates retained local entries. Allocator advances may close gaps. Schema or structural failure aborts atomically.
+```text
+fresh:               generation(publicAction=add) + validate
+stale reusable:      generation(publicAction=add) + soft invalidate
+must recompute:      generation(publicAction=add) + hard invalidate
+```
 
-Absent-state self-restoration instead restores this same host's exact graph, journal, coverage, clock, fingerprint, and related state. Rollback under one writer fingerprint remains unsupported without an anti-rollback/new-writer protocol.
+A present unequal-value result uses exact public edit (scoped edit unless a new authority generation is required; then generation(publicAction=edit)) and every new generation receives one initial freshness assertion. An internal authority boundary without presence/value change uses generation(publicAction=null), never fake add. Removal emits delete and retires the NodeIdentifier.
+
+Later soft propagation, unrepresented hardening, and revalidation follow ordinary causal rules. Existing uncovered hard authority is carried silently. Coverage never regresses; import alone does not raise the local clock. Local authoring lazily raises above all observed sequence history and atomically closes the local coverage coordinate.
+
+Absent-state self-restoration restores this host's exact graph, journal, coverage, local clock, fingerprint, and identifier state; rollback under the same fingerprint is unsupported.

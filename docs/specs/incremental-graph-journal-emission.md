@@ -1,16 +1,15 @@
 # IncrementalGraph journal emission
 
-Every committed semantic event authors one precise entry in the single journal and atomically advances local clock and coverage. Imports retain identity and never count as authoring.
+Generation creation and freshness assertion are orthogonal but atomic:
 
-| decision | precise event |
-|---|---|
-| absent to materialized | add |
-| materialized value changed | edit |
-| materialized to absent | delete |
-| real fresh-to-stale propagation with reusable proofs | soft invalidate |
-| newly established/reasserted must-recompute without an applicable uncovered hard barrier | hard invalidate |
-| stale to fresh | validate |
+| semantic decision | generation publicAction | exactly one initial freshness entry |
+|---|---|---|
+| absent -> materialized | add | validate / soft invalidate / hard invalidate |
+| present unequal-value replacement requiring new generation | edit | validate / soft invalidate / hard invalidate |
+| equal-value internal authority fence | null | validate / soft invalidate / hard invalidate |
 
-`Unchanged`, identifier/representation changes, copied remote value/provenance, and enforcement of an imported uncovered barrier emit nothing. One causal decision emits one invalidate. Settled hard state is silent.
+The generation entry allocates first; its scoped freshness entry allocates later. Initial validate means positively established fresh, not merely stale-to-fresh. Initial invalidate is a precise negative assertion. Ordinary same-generation unequal-value change uses scoped edit. Present-to-absent uses delete.
 
-Every event carries a validated address and generation when scoped. A validation records the complete transaction-visible `invalidateFrontier`, including soft and hard entries, in `clearsInvalidates`. It can become freshness-effective only as one complete context; contexts never combine. A cache-only recovery after soft staleness observes and clears that soft entry. Allocation observes remote maxima and commits graph, event, allocator, coverage, and references atomically.
+Ordinary pull first materialization emits generation(add)+validate because its computed result is fresh. `Unchanged`, representation/identifier changes, carrying imports, and enforcing imported hard barriers emit no value action. Later propagated stale with proofs emits soft invalidate; newly unrepresented must-recompute emits hard invalidate; re-establishing fresh emits validate with the complete observed all-mode frontier. Partial contexts never combine.
+
+Every transaction validates the canonical semantic address and atomically commits graph, events, lazy-raised allocator, coverage, identifiers, and references.

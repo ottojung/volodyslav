@@ -646,8 +646,7 @@ type Computor = (
 
 ### 3.6 Journal API
 
-The graph database is the sole authority for graph state. The journal is a
-bounded possible-change notification source and never a graph-state source. It
+The graph database owns value bytes and identifiers. The precise journal exactly projects supported current NodeKey presence/provenance/freshness authority, while the bounded visible polling API is conservative history and never a complete graph-state source. It
 observes exactly materialization presence, `ComputedValue`, and the authoritative
 freshness sublevel. The public journal API consists of:
 
@@ -668,9 +667,8 @@ A returned action does not assert current graph state.
 
 The action meanings are closed: `add` is only absent-to-materialized; `edit` is
 only a normative `ComputedValue` inequality while materialized; `delete` is only
-materialized-to-absent; `invalidate` is a real soft freshness transition or a hard must-recompute decision (including deliberate stale-to-stale hardening); and `validate` is only potentially-outdated to up-to-date.
-Add/delete do not also emit freshness actions. Value and freshness transitions
-may independently produce two actions.
+materialized-to-absent; `invalidate` is an exact initial or later soft/hard negative freshness assertion; and `validate` positively establishes or re-establishes a generation as fresh, including initial freshness.
+Every positive generation emits exactly one separate initial freshness event, so first materialization exposes add plus validate/invalidate and a value-replacement generation exposes edit plus validate/invalidate. Delete has no positive-generation freshness assertion.
 
 The journal's no-false-negatives contract covers exactly:
 

@@ -100,8 +100,7 @@ freshnessEffective(V,x,G) iff V alone covers every all-mode frontier member
 hardnessCleared(V,x,G) iff V alone covers every hard-frontier member
 ```
 
-A value event for winning generation G is usable only when it is add G or an
-edit explicitly scoped to G, its `time` equals `modifiedAtUnix(x)`, and it is
+A value event for winning generation G is usable only when it is the GenerationJournalEntry G or an edit explicitly scoped to G, its `time` equals `modifiedAtUnix(x)`, and it is
 `valueHead(author,x,G)`. An unresolvable, superseded, or differently scoped
 materialization is provenance-obsolete. `ValueRevision(x,G)` is compared
 lexicographically and totally. Equal revisions with unequal `ComputedValue`s
@@ -139,14 +138,14 @@ tied candidate and attribute the canonical event to it. If the canonical
 candidate is unsupported, lower tied coherent candidates are excluded and the
 conservative no-coherent rule applies.
 
-A delete presence head prevents lower-ordered add generations from resurrecting.
+A delete presence head prevents lower-ordered generations from resurrecting.
 A greater add may rematerialize under LWW order whether causally later or
 concurrent with unrelated high Lamport history. If
 the joined head says present but no source carries usable bytes for that
 presence generation, the result is absent; a genuinely new decision emits a
 delete barrier.
 
-For final add generation G, `invalidateFrontier` contains every author's greatest invalidate of either mode, while `hardInvalidateFrontier` contains every author's greatest hard invalidate. A validation permits journal freshness only when it individually covers the complete all-mode frontier. It clears must-recompute authority when it individually covers the hard frontier. Numeric order is not observation and contexts from separate validations MUST NOT be combined. Freshness additionally requires ordinary exact graph coherence. Other-generation contexts have no authority; an empty hard frontier is non-hard without any validation.
+For final winning generation G, `invalidateFrontier` contains every author's greatest invalidate of either mode, while `hardInvalidateFrontier` contains every author's greatest hard invalidate. A validation permits journal freshness only when it individually covers the complete all-mode frontier. It clears must-recompute authority when it individually covers the hard frontier. Numeric order is not observation and contexts from separate validations MUST NOT be combined. Freshness additionally requires ordinary exact graph coherence. Other-generation contexts have no authority; an empty hard frontier is non-hard without any validation.
 
 ## Transient support
 
@@ -191,9 +190,9 @@ new destructive fact are physical commit details.
 Apply joined presence history first. Discard any materialization whose add
 generation predates the newest applicable delete. If final presence is absent,
 delete the node and maintain dependency-closure deletion. Do not spread a
-materialization when no usable source carries the current add generation.
+materialization when no usable source carries the current generation.
 
-If the joined `presenceHead(N)` is add G, derive each candidate's source
+If the joined `presenceHead(N)` is generation G, derive each candidate's source
 generation from its source pre-merge `presenceHead(N)` and admit it only when
 that generation equals G. This applies to concurrent adds as well as adds around
 deletes. Value ordering and coherence selection occur only inside G; they cannot
@@ -263,7 +262,7 @@ Determine hard state first. If `hardInvalidateFrontier(N,G)` is nonempty and no 
 
 The all-mode frontier prevents an old validation from crossing a delayed soft invalidate. The hard subset separately determines must-recompute authority. Partial validations never combine.
 
-An imported applicable uncovered hard barrier is sufficient authority. Synchronization enforces it and removes or declines proofs silently; it MUST NOT author a receiver echo. A new receiver hard invalidate is authored only when this transaction establishes must-recompute for a reason not represented by any applicable uncovered hard barrier in the merged journal—for example, stale-soft proof removal caused by a newly discovered incoherent final input when the hard frontier is empty or cleared. Settled represented hard state is silent. Synchronization never synthesizes validate.
+An imported applicable uncovered hard barrier is sufficient authority. Synchronization enforces it and removes or declines proofs silently; it MUST NOT author a receiver echo. A new receiver hard invalidate is authored only when this transaction establishes must-recompute for a reason not represented by any applicable uncovered hard barrier in the merged journal—for example, stale-soft proof removal caused by a newly discovered incoherent final input when the hard frontier is empty or cleared. Settled represented hard state is silent. Synchronization never synthesizes validate except the mandatory initial freshness assertion paired atomically with a genuinely receiver-authored new generation; importing/copying a generation is not such authoring.
 
 Imported-barrier trace: S has hard I_S and no proofs; R has the same generation/value and reusable proofs. `R <- S` imports I_S, leaves D hard-stale, removes/declines R's proofs, and authors no I_R. Any validation that observed I_S remains capable of clearing exactly that authority.
 
@@ -293,10 +292,10 @@ Before planning, synchronization MUST reject atomically:
    covered by its source lookup;
 6. retained journal entries which cannot be structurally interpreted, including
    edit/invalidate/validate without a
-   generation resolving to a same-key add witness; a validation causal
+   generation resolving to a same-key GenerationJournalEntry witness; a validation causal
    reference which is absent, mismatched, or not sequence-earlier than the
    validation;
-7. `localJournalClock` below an observed sequence;
+7. the local coverage coordinate differs from `localJournalClock`, or local authoring failed to allocate above transaction-observed history;
 8. one JournalEntryId naming different immutable contents;
 9. journal coverage below a surviving entry sequence; or
 10. non-monotone or malformed journal coverage.
@@ -411,7 +410,7 @@ mechanism repairs this execution.
 
 A adds root K as VA at `(10,A)` and wall time 200. Concurrently B, after
 unrelated journal activity, adds VB at `(50,B)` and wall time 100. Presence is
-resolved first to B's add generation. VA is not a candidate inside that
+resolved first to B's generation. VA is not a candidate inside that
 generation, so its wall time cannot override the presence decision; final K is
 VB with revision `[100,50,B]`.
 
@@ -469,9 +468,9 @@ flags. D remains `[t,7,A]`, while transient `Support(D)` is now `[a2,b2]`.
 ### Compaction
 
 A's edit 3 is covered by edit 9 for the same key/action. Retaining edit 9 keeps
-notification coverage. Add/delete coordinate maxima preserve presence. For
+polling coverage. Non-null public-action coordinate maxima preserve obligations; the separate canonical `presenceHead` GenerationJournalEntry/delete survivor preserves current presence. For
 value and freshness authority, compaction additionally retains the greatest edit
-and invalidate/validate per author scoped to winning G, plus their add witnesses.
+and invalidate/validate per author scoped to winning G, plus their generation witnesses, initial-freshness references, and causal closure under the exact canonical algorithm.
 It may discard authority for losing generations because they can never win
 later. The merge result is unchanged.
 
@@ -539,7 +538,7 @@ removes their admissibility.
 
 ### B. Destructive progress terminates
 
-Let P be the finite set of positive add/edit/validate generations and proofs
+Let P be the finite set of retained positive GenerationJournalEntry/value/freshness authorities and proofs
 present at quiescence. A new destructive entry b is allocated above every entry
 observed by that receive, so it LWW-dominates at least one offending positive p
 that caused the decision. Charge the decision to `(receiver,p)`. That exact p

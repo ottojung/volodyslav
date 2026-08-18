@@ -1,84 +1,68 @@
 # IncrementalGraph journal synchronization
 
-This document defines the exact journal-derived functions used by graph synchronization. They apply only to the [supported-state boundary](incremental-graph-journal-types.md#supported-state-boundary).
+Exact definitions below apply to the [supported-state boundary](incremental-graph-journal-types.md#supported-state-boundary).
 
 ## Logical projection
 
-For journal J and key K:
-
 ```text
-presenceEvents(J,K) = { E in J | E.key=K and E.action in {add,delete} }
-presenceHead(J,K) = max by JournalEntryId of presenceEvents(J,K), or none
-generation(J,K) = presenceHead(J,K).id iff presenceHead.action=add; otherwise none
+presenceEvents(J,K) = { E | E.key=K and (E.kind=generation or E.action=delete) }
+presenceHead(J,K) = greatest JournalEntryId member, or none
+generation(J,K) = presenceHead.id iff presenceHead.kind=generation; otherwise none
 
-valueEvents(J,K,G) =
-    { add G } union { E in J | E.key=K, E.action=edit, E.generation=G }
-valueHead(J,K,G,A) = greatest-sequence A-authored member of valueEvents(J,K,G)
-candidateEvents(J,K,G) = { valueHead(J,K,G,A) | defined for A }
-```
-
-Presence is selected before value. Events scoped to a losing generation cannot supply the current value regardless of sequence or time.
-
-For graph snapshot H with `modifiedAtUnix(H,K)`:
-
-```text
-canonicalEvent(J,H,K,G) =
-    greatest JournalEntryId among E in candidateEvents(J,K,G)
-    where E.time = modifiedAtUnix(H,K)
-
+valueEvents(J,K,G) = { generation entry whose id=G }
+                     union { scoped edit E | E.key=K and E.generation=G }
+valueHead(J,K,G,A) = greatest-sequence A-authored valueEvents member
+candidateEvents(J,K,G) = { valueHead(J,K,G,A) | defined }
+canonicalEvent(J,H,K,G) = greatest-ID candidate whose time=H.modifiedAt(K)
 origin(J,H,K,G) = canonicalEvent(J,H,K,G)
-ValueRevision(J,H,K,G) =
-    (modifiedAtUnix(H,K), origin.sequence, origin.author)
+ValueRevision(J,H,K,G) = (H.modifiedAt(K),origin.sequence,origin.author)
 ```
 
-A candidate is admissible only when its exact origin exists, belongs to G, is its author's value head, matches graph `modifiedAt`, and is the canonical event among equal-time candidates. `ValueRevision` compares lexicographically, wall time first, then sequence, then author. Equal revisions with unequal values are corrupt. This preserves exact finite-resolution provenance without treating Lamport sequence as a global value clock.
+Presence precedes value: losing-generation events never supply current value. ValueRevision is wall-time-first. The ID suffix chooses exact equal-time provenance. Equal revisions with unequal values are corruption.
 
 ## Freshness projection
 
 ```text
-invalidates(J,K,G,A) =
-    { I in J | I.action=invalidate, I.author=A, I.key=K, I.generation=G }
-invalidateFrontier(J,K,G)[A] = greatest-sequence member of invalidates(...)
-
-hardInvalidates(J,K,G,A) = { I in invalidates(...) | I.mode=hard }
-hardInvalidateFrontier(J,K,G)[A] = greatest-sequence member of hardInvalidates(...)
-
-covers(V,I) iff
-    V.action=validate and V.key=I.key and V.generation=I.generation and
-    V.clearsInvalidates[I.author] resolves to invalidate C and
-    C.author=I.author and C.key=I.key and C.generation=I.generation and
-    C.sequence >= I.sequence
-
-freshnessEffective(V,J,K,G) iff
-    V individually covers every I in invalidateFrontier(J,K,G)
-
-hardnessCleared(V,J,K,G) iff
-    V individually covers every I in hardInvalidateFrontier(J,K,G)
+invalidateFrontier(J,K,G)[A] = greatest A-authored invalidate of either mode
+hardInvalidateFrontier(J,K,G)[A] = greatest A-authored hard invalidate
+covers(V,I) iff V.clearsInvalidates causally names an exact-or-later
+                 same-author invalidate for I's K,G
+freshnessEffective(V,J,K,G) iff V is scoped to K,G and alone covers all invalidateFrontier
+journalFresh(J,K,G) iff some applicable retained V is freshnessEffective
+hardnessCleared(V,J,K,G) iff V alone covers all hardInvalidateFrontier
+journalHard(J,K,G) iff hardInvalidateFrontier is nonempty and no V is hardnessCleared
 ```
 
-No union of partial validation contexts is permitted. `journalFresh(J,K,G)` holds only if some retained applicable validation is freshness-effective; the graph may be fresh only when that and ordinary exact graph coherence both hold. `journalHard(J,K,G)` holds when the hard frontier is nonempty and no single applicable validation is hardness-clearing. An empty hard frontier is non-hard without requiring a validation. Consequently an older V followed by a later soft S yields stale-soft, while V covering hard H but preceding soft S also yields stale-soft.
+Contexts never combine. Supported generation authoring always includes one initial validate/soft-invalidate/hard-invalidate, so freshness has no implicit empty-frontier case. Graph freshness additionally requires ordinary coherence.
 
-## Directional receive
+## Directional receive and lazy allocation
 
-One receive is `R <- S`; S remains read-only.
+One receive is `R <- S`; S is read-only.
 
 ```text
 J0 = compact(JournalR union JournalS)
 C0 = componentwiseMax(CoverageR,CoverageS)
 ```
 
-Validate immutable identities, address identity, variants, structural references, source graph projection, coverage domination, and supported-state invariants. Raise R's allocator by the observation rule before any receiver authoring. Reconcile fixed graph snapshots using the definitions above without running computors.
+Validate identities, canonical addresses, variants, generation/causal references, source graph projections, and per-author coverage domination. Import alone does not raise R's local clock or local coverage coordinate. Only if reconciliation must author does the allocator lazily observe the maximum retained/covered sequence and allocate above it.
 
-An imported uncovered hard barrier is already exact causal and polling authority. R enforces hard stale state and removes/declines proofs **without** authoring an echo. R authors a new hard invalidate only when reconciliation newly establishes must-recompute for a reason not represented by an applicable uncovered hard barrier in J0. It may author delete for a genuinely new destructive decision or soft invalidate for a genuine propagated stale transition not already represented. It never authors synthetic validate or add/edit for copying remote state.
+Imported generation/value/freshness events retain identity. Copying or carrying a remote generation never creates a local generation. An imported uncovered hard barrier is sufficient: enforce hard stale state silently. Author a receiver hard invalidate only for a genuinely new unrepresented must-recompute reason. No synthetic validate is authored by ordinary synchronization.
+
+If an existing conservative rule genuinely creates receiver-local positive presence, author one GenerationJournalEntry with exact public action plus exactly one later initial freshness assertion. Import is never such a reason.
 
 ```text
 J* = compact(J0 union newlyAuthoredReceiverEvents)
 C* = C0
-C*[receiverFingerprint] = localJournalClockR_after
+if receiver authored:
+    C*[receiverFingerprint] = localJournalClock_after
 ```
 
-Install graph, journal, coverage, allocator, and related metadata atomically.
+Install atomically. For settled unchanged S, `sync(sync(R,S),S)=sync(R,S)`. With no intervening mutation, reverse receive yields identical canonical journal, coverage, and semantic graph. A receive that authors nothing does not perturb its local coordinate, so A100/B1 reverse catch-up can equalize coverage while B's local clock remains 1. Before B later authors, it observes 100 and allocates B101 or later.
 
-For unchanged S and settled state, `sync(sync(R,S),S)=sync(R,S)`. If `R1=sync(R0,S0)` and no relevant mutation intervenes, `S1=sync(S0,R1)` has identical canonical journal, coverage, and semantic graph. Receiver events genuinely created in the first receive are imported unchanged and not duplicated in reverse. If R mutates between receives, reverse receive imports those newer events normally. These are two directional transactions, not one bilateral transaction.
+## Named convergence theorems
 
-Directional fairness plus journal merge algebra and componentwise coverage gossip yields eventual convergence. Arrival order, offline authors, and allocator gaps do not create a global order.
+**Directional Sync Absorption Theorem** (directional host-state domain): settled repeated `R <- S` is silent.
+
+**Reverse Catch-Up Theorem** (journal, host-coverage, semantic-graph domains): after `R1=sync(R0,S0)`, a no-intervening-change `S1=sync(S0,R1)` which authors nothing has `Journal(S1)=Journal(R1)`, `Coverage(S1)=Coverage(R1)`, and equal semantic graphs; local allocator values need not be equal.
+
+Directional fairness and ACI journal merge/componentwise coverage gossip give eventual convergence without a global event order.

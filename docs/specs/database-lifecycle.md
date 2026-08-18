@@ -105,7 +105,7 @@ Before installation, restoration validates the ordinary load structure:
 - retained validation causal references resolve correctly and match the
   required key, generation, and author;
 - every referenced invalidate sequence precedes its validation sequence;
-- `localJournalClock` covers every retained or otherwise observed sequence;
+- `localJournalClock` equals the local fingerprint coverage coordinate and locally authored entries do not exceed it; foreign retained sequences may exceed it under lazy raising;
 - every retained entry satisfies the self-contained key/address invariant;
 - journal coverage dominates every retained entry sequence; and
 - the local coverage coordinate equals the durable local clock. Coordinate gaps are allowed.
@@ -243,25 +243,23 @@ After an initiated synchronization, Volodyslav attempts to reopen the local data
 
 ### 7.4 Existing-live controlled reset
 
-Existing-live reset is directional and atomic: `reset(R,S)` changes only R and establishes `SemanticGraph(R)=SemanticGraph(S)` at that instant. It does not join S's journal as receiver graph authority, does not import S's journal, and does not merge S's journal coverage merely to make cursors usable. R retains its journal and coverage, inspects validated source history only to interpret and fence the snapshot, and authors precise R-local events for actual reset decisions. No computor runs.
+Existing-live reset is directional and atomic. It establishes the source semantic graph at R without importing source journal or coverage, retains receiver identifiers for surviving NodeKeys, and authors receiver-local precise events. No computor runs.
 
-Presence decisions are receiver-owned. Absent-to-present authors add; present-to-absent authors delete. For surviving presence, R's generation must dominate the relevant receiver and consumed-source presence authorities. If it already does, retain it. Otherwise allocate a receiver add above both, even when values are equal. This authority-fence add preserves the semantic value and intended source snapshot `modifiedAt`; its `time` is that preserved value-event timestamp rather than reset wall time. Presence-before-value selection makes the consumed source generation unable to supersede it later. Unequal values likewise receive a fresh receiver generation with the target value and target timestamp semantics.
+For each NodeKey K:
 
-Required equal-value trace:
+* absent-to-present allocates a fresh NodeIdentifier and authors `GenerationJournalEntry(publicAction=add)` plus exactly one initial validate/soft-invalidate/hard-invalidate matching final freshness;
+* present-to-absent authors delete, removes the receiver NodeIdentifier permanently, and later rematerialization must allocate a different identifier;
+* present unequal-value retains the receiver NodeIdentifier, authors a receiver generation above relevant consumed presence authority with `publicAction=edit` and target value timestamp, then exactly one initial freshness assertion;
+* present equal-value with a receiver generation already dominating consumed source authority retains generation and authors only a genuinely changed freshness/proof assertion, if any;
+* present equal-value without domination retains the receiver NodeIdentifier and value, authors a receiver generation fence above receiver/source presence authority with `publicAction=null` and intended final modifiedAt, then exactly one initial freshness assertion.
 
-```text
-receiver GR=(10,R), value A
-source   GS=(100,S), value A
-reset R <- S
-```
+For `GR=(10,R), value A, identifier x` and `GS=(100,S), value A`, reset creates `GR2>GR,GS`, keeps x, exposes no add/edit, and asserts GR2 freshness explicitly. PresenceHead becomes GR2, so delayed GS cannot undo reset. Repeating the exact reset is silent because GR2 dominates and its final freshness authority is represented.
 
-Reset allocates receiver generation `GR2 > GR,GS`, preserves A and the intended snapshot timestamp, and does not import GS. Later ordinary delivery of GS cannot undo GR2. Repeating the exact reset sees GR2 already dominate the consumed authority and authors nothing.
+Reset validation records the complete observed all-mode frontier. Initial validate may have an empty context because the new generation has no invalidates; it is nevertheless required positive freshness authority. Initial soft/hard invalidates precisely assert stale mode. Existing uncovered hard authority is carried rather than echoed unless reset creates a new generation, whose own initial freshness assertion is mandatory.
 
-Freshness is classified independently. A real fresh-to-stale transition retaining sufficient proofs authors soft invalidate. Reset proof removal, a newly hard-stale materialization, or stale-to-stale must-recompute hardening authors one hard invalidate only when no applicable uncovered hard barrier already represents that obligation. Enforcing or carrying a represented hard state is silent. Stale-to-fresh reset may author validate for the surviving generation, with `clearsInvalidates` containing the complete all-mode invalidate frontier actually observed; soft and hard invalidates both enter that context. Source validity edges are lowered to semantic keys and raised to receiver identifiers only when they prove the final snapshot coherently.
+The inactive target validates identifier lookup, NodeKey addresses, generation/freshness pairs, proofs, allocator/coverage, and journal closure, then cuts over atomically. Crash exposes before or after. Reset introduces no epoch and convergence assumes reset eventually ceases.
 
-The inactive target is fully validated and atomically installs graph, retained receiver journal and coverage, receiver-local events, allocator, identifiers, timestamps, validity, and related state. A crash exposes the complete before-state or after-state. Reset is idempotent once semantic state, presence fence, and hard-state decisions are settled. It creates no epoch and offers no protection against genuinely newer future events. Convergence claims assume controlled resets eventually cease.
-
-Absent-state self-restoration is different: it restores this same host's complete graph, one journal, journal coverage, local clock, fingerprint, and related state exactly.
+Absent-state restoration instead restores this host's exact graph, journal, coverage, lazy clock, fingerprint, identifier allocation, and related state.
 
 ### 7.5 Counter continuity during self-restoration
 

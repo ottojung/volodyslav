@@ -134,15 +134,13 @@ The intended use case is format migration: the database version changes the seri
 Migration explicit invalidation deliberately reasserts the obligation and
 authors a fresh causal invalidate even when the node was already stale, its
 incoming proofs were already absent, and an older outstanding invalidate
-exists. `create(..., "potentially-outdated")` likewise authors a
-barrier for its new add generation because it creates a must-recompute cache.
+exists. `create(..., "potentially-outdated")` authors a new generation plus soft invalidate when migration establishes sufficient reusable proofs, or hard invalidate when it establishes must-recompute state. The migration decision/proof envelope must distinguish these supported outcomes.
 These entries use no migration-specific action and follow normal allocation,
 atomicity, frontier, cursor, and compaction rules.
 
 **Propagated invalidation** (automatic recursive propagation) preserves all validity proofs — both incoming and outgoing. It is freshness-only: downstream nodes are marked stale but retain their complete proof sets.
 
-`create(..., "up-to-date")` is a clean-cache assertion. The migration validates this assertion before writing the migrated state.
-`create(..., "potentially-outdated")` seeds a cached value without claiming it is clean.
+`create(..., "up-to-date")` is a clean-cache assertion and authors generation(add)+initial validate after validation. `create(..., "potentially-outdated")` seeds a cached value and authors generation(add)+exactly one initial soft/hard invalidate according to its proof envelope.
 
 ### Propagation rules
 
@@ -210,7 +208,7 @@ Migration preserves the journal, `journalCoverage`, `localJournalClock`, and dur
 accepts supported uncompacted state and does not implicitly compact. Durable
 tokens preserve meaning across cutover and restart.
 
-The ordinary classifier governs semantic changes. A journal-silent migration changes no journal metadata. A semantic transition authors its one precise entry where required and advances local coverage. Representation-only changes remain silent; `keep`, invalidate,
+The ordinary classifier governs semantic changes. A journal-silent migration changes no journal metadata. A semantic transition authors its precise event set where required: every new generation includes exactly one later initial freshness assertion, and local authoring advances local coverage after lazy raising. Representation-only changes remain silent; `keep`, invalidate,
 and semantic-preserving override preserve `modifiedAt`. Graph, journal, allocator, and coverage commit atomically. Migration never seeds graph authority from polling evidence. Detailed rules are in
 `docs/specs/incremental-graph-journal-migrations.md`.
 
