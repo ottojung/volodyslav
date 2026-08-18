@@ -1,167 +1,46 @@
-# Possible-change journal API
+# IncrementalGraph journal polling API
+
+This document normatively specifies `graph.possibleMaybeChanges({ since, to })`.
+
+## Change and cursor
+
+The visible result is unchanged:
 
 ```text
-graph.possibleMaybeChanges({ since, to })
-graph.baselinePossibleNodeChange()
-possibleChangeTokenToString(token)
-stringToPossibleChangeToken(string)
-InvalidPossibleChangeCursorError
-isInvalidPossibleChangeCursorError(object)
+PossibleNodeChange = { nodeName, bindings, action, time }
+action = "add" | "edit" | "delete" | "invalidate" | "validate"
+PossibleChangeCursor = Map<DatabaseFingerprint, uint64>
 ```
 
-The existing `NodeFilter` (`to`) and eager `Promise<Array<PossibleNodeChange>>`
-contract remain unchanged. A result is conservative notification evidence, not
-an exact event. False positives and duplicates are allowed; action-specific
-false negatives are forbidden.
+A missing cursor coordinate is zero. `cursor[A]=n` means this consumer has accounted for A-authored notification obligations through n. It does not claim literal receipt of every exact event, nor host coverage. A structurally valid cursor is portable to every host and is never rejected merely because it exceeds that host's coverage. A fabricated cursor can skip the fabricator's work; it is progress data, not a security capability.
 
-## Opaque durable cursor tokens
+The opaque string token is versioned and contains the visible change payload needed for round-trip plus the complete hidden cursor vector. Encoding sorts coordinates by fingerprint. Decoding rejects duplicate or malformed fingerprints, malformed uint64 values, invalid payloads, unknown versions, trailing/unknown fields, and every non-canonical encoding. It contains no host identity or scalar journal position. Serialized tokens are `O(r)` application data.
 
-`PossibleNodeChange` exposes only `nodeName`, `bindings`, `action`, and `time`.
-`BaselinePossibleNodeChange` exposes no coordinate. Both remain nominal and
-structurally non-constructible through the typed object API; raw indexes and
-continuation metadata are not ordinary public fields. Internally a non-baseline
-token contains:
+## Snapshot algorithm
+
+For the fixed query snapshot:
+
+1. choose the greatest-sequence entry for each `(author, NodeKey, public action)`;
+2. retain E iff `E.sequence > since[E.author]`;
+3. apply `to` to E's self-contained `nodeName` and `bindings`;
+4. sort deterministically by `JournalEntryId=(sequence,author)`, which is monotone within every author;
+5. return E's exact action and time.
+
+Soft and hard invalidates share the public `invalidate` coordinate. No event projects to an action that did not happen.
+
+Starting with the input vector, processing E updates only `cursor[E.author]=E.sequence`; the result privately carries that cumulative vector. Therefore persisting the token on any processed prefix and resuming cannot lose a later same-filter obligation: within an author, every remaining result has a greater sequence, while other coordinates were not advanced past unprocessed events.
+
+Filtering retains the deliberate existing limitation: if no matching result is returned, no continuation token is exposed. There is no separate scan cursor.
+
+## Coverage theorem and traces
+
+If covered event `E=A_s:(K,action)` is unseen, compaction can delete it only while retaining `W=A_t:(K,action)` with `t>=s`. Thus `cursor[A] < s <= t`, and W remains visible subject to the same filter. Consequently virtual and physical notification reduction agree:
 
 ```text
-visible payload = { nodeName, bindings, action, time }
-position = (JournalIndex, actionOrdinal)
-issuedBy = querying receiver's DatabaseFingerprint
-issuedAtHighWatermark = fixed snapshot's journalRecordHighWatermark
+possibleMaybeChanges(J,cursor,filter)
+ = possibleMaybeChanges(compact(J),cursor,filter)
 ```
 
-`issuedBy` is not necessarily the record's appender. The ordinal order is add,
-edit, delete, invalidate, validate. Baseline is a universal before-all position
-and needs no issuer coverage.
+For `A1=edit X, A2=edit Y, A3=edit X` and cursor A=0, both sides return `A2 edit Y, A3 edit X`.
 
-The journal-owned string codec is an ordinary opaque persistence format, not a
-security capability. Its canonical, versioned representation contains the
-complete visible payload, immutable position, issuer, and issuance
-high-watermark. `nodeName`, `bindings`, and `time` use their existing canonical
-project codecs; `action` uses its canonical closed-action spelling. Decode
-therefore reconstructs the same public `PossibleNodeChange` without consulting a
-`JournalRecord` which may no longer exist. Normatively:
-
-```text
-stringToPossibleChangeToken(possibleChangeTokenToString(change))
-    has exactly change.nodeName, change.bindings, change.action, change.time
-    and exactly change's hidden position, issuedBy, issuedAtHighWatermark
-```
-
-`stringToPossibleChangeToken(string)` validates canonical encoding, version,
-payload shapes, ordinals, coordinates, and fingerprints. Malformed or
-structurally invalid strings reject with `InvalidPossibleChangeCursorError`.
-A structurally valid fabricated string is a caller-supplied claim about that
-caller's own progress. It may cause that caller to skip work, just as persisting
-the wrong legitimate cursor would; this API provides no authenticity guarantee or protection against deliberate progress fabrication. Such a claim
-still cannot pass on a disconnected receiver unless its declared issuer and
-issuance high-watermark satisfy the receiver's coverage frontier. Runtime object
-identity is not authority.
-
-A cursor is an immutable cut in global notification order. It never follows a
-logical entry or notification record. A token for `(I,ordinal)` forever means
-that coordinate, even if I is absent, the witness is compacted, or another
-same-key record is appended. Queries compare coordinates directly and MUST NOT
-look up evidence to derive where a cursor is now. Missing positions are ordinary
-gaps.
-
-Receiver-independent decoding of a non-baseline token MUST establish all of these
-structural conditions:
-
-```text
-0 <= actionOrdinal < 5
-position.index.appendSequence is uint64
-issuedAtHighWatermark.appendSequence is uint64
-position.index.appender is a valid DatabaseFingerprint
-issuedBy is a valid DatabaseFingerprint
-position.index <= issuedAtHighWatermark
-```
-
-Integer parsing rejects signs, overflow, alternate non-canonical spellings, and
-trailing data. Payload decoding validates the exact runtime shapes and canonical
-encodings required by `NodeName`, `BindingEnvironment`, the action union, and
-`DateTime`. Baseline has exactly one canonical encoding and carries no position
-or issuer metadata. A parseable string which fails any condition is structurally
-invalid and raises `InvalidPossibleChangeCursorError`. These conditions make
-`P.index <= HA` a checked token invariant rather than an assumption of the
-cross-host theorem.
-
-Before interpreting a structurally decoded non-baseline position, the receiver
-requires:
-
-```text
-cursorCoverageFrontier[token.issuedBy] >= token.issuedAtHighWatermark
-```
-
-Failure rejects; it never clamps, falls back to baseline, numerically reinterprets
-the token, or writes/reappends journal state. A disconnected receiver therefore
-rejects an out-of-band token until synchronization establishes coverage.
-
-## Fixed-snapshot query
-
-At query start capture one committed snapshot of surviving notification records,
-`journalRecordHighWatermark`, and `cursorCoverageFrontier`, then validate `since`.
-For each `JournalRecord R`, apply the filter directly to its self-contained
-`nodeName` and `bindings`, then project:
-
-```text
-(R.index, add)
-(R.index, edit)
-(R.index, delete)
-(R.index, invalidate)
-(R.index, validate)
-```
-
-Apply `NodeFilter` and return exactly projections greater than `since.position`,
-ordered by `JournalIndex` then ordinal. A cursor partway through one record still
-sees its later ordinals. Each result privately captures its projection position,
-local fingerprint as issuer and captured high-watermark, and exposes the record's semantic address and witness time:
-
-```text
-nodeName, bindings, action,
-time = fromUnixTimestamp(R.time)
-```
-
-Visible time is logical witness time, not append or delivery time. It can precede
-cursor issuance and can be a later covering witness's time rather than the exact
-transition's time. Querying never invokes a computor and never allocates or
-acquires a writer allocator. Cutover cannot straddle snapshot selection.
-
-If a filtered query returns nothing it supplies no synthetic scanned-through
-cursor; the caller retains its previous cursor. Cost may depend on uncompacted
-notification size. No streaming, pagination, `journalGet`, computor bootstrap
-cursor, exact-event promise, or raw coordinate API is introduced.
-
-## Positional and cross-host theorems
-
-**Continuation stability.** If a consumer queries from C0, processes through C1
-and persists C1, then after supported synchronization, restart, migration and
-compaction, C1 means continue strictly after the position actually processed.
-It never means continue after the present location of related logical evidence.
-
-**Cross-host cursor theorem.** A token issued by A at position P and watermark HA
-has `P.index <= HA`. B may interpret it exactly when `B.frontier[A] >= HA`.
-Synchronization establishes this only after conservative coverage: if B's final
-same-key state equals A's, imported pending records suffice; if it differs, B
-has a same-key record strictly after HA. Compaction can only replace that record
-with a later same-key record. Thus tokens port after coverage synchronization,
-without cursor-specific adoption or replay. Before it, rejection is deterministic.
-
-**Action no-false-negative theorem.** If record R covered transition T and is
-removed, max-per-key compaction retains same-key W with `R.index < W.index` and W
-projects every action. For any cursor before R, `C < R < W`; T's action remains
-a conservative possibility. W's witness time may differ from T's occurrence.
-
-## Adversarial traces
-
-* **Deleted cursor record:** records `10:A, 20:B, 30:C, 40:D`, cursor 10, then
-  `50:A`. Compaction deletes 10; the unchanged cursor returns B, C, D, A.
-* **Action ordinal:** since `(10,edit)` returns delete, invalidate and validate
-  at 10 before later indexes.
-* **Unsynchronized host:** A's token has issuance watermark 100. Disconnected C
-  has `frontier[A] < 100`, rejects it, and appends nothing.
-* **Restart:** encode a token, restore the same supported durable host state,
-  decode it, and continuation is unchanged.
-
-Supported journal-preserving migration/cutover preserves token meaning and does
-not renumber records. Rollback to an older checkpoint under the same durable
-fingerprint is unsupported.
+A cursor `{A:10,B:3}` works unchanged on coverage `{A:7,B:100}`: later A8..A10 are intentionally accounted, while B4..B100 remain eligible. `{A:10,B:3}` and `{A:10,B:0}` distinguish consumers with the same apparent latest A event. Hosts learning A1/B1 in opposite orders require no shared global order; their vectors record independent prefixes.

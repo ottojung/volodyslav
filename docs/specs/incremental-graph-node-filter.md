@@ -342,7 +342,7 @@ const [r1, r2] = await Promise.all([
 
 Both queries observe the same immutable filter value for their complete
 execution. The filter is never mutated, so the two results are each exactly the
-logical journal view restricted by the same stable filter.
+journal view restricted by the same stable filter.
 
 ### S5 — Structural equality is stable for the filter's lifetime
 

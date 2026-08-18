@@ -31,7 +31,7 @@ counter, logical timestamp, vector clock, or CRDT field. Synchronization never
 changes `modifiedAt` merely because it selects or copies a value.
 
 Both inputs are retained as pre-merge graph+journal views for provenance checks.
-The logical journals are joined first. Nodes are then processed in schema DAG
+The journals are joined first. Nodes are then processed in schema DAG
 topological order, and the reconciled graph and joined/locally extended journal
 commit atomically. Invalid graph/journal combinations outside reachable
 transitions are corruption, not conflicts for which this protocol invents data.
@@ -41,7 +41,7 @@ transitions are corruption, not conflicts for which this protocol invents data.
 Synchronization provides stable retained-journal identity for represented value
 versions, deterministic timestamp-collision resolution, presence generations,
 generation-scoped freshness barriers, and coherence decisions from the evidence
-available in its two reachable source snapshots and retained logical history.
+available in its two reachable source snapshots and retained journal history.
 Insufficient evidence is handled conservatively. Synchronization invokes no
 computor and invents no `ComputedValue`; journal merge is ACI; bilateral gossip
 is decentralized; journal notifications have no action-specific false
@@ -99,7 +99,7 @@ modifiedAtVirtual(x,G) = origin(x,G).sequence
 modifiedBy(x,G) = origin(x,G).author
 
 presenceHead(x) = greatest add/delete by (sequence,author)
-invalidateFrontier(x,G)[A] = greatest invalidate by A scoped to G
+hardInvalidateFrontier(x,G)[A] = greatest outstanding hard invalidate by A scoped to G
 effectiveValidate(V,x,G) iff V alone covers every frontier element
 ```
 
@@ -149,7 +149,7 @@ the joined head says present but no source carries usable bytes for that
 presence generation, the result is absent; a genuinely new decision emits a
 delete barrier.
 
-For final add generation G, every per-author invalidate is an independent barrier. A validation permits journal freshness only if its immutable `clearsInvalidates` context names the exact frontier invalidate (or a later same-author invalidate) for every author. Numeric entry order is not observation and contexts from separate validations MUST NOT be combined. Even one effective validation only permits freshness when ordinary exact graph validity is coherent. Other-generation contexts have no authority.
+For final add generation G, every per-author hard invalidate is an independent barrier; soft invalidates are excluded. A validation permits journal freshness only if its immutable `clearsHardInvalidates` context names the exact frontier invalidate (or a later same-author invalidate) for every author. Numeric entry order is not observation and contexts from separate validations MUST NOT be combined. Even one effective validation only permits freshness when ordinary exact graph validity is coherent. Other-generation contexts have no authority.
 
 ## Transient support
 
@@ -263,7 +263,7 @@ proof against the exact final direct-input revisions. A stale fallback retains
 no incoming proof not established coherent. Structural dependency edges come
 from the graph scheme, never from `valid`.
 
-If no single validation covers the complete `invalidateFrontier(N,G)`, N is a direct
+If no single validation covers the complete `hardInvalidateFrontier(N,G)`, N is a direct
 invalidation root: final N is stale and synchronization transports **no incoming
 validity proofs into N**, even if an older fresh source is otherwise coherent.
 This applies equally to locally and synchronization-authored invalidations. A
@@ -274,7 +274,7 @@ before it may emit `validate` and restore incoming proofs.
 
 A selected node is final-fresh only if:
 
-1. one applicable validation individually covers the complete `invalidateFrontier(N,G)` when that frontier is nonempty;
+1. one applicable validation individually covers the complete `hardInvalidateFrontier(N,G)` when that frontier is nonempty;
 2. selected-source validity is coherent with exact final inputs; and
 3. every ordinary clean-node invariant holds.
 
@@ -313,7 +313,7 @@ observing I1.
 
 ### 7. Atomic installation and no-op
 
-Install graph, logical entries, notification records, both allocators, durable high-watermark and coverage frontier atomically. Apply the receiver-to-final and newly-adopted source-to-final coverage rules from the journal sync specification. An imported same-key record above the applicable threshold is sufficient; otherwise append one final-state witness. Raw occurrence receipt is silent. Pure copying authors no add/edit and does not alter `modifiedAt`. Settled equivalent states with no newer source coverage append nothing.
+Install graph, journal, journal coverage, and allocator atomically. Apply componentwise coverage union from the journal sync specification. An imported precise event is sufficient evidence; receipt alone is silent. Pure copying authors no add/edit and does not alter `modifiedAt`. Settled equivalent states with no newer source coverage append nothing.
 
 ## Storage, validation, and lifecycle safety
 
@@ -337,9 +337,9 @@ Before planning, synchronization MUST reject atomically:
    reference which is absent, mismatched, or not sequence-earlier than the
    validation;
 7. `localJournalClock` below an observed sequence;
-8. one notification index naming different immutable contents;
-9. `journalRecordHighWatermark` below a surviving record index; or
-10. non-monotone or invalid cursor-coverage metadata.
+8. one JournalEntryId naming different immutable contents;
+9. journal coverage below a surviving entry sequence; or
+10. non-monotone or malformed journal coverage.
 
 When evidence is simultaneously available, an implementation MAY additionally
 reject conflicting immutable content at one `JournalEntryId` or
@@ -393,7 +393,7 @@ Before T can become active, validate all of the following:
 8. every materialized value resolves to the canonical current journal event;
 9. presence and generation-scoped freshness agree with the installed journal
    frontiers; and
-10. both allocators, the record high-watermark, and monotone cursor-coverage invariants hold.
+10. the allocator and monotone journal-coverage invariants hold.
 
 Failure of any check aborts that source merge, leaves the active pointer
 unchanged, and exposes no partial target. Graph merge and long validation run in
@@ -401,7 +401,7 @@ inactive storage, not by broadening the active-replica darkroom.
 
 ### Cutover and sequential sources
 
-T becomes active whenever authoritative graph state, logical journal contents, notification records, high-watermark, or coverage frontier changes; a journal-only import therefore still
+T becomes active whenever authoritative graph state, journal contents or journal coverage changes; a journal-only import therefore still
 uses durable inactive construction and atomic pointer cutover. Cutover may be
 skipped only when all three are unchanged.
 
@@ -414,18 +414,7 @@ and failures are reported together. This sequential lifecycle does not imply
 multi-source associativity, order independence, or all-to-all communication,
 and it requires no repository, branch, or other transport-specific container.
 
-Controlled reset is not this merge algorithm. Existing-live reset does not join
-the selected source logical journal as graph authority. It atomically reconciles
-source semantic presence, values, freshness, and relowered validity, retaining receiver history
-and identifiers for surviving keys. It authors add for absent-to-present, a
-fresh add generation above observed receiver history for unequal
-present-to-present, and delete for present-to-absent; equal values author nothing
-and preserve receiver timestamps. The changed-value generation boundary makes
-observed old-generation edits inapplicable before wall-time comparison.
-Independently, reset merges source notification records, record high-watermark,
-and cursor-coverage frontier under the notification-coverage rules, including
-when the semantic graph is already equal. The complete lifecycle procedure and
-proof obligations are specified in the lifecycle specification.
+Controlled reset is not this merge algorithm. Existing-live reset retains receiver journal and coverage and does not join either source structure. It authors receiver-local events for reset decisions and establishes a receiver-owned presence generation above relevant consumed source authority even for an equal surviving value when the current receiver generation does not already dominate. Full reset lifecycle and timestamp rules are specified in the lifecycle specification.
 
 ## Required traces
 
@@ -486,16 +475,7 @@ events use author as the deterministic tie-break.
 
 ### Value through a carrier
 
-A authors `(A,12,K,edit,t,generation=G)`. A → B imports that entry and value; B
-retains the logical entry's exact `(sequence=12,author=A)` identity. Any
-notification record traveling with it likewise retains its exact immutable
-`JournalIndex=(appendSequence,appender)` on B and C. Raw receipt is silent and
-does not cause an echo reappend. B → C transmits the same immutable logical
-entry and any retained notification record without renumbering either. All hosts
-derive `[t,12,A]`, so support referring to K survives physical movement. Neither
-B nor C emits edit. If ordinary notification-coverage reconciliation requires B
-or C to append evidence, that evidence is a new, independent receiver-owned
-`JournalRecord`, not a new index for the imported occurrence.
+A authors `(sequence=12,author=A,key=K,action=edit,generation=G)`. A to B imports that exact entry and value; B to C transmits the same identity without renumbering. Receipt is silent. All hosts derive the same `[time,12,A]`, so support survives physical movement. Neither B nor C emits edit, and polling compares sequence 12 with the consumer's A coordinate regardless of carrier.
 
 ### Same-writer later edit
 
@@ -559,7 +539,7 @@ concurrent positive entry with a greater ID is a distinct LWW event and may
 supersede it. Equivalent settled inputs have identical heads and
 classifications, so no transition or reconciliation entry is generated.
 
-Logical journal merge is associative, but this specification deliberately does
+Journal merge is associative, but this specification deliberately does
 **not** claim that full graph merge is associative or confluent. Eventual
 agreement in one fair execution is not a unique schedule-independent join of
 all histories. A settled cache may depend on schedule, but every allowed result
@@ -623,7 +603,7 @@ along that path. With finitely many entries and hosts, eventually every host has
 every retained coordinate maximum and current-generation value/freshness
 authority witness. Compaction preserves all projections, so generation-scoped
 value, presence, and freshness frontiers stabilize identically everywhere.
-Notification record order and multiplicity are semantically inert to `JournalEntryId`, the three heads, canonical event, value revision, generation, admissibility, coherence, and graph merge. Immutable entries and records gossip in their distinct layers.
+Transport arrival order is semantically inert. Immutable precise entries gossip under their original identities, while coverage vectors converge by componentwise maximum.
 
 ### D. DAG induction
 
@@ -642,4 +622,4 @@ common frontier and exact coherent proof rule. Thus N stabilizes. Induction
 through the finite DAG establishes equivalent values, presence, freshness,
 timestamps, identifiers up to semantic lookup, and validity relations at every
 host. Settled idempotence then makes every further synchronization a graph no-op.
-Once graph, logical history, notification maxima, and coverage propagation settle, raw occurrence receipt is silent and no record, allocator, high-watermark, or frontier changes. Repeated synchronization is a fixed point.
+Once graph, journal history and coverage propagation settle, raw occurrence receipt is silent and no journal, allocator, or coverage changes. Repeated synchronization is a fixed point.

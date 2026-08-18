@@ -206,19 +206,12 @@ If no previous version is found, the migration is a no-op.
 
 ## Journal interaction
 
-Migration preserves logical entries, notification records, `localJournalClock`,
-`localJournalRecordClock`, `journalRecordHighWatermark`,
-`cursorCoverageFrontier`, and the durable fingerprint without renumbering. It
+Migration preserves the journal, `journalCoverage`, `localJournalClock`, and durable fingerprint without renumbering. It
 accepts supported uncompacted state and does not implicitly compact. Durable
 tokens preserve meaning across cutover and restart.
 
-The ordinary classifier governs semantic changes. A journal-silent migration
-changes no notification metadata. A notifying transition authors its logical
-entry where required and ensures one same-key record after the pre-transition
-high-watermark. Representation-only changes remain silent; `keep`, invalidate,
-and semantic-preserving override preserve `modifiedAt`. Graph, logical history,
-records, allocators, high-watermark and frontier commit atomically. Migration
-never seeds graph authority from notification evidence. Detailed rules are in
+The ordinary classifier governs semantic changes. A journal-silent migration changes no journal metadata. A semantic transition authors its one precise entry where required and advances local coverage. Representation-only changes remain silent; `keep`, invalidate,
+and semantic-preserving override preserve `modifiedAt`. Graph, journal, allocator, and coverage commit atomically. Migration never seeds graph authority from polling evidence. Detailed rules are in
 `docs/specs/incremental-graph-journal-migrations.md`.
 
 ## Atomicity guarantee

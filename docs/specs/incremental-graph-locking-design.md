@@ -323,10 +323,7 @@ compatibility rules.
 
 ## Journal integration without weakening graph locking
 
-The logical and notification allocators are distinct durable counters. One
-dedicated journal allocator mutex MAY serialize both, provided their values and
-semantics never influence one another. Notification replay never allocates a
-logical ID or affects graph conflict ordering.
+One durable journal allocator is serialized by the journal allocator mutex. Import never allocates an event ID or changes an imported event identity.
 
 ### Lock order
 
@@ -343,24 +340,18 @@ release construction locks
 No path reverses this order. Exclusive synchronization, migration and reset keep
 their existing inactive-construction phases. The darkroom remains short: work is
 prepared first and allocator values are tentatively chosen under their mutex.
-The final graph, logical entries, notification records, `localJournalClock`,
-`localJournalRecordClock`, high-watermark, and coverage frontier are committed
+The final graph, journal entries, `localJournalClock`, and journal coverage are committed
 atomically under darkroom finalization. A choice published by that commit is
 permanently non-reusable and committed counters never move backwards. An abort
 before publication exposes neither durable allocator advancement nor a durable
 coordinate, and a later transaction MAY choose that number. Allocation-number
 gaps caused by allocator behavior are permitted only when committed allocator
-progression skips numbers; notification compaction may independently leave holes
-among surviving coordinates. This does not widen the darkroom or weaken
+progression skips numbers; journal compaction may leave holes among surviving entries. This does not widen the darkroom or weaken
 dome/telescope serialization.
 
-Validation reads the transaction-visible invalidate frontier and commits its
-complete causal context with freshness. Hard invalidation similarly commits its
-barrier after observed logical history. Notification records for those entries
-commit in the same transaction. Sync raises the notification allocator above
-observed high-watermarks before required replay and advances coverage only in the
-final atomic commit.
+Validation reads the transaction-visible hard-invalidate frontier and commits its
+complete causal context with freshness. Hard invalidation similarly commits its barrier after observed journal history. Sync raises the receiver allocator above observed sequences before local authoring and advances coverage only in the final atomic commit.
 
 `possibleMaybeChanges()` takes one committed read snapshot. It never acquires the
-writer allocator, appends a record, changes a watermark/frontier, or invokes a
+writer allocator, appends an entry, changes coverage, or invokes a
 computor.

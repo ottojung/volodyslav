@@ -126,12 +126,6 @@ Through the supported lifecycle transitions, each independently-created host
 obtains a distinct fingerprint. This is what makes node identifiers globally
 unique across hosts even when the same local index values are allocated.
 
-## Notification identity
+## Journal authorship identity
 
-The durable fingerprint is also the `appender` coordinate of every locally
-appended `JournalIndex` and the issuer coordinate of durable cursor tokens.
-These uses do not make notification order graph authority. Supported restart,
-self-restoration and migration preserve the fingerprint with notification
-records, high-watermark and coverage frontier; rollback under the same identity
-is unsupported. Controlled reset retains the receiver fingerprint even while it
-imports source notification and cursor-coverage infrastructure.
+The durable fingerprint is the author coordinate of every locally authored `JournalEntryId` and every local coverage coordinate. It does not impose cross-author order. Supported restart, self-restoration, and migration preserve the fingerprint with journal, coverage, and allocator; rollback under the same identity is unsupported. Controlled reset retains the receiver fingerprint and does not import source journal or coverage.

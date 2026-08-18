@@ -480,7 +480,7 @@ function makeIncrementalGraph(
 
 `PossibleNodeChange` and `BaselinePossibleNodeChange` are opaque nominal public
 types branded at compile time by a module-private, unexported `unique symbol`
-(or an equivalent non-forgeable type declaration). That symbol is not a runtime snapshot carrier. Cursor meaning uses the canonical versioned journal-owned codec and durable opaque metadata. A possible-change cursor combines visible readonly `{nodeName, bindings, action, time}` with an immutable cursor position; the baseline is a universal before-all sentinel. External TypeScript callers cannot construct either type structurally, and raw indexes, issuer metadata, watermarks, and ordinals are not ordinary public fields. The complete type,
+(or an equivalent non-forgeable type declaration). That symbol is not a runtime snapshot carrier. Cursor meaning uses the canonical versioned journal-owned codec and durable opaque metadata. A possible-change cursor combines visible readonly `{nodeName, bindings, action, time}` with an immutable cursor position; the baseline is a universal before-all sentinel. External TypeScript callers cannot construct either type structurally, and raw journal identities or cursor-vector coordinates are not ordinary public fields. The complete type,
 snapshot, and runtime-validation contract is in
 `incremental-graph-journal-api.md`.
 
@@ -607,7 +607,7 @@ type Computor = (
 ) => Promise<ComputedValue | Unchanged>;
 ```
 
-**Normative API boundary:** Computor invocation deliberately receives no journal cursor. The runtime exposes neither a computation-position nor bootstrap cursor. `graph.baselinePossibleNodeChange()` means only at the universal before-all notification position; it is not the position at which the invocation started and is not a substitute. No raw journal index, `journalGet`, context object, or hidden graph handle is provided.
+**Normative API boundary:** Computor invocation deliberately receives no journal cursor. The runtime exposes neither a computation-position nor bootstrap cursor. `graph.baselinePossibleNodeChange()` means only at the universal all-zero cursor position; it is not the position at which the invocation started and is not a substitute. No raw journal entry identity, `journalGet`, context object, or hidden graph handle is provided.
 
 **Note on Return Type:** Computors MAY return `Unchanged` as an optimization sentinel. However, `Unchanged` is NOT part of the semantic `Outcomes` set (see §1.1). When a computor returns `Unchanged`, it is semantically equivalent to returning the current stored value (which must be a `ComputedValue`). The `pull()` operation always returns `Promise<ComputedValue>` — the `Unchanged` sentinel is handled internally and never exposed to callers.
 
@@ -638,7 +638,7 @@ type Computor = (
 | `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 | `MissingTimestampError` | `nodeKey: string` | `getCreationTime`/`getModificationTime` called for a node with no recorded timestamps (public API) |
-| `InvalidPossibleChangeCursorError` | none | `possibleMaybeChanges()` receives a structurally malformed cursor or a token whose issuer coverage is not established |
+| `InvalidPossibleChangeCursorError` | none | `possibleMaybeChanges()` receives a structurally malformed cursor or a token whose canonical vector encoding or payload is invalid |
 
 **REQ-ERR-01 (Error Type Guards):** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value: unknown): value is InvalidExpressionError`).
 
@@ -654,16 +654,12 @@ freshness sublevel. The public journal API consists of:
 - `graph.possibleMaybeChanges({ since, to })` — Queries possible node changes since a previously observed position, restricted to nodes matching the given filter. Returns `Promise<Array<PossibleNodeChange>>`. The `since` parameter accepts `PossibleNodeChange | BaselinePossibleNodeChange`; the `to` parameter is a `NodeFilter`. See `docs/specs/incremental-graph-journal-api.md` for the full specification.
 
 - `graph.baselinePossibleNodeChange()` — Returns the universal opaque before-all
-  sentinel. It needs no issuer coverage and starts scanning at the first
-  surviving notification record.
+  sentinel carrying the empty/all-zero vector. It starts scanning at the first surviving per-author/action representative.
 
 - `possibleChangeTokenToString(token)` and `stringToPossibleChangeToken(string)`
-  provide canonical, versioned, validated durable token conversion without
-  exposing raw indexes or coverage metadata.
+  provide canonical, versioned, validated durable token conversion without exposing raw journal identities; the hidden full vector round-trips.
 
-- `InvalidPossibleChangeCursorError` — Thrown for a structurally malformed token or when
-  `cursorCoverageFrontier[token.issuedBy]` does not reach the token's issuance
-  high-watermark. The query rejects before scanning and performs no write. Its
+- `InvalidPossibleChangeCursorError` — Thrown only for a structurally malformed or non-canonical token. A cursor coordinate may exceed host coverage; the query remains valid and performs no write. Its
   public type guard uses `instanceof`.
 
 Journal notification has no false negatives for those three dimensions, but it
@@ -672,8 +668,7 @@ A returned action does not assert current graph state.
 
 The action meanings are closed: `add` is only absent-to-materialized; `edit` is
 only a normative `ComputedValue` inequality while materialized; `delete` is only
-materialized-to-absent; `invalidate` is only up-to-date to
-potentially-outdated; and `validate` is only potentially-outdated to up-to-date.
+materialized-to-absent; `invalidate` is a real soft freshness transition or a hard must-recompute decision (including deliberate stale-to-stale hardening); and `validate` is only potentially-outdated to up-to-date.
 Add/delete do not also emit freshness actions. Value and freshness transitions
 may independently produce two actions.
 
@@ -683,9 +678,9 @@ The journal's no-false-negatives contract covers exactly:
 2. `ComputedValue`;
 3. freshness sublevel.
 
-For the notification journal, a graph change means a committed transition in
+For possible-change polling, a graph change means a precise committed transition in
 one of those dimensions. Other persisted or public graph metadata may change
-without a journal notification. Where permitted by the authoritative graph
+without a precise journal event. Where permitted by the authoritative graph
 operation, this includes `NodeIdentifier`, `createdAt`, `modifiedAt`, validity
 relations, dependency or validity evidence, storage representation, and other
 metadata outside the three journal-observable dimensions. These fields are not
@@ -739,7 +734,7 @@ freshness action is emitted because freshness did not change. Extending the
 observable surface requires a separate explicit contract change rather than
 broadening an existing action.
 
-The journal type system, emission rules, synchronization model, migration interaction and durable global notification/cursor rules are specified in:
+The journal type system, emission rules, synchronization model, migration interaction and durable version-vector cursor rules are specified in:
 
 ```text
 docs/specs/incremental-graph-journal-types.md
