@@ -21,10 +21,12 @@ InvalidateJournalEntry = GenerationScopedBase & {
 }
 ValidateJournalEntry = GenerationScopedBase & {
     kind:"validate", clearsThrough:CausalPrefix,
-    valueOrigin?:JournalEntryId,
+    valueOrigin:JournalEntryId,
     resetCorrespondence?:ResetCorrespondence
 }
 ResetCorrespondence = {
+    sourceAuthor:DatabaseFingerprint,
+    consumedThrough:uint64,
     consumedGeneration:JournalEntryId,
     consumedValueOrigin:JournalEntryId
 }
@@ -47,7 +49,11 @@ Every boundary validates closed shapes/scalars, immutable-ID agreement, and `key
 
 Generation-wide invalidates represent explicit/concurrent causal invalidation that applies regardless of which value origin wins. Initial-stale, post-edit, reset/migration cache-status, proof-loss, and propagated-input-staleness assertions are value-specific and name the exact value origin whose cache state they describe. For selected origin O, an invalidate is applicable iff it is generation-wide or names O. Both causal frontiers and validation effectiveness are computed only from applicable invalidates; a losing value's cache-status barrier cannot stale a different selected value.
 
-Observed reset may attach `resetCorrespondence` to its receiver-retained freshness assertion. It certifies that reset compared the receiver value origin named by that assertion with the exact consumed source generation/origin using `isEqual` while observing the source closed prefix. It is not a proof of freshness, does not import source history/coverage, and has no separate public action. It permits ordinary synchronization to recognize those two unsupported value origins as one reset-authorized semantic copy. It says nothing about a later source origin outside the consumed snapshot.
+Every validation names the exact value origin it validates. The initial validation names its GenerationJournalEntry; validation after an edit names that edit. Positive evidence for one origin never freshens another origin, even when its causal prefix includes the other origin’s invalidates.
+
+Observed reset may attach `resetCorrespondence` to its receiver-retained freshness assertion. It certifies that reset compared the receiver value origin named by that assertion with the exact consumed source generation/origin using `isEqual`, and inspected a complete `sourceAuthor` prefix through `consumedThrough`. It is not a proof of freshness, does not import source history/coverage, and has no separate public action. It both recognizes the exact consumed unsupported cache as a reset-authorized semantic copy and bridges the receiver materialization to that consumed source lineage: source-authored events at or below the cutoff are absorbed, while an edit, invalidate, validate, delete, or rematerialization above the cutoff remains eligible even when its numeric ID is below the receiver generation. The bridge is observed-reset evidence, not a reset-wins epoch.
+
+At persistence boundaries `ResetCorrespondence` is an exact closed shape. Both JournalEntryIds contain nonzero uint64 sequences and supported fingerprints; `sourceAuthor` is supported and `consumedThrough` is uint64 (zero denotes an empty prefix). Booleans, malformed tuples/maps, missing or extra coordinates, and unsupported authors are rejected before merge or compaction. Structural validity is distinct from the authoring proof that reset actually observed the claimed prefix and semantic equality.
 
 ## UnixTimestamp and event time
 
@@ -67,13 +73,13 @@ Reset-created/changed value generation/edit time is reset transaction time τ. R
 
 A locally authored coordinate may claim only a prefix for which the transaction had valid closed-prefix evidence: ordinarily local journal/coverage, and for controlled reset additionally its validated source snapshot. Compaction preserves the vector claim even if it removes exact covered evidence.
 
-Validation knowledge is durable and monotone. For validations V1,V2 with the same author, key, and generation:
+Validation knowledge is durable and monotone. For validations V1,V2 with the same author, key, generation, and value origin:
 
 ```text
 V1.sequence < V2.sequence => V1.clearsThrough <=componentwise V2.clearsThrough
 ```
 
-Every validation authoring path—ordinary pull/revalidation, migration, a genuinely synchronization-authored initial validation, and observed reset—starts with the greatest prior same-author/key/generation validation vector and componentwise-maxes newly justified closed prefixes into it. The prior vector is itself durable evidence for carry-forward; source coordinates learned only by reset remain in later validation state without being copied into host journalCoverage. A retained pair violating monotonicity is unsupported/corrupt. Structural load validation checks canonical map shape, supported unique fingerprints, and uint64 coordinates; lifecycle legitimacy of the claimed evidence is a separate authoring proof.
+Every validation authoring path—ordinary pull/revalidation, migration, a genuinely synchronization-authored initial validation, and observed reset—starts with the greatest prior same-author/key/generation/value-origin validation vector and componentwise-maxes newly justified closed prefixes into it. The prior vector is itself durable evidence for carry-forward; source coordinates learned only by reset remain in later validation state without being copied into host journalCoverage. A retained pair violating monotonicity is unsupported/corrupt. Structural load validation checks canonical map shape, supported unique fingerprints, and uint64 coordinates; lifecycle legitimacy of the claimed evidence is a separate authoring proof.
 
 Import does not advance the local clock/coordinate. Immediately before local authoring, allocation raises above all relevant retained/covered sequence authority. After commit, local coverage equals local clock and the local prefix never regresses.
 
@@ -85,7 +91,7 @@ invalidateFrontier(J,K,G,O)[A] = greatest applicable invalidate of either mode b
 hardInvalidateFrontier(J,K,G,O)[A] = greatest applicable hard invalidate by A
 covers(V,I) iff V.key=I.key and V.generation=I.generation
                  and I.sequence <= V.clearsThrough[I.author]
-freshnessEffective(V,J,K,G,O) iff V alone covers every applicable invalidateFrontier member
+freshnessEffective(V,J,K,G,O) iff V.valueOrigin=O and V alone covers every applicable invalidateFrontier member
 journalFresh iff some applicable V is freshnessEffective
 journalHard iff hard frontier is nonempty and no applicable V alone covers it
 ```
@@ -98,7 +104,7 @@ A derived stale-soft materialization retains the complete reusable incoming proo
 
 **Identifier Incarnation Theorem (NodeIdentifier domain).** A storage-level materialized NodeIdentifier maps to exactly one NodeKey. Removal retires it permanently; rematerializing the same NodeKey allocates a different identifier. Public `listMaterializedNodes()` exposes semantic address tuples, not these identifiers. Reset retains receiver identifiers for surviving materializations.
 
-**NodeKey Presence Projection Theorem (NodeKey domain).** K is materialized iff `presenceHead(J,K)` is GenerationJournalEntry; it is absent iff the head is delete or undefined. History generation/delete/generation is valid. Polling history membership is not current presence.
+**NodeKey Presence Projection Theorem (NodeKey domain).** K is materialized iff causal `presenceHead(J,K)` is GenerationJournalEntry; it is absent iff the head is delete or undefined. The base total-order head is overridden only by an event above a retained reset-lineage cutoff for its source author; events inside the consumed cutoff remain absorbed. History generation/delete/generation is valid. Polling history membership is not current presence.
 
 **Current Value Provenance Theorem (winning-generation domain).** The winning generation entry plus scoped value heads determine origin/modifiedAt identity; ComputedValue bytes remain graph state.
 

@@ -199,7 +199,7 @@ candidate as coherent or unsupported using its own existing source proof plus st
 candidate with greatest `ValueRevision`. A newer-timestamp unsupported candidate
 never suppresses a coherent one.
 
-A retained reset correspondence is considered only after ordinary coherence fails. It may retain the receiver value origin named by the certificate when the opposite candidate has exactly the certified consumed source generation/origin. This is authoritative observed-copy evidence for that pair, including a hard multi-input cache or different reset-local revision; it is not generalized to absence, unrelated revisions, or events above the consumed source snapshot.
+A retained reset correspondence is considered only after ordinary coherence fails. It may retain the receiver value origin named by the certificate when the opposite candidate has exactly the certified consumed source generation/origin. This is authoritative observed-copy evidence for that pair, including a hard multi-input cache or different reset-local revision; it is not generalized to unrelated unsupported caches. Its `sourceAuthor,consumedThrough` coordinates additionally bridge presence lineage: source-lineage events through the cutoff are absorbed, while any later source-authored scoped event, delete, or rematerialization is eligible and may activate that lineage regardless of the receiver generation’s larger numeric ID. Presence therefore applies this causal activation before rejecting losing-generation candidates.
 
 Thus “`modifiedAt` is primary” means primary inside `ValueRevision` comparison
 among candidates eligible at that selection stage. Roots order admissible
@@ -234,7 +234,7 @@ Never union `valid`. Rebuild incoming validity edges only by transporting an exi
 
 Determine hard state first. If `hardInvalidateFrontier(N,G)` is nonempty and no single validation is `hardnessCleared`, N is hard-stale and receives no incoming proofs. If the hard frontier is empty or individually cleared but no validation is `freshnessEffective` because a later soft invalidate remains uncovered, N is stale-soft: coherent reusable proofs may remain or be transported, and cache-only revalidation remains possible. A freshness-effective validation can permit fresh state only with ordinary exact graph coherence.
 
-Both frontiers are evaluated after value selection. A generation-wide invalidate applies to every selected origin. A value-specific invalidate applies only when its named `valueOrigin` is the selected origin. Consequently a post-edit barrier for losing Y cannot harden/stale coherent selected X, while an explicit concurrent generation-wide invalidate still applies to X. Validation causal coverage is unchanged and one validation must cover the complete applicable frontier.
+Both frontiers are evaluated after value selection. A generation-wide invalidate applies to every selected origin. A value-specific invalidate applies only when its named `valueOrigin` is the selected origin. Consequently a post-edit barrier for losing Y cannot harden/stale coherent selected X, while an explicit concurrent generation-wide invalidate still applies to X. A validation is applicable only when its mandatory `valueOrigin` equals the selected origin. Validation causal coverage is otherwise unchanged and one applicable validation must cover the complete applicable frontier.
 
 Operationally, a derived stale-soft materialization MUST retain the complete reusable incoming proof required for cache-only revalidation. If reconciliation cannot retain or transport that proof, the result is must-recompute and requires an uncovered hard barrier. A zero-input stale materialization has no incoming proof to reuse and therefore cannot be stale-soft in the supported model; its negative freshness assertion is hard.
 
@@ -280,7 +280,7 @@ Before planning, synchronization MUST reject atomically:
 7. the local coverage coordinate differs from `localJournalClock`, or local authoring failed to allocate above transaction-observed history;
 8. one JournalEntryId naming different immutable contents;
 9. journal coverage below a surviving entry sequence; or
-10. non-monotone or malformed journal coverage, or a retained comparable validation pair whose later `clearsThrough` regresses.
+10. non-monotone or malformed journal coverage, or a retained comparable same-author/key/generation/value-origin validation pair whose later `clearsThrough` regresses.
 
 When evidence is simultaneously available, an implementation MAY additionally
 reject conflicting immutable content at one `JournalEntryId`. The mandatory

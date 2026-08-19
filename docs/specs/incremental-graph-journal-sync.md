@@ -4,7 +4,12 @@
 
 ```text
 presenceEvents(J,K) = generation/delete entries for K
-presenceHead = greatest JournalEntryId presence event
+basePresenceHead = greatest JournalEntryId presence event
+presenceHead = basePresenceHead unless a retained reset-lineage summary anchored
+               to it observes source author A through c and the joined journal
+               contains a later A event above c in that consumed lineage; then
+               the greatest such post-cutoff activation selects its generation,
+               delete, or rematerialization
 generation = presenceHead.id iff it is GenerationJournalEntry
 valueEvents(J,K,G) = generation G union edits scoped to G
 valueHead(J,K,G,A) = greatest A-authored value event
@@ -15,9 +20,9 @@ ValueRevision = (modifiedAt,canonicalEvent.sequence,canonicalEvent.author)
 
 Presence selection precedes value. A GenerationJournalEntry is the generation and initial value event; it is not generation-scoped. ValueRevision remains wall-time-first with exact equal-time provenance.
 
-Freshness uses `clearsThrough`, `covers`, both frontiers, `freshnessEffective`, and `journalHard` exactly as defined in the types specification. Causal vectors never combine across validations.
+Freshness uses `clearsThrough`, `covers`, both frontiers, `freshnessEffective`, and `journalHard` exactly as defined in the types specification. A validation applies only to its mandatory exact `valueOrigin`; positive evidence never crosses an edit. Causal vectors never combine across validations.
 
-Frontiers are relative to the final selected value origin: generation-wide invalidates always apply, while value-specific cache-status invalidates apply only to their named origin. A reset correspondence can retain an otherwise unsupported receiver cache only against the exact source generation/origin that reset semantically consumed; it never authorizes unrelated or later source revisions.
+Frontiers are relative to the final selected value origin: generation-wide invalidates always apply, while value-specific cache-status invalidates apply only to their named origin. A reset correspondence retains an otherwise unsupported receiver cache only against the exact source generation/origin reset semantically consumed. Its source-author cutoff is also a lineage bridge: consumed events at or below the cutoff are absorbed, while later scoped events, deletes, and rematerializations activate the source lineage despite a numerically greater receiver generation. It never authorizes an unrelated unsupported cache.
 
 ## Extensional proof transport
 
