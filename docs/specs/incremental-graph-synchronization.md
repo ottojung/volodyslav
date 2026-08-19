@@ -266,20 +266,18 @@ Before planning, synchronization MUST reject atomically:
    covered by its source lookup;
 6. retained journal entries which cannot be structurally interpreted, including
    edit/invalidate/validate without a
-   generation resolving to a same-key GenerationJournalEntry witness; a validation causal
-   reference which is absent, mismatched, or not sequence-earlier than the
-   validation;
+   generation resolving to a same-key GenerationJournalEntry witness; or malformed/noncanonical `clearsThrough` coordinates;
 7. the local coverage coordinate differs from `localJournalClock`, or local authoring failed to allocate above transaction-observed history;
 8. one JournalEntryId naming different immutable contents;
 9. journal coverage below a surviving entry sequence; or
-10. non-monotone or malformed journal coverage.
+10. non-monotone or malformed journal coverage, or a retained comparable validation pair whose later `clearsThrough` regresses.
 
 When evidence is simultaneously available, an implementation MAY additionally
-reject conflicting immutable content at one `JournalEntryId` or
-same-author/key/generation validations whose later context forgets or moves an
-earlier coordinate backward. These cheap defensive checks diagnose corrupted
-or unsupported input; they are not a completeness guarantee, and canonical
-compaction need not preserve discarded history solely to make them possible.
+reject conflicting immutable content at one `JournalEntryId`. The mandatory
+validation-monotonicity check applies whenever a comparable retained pair is
+available; canonical compaction need not preserve discarded history solely to
+make an otherwise impossible comparison. These checks diagnose corrupted or
+unsupported input rather than proving lifecycle legitimacy.
 
 Before journal join or conflict planning, validate each source against its own
 pre-merge journal. Every source materialization MUST resolve its source presence

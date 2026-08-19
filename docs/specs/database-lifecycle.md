@@ -102,9 +102,8 @@ Before installation, restoration validates the ordinary load structure:
 - the durable `DatabaseFingerprint` belongs to
   the selected host/writer branch;
 - retained generation references resolve correctly;
-- retained validation causal references resolve correctly and match the
-  required key, generation, and author;
-- every referenced invalidate sequence precedes its validation sequence;
+- every retained `clearsThrough` has canonical map shape, unique supported fingerprint coordinates, and uint64 values;
+- retained same-author/key/generation validation vectors are componentwise monotone when comparable evidence is present;
 - `localJournalClock` equals the local fingerprint coverage coordinate and locally authored entries do not exceed it; foreign retained sequences may exceed it under lazy raising;
 - every retained entry satisfies the self-contained key/address invariant;
 - journal coverage dominates every retained entry sequence; and
@@ -257,7 +256,7 @@ A second identical reset does not refresh timestamps.
 
 ### Causal absorption planning
 
-Reset reasons against the hypothetical journal/coverage union of both consumed snapshots without installing source history. Reset-authored `clearsThrough` may use either validated consumed snapshot as closed-prefix evidence.
+Reset reasons against the hypothetical journal/coverage union of both consumed snapshots without installing source history. Reset-authored `clearsThrough` may use either validated consumed snapshot as closed-prefix evidence. The reset transaction observation watermark is the maximum sequence in receiver retained entries/coverage/local clock and validated source retained entries/coverage. Before its first local event it raises allocation above that watermark, then allocates monotonically. This observation does not install any source journalCoverage coordinate; only the receiver coordinate advances when reset authors.
 
 * Fresh target: retain an existing validation only if it alone covers the combined observed invalidate frontier; otherwise author one joint validation scoped to the surviving receiver generation and covering both consumed closed prefixes.
 * Hard target: ensure an applicable hard invalidate is uncleared and remove reusable incoming proofs. If source authority is not locally retained, author one real receiver hard assertion representing reset's target decision.

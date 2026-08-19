@@ -49,6 +49,14 @@ Reset-created/changed value generation/edit time is reset transaction time τ. R
 
 A locally authored coordinate may claim only a prefix for which the transaction had valid closed-prefix evidence: ordinarily local journal/coverage, and for controlled reset additionally its validated source snapshot. Compaction preserves the vector claim even if it removes exact covered evidence.
 
+Validation knowledge is durable and monotone. For validations V1,V2 with the same author, key, and generation:
+
+```text
+V1.sequence < V2.sequence => V1.clearsThrough <=componentwise V2.clearsThrough
+```
+
+Every validation authoring path—ordinary pull/revalidation, migration, a genuinely synchronization-authored initial validation, and observed reset—starts with the greatest prior same-author/key/generation validation vector and componentwise-maxes newly justified closed prefixes into it. The prior vector is itself durable evidence for carry-forward; source coordinates learned only by reset remain in later validation state without being copied into host journalCoverage. A retained pair violating monotonicity is unsupported/corrupt. Structural load validation checks canonical map shape, supported unique fingerprints, and uint64 coordinates; lifecycle legitimacy of the claimed evidence is a separate authoring proof.
+
 Import does not advance the local clock/coordinate. Immediately before local authoring, allocation raises above all relevant retained/covered sequence authority. After commit, local coverage equals local clock and the local prefix never regresses.
 
 ## Freshness

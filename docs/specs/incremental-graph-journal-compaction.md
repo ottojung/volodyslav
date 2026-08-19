@@ -12,11 +12,11 @@ UH = hard-frontier members not covered by any one retained applicable validation
 VV = greatest validation per (author,key,winning generation)
 ```
 
-Start with `N∪P∪VH∪CE∪UF∪UH∪VV`; take the least closure adding each retained scoped event's exact GenerationJournalEntry and every retained generation's mandatory initial-freshness event. `compact(J)` is exactly this closure and discards everything else. Causal-prefix validations need no exact invalidate references. Their legitimacy survives deletion because the closed-prefix proof is the immutable vector plus durable lifecycle validity, distinct from host coverage.
+Start with `N∪P∪VH∪CE∪UF∪UH∪VV`; take the least closure adding each retained scoped event's exact GenerationJournalEntry and every retained generation's mandatory initial-freshness event. `compact(J)` is exactly this closure and discards everything else. Causal-prefix validation legitimacy survives exact evidence deletion because the closed-prefix proof is the immutable vector plus durable lifecycle validity, distinct from host coverage.
 
 A delayed invalidate under retained `clearsThrough` remains causally cleared, although N retains it if needed as a polling representative. An event above the prefix remains unresolved. Public maxima, not hidden state, preserve action no-false-negatives.
 
-**Canonical Compaction/Future-Union Theorem.** On supported reachable histories, causal-prefix dominance is stable under delayed events below the prefix, while events above it enter UF/UH. Value/presence heads and validation knowledge are monotone. Therefore:
+**Canonical Compaction/Future-Union Theorem.** On supported reachable histories, causal-prefix dominance is stable under delayed events below the prefix, while events above it enter UF/UH. Value/presence heads are monotone. Validation knowledge is componentwise monotone per author/key/generation because every later validation carries forward its greatest prior vector; therefore VV dominates discarded older validations semantically. Therefore:
 
 ```text
 compact(compact(A) union B) = compact(A union B)
