@@ -1,123 +1,80 @@
 # IncrementalGraph journal types
 
-This document is normative.
-
-## Supported-state boundary
-
-Proofs quantify over supported reachable graph/journal states produced by the specified atomic authoring, synchronization, migration, reset, restoration, and exact compaction transitions. Immutable identity, canonical address, generation and causal references, allocator/coverage, graph projection, and initial-freshness invariants all hold. Corrupt, forged, rolled-back, or partially installed state is rejected and outside the proof domain. Supported compacted and uncompacted forms are both in-domain.
+This document is normative over supported reachable states produced by the atomic authoring, receive, migration, observed-reset, restoration, and canonical-compaction transitions. Corrupt, forged, rolled-back, partially installed, or clock-unsupported states are outside the proof domain.
 
 ## One precise journal
 
 ```text
 journal[JournalEntryId] = JournalEntry
 JournalEntryId = (sequence, author)
-
-JournalEntryBase = {
-    author: DatabaseFingerprint
-    sequence: uint64
-    key: NodeKey
-    nodeName: NodeName
-    bindings: BindingEnvironment
-    time: UnixTimestamp
-}
+JournalEntryBase = { author, sequence:uint64, key, nodeName, bindings, time }
 GenerationJournalEntry = JournalEntryBase & {
-    kind: "generation"
-    publicAction: "add" | "edit" | null
-    initialFreshness: JournalEntryId
+    kind:"generation", initialFreshness:JournalEntryId
 }
-DeleteJournalEntry = JournalEntryBase & { action: "delete" }
-GenerationScopedJournalEntryBase = JournalEntryBase & { generation: JournalEntryId }
-EditJournalEntry = GenerationScopedJournalEntryBase & { action: "edit" }
-InvalidateJournalEntry = GenerationScopedJournalEntryBase & {
-    action: "invalidate"
-    mode: "soft" | "hard"
+DeleteJournalEntry = JournalEntryBase & { kind:"delete" }
+GenerationScopedBase = JournalEntryBase & { generation:JournalEntryId }
+EditJournalEntry = GenerationScopedBase & { kind:"edit" }
+InvalidateJournalEntry = GenerationScopedBase & { kind:"invalidate", mode:"soft"|"hard" }
+ValidateJournalEntry = GenerationScopedBase & {
+    kind:"validate", clearsThrough:CausalPrefix
 }
-ValidateJournalEntry = GenerationScopedJournalEntryBase & {
-    action: "validate"
-    clearsInvalidates: InvalidationContext
-}
-InvalidationContext = Map<DatabaseFingerprint, JournalEntryId>
-JournalEntry = GenerationJournalEntry | DeleteJournalEntry | EditJournalEntry
-             | InvalidateJournalEntry | ValidateJournalEntry
+CausalPrefix = Map<DatabaseFingerprint,uint64>
 ```
 
-IDs order lexicographically by uint64 sequence then fingerprint. Transport order is irrelevant and import preserves exact identity/content. Every boundary validates the closed discriminated shape, scalar domains, and `key == NodeKey(nodeName,bindings)` using the production identity-preserving serializer; NodeKey need not be reversible.
-
-A generation entry establishes positive presence and is that generation's initial value/provenance event. Its time is the represented semantic `modifiedAt`. Its public action is add only for absent-to-materialized, edit only for a materially present unequal-value replacement, and null for an equal-value internal authority fence. A null action is not a polling obligation. Ordinary later unequal-value changes may use scoped edit. Delete is negative presence. Every scoped entry references an exact same-key generation entry.
-
-Every generation names `initialFreshness`, which resolves to exactly one later-ID scoped freshness event authored atomically with it; no other event may claim that initial role. That event is: validate when fresh, soft invalidate when stale with reusable proofs, or hard invalidate when must-recompute. A supported current positive generation never lacks this witness. Validate means the generation is positively established or re-established fresh after the observed invalidation frontier; it includes initial freshness, not only stale-to-fresh. Invalidate is an exact negative freshness assertion, including initial stale state and later invalidation/hardening.
-
-Validation references are earlier same-key/same-generation invalidates of either mode, one per author. Same-author validation knowledge cannot regress.
-
-## Public action
+An immutable generation entry establishes positive presence and initial value provenance for an actual absent-to-present materialization, so `publicAction(generation)="add"`. Reset never creates a generation to fence equal present history. Delete is negative presence. Edit is an unequal present-to-present value change scoped to the surviving generation. Every generation names exactly one later-ID, atomically authored initial validate/soft-invalidate/hard-invalidate.
 
 ```text
-publicAction(E) =
-    E.publicAction                 if E.kind="generation"
-    E.action                       otherwise
+publicAction(E) = "add" for generation; otherwise E.kind
 ```
 
-Only non-null results are visible polling obligations. Thus each precise event exposes zero or one public action, never a projection to actions that did not happen.
+Soft/hard both expose invalidate. Each event exposes exactly one public action.
 
-## Coverage and lazy allocator
+Every boundary validates closed shapes/scalars, immutable-ID agreement, and `key == NodeKey(nodeName,bindings)` using the production identity-preserving serializer. Every scoped event resolves to an exact same-key GenerationJournalEntry. Generation initial-freshness references resolve exactly.
 
-`JournalCoverage = Map<DatabaseFingerprint,uint64>`; missing coordinates mean zero. `journalCoverage[A]=n` closes A's authored obligation prefix through n despite gaps and compaction. Coverage is durable, componentwise monotone, and dominates every retained event on that event's own author coordinate.
+## UnixTimestamp and event time
 
-Each host owns `localJournalClock` for its fingerprint. Importing or observing foreign entries does **not** advance that clock or the local coverage coordinate; a host may retain a foreign sequence above its local clock. Immediately before local authoring, the transaction observes the maximum relevant retained/covered sequence, raises the allocation watermark, and allocates every new local event strictly above it. After committed local authoring:
+`UnixTimestamp` persists as a signed integer millisecond count since `1970-01-01T00:00:00Z`. Its supported domain is exactly the integer interval `[-8640000000000000,8640000000000000]`, excluding booleans. `toUnixTimestamp(DateTime)=DateTime.toMillis()` and `fromUnixTimestamp(t)` constructs the exact UTC instant; both require exact integer round-trip. Out-of-domain, fractional, approximate, clamped, rounded, or malformed persisted/token values are rejected.
+
+* generation time is its semantic value `modifiedAt`;
+* edit time is the edited value `modifiedAt`;
+* delete time is deletion occurrence and does not change value `modifiedAt`;
+* invalidate time is assertion occurrence and does not change value `modifiedAt`;
+* validate time is assertion occurrence and does not change value `modifiedAt`.
+
+Reset-created/changed value generation/edit time is reset transaction time τ. Reset freshness assertions use their actual occurrence τ. Equal surviving reset values preserve receiver `modifiedAt`. Supported cross-host value ordering assumes clocks do not invert real value-event order; a source `modifiedAt>τ` for an already-observed value is outside that clock premise. The protocol does not repair unsynchronized clocks.
+
+## Coverage, causal prefixes, and lazy allocation
+
+`JournalCoverage[A]=n` proves the host has a complete account of A's authored prefix through n, despite gaps/compaction. `Validate.clearsThrough[A]=n` instead proves that this validation was justified by trusted evidence of a closed A prefix through n; it clears only applicable same-key/same-generation invalidates in that prefix. Reset may use validated source coverage it explicitly inspected to justify `clearsThrough`, without merging that coverage into receiver `journalCoverage`.
+
+A locally authored coordinate may claim only a prefix for which the transaction had valid closed-prefix evidence: ordinarily local journal/coverage, and for controlled reset additionally its validated source snapshot. Compaction preserves the vector claim even if it removes exact covered evidence.
+
+Import does not advance the local clock/coordinate. Immediately before local authoring, allocation raises above all relevant retained/covered sequence authority. After commit, local coverage equals local clock and the local prefix never regresses.
+
+## Freshness
 
 ```text
-journalCoverage[localFingerprint] == localJournalClock
+invalidateFrontier(J,K,G)[A] = greatest invalidate of either mode by A
+hardInvalidateFrontier(J,K,G)[A] = greatest hard invalidate by A
+covers(V,I) iff V.key=I.key and V.generation=I.generation
+                 and I.sequence <= V.clearsThrough[I.author]
+freshnessEffective(V,J,K,G) iff V alone covers every invalidateFrontier member
+journalFresh iff some applicable V is freshnessEffective
+journalHard iff hard frontier is nonempty and no applicable V alone covers it
 ```
 
-The local closed prefix never regresses. A receive that authors nothing leaves the local clock/coordinate unchanged. This lazy Lamport rule permits exact reverse-catch-up coverage equality. Rollback under the same fingerprint remains unsupported.
-
-## Causal freshness
-
-```text
-invalidateFrontier(J,K,G)[A] = greatest invalidate of either mode by A for K,G
-hardInvalidateFrontier(J,K,G)[A] = greatest hard invalidate by A for K,G
-```
-
-`covers(V,I)` means V is scoped to I's K,G and its immutable `clearsInvalidates[I.author]` resolves to an invalidate by that author for K,G at sequence at least I.sequence. This is causal coverage (`V >c I`), not JournalEntryId order.
-
-```text
-freshnessEffective(V,J,K,G) iff V individually covers every invalidateFrontier member
-journalFresh(J,K,G) iff some applicable retained V is freshnessEffective
-hardnessCleared(V,J,K,G) iff V individually covers every hardInvalidateFrontier member
-journalHard(J,K,G) iff hardInvalidateFrontier is nonempty
-                         and no one applicable V is hardnessCleared
-```
-
-Partial validation contexts never combine. There is no empty-invalidate-frontier freshness exception: initial validate is the positive witness. An empty hard frontier is non-hard. Uncovered soft-only state is stale/cache-revalidatable; uncovered hard state is must-recompute; clearing hard H followed by soft S is stale-soft.
+**Validation Causality Theorem.** A validation clears only applicable invalidates within legitimately evidenced `clearsThrough` coordinates. Separate partial validations never combine. Empty hard frontier is non-hard. Initial validate is required positive freshness evidence, so freshness has no implicit empty-frontier exception. A delayed event under `clearsThrough` is already cleared; a later event above it is not.
 
 ## Projection theorems
 
-For every supported reachable graph/journal state, the precise journal determines journal-observable current NodeKey presence, generation, value provenance/modifiedAt identity, freshness authority, and hard-vs-soft stale authority. Graph ComputedValue bytes and NodeIdentifier allocation remain graph-owned.
+**Identifier Incarnation Theorem (NodeIdentifier domain).** A storage-level materialized NodeIdentifier maps to exactly one NodeKey. Removal retires it permanently; rematerializing the same NodeKey allocates a different identifier. Public `listMaterializedNodes()` exposes semantic address tuples, not these identifiers. Reset retains receiver identifiers for surviving materializations.
 
-### A. Identifier Incarnation Theorem — NodeIdentifier domain
+**NodeKey Presence Projection Theorem (NodeKey domain).** K is materialized iff `presenceHead(J,K)` is GenerationJournalEntry; it is absent iff the head is delete or undefined. History generation/delete/generation is valid. Polling history membership is not current presence.
 
-Each allocated `NodeIdentifier x` identifies one materialization incarnation. While x belongs to the storage-level current materialized identifier set (`graphState.listMaterializedNodes()` returns this `NodeIdentifier[]`), identifier lookup maps x to exactly one NodeKey. After deletion removes x, normal materialization never reuses or reintroduces x. Rematerializing the same NodeKey allocates x2 != x. The public graph API `listMaterializedNodes()` separately returns `[NodeName,BindingEnvironment]` tuples, not identifiers. Controlled reset may retain receiver x while replacing its internal journal generation.
+**Current Value Provenance Theorem (winning-generation domain).** The winning generation entry plus scoped value heads determine origin/modifiedAt identity; ComputedValue bytes remain graph state.
 
-### B. NodeKey Presence Projection Theorem — NodeKey domain
+**Freshness and Hardness Projection Theorems (precise-entry domain).** Current generation freshness uses one causal-prefix validation plus graph coherence, never numeric validate/invalidate ordering. Hard/soft authority follows the formulas above.
 
-For semantic NodeKey K, K is currently materialized iff `presenceHead(J,K)` is a GenerationJournalEntry; it is absent iff `presenceHead(J,K)` is delete or undefined, subject to graph/journal consistency. History `G1, delete, G2` is valid. Historical add/delete polling representatives do not determine current presence by membership.
+**Polling Projection Theorem (PossibleNodeChange domain).** Polling hides identifiers, generations, modes, and causal contexts; it preserves action obligations but cannot reconstruct current graph state.
 
-### C. Current-Generation Value Provenance Theorem — winning journal-generation domain
-
-For materialized K, `G=generation(J,K)` is the presence head ID. The generation entry G plus scoped edit value heads determine `origin` and wall-time-first `ValueRevision`; actual ComputedValue bytes remain graph state. A reset fence with null public action remains an initial value/provenance event.
-
-### D. Current-Generation Freshness Projection Theorem — precise JournalEntry domain
-
-K is fresh iff some validation scoped to K,G is freshnessEffective and ordinary graph coherence holds. `>c` is immutable context coverage, never numeric ID comparison. A high-ID validation which did not observe a delayed invalidate cannot clear it.
-
-### E. Hard-Staleness Projection Theorem — precise JournalEntry domain
-
-K,G is hard-stale exactly when `journalHard`; otherwise an uncovered all-mode frontier is stale-soft. Empty hard frontier is non-hard.
-
-### F. Polling No-False-Negatives Theorem — visible PossibleNodeChange domain
-
-Polling preserves per-author/non-null-public-action obligations but deliberately hides NodeIdentifier, generation, mode, and causal context. Its visible array cannot reconstruct current presence or freshness; those stronger theorems are over the precise journal.
-
-## Atomicity
-
-Graph, journal, coverage, allocator, identifier/provenance metadata, and schema version install atomically. A crash exposes the complete before-state or after-state.
+Graph, journal, vectors, local clock, identifier/proof state, and timestamps install atomically.

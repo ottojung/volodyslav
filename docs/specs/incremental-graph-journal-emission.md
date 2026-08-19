@@ -1,15 +1,15 @@
 # IncrementalGraph journal emission
 
-Generation creation and freshness assertion are orthogonal but atomic:
+Ordinary exact classification:
 
-| semantic decision | generation publicAction | exactly one initial freshness entry |
-|---|---|---|
-| absent -> materialized | add | validate / soft invalidate / hard invalidate |
-| present unequal-value replacement requiring new generation | edit | validate / soft invalidate / hard invalidate |
-| equal-value internal authority fence | null | validate / soft invalidate / hard invalidate |
+* absent→present: GenerationJournalEntry(add) at value modifiedAt plus exactly one later initial validate/soft-invalidate/hard-invalidate;
+* present→absent: delete;
+* present X→present Y with `!isEqual(X,Y)`: scoped edit;
+* equal present value: no generation/edit;
+* fresh establishment/re-establishment: validate with legitimately evidenced `clearsThrough`;
+* fresh→stale reusable: soft invalidate;
+* newly unrepresented must-recompute: hard invalidate.
 
-The generation entry allocates first; its scoped freshness entry allocates later. Initial validate means positively established fresh, not merely stale-to-fresh. Initial invalidate is a precise negative assertion. Ordinary same-generation unequal-value change uses scoped edit. Present-to-absent uses delete.
+Controlled reset may author a stabilizing validation while already visibly fresh because it genuinely observes both snapshots. This is a conservative public validate, not fictitious combination. For soft target it may atomically author joint validation followed by a new soft invalidate. Imported hard barriers are enforced silently.
 
-Ordinary pull first materialization emits generation(add)+validate because its computed result is fresh. `Unchanged`, representation/identifier changes, carrying imports, and enforcing imported hard barriers emit no value action. Later propagated stale with proofs emits soft invalidate; newly unrepresented must-recompute emits hard invalidate; re-establishing fresh emits validate with the complete observed all-mode frontier. Partial contexts never combine.
-
-Every transaction validates the canonical semantic address and atomically commits graph, events, lazy-raised allocator, coverage, identifiers, and references.
+All event occurrence times follow the timestamp table in the types specification. Allocation is lazy and every transaction atomically commits graph, journal, coverage, clock, identifiers, timestamps, and proofs.

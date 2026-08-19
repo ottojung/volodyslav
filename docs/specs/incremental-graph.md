@@ -544,6 +544,7 @@ interface IncrementalGraph {
   previous stored value. Synchronization can instead replace it with the exact
   existing `modifiedAt` of the selected source materialization.
 * Synchronization may replace a local node value and timestamp with another replica's existing value-version pair (the `take` decision). This copies the existing timestamp; it does not mint a new one. Synchronization MUST NOT replace a timestamp with the merge execution time or any other manufactured value.
+* Controlled reset is distinct: absent-to-present and unequal present-to-present values set `modifiedAt` to reset transaction time τ; equal surviving values preserve receiver `modifiedAt`; freshness/proof-only reset changes do not modify it. A repeated identical reset is timestamp-silent.
 * `modifiedAt` MUST NOT change when:
   * a node becomes `potentially-outdated` (invalidation);
   * invalidation propagates to dependent nodes;

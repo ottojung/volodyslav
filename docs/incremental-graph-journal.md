@@ -1,6 +1,8 @@
 # IncrementalGraph journal
 
-IncrementalGraph stores one replicated journal of immutable precise events. Its identity is `(sequence,author)`; events carry self-contained semantic addresses. A positive GenerationJournalEntry establishes presence/value provenance independently of its exact optional public add/edit action, and every new generation has one explicit initial freshness assertion. Host coverage and consumer progress are independent version vectors. Invalidation mode distinguishes soft stale transitions from hard must-recompute barriers.
+IncrementalGraph stores one replicated journal of immutable precise events. Its identity is `(sequence,author)`; events carry self-contained semantic addresses. A positive GenerationJournalEntry records an actual absent-to-present add and establishes presence/value provenance, and every new generation has one explicit initial freshness assertion. Host coverage and consumer progress are independent version vectors. Invalidation mode distinguishes soft stale transitions from hard must-recompute barriers.
+
+Observed semantic reset copies a semantic projection of causally enriched replicated state. To keep that projection stable under later union, reset records causal-prefix evidence for the history it actually consumed; unseen/concurrent history remains live.
 
 Normative details are in the [types](specs/incremental-graph-journal-types.md), [API](specs/incremental-graph-journal-api.md), [emission](specs/incremental-graph-journal-emission.md), [compaction](specs/incremental-graph-journal-compaction.md), [journal synchronization](specs/incremental-graph-journal-sync.md), [graph synchronization](specs/incremental-graph-synchronization.md), [migration](specs/incremental-graph-journal-migrations.md), and [lifecycle](specs/database-lifecycle.md) specifications.
 

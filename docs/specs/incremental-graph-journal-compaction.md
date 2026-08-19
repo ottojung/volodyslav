@@ -1,42 +1,27 @@
 # IncrementalGraph journal compaction
 
-For supported J, compaction is the exact canonical survivor algorithm below. `greatest` uses sequence per author or JournalEntryId as stated.
+For supported J, canonical seeds are exactly:
 
 ```text
-N = { greatest E per (author,key,publicAction(E))
-      where publicAction(E) != null }
-P = { presenceHead(J,K) | defined }
-
-For each K whose presenceHead is generation G:
-  VH = { valueHead(J,K,G,A) | defined per A }
-  CE = { candidate value heads sharing an exact time }
-  IF = { invalidateFrontier(J,K,G)[A] | defined per A }
-  HF = { hardInvalidateFrontier(J,K,G)[A] | defined per A }
-  VHeads = { greatest validation per (author,K,G) }
+N  = greatest E per (author,key,publicAction)             # polling, all actions non-null
+P  = presenceHead per key
+VH = winning-generation valueHead per author
+CE = exact equal-time candidate value heads
+UF = all-mode frontier members not covered by any one retained applicable validation
+UH = hard-frontier members not covered by any one retained applicable validation
+VV = greatest validation per (author,key,winning generation)
 ```
 
-Let Seeds be exactly the union of N, P, VH, CE, IF, HF, and VHeads. Compute the least reference closure R by repeatedly adding (a) the exact GenerationJournalEntry named by every retained scoped entry, (b) each retained generation’s exact `initialFreshness` event, and (c) every exact invalidate named by retained validation contexts. Then `compact(J)=R`; every entry outside R is discarded. No implementation-selected superset is permitted.
+Start with `N∪P∪VH∪CE∪UF∪UH∪VV`; take the least closure adding each retained scoped event's exact GenerationJournalEntry and every retained generation's mandatory initial-freshness event. `compact(J)` is exactly this closure and discards everything else. Causal-prefix validations need no exact invalidate references. Their legitimacy survives deletion because the closed-prefix proof is the immutable vector plus durable lifecycle validity, distinct from host coverage.
 
-A null-public-action generation fence survives as P/VH or reference authority, never as a polling coordinate. Every retained scoped event retains its exact generation. The distinct IF/HF seeds retain later soft notification maximum and older outstanding hard authority when both matter. Generation initial freshness witnesses survive explicitly through generation reference closure, even when a later same-author freshness event is the polling/frontier head.
+A delayed invalidate under retained `clearsThrough` remains causally cleared, although N retains it if needed as a polling representative. An event above the prefix remains unresolved. Public maxima, not hidden state, preserve action no-false-negatives.
 
-## Canonical Compaction/Future-Union Theorem
-
-Domain: supported precise journals. Dominated polling/value/frontier heads cannot regain authority; losing generations remain presence-inapplicable; validation contexts are same-author monotone; exact reference closure is retained. Therefore:
+**Canonical Compaction/Future-Union Theorem.** On supported reachable histories, causal-prefix dominance is stable under delayed events below the prefix, while events above it enter UF/UH. Value/presence heads and validation knowledge are monotone. Therefore:
 
 ```text
 compact(compact(A) union B) = compact(A union B)
 ```
 
-Compaction is idempotent and `merge(A,B)=compact(A union B)` is commutative, associative, and idempotent. Equal logical input uniquely determines byte-identical physical survivors, including uncompacted-source/compact-receiver/reverse receive.
+Merge is ACI and physical survivors are uniquely determined. Generation initial freshness, reset validations, polling maxima, equal-time provenance, and delayed covered invalidates obey the same equality.
 
-Old exact witnesses may reappear from delayed B reference closure without cursor breakage because their immutable author sequences lie in already-closed prefixes.
-
-## Storage
-
-For n represented semantic keys, r represented authors in evidence or coverage, and five public actions, notification/value/frontier heads are O(nr), causal validation/reference evidence O(nr²), and coverage O(r). Bounded self-contained addresses preserve the factor. Globally:
-
-```text
-compact journal + coverage = O(nr² + r)
-```
-
-For n>0,r>=1 this is O(nr²); for n=0 journal is empty while coverage may be O(r). Application cursor tokens are not database storage.
+For n semantic keys and r durable authors, polling/value/frontier evidence is O(nr); validation vectors/heads are O(nr²); coverage is O(r). Total is globally `O(nr²+r)`, reducing to O(nr²) for n>0,r>=1; n=0 may retain O(r) vector metadata with empty journal.

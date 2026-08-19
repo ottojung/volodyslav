@@ -1,17 +1,5 @@
 # IncrementalGraph journal migration
 
-Migration atomically transforms graph, the one journal, coverage, lazy allocator, fingerprint, schema, identifiers, and metadata. It validates the supported-state boundary.
+Migration uses the one journal and atomic semantic classification. New absent NodeKey materialization allocates a fresh identifier and authors generation(add)+exactly one initial validate/soft/hard assertion. Present unequal value uses scoped edit, not a new generation. Equal value creates no value event. Delete retires the identifier.
 
-Newly materializing an absent NodeKey allocates a fresh NodeIdentifier and authors:
-
-```text
-fresh:               generation(publicAction=add) + validate
-stale reusable:      generation(publicAction=add) + soft invalidate
-must recompute:      generation(publicAction=add) + hard invalidate
-```
-
-A present unequal-value result uses exact public edit (scoped edit unless a new authority generation is required; then generation(publicAction=edit)) and every new generation receives one initial freshness assertion. An internal authority boundary without presence/value change uses generation(publicAction=null), never fake add. Removal emits delete and retires the NodeIdentifier.
-
-Later soft propagation, unrepresented hardening, and revalidation follow ordinary causal rules. Existing uncovered hard authority is carried silently. Coverage never regresses; import alone does not raise the local clock. Local authoring lazily raises above all observed sequence history and atomically closes the local coverage coordinate.
-
-Absent-state self-restoration restores this host's exact graph, journal, coverage, local clock, fingerprint, and identifier state; rollback under the same fingerprint is unsupported.
+Validation uses legitimate local closed-prefix evidence in `clearsThrough`. Propagated stale with reusable proof is soft; unrepresented must-recompute is hard; existing uncovered hard authority is carried. Event times and lazy allocation follow the types specification. Migration validates canonical addresses, generation references, timestamp domains, causal vectors, and graph/proof consistency before atomic cutover.

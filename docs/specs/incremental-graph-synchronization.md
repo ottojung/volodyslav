@@ -147,36 +147,11 @@ delete barrier.
 
 For final winning generation G, `invalidateFrontier` contains every author's greatest invalidate of either mode, while `hardInvalidateFrontier` contains every author's greatest hard invalidate. A validation permits journal freshness only when it individually covers the complete all-mode frontier. It clears must-recompute authority when it individually covers the hard frontier. Numeric order is not observation and contexts from separate validations MUST NOT be combined. Freshness additionally requires ordinary exact graph coherence. Other-generation contexts have no authority; an empty hard frontier is non-hard without any validation.
 
-## Transient support
+## Transient semantic support
 
-For derived node `D` and source snapshot `S`, let its distinct direct semantic
-inputs be `I1...Ik`. Duplicate input positions collapse exactly as existing
-`inputEdges`/`valid` semantics require.
+For derived D and source snapshot S, collapse duplicate direct input positions according to graph semantics. `SupportS(D)` is known only when S actually has every required `valid[I].has(D)` edge. It is transportable only when schema/bindings/direct-input structure match, every source input value is `isEqual` to the final input value, and S's retained D output is `isEqual` to the final retained output. Equality alone never creates support.
 
-```text
-SupportS(D) is known iff S.valid[Ii].has(D) for every distinct Ii
-SupportS(D) = [ValueRevisionS(I1,G1), ..., ValueRevisionS(Ik,Gk)]
-
-coherentS(D) iff SupportS(D) is known &&
-                   SupportS(D) == FinalInputRevisions(D)
-```
-
-The vector is derived for the operation and never persisted. Missing validity
-makes support unknown. Deep value equality does not create proof. Because input
-revisions identify originating journal events rather than source containers, a
-value copied through another host has the same support identity.
-
-`SupportS(D)` is evidence derivable from S about D's currently retained cached
-value. It is not a record of every input revision D has incorporated, historical
-computation provenance, proof that no earlier coherent history existed when
-support is unknown, or a complete history of `Unchanged` revalidations. Unknown
-support means only that this synchronization cannot establish coherence from
-the evidence represented by this specification; it does not prove that D was
-historically incoherent.
-
-`Unchanged` preserves D's add/edit provenance. Normal recomputation may restore
-its current `valid` edges against newer inputs, so transient support changes
-without any metadata or new edit on D.
+This relies on the extensional computor contract in the journal-sync specification. Exact input ValueRevision equality is not required: equal values at different provenance revisions may carry an existing proof. `oldValue`, Unchanged, multi-input, duplicate-input, and hidden-nondeterminism boundaries follow that contract.
 
 ## Symmetric pairwise graph merge
 
@@ -198,7 +173,7 @@ that generation equals G. This applies to concurrent adds as well as adds around
 deletes. Value ordering and coherence selection occur only inside G; they cannot
 select bytes from a losing presence generation.
 
-Only add G and edits explicitly scoped to G participate in G's value heads.
+Only GenerationJournalEntry G and edits explicitly scoped to G participate in G's value heads.
 Losing-generation edits are discarded before wall-time, author, sequence, or
 coherence comparison, even when one is the retained edit notification maximum.
 
@@ -220,8 +195,7 @@ For a zero-input node choose the candidate with greatest
 ### 3. Derived coherence
 
 Direct inputs have already reached their final selections. Classify each
-candidate as coherent or unsupported using its own source proof and the exact
-final input revisions. If coherent candidates exist, choose the coherent
+candidate as coherent or unsupported using its own existing source proof plus structural and `isEqual` semantic input/output checks against final values. If coherent candidates exist, choose the coherent
 candidate with greatest `ValueRevision`. A newer-timestamp unsupported candidate
 never suppresses a coherent one.
 
@@ -254,7 +228,7 @@ it without authoring another.
 
 ### 5. Validity reconstruction
 
-Never union `valid`. Rebuild incoming validity edges only from coherent source proof against exact final direct-input revisions. Structural dependency edges come from the schema.
+Never union `valid`. Rebuild incoming validity edges only by transporting an existing source proof whose structure and semantic input/output values match the final graph under `isEqual`. Structural dependency edges come from the schema.
 
 Determine hard state first. If `hardInvalidateFrontier(N,G)` is nonempty and no single validation is `hardnessCleared`, N is hard-stale and receives no incoming proofs. If the hard frontier is empty or individually cleared but no validation is `freshnessEffective` because a later soft invalidate remains uncovered, N is stale-soft: coherent reusable proofs may remain or be transported, and cache-only revalidation remains possible. A freshness-effective validation can permit fresh state only with ordinary exact graph coherence.
 
@@ -309,7 +283,7 @@ compaction need not preserve discarded history solely to make them possible.
 
 Before journal join or conflict planning, validate each source against its own
 pre-merge journal. Every source materialization MUST resolve its source presence
-generation, a current generation-scoped value event matching its `modifiedAt`,
+generation, a current value origin (the GenerationJournalEntry itself or a scoped edit) matching its `modifiedAt`,
 and a `ValueRevision` whose event belongs to that generation. Its source
 freshness and validity must agree with the effective-validation barrier for N,G
 and ordinary graph invariants. Failure is corrupt source state and rejects that
@@ -346,8 +320,7 @@ Before T can become active, validate all of the following:
 4. every validity edge is a structural dependency edge in the final graph;
 5. every fresh node has a value, all distinct direct inputs materialized and
    fresh, and a validity flag from every direct input;
-6. every retained validity proof passed the exact final-`ValueRevision` support
-   check;
+6. every retained validity proof passed extensional semantic proof transport against all final input/output values;
 7. no losing or deleted identifier remains in any graph sublevel;
 8. every materialized value resolves to the canonical current journal event;
 9. presence and generation-scoped freshness agree with the installed journal
@@ -373,7 +346,7 @@ and failures are reported together. This sequential lifecycle does not imply
 multi-source associativity, order independence, or all-to-all communication,
 and it requires no repository, branch, or other transport-specific container.
 
-Controlled reset is not this merge algorithm. Existing-live reset retains receiver journal and coverage and does not join either source structure. It authors receiver-local events for reset decisions and establishes a receiver-owned presence generation above relevant consumed source authority even for an equal surviving value when the current receiver generation does not already dominate. Full reset lifecycle and timestamp rules are specified in the lifecycle specification.
+Controlled reset is not this merge algorithm. Observed semantic reset retains receiver journal/coverage, does not import source history, constructs the source SemanticGraph atomically, and records causal-prefix stabilization for consumed history. Equal present values create no generation/value event; unequal present values use a scoped edit at reset time. Full reset and absorption rules are in the lifecycle specification.
 
 ## Required traces
 
@@ -572,12 +545,11 @@ barrier. Directionally fair connected gossip propagates its bytes along paths.
 
 Assume every direct input of N has stabilized. Every N candidate now has a fixed
 classification: coherent, unsupported, or absent. If a coherent candidate
-exists, the greatest coherent revision propagates along connected paths because
-support names intrinsic journal-backed input revisions, not the carrier. If none
+exists, the greatest coherent revision propagates along connected paths because support is existing extensional proof over equal semantic input/output values, not carrier or revision identity. If none
 exists, the deterministic one-input stale fallback propagates; incompatible
 multi-input candidates collapse to absence/delete, and unsupported-plus-absent
 cannot re-expand beyond the stabilized delete frontier. Freshness follows the
-common frontier and exact coherent proof rule. Thus N stabilizes. Induction
+common frontier and extensional coherent-proof rule. Thus N stabilizes. Induction
 through the finite DAG establishes equivalent values, presence, freshness,
 timestamps, identifiers up to semantic lookup, and validity relations at every
 host. Settled idempotence then makes every further synchronization a graph no-op.
