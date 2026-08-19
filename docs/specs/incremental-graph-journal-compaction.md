@@ -7,12 +7,13 @@ N  = greatest E per (author,key,publicAction)             # polling, all actions
 P  = presenceHead per key
 VH = winning-generation valueHead per author
 CE = exact equal-time candidate value heads
-IF = complete winning-generation invalidateFrontier (all modes)
-HF = complete winning-generation hardInvalidateFrontier
+IF = complete applicable invalidateFrontier for every retained winning-generation value origin
+HF = complete applicable hardInvalidateFrontier for every retained winning-generation value origin
 VV = greatest validation per (author,key,winning generation)
+RC = greatest reset correspondence per (key,retained receiver value origin,consumed source author)
 ```
 
-Start with `N∪P∪VH∪CE∪IF∪HF∪VV`; take the least closure adding each retained scoped event's exact GenerationJournalEntry and every retained generation's mandatory initial-freshness event. `compact(J)` is exactly this closure and discards everything else. `HF` may overlap `IF`: all-mode per-author maxima can be later soft invalidates while older hard per-author maxima remain causal must-recompute authority.
+Start with `N∪P∪VH∪CE∪IF∪HF∪VV∪RC`; take the least closure adding each retained scoped event's exact GenerationJournalEntry, every retained value-specific assertion's exact value-origin event, and every retained generation's mandatory initial-freshness event. `compact(J)` is exactly this closure and discards everything else. `HF` may overlap `IF`: all-mode per-author maxima can be later soft invalidates while older hard per-author maxima remain causal must-recompute authority. Value-specific barriers for losing retained heads remain polling/candidate evidence but do not enter another origin's applicable frontier.
 
 Frontiers are retained as whole sets, never reduced member-by-member against different validations. Thus `freshnessEffective` and `hardnessCleared` continue to require one actual validation covering the complete applicable frontier; compaction cannot combine partial validations. A delayed non-frontier invalidate under retained `clearsThrough` remains causally cleared, while an event above the prefix can become a new frontier member. Public maxima preserve action no-false-negatives.
 
@@ -24,4 +25,4 @@ compact(compact(A) union B) = compact(A union B)
 
 Merge is ACI and physical survivors are uniquely determined. Generation initial freshness, reset validations, polling maxima, equal-time provenance, and delayed covered invalidates obey the same equality.
 
-For n semantic keys and r durable authors, polling/value/frontier evidence is O(nr); validation vectors/heads are O(nr²); coverage is O(r). Total is globally `O(nr²+r)`, reducing to O(nr²) for n>0,r>=1; n=0 may retain O(r) vector metadata with empty journal.
+For n semantic keys and r durable authors, polling/value evidence is O(nr); applicable frontiers across O(nr) retained value heads and reset-correspondence coordinates are O(nr²); validation vectors/heads are O(nr²); coverage is O(r). Total remains globally `O(nr²+r)`, reducing to O(nr²) for n>0,r>=1; n=0 may retain O(r) vector metadata with empty journal.

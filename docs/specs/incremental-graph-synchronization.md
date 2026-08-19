@@ -199,6 +199,8 @@ candidate as coherent or unsupported using its own existing source proof plus st
 candidate with greatest `ValueRevision`. A newer-timestamp unsupported candidate
 never suppresses a coherent one.
 
+A retained reset correspondence is considered only after ordinary coherence fails. It may retain the receiver value origin named by the certificate when the opposite candidate has exactly the certified consumed source generation/origin. This is authoritative observed-copy evidence for that pair, including a hard multi-input cache or different reset-local revision; it is not generalized to absence, unrelated revisions, or events above the consumed source snapshot.
+
 Thus “`modifiedAt` is primary” means primary inside `ValueRevision` comparison
 among candidates eligible at that selection stage. Roots order admissible
 candidates directly by `ValueRevision`. Derived nodes resolve presence and
@@ -232,7 +234,11 @@ Never union `valid`. Rebuild incoming validity edges only by transporting an exi
 
 Determine hard state first. If `hardInvalidateFrontier(N,G)` is nonempty and no single validation is `hardnessCleared`, N is hard-stale and receives no incoming proofs. If the hard frontier is empty or individually cleared but no validation is `freshnessEffective` because a later soft invalidate remains uncovered, N is stale-soft: coherent reusable proofs may remain or be transported, and cache-only revalidation remains possible. A freshness-effective validation can permit fresh state only with ordinary exact graph coherence.
 
+Both frontiers are evaluated after value selection. A generation-wide invalidate applies to every selected origin. A value-specific invalidate applies only when its named `valueOrigin` is the selected origin. Consequently a post-edit barrier for losing Y cannot harden/stale coherent selected X, while an explicit concurrent generation-wide invalidate still applies to X. Validation causal coverage is unchanged and one validation must cover the complete applicable frontier.
+
 Operationally, a derived stale-soft materialization MUST retain the complete reusable incoming proof required for cache-only revalidation. If reconciliation cannot retain or transport that proof, the result is must-recompute and requires an uncovered hard barrier. A zero-input stale materialization has no incoming proof to reuse and therefore cannot be stale-soft in the supported model; its negative freshness assertion is hard.
+
+Process freshness in schema topological order. A derived node is fresh only when its own applicable journal authority is fresh, it retains a coherent proof, and every final distinct direct input is fresh. If its own authority would be fresh but an input is stale, retain the coherent proof and author one value-specific soft invalidate unless an applicable soft/hard assertion already represents that state. The resulting stale-soft node then propagates the same test to its dependents. Without a coherent proof, use the existing hardening/deletion rules.
 
 ### 6. Freshness and synchronization authoring
 
@@ -270,7 +276,7 @@ Before planning, synchronization MUST reject atomically:
    covered by its source lookup;
 6. retained journal entries which cannot be structurally interpreted, including
    edit/invalidate/validate without a
-   generation resolving to a same-key GenerationJournalEntry witness; a generation whose named initial freshness event differs in author/key/generation, is not validate/invalidate, or does not have a greater sequence; or malformed/noncanonical `clearsThrough` coordinates;
+   generation resolving to a same-key GenerationJournalEntry witness; a generation whose named initial freshness event differs in author/key/generation, is not validate/invalidate, or does not have a greater sequence; a value-specific assertion whose local value origin does not resolve to the same key/generation; or malformed/noncanonical `clearsThrough`/reset-correspondence coordinates;
 7. the local coverage coordinate differs from `localJournalClock`, or local authoring failed to allocate above transaction-observed history;
 8. one JournalEntryId naming different immutable contents;
 9. journal coverage below a surviving entry sequence; or

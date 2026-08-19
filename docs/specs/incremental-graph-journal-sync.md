@@ -17,6 +17,8 @@ Presence selection precedes value. A GenerationJournalEntry is the generation an
 
 Freshness uses `clearsThrough`, `covers`, both frontiers, `freshnessEffective`, and `journalHard` exactly as defined in the types specification. Causal vectors never combine across validations.
 
+Frontiers are relative to the final selected value origin: generation-wide invalidates always apply, while value-specific cache-status invalidates apply only to their named origin. A reset correspondence can retain an otherwise unsupported receiver cache only against the exact source generation/origin that reset semantically consumed; it never authorizes unrelated or later source revisions.
+
 ## Extensional proof transport
 
 A validity edge is evidence that a retained output is valid for semantic input values, not permanently tied to their container/provenance IDs. A source proof may be transported/re-lowered only when:
@@ -39,7 +41,7 @@ J0=compact(JR union JS)
 C0=componentwiseMax(CR,CS)
 ```
 
-Import alone leaves R's local clock unchanged. Reconcile presence/value deterministically, rebuild proofs by extensional transport, then derive causal freshness. An imported uncovered hard barrier is sufficient and never echoed. Receiver-local delete/hardening is authored only for a genuinely new decision not represented by imported authority. Copying a generation/value never authors a receiver generation/edit.
+Import alone leaves R's local clock unchanged. Reconcile presence/value deterministically, rebuild proofs by extensional transport, then derive causal freshness topologically. Fresh requires fresh direct inputs; stale inputs propagate a value-specific soft invalidate while a coherent reusable proof remains. An imported uncovered applicable hard barrier is sufficient and never echoed. Receiver-local delete/hardening is authored only for a genuinely new decision not represented by imported authority. Copying a generation/value never authors a receiver generation/edit.
 
 Before genuine local authoring, lazily allocate above all observed retained/covered authority; then update only receiver coverage. Install atomically.
 

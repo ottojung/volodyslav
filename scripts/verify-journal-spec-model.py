@@ -37,10 +37,11 @@ assert all(timestamp(int(v["value"]))==v["valid"] for v in TV)
 class E:
  sequence:int;author:str;key:str;time:int;name:str;bindings:tuple;kind:str
  generation:tuple|None=None;initial:tuple|None=None;mode:str|None=None;clears:tuple=();value:str|None=None
+ target:tuple|None=None;corresponds:tuple|None=None
  @property
  def id(self):return(self.sequence,self.author)
 def gen(q,a,address,t,val,initial):k,n,b=address;return E(q,a,k,t,n,b,"add",initial=initial,value=val)
-def ev(q,a,address,t,kind,g,mode=None,clears=(),value=None):k,n,b=address;return E(q,a,k,t,n,b,kind,g,mode=mode,clears=tuple(sorted(clears)),value=value)
+def ev(q,a,address,t,kind,g,mode=None,clears=(),value=None,target=None,corresponds=None):k,n,b=address;return E(q,a,k,t,n,b,kind,g,mode=mode,clears=tuple(sorted(clears)),value=value,target=target,corresponds=corresponds)
 def dele(q,a,address,t):k,n,b=address;return E(q,a,k,t,n,b,"delete")
 def valid(es):
  es=tuple(es);d={}
@@ -52,7 +53,7 @@ def valid(es):
    if e.key!=prodkey(e.name,e.bindings):return False
   except ValueError:return False
   if e.kind=="add":
-   if e.generation or not e.initial or e.mode or e.clears:return False
+   if e.generation or not e.initial or e.mode or e.clears or e.target or e.corresponds:return False
   elif e.kind=="delete":
    if e.generation or e.initial or e.mode or e.clears:return False
   elif e.kind in ("edit","invalidate","validate"):
@@ -60,12 +61,17 @@ def valid(es):
    if e.kind=="invalidate" and e.mode not in ("soft","hard"):return False
    if e.kind!="invalidate" and e.mode:return False
    if e.kind!="validate" and e.clears:return False
+   if e.target and e.kind not in ("invalidate","validate"):return False
+   if e.corresponds and (e.kind not in ("invalidate","validate")or not e.target):return False
    if tuple(sorted(e.clears))!=e.clears or len({a for a,_ in e.clears})!=len(e.clears) or any(a not in AUTH or not uint(q) for a,q in e.clears):return False
   else:return False
  for e in es:
   if e.generation:
    g=d.get(e.generation)
    if not g or g.kind!="add" or g.key!=e.key:return False
+   if e.target:
+    t=d.get(e.target)
+    if not t or t.key!=e.key or not((t.kind=="add"and t.id==e.generation)or(t.kind=="edit"and t.generation==e.generation)):return False
   if e.kind=="add":
    f=d.get(e.initial)
    if not f or f.kind not in ("validate","invalidate") or f.author!=e.author or f.sequence<=e.sequence or f.key!=e.key or f.generation!=e.id:return False
@@ -86,17 +92,17 @@ def vheads(es,k,g):
    if e.author not in o or o[e.author].sequence<e.sequence:o[e.author]=e
  return frozenset(o.values())
 def origin(es,k,g,t):return max((e for e in vheads(es,k,g) if e.time==t),key=lambda e:e.id)
-def front(es,k,g,hard=False):
+def front(es,k,g,hard=False,value_origin=None):
  o={}
  for e in es:
-  if e.kind=="invalidate" and e.key==k and e.generation==g and(not hard or e.mode=="hard"):
+  if e.kind=="invalidate" and e.key==k and e.generation==g and(not hard or e.mode=="hard")and(value_origin is None or e.target is None or e.target==value_origin):
    if e.author not in o or o[e.author].sequence<e.sequence:o[e.author]=e
  return frozenset(o.values())
 def covers(v,i):return v.kind=="validate" and v.key==i.key and v.generation==i.generation and i.sequence<=dict(v.clears).get(i.author,0)
-def eff(v,es,k,g,hard=False):return v.key==k and v.generation==g and all(covers(v,i) for i in front(es,k,g,hard))
-def fresh(es,k,g):return any(eff(v,es,k,g) for v in es if v.kind=="validate")
-def hard(es,k,g):
- f=front(es,k,g,True);return bool(f)and not any(eff(v,es,k,g,True) for v in es if v.kind=="validate")
+def eff(v,es,k,g,hard=False,value_origin=None):return v.key==k and v.generation==g and all(covers(v,i) for i in front(es,k,g,hard,value_origin))
+def fresh(es,k,g,value_origin=None):return any(eff(v,es,k,g,False,value_origin) for v in es if v.kind=="validate")
+def hard(es,k,g,value_origin=None):
+ f=front(es,k,g,True,value_origin);return bool(f)and not any(eff(v,es,k,g,True,value_origin) for v in es if v.kind=="validate")
 def nmax(es):
  o={}
  for e in es:
@@ -110,7 +116,13 @@ def compact(es):
   if p:keep.add(p)
   g=p.id if p and p.kind=="add" else None
   if not g:continue
-  keep.update(vheads(es,k,g))
+  heads=vheads(es,k,g);keep.update(heads)
+  headids={h.id for h in heads};certs={}
+  for e in es:
+   if e.key==k and e.target in headids and e.corresponds:
+    c=(e.target,e.corresponds[1][1])
+    if c not in certs or certs[c].sequence<e.sequence:certs[c]=e
+  keep.update(certs.values())
   vals={}
   for v in es:
    if v.kind=="validate" and v.key==k and v.generation==g:
@@ -118,12 +130,13 @@ def compact(es):
   keep.update(vals.values())
   # Preserve each complete frontier. Removing members against different partial
   # validations would manufacture a combined validation that never occurred.
-  keep.update(front(es,k,g));keep.update(front(es,k,g,True))
+  for h in heads:
+   keep.update(front(es,k,g,False,h.id));keep.update(front(es,k,g,True,h.id))
  changed=True
  while changed:
   changed=False
   for e in tuple(keep):
-   refs=([e.generation]if e.generation else[])+([e.initial]if e.kind=="add"else[])
+   refs=([e.generation]if e.generation else[])+([e.initial]if e.kind=="add"else[])+([e.target]if e.target else[])
    for x in refs:
     if by[x]not in keep:keep.add(by[x]);changed=True
  out=frozenset(keep);assert valid(out);return out
@@ -143,7 +156,8 @@ def journal_projection(es):
   p=ph(es,k);g=generation(es,k);values=()
   if g:
    heads=vheads(es,k,g);values=tuple(sorted((t,origin(es,k,g,t).id)for t in {e.time for e in heads}))
-  out.append((k,None if not p else(p.kind,p.id),g,values,False if not g else fresh(es,k,g),False if not g else hard(es,k,g)))
+  states=()if not g else tuple(sorted((h.id,fresh(es,k,g,h.id),hard(es,k,g,h.id))for h in vheads(es,k,g)))
+  out.append((k,None if not p else(p.kind,p.id),g,values,states))
  return tuple(out),query(es)
 @dataclass(frozen=True)
 class M:
@@ -166,7 +180,7 @@ def carry_prefix(j,author,key,g,new=()):
  return tuple(sorted(d.items()))
 def add_events(r,events):
  j=merge(r.journal,events);q=max(e.sequence for e in events);return replace(r,clock=q,coverage=vmax(r.coverage,((r.fp,q),)),journal=j)
-def classify(j,k,g):return"hard"if hard(j,k,g)else("fresh"if fresh(j,k,g)else"soft")
+def classify(j,k,g,value_origin=None):return"hard"if hard(j,k,g,value_origin)else("fresh"if fresh(j,k,g,value_origin)else"soft")
 def revision(m):return(m.modified,m.origin[0],m.origin[1])
 def greatest_candidate(candidates):
  top=max(revision(m)for m in candidates);return min((m for m in candidates if revision(m)==top),key=lambda m:m.identifier)
@@ -182,6 +196,8 @@ def proof_coherent(m,deps,final_inputs):
  if not m.proof:return False
  evidence=dict(m.inputs)
  return set(evidence)==set(deps)and all(is_equal(evidence[d],final_inputs[d])for d in deps)
+def reset_corresponds(j,receiver,source):
+ return any(e.target==receiver.origin and e.corresponds==(source.generation,source.origin)for e in j if e.kind in("validate","invalidate"))
 def choose_value(j,k,candidates,deps=(),final_inputs=None):
  p=ph(j,k)
  if not p or p.kind=="delete":return None
@@ -190,6 +206,8 @@ def choose_value(j,k,candidates,deps=(),final_inputs=None):
  if not deps:return(g,greatest_candidate(usable),False)
  coherent=[m for m in usable if proof_coherent(m,deps,final_inputs)]
  if coherent:return(g,greatest_candidate(coherent),True)
+ certified=[m for m in usable for other in candidates if other and other is not m and reset_corresponds(j,m,other)]
+ if certified:return(g,greatest_candidate(certified),False)
  if len(deps)==1:return(g,greatest_candidate(usable),False)
  if len(usable)==2 and revision(usable[0])==revision(usable[1]):return(g,min(usable,key=lambda m:m.identifier),False)
  return(g,None,False)
@@ -207,12 +225,12 @@ def validate_replica(r,schema=SCHEMA):
   try:canonical=origin(r.journal,k,m.generation,m.modified)
   except (ValueError,KeyError):return False
   if not candidates or canonical.id!=m.origin or candidates[0].time!=m.modified or not is_equal(candidates[0].value,m.value):return False
-  if classify(r.journal,k,m.generation)!=m.state:return False
+  if classify(r.journal,k,m.generation,m.origin)!=m.state:return False
   deps=tuple(dict.fromkeys(schema[k]))
   if any(d not in nd for d in deps):return False
   if m.state=="hard"and m.proof:return False
   if m.state=="soft"and (not deps or not m.proof):return False
-  if m.state=="fresh"and deps and not m.proof:return False
+  if m.state=="fresh"and deps and (not m.proof or any(nd[d].state!="fresh"for d in deps)):return False
   if m.proof and deps:
    evidence=dict(m.inputs)
    if set(evidence)!=set(deps) or any(not is_equal(evidence[d],nd[d].value)for d in deps):return False
@@ -259,12 +277,15 @@ def receive(r,s,tau=None,schema=SCHEMA):
     q=alloc(replace(r,journal=j,coverage=cov),1)[0];d=dele(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau);authored.append(d);j=merge(j,(d,));cov=vmax(cov,((r.fp,q),))
    continue
   g,best,proof=selected
-  st=classify(j,k,g)
+  st=classify(j,k,g,best.origin);inputs_fresh=all(nodes[d].state=="fresh"for d in deps)
   if st=="hard":proof=False
+  if st=="fresh"and deps and proof and not inputs_fresh:
+   if tau is None:raise ValueError("receive decision requires occurrence time")
+   q=alloc(replace(r,journal=j,coverage=cov),1)[0];i=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"soft",target=best.origin);authored.append(i);j=merge(j,(i,));cov=vmax(cov,((r.fp,q),));st="soft"
   operational_soft=st=="soft"and bool(deps)and proof
   if (st=="soft"and not operational_soft)or(st=="fresh"and deps and not proof):
    if tau is None:raise ValueError("receive decision requires occurrence time")
-   q=alloc(replace(r,journal=j,coverage=cov),1)[0];h=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"hard");authored.append(h);j=merge(j,(h,));cov=vmax(cov,((r.fp,q),));st="hard"
+   q=alloc(replace(r,journal=j,coverage=cov),1)[0];h=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"hard",target=best.origin);authored.append(h);j=merge(j,(h,));cov=vmax(cov,((r.fp,q),));st="hard"
   if not deps:proof=st=="fresh"
   nodes[k]=M(best.identifier,g,best.value,best.origin,best.modified,st,proof,tuple(sorted(final_inputs.items()))if proof and deps else())
  out=Rep(r.fp,max([r.clock]+[e.sequence for e in authored]),cov,j,tuple(sorted(nodes.items())),r.nextid,tuple(retired))
@@ -302,25 +323,25 @@ def reset(r,s,tau):
   proof=True if not deps else sm.proof and set(dict(sm.inputs))==set(deps)and all(is_equal(dict(sm.inputs)[d],final_inputs[d])for d in deps)
   if target=="hard":proof=False
   if rm is None:
-   q1,q2=alloc(work,2,watermark);g=gen(q1,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,sm.value,(q2,r.fp));fkind="validate"if target=="fresh"else"invalidate";mode=None if target=="fresh"else target.replace("stale-","");clears=carry_prefix(work.journal,r.fp,k,g.id,vmax(r.coverage,s.coverage))if fkind=="validate"else();f=ev(q2,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,fkind,g.id,mode,clears);events.extend((g,f));work=add_events(work,(g,f));m=M(f"{r.fp}-{nextid}",g.id,sm.value,g.id,tau,target,proof,tuple(sorted(final_inputs.items()))if proof and deps else());nextid+=1
+   q1,q2=alloc(work,2,watermark);g=gen(q1,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,sm.value,(q2,r.fp));fkind="validate"if target=="fresh"else"invalidate";mode=None if target=="fresh"else target.replace("stale-","");clears=carry_prefix(work.journal,r.fp,k,g.id,vmax(r.coverage,s.coverage))if fkind=="validate"else();f=ev(q2,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,fkind,g.id,mode,clears,target=g.id,corresponds=(sm.generation,sm.origin));events.extend((g,f));work=add_events(work,(g,f));m=M(f"{r.fp}-{nextid}",g.id,sm.value,g.id,tau,target,proof,tuple(sorted(final_inputs.items()))if proof and deps else());nextid+=1
   else:
    m=replace(rm,value=sm.value,proof=proof,state=target,inputs=tuple(sorted(final_inputs.items()))if proof and deps else())
    value_changed=False
    if not is_equal(rm.value,sm.value):
     q=alloc(work,1,watermark)[0];e=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"edit",rm.generation,value=sm.value);events.append(e);work=add_events(work,(e,));m=replace(m,origin=e.id,modified=tau);value_changed=True
-   g=m.generation;retained=set(work.journal);closed=reset_closed(r,s,k,g,target)
-   if target=="fresh"and not validation_absorbing(retained,k,g,closed):
-    q=alloc(work,1,watermark)[0];c=carry_prefix(work.journal,r.fp,k,g,closed);v=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"validate",g,clears=c);events.append(v);work=add_events(work,(v,))
+   g=m.generation;retained=set(work.journal);closed=reset_closed(r,s,k,g,target);corr=(sm.generation,sm.origin);needs_corr=(m.generation,m.origin)!=(sm.generation,sm.origin)and not any(e.target==m.origin and e.corresponds==corr for e in retained)
+   if target=="fresh"and (value_changed or needs_corr or not validation_absorbing(retained,k,g,closed)):
+    q=alloc(work,1,watermark)[0];c=carry_prefix(work.journal,r.fp,k,g,closed);v=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"validate",g,clears=c,target=m.origin,corresponds=corr if needs_corr else None);events.append(v);work=add_events(work,(v,))
    elif target=="soft":
     absorbed=validation_absorbing(retained,k,g,closed)
-    retained_soft=not value_changed and absorbed and classify(retained,k,g)=="soft"
+    retained_soft=not value_changed and not needs_corr and absorbed and classify(retained,k,g,m.origin)=="soft"
     if not retained_soft:
      new=[]
      if not absorbed:
-      q=alloc(work,1,watermark)[0];c=carry_prefix(work.journal,r.fp,k,g,closed);v=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"validate",g,clears=c);new.append(v);work=add_events(work,(v,))
-     q=alloc(work,1,watermark)[0];i=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"soft");new.append(i);work=add_events(work,(i,));events.extend(new)
-   elif target=="hard"and (value_changed or not hard(set(work.journal)|set(events),k,g)):
-    q=alloc(work,1,watermark)[0];i=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"hard");events.append(i);work=add_events(work,(i,))
+      q=alloc(work,1,watermark)[0];c=carry_prefix(work.journal,r.fp,k,g,closed);v=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"validate",g,clears=c,target=m.origin);new.append(v);work=add_events(work,(v,))
+     q=alloc(work,1,watermark)[0];i=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"soft",target=m.origin,corresponds=corr if needs_corr else None);new.append(i);work=add_events(work,(i,));events.extend(new)
+   elif target=="hard"and (value_changed or needs_corr or not hard(set(work.journal)|set(events),k,g,m.origin)):
+    q=alloc(work,1,watermark)[0];i=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"hard",target=m.origin,corresponds=corr if needs_corr else None);events.append(i);work=add_events(work,(i,))
   nodes[k]=m
  retired=list(r.retired)
  for k,rm in r.nodes:
@@ -515,15 +536,45 @@ roots=((KI,M("i",GI.id,"a",GI.id,1,"fresh",True)),(KD,M("j",GD.id,"c",GD.id,1,"f
 derived=M("d",GE.id,"d",GE.id,1,"fresh",True,((KI,"a"),(KD,"c")))
 DL=Rep(A,6,((A,6),),baseJ,tuple(sorted((*roots,(KE,derived)))))
 
+# Reset correspondence makes an authoritative hard semantic copy stable without
+# importing source history or relaxing arbitrary unsupported-cache fallback.
+HM=ev(7,S,(KE,NE,BE),7,"invalidate",GE.id,"hard",target=GE.id);hardMultiS=Rep(S,7,((A,6),(S,7)),frozenset(set(baseJ)|{HM}),tuple(sorted((*roots,(KE,replace(derived,identifier="sd",state="hard",proof=False,inputs=()))))))
+rootsOnly=Rep(R,0,((A,4),),frozenset((GI,GIV,GD,GDV)),tuple(sorted(roots)))
+hardAdded,hardAddedEvents=reset(rootsOnly,hardMultiS,100);assert node(hardAdded,KE).state=="hard"and any(e.corresponds==(GE.id,GE.id)for e in hardAddedEvents)
+hardAddedSync,hardAddedSyncEvents=receive(hardAdded,hardMultiS);assert not hardAddedSyncEvents and sem(hardAddedSync)==sem(hardAdded)
+hardAddedAgain,hardAddedAgainEvents=reset(hardAdded,hardMultiS,100);assert not hardAddedAgainEvents and hardAddedAgain==hardAdded
+assert any(e.corresponds for e in compact(hardAdded.journal))
+
+# Same-generation changed and equal-value/different-revision hard resets also
+# retain their receiver value through unchanged-source sync.
+RX=ev(8,R,(KE,NE,BE),8,"edit",GE.id,value="X");RHX=ev(9,R,(KE,NE,BE),9,"invalidate",GE.id,"hard",target=RX.id)
+sameR=Rep(R,9,((A,6),(R,9)),frozenset(set(baseJ)|{RX,RHX}),tuple(sorted((*roots,(KE,M("rx",GE.id,"X",RX.id,8,"hard",False))))))
+SD=ev(10,S,(KE,NE,BE),10,"edit",GE.id,value="d2");SHD=ev(11,S,(KE,NE,BE),11,"invalidate",GE.id,"hard",target=SD.id)
+sameS=Rep(S,11,((A,6),(S,11)),frozenset(set(baseJ)|{SD,SHD}),tuple(sorted((*roots,(KE,M("sd2",GE.id,"d2",SD.id,10,"hard",False))))))
+changedReset,changedResetEvents=reset(sameR,sameS,100);changedSync,changedSyncEvents=receive(changedReset,sameS);assert not changedSyncEvents and sem(changedSync)==sem(changedReset)
+ER=ev(12,R,(KE,NE,BE),12,"edit",GE.id,value="equal");EHR=ev(13,R,(KE,NE,BE),13,"invalidate",GE.id,"hard",target=ER.id)
+ES=ev(14,S,(KE,NE,BE),14,"edit",GE.id,value="equal");EHS=ev(15,S,(KE,NE,BE),15,"invalidate",GE.id,"hard",target=ES.id)
+equalR=Rep(R,13,((A,6),(R,13)),frozenset(set(baseJ)|{ER,EHR}),tuple(sorted((*roots,(KE,M("er",GE.id,"equal",ER.id,12,"hard",False))))))
+equalS=Rep(S,15,((A,6),(S,15)),frozenset(set(baseJ)|{ES,EHS}),tuple(sorted((*roots,(KE,M("es",GE.id,"equal",ES.id,14,"hard",False))))))
+equalReset,equalResetEvents=reset(equalR,equalS,100);assert not any(e.kind=="edit"for e in equalResetEvents)
+equalSync,equalSyncEvents=receive(equalReset,equalS);assert not equalSyncEvents and sem(equalSync)==sem(equalReset)
+UNSEEN=ev(200,S,(KE,NE,BE),200,"edit",GE.id,value="future");UNSEEN_H=ev(201,S,(KE,NE,BE),201,"invalidate",GE.id,"hard",target=UNSEEN.id)
+unseenS=Rep(S,201,((A,6),(S,201)),frozenset(set(baseJ)|{UNSEEN,UNSEEN_H}),tuple(sorted((*roots,(KE,M("future",GE.id,"future",UNSEEN.id,200,"hard",False))))))
+assert compact(compact(equalReset.journal)|unseenS.journal)==compact(equalReset.journal|unseenS.journal)
+unseenResult,unseenEvents=receive(equalReset,unseenS,300);assert node(unseenResult,KE)is None and any(e.kind=="delete"for e in unseenEvents)
+
 # Derived selection classifies candidates before revision ordering.
 ONE={KI:(),KE:(KI,),KD:(),K:()}
 OI=gen(1,A,(KI,NI,BI),1,"a",(2,A));OIV=ev(2,A,(KI,NI,BI),2,"validate",OI.id)
 OD=gen(3,A,(KE,NE,BE),10,"old",(4,A));ODV=ev(4,A,(KE,NE,BE),11,"validate",OD.id);oneBase=frozenset((OI,OIV,OD,ODV))
 oneRoots=((KI,M("ia",OI.id,"a",OI.id,1,"fresh",True)),);oneOld=M("old-id",OD.id,"old",OD.id,10,"fresh",True,((KI,"a"),))
 oneR=Rep(R,0,((A,4),),oneBase,tuple(sorted((*oneRoots,(KE,oneOld)))))
-ONE_NEW=ev(20,S,(KE,NE,BE),20,"edit",OD.id,value="new");ONE_HARD=ev(21,S,(KE,NE,BE),21,"invalidate",OD.id,"hard")
+ONE_NEW=ev(20,S,(KE,NE,BE),20,"edit",OD.id,value="new");ONE_HARD=ev(21,S,(KE,NE,BE),21,"invalidate",OD.id,"hard",target=ONE_NEW.id)
 oneUnsupported=Rep(S,21,((A,4),(S,21)),frozenset(set(oneBase)|{ONE_NEW,ONE_HARD}),tuple(sorted((*oneRoots,(KE,M("new-id",OD.id,"new",ONE_NEW.id,20,"hard",False))))))
-olderCoherent,olderEvents=receive(oneR,oneUnsupported,schema=ONE);assert not olderEvents and node(olderCoherent,KE).value=="old"and node(olderCoherent,KE).state=="hard"
+olderCoherent,olderEvents=receive(oneR,oneUnsupported,schema=ONE);assert not olderEvents and node(olderCoherent,KE).value=="old"and node(olderCoherent,KE).state=="fresh"and node(olderCoherent,KE).proof
+# A generation-wide explicit invalidate still applies to selected old.
+EXPLICIT=ev(22,S,(KE,NE,BE),22,"invalidate",OD.id,"hard");explicitSource=replace(oneUnsupported,clock=22,coverage=((A,4),(S,22)),journal=frozenset(set(oneUnsupported.journal)|{EXPLICIT}))
+explicitMerged,explicitEvents=receive(oneR,explicitSource,schema=ONE);assert not explicitEvents and node(explicitMerged,KE).value=="old"and node(explicitMerged,KE).state=="hard"
 # Two coherent candidates choose the greatest coherent revision.
 oneNew=M("new-id",OD.id,"new",ONE_NEW.id,20,"fresh",True,((KI,"a"),))
 oneNewCoherent=Rep(S,20,((A,4),(S,20)),frozenset(set(oneBase)|{ONE_NEW}),tuple(sorted((*oneRoots,(KE,oneNew)))))
@@ -534,6 +585,17 @@ oneFallback,oneFallbackEvents=receive(oneRHard,oneUnsupported,schema=ONE);assert
 # Equal selected revision under two identifiers uses least canonical identifier.
 oneTwin=replace(oneR,fp=S,nodes=tuple(sorted((*oneRoots,(KE,replace(oneOld,identifier="a-id"))))))
 oneTie,oneTieEvents=receive(oneR,oneTwin,schema=ONE);assert not oneTieEvents and node(oneTie,KE).identifier=="a-id"
+
+# Stale final inputs propagate upward as value-specific soft assertions while
+# coherent reusable proofs remain.
+AIH=ev(30,S,(KI,NI,BI),30,"invalidate",OI.id,"hard");inputHard=Rep(S,30,((A,4),(S,30)),frozenset((OI,OIV,AIH)),((KI,M("ih",OI.id,"a",OI.id,1,"hard",False)),))
+upSoft,upSoftEvents=receive(oneR,inputHard,100,schema=ONE);assert node(upSoft,KI).state=="hard"and node(upSoft,KE).state=="soft"and node(upSoft,KE).proof
+assert len(upSoftEvents)==1 and upSoftEvents[0].mode=="soft"and upSoftEvents[0].target==OD.id and upSoftEvents[0].time==100
+upReverse,upReverseEvents=receive(inputHard,upSoft,schema=ONE);assert not upReverseEvents and upSoftEvents[0]in upReverse.journal
+upSettled,upSettledEvents=receive(upSoft,inputHard,schema=ONE);assert not upSettledEvents and upSettled==upSoft
+# Revalidating the input unchanged leaves D cache-revalidatable rather than hard.
+AIV=ev(31,S,(KI,NI,BI),31,"validate",OI.id,clears=((S,30),));inputFreshAgain=Rep(S,31,((A,4),(S,31)),frozenset((OI,OIV,AIH,AIV)),((KI,M("if",OI.id,"a",OI.id,1,"fresh",True)),))
+afterInputFresh,afterInputFreshEvents=receive(upSoft,inputFreshAgain,schema=ONE);assert not afterInputFreshEvents and node(afterInputFresh,KE).state=="soft"and node(afterInputFresh,KE).proof
 
 EIB=ev(100,S,(KI,NI,BI),10,"edit",GI.id,value="b")
 DRIGHT=Rep(S,100,((A,4),(S,100)),frozenset((GI,GIV,GD,GDV,EIB)),((KI,M("i2",GI.id,"b",EIB.id,10,"fresh",True)),(KD,roots[1][1])))
@@ -558,6 +620,18 @@ provOld=M("pr",GE.id,"old",PO10.id,10,"fresh",True,((KI,"a"),(KD,"c")));provNew=
 provR=Rep(R,0,((A,6),(B,10)),frozenset(set(baseJ)|{PO10}),tuple(sorted((*roots,(KE,provOld)))))
 provS=Rep(S,0,((A,6),(B,20)),frozenset(set(baseJ)|{PO10,PO20}),tuple(sorted((*roots,(KE,provNew)))))
 provMerged,provEvents=receive(provR,provS);assert not provEvents and node(provMerged,KE).value=="canonical"and node(provMerged,KE).origin==PO20.id
+
+# A value-specific soft barrier for losing Y does not stale coherent selected X.
+XRVAL=ev(30,R,(KE,NE,BE),10,"edit",GE.id,value="X")
+Xnode=M("x",GE.id,"X",XRVAL.id,10,"fresh",True,((KI,"a"),(KD,"c")));Xrep=Rep(R,30,((A,6),(R,30)),frozenset(set(baseJ)|{XRVAL}),tuple(sorted((*roots,(KE,Xnode)))))
+SBI=ev(31,S,(KI,NI,BI),0,"edit",GI.id,value="b");SBD=ev(32,S,(KD,ND,BD),0,"edit",GD.id,value="d2");SYVAL=ev(33,S,(KE,NE,BE),20,"edit",GE.id,value="Y");SYSoft=ev(34,S,(KE,NE,BE),21,"invalidate",GE.id,"soft",target=SYVAL.id)
+yRoots=((KI,M("yb",GI.id,"b",SBI.id,0,"fresh",True)),(KD,M("yd",GD.id,"d2",SBD.id,0,"fresh",True)))
+Ynode=M("y",GE.id,"Y",SYVAL.id,20,"soft",True,((KI,"b"),(KD,"d2")));Yrep=Rep(S,34,((A,6),(S,34)),frozenset(set(baseJ)|{SBI,SBD,SYVAL,SYSoft}),tuple(sorted((*yRoots,(KE,Ynode)))))
+xyMerged,xyEvents=receive(Xrep,Yrep);assert not xyEvents and node(xyMerged,KE).value=="X"and node(xyMerged,KE).state=="fresh"and node(xyMerged,KE).proof
+assert SYSoft in compact(xyMerged.journal)and any(a=="invalidate"for a,_ in query(xyMerged.journal))
+SYClear=ev(35,S,(KE,NE,BE),35,"validate",GE.id,clears=((S,34),),target=SYVAL.id)
+assert fresh(set(Yrep.journal)|{SYClear},KE,GE.id,SYVAL.id)
+assert compact(compact(Xrep.journal)|set(Yrep.journal)|{SYClear})==compact(set(Xrep.journal)|set(Yrep.journal)|{SYClear})
 # Graph/journal-inconsistent hard label is rejected before reset or receive.
 INVALID_HARD=replace(DL,nodes=tuple(sorted((*roots,(KE,replace(derived,state="hard",proof=False))))))
 assert not validate_replica(INVALID_HARD)
@@ -588,6 +662,12 @@ CEG=gen(5,A,(K,N,BS),5,"e",(6,A));CEV=ev(6,A,(K,N,BS),6,"validate",CEG.id)
 chainJournal=frozenset((CIG,CIV,CDG,CDV,CEG,CEV))
 chainNodes=((KI,M("ca",CIG.id,"a",CIG.id,1,"fresh",True)),(KE,M("cd",CDG.id,"d",CDG.id,3,"fresh",True,((KI,"a"),))),(K,M("ce",CEG.id,"e",CEG.id,5,"fresh",True,((KE,"d"),))))
 chainR=Rep(R,0,((A,6),),chainJournal,tuple(sorted(chainNodes)))
+# A stale-soft direct input and a transitive hard root propagate staleness upward.
+CIH=ev(20,S,(KI,NI,BI),20,"invalidate",CIG.id,"hard");CDS=ev(21,S,(KE,NE,BE),21,"invalidate",CDG.id,"soft",target=CDG.id)
+chainStale=Rep(S,21,((A,6),(S,21)),frozenset((CIG,CIV,CDG,CDV,CIH,CDS)),((KI,M("csi",CIG.id,"a",CIG.id,1,"hard",False)),(KE,M("csd",CDG.id,"d",CDG.id,3,"soft",True,((KI,"a"),)))))
+chainUp,chainUpEvents=receive(chainR,chainStale,100,CHAIN);assert node(chainUp,KI).state=="hard"and node(chainUp,KE).state=="soft"and node(chainUp,K).state=="soft"and node(chainUp,K).proof
+assert len(chainUpEvents)==1 and chainUpEvents[0].key==K and chainUpEvents[0].mode=="soft"
+chainBack,chainBackEvents=receive(chainStale,chainUp,schema=CHAIN);assert not chainBackEvents and chainUpEvents[0]in chainBack.journal
 rootDelete=dele(10,S,(KI,NI,BI),50);chainS=Rep(S,10,((A,2),(S,10)),frozenset((CIG,CIV,rootDelete)),())
 assert validate_replica(chainR,CHAIN)and validate_replica(chainS,CHAIN)
 closed,closureEvents=receive(chainR,chainS,100,CHAIN)
@@ -641,13 +721,13 @@ def bounded_history(n,r):
  cov=tuple(sorted(seq.items()));return frozenset(es),cov
 def category_counts(es):
  cs=compact(es);keys={e.key for e in cs};n=len(keys);authors={e.author for e in cs};r=len(authors)
- P=sum(ph(cs,k)is not None for k in keys);VH=sum(len(vheads(cs,k,generation(cs,k)))for k in keys if generation(cs,k));IF=sum(len(front(cs,k,generation(cs,k)))for k in keys if generation(cs,k));HF=sum(len(front(cs,k,generation(cs,k),True))for k in keys if generation(cs,k));VV=len([e for e in cs if e.kind=="validate"]);coords=sum(len(e.clears)for e in cs if e.kind=="validate")
- return cs,n,r,len(nmax(cs)),P,VH,IF,HF,VV,coords
+ P=sum(ph(cs,k)is not None for k in keys);VH=sum(len(vheads(cs,k,generation(cs,k)))for k in keys if generation(cs,k));IF=sum(len(set().union(*(front(cs,k,generation(cs,k),False,h.id)for h in vheads(cs,k,generation(cs,k)))))for k in keys if generation(cs,k));HF=sum(len(set().union(*(front(cs,k,generation(cs,k),True,h.id)for h in vheads(cs,k,generation(cs,k)))))for k in keys if generation(cs,k));VV=len([e for e in cs if e.kind=="validate"]);RC=len([e for e in cs if e.corresponds]);coords=sum(len(e.clears)for e in cs if e.kind=="validate")
+ return cs,n,r,len(nmax(cs)),P,VH,IF,HF,VV,RC,coords
 for n in range(1,5):
  for r in range(1,6):
-  es,cov=bounded_history(n,r);cs,nn,rr,Nc,P,VH,IF,HF,VV,coords=category_counts(es);assert(nn,rr)==(n,r)
+  es,cov=bounded_history(n,r);cs,nn,rr,Nc,P,VH,IF,HF,VV,RC,coords=category_counts(es);assert(nn,rr)==(n,r)
   assert journal_projection(es)==journal_projection(cs)
-  assert Nc<=5*n*r and P<=n and VH<=n*r and IF<=n*r and HF<=n*r and VV<=2*n*r and coords<=2*n*r*r
+  assert Nc<=5*n*r and P<=n and VH<=n*r and IF<=n*r*r and HF<=n*r*r and VV<=2*n*r and RC<=n*r*r and coords<=2*n*r*r
   assert len(cs)+coords+len(cov)<=12*n*r+2*n*r*r+r
 for r in range(1,6):
  cov=tuple((x,10)for x in(A,B,C,R,S)[:r]);assert compact(())==frozenset()and len(cov)==r

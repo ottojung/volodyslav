@@ -14,9 +14,19 @@ GenerationJournalEntry = JournalEntryBase & {
 DeleteJournalEntry = JournalEntryBase & { kind:"delete" }
 GenerationScopedBase = JournalEntryBase & { generation:JournalEntryId }
 EditJournalEntry = GenerationScopedBase & { kind:"edit" }
-InvalidateJournalEntry = GenerationScopedBase & { kind:"invalidate", mode:"soft"|"hard" }
+InvalidateJournalEntry = GenerationScopedBase & {
+    kind:"invalidate", mode:"soft"|"hard",
+    appliesTo:"generation" | { valueOrigin:JournalEntryId },
+    resetCorrespondence?:ResetCorrespondence
+}
 ValidateJournalEntry = GenerationScopedBase & {
-    kind:"validate", clearsThrough:CausalPrefix
+    kind:"validate", clearsThrough:CausalPrefix,
+    valueOrigin?:JournalEntryId,
+    resetCorrespondence?:ResetCorrespondence
+}
+ResetCorrespondence = {
+    consumedGeneration:JournalEntryId,
+    consumedValueOrigin:JournalEntryId
 }
 CausalPrefix = Map<DatabaseFingerprint,uint64>
 ```
@@ -34,6 +44,10 @@ Soft/hard both expose invalidate. Each event exposes exactly one public action.
 Every boundary validates closed shapes/scalars, immutable-ID agreement, and `key == NodeKey(nodeName,bindings)` using the production identity-preserving serializer. Every scoped event resolves to an exact same-key GenerationJournalEntry. Generation initial-freshness references resolve exactly.
 
 **Post-edit Negative-Freshness Invariant.** Any transaction that authors a same-generation edit for a new semantic value and leaves that value stale MUST author a new negative freshness assertion after the edit: soft when complete cache-revalidation proof remains, hard when recomputation is required. Pre-edit invalidates cannot represent the new value's negative authority. Equal-value operations author no edit and may reuse existing authority under the ordinary causal rules.
+
+Generation-wide invalidates represent explicit/concurrent causal invalidation that applies regardless of which value origin wins. Initial-stale, post-edit, reset/migration cache-status, proof-loss, and propagated-input-staleness assertions are value-specific and name the exact value origin whose cache state they describe. For selected origin O, an invalidate is applicable iff it is generation-wide or names O. Both causal frontiers and validation effectiveness are computed only from applicable invalidates; a losing value's cache-status barrier cannot stale a different selected value.
+
+Observed reset may attach `resetCorrespondence` to its receiver-retained freshness assertion. It certifies that reset compared the receiver value origin named by that assertion with the exact consumed source generation/origin using `isEqual` while observing the source closed prefix. It is not a proof of freshness, does not import source history/coverage, and has no separate public action. It permits ordinary synchronization to recognize those two unsupported value origins as one reset-authorized semantic copy. It says nothing about a later source origin outside the consumed snapshot.
 
 ## UnixTimestamp and event time
 
@@ -66,11 +80,12 @@ Import does not advance the local clock/coordinate. Immediately before local aut
 ## Freshness
 
 ```text
-invalidateFrontier(J,K,G)[A] = greatest invalidate of either mode by A
-hardInvalidateFrontier(J,K,G)[A] = greatest hard invalidate by A
+applicable(I,O) iff I.appliesTo="generation" or I.appliesTo.valueOrigin=O
+invalidateFrontier(J,K,G,O)[A] = greatest applicable invalidate of either mode by A
+hardInvalidateFrontier(J,K,G,O)[A] = greatest applicable hard invalidate by A
 covers(V,I) iff V.key=I.key and V.generation=I.generation
                  and I.sequence <= V.clearsThrough[I.author]
-freshnessEffective(V,J,K,G) iff V alone covers every invalidateFrontier member
+freshnessEffective(V,J,K,G,O) iff V alone covers every applicable invalidateFrontier member
 journalFresh iff some applicable V is freshnessEffective
 journalHard iff hard frontier is nonempty and no applicable V alone covers it
 ```

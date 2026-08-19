@@ -102,6 +102,7 @@ Before installation, restoration validates the ordinary load structure:
 - the durable `DatabaseFingerprint` belongs to
   the selected host/writer branch;
 - retained generation references resolve correctly, and every generation's named initial freshness event has the same author, a greater sequence, the same key, and the generation's exact ID;
+- every retained value-specific freshness assertion resolves its exact same-key/generation value-origin event; reset correspondence source identities need not be locally retained, but their coordinate shapes and authoring provenance must validate;
 - live `NodeIdentifier` values are unique and bijective with live semantic keys, and no retired identifier is live;
 - every materialization origin is the admissible canonical event for its winning generation and `modifiedAt`, rather than a superseded same-author head or lower equal-time candidate;
 - every retained `clearsThrough` has canonical map shape, unique supported fingerprint coordinates, and uint64 values;
@@ -259,6 +260,8 @@ A second identical reset does not refresh timestamps.
 ### Causal absorption planning
 
 Reset reasons against the hypothetical journal/coverage union of both consumed snapshots without installing source history. Source-only journal entries are evidence for receiver authoring, never installed receiver authority. Reset-authored `clearsThrough` may use either validated consumed snapshot as closed-prefix evidence. The reset transaction observation watermark is the maximum sequence in receiver retained entries/coverage/local clock and validated source retained entries/coverage. Before its first local event it raises allocation above that watermark, then allocates monotonically. This observation does not install any source journalCoverage coordinate; only the receiver coordinate advances when reset authors.
+
+For each retained source value copied or semantically matched by reset, a receiver freshness assertion carries a compact `resetCorrespondence(receiverValueOrigin, consumedSourceGeneration, consumedSourceValueOrigin)`. Reset authors one when the exact correspondence is not already retained, including equal-valued hard multi-input state with different revisions. The certificate records an observed `isEqual` semantic copy; it neither imports source authority nor makes arbitrary unsupported caches spreadable. An unchanged reset finds the same certificate and is silent. A later unseen source origin has no correspondence and follows ordinary conservative synchronization.
 
 For a key/generation, the **consumed absorption prefix** contains the validated source coverage coordinates, every applicable receiver/source invalidate coordinate that the target must clear, and every coordinate already carried by an applicable receiver validation. For a fresh target, applicable invalidates means both modes. For a soft target, it means hard invalidates; the intended receiver-retained soft assertion remains deliberately above/outside the clearing validation. Receiver coverage growth caused solely by a reset assertion is not recursively added to this prefix. Consequently an unchanged repeated reset tests the same semantic obligation rather than chasing its own clock.
 
