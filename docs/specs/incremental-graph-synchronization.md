@@ -199,7 +199,7 @@ candidate as coherent or unsupported using its own existing source proof plus st
 candidate with greatest `ValueRevision`. A newer-timestamp unsupported candidate
 never suppresses a coherent one.
 
-A retained reset correspondence is considered only after ordinary coherence fails. It may retain the receiver value origin named by the certificate when the opposite candidate has exactly the certified consumed source generation/origin. This is authoritative observed-copy evidence for that pair, including a hard multi-input cache or different reset-local revision; it is not generalized to unrelated unsupported caches. Its `sourceAuthor,consumedThrough` coordinates additionally bridge presence lineage: source-lineage events through the cutoff are absorbed, while any later source-authored scoped event, delete, or rematerialization is eligible and may activate that lineage regardless of the receiver generation’s larger numeric ID. Presence therefore applies this causal activation before rejecting losing-generation candidates.
+A retained reset lineage is considered only after ordinary coherence fails. It may retain the receiver value origin named by the certificate when the opposite candidate is the certified consumed source generation/origin or lies inside its author coordinates. This is authoritative observed-copy evidence for that pair, including a hard multi-input cache or different reset-local revision; it is not generalized to unrelated unsupported caches. Its `consumedThrough` vector additionally bridges presence lineage: an event authored by A at or below its A coordinate is absorbed, while a same-lineage event above that coordinate is eligible regardless of carrier or the receiver anchor’s larger numeric ID. Missing coordinates mean zero. A reset-authored delete carries the same lineage for an absent target, allowing later rematerialization. Presence therefore applies this causal activation before rejecting losing-generation candidates.
 
 Thus “`modifiedAt` is primary” means primary inside `ValueRevision` comparison
 among candidates eligible at that selection stage. Roots order admissible
@@ -276,11 +276,11 @@ Before planning, synchronization MUST reject atomically:
    covered by its source lookup;
 6. retained journal entries which cannot be structurally interpreted, including
    edit/invalidate/validate without a
-   generation resolving to a same-key GenerationJournalEntry witness; a generation whose named initial freshness event differs in author/key/generation, is not validate/invalidate, or does not have a greater sequence; a value-specific assertion whose local value origin does not resolve to the same key/generation; or malformed/noncanonical `clearsThrough`/reset-correspondence coordinates;
+   generation resolving to a same-key GenerationJournalEntry witness; a generation whose named initial freshness event differs in author/key/generation, is not validate/invalidate, or does not have a greater sequence; a value-specific assertion whose local value origin does not resolve to the same key/generation; or malformed/noncanonical `clearsThrough`/reset-lineage coordinates;
 7. the local coverage coordinate differs from `localJournalClock`, or local authoring failed to allocate above transaction-observed history;
 8. one JournalEntryId naming different immutable contents;
 9. journal coverage below a surviving entry sequence; or
-10. non-monotone or malformed journal coverage, or a retained comparable same-author/key/generation/value-origin validation pair whose later `clearsThrough` regresses.
+10. non-monotone or malformed journal coverage, or a retained comparable same-author/key/generation validation pair whose later `clearsThrough` regresses.
 
 When evidence is simultaneously available, an implementation MAY additionally
 reject conflicting immutable content at one `JournalEntryId`. The mandatory

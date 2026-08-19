@@ -19,3 +19,5 @@ Controlled reset may author a stabilizing validation while already visibly fresh
 All event occurrence times follow the timestamp table in the types specification. Allocation is lazy and every transaction atomically commits graph, journal, coverage, clock, identifiers, timestamps, and proofs.
 
 Every authored validate names the exact current value origin. Initial fresh materialization names the generation entry; a fresh same-generation edit receives a distinct validation naming that edit. A validation for an older or losing origin cannot establish freshness for the selected value.
+
+Validation applicability remains exact-value-origin scoped, but every new validation componentwise carries the greatest prior same-author/key/generation `clearsThrough` vector across value edits. Reset lineage is emitted on the retained freshness assertion for a present target and on the real delete for an absent target; its causal vector is the closed per-author prefix actually consumed.
