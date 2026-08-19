@@ -102,6 +102,8 @@ Before installation, restoration validates the ordinary load structure:
 - the durable `DatabaseFingerprint` belongs to
   the selected host/writer branch;
 - retained generation references resolve correctly;
+- live `NodeIdentifier` values are unique and bijective with live semantic keys, and no retired identifier is live;
+- every materialization origin is the admissible canonical event for its winning generation and `modifiedAt`, rather than a superseded same-author head or lower equal-time candidate;
 - every retained `clearsThrough` has canonical map shape, unique supported fingerprint coordinates, and uint64 values;
 - retained same-author/key/generation validation vectors are componentwise monotone when comparable evidence is present;
 - `localJournalClock` equals the local fingerprint coverage coordinate and locally authored entries do not exceed it; foreign retained sequences may exceed it under lazy raising;
@@ -256,11 +258,13 @@ A second identical reset does not refresh timestamps.
 
 ### Causal absorption planning
 
-Reset reasons against the hypothetical journal/coverage union of both consumed snapshots without installing source history. Reset-authored `clearsThrough` may use either validated consumed snapshot as closed-prefix evidence. The reset transaction observation watermark is the maximum sequence in receiver retained entries/coverage/local clock and validated source retained entries/coverage. Before its first local event it raises allocation above that watermark, then allocates monotonically. This observation does not install any source journalCoverage coordinate; only the receiver coordinate advances when reset authors.
+Reset reasons against the hypothetical journal/coverage union of both consumed snapshots without installing source history. Source-only journal entries are evidence for receiver authoring, never installed receiver authority. Reset-authored `clearsThrough` may use either validated consumed snapshot as closed-prefix evidence. The reset transaction observation watermark is the maximum sequence in receiver retained entries/coverage/local clock and validated source retained entries/coverage. Before its first local event it raises allocation above that watermark, then allocates monotonically. This observation does not install any source journalCoverage coordinate; only the receiver coordinate advances when reset authors.
 
-* Fresh target: retain an existing validation only if it alone covers the combined observed invalidate frontier; otherwise author one joint validation scoped to the surviving receiver generation and covering both consumed closed prefixes.
+For a key/generation, the **consumed absorption prefix** contains the validated source coverage coordinates, every applicable receiver/source invalidate coordinate that the target must clear, and every coordinate already carried by an applicable receiver validation. For a fresh target, applicable invalidates means both modes. For a soft target, it means hard invalidates; the intended receiver-retained soft assertion remains deliberately above/outside the clearing validation. Receiver coverage growth caused solely by a reset assertion is not recursively added to this prefix. Consequently an unchanged repeated reset tests the same semantic obligation rather than chasing its own clock.
+
+* Fresh target: retain an existing validation only when that validation is present in the receiver journal that will be installed and its `clearsThrough` componentwise dominates the consumed absorption prefix. Otherwise author one receiver validation with that property. A source-only validation cannot satisfy this test, even when it covers every currently retained frontier member.
 * Hard target: ensure an applicable hard invalidate is uncleared and remove reusable incoming proofs. If source authority is not locally retained, author one real receiver hard assertion representing reset's target decision.
-* Soft target: author/retain a joint validation which clears all consumed hard history, then leave one new/applicable soft invalidate uncovered. A hard→soft stabilization may atomically author joint validate then soft invalidate.
+* Soft target: ensure a receiver-retained validation componentwise dominates the hard-mode consumed absorption prefix, then ensure one receiver-retained soft invalidate remains uncovered. A source-only soft invalidate cannot satisfy the second condition. A hard→soft stabilization may atomically author the clearing validation and then the soft invalidate.
 
 Separate old partial validations are not combined; the reset validation is one new assertion justified by its actual joint observation. Unseen/concurrent history above the consumed prefixes remains live. A delayed compacted event within a claimed prefix is cleared.
 

@@ -73,6 +73,8 @@ journalHard iff hard frontier is nonempty and no applicable V alone covers it
 
 **Validation Causality Theorem.** A validation clears only applicable invalidates within legitimately evidenced `clearsThrough` coordinates. Separate partial validations never combine. Empty hard frontier is non-hard. Initial validate is required positive freshness evidence, so freshness has no implicit empty-frontier exception. A delayed event under `clearsThrough` is already cleared; a later event above it is not.
 
+A derived stale-soft materialization retains the complete reusable incoming proof needed for cache-only revalidation. Stale-soft without that proof is unsupported: proof loss establishes must-recompute and requires a hard invalidate unless an applicable uncovered hard barrier already represents it. A zero-input stale materialization has no incoming proof to reuse and is hard-stale rather than soft-stale.
+
 ## Projection theorems
 
 **Identifier Incarnation Theorem (NodeIdentifier domain).** A storage-level materialized NodeIdentifier maps to exactly one NodeKey. Removal retires it permanently; rematerializing the same NodeKey allocates a different identifier. Public `listMaterializedNodes()` exposes semantic address tuples, not these identifiers. Reset retains receiver identifiers for surviving materializations.

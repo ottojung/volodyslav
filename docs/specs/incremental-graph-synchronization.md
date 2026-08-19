@@ -232,6 +232,8 @@ Never union `valid`. Rebuild incoming validity edges only by transporting an exi
 
 Determine hard state first. If `hardInvalidateFrontier(N,G)` is nonempty and no single validation is `hardnessCleared`, N is hard-stale and receives no incoming proofs. If the hard frontier is empty or individually cleared but no validation is `freshnessEffective` because a later soft invalidate remains uncovered, N is stale-soft: coherent reusable proofs may remain or be transported, and cache-only revalidation remains possible. A freshness-effective validation can permit fresh state only with ordinary exact graph coherence.
 
+Operationally, a derived stale-soft materialization MUST retain the complete reusable incoming proof required for cache-only revalidation. If reconciliation cannot retain or transport that proof, the result is must-recompute and requires an uncovered hard barrier. A zero-input stale materialization has no incoming proof to reuse and therefore cannot be stale-soft in the supported model; its negative freshness assertion is hard.
+
 ### 6. Freshness and synchronization authoring
 
 The all-mode frontier prevents an old validation from crossing a delayed soft invalidate. The hard subset separately determines must-recompute authority. Partial validations never combine.
@@ -282,7 +284,9 @@ unsupported input rather than proving lifecycle legitimacy.
 Before journal join or conflict planning, validate each source against its own
 pre-merge journal. Every source materialization MUST resolve its source presence
 generation, a current value origin (the GenerationJournalEntry itself or a scoped edit) matching its `modifiedAt`,
-and a `ValueRevision` whose event belongs to that generation. Its source
+and the exact `canonicalEvent` selected from the admissible winning-generation
+per-author value heads. A superseded same-author event or lower equal-time event
+is not a valid origin even when its bytes and time match. Its source
 freshness and validity must agree with the effective-validation barrier for N,G
 and ordinary graph invariants. Failure is corrupt source state and rejects that
 source merge; it MUST NOT be converted into an unusable candidate, absence, or a

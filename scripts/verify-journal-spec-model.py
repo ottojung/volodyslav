@@ -3,7 +3,7 @@
 from dataclasses import dataclass, replace
 from itertools import product
 from pathlib import Path
-import base64,json,re as regex
+import base64,json,math,re as regex
 U64=2**64-1;TMIN=-8640000000000000;TMAX=8640000000000000
 A="aaaaaaaaaaaaaaaa";B="bbbbbbbbbbbbbbbb";C="cccccccccccccccc";R="rrrrrrrrrrrrrrrr";S="ssssssssssssssss"
 AUTH={A,B,C,R,S};ACT={"add","edit","delete","invalidate","validate"};ROOT=Path(__file__).parent
@@ -12,11 +12,20 @@ def addr(i):v=KV[i];return(v["serialized"],v["nodeName"],tuple(v["bindings"]))
 K,N,BS=addr(3);KI,NI,BI=addr(0);KD,ND,BD=addr(1);KE,NE,BE=addr(2)
 SCHEMA={K:(),KI:(),KD:(),KE:(KI,KD,KI)}
 def is_equal(a,b):
+ # Exact executable form of DEF-EQUAL-01, including JavaScript number and key-order semantics.
+ if isinstance(a,bool)or isinstance(b,bool):return type(a) is bool and type(b) is bool and a==b
+ if isinstance(a,(int,float))and isinstance(b,(int,float)):
+  return (math.isnan(a)and math.isnan(b))if isinstance(a,float)and isinstance(b,float)else a==b
  if type(a) is not type(b):return False
- if isinstance(a,(str,int,float,bool))or a is None:return a==b
+ if isinstance(a,str):return a==b
  if isinstance(a,(list,tuple)):return len(a)==len(b)and all(is_equal(x,y)for x,y in zip(a,b))
- if isinstance(a,dict):return a.keys()==b.keys()and all(is_equal(a[k],b[k])for k in a)
+ if isinstance(a,dict):return list(a.keys())==list(b.keys())and all(is_equal(a[k],b[k])for k in a)
  return False
+nan=float("nan")
+assert is_equal(nan,nan) and is_equal([{"n":nan}],[{"n":nan}])
+assert is_equal({"a":1,"b":[2]}, {"a":1.0,"b":[2.0]})
+assert not is_equal({"a":1,"b":2}, {"b":2,"a":1})
+assert is_equal([1,{"x":[nan]}],[1.0,{"x":[nan]}]) and not is_equal(True,1)
 def prodkey(n,b):
  for v in KV:
   if v["nodeName"]==n and v["bindings"]==list(b):return v["serialized"]
@@ -165,14 +174,19 @@ def validate_replica(r):
  cov=dict(r.coverage)
  if cov.get(r.fp,0)!=r.clock or any(cov.get(e.author,0)<e.sequence for e in r.journal):return False
  nd=dict(r.nodes)
+ live=[m.identifier for _,m in r.nodes]
+ if len(set(live))!=len(live) or set(live)&set(r.retired):return False
  for k,m in r.nodes:
   if k not in SCHEMA or generation(r.journal,k)!=m.generation:return False
   candidates=[e for e in r.journal if ((e.kind=="add"and e.id==m.origin)or(e.kind=="edit"and e.id==m.origin)) and e.key==k and ((e.kind=="add"and e.id==m.generation)or e.generation==m.generation)]
-  if not candidates or candidates[0].time!=m.modified or not is_equal(candidates[0].value,m.value):return False
+  try:canonical=origin(r.journal,k,m.generation,m.modified)
+  except (ValueError,KeyError):return False
+  if not candidates or canonical.id!=m.origin or candidates[0].time!=m.modified or not is_equal(candidates[0].value,m.value):return False
   if classify(r.journal,k,m.generation)!=m.state:return False
   deps=tuple(dict.fromkeys(SCHEMA[k]))
   if any(d not in nd for d in deps):return False
   if m.state=="hard"and m.proof:return False
+  if m.state=="soft"and (not deps or not m.proof):return False
   if m.state=="fresh"and deps and not m.proof:return False
   if m.proof and deps:
    evidence=dict(m.inputs)
@@ -198,7 +212,7 @@ def receive(r,s):
     if set(evidence)==set(deps)and all(is_equal(evidence[d],final_inputs[d])for d in deps):proof=True
   st=classify(j,k,g)
   if st=="hard":proof=False
-  if not proof and st=="fresh":
+  if not proof and st in ("fresh","soft"):
    q=alloc(replace(r,journal=j,coverage=cov),1)[0];h=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),max(best.modified,1),"invalidate",g,"hard");authored.append(h);j=merge(j,(h,));cov=vmax(cov,((r.fp,q),));st="hard"
   nodes[k]=M(best.identifier,g,best.value,best.origin,best.modified,st,proof,tuple(sorted(final_inputs.items()))if proof and deps else())
  out=Rep(r.fp,max([r.clock]+[e.sequence for e in authored]),cov,j,tuple(sorted(nodes.items())),r.nextid,r.retired)
@@ -213,11 +227,22 @@ def best_key_bindings(k):
   if v["serialized"]==k:return tuple(v["bindings"])
  raise KeyError
 
-def validation_covering(es,k,g):return any(v.kind=="validate"and v.key==k and v.generation==g and all(i.sequence<=dict(v.clears).get(i.author,0)for i in front(es,k,g))for v in es)
+def validation_absorbing(es,k,g,closed):
+ return any(v.kind=="validate"and v.key==k and v.generation==g and all(dict(v.clears).get(a,0)>=q for a,q in closed)for v in es)
+def reset_closed(r,s,k,g,target):
+ # Source coverage fences compacted source invalidates; receiver validation vectors
+ # carry earlier reset knowledge without chasing receiver coverage advanced by the
+ # stabilizing validation itself.
+ d=dict(s.coverage)
+ for e in r.journal|s.journal:
+  if e.kind=="invalidate"and e.key==k and e.generation==g and (target=="fresh"or e.mode=="hard"):d[e.author]=max(d.get(e.author,0),e.sequence)
+  if e.kind=="validate"and e.key==k and e.generation==g:
+   for a,q in e.clears:d[a]=max(d.get(a,0),q)
+ return tuple(sorted(d.items()))
 def reset(r,s,tau):
  if not validate_replica(r)or not validate_replica(s):raise ValueError("unsupported replica")
  if any(m.modified>tau for _,m in s.nodes):raise ValueError("unsupported clock")
- hypothetical=set(r.journal)|set(s.journal);nodes={};events=[];work=r;watermark=observed_watermark(r,s)
+ nodes={};events=[];work=r;watermark=observed_watermark(r,s);nextid=r.nextid
  for k in [KI,KD,K,KE]:
   sm=node(s,k)
   if not sm:continue
@@ -225,18 +250,22 @@ def reset(r,s,tau):
   proof=True if not deps else sm.proof and set(dict(sm.inputs))==set(deps)and all(is_equal(dict(sm.inputs)[d],final_inputs[d])for d in deps)
   if target=="hard":proof=False
   if rm is None:
-   q1,q2=alloc(work,2,watermark);g=gen(q1,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,sm.value,(q2,r.fp));fkind="validate"if target=="fresh"else"invalidate";mode=None if target=="fresh"else target.replace("stale-","");clears=carry_prefix(work.journal,r.fp,k,g.id,vmax(r.coverage,s.coverage))if fkind=="validate"else();f=ev(q2,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,fkind,g.id,mode,clears);events.extend((g,f));work=add_events(work,(g,f));m=M(f"{r.fp}-{r.nextid}",g.id,sm.value,g.id,tau,target,proof,tuple(sorted(final_inputs.items()))if proof and deps else())
+   q1,q2=alloc(work,2,watermark);g=gen(q1,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,sm.value,(q2,r.fp));fkind="validate"if target=="fresh"else"invalidate";mode=None if target=="fresh"else target.replace("stale-","");clears=carry_prefix(work.journal,r.fp,k,g.id,vmax(r.coverage,s.coverage))if fkind=="validate"else();f=ev(q2,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,fkind,g.id,mode,clears);events.extend((g,f));work=add_events(work,(g,f));m=M(f"{r.fp}-{nextid}",g.id,sm.value,g.id,tau,target,proof,tuple(sorted(final_inputs.items()))if proof and deps else());nextid+=1
   else:
    m=replace(rm,value=sm.value,proof=proof,state=target,inputs=tuple(sorted(final_inputs.items()))if proof and deps else())
    if not is_equal(rm.value,sm.value):
     q=alloc(work,1,watermark)[0];e=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"edit",rm.generation,value=sm.value);events.append(e);work=add_events(work,(e,));m=replace(m,origin=e.id,modified=tau)
-   g=m.generation;combined=set(hypothetical)|set(events);closed=vmax(r.coverage,s.coverage)
-   if target=="fresh"and not validation_covering(combined,k,g):
+   g=m.generation;retained=set(work.journal);closed=reset_closed(r,s,k,g,target)
+   if target=="fresh"and not validation_absorbing(retained,k,g,closed):
     q=alloc(work,1,watermark)[0];c=carry_prefix(work.journal,r.fp,k,g,closed);v=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"validate",g,clears=c);events.append(v);work=add_events(work,(v,))
    elif target=="soft":
-    existing_soft=not hard(combined,k,g)and not fresh(combined,k,g)
-    if not existing_soft:
-     q1,q2=alloc(work,2,watermark);c=carry_prefix(work.journal,r.fp,k,g,closed);v=ev(q1,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"validate",g,clears=c);i=ev(q2,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"soft");events.extend((v,i));work=add_events(work,(v,i))
+    absorbed=validation_absorbing(retained,k,g,closed)
+    retained_soft=absorbed and classify(retained,k,g)=="soft"
+    if not retained_soft:
+     new=[]
+     if not absorbed:
+      q=alloc(work,1,watermark)[0];c=carry_prefix(work.journal,r.fp,k,g,closed);v=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"validate",g,clears=c);new.append(v);work=add_events(work,(v,))
+     q=alloc(work,1,watermark)[0];i=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"soft");new.append(i);work=add_events(work,(i,));events.extend(new)
    elif target=="hard"and not hard(set(work.journal)|set(events),k,g):
     q=alloc(work,1,watermark)[0];i=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"hard");events.append(i);work=add_events(work,(i,))
   nodes[k]=m
@@ -244,7 +273,7 @@ def reset(r,s,tau):
  for k,rm in r.nodes:
   if node(s,k)is None:
    q=alloc(work,1,watermark)[0];d=dele(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau);events.append(d);work=add_events(work,(d,));retired.append(rm.identifier)
- out=replace(work,nodes=tuple(sorted(nodes.items())),nextid=max(work.nextid,r.nextid+sum(1 for k,_ in s.nodes if node(r,k)is None)),retired=tuple(retired))
+ out=replace(work,nodes=tuple(sorted(nodes.items())),nextid=nextid,retired=tuple(retired))
  if not validate_replica(out):raise AssertionError("reset produced unsupported replica")
  return out,tuple(events)
 
@@ -257,7 +286,7 @@ assert fresh(JR,K,G.id)and fresh(JS,K,G.id)
 JU=merge(JR,JS);assert hard(JU,K,G.id)and not fresh(JU,K,G.id)
 mR=M("r-id",G.id,"d",G.id,1,"fresh",True,((KI,"a"),));mS=M("s-id",G.id,"d",G.id,1,"fresh",True,((KI,"a"),))
 RR=Rep(R,11,((A,2),(R,11)),JR,((K,mR),));SS=Rep(S,21,((A,2),(S,21)),JS,((K,mS),))
-R1,re=reset(RR,SS,30);assert re and any(e.kind=="validate"and dict(e.clears).get(S)>=21 and dict(e.clears).get(R)>=11 for e in re)
+R1,re=reset(RR,SS,30);assert re and any(e.kind=="validate"and dict(e.clears).get(S)>=21 and dict(e.clears).get(R)>=10 for e in re)
 R2,auth=receive(R1,SS);assert sem(R2)==sem(R1)and not auth and node(R2,K).state=="fresh"
 # Reset idempotence is fully silent.
 R1b,re2=reset(R1,SS,30);assert not re2 and R1b==R1
@@ -265,6 +294,20 @@ R1b,re2=reset(R1,SS,30);assert not re2 and R1b==R1
 SS100=replace(SS,clock=100,coverage=((A,2),(S,100)))
 RW,rwe=reset(RR,SS100,30);assert rwe and min(e.sequence for e in rwe)>100
 assert dict(RW.coverage)[R]==RW.clock and S not in dict(RW.coverage) and dict(rwe[0].clears).get(S)==100
+
+# A source-only validation is evidence, never installed authority. Receiver stabilization
+# covers the whole consumed source prefix, survives delayed compacted evidence, and is idempotent.
+plainR=Rep(R,0,((A,2),),frozenset((G,V0)),((K,mR),))
+SV101=ev(101,S,(K,N,BS),20,"validate",G.id,clears=((S,100),))
+sourceFresh=Rep(S,101,((A,2),(S,101)),frozenset((G,V0,SV101)),((K,mS),))
+freshLocal,fle=reset(plainR,sourceFresh,30);assert len(fle)==1 and fle[0].kind=="validate"and fle[0].author==R
+assert SV101 not in freshLocal.journal and dict(fle[0].clears)[S]>=101
+delayed90=ev(90,S,(K,N,BS),19,"invalidate",G.id,"hard")
+assert fresh(set(freshLocal.journal)|{delayed90},K,G.id)
+freshAgain,fl2=reset(freshLocal,sourceFresh,30);assert not fl2 and freshAgain==freshLocal
+rootSoftI=ev(102,R,(K,N,BS),31,"invalidate",G.id,"soft")
+unsupportedRootSoft=Rep(R,102,((A,2),(R,102)),frozenset((G,V0,rootSoftI)),((K,replace(mR,state="soft",proof=True)),))
+assert not validate_replica(unsupportedRootSoft)
 
 # Later same-author validation carries reset-learned S100; regression is rejected.
 V1=ev(101,R,(K,N,BS),31,"validate",G.id,clears=((S,100),))
@@ -311,9 +354,29 @@ FR,fe=reset(staleR,SS,30);assert node(FR,K).state=="fresh"and any(e.kind=="valid
 FR2,fa=receive(FR,SS);assert sem(FR2)==sem(FR)and not fa
 
 # Soft target clears independent old hard histories then leaves new soft uncovered.
-ISS=ev(22,S,(K,N,BS),22,"invalidate",G.id,"soft");softS=Rep(S,22,((A,2),(S,22)),frozenset(set(JS)|{ISS}),((K,replace(mS,state="soft",proof=True)),));assert validate_replica(softS)
-Soft1,se=reset(RR,softS,30);assert [e.kind for e in se][-2:]==["validate","invalidate"]and se[-1].mode=="soft"
-Soft2,sa=receive(Soft1,softS);assert node(Soft2,K).state=="soft"and node(Soft2,K).proof and not sa
+SGI=gen(1,A,(KI,NI,BI),1,"a",(2,A));SGIV=ev(2,A,(KI,NI,BI),2,"validate",SGI.id)
+SGD=gen(3,A,(KD,ND,BD),1,"c",(4,A));SGDV=ev(4,A,(KD,ND,BD),2,"validate",SGD.id)
+SGE=gen(5,A,(KE,NE,BE),1,"d",(6,A));SGEV=ev(6,A,(KE,NE,BE),2,"validate",SGE.id)
+sroots=((KI,M("si",SGI.id,"a",SGI.id,1,"fresh",True)),(KD,M("sd",SGD.id,"c",SGD.id,1,"fresh",True)))
+sderived=M("se",SGE.id,"d",SGE.id,1,"fresh",True,((KI,"a"),(KD,"c")))
+softR=Rep(R,0,((A,6),),frozenset((SGI,SGIV,SGD,SGDV,SGE,SGEV)),tuple(sorted((*sroots,(KE,sderived)))))
+ISS=ev(7,S,(KE,NE,BE),7,"invalidate",SGE.id,"soft");softS=Rep(S,7,((A,6),(S,7)),frozenset(set(softR.journal)|{ISS}),tuple(sorted((*sroots,(KE,replace(sderived,state="soft"))))))
+assert validate_replica(softR)and validate_replica(softS)
+Soft1,se=reset(softR,softS,30);assert [e.kind for e in se][-2:]==["validate","invalidate"]and se[-1].mode=="soft"
+assert ISS not in Soft1.journal and any(e.author==R and e.kind=="invalidate"and e.mode=="soft" for e in Soft1.journal)
+assert any(e.author==R and e.kind=="validate"and dict(e.clears).get(S,0)>=7 for e in Soft1.journal)
+Soft2,sa=receive(Soft1,softS);assert node(Soft2,KE).state=="soft"and node(Soft2,KE).proof and not sa
+SoftAgain,se2=reset(Soft1,softS,30);assert not se2 and SoftAgain==Soft1
+
+# Losing the reusable proof of stale-soft state is a genuine local hardening;
+# reverse receive imports that precise barrier silently.
+SIB=ev(90,S,(KI,NI,BI),10,"edit",SGI.id,value="b");SOE=ev(91,S,(KE,NE,BE),0,"edit",SGE.id,value="e")
+changedRoots=((KI,M("si2",SGI.id,"b",SIB.id,10,"fresh",True)),sroots[1])
+changedDerived=M("se2",SGE.id,"e",SOE.id,0,"soft",True,((KI,"b"),(KD,"c")))
+changedSoft=Rep(S,91,((A,6),(S,91)),frozenset(set(softR.journal)|{ISS,SIB,SOE}),tuple(sorted((*changedRoots,(KE,changedDerived)))))
+assert validate_replica(changedSoft)
+hardened,hardEvents=receive(Soft1,changedSoft);assert len(hardEvents)==1 and hardEvents[0].mode=="hard"and node(hardened,KE).state=="hard"and not node(hardened,KE).proof
+reverse,reverseEvents=receive(changedSoft,hardened);assert not reverseEvents and node(reverse,KE).state=="hard"
 
 # Hard source resets fresh receiver: retained local hard assertion, no proof, later no echo.
 ISH=ev(22,S,(K,N,BS),22,"invalidate",G.id,"hard");hardS=Rep(S,22,((A,2),(S,22)),frozenset(set(JS)|{ISH}),((K,replace(mS,state="hard",proof=False)),))
@@ -334,7 +397,7 @@ CA=frozenset((G50,GV,Vreset));CB=frozenset((G50,GV,I40,I51))
 assert compact(compact(CA)|CB)==compact(CA|CB)
 
 # Polling maxima preserve reset transitions and causal stabilization through compaction.
-cursor=((R,0),);pollsets=[frozenset(JR|JS|set(xs)) for xs in (ye,fe,se,he)];acts={a for ps in pollsets for a,_ in query(ps,cursor)}
+cursor=((R,0),);pollsets=[frozenset(JR|JS|set(xs)) for xs in (ye,fe,he)]+[frozenset(softR.journal|softS.journal|set(se))];acts={a for ps in pollsets for a,_ in query(ps,cursor)}
 assert {"edit","validate","invalidate"}<=acts and all(query(ps,cursor)==query(compact(ps),cursor) for ps in pollsets)
 # Ordinary add/delete remain explicit.
 GADD=gen(70,R,(KD,ND,BD),40,"n",(71,R));VADD=ev(71,R,(KD,ND,BD),40,"validate",GADD.id);DEL=dele(72,R,(KD,ND,BD),41)
@@ -366,6 +429,21 @@ INVALID_HARD=replace(DL,nodes=tuple(sorted((*roots,(KE,replace(derived,state="ha
 assert not validate_replica(INVALID_HARD)
 try:reset(DL,INVALID_HARD,20);assert False
 except ValueError:pass
+
+# Live NodeIdentifiers form a bijection with keys and never intersect retirement.
+multiEmpty=Rep(R,0,(),frozenset(),());multiReset,multiEvents=reset(multiEmpty,DL,20)
+multiIds=[m.identifier for _,m in multiReset.nodes];assert len(multiIds)==len(set(multiIds))==3 and multiReset.nextid==4
+assert not validate_replica(replace(multiReset,nodes=tuple((k,replace(m,identifier=multiIds[0])) for k,m in multiReset.nodes)))
+assert not validate_replica(replace(multiReset,retired=(multiIds[0],)))
+
+# Graph origins must be canonical winning-generation value events.
+CG=gen(1,A,(KD,ND,BD),1,"x",(2,A));CGV=ev(2,A,(KD,ND,BD),2,"validate",CG.id)
+CE10=ev(10,A,(KD,ND,BD),10,"edit",CG.id,value="old");CE20=ev(20,A,(KD,ND,BD),20,"edit",CG.id,value="new")
+superseded=Rep(A,20,((A,20),),frozenset((CG,CGV,CE10,CE20)),((KD,M("cid",CG.id,"old",CE10.id,10,"fresh",True)),))
+assert not validate_replica(superseded)
+EB=ev(10,B,(KD,ND,BD),5,"edit",CG.id,value="tie");EC=ev(11,C,(KD,ND,BD),5,"edit",CG.id,value="tie")
+lowerTie=Rep(R,0,((A,2),(B,10),(C,11)),frozenset((CG,CGV,EB,EC)),((KD,M("tid",CG.id,"tie",EB.id,5,"fresh",True)),))
+assert not validate_replica(lowerTie)
 
 # Lazy-clock reverse catch-up includes SemanticGraph equality.
 GA=gen(99,A,(KI,NI,BI),1,"a",(100,A));GAV=ev(100,A,(KI,NI,BI),2,"validate",GA.id)
