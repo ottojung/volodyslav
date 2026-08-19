@@ -240,6 +240,8 @@ The all-mode frontier prevents an old validation from crossing a delayed soft in
 
 An imported applicable uncovered hard barrier is sufficient authority. Synchronization enforces it and removes or declines proofs silently; it MUST NOT author a receiver echo. A new receiver hard invalidate is authored only when this transaction establishes must-recompute for a reason not represented by any applicable uncovered hard barrier in the merged journal—for example, stale-soft proof removal caused by a newly discovered incoherent final input when the hard frontier is empty or cleared. Settled represented hard state is silent. Synchronization never synthesizes validate except the mandatory initial freshness assertion paired atomically with a genuinely receiver-authored new generation; importing/copying a generation is not such authoring.
 
+One receive has an explicit transaction occurrence time `τreceive`. Every receiver-local hard invalidate or deletion-closure delete uses `time=τreceive`; it does not change the retained value's `modifiedAt`. Imported invalidate/delete entries preserve their immutable original time and are never re-authored merely to acquire the receiver time. Journal sequence allocation remains independent of wall time.
+
 Imported-barrier trace: S has hard I_S and no proofs; R has the same generation/value and reusable proofs. `R <- S` imports I_S, leaves D hard-stale, removes/declines R's proofs, and authors no I_R. Any validation that observed I_S remains capable of clearing exactly that authority.
 
 Soft-after-validation trace: B's D is fresh under V1. A later authors soft S2 after an input becomes stale without changing its ValueRevision, retaining D's proofs. `B <- A` finds V1 does not cover S2, so D is stale-soft, retains coherent proofs, and authors no hard invalidate.
@@ -309,6 +311,8 @@ deleting D deletes cached D, E, and F while preserving A, B, siblings, and
 unrelated nodes. Deleted keys retain no final identifier, value, freshness,
 timestamp, or validity record. Synchronization invokes no computor while
 building this closure.
+
+Resolve winning presence roots, compute the complete transitive closure, and remove closed-over dependents before value/proof reconciliation. For each newly derived dependent absence lacking an applicable winning delete, the receiver authors exactly one delete after the transaction-observed journal watermark with `time=τreceive`. A later reverse receive imports that immutable delete silently. Only closure survivors enter value selection, so no reconciliation step may index an absent final input.
 
 ### Mandatory pre-cutover validation
 

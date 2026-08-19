@@ -7,16 +7,16 @@ N  = greatest E per (author,key,publicAction)             # polling, all actions
 P  = presenceHead per key
 VH = winning-generation valueHead per author
 CE = exact equal-time candidate value heads
-UF = all-mode frontier members not covered by any one retained applicable validation
-UH = hard-frontier members not covered by any one retained applicable validation
+IF = complete winning-generation invalidateFrontier (all modes)
+HF = complete winning-generation hardInvalidateFrontier
 VV = greatest validation per (author,key,winning generation)
 ```
 
-Start with `N∪P∪VH∪CE∪UF∪UH∪VV`; take the least closure adding each retained scoped event's exact GenerationJournalEntry and every retained generation's mandatory initial-freshness event. `compact(J)` is exactly this closure and discards everything else. Causal-prefix validation legitimacy survives exact evidence deletion because the closed-prefix proof is the immutable vector plus durable lifecycle validity, distinct from host coverage.
+Start with `N∪P∪VH∪CE∪IF∪HF∪VV`; take the least closure adding each retained scoped event's exact GenerationJournalEntry and every retained generation's mandatory initial-freshness event. `compact(J)` is exactly this closure and discards everything else. `HF` may overlap `IF`: all-mode per-author maxima can be later soft invalidates while older hard per-author maxima remain causal must-recompute authority.
 
-A delayed invalidate under retained `clearsThrough` remains causally cleared, although N retains it if needed as a polling representative. An event above the prefix remains unresolved. Public maxima, not hidden state, preserve action no-false-negatives.
+Frontiers are retained as whole sets, never reduced member-by-member against different validations. Thus `freshnessEffective` and `hardnessCleared` continue to require one actual validation covering the complete applicable frontier; compaction cannot combine partial validations. A delayed non-frontier invalidate under retained `clearsThrough` remains causally cleared, while an event above the prefix can become a new frontier member. Public maxima preserve action no-false-negatives.
 
-**Canonical Compaction/Future-Union Theorem.** On supported reachable histories, causal-prefix dominance is stable under delayed events below the prefix, while events above it enter UF/UH. Value/presence heads are monotone. Validation knowledge is componentwise monotone per author/key/generation because every later validation carries forward its greatest prior vector; therefore VV dominates discarded older validations semantically. Therefore:
+**Canonical Compaction/Future-Union Theorem.** On supported reachable histories, full frontier retention preserves freshness and hardness exactly, including histories where different validations cover different hard members. Causal-prefix dominance is stable under delayed events below the prefix, while events above it enter IF/HF. Value/presence heads are monotone. Validation knowledge is componentwise monotone per author/key/generation because every later validation carries forward its greatest prior vector; therefore VV dominates discarded older validations semantically. Therefore:
 
 ```text
 compact(compact(A) union B) = compact(A union B)

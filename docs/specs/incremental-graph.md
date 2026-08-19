@@ -669,7 +669,7 @@ A returned action does not assert current graph state.
 The action meanings are closed: `add` is only absent-to-materialized; `edit` is
 only a normative `ComputedValue` inequality while materialized; `delete` is only
 materialized-to-absent; `invalidate` is an exact initial or later soft/hard negative freshness assertion; and `validate` positively establishes or re-establishes a generation as fresh, including initial freshness.
-Every positive generation emits exactly one separate initial freshness event, so first materialization exposes add plus validate/invalidate and a value-replacement generation exposes edit plus validate/invalidate. Delete has no positive-generation freshness assertion.
+Every absent-to-present materialization authors one `GenerationJournalEntry` exposed as `add` plus exactly one initial validate/invalidate assertion. A materialized-to-materialized unequal value change authors a generation-scoped `EditJournalEntry`, not a new generation. If that same operation genuinely changes freshness, it independently authors the corresponding precise validate/invalidate event; an equal value authors neither generation nor edit. Delete has no positive-generation freshness assertion.
 
 The journal's no-false-negatives contract covers exactly:
 
