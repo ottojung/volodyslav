@@ -73,6 +73,8 @@ def valid(es):
    through,sg,so=e.lineage
    if type(through)is not tuple or tuple(sorted(through))!=through or len({a for a,_ in through})!=len(through)or any(a not in AUTH or not uint(q)for a,q in through):return False
    if (sg is None)!=(so is None):return False
+   if e.kind=="delete"and sg is not None:return False
+   if e.kind in ("validate","invalidate")and sg is None:return False
    if sg is not None and any(type(x)is not tuple or len(x)!=2 or not uint(x[0])or x[0]==0 or x[1]not in AUTH for x in(sg,so)):return False
   if tuple(sorted(e.clears))!=e.clears or len({a for a,_ in e.clears})!=len(e.clears) or any(a not in AUTH or not uint(q) for a,q in e.clears):return False
  for e in es:
@@ -102,10 +104,10 @@ def valid(es):
 def raw_ph(es,k):
  x=[e for e in es if e.key==k and e.kind in ("add","delete")];return max(x,key=lambda e:e.id) if x else None
 def ph(es,k):
- """Presence head after applying retained observed-reset lineage bridges."""
+ """Activate reset lineages, then order only generation/delete presence events."""
  base=raw_ph(es,k)
  if not base:return None
- by={e.id:e for e in es};activations=[]
+ by={e.id:e for e in es};eligible=[]
  for cert in es:
   if cert.key!=k or not cert.lineage:continue
   if cert.kind=="delete":
@@ -117,10 +119,10 @@ def ph(es,k):
   through,consumed_g,_=cert.lineage;cut=dict(through)
   for e in es:
    if e.key!=k or e.id==base.id or e.sequence<=cut.get(e.author,0):continue
-   if e.kind in ("add","delete"):activations.append((e.id,e))
+   if e.kind in ("add","delete"):eligible.append(e)
    elif consumed_g is not None and (e.generation==consumed_g or (e.generation!=base.id and e.generation in by and by[e.generation].sequence>cut.get(by[e.generation].author,0))):
-    activations.append((e.id,by[e.generation]))
- return max(activations,key=lambda x:x[0])[1] if activations else base
+    eligible.append(by[e.generation])
+ return max(eligible,key=lambda e:e.id) if eligible else base
 def generation(es,k):p=ph(es,k);return p.id if p and p.kind=="add" else None
 def vheads(es,k,g):
  o={}
@@ -358,11 +360,20 @@ def reset_closed(r,s,k,g,target):
   if e.kind=="validate"and e.key==k and e.generation==g:
    for a,q in e.clears:d[a]=max(d.get(a,0),q)
  return tuple(sorted(d.items()))
-def reset_lineage_through(r,s,k,sg,so):
- matching=[e.lineage[0]for e in r.journal if e.key==k and e.lineage and e.lineage[1:]==(sg,so)]
- receiver=matching[0]if matching else r.coverage
- for p in matching[1:]:receiver=vmax(receiver,p)
- return vmax(receiver,s.coverage)
+def reset_lineage_through(r,s,k,sg,so,ignore_bookkeeping=False):
+ prior=[e.lineage[0]for e in r.journal if e.key==k and e.lineage]
+ exact=ignore_bookkeeping and any(e.key==k and e.lineage and e.lineage[1:]==(sg,so)for e in r.journal)
+ carried=()
+ for p in prior:carried=vmax(carried,p)
+ observed=dict(vmax(r.coverage,s.coverage));bookkeeping={}
+ for e in r.journal|s.journal:
+  if e.key==k and e.lineage:bookkeeping[e.author]=max(bookkeeping.get(e.author,0),e.sequence)
+  if e.key==k and e.kind=="add"and any(x.key==k and x.lineage and x.target==e.id for x in r.journal|s.journal):bookkeeping[e.author]=max(bookkeeping.get(e.author,0),e.sequence)
+ out=dict(carried)
+ for a,q in observed.items():
+  # Do not chase a suffix consisting only of the prior reset anchor/carrier.
+  if not exact or q>bookkeeping.get(a,0):out[a]=max(out.get(a,0),q)
+ return tuple(sorted(out.items()))
 def reset(r,s,tau):
  if not validate_replica(r)or not validate_replica(s):raise ValueError("unsupported replica")
  if any(m.modified>tau for _,m in s.nodes):raise ValueError("unsupported clock")
@@ -370,8 +381,8 @@ def reset(r,s,tau):
  for k in [KI,KD,K,KE]:
   sm=node(s,k)
   if not sm:continue
-  corr=(reset_lineage_through(r,s,k,sm.generation,sm.origin),sm.generation,sm.origin)
-  rm=node(r,k);target=sm.state;deps=tuple(dict.fromkeys(SCHEMA[k]));final_inputs={d:nodes[d].value for d in deps}
+  rm=node(r,k);target=sm.state
+  corr=(reset_lineage_through(r,s,k,sm.generation,sm.origin,rm is not None and is_equal(rm.value,sm.value)and rm.state==target),sm.generation,sm.origin);deps=tuple(dict.fromkeys(SCHEMA[k]));final_inputs={d:nodes[d].value for d in deps}
   proof=True if not deps else sm.proof and set(dict(sm.inputs))==set(deps)and all(is_equal(dict(sm.inputs)[d],final_inputs[d])for d in deps)
   if target=="hard":proof=False
   if rm is None:
@@ -656,7 +667,7 @@ DM,dm_events=receive(DL,DRIGHT,100);assert node(DM,KE)is None and len(dm_events)
 # Same semantic input at a different revision preserves real multi-input proof; duplicate KI is collapsed.
 EIA=ev(100,S,(KI,NI,BI),10,"edit",GI.id,value="a");EIAV=ev(101,S,(KI,NI,BI),101,"validate",GI.id,target=EIA.id)
 DEQUAL=Rep(S,101,((A,4),(S,101)),frozenset((GI,GIV,GD,GDV,EIA,EIAV)),((KI,M("i2",GI.id,"a",EIA.id,10,"fresh",True)),(KD,roots[1][1])))
-DEM,de_events=receive(DL,DEQUAL);assert node(DEM,KE).proof and node(DEM,KE).state=="fresh"and not de_events and len(node(DEM,KE).inputs)==2
+DEM,de_events=receive(DL,DEQUAL);assert node(DEM,KE).proof and node(DEM,KE).state=="fresh"and not de_events and len(node(DEM,KE).inputs)==2 and node(DEM,KI).modified==10
 
 # Multi-input different unsupported revisions delete; the same revision case is
 # retained and hardened by the stale-soft proof-loss trace above.
@@ -731,6 +742,11 @@ carrier=replace(lineageB,fp=C,clock=0,coverage=((B,12),(S,20)))
 fromCarrier,carrierEvents=receive(lineageVectorR,carrier);assert not carrierEvents and node(fromCarrier,K).value=="B-author"
 BDEL=dele(11,B,(K,N,BS),103);lineageBDeleted=Rep(B,11,((B,11),(S,20)),frozenset((LG,LGV,BDEL)),())
 fromBDelete,bDeleteEvents=receive(lineageVectorR,lineageBDeleted);assert not bDeleteEvents and node(fromBDelete,K)is None
+# Scoped post-cutoff events activate GS against the reset anchor but never become
+# synthetic presence coordinates. A concurrent delete still orders after GS.
+SDEL21=dele(21,S,(K,N,BS),105);BEDIT30=ev(30,B,(K,N,BS),106,"edit",LG.id,value="late");BVAL31=ev(31,B,(K,N,BS),107,"validate",LG.id,target=BEDIT30.id);BINV32=ev(32,B,(K,N,BS),108,"invalidate",LG.id,"hard",target=BEDIT30.id)
+for scoped in (BEDIT30,BVAL31,BINV32):assert ph(lineageVectorR.journal|{LG,LGV,SDEL21,BEDIT30,scoped},K)==SDEL21
+assert ph(lineageVectorR.journal|{LG,LGV,BEDIT30},K).id==LG.id
 missingBReset,_=reset(lineageR0,lineageS0,100);assert dict(next(e.lineage[0]for e in missingBReset.journal if e.lineage)).get(B,0)==0
 B1E=ev(1,B,(K,N,BS),103,"edit",LG.id,value="missing-author");B2V=ev(2,B,(K,N,BS),104,"validate",LG.id,target=B1E.id)
 missingB=Rep(B,2,((B,2),(S,20)),frozenset((LG,LGV,B1E,B2V)),((K,M("mb",LG.id,"missing-author",B1E.id,103,"fresh",True)),))
@@ -748,6 +764,19 @@ sameAuthorLive,sameAuthorEvents=receive(absentReset,sameAuthorRemat);assert not 
 BADD=gen(12,B,(K,N,BS),101,"other-remat",(13,B));BADDV=ev(13,B,(K,N,BS),102,"validate",BADD.id)
 otherAuthorRemat=Rep(B,13,((B,13),(S,20)),frozenset((BADD,BADDV)),((K,M("oar",BADD.id,"other-remat",BADD.id,101,"fresh",True)),))
 otherAuthorLive,otherAuthorEvents=receive(absentReset,otherAuthorRemat);assert not otherAuthorEvents and node(otherAuthorLive,K).value=="other-remat"
+
+# A later authoritative reset extends the old vector with newly observed B11,
+# while exact unchanged repetition remains silent and B12 remains future-live.
+resetAfterB11,resetAfterB11Events=reset(fromBDelete,lineageVectorS0,110);extended=next(e.lineage[0]for e in resetAfterB11Events if e.lineage)
+assert dict(extended)[B]>=11 and node(resetAfterB11,K).value=="A"
+resetAfterB11Again,repeatAfterB11=reset(resetAfterB11,lineageVectorS0,110);assert not repeatAfterB11 and resetAfterB11Again==resetAfterB11
+BDEL12=dele(12,B,(K,N,BS),111);futureB12=Rep(B,12,((B,12),(S,20)),frozenset((LG,LGV,BDEL12)),())
+afterFutureB12,futureB12Events=receive(resetAfterB11,futureB12);assert not futureB12Events and node(afterFutureB12,K)is None
+# A different equal source origin with lower B coverage cannot regress the old
+# same-anchor vector.
+ALTEDIT=ev(21,S,(K,N,BS),109,"edit",LG.id,value="A");ALTVAL=ev(22,S,(K,N,BS),110,"validate",LG.id,target=ALTEDIT.id)
+altSource=Rep(S,22,((S,22),),frozenset((LG,LGV,ALTEDIT,ALTVAL)),((K,M("alt",LG.id,"A",ALTEDIT.id,109,"fresh",True)),))
+altReset,altResetEvents=reset(lineageVectorR,altSource,120);assert dict(next(e.lineage[0]for e in altResetEvents if e.lineage))[B]>=10
 
 # Compaction retains the bridge while causal presence is absent even after a
 # newer non-certificate validation displaces it as the polling maximum.
@@ -771,6 +800,10 @@ good_cert=next(e for e in lineageResetEvents if e.lineage)
 for bad_corr in ((((S,20),),LG.id),(((S,True),),LG.id,LG.id),((('bad',20),),LG.id,LG.id),(((S,20),(S,21)),LG.id,LG.id),(((S,20),(B,10)),LG.id,LG.id),(((S,20),),(True,S),LG.id),(((S,20),),LG.id,(0,S)),(((S,20),),None,LG.id),(((S,20),),LG.id,LG.id,"extra")):
  malformed=(set(lineageR1.journal)-{good_cert})|{replace(good_cert,lineage=bad_corr)}
  assert not valid(malformed)
+# Event kind fixes lineage nullability: delete is absent-only; freshness
+# assertions are present-only.
+assert not valid((set(absentReset.journal)-{absentDelete})|{replace(absentDelete,lineage=(absentDelete.lineage[0],LG.id,LG.id))})
+assert not valid((set(lineageR1.journal)-{good_cert})|{replace(good_cert,lineage=(good_cert.lineage[0],None,None))})
 # Graph/journal-inconsistent hard label is rejected before reset or receive.
 INVALID_HARD=replace(DL,nodes=tuple(sorted((*roots,(KE,replace(derived,state="hard",proof=False))))))
 assert not validate_replica(INVALID_HARD)

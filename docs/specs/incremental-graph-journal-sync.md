@@ -5,11 +5,14 @@
 ```text
 presenceEvents(J,K) = generation/delete entries for K
 basePresenceHead = greatest JournalEntryId presence event
-presenceHead = basePresenceHead unless a retained reset-lineage summary anchored
-               to it records vector C and the joined journal contains an A-authored
-               event above C[A] in that consumed lineage; then
-               the greatest such post-cutoff activation selects its generation,
-               delete, or rematerialization
+lineageActivated(G) iff a retained lineage anchored at basePresenceHead
+               consumed generation G and a scoped G event lies above its
+               author coordinate
+activatedPresenceEvents = post-cutoff generation/delete events, plus generation
+               G itself when lineageActivated(G)
+presenceHead = basePresenceHead when activatedPresenceEvents is empty;
+               otherwise greatest activatedPresenceEvent by that presence
+               event's own JournalEntryId
 generation = presenceHead.id iff it is GenerationJournalEntry
 valueEvents(J,K,G) = generation G union edits scoped to G
 valueHead(J,K,G,A) = greatest A-authored value event
@@ -22,7 +25,7 @@ Presence selection precedes value. A GenerationJournalEntry is the generation an
 
 Freshness uses `clearsThrough`, `covers`, both frontiers, `freshnessEffective`, and `journalHard` exactly as defined in the types specification. A validation applies only to its mandatory exact `valueOrigin`; positive evidence never crosses an edit. Causal vectors never combine across validations.
 
-Frontiers are relative to the final selected value origin: generation-wide invalidates always apply, while value-specific cache-status invalidates apply only to their named origin. A reset lineage retains an otherwise unsupported receiver cache only against the exact source generation/origin reset semantically consumed or an earlier source origin subsumed by its consumed vector. Its causal vector is also a lineage bridge: for every event author A, consumed events at or below the A coordinate are absorbed, while later scoped events, deletes, and rematerializations activate the source lineage despite a numerically greater receiver anchor. Missing coordinates are zero, and carrier identity is irrelevant. An absent reset target anchors the same vector on its real delete. It never authorizes an unrelated unsupported cache.
+Frontiers are relative to the final selected value origin: generation-wide invalidates always apply, while value-specific cache-status invalidates apply only to their named origin. A reset lineage retains an otherwise unsupported receiver cache only against the exact source generation/origin reset semantically consumed or an earlier source origin subsumed by its consumed vector. Its causal vector is also a lineage bridge: for every event author A, consumed events at or below the A coordinate are absorbed, while later scoped events, deletes, and rematerializations activate the source lineage despite a numerically greater receiver anchor. Activation and presence ordering are separate: a scoped event can make its generation eligible, but only generation/delete IDs order presence, so an edit/validate/invalidate cannot resurrect a generation after a later delete. Missing coordinates are zero, and carrier identity is irrelevant. An absent reset target anchors the same vector on its real delete. It never authorizes an unrelated unsupported cache.
 
 ## Extensional proof transport
 

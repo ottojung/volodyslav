@@ -27,8 +27,7 @@ current values, materialization, freshness, timestamps, and validity.
 Graph materializations contain only values, freshness, real wall-clock
 `timestamps {createdAt,modifiedAt}`, `NodeIdentifier`/identifier lookup, and
 `valid`. They contain no revision stamp, event ID, support vector, epoch,
-counter, logical timestamp, vector clock, or CRDT field. Synchronization never
-changes `modifiedAt` merely because it selects or copies a value.
+counter, logical timestamp, vector clock, or CRDT field. Synchronization may install the selected existing provenance metadata, including `createdAt` and `modifiedAt`, even when its value is `isEqual` to the receiver value. This metadata-only replacement is not a local value edit and authors no edit event.
 
 Both inputs are retained as pre-merge graph+journal views for provenance checks.
 The journals are joined first. Nodes are then processed in schema DAG
@@ -199,7 +198,7 @@ candidate as coherent or unsupported using its own existing source proof plus st
 candidate with greatest `ValueRevision`. A newer-timestamp unsupported candidate
 never suppresses a coherent one.
 
-A retained reset lineage is considered only after ordinary coherence fails. It may retain the receiver value origin named by the certificate when the opposite candidate is the certified consumed source generation/origin or lies inside its author coordinates. This is authoritative observed-copy evidence for that pair, including a hard multi-input cache or different reset-local revision; it is not generalized to unrelated unsupported caches. Its `consumedThrough` vector additionally bridges presence lineage: an event authored by A at or below its A coordinate is absorbed, while a same-lineage event above that coordinate is eligible regardless of carrier or the receiver anchor’s larger numeric ID. Missing coordinates mean zero. A reset-authored delete carries the same lineage for an absent target, allowing later rematerialization. Presence therefore applies this causal activation before rejecting losing-generation candidates.
+A retained reset lineage is considered only after ordinary coherence fails. It may retain the receiver value origin named by the certificate when the opposite candidate is the certified consumed source generation/origin or lies inside its author coordinates. This is authoritative observed-copy evidence for that pair, including a hard multi-input cache or different reset-local revision; it is not generalized to unrelated unsupported caches. Its `consumedThrough` vector additionally bridges presence lineage: an event authored by A at or below its A coordinate is absorbed, while a same-lineage event above that coordinate is eligible regardless of carrier or the receiver anchor’s larger numeric ID. Missing coordinates mean zero. A reset-authored delete carries the same lineage for an absent target, allowing later rematerialization. Presence therefore applies this causal activation before rejecting losing-generation candidates. A scoped post-cutoff event only makes its referenced generation eligible; it never contributes its own ID to presence order. The activated lineage is resolved solely by GenerationJournalEntry/delete IDs, so a later delete defeats an older generation despite a still-later edit or validation scoped to that deleted generation.
 
 Thus “`modifiedAt` is primary” means primary inside `ValueRevision` comparison
 among candidates eligible at that selection stage. Roots order admissible
@@ -256,7 +255,7 @@ Local-hardening trace: A propagated soft I0 and remains cache-revalidatable. A r
 
 ### 7. Atomic installation and no-op
 
-Install graph, journal, journal coverage, and allocator atomically. Apply componentwise coverage union from the journal sync specification. An imported precise event is sufficient evidence; receipt alone is silent. Pure copying authors no add/edit and does not alter `modifiedAt`. Settled equivalent states with no newer source coverage append nothing.
+Install graph, journal, journal coverage, and allocator atomically. Apply componentwise coverage union from the journal sync specification. An imported precise event is sufficient evidence; receipt alone is silent. Pure copying authors no add/edit. It may replace `modifiedAt` only with the immutable timestamp of the selected existing provenance; it never manufactures a new value-modification time. Settled equivalent states with no newer source coverage append nothing.
 
 ## Storage, validation, and lifecycle safety
 
