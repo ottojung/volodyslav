@@ -270,7 +270,7 @@ Before planning, synchronization MUST reject atomically:
    covered by its source lookup;
 6. retained journal entries which cannot be structurally interpreted, including
    edit/invalidate/validate without a
-   generation resolving to a same-key GenerationJournalEntry witness; or malformed/noncanonical `clearsThrough` coordinates;
+   generation resolving to a same-key GenerationJournalEntry witness; a generation whose named initial freshness event differs in author/key/generation, is not validate/invalidate, or does not have a greater sequence; or malformed/noncanonical `clearsThrough` coordinates;
 7. the local coverage coordinate differs from `localJournalClock`, or local authoring failed to allocate above transaction-observed history;
 8. one JournalEntryId naming different immutable contents;
 9. journal coverage below a surviving entry sequence; or

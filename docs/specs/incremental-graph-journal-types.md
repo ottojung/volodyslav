@@ -23,6 +23,8 @@ CausalPrefix = Map<DatabaseFingerprint,uint64>
 
 An immutable generation entry establishes positive presence and initial value provenance for an actual absent-to-present materialization, so `publicAction(generation)="add"`. Reset never creates a generation to fence equal present history. Delete is negative presence. Edit is an unequal present-to-present value change scoped to the surviving generation. Every generation names exactly one later-ID, atomically authored initial validate/soft-invalidate/hard-invalidate.
 
+For generation `G` and its named initial event `I`, structural validity requires `I.author=G.author`, `I.sequence>G.sequence`, `I.key=G.key`, `I.generation=G.id`, and `I.kind` in `{validate,invalidate}`. The two entries install atomically. Sequence adjacency is not required, but a generation cannot name another author's future event.
+
 ```text
 publicAction(E) = "add" for generation; otherwise E.kind
 ```
@@ -30,6 +32,8 @@ publicAction(E) = "add" for generation; otherwise E.kind
 Soft/hard both expose invalidate. Each event exposes exactly one public action.
 
 Every boundary validates closed shapes/scalars, immutable-ID agreement, and `key == NodeKey(nodeName,bindings)` using the production identity-preserving serializer. Every scoped event resolves to an exact same-key GenerationJournalEntry. Generation initial-freshness references resolve exactly.
+
+**Post-edit Negative-Freshness Invariant.** Any transaction that authors a same-generation edit for a new semantic value and leaves that value stale MUST author a new negative freshness assertion after the edit: soft when complete cache-revalidation proof remains, hard when recomputation is required. Pre-edit invalidates cannot represent the new value's negative authority. Equal-value operations author no edit and may reuse existing authority under the ordinary causal rules.
 
 ## UnixTimestamp and event time
 

@@ -68,7 +68,7 @@ def valid(es):
    if not g or g.kind!="add" or g.key!=e.key:return False
   if e.kind=="add":
    f=d.get(e.initial)
-   if not f or f.kind not in ("validate","invalidate") or f.generation!=e.id or f.id<=e.id:return False
+   if not f or f.kind not in ("validate","invalidate") or f.author!=e.author or f.sequence<=e.sequence or f.key!=e.key or f.generation!=e.id:return False
  vals=[e for e in es if e.kind=="validate"]
  for v1 in vals:
   for v2 in vals:
@@ -167,14 +167,32 @@ def carry_prefix(j,author,key,g,new=()):
 def add_events(r,events):
  j=merge(r.journal,events);q=max(e.sequence for e in events);return replace(r,clock=q,coverage=vmax(r.coverage,((r.fp,q),)),journal=j)
 def classify(j,k,g):return"hard"if hard(j,k,g)else("fresh"if fresh(j,k,g)else"soft")
-def choose_value(j,k,candidates):
+def revision(m):return(m.modified,m.origin[0],m.origin[1])
+def greatest_candidate(candidates):
+ top=max(revision(m)for m in candidates);return min((m for m in candidates if revision(m)==top),key=lambda m:m.identifier)
+def admissible_candidates(j,k,g,candidates):
+ out=[]
+ for m in candidates:
+  if not m or m.value is None or m.generation!=g:continue
+  try:c=origin(j,k,g,m.modified)
+  except (ValueError,KeyError):continue
+  if c.id==m.origin:out.append(m)
+ return out
+def proof_coherent(m,deps,final_inputs):
+ if not m.proof:return False
+ evidence=dict(m.inputs)
+ return set(evidence)==set(deps)and all(is_equal(evidence[d],final_inputs[d])for d in deps)
+def choose_value(j,k,candidates,deps=(),final_inputs=None):
  p=ph(j,k)
  if not p or p.kind=="delete":return None
- g=p.id;usable=[m for m in candidates if m and m.value is not None and m.generation==g]
- if not usable:return None
- # Value selection follows journal event time; equal semantic values permit proof transport.
- best=max(usable,key=lambda m:(m.modified,m.origin[0],m.origin[1]))
- return g,best
+ g=p.id;usable=admissible_candidates(j,k,g,candidates)
+ if not usable:return(g,None,False)
+ if not deps:return(g,greatest_candidate(usable),False)
+ coherent=[m for m in usable if proof_coherent(m,deps,final_inputs)]
+ if coherent:return(g,greatest_candidate(coherent),True)
+ if len(deps)==1:return(g,greatest_candidate(usable),False)
+ if len(usable)==2 and revision(usable[0])==revision(usable[1]):return(g,min(usable,key=lambda m:m.identifier),False)
+ return(g,None,False)
 
 def validate_replica(r,schema=SCHEMA):
  if not valid(r.journal):return False
@@ -228,22 +246,26 @@ def receive(r,s,tau=None,schema=SCHEMA):
    q=alloc(replace(r,journal=j,coverage=cov),1)[0];d=dele(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau);authored.append(d);j=merge(j,(d,));cov=vmax(cov,((r.fp,q),))
  for k in order:
   if k not in universe or k in absent:continue
-  selected=choose_value(j,k,[node(r,k),node(s,k)])
-  if not selected:continue
-  g,best=selected;deps=tuple(dict.fromkeys(schema[k]));final_inputs={d:nodes[d].value for d in deps}
-  if not deps:proof=True
+  deps=tuple(dict.fromkeys(schema[k]))
+  if any(d not in nodes for d in deps):
+   selected=None
   else:
-   proof=False
-   for source in (r,s):
-    m=node(source,k)
-    if not m or not m.proof or not is_equal(m.value,best.value):continue
-    evidence=dict(m.inputs)
-    if set(evidence)==set(deps)and all(is_equal(evidence[d],final_inputs[d])for d in deps):proof=True
+   final_inputs={d:nodes[d].value for d in deps};selected=choose_value(j,k,[node(r,k),node(s,k)],deps,final_inputs)
+  if not selected or selected[1] is None:
+   absent.add(k);rm=node(r,k)
+   if rm and rm.identifier not in retired:retired.append(rm.identifier)
+   if not ph(j,k)or ph(j,k).kind!="delete":
+    if tau is None:raise ValueError("receive decision requires occurrence time")
+    q=alloc(replace(r,journal=j,coverage=cov),1)[0];d=dele(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau);authored.append(d);j=merge(j,(d,));cov=vmax(cov,((r.fp,q),))
+   continue
+  g,best,proof=selected
   st=classify(j,k,g)
   if st=="hard":proof=False
-  if not proof and st in ("fresh","soft"):
+  operational_soft=st=="soft"and bool(deps)and proof
+  if (st=="soft"and not operational_soft)or(st=="fresh"and deps and not proof):
    if tau is None:raise ValueError("receive decision requires occurrence time")
    q=alloc(replace(r,journal=j,coverage=cov),1)[0];h=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"hard");authored.append(h);j=merge(j,(h,));cov=vmax(cov,((r.fp,q),));st="hard"
+  if not deps:proof=st=="fresh"
   nodes[k]=M(best.identifier,g,best.value,best.origin,best.modified,st,proof,tuple(sorted(final_inputs.items()))if proof and deps else())
  out=Rep(r.fp,max([r.clock]+[e.sequence for e in authored]),cov,j,tuple(sorted(nodes.items())),r.nextid,tuple(retired))
  if not validate_replica(out,schema):raise AssertionError("receive produced unsupported replica")
@@ -283,20 +305,21 @@ def reset(r,s,tau):
    q1,q2=alloc(work,2,watermark);g=gen(q1,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,sm.value,(q2,r.fp));fkind="validate"if target=="fresh"else"invalidate";mode=None if target=="fresh"else target.replace("stale-","");clears=carry_prefix(work.journal,r.fp,k,g.id,vmax(r.coverage,s.coverage))if fkind=="validate"else();f=ev(q2,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,fkind,g.id,mode,clears);events.extend((g,f));work=add_events(work,(g,f));m=M(f"{r.fp}-{nextid}",g.id,sm.value,g.id,tau,target,proof,tuple(sorted(final_inputs.items()))if proof and deps else());nextid+=1
   else:
    m=replace(rm,value=sm.value,proof=proof,state=target,inputs=tuple(sorted(final_inputs.items()))if proof and deps else())
+   value_changed=False
    if not is_equal(rm.value,sm.value):
-    q=alloc(work,1,watermark)[0];e=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"edit",rm.generation,value=sm.value);events.append(e);work=add_events(work,(e,));m=replace(m,origin=e.id,modified=tau)
+    q=alloc(work,1,watermark)[0];e=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"edit",rm.generation,value=sm.value);events.append(e);work=add_events(work,(e,));m=replace(m,origin=e.id,modified=tau);value_changed=True
    g=m.generation;retained=set(work.journal);closed=reset_closed(r,s,k,g,target)
    if target=="fresh"and not validation_absorbing(retained,k,g,closed):
     q=alloc(work,1,watermark)[0];c=carry_prefix(work.journal,r.fp,k,g,closed);v=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"validate",g,clears=c);events.append(v);work=add_events(work,(v,))
    elif target=="soft":
     absorbed=validation_absorbing(retained,k,g,closed)
-    retained_soft=absorbed and classify(retained,k,g)=="soft"
+    retained_soft=not value_changed and absorbed and classify(retained,k,g)=="soft"
     if not retained_soft:
      new=[]
      if not absorbed:
       q=alloc(work,1,watermark)[0];c=carry_prefix(work.journal,r.fp,k,g,closed);v=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"validate",g,clears=c);new.append(v);work=add_events(work,(v,))
      q=alloc(work,1,watermark)[0];i=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"soft");new.append(i);work=add_events(work,(i,));events.extend(new)
-   elif target=="hard"and not hard(set(work.journal)|set(events),k,g):
+   elif target=="hard"and (value_changed or not hard(set(work.journal)|set(events),k,g)):
     q=alloc(work,1,watermark)[0];i=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"hard");events.append(i);work=add_events(work,(i,))
   nodes[k]=m
  retired=list(r.retired)
@@ -309,6 +332,7 @@ def reset(r,s,tau):
 
 # Common generation and independent fresh histories expose naive fresh+fresh -> hard.
 G=gen(1,A,(K,N,BS),1,"d",(2,A));V0=ev(2,A,(K,N,BS),2,"validate",G.id,clears=())
+crossG=gen(10,A,(KD,ND,BD),1,"bad",(20,B));crossV=ev(20,B,(KD,ND,BD),2,"validate",crossG.id);assert not valid((crossG,crossV))
 IR=ev(10,R,(K,N,BS),10,"invalidate",G.id,"hard");VR=ev(11,R,(K,N,BS),11,"validate",G.id,clears=((R,10),))
 IS=ev(20,S,(K,N,BS),20,"invalidate",G.id,"hard");VS=ev(21,S,(K,N,BS),21,"validate",G.id,clears=((S,20),))
 JR=frozenset((G,V0,IR,VR));JS=frozenset((G,V0,IS,VS));assert valid(JR)and valid(JS)
@@ -378,6 +402,25 @@ Y2,ye2=reset(Y1,YS,40);assert not ye2 and Y2==Y1
 EMPTY=Rep(S,1,((S,1),),frozenset(),());YD,yde=reset(RR,EMPTY,40);assert node(YD,K)is None and mR.identifier in YD.retired and any(e.kind=="delete"for e in yde)
 YREM,yre=reset(YD,YS,50);assert node(YREM,K).identifier!=mR.identifier and any(e.kind=="add"for e in yre)
 
+# A negative target after a same-generation edit always gets a new post-edit barrier.
+GH=gen(1,A,(K,N,BS),1,"X",(2,A));GHV=ev(2,A,(K,N,BS),2,"validate",GH.id);OLDH=ev(10,R,(K,N,BS),10,"invalidate",GH.id,"hard")
+hardOld=Rep(R,10,((A,2),(R,10)),frozenset((GH,GHV,OLDH)),((K,M("hx",GH.id,"X",GH.id,1,"hard",False)),))
+OLDV=ev(11,B,(K,N,BS),11,"validate",GH.id,clears=((R,10),));oldValidated=Rep(B,11,((A,2),(R,10),(B,11)),frozenset((GH,GHV,OLDH,OLDV)),((K,M("tx",GH.id,"X",GH.id,1,"fresh",True)),))
+SYE=ev(20,S,(K,N,BS),20,"edit",GH.id,value="Y");SYH=ev(21,S,(K,N,BS),21,"invalidate",GH.id,"hard");hardTarget=Rep(S,21,((A,2),(S,21)),frozenset((GH,GHV,SYE,SYH)),((K,M("sy",GH.id,"Y",SYE.id,20,"hard",False)),))
+hardReset,hardResetEvents=reset(hardOld,hardTarget,100);postHard=[e for e in hardResetEvents if e.kind=="invalidate"and e.mode=="hard"]
+assert len(postHard)==1 and any(e.kind=="edit"and e.id<postHard[0].id for e in hardResetEvents)
+hardRepeat,hardRepeatEvents=reset(hardReset,hardTarget,100);assert not hardRepeatEvents and hardRepeat==hardReset
+hardDelayed,hardDelayedEvents=receive(hardReset,oldValidated);assert not hardDelayedEvents and node(hardDelayed,K).value=="Y"and node(hardDelayed,K).state=="hard"and postHard[0]in hardDelayed.journal
+
+# Journal-soft authority on a zero-input node is operationally hard: no incoming
+# proof exists for cache-only reuse.
+ROOT_H=ev(30,A,(K,N,BS),30,"invalidate",GH.id,"hard");ROOT_V=ev(31,R,(K,N,BS),31,"validate",GH.id,clears=((A,30),));ROOT_S=ev(32,S,(K,N,BS),32,"invalidate",GH.id,"soft")
+rootFresh=Rep(R,31,((A,30),(R,31)),frozenset((GH,GHV,ROOT_H,ROOT_V)),((K,M("rf",GH.id,"X",GH.id,1,"fresh",True)),))
+rootHard=Rep(S,32,((A,30),(S,32)),frozenset((GH,GHV,ROOT_H,ROOT_S)),((K,M("rh",GH.id,"X",GH.id,1,"hard",False)),))
+rootJoined,rootEvents=receive(rootFresh,rootHard,100);assert len(rootEvents)==1 and rootEvents[0].mode=="hard"and rootEvents[0].time==100 and node(rootJoined,K).state=="hard"
+rootReverse,rootReverseEvents=receive(rootHard,rootJoined);assert not rootReverseEvents and rootEvents[0]in rootReverse.journal
+rootSettled,rootSettledEvents=receive(rootJoined,rootHard);assert not rootSettledEvents and rootSettled==rootJoined
+
 # Equal value with numerically greater source generation: no reset fence/edit, timestamp preserved.
 GS=gen(99,S,(K,N,BS),5,"d",(100,S));GSV=ev(100,S,(K,N,BS),6,"validate",GS.id)
 EQ_S=Rep(S,100,((S,100),),frozenset((GS,GSV)),((K,M("sid",GS.id,"d",GS.id,5,"fresh",True,((KI,"a"),))),))
@@ -409,12 +452,25 @@ assert any(e.author==R and e.kind=="validate"and dict(e.clears).get(S,0)>=7 for 
 Soft2,sa=receive(Soft1,softS);assert node(Soft2,KE).state=="soft"and node(Soft2,KE).proof and not sa
 SoftAgain,se2=reset(Soft1,softS,30);assert not se2 and SoftAgain==Soft1
 
+# A soft target after X->Y gets a new post-edit soft barrier; an old validation
+# that cleared X's barrier cannot make Y fresh.
+EX=ev(7,R,(KE,NE,BE),7,"edit",SGE.id,value="X");IX=ev(8,R,(KE,NE,BE),8,"invalidate",SGE.id,"soft")
+softOld=Rep(R,8,((A,6),(R,8)),frozenset(set(softR.journal)|{EX,IX}),tuple(sorted((*sroots,(KE,M("ox",SGE.id,"X",EX.id,7,"soft",True,((KI,"a"),(KD,"c"))))))))
+XV=ev(9,B,(KE,NE,BE),9,"validate",SGE.id,clears=((R,8),));softOldValidated=Rep(B,9,((A,6),(R,8),(B,9)),frozenset(set(softOld.journal)|{XV}),tuple(sorted((*sroots,(KE,M("tv",SGE.id,"X",EX.id,7,"fresh",True,((KI,"a"),(KD,"c"))))))))
+SEY=ev(20,S,(KE,NE,BE),20,"edit",SGE.id,value="Y");SIY=ev(21,S,(KE,NE,BE),21,"invalidate",SGE.id,"soft")
+softTarget=Rep(S,21,((A,6),(S,21)),frozenset(set(softR.journal)|{SEY,SIY}),tuple(sorted((*sroots,(KE,M("sy",SGE.id,"Y",SEY.id,20,"soft",True,((KI,"a"),(KD,"c"))))))))
+assert validate_replica(softOld)and validate_replica(softOldValidated)and validate_replica(softTarget)
+softEdited,softEditEvents=reset(softOld,softTarget,100);postSoft=[e for e in softEditEvents if e.kind=="invalidate"and e.mode=="soft"]
+assert len(postSoft)==1 and any(e.kind=="edit"and e.id<postSoft[0].id for e in softEditEvents)
+softEditedAgain,softEditedAgainEvents=reset(softEdited,softTarget,100);assert not softEditedAgainEvents and softEditedAgain==softEdited
+softDelayed,softDelayedEvents=receive(softEdited,softOldValidated);assert not softDelayedEvents and node(softDelayed,KE).value=="Y"and node(softDelayed,KE).state=="soft"and postSoft[0]in softDelayed.journal
+
 # Losing the reusable proof of stale-soft state is a genuine local hardening;
 # reverse receive imports that precise barrier silently.
-SIB=ev(90,S,(KI,NI,BI),10,"edit",SGI.id,value="b");SOE=ev(91,S,(KE,NE,BE),0,"edit",SGE.id,value="e")
-changedRoots=((KI,M("si2",SGI.id,"b",SIB.id,10,"fresh",True)),sroots[1])
-changedDerived=M("se2",SGE.id,"e",SOE.id,0,"soft",True,((KI,"b"),(KD,"c")))
-changedSoft=Rep(S,91,((A,6),(S,91)),frozenset(set(softR.journal)|{ISS,SIB,SOE}),tuple(sorted((*changedRoots,(KE,changedDerived)))))
+SIB=ev(90,S,(KI,NI,BI),10,"edit",SGI.id,value="b");SID=ev(91,S,(KD,ND,BD),0,"edit",SGD.id,value="d2")
+changedRoots=((KI,M("si2",SGI.id,"b",SIB.id,10,"fresh",True)),(KD,M("sd2",SGD.id,"d2",SID.id,0,"fresh",True)))
+changedDerived=M("se2",SGE.id,"d",SGE.id,1,"soft",True,((KI,"b"),(KD,"d2")))
+changedSoft=Rep(S,91,((A,6),(S,91)),frozenset(set(softR.journal)|{ISS,SIB,SID}),tuple(sorted((*changedRoots,(KE,changedDerived)))))
 assert validate_replica(changedSoft)
 hardened,hardEvents=receive(Soft1,changedSoft,100);assert len(hardEvents)==1 and hardEvents[0].mode=="hard"and hardEvents[0].time==100 and node(hardened,KE).state=="hard"and node(hardened,KE).modified==1 and not node(hardened,KE).proof
 reverse,reverseEvents=receive(changedSoft,hardened);assert not reverseEvents and node(reverse,KE).state=="hard"and hardEvents[0] in reverse.journal and hardEvents[0].time==100
@@ -458,14 +514,50 @@ baseJ=frozenset((GI,GIV,GD,GDV,GE,GEV))
 roots=((KI,M("i",GI.id,"a",GI.id,1,"fresh",True)),(KD,M("j",GD.id,"c",GD.id,1,"fresh",True)))
 derived=M("d",GE.id,"d",GE.id,1,"fresh",True,((KI,"a"),(KD,"c")))
 DL=Rep(A,6,((A,6),),baseJ,tuple(sorted((*roots,(KE,derived)))))
+
+# Derived selection classifies candidates before revision ordering.
+ONE={KI:(),KE:(KI,),KD:(),K:()}
+OI=gen(1,A,(KI,NI,BI),1,"a",(2,A));OIV=ev(2,A,(KI,NI,BI),2,"validate",OI.id)
+OD=gen(3,A,(KE,NE,BE),10,"old",(4,A));ODV=ev(4,A,(KE,NE,BE),11,"validate",OD.id);oneBase=frozenset((OI,OIV,OD,ODV))
+oneRoots=((KI,M("ia",OI.id,"a",OI.id,1,"fresh",True)),);oneOld=M("old-id",OD.id,"old",OD.id,10,"fresh",True,((KI,"a"),))
+oneR=Rep(R,0,((A,4),),oneBase,tuple(sorted((*oneRoots,(KE,oneOld)))))
+ONE_NEW=ev(20,S,(KE,NE,BE),20,"edit",OD.id,value="new");ONE_HARD=ev(21,S,(KE,NE,BE),21,"invalidate",OD.id,"hard")
+oneUnsupported=Rep(S,21,((A,4),(S,21)),frozenset(set(oneBase)|{ONE_NEW,ONE_HARD}),tuple(sorted((*oneRoots,(KE,M("new-id",OD.id,"new",ONE_NEW.id,20,"hard",False))))))
+olderCoherent,olderEvents=receive(oneR,oneUnsupported,schema=ONE);assert not olderEvents and node(olderCoherent,KE).value=="old"and node(olderCoherent,KE).state=="hard"
+# Two coherent candidates choose the greatest coherent revision.
+oneNew=M("new-id",OD.id,"new",ONE_NEW.id,20,"fresh",True,((KI,"a"),))
+oneNewCoherent=Rep(S,20,((A,4),(S,20)),frozenset(set(oneBase)|{ONE_NEW}),tuple(sorted((*oneRoots,(KE,oneNew)))))
+newerCoherent,newerEvents=receive(oneR,oneNewCoherent,schema=ONE);assert not newerEvents and node(newerCoherent,KE).value=="new"and node(newerCoherent,KE).proof
+# One-input no-coherent fallback keeps the greatest admissible revision.
+ONE_RH=ev(11,R,(KE,NE,BE),11,"invalidate",OD.id,"hard");oneRHard=Rep(R,11,((A,4),(R,11)),frozenset(set(oneBase)|{ONE_RH}),tuple(sorted((*oneRoots,(KE,replace(oneOld,state="hard",proof=False))))))
+oneFallback,oneFallbackEvents=receive(oneRHard,oneUnsupported,schema=ONE);assert not oneFallbackEvents and node(oneFallback,KE).value=="new"and node(oneFallback,KE).state=="hard"
+# Equal selected revision under two identifiers uses least canonical identifier.
+oneTwin=replace(oneR,fp=S,nodes=tuple(sorted((*oneRoots,(KE,replace(oneOld,identifier="a-id"))))))
+oneTie,oneTieEvents=receive(oneR,oneTwin,schema=ONE);assert not oneTieEvents and node(oneTie,KE).identifier=="a-id"
+
 EIB=ev(100,S,(KI,NI,BI),10,"edit",GI.id,value="b")
 DRIGHT=Rep(S,100,((A,4),(S,100)),frozenset((GI,GIV,GD,GDV,EIB)),((KI,M("i2",GI.id,"b",EIB.id,10,"fresh",True)),(KD,roots[1][1])))
 assert validate_replica(DL)and validate_replica(DRIGHT)
-DM,dm_events=receive(DL,DRIGHT,100);assert not node(DM,KE).proof and node(DM,KE).state=="hard"and len(dm_events)==1 and dm_events[0].time==100
+DM,dm_events=receive(DL,DRIGHT,100);assert node(DM,KE)is None and len(dm_events)==1 and dm_events[0].kind=="delete"and dm_events[0].key==KE and dm_events[0].time==100
 # Same semantic input at a different revision preserves real multi-input proof; duplicate KI is collapsed.
 EIA=ev(100,S,(KI,NI,BI),10,"edit",GI.id,value="a")
 DEQUAL=Rep(S,100,((A,4),(S,100)),frozenset((GI,GIV,GD,GDV,EIA)),((KI,M("i2",GI.id,"a",EIA.id,10,"fresh",True)),(KD,roots[1][1])))
 DEM,de_events=receive(DL,DEQUAL);assert node(DEM,KE).proof and node(DEM,KE).state=="fresh"and not de_events and len(node(DEM,KE).inputs)==2
+
+# Multi-input different unsupported revisions delete; the same revision case is
+# retained and hardened by the stale-soft proof-loss trace above.
+MER=ev(10,R,(KE,NE,BE),10,"edit",GE.id,value="old");MHR=ev(11,R,(KE,NE,BE),11,"invalidate",GE.id,"hard")
+MES=ev(20,S,(KE,NE,BE),20,"edit",GE.id,value="new");MHS=ev(21,S,(KE,NE,BE),21,"invalidate",GE.id,"hard")
+multiR=Rep(R,11,((A,6),(R,11)),frozenset(set(baseJ)|{MER,MHR}),tuple(sorted((*roots,(KE,M("mr",GE.id,"old",MER.id,10,"hard",False))))))
+multiS=Rep(S,21,((A,6),(S,21)),frozenset(set(baseJ)|{MES,MHS}),tuple(sorted((*roots,(KE,M("ms",GE.id,"new",MES.id,20,"hard",False))))))
+multiDeleted,multiDeleteEvents=receive(multiR,multiS,100);assert node(multiDeleted,KE)is None and len(multiDeleteEvents)==1 and multiDeleteEvents[0].kind=="delete"
+
+# Joined-history provenance obsoletes a lower same-author value head.
+PO10=ev(10,B,(KE,NE,BE),10,"edit",GE.id,value="old");PO20=ev(20,B,(KE,NE,BE),5,"edit",GE.id,value="canonical")
+provOld=M("pr",GE.id,"old",PO10.id,10,"fresh",True,((KI,"a"),(KD,"c")));provNew=M("ps",GE.id,"canonical",PO20.id,5,"fresh",True,((KI,"a"),(KD,"c")))
+provR=Rep(R,0,((A,6),(B,10)),frozenset(set(baseJ)|{PO10}),tuple(sorted((*roots,(KE,provOld)))))
+provS=Rep(S,0,((A,6),(B,20)),frozenset(set(baseJ)|{PO10,PO20}),tuple(sorted((*roots,(KE,provNew)))))
+provMerged,provEvents=receive(provR,provS);assert not provEvents and node(provMerged,KE).value=="canonical"and node(provMerged,KE).origin==PO20.id
 # Graph/journal-inconsistent hard label is rejected before reset or receive.
 INVALID_HARD=replace(DL,nodes=tuple(sorted((*roots,(KE,replace(derived,state="hard",proof=False))))))
 assert not validate_replica(INVALID_HARD)

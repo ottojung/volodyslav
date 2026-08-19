@@ -101,7 +101,7 @@ Before installation, restoration validates the ordinary load structure:
 
 - the durable `DatabaseFingerprint` belongs to
   the selected host/writer branch;
-- retained generation references resolve correctly;
+- retained generation references resolve correctly, and every generation's named initial freshness event has the same author, a greater sequence, the same key, and the generation's exact ID;
 - live `NodeIdentifier` values are unique and bijective with live semantic keys, and no retired identifier is live;
 - every materialization origin is the admissible canonical event for its winning generation and `modifiedAt`, rather than a superseded same-author head or lower equal-time candidate;
 - every retained `clearsThrough` has canonical map shape, unique supported fingerprint coordinates, and uint64 values;
@@ -250,7 +250,7 @@ Value classification is receiver-relative and exact:
 
 * absent→present: generation(add)+mandatory initial freshness, with value modifiedAt and generation time τ;
 * present→absent: delete at τ;
-* present X→present Y unequal by `isEqual`: ordinary edit scoped to surviving receiver generation, edit time/modifiedAt τ;
+* present X→present Y unequal by `isEqual`: ordinary edit scoped to surviving receiver generation, edit time/modifiedAt τ; if the target is soft/hard, a new matching invalidate is authored after that edit and pre-edit negative authority is not reused;
 * present A→present A: no generation/add/edit and preserve receiver modifiedAt;
 * freshness/proof-only changes preserve modifiedAt.
 
@@ -263,8 +263,8 @@ Reset reasons against the hypothetical journal/coverage union of both consumed s
 For a key/generation, the **consumed absorption prefix** contains the validated source coverage coordinates, every applicable receiver/source invalidate coordinate that the target must clear, and every coordinate already carried by an applicable receiver validation. For a fresh target, applicable invalidates means both modes. For a soft target, it means hard invalidates; the intended receiver-retained soft assertion remains deliberately above/outside the clearing validation. Receiver coverage growth caused solely by a reset assertion is not recursively added to this prefix. Consequently an unchanged repeated reset tests the same semantic obligation rather than chasing its own clock.
 
 * Fresh target: retain an existing validation only when that validation is present in the receiver journal that will be installed and its `clearsThrough` componentwise dominates the consumed absorption prefix. Otherwise author one receiver validation with that property. A source-only validation cannot satisfy this test, even when it covers every currently retained frontier member.
-* Hard target: ensure an applicable hard invalidate is uncleared and remove reusable incoming proofs. If source authority is not locally retained, author one real receiver hard assertion representing reset's target decision.
-* Soft target: ensure a receiver-retained validation componentwise dominates the hard-mode consumed absorption prefix, then ensure one receiver-retained soft invalidate remains uncovered. A source-only soft invalidate cannot satisfy the second condition. A hard→soft stabilization may atomically author the clearing validation and then the soft invalidate.
+* Hard target: ensure an applicable hard invalidate is uncleared and remove reusable incoming proofs. If reset edited the value, always author a new receiver hard invalidate after the edit; otherwise an already retained applicable hard barrier may represent the decision. Source-only authority is never sufficient retained authority.
+* Soft target: ensure a receiver-retained validation componentwise dominates the hard-mode consumed absorption prefix, then ensure one receiver-retained soft invalidate remains uncovered. If reset edited the value, always author a new receiver soft invalidate after the edit; otherwise an existing qualifying receiver soft assertion may be retained. A source-only soft invalidate cannot satisfy the second condition. A hard→soft stabilization may atomically author the clearing validation and then the soft invalidate.
 
 Separate old partial validations are not combined; the reset validation is one new assertion justified by its actual joint observation. Unseen/concurrent history above the consumed prefixes remains live. A delayed compacted event within a claimed prefix is cleared.
 
