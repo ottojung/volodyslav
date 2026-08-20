@@ -4,15 +4,21 @@
 
 ```text
 presenceEvents(J,K) = generation/delete entries for K
-basePresenceHead = greatest JournalEntryId presence event
-lineageActivated(G) iff a retained lineage anchored at basePresenceHead
-               consumed generation G and a scoped G event lies above its
-               author coordinate
-activatedPresenceEvents = post-cutoff generation/delete events, plus generation
-               G itself when lineageActivated(G)
-presenceHead = basePresenceHead when activatedPresenceEvents is empty;
-               otherwise greatest activatedPresenceEvent by that presence
-               event's own JournalEntryId
+rawPresenceHead = greatest JournalEntryId presence event, or null
+nullObservations = reset-observations for K whose absentAnchor is null
+anchorLineages = lineages whose receiver generation/value/delete anchor resolves
+               to rawPresenceHead
+applicableLineages = nullObservations union anchorLineages
+cut[A] = max consumedThrough[A] across applicableLineages, missing as zero
+lineageActivated(G) iff an applicable lineage exactly consumed G, or G is an
+               otherwise losing generation with a G-scoped event above cut
+eligiblePresence = actual generation/delete events above their author cut,
+               plus generation G itself when lineageActivated(G)
+anchorFallback = rawPresenceHead when anchorLineages is nonempty; otherwise
+               explicit absence when nullObservations is nonempty; otherwise
+               rawPresenceHead
+presenceHead = greatest eligiblePresence by that actual presence event's own
+               JournalEntryId, or anchorFallback when eligiblePresence is empty
 generation = presenceHead.id iff it is GenerationJournalEntry
 valueEvents(J,K,G) = generation G union edits scoped to G
 valueHead(J,K,G,A) = greatest A-authored value event
@@ -25,7 +31,7 @@ Presence selection precedes value. A GenerationJournalEntry is the generation an
 
 Freshness uses `clearsThrough`, `covers`, both frontiers, `freshnessEffective`, and `journalHard` exactly as defined in the types specification. A validation applies only to its mandatory exact `valueOrigin`; positive evidence never crosses an edit. Causal vectors never combine across validations.
 
-Frontiers are relative to the final selected value origin: generation-wide invalidates always apply, while value-specific cache-status invalidates apply only to their named origin. A reset lineage retains an otherwise unsupported receiver cache only against the exact source generation/origin reset semantically consumed or another exact source generation/origin explicitly retained for that receiver anchor. Its causal vector is also a lineage bridge: for every event author A, consumed events at or below the A coordinate are absorbed, while later scoped events, deletes, and rematerializations activate the source lineage despite a numerically greater receiver anchor. Activation and presence ordering are separate: a scoped event can make its generation eligible, but only generation/delete IDs order presence, so an edit/validate/invalidate cannot resurrect a generation after a later delete. Missing coordinates are zero, and carrier identity is irrelevant. An absent reset target anchors the same vector on its real delete. It never authorizes an unrelated unsupported cache.
+Frontiers are relative to the final selected value origin: generation-wide invalidates always apply, while value-specific cache-status invalidates apply only to their named origin. A reset lineage retains an otherwise unsupported receiver cache only against the exact source generation/origin reset semantically consumed or another exact source generation/origin explicitly retained for that receiver anchor. Its causal vector is also a lineage bridge: for every event author A, consumed events at or below the A coordinate are absorbed, while later scoped events, deletes, and rematerializations activate the source lineage despite a numerically greater receiver anchor. Activation and presence ordering are separate: a scoped event can make its generation eligible, but only generation/delete IDs order presence, so an edit/validate/invalidate cannot resurrect a generation after a later delete. Missing coordinates are zero, and carrier identity is irrelevant. Present-to-absent reset anchors the vector on its real delete; absent-to-absent reset uses a no-action ResetObservationEntry anchored to that delete or to null explicit absence. A retained null observation continues suppressing delayed consumed history, but a later present lineage anchored to the current raw generation makes that generation the fallback; the older null anchor cannot erase it. Reset lineage never authorizes an unrelated unsupported cache.
 
 ## Extensional proof transport
 

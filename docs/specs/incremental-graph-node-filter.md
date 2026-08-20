@@ -359,8 +359,13 @@ For polling only, `filterIdentity(F)` is a canonical opaque string derived from
 F's immutable structural form. It is not a public filter serialization or a way
 to construct a filter. The derivation uses distinct tags for wildcard, ground,
 and union; ground encodes `head` plus the production canonical ConstValue bytes
-for each argument (with a distinct wildcard tag); union recursively sorts its
-two child identity byte strings before encoding. The identity is the complete canonical bytes encoded with canonical base64url; it is not a fixed-size digest and is injective over the supported filter domain.
+for each argument (with a distinct wildcard tag). Those bytes accept exactly the
+recursive finite-number/string/boolean/array/ordered-record ConstValue domain,
+normalize `-0` with `+0` and equivalent JavaScript Number representations, and
+preserve array position and record key order exactly as `isEqual` does. `null`,
+`NaN`, infinities, and non-string record keys are rejected before identity
+construction. Union recursively sorts its two child identity byte strings before
+encoding. The identity is the complete canonical bytes encoded with canonical base64url; it is not a fixed-size digest and is injective over the supported filter domain modulo production `isEqual`.
 The token decoder treats the identity as opaque and compares it with the identity
 computed from the call's live `to` filter. Different identities are rejected.
 

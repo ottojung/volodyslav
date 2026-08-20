@@ -122,16 +122,17 @@ def ph(es,k):
   certs.append(cert)
  if not certs:return base
  virtual_absence=any(cert.kind=="observe"and cert.target is None for cert in certs)
+ anchored_base=any(cert.kind!="observe"or cert.target is not None for cert in certs)
  cut={};consumed=set()
  for cert in certs:
   for a,q in cert.lineage[0]:cut[a]=max(cut.get(a,0),q)
   if cert.lineage[1]is not None:consumed.add(cert.lineage[1])
  for e in es:
-  if e.key!=k or(base and e.id==base.id and not virtual_absence)or e.sequence<=cut.get(e.author,0):continue
+  if e.key!=k or(base and e.id==base.id and anchored_base)or e.sequence<=cut.get(e.author,0):continue
   if e.kind in ("add","delete"):eligible.append(e)
   elif e.generation in consumed or ((not base or e.generation!=base.id)and e.generation in by and by[e.generation].sequence>cut.get(by[e.generation].author,0)):
    eligible.append(by[e.generation])
- return max(eligible,key=lambda e:e.id) if eligible else(None if virtual_absence else base)
+ return max(eligible,key=lambda e:e.id) if eligible else(base if anchored_base else(None if virtual_absence else base))
 def generation(es,k):p=ph(es,k);return p.id if p and p.kind=="add" else None
 def vheads(es,k,g):
  o={}
@@ -177,8 +178,8 @@ def compact(es):
    if anchored:applicable.append(e)
   exact={};coordinates={}
   for e in applicable:
-   pair=e.lineage[1:]
-   if pair!=(None,None)and(pair not in exact or exact[pair].id<e.id):exact[pair]=e
+   pair=(e.target,*e.lineage[1:])
+   if e.lineage[1:]!=(None,None)and(pair not in exact or exact[pair].id<e.id):exact[pair]=e
    for a,q in e.lineage[0]:
     if a not in coordinates or(coordinates[a].lineage[0]and(dict(coordinates[a].lineage[0]).get(a,0),coordinates[a].id)<(q,e.id)):coordinates[a]=e
   keep.update(exact.values());keep.update(coordinates.values())
@@ -215,20 +216,24 @@ def query(es,cursor=()):
   d[e.author]=e.sequence;out.append((e.kind,tuple(sorted(d.items()))))
  return tuple(out)
 def const_bytes(value):
- if value is None:return b"z"
  if type(value)is bool:return b"b1"if value else b"b0"
  if type(value)in (int,float):
-  if type(value)is float and math.isnan(value):return b"nNaN"
-  return ("n"+format(value,".17g")).encode()
+  try:number=float(value)
+  except OverflowError:raise ValueError("non-finite ConstValue number")
+  if not math.isfinite(number):raise ValueError("non-finite ConstValue number")
+  # JavaScript === equates both zero signs and every integer/float spelling of
+  # the same Number. float.hex is an injective canonical encoding thereafter.
+  if number==0:number=0.0
+  return ("n"+number.hex()).encode()
  if type(value)is str:
   data=value.encode();return b"s"+str(len(data)).encode()+b":"+data
  if type(value)is list:
   parts=[const_bytes(x)for x in value];return b"a"+b"".join(str(len(x)).encode()+b":"+x for x in parts)
- if type(value)is dict:
+ if type(value)is dict and all(type(k)is str for k in value):
   parts=[]
   for k,v in value.items():parts.extend((const_bytes(k),const_bytes(v)))
   return b"o"+b"".join(str(len(x)).encode()+b":"+x for x in parts)
- raise ValueError("unsupported ConstValue")
+ raise ValueError("value is outside ConstValue")
 def filter_bytes(f):
  if f==("wildcard",):return b"W"
  if type(f)is not tuple or not f:raise ValueError("invalid filter")
@@ -420,6 +425,11 @@ def reset_lineage_through(r,s,k,sg,so,ignore_bookkeeping=False):
  prior=[e.lineage[0]for e in r.journal if e.key==k and e.lineage]
  carried=()
  for p in prior:carried=vmax(carried,p)
+ # Reset consumes the source snapshot's durable per-key causal semantics, not
+ # merely the source container's journalCoverage. Exact correspondences remain
+ # exact and are not inferred or transitively copied from these vectors.
+ for e in s.journal:
+  if e.key==k and e.lineage:carried=vmax(carried,e.lineage[0])
  out=dict(vmax(carried,s.coverage));anchors={e.target for e in r.journal if e.lineage and e.target}
  for e in r.journal:
   # Reset carriers and their receiver anchors are explicitly marked
@@ -468,7 +478,7 @@ def reset(r,s,tau):
  # the same journal with an internal entry anchored to the existing absence.
  for k in SCHEMA:
   if node(r,k)is not None or node(s,k)is not None:continue
-  if raw_ph(r.journal,k)is None and raw_ph(s.journal,k)is None:continue
+  if raw_ph(r.journal,k)is None and raw_ph(s.journal,k)is None and not any(e.key==k and e.lineage for e in r.journal|s.journal):continue
   anchor=raw_ph(work.journal,k);target=anchor.id if anchor and anchor.kind=="delete"else None
   through=reset_lineage_through(r,s,k,None,None,True);joined={}
   for e in work.journal:
@@ -515,6 +525,35 @@ post=frozenset(set(lagged)|{NG11,NV12});assert generation(post,KD)==NG11.id
 ND13=dele(13,S,(KD,ND,BD),13);NG14=gen(14,S,(KD,ND,BD),14,"again",(15,S));NV15=ev(15,S,(KD,ND,BD),15,"validate",NG14.id)
 assert generation(set(post)|{ND13},KD)is None and generation(set(post)|{ND13,NG14,NV15},KD)==NG14.id
 absentRepeat,absentRepeatEvents=reset(absentReset,absentS,20);assert absentRepeat==absentReset and not absentRepeatEvents
+
+# Reset-of-reset consumes source per-key lineage even when neither side has a
+# raw presence head or imported B coverage.
+sourceNull=observe(1,S,(KD,ND,BD),10,None,(((B,20),),None,None))
+sourceObserved=Rep(S,1,((S,1),),frozenset((sourceNull,)),())
+resetOfReset,rorEvents=reset(emptyR,sourceObserved,30)
+ror=next(e for e in rorEvents if e.key==KD and e.kind=="observe");assert dict(ror.lineage[0])[B]==20
+B5=gen(5,B,(KD,ND,BD),5,"old-b",(6,B));B6=ev(6,B,(KD,ND,BD),6,"validate",B5.id);assert generation(resetOfReset.journal|{B5,B6},KD)is None
+receiverNull=observe(1,R,(KD,ND,BD),10,None,(((A,10),),None,None));receiverObserved=Rep(R,1,((R,1),),frozenset((receiverNull,)),())
+joinedReset,joinedEvents=reset(receiverObserved,sourceObserved,30);joinedObs=next(e for e in joinedEvents if e.key==KD)
+assert dict(joinedObs.lineage[0])[A]==10 and dict(joinedObs.lineage[0])[B]==20
+joinedRepeat,joinedRepeatEvents=reset(joinedReset,sourceObserved,30);assert joinedRepeat==joinedReset and not joinedRepeatEvents
+B21=gen(21,B,(KD,ND,BD),31,"live",(22,B));B22=ev(22,B,(KD,ND,BD),32,"validate",B21.id);assert generation(joinedReset.journal|{B21,B22},KD)==B21.id
+compactedJoined=replace(joinedReset,journal=compact(joinedReset.journal));assert reset(compactedJoined,sourceObserved,30)==(compactedJoined,())
+
+# A later present reset anchor protects its receiver generation from an older
+# null-absence observation, while retaining that observation for delayed data.
+O0=observe(1,R,(K,N,BS),1,None,(((S,10),),None,None));S11=gen(11,S,(K,N,BS),11,"A",(12,S));S12=ev(12,S,(K,N,BS),12,"validate",S11.id)
+presentAfterNull=Rep(R,1,((R,1),(S,12)),frozenset((O0,S11,S12)),((K,M("pan",S11.id,"A",S11.id,11,"fresh",True)),))
+TG=gen(20,C,(K,N,BS),20,"A",(21,C));TV=ev(21,C,(K,N,BS),21,"validate",TG.id);presentSource=Rep(C,21,((C,21),),frozenset((TG,TV)),((K,M("pst",TG.id,"A",TG.id,20,"fresh",True)),))
+presentAnchored,presentAnchorEvents=reset(presentAfterNull,presentSource,30)
+assert node(presentAnchored,K).generation==S11.id and generation(presentAnchored.journal,K)==S11.id and any(e.lineage and e.target==S11.id for e in presentAnchorEvents)
+presentCompacted=replace(presentAfterNull,journal=compact(presentAfterNull.journal));presentAnchoredC,_=reset(presentCompacted,presentSource,30);assert generation(presentAnchoredC.journal,K)==S11.id
+
+# Present source lineage is durable reset input even when its causal coordinate
+# is absent from source journalCoverage.
+TLINE=replace(TV,lineage=(((B,20),),TG.id,TG.id));presentLineageSource=replace(presentSource,journal=frozenset((TG,TLINE)))
+fromPresentLineage,fromPresentEvents=reset(emptyR,presentLineageSource,30)
+assert any(e.lineage and dict(e.lineage[0]).get(B)==20 for e in fromPresentEvents)
 
 # A source-only validation is evidence, never installed authority. Receiver stabilization
 # covers the whole consumed source prefix, survives delayed compacted evidence, and is idempotent.
@@ -921,6 +960,20 @@ assert not reset_lineage_covers(hardAdded.journal,receiverCache,unrelated)
 OTHERPAIR=((30,S),(31,S));exact2=replace(exactCert,sequence=exactCert.sequence+100,author=C,lineage=(exactCert.lineage[0],*OTHERPAIR))
 exactHistory=frozenset(set(hardAdded.journal)|{exact2});assert valid(exactHistory)and reset_lineage_covers(exactHistory,receiverCache,M("other",OTHERPAIR[0],"d",OTHERPAIR[1],1,"hard",False))
 exactCompact=compact(exactHistory);assert {e.lineage[1:]for e in exactCompact if e.lineage}>={(sourceCache.generation,sourceCache.origin),OTHERPAIR}
+# RLC identity includes the receiver anchor. The same exact source pair can be
+# certified against two retained value heads without either relation compacting
+# the other away, even after newer ordinary validations win polling/VV maxima.
+RLCG=gen(1,A,(KD,ND,BD),1,"base",(2,A));RLCV=ev(2,A,(KD,ND,BD),2,"validate",RLCG.id)
+OX=ev(10,A,(KD,ND,BD),10,"edit",RLCG.id,value="X");OY=ev(10,B,(KD,ND,BD),11,"edit",RLCG.id,value="Y");PAIR=((40,C),(41,C))
+CX=ev(20,R,(KD,ND,BD),20,"validate",RLCG.id,target=OX.id,lineage=((),*PAIR));CY=ev(20,S,(KD,ND,BD),20,"validate",RLCG.id,target=OY.id,lineage=((),*PAIR))
+RX=ev(30,R,(KD,ND,BD),30,"validate",RLCG.id,target=OX.id);SY=ev(30,S,(KD,ND,BD),30,"validate",RLCG.id,target=OY.id)
+rlcHistory=frozenset((RLCG,RLCV,OX,OY,CX,CY,RX,SY));rlcCompact=compact(rlcHistory);sourcePair=M("pair",PAIR[0],"source",PAIR[1],40,"hard",False)
+mx=M("mx",RLCG.id,"X",OX.id,10,"hard",False);my=M("my",RLCG.id,"Y",OY.id,11,"hard",False)
+assert valid(rlcHistory)and all(reset_lineage_covers(rlcHistory,m,sourcePair)and reset_lineage_covers(rlcCompact,m,sourcePair)for m in(mx,my))
+assert CX in rlcCompact and CY in rlcCompact
+for m in (mx,my):
+ assert choose_value(rlcHistory,KD,[m,sourcePair],(KI,KE),{KI:"i",KE:"e"})[1]is m
+ assert choose_value(rlcCompact,KD,[m,sourcePair],(KI,KE),{KI:"i",KE:"e"})[1]is m
 # Correspondence boundary validation rejects malformed shapes before compaction.
 good_cert=next(e for e in lineageResetEvents if e.lineage)
 for bad_corr in ((((S,20),),LG.id),(((S,True),),LG.id,LG.id),((('bad',20),),LG.id,LG.id),(((S,20),(S,21)),LG.id,LG.id),(((S,20),(B,10)),LG.id,LG.id),(((S,20),),(True,S),LG.id),(((S,20),),LG.id,(0,S)),(((S,20),),None,LG.id),(((S,20),),LG.id,LG.id,"extra")):
@@ -1016,6 +1069,17 @@ FA5=ev(5,A,(KI,NI,BI),5,"edit",FK1.id,value="k1-edit");FA10=ev(10,A,(KD,ND,BD),1
 k1f=("ground",NI,BI);k2f=("ground",ND,BD);bothf=("union",k1f,k2f);swapped=("union",k2f,k1f);wild=("wildcard",);nonef=("ground","missing",())
 k2id=filter_identity(k2f);bothid=filter_identity(bothf);noneid=filter_identity(nonef)
 assert k2id!=bothid and bothid==filter_identity(swapped)and k2id==filter_identity(("ground",ND,tuple(BD)))
+# ConstValue identity is the quotient induced by production isEqual: JavaScript
+# Number spelling and zero sign normalize, while record order remains semantic.
+assert filter_identity(("ground","X",(-0.0,)))==filter_identity(("ground","X",(0.0,)))
+assert filter_identity(("ground","X",(1,)))==filter_identity(("ground","X",(1.0,)))
+nested1=[{"a":1,"b":[-0.0,{"x":True}]}];nested2=[{"a":1.0,"b":[0,{"x":True}]}]
+assert filter_identity(("ground","X",(nested1,)))==filter_identity(("ground","X",(nested2,)))
+assert filter_identity(("ground","X",({"a":1,"b":2},)))!=filter_identity(("ground","X",({"b":2,"a":1},)))
+for invalid in (None,float("nan"),float("inf")):
+ try:filter_identity(("ground","X",(invalid,)));assert False
+ except ValueError:pass
+assert filter_identity(("ground","X",(("wildcard",),)))!=filter_identity(("ground","X",("wildcard",)))
 # Wildcard and a finite union happen to match the same current snapshot, but
 # their structural identities differ because wildcard also matches future keys.
 assert {e.key for e in nmax(FILTERJ)if filter_matches(wild,e)}=={e.key for e in nmax(FILTERJ)if filter_matches(bothf,e)}and filter_identity(wild)!=bothid
@@ -1058,7 +1122,7 @@ for rr in range(1,6):
  prefix=tuple((a,99)for a in (A,B,C,R,S)[:rr])
  for c0 in range(1,21):
   certs={ev(100+i,R,(K,N,BS),100+i,"validate",CHG.id,target=CHG.id,lineage=(prefix,(10+i,S),(20+i,S)))for i in range(c0)}
-  churn=frozenset({CHG,CHV}|certs);cc=compact(churn);c=len({e.lineage[1:]for e in cc if e.lineage});coords=sum(len(e.lineage[0])for e in cc if e.lineage)
+  churn=frozenset({CHG,CHV}|certs);cc=compact(churn);c=len({(e.target,*e.lineage[1:])for e in cc if e.lineage and e.lineage[1:]!=(None,None)});coords=sum(len(e.lineage[0])for e in cc if e.lineage)
   assert valid(churn)and c==c0 and coords==c*rr
   assert len(cc)+coords<=5+c*(rr+1)
 
