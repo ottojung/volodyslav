@@ -360,12 +360,11 @@ F's immutable structural form. It is not a public filter serialization or a way
 to construct a filter. The derivation uses distinct tags for wildcard, ground,
 and union; ground encodes `head` plus the production canonical ConstValue bytes
 for each argument (with a distinct wildcard tag); union recursively sorts its
-two child identity byte strings before encoding. Implementations may hash those
-canonical bytes with the token-version-specified collision-resistant digest.
+two child identity byte strings before encoding. The identity is the complete canonical bytes encoded with canonical base64url; it is not a fixed-size digest and is injective over the supported filter domain.
 The token decoder treats the identity as opaque and compares it with the identity
 computed from the call's live `to` filter. Different identities are rejected.
 
 REQ-NF-11: structurally equal filters under REQ-NF-06 MUST have identical
 `filterIdentity`; filters with different canonical structural forms MUST have
-different identities within the supported token domain. Token versioning changes
+different identities. Collision-resistant hashing is insufficient because the cursor contract requires collision-freedom. Token versioning changes
 before this derivation changes.

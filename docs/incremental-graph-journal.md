@@ -14,4 +14,4 @@ Production implementation, deployment ordering, and operational recovery tooling
 
 ## Complexity summary
 
-Let `n` be represented current/historic semantic keys and `r` represented durable authors in retained evidence or coverage. Exact public-action representatives use `O(nr)` entries and causal validation evidence uses at most `O(nr²)` under bounded-address/context assumptions. Coverage is `O(r)`, so the globally valid bound is `O(nr²+r)`. For `n>0,r>=1` this is `O(nr²)`. For `n=0`, the journal is empty while coverage alone may be `O(r)`. Application-owned `O(r)` cursor strings are not database storage.
+Let `n` be represented current/historic semantic keys, `r` durable authors, and `c` losslessly retained exact reset correspondences. Public-action and causal evidence use `O(nr²)`, exact correspondence membership uses `O(c)`, and coverage uses `O(r)`, so the global bound is `O(nr²+c+r)`. The `c` term is necessary when lagging explicitly certified origins must remain recognizable. For `n=0,c=0`, the journal is empty while coverage may be `O(r)`. Application-owned filter-bound cursor strings are not database storage.

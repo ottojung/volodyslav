@@ -89,7 +89,7 @@ def valid(es):
     if not t or t.key!=e.key or not((t.kind=="add"and t.id==e.generation)or(t.kind=="edit"and t.generation==e.generation)):return False
   if e.kind=="observe"and e.target:
    t=d.get(e.target)
-   if not t or t.key!=e.key or t.kind not in("add","edit","delete"):return False
+   if not t or t.key!=e.key or t.kind!="delete":return False
   if e.kind=="add":
    f=d.get(e.initial)
    if not f or f.kind not in ("validate","invalidate") or f.author!=e.author or f.sequence<=e.sequence or f.key!=e.key or f.generation!=e.id:return False
@@ -218,6 +218,9 @@ def filtered_query(es,cursor,keys,filter_id,token_filter=None):
  for e in sorted((e for e in nmax(es)if e.sequence>d.get(e.author,0)and e.key in keys),key=lambda e:e.id):
   d[e.author]=e.sequence;out.append((e.kind,tuple(sorted(d.items())),filter_id))
  return tuple(out)
+def filter_identity(keys):
+ raw=json.dumps({"keys":sorted(keys)},separators=(",",":"),ensure_ascii=False).encode()
+ return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 def journal_projection(es):
  out=[]
  for k in sorted({e.key for e in es}):
@@ -382,17 +385,15 @@ def reset_closed(r,s,k,g,target):
  return tuple(sorted(d.items()))
 def reset_lineage_through(r,s,k,sg,so,ignore_bookkeeping=False):
  prior=[e.lineage[0]for e in r.journal if e.key==k and e.lineage]
- exact=ignore_bookkeeping and any(e.key==k and e.lineage and e.lineage[1:]==(sg,so)for e in r.journal)
  carried=()
  for p in prior:carried=vmax(carried,p)
- observed=dict(vmax(r.coverage,s.coverage));bookkeeping={}
- for e in r.journal|s.journal:
-  if e.lineage:bookkeeping[e.author]=max(bookkeeping.get(e.author,0),e.sequence)
-  if e.kind=="add"and any(x.lineage and x.target==e.id for x in r.journal|s.journal):bookkeeping[e.author]=max(bookkeeping.get(e.author,0),e.sequence)
- out=dict(carried)
- for a,q in observed.items():
-  # Do not chase a suffix consisting only of the prior reset anchor/carrier.
-  if not exact or q>bookkeeping.get(a,0):out[a]=max(out.get(a,0),q)
+ out=dict(vmax(carried,s.coverage));anchors={e.target for e in r.journal if e.lineage and e.target}
+ for e in r.journal:
+  # Reset carriers and their receiver anchors are explicitly marked
+  # bookkeeping. Every other retained public event for this key is genuine
+  # receiver history and advances the next observation.
+  if e.key!=k or(ignore_bookkeeping and(e.kind=="observe"or e.lineage or e.id in anchors)):continue
+  out[e.author]=max(out.get(e.author,0),e.sequence)
  return tuple(sorted(out.items()))
 def reset(r,s,tau):
  if not validate_replica(r)or not validate_replica(s):raise ValueError("unsupported replica")
@@ -421,7 +422,7 @@ def reset(r,s,tau):
     if not retained_soft:
      new=[]
      if not absorbed:
-      q=alloc(work,1,watermark)[0];c=carry_prefix(work.journal,r.fp,k,g,m.origin,closed);v=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"validate",g,clears=c,target=m.origin);new.append(v);work=add_events(work,(v,))
+      q=alloc(work,1,watermark)[0];c=carry_prefix(work.journal,r.fp,k,g,m.origin,closed);v=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"validate",g,clears=c,target=m.origin,lineage=corr);new.append(v);work=add_events(work,(v,))
      q=alloc(work,1,watermark)[0];i=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"soft",target=m.origin,lineage=corr if needs_corr else None);new.append(i);work=add_events(work,(i,));events.extend(new)
    elif target=="hard"and (value_changed or needs_corr or not hard(set(work.journal)|set(events),k,g,m.origin)):
     q=alloc(work,1,watermark)[0];i=ev(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,"invalidate",g,"hard",target=m.origin,lineage=corr if needs_corr else None);events.append(i);work=add_events(work,(i,))
@@ -834,6 +835,17 @@ ALTEDIT=ev(21,S,(K,N,BS),109,"edit",LG.id,value="A");ALTVAL=ev(22,S,(K,N,BS),110
 altSource=Rep(S,22,((S,22),),frozenset((LG,LGV,ALTEDIT,ALTVAL)),((K,M("alt",LG.id,"A",ALTEDIT.id,109,"fresh",True)),))
 altReset,altResetEvents=reset(lineageVectorR,altSource,120);assert dict(next(e.lineage[0]for e in altResetEvents if e.lineage))[B]>=10
 
+# Idempotence bookkeeping is key/anchor-local: unrelated reset metadata cannot
+# hide genuine K delete/rematerialize history from the next reset.
+KDEL150=dele(150,R,(K,N,BS),130);KGEN151=gen(151,R,(K,N,BS),131,"A",(152,R));KGENV152=ev(152,R,(K,N,BS),132,"validate",KGEN151.id)
+LDEL149=dele(149,R,(KI,NI,BI),129);LOBS200=observe(200,R,(KI,NI,BI),140,LDEL149.id,(((R,149),),None,None))
+returnedK=Rep(R,200,((R,200),(S,20)),frozenset(set(lineageR1.journal)|{KDEL150,KGEN151,KGENV152,LDEL149,LOBS200}),((K,M("returned",KGEN151.id,"A",KGEN151.id,131,"fresh",True)),))
+resetReturned,returnedEvents=reset(returnedK,lineageS0,210);returnedLineage=next(e.lineage[0]for e in returnedEvents if e.key==K and e.lineage)
+assert dict(returnedLineage)[R]>=152 and node(resetReturned,K).value=="A"
+resetReturnedAgain,returnedAgainEvents=reset(resetReturned,lineageS0,210);assert not returnedAgainEvents and resetReturnedAgain==resetReturned
+FUTUREDEL=dele(1,B,(K,N,BS),211);assert ph(resetReturned.journal|{FUTUREDEL},K)==FUTUREDEL
+assert compact(compact(resetReturned.journal)|{FUTUREDEL})==compact(resetReturned.journal|{FUTUREDEL})
+
 # Compaction retains the bridge while causal presence is absent even after a
 # newer non-certificate validation displaces it as the polling maximum.
 anchor=node(lineageVectorR,K);NV=ev(103,R,(K,N,BS),103,"validate",anchor.generation,clears=carry_prefix(lineageVectorR.journal,R,K,anchor.generation,anchor.origin,((R,102),)),target=anchor.origin)
@@ -869,6 +881,9 @@ for bad_corr in ((((S,20),),LG.id),(((S,True),),LG.id,LG.id),((('bad',20),),LG.i
 # assertions are present-only.
 assert not valid((set(absentReset.journal)-{absentDelete})|{replace(absentDelete,lineage=(absentDelete.lineage[0],LG.id,LG.id))})
 assert not valid((set(lineageR1.journal)-{good_cert})|{replace(good_cert,lineage=(good_cert.lineage[0],None,None))})
+# ResetObservation is absence-only and cannot suppress deletes from a present
+# generation anchor.
+BADOBS=observe(300,C,(K,N,BS),300,LG.id,(((S,50),),None,None));assert not valid((LG,LGV,BADOBS))
 # Graph/journal-inconsistent hard label is rejected before reset or receive.
 INVALID_HARD=replace(DL,nodes=tuple(sorted((*roots,(KE,replace(derived,state="hard",proof=False))))))
 assert not validate_replica(INVALID_HARD)
@@ -949,13 +964,14 @@ except ValueError:pass
 # not manufacture continuation, and compaction has identical filtered behavior.
 FK1=gen(1,B,(KI,NI,BI),1,"k1",(2,B));FK1V=ev(2,B,(KI,NI,BI),2,"validate",FK1.id);FK2=gen(3,B,(KD,ND,BD),3,"k2",(4,B));FK2V=ev(4,B,(KD,ND,BD),4,"validate",FK2.id)
 FA5=ev(5,A,(KI,NI,BI),5,"edit",FK1.id,value="k1-edit");FA10=ev(10,A,(KD,ND,BD),10,"edit",FK2.id,value="k2-edit");FILTERJ=frozenset((FK1,FK1V,FK2,FK2V,FA5,FA10))
-k2page=filtered_query(FILTERJ,(),{KD},"only-k2");assert k2page and dict(k2page[-1][1])[A]==10
-assert not filtered_query(FILTERJ,k2page[-1][1],{KD},"only-k2","only-k2")
-try:filtered_query(FILTERJ,k2page[-1][1],{KI,KD},"both","only-k2");assert False
+k2id=filter_identity({KD});bothid=filter_identity({KI,KD});noneid=filter_identity(set());assert k2id!=bothid
+k2page=filtered_query(FILTERJ,(),{KD},k2id);assert k2page and dict(k2page[-1][1])[A]==10
+assert not filtered_query(FILTERJ,k2page[-1][1],{KD},k2id,k2id)
+try:filtered_query(FILTERJ,k2page[-1][1],{KI,KD},bothid,k2id);assert False
 except ValueError:pass
-assert not filtered_query(FILTERJ,(),set(),"none")
-assert filtered_query(FILTERJ,(),{KD},"only-k2")==filtered_query(compact(FILTERJ),(),{KD},"only-k2")
-filterToken=encode(ch,k2page[-1][1],"only-k2");assert decode(filterToken)["filter"]=="only-k2"
+assert not filtered_query(FILTERJ,(),set(),noneid)
+assert filtered_query(FILTERJ,(),{KD},k2id)==filtered_query(compact(FILTERJ),(),{KD},k2id)
+filterToken=encode(ch,k2page[-1][1],k2id);assert decode(filterToken)["filter"]==k2id
 
 # Storage-category bounds across a generated n-by-r family, including n=0,r>0.
 def bounded_history(n,r):
@@ -980,5 +996,13 @@ for n in range(1,5):
   assert len(cs)+coords+len(cov)<=12*n*r+2*n*r*r+r
 for r in range(1,6):
  cov=tuple((x,10)for x in(A,B,C,R,S)[:r]);assert compact(())==frozenset()and len(cov)==r
+
+# Exact semantic reset certificates are lossless and therefore explicitly
+# accounted as c rather than hidden inside the n/r bound.
+CHG=gen(1,A,(K,N,BS),1,"X",(2,A));CHV=ev(2,A,(K,N,BS),2,"validate",CHG.id)
+for m in range(1,21):
+ certs={ev(100+i,R,(K,N,BS),100+i,"validate",CHG.id,target=CHG.id,lineage=(((A,2),(R,99)),(10+i,S),(20+i,S)))for i in range(m)}
+ churn=frozenset({CHG,CHV}|certs);cc=compact(churn);c=len({e.lineage[1:]for e in cc if e.lineage})
+ assert valid(churn)and c==m and len(cc)<=5+c+sum(len(e.lineage[0])for e in cc if e.lineage)
 
 print("journal semantic verifier passed: convergence, causal validation, observed reset absorption/idempotence, extensional proof transport, polling, compaction, lazy clock, timestamps, and storage")
