@@ -102,36 +102,37 @@ def valid(es):
  return True
 def raw_ph(es,k):
  x=[e for e in es if e.key==k and e.kind in ("add","delete")];return max(x,key=lambda e:e.id) if x else None
+def lineage_anchor(e):
+ if e.kind=="observe":return("null",)if e.target is None else("delete",e.target)
+ if e.kind=="delete":return("delete",e.id)
+ return("present",e.target)
+def applicable_lineages(es,k):
+ """Lineages whose null/current receiver anchor governs this snapshot."""
+ base=raw_ph(es,k);by={e.id:e for e in es};out=[]
+ for e in es:
+  if e.key!=k or not e.lineage:continue
+  anchor=lineage_anchor(e)
+  if anchor==("null",):out.append(e);continue
+  if anchor[0]=="delete":
+   if base and base.kind=="delete"and anchor[1]==base.id:out.append(e)
+   continue
+  target=by.get(anchor[1]);receiver_g=None if not target else(target.id if target.kind=="add"else target.generation)
+  if base and base.kind=="add"and receiver_g==base.id:out.append(e)
+ return tuple(out)
 def ph(es,k):
  """Activate reset lineages, then order only generation/delete presence events."""
  base=raw_ph(es,k)
- by={e.id:e for e in es};eligible=[];certs=[]
- for cert in es:
-  if cert.key!=k or not cert.lineage:continue
-  if cert.kind=="observe":
-   # A null target is a virtual explicit-absence anchor.  It continues to
-   # interpret later unions; otherwise delayed consumed history could make the
-   # certificate disappear precisely when it is needed.
-   if cert.target is not None and (not base or cert.target!=base.id):continue
-  elif cert.kind=="delete":
-   if not base or cert.id!=base.id:continue
-  else:
-   if not base or cert.target not in by:continue
-   target=by[cert.target];receiver_g=target.id if target.kind=="add"else target.generation
-   if base.kind!="add"or receiver_g!=base.id:continue
-  certs.append(cert)
+ by={e.id:e for e in es};eligible=[];certs=applicable_lineages(es,k)
  if not certs:return base
  virtual_absence=any(cert.kind=="observe"and cert.target is None for cert in certs)
  anchored_base=any(cert.kind!="observe"or cert.target is not None for cert in certs)
- cut={};consumed=set()
+ cut={}
  for cert in certs:
   for a,q in cert.lineage[0]:cut[a]=max(cut.get(a,0),q)
-  if cert.lineage[1]is not None:consumed.add(cert.lineage[1])
  for e in es:
   if e.key!=k or(base and e.id==base.id and anchored_base)or e.sequence<=cut.get(e.author,0):continue
   if e.kind in ("add","delete"):eligible.append(e)
-  elif e.generation in consumed or ((not base or e.generation!=base.id)and e.generation in by and by[e.generation].sequence>cut.get(by[e.generation].author,0)):
-   eligible.append(by[e.generation])
+  elif e.generation in by:eligible.append(by[e.generation])
  return max(eligible,key=lambda e:e.id) if eligible else(base if anchored_base else(None if virtual_absence else base))
 def generation(es,k):p=ph(es,k);return p.id if p and p.kind=="add" else None
 def vheads(es,k,g):
@@ -164,24 +165,18 @@ def nmax(es):
 def compact(es):
  es=frozenset(es);assert valid(es);by={e.id:e for e in es};keep=set(nmax(es))
  for k in {e.key for e in es}:
-  p=ph(es,k);raw=raw_ph(es,k)
+  p=ph(es,k)
   if p:keep.add(p)
   # Reset lineage is future presence authority even while causal presence is
   # absent, so select it independently of winning-generation value seeds.
-  applicable=[]
-  for e in es:
-   if e.key!=k or not e.lineage:continue
-   anchored=e.kind=="observe"and(e.target is None or(raw and e.target==raw.id))
-   if e.kind=="delete"and raw:anchored=e.id==raw.id
-   if e.kind not in("delete","observe")and raw and raw.kind=="add"and e.target in by:
-    t=by[e.target];anchored=(t.id if t.kind=="add"else t.generation)==raw.id
-   if anchored:applicable.append(e)
+  applicable=applicable_lineages(es,k)
   exact={};coordinates={}
   for e in applicable:
    pair=(e.target,*e.lineage[1:])
    if e.lineage[1:]!=(None,None)and(pair not in exact or exact[pair].id<e.id):exact[pair]=e
    for a,q in e.lineage[0]:
-    if a not in coordinates or(coordinates[a].lineage[0]and(dict(coordinates[a].lineage[0]).get(a,0),coordinates[a].id)<(q,e.id)):coordinates[a]=e
+    coordinate=(lineage_anchor(e),a)
+    if coordinate not in coordinates or(coordinates[coordinate].lineage[0]and(dict(coordinates[coordinate].lineage[0]).get(a,0),coordinates[coordinate].id)<(q,e.id)):coordinates[coordinate]=e
   keep.update(exact.values());keep.update(coordinates.values())
   if applicable and not exact and not coordinates:keep.add(max(applicable,key=lambda e:e.id))
   g=p.id if p and p.kind=="add" else None
@@ -428,8 +423,7 @@ def reset_lineage_through(r,s,k,sg,so,ignore_bookkeeping=False):
  # Reset consumes the source snapshot's durable per-key causal semantics, not
  # merely the source container's journalCoverage. Exact correspondences remain
  # exact and are not inferred or transitively copied from these vectors.
- for e in s.journal:
-  if e.key==k and e.lineage:carried=vmax(carried,e.lineage[0])
+ for e in applicable_lineages(s.journal,k):carried=vmax(carried,e.lineage[0])
  out=dict(vmax(carried,s.coverage));anchors={e.target for e in r.journal if e.lineage and e.target}
  for e in r.journal:
   # Reset carriers and their receiver anchors are explicitly marked
@@ -554,6 +548,49 @@ presentCompacted=replace(presentAfterNull,journal=compact(presentAfterNull.journ
 TLINE=replace(TV,lineage=(((B,20),),TG.id,TG.id));presentLineageSource=replace(presentSource,journal=frozenset((TG,TLINE)))
 fromPresentLineage,fromPresentEvents=reset(emptyR,presentLineageSource,30)
 assert any(e.lineage and dict(e.lineage[0]).get(B)==20 for e in fromPresentEvents)
+
+# RLV is anchor-specific. A present carrier that repeats a null observation's
+# A100 coordinate cannot compact away the null witness needed after raw presence
+# later moves to delayed A90.
+CO0=observe(200,R,(KI,NI,BI),1,None,(((A,100),),None,None));COG=gen(1,S,(KI,NI,BI),2,"X",(2,S));COV=ev(2,S,(KI,NI,BI),3,"validate",COG.id)
+coReceiver=Rep(R,200,((R,200),(S,2)),frozenset((CO0,COG,COV)),((KI,M("co",COG.id,"X",COG.id,2,"fresh",True)),))
+COTG=gen(10,C,(KI,NI,BI),10,"X",(11,C));COTV=ev(11,C,(KI,NI,BI),11,"validate",COTG.id);coSource=Rep(C,11,((C,11),),frozenset((COTG,COTV)),((KI,M("cos",COTG.id,"X",COTG.id,10,"fresh",True)),))
+coReset,coEvents=reset(coReceiver,coSource,20);assert any(e.lineage and e.target==COG.id for e in coEvents)
+coCompact=compact(coReset.journal);assert CO0 in coCompact and query(coReset.journal)==query(coCompact)
+assert len({lineage_anchor(e)for e in coCompact if e.key==KI and e.lineage})>=2
+GA90=gen(90,A,(KI,NI,BI),21,"old",(91,A));GA91=ev(91,A,(KI,NI,BI),22,"validate",GA90.id);delayedA={GA90,GA91}
+assert ph(coReset.journal|delayedA,KI).id==COG.id and ph(coCompact|delayedA,KI).id==COG.id
+assert compact(coCompact|delayedA)==compact(coReset.journal|delayedA)
+# Null and delete anchors are likewise separate RLV domains. A present anchor
+# cannot be simultaneously current with the delete; its public witness remains
+# governed by the independent polling/closure seeds.
+DAO=observe(201,R,(KE,NE,BE),1,None,(((A,100),),None,None));DAD=dele(202,R,(KE,NE,BE),2,(((A,100),),None,None));dac=compact({DAO,DAD});assert DAO in dac and DAD in dac
+
+# A post-cutoff scoped event activates its old generation even when that
+# generation entry was consumed by null absence. No scoped event leaves it
+# absorbed; a concurrent real delete still orders presence normally.
+SO=observe(100,R,(KI,NI,BI),1,None,(((S,10),),None,None));SG5=gen(5,S,(KI,NI,BI),5,"old",(6,S));SG6=ev(6,S,(KI,NI,BI),6,"validate",SG5.id)
+scopedBase=frozenset((SO,SG5,SG6));assert ph(scopedBase,KI)is None
+SE7=ev(7,B,(KI,NI,BI),7,"edit",SG5.id,value="edited");SV7=ev(7,B,(KI,NI,BI),7,"validate",SG5.id);SI7=ev(7,B,(KI,NI,BI),7,"invalidate",SG5.id,"hard")
+for scoped in (SE7,SV7,SI7):
+ history=scopedBase|{scoped};assert ph(history,KI).id==SG5.id and ph(compact(history),KI).id==SG5.id
+SD8=dele(8,B,(KI,NI,BI),8);assert ph(scopedBase|{SE7,SD8},KI)==SD8
+# Exact correspondence does not activate a consumed generation without an
+# above-cut scoped event.
+RPG=gen(100,R,(KI,NI,BI),10,"receiver",(101,R));RPV=ev(101,R,(KI,NI,BI),11,"validate",RPG.id,lineage=(((S,10),),SG5.id,SG5.id))
+assert ph({RPG,RPV,SG5,SG6},KI).id==RPG.id
+
+# Reset consumes only source lineages applicable to the source's current
+# anchor. Historical C1 survives polling compaction but cannot manufacture B100
+# authority for a receiver reset from current generation G2.
+HG1=gen(1,A,(KD,ND,BD),1,"old",(2,A));HG1V=ev(2,A,(KD,ND,BD),2,"validate",HG1.id)
+HC1=ev(30,R,(KD,ND,BD),3,"validate",HG1.id,target=HG1.id,lineage=(((B,100),),HG1.id,HG1.id))
+HG2=gen(50,C,(KD,ND,BD),50,"current",(51,C));HG2V=ev(51,C,(KD,ND,BD),51,"validate",HG2.id)
+historicalJ=frozenset((HG1,HG1V,HC1,HG2,HG2V));historicalCompact=compact(historicalJ);assert HC1 in historicalCompact and HC1 not in applicable_lineages(historicalCompact,KD)
+historicalSource=Rep(C,51,((A,2),(C,51),(R,30)),historicalCompact,((KD,M("hc",HG2.id,"current",HG2.id,50,"fresh",True)),))
+fromHistorical,fhEvents=reset(emptyR,historicalSource,60);assert all(dict(e.lineage[0]).get(B,0)==0 for e in fhEvents if e.lineage)
+HB90=gen(90,B,(KD,ND,BD),61,"live-b",(91,B));HB91=ev(91,B,(KD,ND,BD),62,"validate",HB90.id)
+assert ph(historicalCompact|{HB90,HB91},KD).id==HB90.id and ph(fromHistorical.journal|{HB90,HB91},KD).id==HB90.id
 
 # A source-only validation is evidence, never installed authority. Receiver stabilization
 # covers the whole consumed source prefix, survives delayed compacted evidence, and is idempotent.
