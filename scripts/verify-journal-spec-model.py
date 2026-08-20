@@ -45,6 +45,7 @@ def ev(q,a,address,t,kind,g,mode=None,clears=(),value=None,target=None,lineage=N
  k,n,b=address
  if kind=="validate"and target is None:target=g
  return E(q,a,k,t,n,b,kind,g,mode=mode,clears=tuple(sorted(clears)),value=value,target=target,lineage=lineage)
+def observe(q,a,address,t,target,lineage):k,n,b=address;return E(q,a,k,t,n,b,"observe",target=target,lineage=lineage)
 def dele(q,a,address,t,lineage=None):k,n,b=address;return E(q,a,k,t,n,b,"delete",lineage=lineage)
 def valid(es):
  es=tuple(es);d={}
@@ -66,14 +67,16 @@ def valid(es):
    if e.kind!="validate" and e.clears:return False
    if e.target and e.kind not in ("invalidate","validate"):return False
    if e.kind=="validate"and not e.target:return False
+  elif e.kind=="observe":
+   if e.generation or e.initial or e.mode or e.clears or e.value or not e.lineage:return False
   else:return False
   if e.lineage:
-   if e.kind not in ("delete","invalidate","validate")or(e.kind!="delete"and not e.target):return False
+   if e.kind not in ("delete","invalidate","validate","observe"):return False
    if type(e.lineage)is not tuple or len(e.lineage)!=3:return False
    through,sg,so=e.lineage
    if type(through)is not tuple or tuple(sorted(through))!=through or len({a for a,_ in through})!=len(through)or any(a not in AUTH or not uint(q)for a,q in through):return False
    if (sg is None)!=(so is None):return False
-   if e.kind=="delete"and sg is not None:return False
+   if e.kind in ("delete","observe")and sg is not None:return False
    if e.kind in ("validate","invalidate")and sg is None:return False
    if sg is not None and any(type(x)is not tuple or len(x)!=2 or not uint(x[0])or x[0]==0 or x[1]not in AUTH for x in(sg,so)):return False
   if tuple(sorted(e.clears))!=e.clears or len({a for a,_ in e.clears})!=len(e.clears) or any(a not in AUTH or not uint(q) for a,q in e.clears):return False
@@ -84,6 +87,9 @@ def valid(es):
    if e.target:
     t=d.get(e.target)
     if not t or t.key!=e.key or not((t.kind=="add"and t.id==e.generation)or(t.kind=="edit"and t.generation==e.generation)):return False
+  if e.kind=="observe"and e.target:
+   t=d.get(e.target)
+   if not t or t.key!=e.key or t.kind not in("add","edit","delete"):return False
   if e.kind=="add":
    f=d.get(e.initial)
    if not f or f.kind not in ("validate","invalidate") or f.author!=e.author or f.sequence<=e.sequence or f.key!=e.key or f.generation!=e.id:return False
@@ -93,35 +99,36 @@ def valid(es):
    if (v1.author,v1.key,v1.generation)==(v2.author,v2.key,v2.generation) and v1.sequence<v2.sequence:
     later=dict(v2.clears)
     if any(later.get(a,0)<q for a,q in v1.clears):return False
- lineages=[e for e in es if e.lineage]
- for c1 in lineages:
-  for c2 in lineages:
-   a1=c1.id if c1.kind=="delete"else c1.target;a2=c2.id if c2.kind=="delete"else c2.target
-   if c1.key==c2.key and a1==a2 and c1.sequence<c2.sequence:
-    later=dict(c2.lineage[0])
-    if any(later.get(a,0)<q for a,q in c1.lineage[0]):return False
  return True
 def raw_ph(es,k):
  x=[e for e in es if e.key==k and e.kind in ("add","delete")];return max(x,key=lambda e:e.id) if x else None
 def ph(es,k):
  """Activate reset lineages, then order only generation/delete presence events."""
  base=raw_ph(es,k)
- if not base:return None
- by={e.id:e for e in es};eligible=[]
+ by={e.id:e for e in es};eligible=[];certs=[]
  for cert in es:
   if cert.key!=k or not cert.lineage:continue
-  if cert.kind=="delete":
-   if cert.id!=base.id:continue
+  if cert.kind=="observe":
+   if cert.target is None:
+    if base is not None:continue
+   elif cert.target!=base.id:continue
+  elif cert.kind=="delete":
+   if not base or cert.id!=base.id:continue
   else:
-   if cert.target not in by:continue
+   if not base or cert.target not in by:continue
    target=by[cert.target];receiver_g=target.id if target.kind=="add"else target.generation
    if base.kind!="add"or receiver_g!=base.id:continue
-  through,consumed_g,_=cert.lineage;cut=dict(through)
-  for e in es:
-   if e.key!=k or e.id==base.id or e.sequence<=cut.get(e.author,0):continue
-   if e.kind in ("add","delete"):eligible.append(e)
-   elif consumed_g is not None and (e.generation==consumed_g or (e.generation!=base.id and e.generation in by and by[e.generation].sequence>cut.get(by[e.generation].author,0))):
-    eligible.append(by[e.generation])
+  certs.append(cert)
+ if not certs:return base
+ cut={};consumed=set()
+ for cert in certs:
+  for a,q in cert.lineage[0]:cut[a]=max(cut.get(a,0),q)
+  if cert.lineage[1]is not None:consumed.add(cert.lineage[1])
+ for e in es:
+  if e.key!=k or(base and e.id==base.id)or e.sequence<=cut.get(e.author,0):continue
+  if e.kind in ("add","delete"):eligible.append(e)
+  elif e.generation in consumed or ((not base or e.generation!=base.id)and e.generation in by and by[e.generation].sequence>cut.get(by[e.generation].author,0)):
+   eligible.append(by[e.generation])
  return max(eligible,key=lambda e:e.id) if eligible else base
 def generation(es,k):p=ph(es,k);return p.id if p and p.kind=="add" else None
 def vheads(es,k,g):
@@ -147,6 +154,7 @@ def hard(es,k,g,value_origin=None):
 def nmax(es):
  o={}
  for e in es:
+  if e.kind=="observe":continue
   c=(e.author,e.key,e.kind)
   if c not in o or o[c].sequence<e.sequence:o[c]=e
  return frozenset(o.values())
@@ -157,16 +165,22 @@ def compact(es):
   if p:keep.add(p)
   # Reset lineage is future presence authority even while causal presence is
   # absent, so select it independently of winning-generation value seeds.
-  certs={}
+  applicable=[]
   for e in es:
    if e.key!=k or not e.lineage:continue
-   anchored=e.id==raw.id if e.kind=="delete"and raw else False
-   if e.kind!="delete"and raw and raw.kind=="add"and e.target in by:
+   anchored=e.kind=="observe"and((raw is None and e.target is None)or(raw and e.target==raw.id))
+   if e.kind=="delete"and raw:anchored=e.id==raw.id
+   if e.kind not in("delete","observe")and raw and raw.kind=="add"and e.target in by:
     t=by[e.target];anchored=(t.id if t.kind=="add"else t.generation)==raw.id
-   if anchored:
-    c=e.id if e.kind=="delete"else e.target
-    if c not in certs or certs[c].sequence<e.sequence:certs[c]=e
-  keep.update(certs.values())
+   if anchored:applicable.append(e)
+  exact={};coordinates={}
+  for e in applicable:
+   pair=e.lineage[1:]
+   if pair!=(None,None)and(pair not in exact or exact[pair].id<e.id):exact[pair]=e
+   for a,q in e.lineage[0]:
+    if a not in coordinates or(coordinates[a].lineage[0]and(dict(coordinates[a].lineage[0]).get(a,0),coordinates[a].id)<(q,e.id)):coordinates[a]=e
+  keep.update(exact.values());keep.update(coordinates.values())
+  if applicable and not exact and not coordinates:keep.add(max(applicable,key=lambda e:e.id))
   g=p.id if p and p.kind=="add" else None
   if not g:continue
   heads=vheads(es,k,g);keep.update(heads)
@@ -197,6 +211,12 @@ def query(es,cursor=()):
  d=dict(cursor);out=[]
  for e in sorted((e for e in nmax(es)if e.sequence>d.get(e.author,0)),key=lambda e:e.id):
   d[e.author]=e.sequence;out.append((e.kind,tuple(sorted(d.items()))))
+ return tuple(out)
+def filtered_query(es,cursor,keys,filter_id,token_filter=None):
+ if token_filter is not None and token_filter!=filter_id:raise ValueError("cursor filter mismatch")
+ d=dict(cursor);out=[]
+ for e in sorted((e for e in nmax(es)if e.sequence>d.get(e.author,0)and e.key in keys),key=lambda e:e.id):
+  d[e.author]=e.sequence;out.append((e.kind,tuple(sorted(d.items())),filter_id))
  return tuple(out)
 def journal_projection(es):
  out=[]
@@ -245,7 +265,7 @@ def proof_coherent(m,deps,final_inputs):
  evidence=dict(m.inputs)
  return set(evidence)==set(deps)and all(is_equal(evidence[d],final_inputs[d])for d in deps)
 def reset_lineage_covers(j,receiver,source):
- return any(e.target==receiver.origin and e.lineage and source.generation[0]<=dict(e.lineage[0]).get(source.generation[1],0)and source.origin[0]<=dict(e.lineage[0]).get(source.origin[1],0)for e in j if e.kind in("validate","invalidate"))
+ return any(e.target==receiver.origin and e.lineage and e.lineage[1:]==(source.generation,source.origin)for e in j if e.kind in("validate","invalidate","observe"))
 def choose_value(j,k,candidates,deps=(),final_inputs=None):
  p=ph(j,k)
  if not p or p.kind=="delete":return None
@@ -367,8 +387,8 @@ def reset_lineage_through(r,s,k,sg,so,ignore_bookkeeping=False):
  for p in prior:carried=vmax(carried,p)
  observed=dict(vmax(r.coverage,s.coverage));bookkeeping={}
  for e in r.journal|s.journal:
-  if e.key==k and e.lineage:bookkeeping[e.author]=max(bookkeeping.get(e.author,0),e.sequence)
-  if e.key==k and e.kind=="add"and any(x.key==k and x.lineage and x.target==e.id for x in r.journal|s.journal):bookkeeping[e.author]=max(bookkeeping.get(e.author,0),e.sequence)
+  if e.lineage:bookkeeping[e.author]=max(bookkeeping.get(e.author,0),e.sequence)
+  if e.kind=="add"and any(x.lineage and x.target==e.id for x in r.journal|s.journal):bookkeeping[e.author]=max(bookkeeping.get(e.author,0),e.sequence)
  out=dict(carried)
  for a,q in observed.items():
   # Do not chase a suffix consisting only of the prior reset anchor/carrier.
@@ -410,6 +430,19 @@ def reset(r,s,tau):
  for k,rm in r.nodes:
   if node(s,k)is None:
    q=alloc(work,1,watermark)[0];corr=(reset_lineage_through(r,s,k,None,None),None,None);d=dele(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,corr);events.append(d);work=add_events(work,(d,));retired.append(rm.identifier)
+ # Absent-to-absent reset has no public action. Record its causal observation in
+ # the same journal with an internal entry anchored to the existing absence.
+ for k in SCHEMA:
+  if node(r,k)is not None or node(s,k)is not None:continue
+  anchor=raw_ph(work.journal,k);target=anchor.id if anchor and anchor.kind=="delete"else None
+  if target is None:continue
+  through=reset_lineage_through(r,s,k,None,None,True);joined={}
+  for e in work.journal:
+   anchored=e.kind=="observe"and e.target==target or e.kind=="delete"and e.id==target
+   if anchored and e.key==k and e.lineage:
+    for a,n in e.lineage[0]:joined[a]=max(joined.get(a,0),n)
+  if any(joined.get(a,0)<n for a,n in through):
+   q=alloc(work,1,watermark)[0];o=observe(q,r.fp,(k,best_key_name(k),best_key_bindings(k)),tau,target,(through,None,None));events.append(o);work=add_events(work,(o,))
  out=replace(work,nodes=tuple(sorted(nodes.items())),nextid=nextid,retired=tuple(retired))
  if not validate_replica(out):raise AssertionError("reset produced unsupported replica")
  return out,tuple(events)
@@ -765,6 +798,29 @@ BADD=gen(12,B,(K,N,BS),101,"other-remat",(13,B));BADDV=ev(13,B,(K,N,BS),102,"val
 otherAuthorRemat=Rep(B,13,((B,13),(S,20)),frozenset((BADD,BADDV)),((K,M("oar",BADD.id,"other-remat",BADD.id,101,"fresh",True)),))
 otherAuthorLive,otherAuthorEvents=receive(absentReset,otherAuthorRemat);assert not otherAuthorEvents and node(otherAuthorLive,K).value=="other-remat"
 
+# Absent-to-absent reset records internal observation, not a fake public delete.
+OLDDEL=dele(100,R,(K,N,BS),90);alreadyAbsent=Rep(R,100,((R,100),),frozenset((OLDDEL,)),())
+OLDADD=gen(5,S,(K,N,BS),5,"old",(6,S));OLDADDV=ev(6,S,(K,N,BS),6,"validate",OLDADD.id);OLDDEL_S=dele(10,S,(K,N,BS),10)
+absentHistory=Rep(S,10,((S,10),),frozenset((OLDADD,OLDADDV,OLDDEL_S)),())
+observedAbsent,absentObservationEvents=reset(alreadyAbsent,absentHistory,110)
+assert [e.kind for e in absentObservationEvents]==["observe"]and not query(observedAbsent.journal,((R,100),(S,10)))
+assert ph(observedAbsent.journal|absentHistory.journal,K)==OLDDEL
+FIRSTADD=gen(11,S,(K,N,BS),111,"first",(12,S));FIRSTADDV=ev(12,S,(K,N,BS),112,"validate",FIRSTADD.id)
+firstSource=Rep(S,12,((S,12),),frozenset((FIRSTADD,FIRSTADDV)),((K,M("first",FIRSTADD.id,"first",FIRSTADD.id,111,"fresh",True)),))
+firstLive,firstEvents=receive(observedAbsent,firstSource);assert not firstEvents and node(firstLive,K).value=="first"
+observedAbsentAgain,absentObservationAgain=reset(observedAbsent,absentHistory,110);assert not absentObservationAgain and observedAbsentAgain==observedAbsent
+compactedObservation=compact(observedAbsent.journal);assert any(e.kind=="observe"for e in compactedObservation)and journal_projection(compactedObservation)==journal_projection(observedAbsent.journal)
+
+# Concurrent observations for one absence anchor join componentwise; numeric
+# carrier order is not causality, including equal sequences from two authors.
+CRA=observe(101,R,(K,N,BS),101,OLDDEL.id,(((A,50),),None,None));CRB=observe(200,S,(K,N,BS),102,OLDDEL.id,(((B,60),),None,None));CREQ=observe(101,C,(K,N,BS),103,OLDDEL.id,(((B,60),),None,None))
+concurrentObs=frozenset((OLDDEL,CRA,CRB,CREQ));assert valid(concurrentObs)
+AGO=gen(49,A,(K,N,BS),49,"a-old",(50,A));AGOV=ev(50,A,(K,N,BS),50,"validate",AGO.id);assert ph(concurrentObs|{AGO,AGOV},K)==OLDDEL
+BGO=gen(59,B,(K,N,BS),59,"b-old",(60,B));BGOV=ev(60,B,(K,N,BS),60,"validate",BGO.id);assert ph(concurrentObs|{BGO,BGOV},K)==OLDDEL
+AGNEW=gen(51,A,(K,N,BS),51,"a-new",(52,A));AGNEWV=ev(52,A,(K,N,BS),52,"validate",AGNEW.id);assert ph(concurrentObs|{AGNEW,AGNEWV},K).id==AGNEW.id
+BGNEW=gen(61,B,(K,N,BS),61,"b-new",(62,B));BGNEWV=ev(62,B,(K,N,BS),62,"validate",BGNEW.id);assert ph(concurrentObs|{BGNEW,BGNEWV},K).id==BGNEW.id
+assert merge(concurrentObs,concurrentObs)==compact(concurrentObs)and compact(compact(concurrentObs)|{AGNEW,AGNEWV})==compact(concurrentObs|{AGNEW,AGNEWV})
+
 # A later authoritative reset extends the old vector with newly observed B11,
 # while exact unchanged repetition remains silent and B12 remains future-live.
 resetAfterB11,resetAfterB11Events=reset(fromBDelete,lineageVectorS0,110);extended=next(e.lineage[0]for e in resetAfterB11Events if e.lineage)
@@ -795,6 +851,15 @@ OLDGW=ev(90,S,(KDX,NDX,BDX),90,"invalidate",CK.id,"hard");assert fresh(set(cross
 OLDX=ev(90,S,(KDX,NDX,BDX),90,"invalidate",CK.id,"hard",target=CK.id);assert fresh(set(crossOrigin)|{OLDX},KDX,CK.id,YE.id)
 NEWGW=ev(101,S,(KDX,NDX,BDX),101,"invalidate",CK.id,"hard");assert hard(set(crossOrigin)|{NEWGW},KDX,CK.id,YE.id)
 assert journal_projection(crossOrigin)==journal_projection(compact(crossOrigin))and VX in compact(crossOrigin)and VY in compact(crossOrigin)
+# Causal coverage and exact semantic correspondence are independent. Only exact
+# compared pairs authorize unsupported-cache retention.
+exactCert=next(e for e in hardAdded.journal if e.lineage);receiverCache=node(hardAdded,KE);sourceCache=node(hardMultiS,KE)
+assert reset_lineage_covers(hardAdded.journal,receiverCache,sourceCache)
+unrelated=M("unrelated",(40,B),"Y",(50,B),50,"hard",False)
+assert not reset_lineage_covers(hardAdded.journal,receiverCache,unrelated)
+OTHERPAIR=((30,S),(31,S));exact2=replace(exactCert,sequence=exactCert.sequence+100,author=C,lineage=(exactCert.lineage[0],*OTHERPAIR))
+exactHistory=frozenset(set(hardAdded.journal)|{exact2});assert valid(exactHistory)and reset_lineage_covers(exactHistory,receiverCache,M("other",OTHERPAIR[0],"d",OTHERPAIR[1],1,"hard",False))
+exactCompact=compact(exactHistory);assert {e.lineage[1:]for e in exactCompact if e.lineage}>={(sourceCache.generation,sourceCache.origin),OTHERPAIR}
 # Correspondence boundary validation rejects malformed shapes before compaction.
 good_cert=next(e for e in lineageResetEvents if e.lineage)
 for bad_corr in ((((S,20),),LG.id),(((S,True),),LG.id,LG.id),((('bad',20),),LG.id,LG.id),(((S,20),(S,21)),LG.id,LG.id),(((S,20),(B,10)),LG.id,LG.id),(((S,20),),(True,S),LG.id),(((S,20),),LG.id,(0,S)),(((S,20),),None,LG.id),(((S,20),),LG.id,LG.id,"extra")):
@@ -857,16 +922,16 @@ assert A1.journal==B1.journal and A1.coverage==B1.coverage and sem(A1)==sem(B1)a
 q=alloc(B1)[0];assert q==101
 
 # Canonical cursor/token scalar domains.
-def encode(ch,cur):
- raw=json.dumps({"change":ch,"cursor":[list(x)for x in sorted(cur)],"v":1},sort_keys=True,separators=(",",":"));return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+def encode(ch,cur,filter_id="*"):
+ raw=json.dumps({"change":ch,"cursor":[list(x)for x in sorted(cur)],"filter":filter_id,"v":1},sort_keys=True,separators=(",",":"));return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
 def decode(tok):
  raw=base64.urlsafe_b64decode(tok+"="*((-len(tok))%4)).decode();o=json.loads(raw)
- if set(o)!={"change","cursor","v"}or o["v"]!=1:raise ValueError
+ if set(o)!={"change","cursor","filter","v"}or o["v"]!=1 or type(o["filter"])is not str or not o["filter"]:raise ValueError
  ch=o["change"]
  if type(ch)is not dict or set(ch)!={"nodeName","bindings","action","time"}or type(ch["nodeName"])is not str or type(ch["bindings"])is not list or ch["action"]not in ACT or not timestamp(ch["time"]):raise ValueError
  prodkey(ch["nodeName"],tuple(ch["bindings"]));cs=o["cursor"]
  if cs!=sorted(cs)or len({x for x,_ in cs})!=len(cs)or any(not regex.fullmatch("[a-z]{16}",x)or not uint(n)for x,n in cs):raise ValueError
- if encode(ch,[tuple(x)for x in cs])!=tok:raise ValueError
+ if encode(ch,[tuple(x)for x in cs],o["filter"])!=tok:raise ValueError
  return o
 ch={"nodeName":N,"bindings":list(BS),"action":"edit","time":40};tok=encode(ch,((A,10),(B,3)));assert decode(tok)
 def bad(o):
@@ -874,11 +939,23 @@ def bad(o):
  try:decode(t)
  except (ValueError,TypeError,KeyError):return
  raise AssertionError("malformed token accepted")
-base={"change":ch,"cursor":[[A,1]],"v":1}
+base={"change":ch,"cursor":[[A,1]],"filter":"*","v":1}
 for o in({**base,"cursor":[[A,True]]},{**base,"cursor":[[A,2**64]]},{**base,"cursor":[["bad",1]]},{**base,"cursor":[[A,1],[A,2]]},{**base,"cursor":[[B,1],[A,2]]},{**base,"v":2},{**base,"x":1},{**base,"change":{**ch,"time":True}},{**base,"change":{**ch,"time":TMAX+1}},{**base,"change":{**ch,"nodeName":7}},{**base,"change":{**ch,"bindings":{}}}):bad(o)
 noncanon=base64.urlsafe_b64encode(json.dumps(base).encode()).decode().rstrip("=")
 try:decode(noncanon);raise AssertionError("noncanonical token accepted")
 except ValueError:pass
+
+# Filter-bound cursors cannot be broadened or changed silently. Empty results do
+# not manufacture continuation, and compaction has identical filtered behavior.
+FK1=gen(1,B,(KI,NI,BI),1,"k1",(2,B));FK1V=ev(2,B,(KI,NI,BI),2,"validate",FK1.id);FK2=gen(3,B,(KD,ND,BD),3,"k2",(4,B));FK2V=ev(4,B,(KD,ND,BD),4,"validate",FK2.id)
+FA5=ev(5,A,(KI,NI,BI),5,"edit",FK1.id,value="k1-edit");FA10=ev(10,A,(KD,ND,BD),10,"edit",FK2.id,value="k2-edit");FILTERJ=frozenset((FK1,FK1V,FK2,FK2V,FA5,FA10))
+k2page=filtered_query(FILTERJ,(),{KD},"only-k2");assert k2page and dict(k2page[-1][1])[A]==10
+assert not filtered_query(FILTERJ,k2page[-1][1],{KD},"only-k2","only-k2")
+try:filtered_query(FILTERJ,k2page[-1][1],{KI,KD},"both","only-k2");assert False
+except ValueError:pass
+assert not filtered_query(FILTERJ,(),set(),"none")
+assert filtered_query(FILTERJ,(),{KD},"only-k2")==filtered_query(compact(FILTERJ),(),{KD},"only-k2")
+filterToken=encode(ch,k2page[-1][1],"only-k2");assert decode(filterToken)["filter"]=="only-k2"
 
 # Storage-category bounds across a generated n-by-r family, including n=0,r>0.
 def bounded_history(n,r):

@@ -12,6 +12,10 @@ GenerationJournalEntry = JournalEntryBase & {
     kind:"generation", initialFreshness:JournalEntryId
 }
 DeleteJournalEntry = JournalEntryBase & { kind:"delete", resetLineage?:ResetLineage }
+ResetObservationEntry = JournalEntryBase & {
+    kind:"reset-observation", absentAnchor:JournalEntryId | null,
+    resetLineage:ResetLineage
+}
 GenerationScopedBase = JournalEntryBase & { generation:JournalEntryId }
 EditJournalEntry = GenerationScopedBase & { kind:"edit" }
 InvalidateJournalEntry = GenerationScopedBase & {
@@ -26,8 +30,11 @@ ValidateJournalEntry = GenerationScopedBase & {
 }
 ResetLineage = {
     consumedThrough:CausalPrefix,
-    consumedGeneration:JournalEntryId | null,
-    consumedValueOrigin:JournalEntryId | null
+    correspondence:ResetCorrespondence | null
+}
+ResetCorrespondence = {
+    consumedGeneration:JournalEntryId,
+    consumedValueOrigin:JournalEntryId
 }
 CausalPrefix = Map<DatabaseFingerprint,uint64>
 ```
@@ -37,10 +44,10 @@ An immutable generation entry establishes positive presence and initial value pr
 For generation `G` and its named initial event `I`, structural validity requires `I.author=G.author`, `I.sequence>G.sequence`, `I.key=G.key`, `I.generation=G.id`, and `I.kind` in `{validate,invalidate}`. The two entries install atomically. Sequence adjacency is not required, but a generation cannot name another author's future event.
 
 ```text
-publicAction(E) = "add" for generation; otherwise E.kind
+publicAction(E) = "add" for generation; undefined for reset-observation; otherwise E.kind
 ```
 
-Soft/hard both expose invalidate. Each event exposes exactly one public action.
+Soft/hard both expose invalidate. Every public graph event exposes exactly one action. ResetObservationEntry is internal metadata in the same physical journal, has no public action, and is ignored by polling maxima.
 
 Every boundary validates closed shapes/scalars, immutable-ID agreement, and `key == NodeKey(nodeName,bindings)` using the production identity-preserving serializer. Every scoped event resolves to an exact same-key GenerationJournalEntry. Generation initial-freshness references resolve exactly.
 
@@ -50,11 +57,11 @@ Generation-wide invalidates represent explicit/concurrent causal invalidation th
 
 Every validation names the exact value origin it validates. The initial validation names its GenerationJournalEntry; validation after an edit names that edit. Positive evidence for one origin never freshens another origin, even when its causal prefix includes the other origin’s invalidates.
 
-Observed reset attaches `resetLineage` to a receiver-retained freshness assertion for a present target, or to the real reset-authored DeleteJournalEntry for an absent target. For a present target, `consumedGeneration` and `consumedValueOrigin` name the semantic source state compared with the receiver origin using `isEqual`; for an absent target both are null. The containing assertion/value origin or delete is the receiver anchor. The metadata has no separate public action and does not import source journal/coverage.
+Observed reset attaches `resetLineage` to a receiver-retained freshness assertion for a present target or to the real reset-authored DeleteJournalEntry for a present-to-absent target. When both snapshots are already absent, it authors an internal ResetObservationEntry anchored to the receiver delete (or explicit null absence when no presence event exists). This metadata-only entry has no public action and cannot masquerade as add/edit/delete/validate/invalidate.
 
-`consumedThrough` is the complete per-author causal prefix inspected across both consumed snapshots. For every author A, missing means zero. An A-authored key event at or below the coordinate is observed and absorbed. An A-authored same-lineage edit/freshness event, delete, or rematerialization above it remains eligible regardless of carrier host or whether its JournalEntryId is numerically below the receiver anchor. Thus the lineage is observed-reset evidence, not a reset-wins epoch. A later summary for the same anchor componentwise carries the earlier vector; it subsumes earlier consumed source origins inside that prefix.
+Reset causal observation and semantic correspondence are distinct. `consumedThrough` is the joinable per-author prefix inspected across both snapshots; missing means zero. Concurrent observations for one receiver anchor join by componentwise maximum, without inferring causality from carrier JournalEntryId. `correspondence`, when present, names exactly one source generation/origin actually compared `isEqual` with the receiver value anchor. Concurrent/later exact correspondences form a bounded retained set; causal coordinates alone never certify semantic equality.
 
-At persistence boundaries `ResetLineage` is an exact closed shape. `consumedThrough` is a canonical map with unique supported fingerprints and uint64 coordinates. Present IDs contain nonzero uint64 sequences and supported fingerprints; absent lineage requires both IDs null. Event kind enforces the distinction: delete+lineage requires both IDs null, while validate/invalidate+lineage requires both IDs non-null. Booleans, malformed maps/tuples, mismatched nullability, missing or extra fields, and unsupported authors are rejected before merge or compaction. Structural validity is distinct from the authoring proof that reset actually observed the claimed prefixes and semantic state.
+For every author A, an A-authored key event at or below joined `consumedThrough[A]` is absorbed. A same-lineage event above it remains eligible regardless of carrier. Structural validation requires canonical vectors and exact shapes. Delete/reset-observation absent lineage has null correspondence; validate/invalidate present lineage has a non-null exact correspondence. Both correspondence IDs contain nonzero uint64 sequences and supported fingerprints. Booleans, duplicate/unsorted coordinates, mismatched kind/correspondence, malformed IDs, and unknown fields are rejected.
 
 ## UnixTimestamp and event time
 
