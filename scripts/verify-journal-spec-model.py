@@ -109,9 +109,10 @@ def ph(es,k):
  for cert in es:
   if cert.key!=k or not cert.lineage:continue
   if cert.kind=="observe":
-   if cert.target is None:
-    if base is not None:continue
-   elif cert.target!=base.id:continue
+   # A null target is a virtual explicit-absence anchor.  It continues to
+   # interpret later unions; otherwise delayed consumed history could make the
+   # certificate disappear precisely when it is needed.
+   if cert.target is not None and (not base or cert.target!=base.id):continue
   elif cert.kind=="delete":
    if not base or cert.id!=base.id:continue
   else:
@@ -120,16 +121,17 @@ def ph(es,k):
    if base.kind!="add"or receiver_g!=base.id:continue
   certs.append(cert)
  if not certs:return base
+ virtual_absence=any(cert.kind=="observe"and cert.target is None for cert in certs)
  cut={};consumed=set()
  for cert in certs:
   for a,q in cert.lineage[0]:cut[a]=max(cut.get(a,0),q)
   if cert.lineage[1]is not None:consumed.add(cert.lineage[1])
  for e in es:
-  if e.key!=k or(base and e.id==base.id)or e.sequence<=cut.get(e.author,0):continue
+  if e.key!=k or(base and e.id==base.id and not virtual_absence)or e.sequence<=cut.get(e.author,0):continue
   if e.kind in ("add","delete"):eligible.append(e)
   elif e.generation in consumed or ((not base or e.generation!=base.id)and e.generation in by and by[e.generation].sequence>cut.get(by[e.generation].author,0)):
    eligible.append(by[e.generation])
- return max(eligible,key=lambda e:e.id) if eligible else base
+ return max(eligible,key=lambda e:e.id) if eligible else(None if virtual_absence else base)
 def generation(es,k):p=ph(es,k);return p.id if p and p.kind=="add" else None
 def vheads(es,k,g):
  o={}
@@ -168,7 +170,7 @@ def compact(es):
   applicable=[]
   for e in es:
    if e.key!=k or not e.lineage:continue
-   anchored=e.kind=="observe"and((raw is None and e.target is None)or(raw and e.target==raw.id))
+   anchored=e.kind=="observe"and(e.target is None or(raw and e.target==raw.id))
    if e.kind=="delete"and raw:anchored=e.id==raw.id
    if e.kind not in("delete","observe")and raw and raw.kind=="add"and e.target in by:
     t=by[e.target];anchored=(t.id if t.kind=="add"else t.generation)==raw.id
@@ -212,15 +214,46 @@ def query(es,cursor=()):
  for e in sorted((e for e in nmax(es)if e.sequence>d.get(e.author,0)),key=lambda e:e.id):
   d[e.author]=e.sequence;out.append((e.kind,tuple(sorted(d.items()))))
  return tuple(out)
-def filtered_query(es,cursor,keys,filter_id,token_filter=None):
+def const_bytes(value):
+ if value is None:return b"z"
+ if type(value)is bool:return b"b1"if value else b"b0"
+ if type(value)in (int,float):
+  if type(value)is float and math.isnan(value):return b"nNaN"
+  return ("n"+format(value,".17g")).encode()
+ if type(value)is str:
+  data=value.encode();return b"s"+str(len(data)).encode()+b":"+data
+ if type(value)is list:
+  parts=[const_bytes(x)for x in value];return b"a"+b"".join(str(len(x)).encode()+b":"+x for x in parts)
+ if type(value)is dict:
+  parts=[]
+  for k,v in value.items():parts.extend((const_bytes(k),const_bytes(v)))
+  return b"o"+b"".join(str(len(x)).encode()+b":"+x for x in parts)
+ raise ValueError("unsupported ConstValue")
+def filter_bytes(f):
+ if f==("wildcard",):return b"W"
+ if type(f)is not tuple or not f:raise ValueError("invalid filter")
+ if f[0]=="ground"and len(f)==3 and type(f[1])is str and type(f[2])is tuple:
+  head=const_bytes(f[1]);args=[]
+  for a in f[2]:
+   x=b"W"if a==("wildcard",)else b"C"+const_bytes(a);args.append(str(len(x)).encode()+b":"+x)
+  return b"G"+str(len(head)).encode()+b":"+head+b"".join(args)
+ if f[0]=="union"and len(f)==3:
+  children=sorted((filter_bytes(f[1]),filter_bytes(f[2])))
+  return b"U"+b"".join(str(len(x)).encode()+b":"+x for x in children)
+ raise ValueError("invalid filter")
+def filter_identity(f):return base64.urlsafe_b64encode(filter_bytes(f)).decode().rstrip("=")
+def filter_matches(f,e):
+ if f==("wildcard",):return True
+ if f[0]=="union":return filter_matches(f[1],e)or filter_matches(f[2],e)
+ if f[0]!="ground"or f[1]!=e.name or len(f[2])!=len(e.bindings):return False
+ return all(a==("wildcard",)or is_equal(a,b)for a,b in zip(f[2],e.bindings))
+def filtered_query(es,cursor,f,token_filter=None):
+ filter_id=filter_identity(f)
  if token_filter is not None and token_filter!=filter_id:raise ValueError("cursor filter mismatch")
  d=dict(cursor);out=[]
- for e in sorted((e for e in nmax(es)if e.sequence>d.get(e.author,0)and e.key in keys),key=lambda e:e.id):
+ for e in sorted((e for e in nmax(es)if e.sequence>d.get(e.author,0)and filter_matches(f,e)),key=lambda e:e.id):
   d[e.author]=e.sequence;out.append((e.kind,tuple(sorted(d.items())),filter_id))
  return tuple(out)
-def filter_identity(keys):
- raw=json.dumps({"keys":sorted(keys)},separators=(",",":"),ensure_ascii=False).encode()
- return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 def journal_projection(es):
  out=[]
  for k in sorted({e.key for e in es}):
@@ -435,8 +468,8 @@ def reset(r,s,tau):
  # the same journal with an internal entry anchored to the existing absence.
  for k in SCHEMA:
   if node(r,k)is not None or node(s,k)is not None:continue
+  if raw_ph(r.journal,k)is None and raw_ph(s.journal,k)is None:continue
   anchor=raw_ph(work.journal,k);target=anchor.id if anchor and anchor.kind=="delete"else None
-  if target is None:continue
   through=reset_lineage_through(r,s,k,None,None,True);joined={}
   for e in work.journal:
    anchored=e.kind=="observe"and e.target==target or e.kind=="delete"and e.id==target
@@ -466,6 +499,22 @@ R1b,re2=reset(R1,SS,30);assert not re2 and R1b==R1
 SS100=replace(SS,clock=100,coverage=((A,2),(S,100)))
 RW,rwe=reset(RR,SS100,30);assert rwe and min(e.sequence for e in rwe)>100
 assert dict(RW.coverage)[R]==RW.clock and S not in dict(RW.coverage) and dict(rwe[0].clears).get(S)==100
+
+# A reset to explicit absence has a metadata-only virtual anchor even when the
+# receiver has no presence history.  Delayed consumed presence stays absorbed,
+# while a post-cutoff materialization remains live and polling sees no fake act.
+NG=gen(5,S,(KD,ND,BD),5,"old",(6,S));NV=ev(6,S,(KD,ND,BD),6,"validate",NG.id);ND10=dele(10,S,(KD,ND,BD),10)
+emptyR=Rep(R,0,(),frozenset(),());absentS=Rep(S,10,((S,10),),frozenset((NG,NV,ND10)),())
+absentReset,absenceEvents=reset(emptyR,absentS,20)
+nullObs=[e for e in absenceEvents if e.kind=="observe"and e.key==KD and e.target is None]
+assert len(nullObs)==1 and not nmax(nullObs)and generation(absentReset.journal,KD)is None
+lagged=frozenset(set(absentReset.journal)|{NG,NV});assert generation(lagged,KD)is None
+assert generation(compact(absentReset.journal),KD)is None and generation(compact(lagged),KD)is None
+NG11=gen(11,S,(KD,ND,BD),11,"new",(12,S));NV12=ev(12,S,(KD,ND,BD),12,"validate",NG11.id)
+post=frozenset(set(lagged)|{NG11,NV12});assert generation(post,KD)==NG11.id
+ND13=dele(13,S,(KD,ND,BD),13);NG14=gen(14,S,(KD,ND,BD),14,"again",(15,S));NV15=ev(15,S,(KD,ND,BD),15,"validate",NG14.id)
+assert generation(set(post)|{ND13},KD)is None and generation(set(post)|{ND13,NG14,NV15},KD)==NG14.id
+absentRepeat,absentRepeatEvents=reset(absentReset,absentS,20);assert absentRepeat==absentReset and not absentRepeatEvents
 
 # A source-only validation is evidence, never installed authority. Receiver stabilization
 # covers the whole consumed source prefix, survives delayed compacted evidence, and is idempotent.
@@ -964,13 +1013,18 @@ except ValueError:pass
 # not manufacture continuation, and compaction has identical filtered behavior.
 FK1=gen(1,B,(KI,NI,BI),1,"k1",(2,B));FK1V=ev(2,B,(KI,NI,BI),2,"validate",FK1.id);FK2=gen(3,B,(KD,ND,BD),3,"k2",(4,B));FK2V=ev(4,B,(KD,ND,BD),4,"validate",FK2.id)
 FA5=ev(5,A,(KI,NI,BI),5,"edit",FK1.id,value="k1-edit");FA10=ev(10,A,(KD,ND,BD),10,"edit",FK2.id,value="k2-edit");FILTERJ=frozenset((FK1,FK1V,FK2,FK2V,FA5,FA10))
-k2id=filter_identity({KD});bothid=filter_identity({KI,KD});noneid=filter_identity(set());assert k2id!=bothid
-k2page=filtered_query(FILTERJ,(),{KD},k2id);assert k2page and dict(k2page[-1][1])[A]==10
-assert not filtered_query(FILTERJ,k2page[-1][1],{KD},k2id,k2id)
-try:filtered_query(FILTERJ,k2page[-1][1],{KI,KD},bothid,k2id);assert False
+k1f=("ground",NI,BI);k2f=("ground",ND,BD);bothf=("union",k1f,k2f);swapped=("union",k2f,k1f);wild=("wildcard",);nonef=("ground","missing",())
+k2id=filter_identity(k2f);bothid=filter_identity(bothf);noneid=filter_identity(nonef)
+assert k2id!=bothid and bothid==filter_identity(swapped)and k2id==filter_identity(("ground",ND,tuple(BD)))
+# Wildcard and a finite union happen to match the same current snapshot, but
+# their structural identities differ because wildcard also matches future keys.
+assert {e.key for e in nmax(FILTERJ)if filter_matches(wild,e)}=={e.key for e in nmax(FILTERJ)if filter_matches(bothf,e)}and filter_identity(wild)!=bothid
+k2page=filtered_query(FILTERJ,(),k2f);assert k2page and dict(k2page[-1][1])[A]==10
+assert not filtered_query(FILTERJ,k2page[-1][1],k2f,k2id)
+try:filtered_query(FILTERJ,k2page[-1][1],bothf,k2id);assert False
 except ValueError:pass
-assert not filtered_query(FILTERJ,(),set(),noneid)
-assert filtered_query(FILTERJ,(),{KD},k2id)==filtered_query(compact(FILTERJ),(),{KD},k2id)
+assert not filtered_query(FILTERJ,(),nonef)
+assert filtered_query(FILTERJ,(),k2f)==filtered_query(compact(FILTERJ),(),k2f)
 filterToken=encode(ch,k2page[-1][1],k2id);assert decode(filterToken)["filter"]==k2id
 
 # Storage-category bounds across a generated n-by-r family, including n=0,r>0.
@@ -997,12 +1051,15 @@ for n in range(1,5):
 for r in range(1,6):
  cov=tuple((x,10)for x in(A,B,C,R,S)[:r]);assert compact(())==frozenset()and len(cov)==r
 
-# Exact semantic reset certificates are lossless and therefore explicitly
-# accounted as c rather than hidden inside the n/r bound.
+# Exact semantic reset certificates are lossless; each carrier physically owns
+# an O(r) causal vector, so the storage family accounts for c*r coordinates.
 CHG=gen(1,A,(K,N,BS),1,"X",(2,A));CHV=ev(2,A,(K,N,BS),2,"validate",CHG.id)
-for m in range(1,21):
- certs={ev(100+i,R,(K,N,BS),100+i,"validate",CHG.id,target=CHG.id,lineage=(((A,2),(R,99)),(10+i,S),(20+i,S)))for i in range(m)}
- churn=frozenset({CHG,CHV}|certs);cc=compact(churn);c=len({e.lineage[1:]for e in cc if e.lineage})
- assert valid(churn)and c==m and len(cc)<=5+c+sum(len(e.lineage[0])for e in cc if e.lineage)
+for rr in range(1,6):
+ prefix=tuple((a,99)for a in (A,B,C,R,S)[:rr])
+ for c0 in range(1,21):
+  certs={ev(100+i,R,(K,N,BS),100+i,"validate",CHG.id,target=CHG.id,lineage=(prefix,(10+i,S),(20+i,S)))for i in range(c0)}
+  churn=frozenset({CHG,CHV}|certs);cc=compact(churn);c=len({e.lineage[1:]for e in cc if e.lineage});coords=sum(len(e.lineage[0])for e in cc if e.lineage)
+  assert valid(churn)and c==c0 and coords==c*rr
+  assert len(cc)+coords<=5+c*(rr+1)
 
 print("journal semantic verifier passed: convergence, causal validation, observed reset absorption/idempotence, extensional proof transport, polling, compaction, lazy clock, timestamps, and storage")

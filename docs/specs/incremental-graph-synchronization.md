@@ -44,7 +44,7 @@ available in its two reachable source snapshots and retained journal history.
 Insufficient evidence is handled conservatively. Synchronization invokes no
 computor and invents no `ComputedValue`; journal merge is ACI; bilateral gossip
 is decentralized; journal notifications have no action-specific false
-negatives; and fully compacted journal plus coverage storage is `O(nr²+c+r)`, reducing to `O(nr²+c)` for `n>0,r>=1`, under the journal size model's explicit fixed maximum serialized semantic-address size;
+negatives; and fully compacted journal plus coverage storage is `O(nr²+cr+r)`, reducing to `O(nr²+cr)` for `n>0,r>=1`, under the journal size model's explicit fixed maximum serialized semantic-address size; `c` exact correspondence carriers each physically retain an `O(r)` causal vector;
 `DatabaseFingerprint` is already bounded by its normative 16-character ASCII
 representation, and uncompacted storage may grow with operations. The broader storage model also assumes fixed maximum
 serialized `ConstValue` size C and fixed direct graph

@@ -639,7 +639,7 @@ type Computor = (
 | `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 | `MissingTimestampError` | `nodeKey: string` | `getCreationTime`/`getModificationTime` called for a node with no recorded timestamps (public API) |
-| `InvalidPossibleChangeCursorError` | none | `possibleMaybeChanges()` receives a structurally malformed cursor or a token whose canonical vector encoding or payload is invalid |
+| `InvalidPossibleChangeCursorError` | none | `possibleMaybeChanges()` receives a structurally malformed/non-canonical cursor, an invalid payload, or a cursor whose filter identity differs from the query filter |
 
 **REQ-ERR-01 (Error Type Guards):** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value: unknown): value is InvalidExpressionError`).
 
@@ -659,7 +659,7 @@ freshness sublevel. The public journal API consists of:
 - `possibleChangeTokenToString(token)` and `stringToPossibleChangeToken(string)`
   provide canonical, versioned, validated durable token conversion without exposing raw journal identities; the hidden full vector round-trips.
 
-- `InvalidPossibleChangeCursorError` — Thrown only for a structurally malformed or non-canonical token. A cursor coordinate may exceed host coverage; the query remains valid and performs no write. Its
+- `InvalidPossibleChangeCursorError` — Thrown before polling for a structurally malformed or non-canonical token or when the token's filter identity differs from the canonical identity of `to`. A cursor coordinate may exceed host coverage; the query remains valid and performs no write. Its
   public type guard uses `instanceof`.
 
 Journal notification has no false negatives for those three dimensions, but it
