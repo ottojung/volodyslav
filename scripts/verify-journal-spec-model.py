@@ -132,7 +132,7 @@ def ph(es,k):
  for e in es:
   if e.key!=k or(base and e.id==base.id and anchored_base)or e.sequence<=cut.get(e.author,0):continue
   if e.kind in ("add","delete"):eligible.append(e)
-  elif e.generation in by:eligible.append(by[e.generation])
+  elif e.generation in by and e not in certs:eligible.append(by[e.generation])
  return max(eligible,key=lambda e:e.id) if eligible else(base if anchored_base else(None if virtual_absence else base))
 def generation(es,k):p=ph(es,k);return p.id if p and p.kind=="add" else None
 def vheads(es,k,g):
@@ -170,18 +170,26 @@ def compact(es):
   # Reset lineage is future presence authority even while causal presence is
   # absent, so select it independently of winning-generation value seeds.
   applicable=applicable_lineages(es,k)
-  exact={};coordinates={}
+  coordinates={};anchor_members={}
   for e in applicable:
-   pair=(e.target,*e.lineage[1:])
-   if e.lineage[1:]!=(None,None)and(pair not in exact or exact[pair].id<e.id):exact[pair]=e
+   anchor=lineage_anchor(e);anchor_members.setdefault(anchor,[]).append(e)
    for a,q in e.lineage[0]:
-    coordinate=(lineage_anchor(e),a)
+    coordinate=(anchor,a)
     if coordinate not in coordinates or(coordinates[coordinate].lineage[0]and(dict(coordinates[coordinate].lineage[0]).get(a,0),coordinates[coordinate].id)<(q,e.id)):coordinates[coordinate]=e
-  keep.update(exact.values());keep.update(coordinates.values())
-  if applicable and not exact and not coordinates:keep.add(max(applicable,key=lambda e:e.id))
+  keep.update(coordinates.values())
+  for anchor,members in anchor_members.items():
+   if not any(a==anchor for a,_ in coordinates):keep.add(max(members,key=lambda e:e.id))
   g=p.id if p and p.kind=="add" else None
   if not g:continue
   heads=vheads(es,k,g);keep.update(heads)
+  # Exact correspondence is candidate/value evidence, not raw-anchor causal
+  # authority. Retain it for every retained origin in the causal generation.
+  relevant_origins={h.id for h in heads};exact={}
+  for e in es:
+   if e.key!=k or not e.lineage or e.lineage[1:]==(None,None)or e.target not in relevant_origins:continue
+   relation=(e.target,*e.lineage[1:])
+   if relation not in exact or exact[relation].id<e.id:exact[relation]=e
+  keep.update(exact.values())
   vals={}
   for v in es:
    if v.kind=="validate" and v.key==k and v.generation==g:
@@ -416,6 +424,16 @@ def reset_closed(r,s,k,g,target):
   if e.kind=="validate"and e.key==k and e.generation==g:
    for a,q in e.clears:d[a]=max(d.get(a,0),q)
  return tuple(sorted(d.items()))
+def current_receiver_anchor(r,k):
+ m=node(r,k)
+ if m:return("present",m.origin)
+ p=raw_ph(r.journal,k)
+ return("delete",p.id)if p and p.kind=="delete"else("null",)
+def current_anchor_bookkeeping(r,k):
+ """Only reset carriers/assertion coordinates for the current receiver anchor."""
+ anchor=current_receiver_anchor(r,k);ids={e.id for e in r.journal if e.key==k and e.lineage and lineage_anchor(e)==anchor}
+ if anchor[0]in("present","delete"):ids.add(anchor[1])
+ return ids
 def reset_lineage_through(r,s,k,sg,so,ignore_bookkeeping=False):
  prior=[e.lineage[0]for e in r.journal if e.key==k and e.lineage]
  carried=()
@@ -424,12 +442,12 @@ def reset_lineage_through(r,s,k,sg,so,ignore_bookkeeping=False):
  # merely the source container's journalCoverage. Exact correspondences remain
  # exact and are not inferred or transitively copied from these vectors.
  for e in applicable_lineages(s.journal,k):carried=vmax(carried,e.lineage[0])
- out=dict(vmax(carried,s.coverage));anchors={e.target for e in r.journal if e.lineage and e.target}
+ out=dict(vmax(carried,s.coverage));bookkeeping=current_anchor_bookkeeping(r,k)if ignore_bookkeeping else set()
  for e in r.journal:
   # Reset carriers and their receiver anchors are explicitly marked
   # bookkeeping. Every other retained public event for this key is genuine
   # receiver history and advances the next observation.
-  if e.key!=k or(ignore_bookkeeping and(e.kind=="observe"or e.lineage or e.id in anchors)):continue
+  if e.key!=k or e.id in bookkeeping:continue
   out[e.author]=max(out.get(e.author,0),e.sequence)
  return tuple(sorted(out.items()))
 def reset(r,s,tau):
@@ -591,6 +609,36 @@ historicalSource=Rep(C,51,((A,2),(C,51),(R,30)),historicalCompact,((KD,M("hc",HG
 fromHistorical,fhEvents=reset(emptyR,historicalSource,60);assert all(dict(e.lineage[0]).get(B,0)==0 for e in fhEvents if e.lineage)
 HB90=gen(90,B,(KD,ND,BD),61,"live-b",(91,B));HB91=ev(91,B,(KD,ND,BD),62,"validate",HB90.id)
 assert ph(historicalCompact|{HB90,HB91},KD).id==HB90.id and ph(fromHistorical.journal|{HB90,HB91},KD).id==HB90.id
+
+# Idempotence excludes bookkeeping only for the current receiver anchor.
+# Historical reset carriers are observed into the new cutoff and cannot become
+# post-reset scoped activators of their old generation.
+BKG1=gen(1,A,(KD,ND,BD),1,"old",(2,A));BKV1=ev(2,A,(KD,ND,BD),2,"validate",BKG1.id)
+BKC1=ev(100,R,(KD,ND,BD),3,"validate",BKG1.id,target=BKG1.id,lineage=(((A,2),),BKG1.id,BKG1.id));BKD=dele(10,B,(KD,ND,BD),10)
+bkAbsent=Rep(R,100,((A,2),(B,10),(R,100)),frozenset((BKG1,BKV1,BKC1,BKD)),())
+bkSource=Rep(S,0,(),frozenset(),());bkReset,bkEvents=reset(bkAbsent,bkSource,110);bkObs=next(e for e in bkEvents if e.key==KD)
+assert dict(bkObs.lineage[0])[R]>=100 and ph(bkReset.journal,KD)==BKD
+bkRepeat,bkRepeatEvents=reset(bkReset,bkSource,110);assert bkRepeat==bkReset and not bkRepeatEvents
+bkRestart=replace(bkReset,journal=compact(bkReset.journal));assert ph(bkRestart.journal,KD)==BKD and reset(bkRestart,bkSource,110)==(bkRestart,())
+BKFUTURE=ev(101,R,(KD,ND,BD),111,"invalidate",BKG1.id,"hard",target=BKG1.id);assert ph(bkReset.journal|{BKFUTURE},KD).id==BKG1.id
+
+BKG2=gen(20,C,(KD,ND,BD),20,"current",(21,C));BKV2=ev(21,C,(KD,ND,BD),21,"validate",BKG2.id)
+bkPresent=Rep(R,100,((A,2),(B,10),(C,21),(R,100)),frozenset((BKG1,BKV1,BKC1,BKD,BKG2,BKV2)),((KD,M("bkp",BKG2.id,"current",BKG2.id,20,"fresh",True)),))
+BKSG=gen(1,S,(KD,ND,BD),1,"current",(2,S));BKSV=ev(2,S,(KD,ND,BD),2,"validate",BKSG.id);bkPresentSource=Rep(S,2,((S,2),),frozenset((BKSG,BKSV)),((KD,M("bkps",BKSG.id,"current",BKSG.id,1,"fresh",True)),))
+bkPresentReset,bkPresentEvents=reset(bkPresent,bkPresentSource,110);assert node(bkPresentReset,KD).generation==BKG2.id and any(dict(e.lineage[0]).get(R,0)>=100 for e in bkPresentEvents if e.lineage)
+
+# RLC relevance follows retained value candidates in causal presence, not raw
+# anchor applicability. A displaced exact certificate survives compaction when
+# null lineage plus a post-cutoff scoped event activates its old generation.
+RCG=gen(1,A,(K,N,BS),1,"cache",(2,A));RCV=ev(2,A,(K,N,BS),2,"validate",RCG.id);RCD=dele(10,B,(K,N,BS),10)
+RCO=observe(50,S,(K,N,BS),10,None,(((A,2),(B,10)),None,None));RCE=ev(20,C,(K,N,BS),20,"invalidate",RCG.id,"hard",target=RCG.id)
+RCPAIR=((5,S),(6,S));RCC1=ev(30,R,(K,N,BS),30,"validate",RCG.id,target=RCG.id,lineage=((),*RCPAIR));RCV2=ev(40,R,(K,N,BS),40,"validate",RCG.id,target=RCG.id)
+rcHistory=frozenset((RCG,RCV,RCD,RCO,RCE,RCC1,RCV2));rcCompact=compact(rcHistory);rcReceiver=M("rcr",RCG.id,"cache",RCG.id,1,"hard",False);rcSource=M("rcs",RCPAIR[0],"cache",RCPAIR[1],1,"hard",False)
+assert raw_ph(rcHistory,K)==RCD and ph(rcHistory,K).id==RCG.id and RCC1 not in nmax(rcHistory)
+assert reset_lineage_covers(rcHistory,rcReceiver,rcSource)and reset_lineage_covers(rcCompact,rcReceiver,rcSource)and RCC1 in rcCompact
+assert choose_value(rcHistory,K,[rcReceiver,rcSource],(KI,KD),{KI:"i",KD:"d"})[1]is rcReceiver
+assert choose_value(rcCompact,K,[rcReceiver,rcSource],(KI,KD),{KI:"i",KD:"d"})[1]is rcReceiver
+RCFUTURE=ev(41,C,(K,N,BS),41,"invalidate",RCG.id,"hard",target=RCG.id);assert compact(rcCompact|{RCFUTURE})==compact(rcHistory|{RCFUTURE})
 
 # A source-only validation is evidence, never installed authority. Receiver stabilization
 # covers the whole consumed source prefix, survives delayed compacted evidence, and is idempotent.
