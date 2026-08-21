@@ -4,11 +4,15 @@
 
 ```text
 presenceEvents(J,K) = generation/delete entries for K
-rawPresenceHead = greatest JournalEntryId presence event, or null
-nullObservations = reset-observations for K whose absentAnchor is null
-anchorLineages = lineages whose receiver generation/value/delete anchor resolves
-               to rawPresenceHead
-applicableLineages = nullObservations union anchorLineages
+lineageGroup(A) = all reset-lineage carriers with tagged receiver anchor A
+anchorPresence(A) = absent for null; the named delete for delete anchor; the
+               generation containing the named value origin for present anchor
+anchorCut(A)[author] = componentwise maximum across lineageGroup(A)
+superseded(A) iff A is non-null, rawPresenceHead differs from anchorPresence(A),
+               and an actual presence event other than anchorPresence(A) is
+               above its author coordinate in anchorCut(A)
+applicableLineages = every null lineage group plus every non-null lineage group
+               for which superseded(A) is false
 cut[A] = max consumedThrough[A] across applicableLineages, missing as zero
 postCutoffScoped(G) iff a generation-scoped event E for G exists, E is not
                itself an applicable reset-lineage carrier, and
@@ -16,9 +20,9 @@ postCutoffScoped(G) iff a generation-scoped event E for G exists, E is not
 lineageActivated(G) iff postCutoffScoped(G)
 eligiblePresence = actual generation/delete events above their author cut,
                plus generation G itself when lineageActivated(G)
-anchorFallback = rawPresenceHead when anchorLineages is nonempty; otherwise
-               explicit absence when nullObservations is nonempty; otherwise
-               rawPresenceHead
+anchorFallback = greatest actual anchorPresence among applicable non-null
+               anchors; otherwise explicit absence when a null group exists;
+               otherwise the greatest raw presence event
 presenceHead = greatest eligiblePresence by that actual presence event's own
                JournalEntryId, or anchorFallback when eligiblePresence is empty
 generation = presenceHead.id iff it is GenerationJournalEntry
@@ -33,9 +37,9 @@ Presence selection precedes value. A GenerationJournalEntry is the generation an
 
 Freshness uses `clearsThrough`, `covers`, both frontiers, `freshnessEffective`, and `journalHard` exactly as defined in the types specification. A validation applies only to its mandatory exact `valueOrigin`; positive evidence never crosses an edit. Causal vectors never combine across validations.
 
-Frontiers are relative to the final selected value origin: generation-wide invalidates always apply, while value-specific cache-status invalidates apply only to their named origin. A reset lineage retains an otherwise unsupported receiver cache only against the exact source generation/origin reset semantically consumed or another exact source generation/origin explicitly retained for that receiver anchor. Its causal vector is also a lineage bridge: for every event author A, consumed events at or below the A coordinate are absorbed, while later scoped events, deletes, and rematerializations activate the source lineage despite a numerically greater receiver anchor. Any non-bookkeeping scoped event above its own author coordinate activates its referenced generation; the generation's older add need not itself be above the cutoff, and an applicable reset carrier/exact correspondence alone never activates it. Activation and presence ordering are separate: a scoped event can make its generation eligible, but only generation/delete IDs order presence, so an edit/validate/invalidate cannot resurrect a generation after a later delete. Missing coordinates are zero, and carrier identity is irrelevant. Present-to-absent reset anchors the vector on its real delete; absent-to-absent reset uses a no-action ResetObservationEntry anchored to that delete or to null explicit absence. A retained null observation continues suppressing delayed consumed history, but a later present lineage anchored to the current raw generation makes that generation the fallback; the older null anchor cannot erase it. Reset lineage never authorizes an unrelated unsupported cache.
+Frontiers are relative to the final selected value origin: generation-wide invalidates always apply, while value-specific cache-status invalidates apply only to their named origin. A reset lineage retains an otherwise unsupported receiver cache only against the exact source generation/origin reset semantically consumed or another exact source generation/origin explicitly retained for that receiver anchor. Its causal vector is also a lineage bridge: for every event author A, consumed events at or below the A coordinate are absorbed, while later scoped events, deletes, and rematerializations activate the source lineage despite a numerically greater receiver anchor. Anchor applicability is evaluated against each anchor's own cut before raw ordering: a delayed higher-ID event inside that cut cannot disable the certificate that absorbs it; an actual post-cutoff presence event supersedes a non-null anchor. Any non-bookkeeping scoped event above its own author coordinate activates its referenced generation; the generation's older add need not itself be above the cutoff, and an applicable reset carrier/exact correspondence alone never activates it. Activation and presence ordering are separate: a scoped event can make its generation eligible, but only generation/delete IDs order presence, so an edit/validate/invalidate cannot resurrect a generation after a later delete. Missing coordinates are zero, and carrier identity is irrelevant. Present-to-absent reset anchors the vector on its real delete; absent-to-absent reset uses a no-action ResetObservationEntry anchored to that delete or to null explicit absence. A retained null observation continues suppressing delayed consumed history, but a later present lineage anchored to the current receiver generation makes that generation the fallback; the older null anchor cannot erase it. Reset lineage never authorizes an unrelated unsupported cache.
 
-`applicableLineages(J,K)` is the single canonical selector used by presence, reset, and compaction: it contains every null-anchor observation plus only those delete-anchor carriers whose delete equals `rawPresenceHead` and present-anchor carriers whose target value origin resolves to the raw winning generation. A historical present/delete carrier for another raw anchor is not current causal authority merely because polling or exact-correspondence closure retains it.
+`applicableLineages(J,K)` is the single canonical selector used by presence, reset, and RLV compaction. It groups carriers by tagged receiver anchor, joins each group's vector, and includes every null group. A non-null group remains applicable while its own anchor is the raw head, allowing even a lower-ID post-cutoff event to cross it. If raw presence differs, the group remains applicable only when no actual presence event is above its own cut—so a consumed higher-ID raw event cannot disable the absorber. Once a genuinely post-cutoff presence event is also the raw head, the old non-null group is historical and excluded. A historical carrier is not current causal authority merely because polling or exact-correspondence closure retains it.
 
 This selector governs RLV causal authority only. Exact correspondence has a different candidate-domain predicate: after causal presence selects generation G, an exact carrier is RLC-relevant when its receiver value origin is one of the retained per-author value heads of G. It remains relevant even when its present anchor does not resolve to the raw presence head, because post-cutoff activation can make G causal-current across a raw delete. Current-anchor reset bookkeeping is different again: it contains only receiver carriers whose tagged `lineage_anchor` equals the current receiver semantic anchor and that anchor's own value-origin/delete event.
 

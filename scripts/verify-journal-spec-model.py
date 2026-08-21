@@ -106,18 +106,33 @@ def lineage_anchor(e):
  if e.kind=="observe":return("null",)if e.target is None else("delete",e.target)
  if e.kind=="delete":return("delete",e.id)
  return("present",e.target)
+def anchor_presence(anchor,by):
+ if anchor[0]=="null":return None
+ if anchor[0]=="delete":return by.get(anchor[1])
+ target=by.get(anchor[1])
+ if not target:return None
+ gid=target.id if target.kind=="add"else target.generation
+ return by.get(gid)
 def applicable_lineages(es,k):
- """Lineages whose null/current receiver anchor governs this snapshot."""
- base=raw_ph(es,k);by={e.id:e for e in es};out=[]
+ """Lineages not superseded by an actual post-cutoff presence event."""
+ base=raw_ph(es,k);by={e.id:e for e in es};groups={}
  for e in es:
   if e.key!=k or not e.lineage:continue
-  anchor=lineage_anchor(e)
-  if anchor==("null",):out.append(e);continue
-  if anchor[0]=="delete":
-   if base and base.kind=="delete"and anchor[1]==base.id:out.append(e)
-   continue
-  target=by.get(anchor[1]);receiver_g=None if not target else(target.id if target.kind=="add"else target.generation)
-  if base and base.kind=="add"and receiver_g==base.id:out.append(e)
+  groups.setdefault(lineage_anchor(e),[]).append(e)
+ out=[];presence=[e for e in es if e.key==k and e.kind in("add","delete")]
+ for anchor,members in groups.items():
+  if anchor==("null",):out.extend(members);continue
+  fallback=anchor_presence(anchor,by)
+  if not fallback:continue
+  cut={}
+  for member in members:
+   for a,q in member.lineage[0]:cut[a]=max(cut.get(a,0),q)
+  postcut=[e for e in presence if e.id!=fallback.id and e.sequence>cut.get(e.author,0)]
+  # A lower-ID post-cutoff event must get its one chance to cross the current
+  # anchor. Once another post-cutoff presence is itself the raw head, the old
+  # anchor is historical. A consumed raw displacement cannot disable it.
+  if postcut and(not base or base.id!=fallback.id):continue
+  out.extend(members)
  return tuple(out)
 def ph(es,k):
  """Activate reset lineages, then order only generation/delete presence events."""
@@ -125,15 +140,16 @@ def ph(es,k):
  by={e.id:e for e in es};eligible=[];certs=applicable_lineages(es,k)
  if not certs:return base
  virtual_absence=any(cert.kind=="observe"and cert.target is None for cert in certs)
- anchored_base=any(cert.kind!="observe"or cert.target is not None for cert in certs)
+ fallbacks={anchor_presence(lineage_anchor(cert),by)for cert in certs};fallbacks.discard(None)
+ anchored_fallback=max(fallbacks,key=lambda e:e.id)if fallbacks else None
  cut={}
  for cert in certs:
   for a,q in cert.lineage[0]:cut[a]=max(cut.get(a,0),q)
  for e in es:
-  if e.key!=k or(base and e.id==base.id and anchored_base)or e.sequence<=cut.get(e.author,0):continue
+  if e.key!=k or e in fallbacks or e.sequence<=cut.get(e.author,0):continue
   if e.kind in ("add","delete"):eligible.append(e)
   elif e.generation in by and e not in certs:eligible.append(by[e.generation])
- return max(eligible,key=lambda e:e.id) if eligible else(base if anchored_base else(None if virtual_absence else base))
+ return max(eligible,key=lambda e:e.id) if eligible else(anchored_fallback if anchored_fallback else(None if virtual_absence else base))
 def generation(es,k):p=ph(es,k);return p.id if p and p.kind=="add" else None
 def vheads(es,k,g):
  o={}
@@ -192,7 +208,7 @@ def compact(es):
   keep.update(exact.values())
   vals={}
   for v in es:
-   if v.kind=="validate" and v.key==k and v.generation==g:
+   if v.kind=="validate" and v.key==k and v.generation==g and v.target in relevant_origins:
     c=(v.author,v.target)
     if c not in vals or vals[c].sequence<v.sequence:vals[c]=v
   keep.update(vals.values())
@@ -583,6 +599,22 @@ assert compact(coCompact|delayedA)==compact(coReset.journal|delayedA)
 # cannot be simultaneously current with the delete; its public witness remains
 # governed by the independent polling/closure seeds.
 DAO=observe(201,R,(KE,NE,BE),1,None,(((A,100),),None,None));DAD=dele(202,R,(KE,NE,BE),2,(((A,100),),None,None));dac=compact({DAO,DAD});assert DAO in dac and DAD in dac
+
+# A consumed higher-ID raw event cannot disable the lower-ID non-null anchor
+# whose vector absorbs it. Only events beyond that anchor's cut supersede it.
+LDEL=dele(10,R,(KD,ND,BD),10);lowAbsent=Rep(R,10,((R,10),),frozenset((LDEL,)),())
+HADD=gen(90,S,(KD,ND,BD),90,"consumed",(91,S));HVAL=ev(91,S,(KD,ND,BD),91,"validate",HADD.id);HDEL=dele(100,S,(KD,ND,BD),100)
+highAbsent=Rep(S,100,((S,100),),frozenset((HADD,HVAL,HDEL)),());anchoredAbsent,anchorAbsentEvents=reset(lowAbsent,highAbsent,110)
+assert ph(anchoredAbsent.journal|{HADD,HVAL},KD)==LDEL and ph(compact(anchoredAbsent.journal)|{HADD,HVAL},KD)==LDEL
+HNEW=gen(101,S,(KD,ND,BD),111,"new",(102,S));HNEWV=ev(102,S,(KD,ND,BD),112,"validate",HNEW.id)
+assert ph(anchoredAbsent.journal|{HNEW,HNEWV},KD).id==HNEW.id and compact(compact(anchoredAbsent.journal)|{HADD,HVAL})==compact(anchoredAbsent.journal|{HADD,HVAL})
+anchoredAbsentAgain,anchorAbsentAgainEvents=reset(anchoredAbsent,highAbsent,110);assert anchoredAbsentAgain==anchoredAbsent and not anchorAbsentAgainEvents
+
+PRG=gen(10,R,(KD,ND,BD),10,"present",(11,R));PRV=ev(11,R,(KD,ND,BD),11,"validate",PRG.id);presentReceiver=Rep(R,11,((R,11),),frozenset((PRG,PRV)),((KD,M("pr",PRG.id,"present",PRG.id,10,"fresh",True)),))
+PSG=gen(1,S,(KD,ND,BD),1,"present",(2,S));PSV=ev(2,S,(KD,ND,BD),2,"validate",PSG.id);presentCutSource=Rep(S,2,((B,20),(S,2)),frozenset((PSG,PSV)),((KD,M("ps",PSG.id,"present",PSG.id,1,"fresh",True)),))
+presentCut,presentCutEvents=reset(presentReceiver,presentCutSource,30);B20DEL=dele(20,B,(KD,ND,BD),20);B21DEL=dele(21,B,(KD,ND,BD),21)
+assert ph(presentCut.journal|{B20DEL},KD).id==PRG.id and ph(compact(presentCut.journal)|{B20DEL},KD).id==PRG.id
+assert ph(presentCut.journal|{B21DEL},KD)==B21DEL and compact(compact(presentCut.journal)|{B20DEL})==compact(presentCut.journal|{B20DEL})
 
 # A post-cutoff scoped event activates its old generation even when that
 # generation entry was consumed by null absence. No scoped event leaves it
@@ -1210,5 +1242,17 @@ for rr in range(1,6):
   churn=frozenset({CHG,CHV}|certs);cc=compact(churn);c=len({(e.target,*e.lineage[1:])for e in cc if e.lineage and e.lineage[1:]!=(None,None)});coords=sum(len(e.lineage[0])for e in cc if e.lineage)
   assert valid(churn)and c==c0 and coords==c*rr
   assert len(cc)+coords<=5+c*(rr+1)
+
+# VV is restricted to retained value heads. Ordinary same-generation
+# edit/validate churn is operation-independent at fixed n=1,r=2,c=0.
+for m in range(1,41):
+ VG=gen(1,A,(K,N,BS),1,"v0",(2,A));VGI=ev(2,A,(K,N,BS),2,"validate",VG.id);history={VG,VGI};latest=None
+ for i in range(1,m+1):
+  latest=ev(2*i+1,R,(K,N,BS),2*i+1,"edit",VG.id,value=f"v{i}");validation=ev(2*i+2,R,(K,N,BS),2*i+2,"validate",VG.id,target=latest.id);history.update((latest,validation))
+ editChurn=frozenset(history);editCompact=compact(editChurn);survivingRValidations=[e for e in editCompact if e.kind=="validate"and e.author==R]
+ assert len(survivingRValidations)==1 and survivingRValidations[0].target==latest.id and len(editCompact)<=5
+ assert journal_projection(editChurn)==journal_projection(editCompact)and query(editChurn)==query(editCompact)
+ FUTUREI=ev(1000,B,(K,N,BS),1000,"invalidate",VG.id,"hard",target=latest.id)
+ assert compact(editCompact|{FUTUREI})==compact(editChurn|{FUTUREI})
 
 print("journal semantic verifier passed: convergence, causal validation, observed reset absorption/idempotence, extensional proof transport, polling, compaction, lazy clock, timestamps, and storage")
