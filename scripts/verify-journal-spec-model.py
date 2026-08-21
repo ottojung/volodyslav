@@ -113,35 +113,40 @@ def anchor_presence(anchor,by):
  if not target:return None
  gid=target.id if target.kind=="add"else target.generation
  return by.get(gid)
-def applicable_lineages(es,k):
- """Lineages not superseded by an actual post-cutoff presence event."""
+def applicable_lineage_groups(es,k):
+ """Anchor groups whose raw displacement is not itself post-cutoff."""
  base=raw_ph(es,k);by={e.id:e for e in es};groups={}
  for e in es:
   if e.key!=k or not e.lineage:continue
   groups.setdefault(lineage_anchor(e),[]).append(e)
- out=[];presence=[e for e in es if e.key==k and e.kind in("add","delete")]
+ out=[]
  for anchor,members in groups.items():
-  if anchor==("null",):out.extend(members);continue
-  fallback=anchor_presence(anchor,by)
-  if not fallback:continue
   cut={}
   for member in members:
    for a,q in member.lineage[0]:cut[a]=max(cut.get(a,0),q)
-  postcut=[e for e in presence if e.id!=fallback.id and e.sequence>cut.get(e.author,0)]
-  # A lower-ID post-cutoff event must get its one chance to cross the current
-  # anchor. Once another post-cutoff presence is itself the raw head, the old
-  # anchor is historical. A consumed raw displacement cannot disable it.
-  if postcut and(not base or base.id!=fallback.id):continue
-  out.extend(members)
+  fallback=anchor_presence(anchor,by)
+  if anchor!=("null",)and not fallback:continue
+  if fallback and base and base.id!=fallback.id and base.sequence>cut.get(base.author,0):continue
+  out.append((anchor,tuple(members),cut,fallback))
  return tuple(out)
+def applicable_lineages(es,k):return tuple(e for _,members,_,_ in applicable_lineage_groups(es,k)for e in members)
+def anchor_dominates(newer,older):
+ """Observation dominance; JournalEntryId is only an incomparable tie-break."""
+ _,_,cut,_=newer;_,members,_,fallback=older
+ if not fallback:return False
+ first=min(members,key=lambda e:e.id)
+ return fallback.sequence<=cut.get(fallback.author,0)and first.sequence<=cut.get(first.author,0)
 def ph(es,k):
  """Activate reset lineages, then order only generation/delete presence events."""
  base=raw_ph(es,k)
- by={e.id:e for e in es};eligible=[];certs=applicable_lineages(es,k)
+ by={e.id:e for e in es};eligible=[];groups=applicable_lineage_groups(es,k);certs=tuple(e for _,members,_,_ in groups for e in members)
  if not certs:return base
  virtual_absence=any(cert.kind=="observe"and cert.target is None for cert in certs)
- fallbacks={anchor_presence(lineage_anchor(cert),by)for cert in certs};fallbacks.discard(None)
- anchored_fallback=max(fallbacks,key=lambda e:e.id)if fallbacks else None
+ authority=[g for g in groups if g[3] is not None and not any(anchor_dominates(other,g)and not anchor_dominates(g,other)for other in groups)]
+ # Incomparable concurrent reset anchors use a canonical conflict tie-break;
+ # the order is not treated as evidence that either reset observed the other.
+ anchored_fallback=max(authority,key=lambda g:(min(g[1],key=lambda e:e.id).id,g[0]))[3]if authority else None
+ fallbacks={g[3]for g in groups if g[3] is not None}
  cut={}
  for cert in certs:
   for a,q in cert.lineage[0]:cut[a]=max(cut.get(a,0),q)
@@ -194,6 +199,7 @@ def compact(es):
     if coordinate not in coordinates or(coordinates[coordinate].lineage[0]and(dict(coordinates[coordinate].lineage[0]).get(a,0),coordinates[coordinate].id)<(q,e.id)):coordinates[coordinate]=e
   keep.update(coordinates.values())
   for anchor,members in anchor_members.items():
+   keep.add(min(members,key=lambda e:e.id))
    if not any(a==anchor for a,_ in coordinates):keep.add(max(members,key=lambda e:e.id))
   g=p.id if p and p.kind=="add" else None
   if not g:continue
@@ -457,7 +463,12 @@ def reset_lineage_through(r,s,k,sg,so,ignore_bookkeeping=False):
  # Reset consumes the source snapshot's durable per-key causal semantics, not
  # merely the source container's journalCoverage. Exact correspondences remain
  # exact and are not inferred or transitively copied from these vectors.
- for e in applicable_lineages(s.journal,k):carried=vmax(carried,e.lineage[0])
+ # A source anchor that is currently superseded can become applicable again
+ # when a delayed raw displacement lies inside its cut. Reset must preserve that
+ # future-union absorption behavior, so every retained source anchor contributes
+ # its causal vector; exact correspondences remain separately scoped.
+ for e in s.journal:
+  if e.key==k and e.lineage:carried=vmax(carried,e.lineage[0])
  out=dict(vmax(carried,s.coverage));bookkeeping=current_anchor_bookkeeping(r,k)if ignore_bookkeeping else set()
  for e in r.journal:
   # Reset carriers and their receiver anchors are explicitly marked
@@ -599,6 +610,11 @@ assert compact(coCompact|delayedA)==compact(coReset.journal|delayedA)
 # cannot be simultaneously current with the delete; its public witness remains
 # governed by the independent polling/closure seeds.
 DAO=observe(201,R,(KE,NE,BE),1,None,(((A,100),),None,None));DAD=dele(202,R,(KE,NE,BE),2,(((A,100),),None,None));dac=compact({DAO,DAD});assert DAO in dac and DAD in dac
+# Succession also crosses delete/present variants by observation dominance.
+OD=dele(100,R,(KE,NE,BE),1,((),None,None));NPG=gen(10,S,(KE,NE,BE),2,"p",(11,S));NPI=ev(11,S,(KE,NE,BE),3,"validate",NPG.id);NPC=ev(20,C,(KE,NE,BE),4,"validate",NPG.id,target=NPG.id,lineage=(((R,100),),NPG.id,NPG.id))
+deleteToPresent={OD,NPG,NPI,NPC};assert ph(deleteToPresent,KE).id==NPG.id and ph(compact(deleteToPresent),KE).id==NPG.id
+OPG=gen(100,R,(KE,NE,BE),1,"p",(101,R));OPC=ev(101,R,(KE,NE,BE),2,"validate",OPG.id,lineage=((),OPG.id,OPG.id));NEWDELETE=dele(10,S,(KE,NE,BE),3,(((R,101),),None,None))
+presentToDelete={OPG,OPC,NEWDELETE};assert ph(presentToDelete,KE)==NEWDELETE and ph(compact(presentToDelete),KE)==NEWDELETE
 
 # A consumed higher-ID raw event cannot disable the lower-ID non-null anchor
 # whose vector absorbs it. Only events beyond that anchor's cut supersede it.
@@ -606,8 +622,11 @@ LDEL=dele(10,R,(KD,ND,BD),10);lowAbsent=Rep(R,10,((R,10),),frozenset((LDEL,)),()
 HADD=gen(90,S,(KD,ND,BD),90,"consumed",(91,S));HVAL=ev(91,S,(KD,ND,BD),91,"validate",HADD.id);HDEL=dele(100,S,(KD,ND,BD),100)
 highAbsent=Rep(S,100,((S,100),),frozenset((HADD,HVAL,HDEL)),());anchoredAbsent,anchorAbsentEvents=reset(lowAbsent,highAbsent,110)
 assert ph(anchoredAbsent.journal|{HADD,HVAL},KD)==LDEL and ph(compact(anchoredAbsent.journal)|{HADD,HVAL},KD)==LDEL
+LBADD=gen(1,B,(KD,ND,BD),111,"lower-live",(2,B));LBVAL=ev(2,B,(KD,ND,BD),112,"validate",LBADD.id);mixedDelayed={HADD,HVAL,LBADD,LBVAL}
+assert ph(anchoredAbsent.journal|mixedDelayed,KD).id==LBADD.id and ph(compact(anchoredAbsent.journal)|mixedDelayed,KD).id==LBADD.id
+assert compact(compact(anchoredAbsent.journal)|mixedDelayed)==compact(anchoredAbsent.journal|mixedDelayed)
 HNEW=gen(101,S,(KD,ND,BD),111,"new",(102,S));HNEWV=ev(102,S,(KD,ND,BD),112,"validate",HNEW.id)
-assert ph(anchoredAbsent.journal|{HNEW,HNEWV},KD).id==HNEW.id and compact(compact(anchoredAbsent.journal)|{HADD,HVAL})==compact(anchoredAbsent.journal|{HADD,HVAL})
+assert ph(anchoredAbsent.journal|mixedDelayed|{HNEW,HNEWV},KD).id==HNEW.id and compact(compact(anchoredAbsent.journal)|{HADD,HVAL})==compact(anchoredAbsent.journal|{HADD,HVAL})
 anchoredAbsentAgain,anchorAbsentAgainEvents=reset(anchoredAbsent,highAbsent,110);assert anchoredAbsentAgain==anchoredAbsent and not anchorAbsentAgainEvents
 
 PRG=gen(10,R,(KD,ND,BD),10,"present",(11,R));PRV=ev(11,R,(KD,ND,BD),11,"validate",PRG.id);presentReceiver=Rep(R,11,((R,11),),frozenset((PRG,PRV)),((KD,M("pr",PRG.id,"present",PRG.id,10,"fresh",True)),))
@@ -615,6 +634,8 @@ PSG=gen(1,S,(KD,ND,BD),1,"present",(2,S));PSV=ev(2,S,(KD,ND,BD),2,"validate",PSG
 presentCut,presentCutEvents=reset(presentReceiver,presentCutSource,30);B20DEL=dele(20,B,(KD,ND,BD),20);B21DEL=dele(21,B,(KD,ND,BD),21)
 assert ph(presentCut.journal|{B20DEL},KD).id==PRG.id and ph(compact(presentCut.journal)|{B20DEL},KD).id==PRG.id
 assert ph(presentCut.journal|{B21DEL},KD)==B21DEL and compact(compact(presentCut.journal)|{B20DEL})==compact(presentCut.journal|{B20DEL})
+PALIVE=gen(1,A,(KD,ND,BD),31,"lower-present",(2,A));PALIVEV=ev(2,A,(KD,ND,BD),32,"validate",PALIVE.id);presentMixed={B20DEL,PALIVE,PALIVEV}
+assert ph(presentCut.journal|presentMixed,KD).id==PALIVE.id and ph(compact(presentCut.journal)|presentMixed,KD).id==PALIVE.id
 
 # A post-cutoff scoped event activates its old generation even when that
 # generation entry was consumed by null absence. No scoped event leaves it
@@ -630,17 +651,17 @@ SD8=dele(8,B,(KI,NI,BI),8);assert ph(scopedBase|{SE7,SD8},KI)==SD8
 RPG=gen(100,R,(KI,NI,BI),10,"receiver",(101,R));RPV=ev(101,R,(KI,NI,BI),11,"validate",RPG.id,lineage=(((S,10),),SG5.id,SG5.id))
 assert ph({RPG,RPV,SG5,SG6},KI).id==RPG.id
 
-# Reset consumes only source lineages applicable to the source's current
-# anchor. Historical C1 survives polling compaction but cannot manufacture B100
-# authority for a receiver reset from current generation G2.
+# A currently superseded source anchor can regain absorption relevance when a
+# delayed raw displacement is inside its cut. Reset carries that causal vector
+# so source and receiver have identical future-union behavior.
 HG1=gen(1,A,(KD,ND,BD),1,"old",(2,A));HG1V=ev(2,A,(KD,ND,BD),2,"validate",HG1.id)
 HC1=ev(30,R,(KD,ND,BD),3,"validate",HG1.id,target=HG1.id,lineage=(((B,100),),HG1.id,HG1.id))
 HG2=gen(50,C,(KD,ND,BD),50,"current",(51,C));HG2V=ev(51,C,(KD,ND,BD),51,"validate",HG2.id)
 historicalJ=frozenset((HG1,HG1V,HC1,HG2,HG2V));historicalCompact=compact(historicalJ);assert HC1 in historicalCompact and HC1 not in applicable_lineages(historicalCompact,KD)
 historicalSource=Rep(C,51,((A,2),(C,51),(R,30)),historicalCompact,((KD,M("hc",HG2.id,"current",HG2.id,50,"fresh",True)),))
-fromHistorical,fhEvents=reset(emptyR,historicalSource,60);assert all(dict(e.lineage[0]).get(B,0)==0 for e in fhEvents if e.lineage)
+fromHistorical,fhEvents=reset(emptyR,historicalSource,60);assert any(dict(e.lineage[0]).get(B,0)>=100 for e in fhEvents if e.lineage)
 HB90=gen(90,B,(KD,ND,BD),61,"live-b",(91,B));HB91=ev(91,B,(KD,ND,BD),62,"validate",HB90.id)
-assert ph(historicalCompact|{HB90,HB91},KD).id==HB90.id and ph(fromHistorical.journal|{HB90,HB91},KD).id==HB90.id
+assert ph(historicalCompact|{HB90,HB91},KD).id==HG2.id and ph(fromHistorical.journal|{HB90,HB91},KD).id==node(fromHistorical,KD).generation
 
 # Idempotence excludes bookkeeping only for the current receiver anchor.
 # Historical reset carriers are observed into the new cutoff and cannot become
@@ -956,6 +977,14 @@ lineageAgain,lineageAgainEvents=reset(lineageR1,lineageS0,100);assert not lineag
 LE=ev(21,S,(K,N,BS),101,"edit",LG.id,value="B");LEV=ev(22,S,(K,N,BS),102,"validate",LG.id,target=LE.id)
 lineageS1=Rep(S,22,((S,22),),frozenset((LG,LGV,LE,LEV)),((K,M("ls",LG.id,"B",LE.id,101,"fresh",True)),))
 lineageEdited,lineageEditEvents=receive(lineageR1,lineageS1);assert not lineageEditEvents and node(lineageEdited,K).value=="B"and node(lineageEdited,K).generation==LG.id
+# A later reset on the causally current lower-ID generation dominates the older
+# higher-ID reset anchor by observation, not by presence JournalEntryId.
+ALTBG=gen(30,C,(K,N,BS),102,"B",(31,C));ALTBV=ev(31,C,(K,N,BS),103,"validate",ALTBG.id);altBSource=Rep(C,31,((C,31),),frozenset((ALTBG,ALTBV)),((K,M("altb",ALTBG.id,"B",ALTBG.id,102,"fresh",True)),))
+succession,successionEvents=reset(lineageEdited,altBSource,110);assert node(succession,K).generation==LG.id and node(succession,K).value=="B"and generation(succession.journal,K)==LG.id
+successionRepeat,successionRepeatEvents=reset(succession,altBSource,110);assert successionRepeat==succession and not successionRepeatEvents
+successionCompact=replace(succession,journal=compact(succession.journal));assert generation(successionCompact.journal,K)==LG.id and reset(successionCompact,altBSource,110)==(successionCompact,())
+assert len({lineage_anchor(e)for e in successionCompact.journal if e.key==K and e.lineage})>=2
+SUCCESSION_FUTURE=dele(1,B,(K,N,BS),111);assert ph(succession.journal|{SUCCESSION_FUTURE},K)==SUCCESSION_FUTURE and ph(successionCompact.journal|{SUCCESSION_FUTURE},K)==SUCCESSION_FUTURE
 # The same activation applies when reset preserves a numerically greater,
 # already-present receiver generation and equal value.
 RG=gen(100,R,(K,N,BS),10,"A",(101,R));RGV=ev(101,R,(K,N,BS),11,"validate",RG.id)
