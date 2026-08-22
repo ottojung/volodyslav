@@ -113,9 +113,9 @@ def anchor_presence(anchor,by):
  if not target:return None
  gid=target.id if target.kind=="add"else target.generation
  return by.get(gid)
-def applicable_lineage_groups(es,k):
- """Anchor groups whose raw displacement is not itself post-cutoff."""
- base=raw_ph(es,k);by={e.id:e for e in es};groups={}
+def lineage_groups(es,k):
+ """Every retained anchor group, including future-applicable groups."""
+ by={e.id:e for e in es};groups={}
  for e in es:
   if e.key!=k or not e.lineage:continue
   groups.setdefault(lineage_anchor(e),[]).append(e)
@@ -126,26 +126,36 @@ def applicable_lineage_groups(es,k):
    for a,q in member.lineage[0]:cut[a]=max(cut.get(a,0),q)
   fallback=anchor_presence(anchor,by)
   if anchor!=("null",)and not fallback:continue
-  if fallback and base and base.id!=fallback.id and base.sequence>cut.get(base.author,0):continue
   out.append((anchor,tuple(members),cut,fallback))
  return tuple(out)
+def applicable_lineage_groups(es,k):
+ """Groups whose actual raw displacement is not post-cutoff."""
+ base=raw_ph(es,k);out=[]
+ for group in lineage_groups(es,k):
+  _,_,cut,fallback=group
+  if fallback and base and base.id!=fallback.id and base.sequence>cut.get(base.author,0):continue
+  out.append(group)
+ return tuple(out)
 def applicable_lineages(es,k):return tuple(e for _,members,_,_ in applicable_lineage_groups(es,k)for e in members)
-def anchor_dominates(newer,older):
- """Observation dominance; JournalEntryId is only an incomparable tie-break."""
- _,_,cut,_=newer;_,members,_,fallback=older
- if not fallback:return False
- first=min(members,key=lambda e:e.id)
- return fallback.sequence<=cut.get(fallback.author,0)and first.sequence<=cut.get(first.author,0)
+def assertion_dominates(newer,older,groups):
+ """A reset assertion dominates only the exact assertion it observed."""
+ ng=next(g for g in groups if newer in g[1]);og=next(g for g in groups if older in g[1])
+ _,_,cut,_=ng;_,_,_,fallback=og
+ return (not fallback or fallback.sequence<=cut.get(fallback.author,0))and older.sequence<=cut.get(older.author,0)
+def maximal_assertions(groups):
+ assertions=[e for g in groups for e in g[1]]
+ return tuple(e for e in assertions if not any(assertion_dominates(other,e,groups)and not assertion_dominates(e,other,groups)for other in assertions))
 def ph(es,k):
  """Activate reset lineages, then order only generation/delete presence events."""
  base=raw_ph(es,k)
  by={e.id:e for e in es};eligible=[];groups=applicable_lineage_groups(es,k);certs=tuple(e for _,members,_,_ in groups for e in members)
  if not certs:return base
  virtual_absence=any(cert.kind=="observe"and cert.target is None for cert in certs)
- authority=[g for g in groups if g[3] is not None and not any(anchor_dominates(other,g)and not anchor_dominates(g,other)for other in groups)]
+ authority=maximal_assertions(groups)
  # Incomparable concurrent reset anchors use a canonical conflict tie-break;
  # the order is not treated as evidence that either reset observed the other.
- anchored_fallback=max(authority,key=lambda g:(min(g[1],key=lambda e:e.id).id,g[0]))[3]if authority else None
+ winning_assertion=max(authority,key=lambda e:(e.id,lineage_anchor(e)))if authority else None
+ anchored_fallback=anchor_presence(lineage_anchor(winning_assertion),by)if winning_assertion else None
  fallbacks={g[3]for g in groups if g[3] is not None}
  cut={}
  for cert in certs:
@@ -190,7 +200,11 @@ def compact(es):
   if p:keep.add(p)
   # Reset lineage is future presence authority even while causal presence is
   # absent, so select it independently of winning-generation value seeds.
-  applicable=applicable_lineages(es,k)
+  # An inapplicable maximal assertion can regain applicability after future
+  # union. Dominated assertions cannot: their causal meaning is carried by a
+  # later assertion. This bounded antichain is the future-relevant RLV domain.
+  all_groups=lineage_groups(es,k);future_assertions=maximal_assertions(all_groups);future_anchors={lineage_anchor(e)for e in future_assertions}
+  applicable=tuple(e for anchor,members,_,_ in all_groups if anchor in future_anchors for e in members)
   coordinates={};anchor_members={}
   for e in applicable:
    anchor=lineage_anchor(e);anchor_members.setdefault(anchor,[]).append(e)
@@ -198,9 +212,7 @@ def compact(es):
     coordinate=(anchor,a)
     if coordinate not in coordinates or(coordinates[coordinate].lineage[0]and(dict(coordinates[coordinate].lineage[0]).get(a,0),coordinates[coordinate].id)<(q,e.id)):coordinates[coordinate]=e
   keep.update(coordinates.values())
-  for anchor,members in anchor_members.items():
-   keep.add(min(members,key=lambda e:e.id))
-   if not any(a==anchor for a,_ in coordinates):keep.add(max(members,key=lambda e:e.id))
+  keep.update(future_assertions)
   g=p.id if p and p.kind=="add" else None
   if not g:continue
   heads=vheads(es,k,g);keep.update(heads)
@@ -601,8 +613,7 @@ CO0=observe(200,R,(KI,NI,BI),1,None,(((A,100),),None,None));COG=gen(1,S,(KI,NI,B
 coReceiver=Rep(R,200,((R,200),(S,2)),frozenset((CO0,COG,COV)),((KI,M("co",COG.id,"X",COG.id,2,"fresh",True)),))
 COTG=gen(10,C,(KI,NI,BI),10,"X",(11,C));COTV=ev(11,C,(KI,NI,BI),11,"validate",COTG.id);coSource=Rep(C,11,((C,11),),frozenset((COTG,COTV)),((KI,M("cos",COTG.id,"X",COTG.id,10,"fresh",True)),))
 coReset,coEvents=reset(coReceiver,coSource,20);assert any(e.lineage and e.target==COG.id for e in coEvents)
-coCompact=compact(coReset.journal);assert CO0 in coCompact and query(coReset.journal)==query(coCompact)
-assert len({lineage_anchor(e)for e in coCompact if e.key==KI and e.lineage})>=2
+coCompact=compact(coReset.journal);assert query(coReset.journal)==query(coCompact)
 GA90=gen(90,A,(KI,NI,BI),21,"old",(91,A));GA91=ev(91,A,(KI,NI,BI),22,"validate",GA90.id);delayedA={GA90,GA91}
 assert ph(coReset.journal|delayedA,KI).id==COG.id and ph(coCompact|delayedA,KI).id==COG.id
 assert compact(coCompact|delayedA)==compact(coReset.journal|delayedA)
@@ -610,11 +621,39 @@ assert compact(coCompact|delayedA)==compact(coReset.journal|delayedA)
 # cannot be simultaneously current with the delete; its public witness remains
 # governed by the independent polling/closure seeds.
 DAO=observe(201,R,(KE,NE,BE),1,None,(((A,100),),None,None));DAD=dele(202,R,(KE,NE,BE),2,(((A,100),),None,None));dac=compact({DAO,DAD});assert DAO in dac and DAD in dac
+# A currently superseded delete-anchored observation remains future-relevant:
+# delayed B90 is absorbed and the post-cutoff A50 generation remains live.
+FRD=dele(10,R,(KE,NE,BE),10);FRO=observe(11,R,(KE,NE,BE),11,FRD.id,(((B,100),),None,None));FRA=gen(50,A,(KE,NE,BE),50,"live-a",(51,A));FRAV=ev(51,A,(KE,NE,BE),51,"validate",FRA.id)
+futureRelevant=frozenset((FRD,FRO,FRA,FRAV));futureRelevantCompact=compact(futureRelevant);assert FRO in futureRelevantCompact and ph(futureRelevant,KE)==FRA
+FRB=gen(90,B,(KE,NE,BE),90,"consumed-b",(91,B));FRBV=ev(91,B,(KE,NE,BE),91,"validate",FRB.id)
+assert ph(futureRelevant|{FRB,FRBV},KE)==FRA and ph(futureRelevantCompact|{FRB,FRBV},KE)==FRA
+assert compact(futureRelevantCompact|{FRB,FRBV})==compact(futureRelevant|{FRB,FRBV})
+# Null and present anchors obey the same future-union rule.
+FRN=observe(12,R,(K,N,BS),12,None,(((B,100),),None,None));FRNA=gen(50,A,(K,N,BS),50,"live-a",(51,A));FRNAV=ev(51,A,(K,N,BS),51,"validate",FRNA.id);futureNull=frozenset((FRN,FRNA,FRNAV));futureNullCompact=compact(futureNull)
+FRNB=gen(90,B,(K,N,BS),90,"consumed-b",(91,B));FRNBV=ev(91,B,(K,N,BS),91,"validate",FRNB.id);assert ph(futureNull|{FRNB,FRNBV},K)==FRNA and ph(futureNullCompact|{FRNB,FRNBV},K)==FRNA
+FRPG=gen(10,R,(KD,ND,BD),10,"present-anchor",(11,R));FRPV=ev(11,R,(KD,ND,BD),11,"validate",FRPG.id,lineage=(((B,100),),FRPG.id,FRPG.id));FRPA=gen(50,A,(KD,ND,BD),50,"live-a",(51,A));FRPAV=ev(51,A,(KD,ND,BD),51,"validate",FRPA.id);futurePresent=frozenset((FRPG,FRPV,FRPA,FRPAV));futurePresentCompact=compact(futurePresent)
+FRPB=dele(90,B,(KD,ND,BD),90);assert ph(futurePresent|{FRPB},KD)==FRPA and ph(futurePresentCompact|{FRPB},KD)==FRPA
 # Succession also crosses delete/present variants by observation dominance.
 OD=dele(100,R,(KE,NE,BE),1,((),None,None));NPG=gen(10,S,(KE,NE,BE),2,"p",(11,S));NPI=ev(11,S,(KE,NE,BE),3,"validate",NPG.id);NPC=ev(20,C,(KE,NE,BE),4,"validate",NPG.id,target=NPG.id,lineage=(((R,100),),NPG.id,NPG.id))
 deleteToPresent={OD,NPG,NPI,NPC};assert ph(deleteToPresent,KE).id==NPG.id and ph(compact(deleteToPresent),KE).id==NPG.id
 OPG=gen(100,R,(KE,NE,BE),1,"p",(101,R));OPC=ev(101,R,(KE,NE,BE),2,"validate",OPG.id,lineage=((),OPG.id,OPG.id));NEWDELETE=dele(10,S,(KE,NE,BE),3,(((R,101),),None,None))
 presentToDelete={OPG,OPC,NEWDELETE};assert ph(presentToDelete,KE)==NEWDELETE and ph(compact(presentToDelete),KE)==NEWDELETE
+
+# Fallback authority is an assertion antichain, not a joined anchor's first
+# carrier. A2 observes B1 and wins after revisiting A; B2 then observes A2.
+SAG=gen(100,R,(KI,NI,BI),1,"anchor",(101,R));SAV=ev(101,R,(KI,NI,BI),2,"validate",SAG.id)
+SA1=ev(110,A,(KI,NI,BI),3,"validate",SAG.id,target=SAG.id,lineage=((),SAG.id,SAG.id))
+SB1=dele(10,S,(KI,NI,BI),4,(((A,110),(R,101)),None,None));REACT=ev(20,C,(KI,NI,BI),5,"edit",SAG.id,value="reactivated")
+SA2=ev(120,A,(KI,NI,BI),6,"validate",SAG.id,target=REACT.id,lineage=(((A,110),(C,20),(R,101),(S,10)),SAG.id,SAG.id))
+alternating=frozenset((SAG,SAV,SA1,SB1,REACT,SA2));alternatingCompact=compact(alternating);assert ph(alternating,KI)==SAG and ph(alternatingCompact,KI)==SAG
+SB2=dele(40,B,(KI,NI,BI),7,(((A,120),(B,39),(C,20),(R,101),(S,10)),None,None));alternatingB=alternating|{SB2};assert ph(alternatingB,KI)==SB2 and ph(compact(alternatingB),KI)==SB2
+# Incomparable concurrent assertions resolve canonically, without becoming an
+# observation edge, and compacted restart preserves the same result.
+SA3=ev(50,C,(KI,NI,BI),8,"validate",SAG.id,target=REACT.id,lineage=(((A,120),(B,40),(C,20),(R,101),(S,10)),SAG.id,SAG.id))
+SB3=dele(50,S,(KI,NI,BI),9,(((A,120),(B,39),(C,20),(R,101),(S,10)),None,None));concurrentFallback=alternatingB|{SA3,SB3}
+assert ph(concurrentFallback,KI)==ph(compact(concurrentFallback),KI) and compact(compact(concurrentFallback))==compact(concurrentFallback)
+OLDDELAY=gen(90,R,(KI,NI,BI),10,"consumed-old",(91,R));OLDDELAYV=ev(91,R,(KI,NI,BI),11,"validate",OLDDELAY.id)
+assert ph(alternating|{OLDDELAY,OLDDELAYV},KI)==SAG and ph(alternatingCompact|{OLDDELAY,OLDDELAYV},KI)==SAG
 
 # A consumed higher-ID raw event cannot disable the lower-ID non-null anchor
 # whose vector absorbs it. Only events beyond that anchor's cut supersede it.
