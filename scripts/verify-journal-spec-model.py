@@ -15,7 +15,9 @@ def is_equal(a,b):
  # Exact executable form of DEF-EQUAL-01, including JavaScript number and key-order semantics.
  if isinstance(a,bool)or isinstance(b,bool):return type(a) is bool and type(b) is bool and a==b
  if isinstance(a,(int,float))and isinstance(b,(int,float)):
-  return (math.isnan(a)and math.isnan(b))if isinstance(a,float)and isinstance(b,float)else a==b
+  if isinstance(a,float)and math.isnan(a):return isinstance(b,float)and math.isnan(b)
+  if isinstance(b,float)and math.isnan(b):return False
+  return a==b
  if type(a) is not type(b):return False
  if isinstance(a,str):return a==b
  if isinstance(a,(list,tuple)):return len(a)==len(b)and all(is_equal(x,y)for x,y in zip(a,b))
@@ -278,6 +280,15 @@ def const_bytes(value):
   for k,v in value.items():parts.extend((const_bytes(k),const_bytes(v)))
   return b"o"+b"".join(str(len(x)).encode()+b":"+x for x in parts)
  raise ValueError("value is outside ConstValue")
+def persistence_value(value):
+ try:const_bytes(value);return True
+ except ValueError:return False
+# ConstValue and ComputedValue deliberately share this persistence-safe domain.
+for computed in (0,1.25,-0.0,0.0,"x",True,[1,{"nested":[-2.5,False]}],{"a":1,"b":[2,3]}):
+ assert persistence_value(computed)
+for computed in (None,float("nan"),float("inf"),-float("inf"),[1,float("nan")],{"x":[float("inf")]},[None]):
+ assert not persistence_value(computed)
+assert is_equal(-0.0,0.0) and const_bytes(-0.0)==const_bytes(0.0)
 def filter_bytes(f):
  if f==("wildcard",):return b"W"
  if type(f)is not tuple or not f:raise ValueError("invalid filter")
@@ -1230,29 +1241,102 @@ A1,aa=receive(HA,HB);B1,ba=receive(HB,A1);assert not aa and not ba
 assert A1.journal==B1.journal and A1.coverage==B1.coverage and sem(A1)==sem(B1)and B1.clock==1
 q=alloc(B1)[0];assert q==101
 
-# Canonical cursor/token scalar domains.
-def encode(ch,cur,filter_id="*"):
- raw=json.dumps({"change":ch,"cursor":[list(x)for x in sorted(cur)],"filter":filter_id,"v":1},sort_keys=True,separators=(",",":"));return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+# Canonical durable cursor/token v1 codec. uint64 coordinates are decimal
+# strings, so decoding never passes through a lossy JavaScript Number.
+def b64(data):return base64.urlsafe_b64encode(data).decode().rstrip("=")
+def unb64(text):
+ if type(text)is not str or not regex.fullmatch(r"[A-Za-z0-9_-]*",text)or "="in text:raise ValueError
+ try:data=base64.b64decode(text+"="*((-len(text))%4),altchars=b"-_",validate=True)
+ except Exception as error:raise ValueError from error
+ if b64(data)!=text:raise ValueError
+ return data
+def framed_parts(data):
+ parts=[];at=0
+ while at<len(data):
+  colon=data.find(b":",at)
+  if colon<0:raise ValueError
+  length=data[at:colon]
+  if not regex.fullmatch(rb"0|[1-9][0-9]*",length):raise ValueError
+  end=colon+1+int(length)
+  if end>len(data):raise ValueError
+  parts.append(data[colon+1:end]);at=end
+ return parts
+def validate_const_bytes(data):
+ if data in (b"b0",b"b1"):return
+ if data.startswith(b"n"):
+  spelling=data[1:].decode("ascii")
+  if not regex.fullmatch(r"(?:0x0\.0p\+0|-?(?:0x0\.[0-9a-f]{13}|0x1\.[0-9a-f]{13})p[+-](?:0|[1-9][0-9]*))",spelling):raise ValueError
+  number=float.fromhex(spelling)
+  if not math.isfinite(number)or (number==0 and spelling!="0x0.0p+0"):raise ValueError
+  if const_bytes(number)!=data:raise ValueError
+  return
+ if data.startswith(b"s"):
+  parts=framed_parts(data[1:])
+  if len(parts)!=1:raise ValueError
+  parts[0].decode("utf-8");return
+ if data.startswith(b"a"):
+  for part in framed_parts(data[1:]):validate_const_bytes(part)
+  return
+ if data.startswith(b"o"):
+  parts=framed_parts(data[1:])
+  if len(parts)%2:raise ValueError
+  keys=[]
+  for at in range(0,len(parts),2):
+   validate_const_bytes(parts[at]);key_data=parts[at]
+   if not key_data.startswith(b"s"):raise ValueError
+   key=framed_parts(key_data[1:])[0].decode("utf-8")
+   if key in keys:raise ValueError
+   keys.append(key);validate_const_bytes(parts[at+1])
+  return
+ raise ValueError
+def validate_filter_bytes(data):
+ if data==b"W":return
+ if data.startswith(b"G"):
+  parts=framed_parts(data[1:])
+  if not parts:raise ValueError
+  validate_const_bytes(parts[0])
+  if not parts[0].startswith(b"s"):raise ValueError
+  for arg in parts[1:]:
+   if arg==b"W":continue
+   if not arg.startswith(b"C"):raise ValueError
+   validate_const_bytes(arg[1:])
+  return
+ if data.startswith(b"U"):
+  parts=framed_parts(data[1:])
+  if len(parts)!=2 or parts!=sorted(parts):raise ValueError
+  for child in parts:validate_filter_bytes(child)
+  return
+ raise ValueError
+def canonical_json(o):return json.dumps(o,ensure_ascii=False,separators=(",",":"))
+def token_change(ch):
+ return {"nodeName":ch["nodeName"],"bindings":[b64(const_bytes(x))for x in ch["bindings"]],"action":ch["action"],"time":ch["time"]}
+def encode(ch,cur,filter_id="Vw"):
+ payload={"change":token_change(ch),"cursor":[[a,str(q)]for a,q in cur],"filter":filter_id,"v":1}
+ return b64(canonical_json(payload).encode())
+def decimal_u64(value):
+ return type(value)is str and regex.fullmatch(r"0|[1-9][0-9]*",value)and int(value)<=U64
 def decode(tok):
- raw=base64.urlsafe_b64decode(tok+"="*((-len(tok))%4)).decode();o=json.loads(raw)
- if set(o)!={"change","cursor","filter","v"}or o["v"]!=1 or type(o["filter"])is not str or not o["filter"]:raise ValueError
+ raw=unb64(tok).decode("utf-8");o=json.loads(raw)
+ if type(o)is not dict or list(o)!=["change","cursor","filter","v"]or o["v"]!=1 or type(o["v"])is bool:raise ValueError
  ch=o["change"]
- if type(ch)is not dict or set(ch)!={"nodeName","bindings","action","time"}or type(ch["nodeName"])is not str or type(ch["bindings"])is not list or ch["action"]not in ACT or not timestamp(ch["time"]):raise ValueError
- prodkey(ch["nodeName"],tuple(ch["bindings"]));cs=o["cursor"]
- if cs!=sorted(cs)or len({x for x,_ in cs})!=len(cs)or any(not regex.fullmatch("[a-z]{16}",x)or not uint(n)for x,n in cs):raise ValueError
- if encode(ch,[tuple(x)for x in cs],o["filter"])!=tok:raise ValueError
+ if type(ch)is not dict or list(ch)!=["nodeName","bindings","action","time"]or not regex.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*",ch["nodeName"]):raise ValueError
+ if type(ch["bindings"])is not list or any(type(x)is not str for x in ch["bindings"]):raise ValueError
+ for x in ch["bindings"]:validate_const_bytes(unb64(x))
+ if ch["action"]not in ACT or not timestamp(ch["time"]):raise ValueError
+ cs=o["cursor"]
+ if type(cs)is not list or any(type(x)is not list or len(x)!=2 for x in cs):raise ValueError
+ if any(not regex.fullmatch("[a-z]{16}",x)or not decimal_u64(n)for x,n in cs):raise ValueError
+ if [x for x,_ in cs]!=sorted(x for x,_ in cs)or len({x for x,_ in cs})!=len(cs):raise ValueError
+ if type(o["filter"])is not str:raise ValueError
+ validate_filter_bytes(unb64(o["filter"]))
+ if b64(canonical_json(o).encode())!=tok:raise ValueError
  return o
+FIX=json.loads((ROOT/"fixtures/possible-change-token-v1.json").read_text())
+for vector in FIX["canonical"]:assert decode(vector["token"])
+for vector in FIX["invalid"]:
+ try:decode(vector["token"]);raise AssertionError("invalid token accepted: "+vector["name"])
+ except (ValueError,TypeError,KeyError,UnicodeError):pass
 ch={"nodeName":N,"bindings":list(BS),"action":"edit","time":40};tok=encode(ch,((A,10),(B,3)));assert decode(tok)
-def bad(o):
- t=base64.urlsafe_b64encode(json.dumps(o,sort_keys=True,separators=(",",":")).encode()).decode().rstrip("=")
- try:decode(t)
- except (ValueError,TypeError,KeyError):return
- raise AssertionError("malformed token accepted")
-base={"change":ch,"cursor":[[A,1]],"filter":"*","v":1}
-for o in({**base,"cursor":[[A,True]]},{**base,"cursor":[[A,2**64]]},{**base,"cursor":[["bad",1]]},{**base,"cursor":[[A,1],[A,2]]},{**base,"cursor":[[B,1],[A,2]]},{**base,"v":2},{**base,"x":1},{**base,"change":{**ch,"time":True}},{**base,"change":{**ch,"time":TMAX+1}},{**base,"change":{**ch,"nodeName":7}},{**base,"change":{**ch,"bindings":{}}}):bad(o)
-noncanon=base64.urlsafe_b64encode(json.dumps(base).encode()).decode().rstrip("=")
-try:decode(noncanon);raise AssertionError("noncanonical token accepted")
-except ValueError:pass
 
 # Filter-bound cursors cannot be broadened or changed silently. Empty results do
 # not manufacture continuation, and compaction has identical filtered behavior.

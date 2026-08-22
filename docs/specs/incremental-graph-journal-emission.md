@@ -10,7 +10,15 @@ Ordinary exact classification:
 * fresh→stale reusable: soft invalidate;
 * newly unrepresented must-recompute: hard invalidate.
 
-For every administrative or ordinary transaction that authors a scoped edit and finishes stale, emission is ordered `edit` then a newly authored negative assertion for that edited value. A reusable target emits a new soft invalidate; a must-recompute target emits a new hard invalidate even when an older same-generation barrier is still uncovered. A validation authored before the edit cannot clear the post-edit assertion. Fresh edited targets follow the ordinary validation/absorption rule, and equal values emit no edit.
+For every ordinary computation or controlled reset that authors a scoped edit
+and finishes stale, emission is ordered `edit` then a newly authored negative
+assertion for that edited value. Migration is not such a path: it cannot
+directly replace an already-materialized semantic value. A reusable target
+emits a new soft invalidate; a must-recompute target emits a new hard invalidate
+even when an older same-generation barrier is still uncovered. A validation
+authored before the edit cannot clear the post-edit assertion. Fresh edited
+targets follow the ordinary validation/absorption rule, and equal values emit
+no edit.
 
 Post-edit, initial-cache-status, proof-loss, and propagated-input-staleness invalidates are value-specific and name the value origin they describe. An explicit public/concurrent invalidation intended to revoke freshness independent of value selection is generation-wide. Both forms expose the same exact public `invalidate` action.
 
