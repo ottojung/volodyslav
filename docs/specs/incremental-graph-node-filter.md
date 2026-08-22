@@ -206,9 +206,7 @@ where the type is already known, runtime re-verification is not required.
 
 The opaque wildcard singleton is recognized only through module-owned identity
 or nominal branding. Generic serialized data cannot recreate that singleton.
-Serialization and deserialization of filters remain entirely out of scope for
-this specification. A future serialization specification must define an explicit
-encoded representation and decoder that maps back to `makeWildcard()`.
+Public serialization and deserialization of filters remain out of scope. The polling-only opaque `filterIdentity` defined below is one-way metadata and never reconstructs a filter or wildcard singleton.
 
 `isWildcard` recognizes the opaque wildcard singleton through nominal branding
 or module-owned identity checks. It MUST NOT match by structural duck-typing
@@ -280,7 +278,7 @@ The following are explicitly out of scope for the initial specification:
 - Negation / exclusion filters.
 - Pattern-based filters using string pattern syntax.
 - Filter combinators beyond union (e.g., intersection, difference).
-- Filter serialization / deserialization.
+- Public filter serialization / deserialization.
 
 If future versions need these, they should be added as new filter variant types rather than changing the behavior of existing variants.
 
@@ -342,7 +340,7 @@ const [r1, r2] = await Promise.all([
 
 Both queries observe the same immutable filter value for their complete
 execution. The filter is never mutated, so the two results are each exactly the
-logical journal view restricted by the same stable filter.
+journal view restricted by the same stable filter.
 
 ### S5 — Structural equality is stable for the filter's lifetime
 
@@ -354,3 +352,24 @@ const f2 = makeGroundFilter("X", [constValue("a")]);
 `f1` and `f2` are structurally equal at construction and remain equal
 indefinitely, because no construction input can be mutated after construction
 and the filters themselves cannot be mutated.
+
+## Cursor identity
+
+For polling only, `filterIdentity(F)` is a canonical opaque string derived from
+F's immutable structural form. It is not a public filter serialization or a way
+to construct a filter. The derivation uses distinct tags for wildcard, ground,
+and union; ground encodes `head` plus the production canonical ConstValue bytes
+for each argument (with a distinct wildcard tag). Those bytes accept exactly the
+recursive finite-number/string/boolean/array/ordered-record ConstValue domain,
+normalize `-0` with `+0` and equivalent JavaScript Number representations, and
+preserve array position and record key order exactly as `isEqual` does. `null`,
+`NaN`, infinities, and non-string record keys are rejected before identity
+construction. Union recursively sorts its two child identity byte strings before
+encoding. The identity is the complete canonical bytes encoded with canonical base64url; it is not a fixed-size digest and is injective over the supported filter domain modulo production `isEqual`.
+The token decoder treats the identity as opaque and compares it with the identity
+computed from the call's live `to` filter. Different identities are rejected.
+
+REQ-NF-11: structurally equal filters under REQ-NF-06 MUST have identical
+`filterIdentity`; filters with different canonical structural forms MUST have
+different identities. Collision-resistant hashing is insufficient because the cursor contract requires collision-freedom. Token versioning changes
+before this derivation changes.

@@ -1,415 +1,125 @@
 # IncrementalGraph journal types
 
-## Logical replicated journal
+This document is normative over supported reachable states produced by the atomic authoring, receive, migration, observed-reset, restoration, and canonical-compaction transitions. Corrupt, forged, rolled-back, partially installed, or clock-unsupported states are outside the proof domain.
 
-The journal is notification and history infrastructure. It is not authoritative
-graph state: current values, materialization, freshness, timestamps, and
-validity come from the IncrementalGraph.
-
-### Supported-state boundary
-
-The [journal entry-point scope](../incremental-graph-journal.md#implementationrollout-scope)
-is normative here. A supported state means one produced by lifecycle
-transitions of an implementation satisfying these specifications, not every
-database produced by every historical Volodyslav implementation. Pre-journal
-implementation states are outside this journal-state universe until a rollout
-establishes the journal-enabled representation; that rollout is a deployment
-compatibility concern, not a journal transition.
-
-This specification inherits the definition of supported and corrupted or
-unsupported database state from
-[`database-lifecycle.md`](database-lifecycle.md#11-corruption-model). Journal
-correctness, synchronization, compaction, convergence, freshness, provenance,
-and cursor-coverage guarantees range only over states produced by supported
-Volodyslav lifecycle transitions and deliveries or unions that can arise
-between those states. An arbitrary mathematical set of structurally
-constructible `JournalEntry` values is not necessarily a supported journal
-history.
-
-A state requiring violation of an authoring, lifecycle, locking, clock,
-immutability, or causal-context invariant is corrupted or unsupported in the
-lifecycle specification's sense. Unless explicitly specified otherwise, the
-protocol promises neither detection, rejection, recovery, convergence, nor
-preservation of forensic evidence for such a state. Implementations MAY retain
-cheap defensive rejection checks, but semantic correctness does not depend on
-their completeness and compaction need not preserve evidence solely for future
-corruption diagnosis.
+## One precise journal
 
 ```text
-JournalEntry =
-    AddJournalEntry
-  | DeleteJournalEntry
-  | EditJournalEntry
-  | InvalidateJournalEntry
-  | ValidateJournalEntry
-
-JournalEntryBase = {
-    author: DatabaseFingerprint
-    sequence: uint64
-    key: NodeKey
-    time: UnixTimestamp
+journal[JournalEntryId] = JournalEntry
+JournalEntryId = (sequence, author)
+JournalEntryBase = { author, sequence:uint64, key, nodeName, bindings, time }
+GenerationJournalEntry = JournalEntryBase & {
+    kind:"generation", initialFreshness:JournalEntryId
 }
-
-AddJournalEntry = JournalEntryBase & { action: "add" }
-DeleteJournalEntry = JournalEntryBase & { action: "delete" }
-
-GenerationScopedJournalEntryBase = JournalEntryBase & {
-    generation: JournalEntryId
+DeleteJournalEntry = JournalEntryBase & { kind:"delete", resetLineage?:ResetLineage }
+ResetObservationEntry = JournalEntryBase & {
+    kind:"reset-observation", absentAnchor:JournalEntryId | null,
+    resetLineage:ResetLineage
 }
-
-EditJournalEntry = GenerationScopedJournalEntryBase & { action: "edit" }
-InvalidateJournalEntry =
-    GenerationScopedJournalEntryBase & { action: "invalidate" }
-ValidateJournalEntry =
-    GenerationScopedJournalEntryBase & {
-        action: "validate"
-        clearsInvalidates: InvalidationContext
-    }
-
-InvalidationContext = Map<DatabaseFingerprint, JournalEntryId>
-
-JournalEntryId(E) = (E.sequence, E.author)
-```
-
-Entry IDs are ordered lexicographically, sequence first and author second.
-`JournalEntry.time` is always the real wall-clock time at which that journal
-event occurred. For add/edit, that occurrence is the semantic value creation or
-modification, and the entry time equals
-`toUnixTimestamp(timestamps[key].modifiedAt)`. Delete, invalidate, and validate
-use their actual event occurrence instant without changing graph `modifiedAt`.
-
-`DatabaseFingerprint` is the existing IncrementalGraph database allocation
-fingerprint specified by
-[`incremental-graph-fingerprint.md`](incremental-graph-fingerprint.md) and
-stored at `rendered/r/global/fingerprint`. Each host H owns one
-`DatabaseFingerprint(H)`. A locally authored entry uses that local database
-fingerprint as `author`, independently of the affected node's identifier.
-Every `NodeIdentifier` allocated by H embeds `DatabaseFingerprint(H)`, but a
-receiver may store identifiers allocated by remote hosts after synchronization.
-Consequently, an arbitrary stored `NodeIdentifier` need not embed the
-receiver's fingerprint, and its suffix MUST NOT determine the author of a
-locally authored entry.
-
-`UnixTimestamp` has a signed 64-bit persistent representation counting
-milliseconds since `1970-01-01T00:00:00Z`. A valid `UnixTimestamp` is only a
-value in that representation for which the project's `DateTime` abstraction can
-represent the exact instant and round-trip the exact integer millisecond. Its
-equality is integer equality and its order is signed integer order. It is
-timezone-free, canonical, fixed-width, and has millisecond precision. Journal
-wall-clock identity and ordering use that precision; distinct events represented
-in one millisecond may have equal timestamps and are disambiguated by
-`(sequence, author)`.
-
-The graph and application timestamp type remains nominal `DateTime`. The
-normative exact conversions are:
-
-```text
-toUnixTimestamp(dt: DateTime): UnixTimestamp = dt.toMillis()
-fromUnixTimestamp(t: UnixTimestamp): DateTime = DateTime for instant t in UTC
-toUnixTimestamp(fromUnixTimestamp(t)) == t
-```
-
-`toUnixTimestamp` accepts only a `DateTime` whose `toMillis()` is an integer in
-the signed 64-bit range and is exactly representable by `DateTime`.
-`fromUnixTimestamp` is total only over valid `UnixTimestamp` values, not over
-all raw signed 64-bit integers. The graph's supported timestamp precision is
-milliseconds. UTC is the canonical construction zone for
-`fromUnixTimestamp`. Journal comparisons operate only on the resulting signed
-integers.
-
-A persisted raw signed 64-bit value outside this valid domain is malformed
-journal state and load validation MUST reject it immediately. It MUST NOT be
-clamped, rounded, approximated, normalized, or retained until a later API
-conversion fails. Supported authoring obtains event time from the supported
-`DateTime`/clock API and passes through `toUnixTimestamp`, so it cannot author an
-invalid value. Import preserves the already-valid immutable timestamp of a
-supported remote entry.
-
-There is no separate journal membership domain. Supported host creation
-allocates one globally unique durable `DatabaseFingerprint`; restoration may resume
-it only from that host's current synchronized state. Reset, migration, and
-copying never transfer ownership. Supported authoring makes every author a
-well-formed supported `DatabaseFingerprint` and gives one immutable content to each
-`JournalEntryId`. Implementations MAY check these facts defensively when the
-relevant evidence is available. Duplicate ownership or rollback under the same
-author is corrupted or unsupported under the lifecycle definition; complete
-historical detection after compaction is not promised.
-
-The journal has no fixed closed writer-membership domain. A supported new host
-may introduce a new durable `DatabaseFingerprint`, so storage is not bounded
-independently of the number of durable authors represented in retained history.
-
-Entries are immutable. A remotely learned entry is imported byte-for-byte with
-the same author and sequence. Learning an entry never re-authors it.
-
-The union makes generation membership structural rather than optional.
-`generation` is the exact `JournalEntryId` of the same-key `AddJournalEntry`
-which established the materialization incarnation being edited, invalidated, or
-validated. `AddJournalEntry` and `DeleteJournalEntry` have no `generation`
-field; each of the other three variants requires it. This reference is journal
-history only and is never stored on a graph materialization.
-
-For example, if `G1=(10,A)` is an add for K, every edit, invalidate, and validate
-for that incarnation contains `generation=(10,A)`, while a delete for K has no
-generation field. After a delete and later add `G2=(50,B)`, subsequent scoped
-events for the new incarnation contain `generation=(50,B)`. Events scoped to G1
-are inapplicable to G2.
-
-`clearsInvalidates` is immutable causal evidence, not a Lamport threshold. Each mapping `A -> I` MUST resolve to a real invalidate authored by A for the validation's exact key and generation. It contains at most one reference per author: the greatest same-author invalidate in the exact transaction-visible frontier at ordinary graph revalidation or authoritative existing-live stale→fresh reset. Retained state must satisfy these structural reference preconditions in order to be interpreted. The named invalidate must also have `I.sequence < V.sequence`; observed entries raise the validating author allocator before V is allocated. Normal synchronization and migration do not author validate.
-
-Supported authoring additionally guarantees, for validations V1 and V2 by the
-same author, key, and generation:
-
-```text
-V1.sequence < V2.sequence
-    =>
-V1.clearsInvalidates <=componentwise V2.clearsInvalidates
-```
-
-A correct durable author never forgets an invalidation already observed. V2
-may add or advance coordinates but cannot forget or move one backward. This is
-a supported-authoring and reachable-state invariant; it justifies later
-same-author validation dominance during compaction. It is not an obligation for
-compacted state to retain discarded validations so that every remote point in
-an arbitrarily fabricated past remains diagnosable.
-
-For example, this history for one author B, key K, and generation G is outside
-the supported model:
-
-```text
-V10 clears X:I5
-V15 clears X:I4
-V20 clears X:I6
-```
-
-The `I5 -> I4` transition regresses B's causal knowledge and cannot be authored
-through the supported protocol. Compaction therefore need not retain V10 merely
-so a later-delivered corrupted V15 can be diagnosed. A defensive validator MAY
-reject this history when the conflicting evidence is available; complete
-historical detection after compaction is not promised.
-
-Action variant and authorship context are orthogonal. Ordinary mutation,
-migration, synchronization-authored destruction, and controlled reset all use
-these same variants without an origin discriminator. In particular,
-synchronization may author `DeleteJournalEntry` or an
-`InvalidateJournalEntry` carrying its required generation; normal synchronization
-never authors add, edit, or validate. Reset uses these variants with its narrow
-changed-value fresh-generation rule.
-
-Journal validation rejects an entry with action edit, invalidate, or validate
-unless its generation resolves to a valid same-key add in the merge input.
-Compaction retains an add-reference witness for every retained generation-scoped
-notification. It may discard additional value/freshness authority for a losing
-generation only after proving that the generation can never again become the
-winning presence generation, as specified by the compaction rules.
-
-## Closed action classifier
-
-```text
-add        iff absent -> materialized
-edit       iff materialized -> materialized and ComputedValue changes
-delete     iff materialized -> absent
-invalidate iff up-to-date -> potentially-outdated
-validate   iff potentially-outdated -> up-to-date
-```
-
-The public classifier remains transition-based. Independently, no operation may
-make a materialized cache require genuine later revalidation without causally
-representing that obligation in its generation's invalidation frontier. Explicit
-invalidation, synchronization or migration stale→stale hardening, and equivalent
-lifecycle paths therefore author an internal generation-scoped invalidate when
-they remove/reassert absence of sufficient incoming proofs; its all-actions query
-projection may be a permitted false positive. Settled hard-invalidated state
-already represented by an outstanding barrier is merely carried. There is no generic `change`. Identifier, timestamp, validity-only, dependency,
-or representation changes are not edits. `Unchanged` emits no edit. Value and
-freshness transitions may emit two entries when both classifiers apply.
-
-This classifier governs ordinary graph mutation, synchronization, and migration.
-Controlled reset has one narrow presence-authority rule: unequal present values
-receive a fresh add generation above all receiver history observed by reset.
-Equal values remain silent, new materializations emit add, and removed
-materializations emit delete. Reset uses no reset-specific record type.
-
-## Host-local journal clock
-
-Each writable host owns one persistent `localJournalClock: uint64`, protected
-by a dedicated allocator mutex. It is a journal-only Lamport-style clock, not a
-graph clock and not a per-node counter.
-
-1. A sequence that becomes part of committed durable state is published and
-   is never reused. A tentative allocation in a transaction that aborts before
-   publication has no durable journal identity and MAY be selected again.
-2. The counter never moves backwards in committed state. Importing or observing
-   entries raises the allocator watermark to at least
-   their maximum sequence.
-3. Allocation increments the watermark and uses the result.
-4. Consequently, if `E2` is authored after observing `E1`, then
-   `E2.sequence > E1.sequence`.
-5. Concurrent authors may use the same sequence; author breaks the tie.
-6. Overflow is fatal and wrapping is forbidden.
-
-For example, if durable `localJournalClock` is 10, an aborted transaction may
-tentatively choose 11 and leave the durable clock at 10 through restart. A later
-transaction may validly publish 11 because the aborted choice never became a
-journal identity. The identical rule applies to `localJournalRecordClock`: an
-aborted tentative append sequence is reusable, while a committed
-`JournalIndex.appendSequence` is permanently non-reusable by its appender.
-
-## Durable logical and notification journals
-
-Logical history and notification occurrences are distinct persistent structures:
-
-```text
-logicalJournal.entries: Map<JournalEntryId, JournalEntry>
-notificationJournal.records: Map<JournalIndex, JournalRecord>
-localJournalClock: uint64
-localJournalRecordClock: uint64
-journalRecordHighWatermark: Baseline | JournalIndex
-cursorCoverageFrontier:
-    Map<DatabaseFingerprint, Baseline | JournalIndex>
-```
-
-`JournalEntry.sequence`, allocated from `localJournalClock`, is the replicated
-logical event coordinate and forms `JournalEntryId` with `author`. Notification
-ordering uses a separate coordinate:
-
-```text
-JournalIndex = (appendSequence: uint64, appender: DatabaseFingerprint)
-JournalRecord = {
-    index: JournalIndex,
-    key: NodeKey,
-    nodeName: NodeName,
-    bindings: BindingEnvironment,
-    time: UnixTimestamp
+GenerationScopedBase = JournalEntryBase & { generation:JournalEntryId }
+EditJournalEntry = GenerationScopedBase & { kind:"edit" }
+InvalidateJournalEntry = GenerationScopedBase & {
+    kind:"invalidate", mode:"soft"|"hard",
+    appliesTo:"generation" | { valueOrigin:JournalEntryId },
+    resetLineage?:ResetLineage
 }
+ValidateJournalEntry = GenerationScopedBase & {
+    kind:"validate", clearsThrough:CausalPrefix,
+    valueOrigin:JournalEntryId,
+    resetLineage?:ResetLineage
+}
+ResetLineage = {
+    consumedThrough:CausalPrefix,
+    correspondence:ResetCorrespondence | null
+}
+ResetCorrespondence = {
+    consumedGeneration:JournalEntryId,
+    consumedValueOrigin:JournalEntryId
+}
+CausalPrefix = Map<DatabaseFingerprint,uint64>
 ```
 
-Indexes compare lexicographically by append sequence and then appender. They are
-globally comparable, immutable, and replicated. `appender` is the durable
-fingerprint of the appending host. The append sequence is never
-`JournalEntry.sequence`: the allocators and all conflict semantics are
-independent. Notification replay cannot affect logical identity, presence,
-`ValueRevision`, conflict resolution, or validation causality.
+For two reset-lineage carriers `L1,L2` with the same durable author, NodeKey, and tagged receiver anchor, `L1.sequence<L2.sequence` implies `L1.consumedThrough <=componentwise L2.consumedThrough`. This is a supported-state structural invariant and the proof-carrying basis for bounded same-anchor succession: the later immutable same-writer assertion replaces the earlier assertion without placing `L1.id` in `L2.consumedThrough`. Different authors or different anchors receive no such implied observation order.
 
-`JournalRecord` is immutable, self-contained conservative notification evidence,
-not graph authority. It carries the complete semantic address needed to apply a
-`NodeFilter` and construct public results after graph and logical evidence have
-been deleted. `key` MUST equal the implementation's identity-preserving
-`NodeKey(nodeName,bindings)` result; storage-load and merge validation reject a
-mismatch. This does not require `NodeKey` itself to be reversible. The record
-carries no action and need not reference retained logical evidence. Its `time` is
-witness time, not append time. Every query projects it to add, edit, delete,
-invalidate, and validate. When logical entry E is authored for the operation's
-known semantic address `(key,nodeName,bindings)`, the operation appends
-`JournalRecord {index,key,nodeName,bindings,time:E.time}`. Logical entries do not
-carry `nodeName` or `bindings`, and `NodeKey` need not be reversible. A
-conservative reappend without a new logical event uses a retained self-contained
-same-key notification witness or the known final-state semantic address and
-preserves that witness's time. Reset may copy the greatest merged same-key
-record's `(key,nodeName,bindings,time)` where no final logical witness is
-retained.
+An immutable generation entry establishes positive presence and initial value provenance for an actual absent-to-present materialization, so `publicAction(generation)="add"`. Reset never creates a generation to fence equal present history. Delete is negative presence. Edit is an unequal present-to-present value change scoped to the surviving generation. Every generation names exactly one later-ID, atomically authored initial validate/soft-invalidate/hard-invalidate.
 
-Each writable host durably owns `localJournalRecordClock`. Observing imported
-notification coordinates raises this allocator as required before a later local
-append. An append sequence
-that becomes part of committed durable state is published and is never reused;
-a tentative append that aborts before publication has no durable index and MAY
-be selected again. The counter never moves backwards in committed state.
-Allocation-number gaps caused by allocator behavior are harmless and arise only
-when committed allocator progression skips numbers; transient aborted choices
-need not create durable gaps. Compaction may independently leave holes in the
-surviving notification-coordinate set. Overflow is fatal and wrapping is
-forbidden. Before appending after remote
-observation, the allocator is raised above every observed append sequence and
-the new index is `(incrementedClock,localFingerprint)`. Every local append is
-strictly greater than the current high-watermark. Concurrent equal numeric
-sequences are ordered by appender. One mutex may protect both allocators, but
-their stored values and meanings remain separate.
-
-`journalRecordHighWatermark` is the greatest index ever incorporated. It never
-decreases, is at least every surviving record, survives compaction, restart,
-migration, restoration and synchronization, and may name a deleted record. It
-cannot be reconstructed from survivors. The coverage frontier is monotone and:
+For generation `G` and its named initial event `I`, structural validity requires `I.author=G.author`, `I.sequence>G.sequence`, `I.key=G.key`, `I.generation=G.id`, and `I.kind` in `{validate,invalidate}`. The two entries install atomically. Sequence adjacency is not required, but a generation cannot name another author's future event.
 
 ```text
-cursorCoverageFrontier[localFingerprint] == journalRecordHighWatermark
+publicAction(E) = "add" for generation; undefined for reset-observation; otherwise E.kind
 ```
 
-after every commit. Coordinate `frontier[H]=W` proves this receiver can interpret
-tokens issued by H at a high-watermark no greater than W. Notification records
-and coverage frontiers replicate. Serialized tokens are
-canonical progress claims rather than security capabilities: a caller may
-construct a structurally valid claim and thereby skip its own work, but cannot
-make an uncovered issuer lineage admissible. Logical equality ignores
-notification multiplicity.
+Soft/hard both expose invalidate. Every public graph event exposes exactly one action. ResetObservationEntry is internal metadata in the same physical journal, has no public action, and is ignored by polling maxima.
 
-At every supported commit: every logical ID and notification index names one
-immutable content; appenders are valid durable fingerprints and never reuse a
-published sequence; both watermark and frontier are monotone; the local record clock
-dominates every observed sequence required before its next append; each local
-notification-relevant transition has a same-key record after the old
-high-watermark; newly adopted cursor lineage is covered before its frontier
-advances; notification compaction retains each represented key's greatest
-record; gaps are valid; logical semantics ignore notification order and
-multiplicity; and cursor queries do not mutate state. Violations are
-corrupted/unsupported state.
+Every boundary validates closed shapes/scalars, immutable-ID agreement, and `key == NodeKey(nodeName,bindings)` using the production identity-preserving serializer. Every scoped event resolves to an exact same-key GenerationJournalEntry. Generation initial-freshness references resolve exactly.
 
-## Persisted graph boundary
+**Post-edit Negative-Freshness Invariant.** Any transaction that authors a same-generation edit for a new semantic value and leaves that value stale MUST author a new negative freshness assertion after the edit: soft when complete cache-revalidation proof remains, hard when recomputation is required. Pre-edit invalidates cannot represent the new value's negative authority. Equal-value operations author no edit and may reuse existing authority under the ordinary causal rules.
 
-Materializations remain exactly the graph concepts `values`, `freshness`, real
-wall-clock `timestamps { createdAt, modifiedAt }`, identifier lookup,
-`NodeIdentifier`, and `valid`. They contain no journal entry ID, virtual time,
-revision stamp, support vector, epoch, vector clock, or synchronization field.
-Synchronization never advances `modifiedAt` merely because bytes were copied.
+Generation-wide invalidates represent explicit/concurrent causal invalidation that applies regardless of which value origin wins. Initial-stale, post-edit, reset/migration cache-status, proof-loss, and propagated-input-staleness assertions are value-specific and name the exact value origin whose cache state they describe. For selected origin O, an invalidate is applicable iff it is generation-wide or names O. Both causal frontiers and validation effectiveness are computed only from applicable invalidates; a losing value's cache-status barrier cannot stale a different selected value.
 
-For storage analysis:
+Every validation names the exact value origin it validates. The initial validation names its GenerationJournalEntry; validation after an edit names that edit. Positive evidence for one origin never freshens another origin, even when its causal prefix includes the other origin’s invalidates.
+
+Observed reset attaches `resetLineage` to a receiver-retained freshness assertion for a present target or to the real reset-authored DeleteJournalEntry for a present-to-absent target. When both snapshots are already absent and either side has represented key history, it authors an internal ResetObservationEntry anchored to the receiver delete (or explicit null absence when no receiver presence event exists). A null anchor is a durable virtual absence, not a condition that the future union's raw presence head remain null: events at or below its vector remain absorbed after union, and ordinary generation/delete ordering applies only among events above that vector. With no post-cutoff presence event, causal presence remains absent. This metadata-only entry has no public action and cannot masquerade as add/edit/delete/validate/invalidate.
+
+Reset causal observation and semantic correspondence are distinct. `consumedThrough` is the joinable per-author prefix inspected across both snapshots; missing means zero. Concurrent observations for one receiver anchor join by componentwise maximum, without inferring causality from carrier JournalEntryId. `correspondence`, when present, names exactly one source generation/origin actually compared `isEqual` with the receiver value anchor. Concurrent/later exact correspondences form a bounded retained set; causal coordinates alone never certify semantic equality.
+
+For every author A, an A-authored key event at or below joined `consumedThrough[A]` is absorbed. A same-lineage event above it remains eligible regardless of carrier. Structural validation requires canonical vectors and exact shapes. Delete/reset-observation absent lineage has null correspondence; validate/invalidate present lineage has a non-null exact correspondence. Both correspondence IDs contain nonzero uint64 sequences and supported fingerprints. Booleans, duplicate/unsorted coordinates, mismatched kind/correspondence, malformed IDs, and unknown fields are rejected.
+
+## UnixTimestamp and event time
+
+`UnixTimestamp` persists as a signed integer millisecond count since `1970-01-01T00:00:00Z`. Its supported domain is exactly the integer interval `[-8640000000000000,8640000000000000]`, excluding booleans. `toUnixTimestamp(DateTime)=DateTime.toMillis()` and `fromUnixTimestamp(t)` constructs the exact UTC instant; both require exact integer round-trip. Out-of-domain, fractional, approximate, clamped, rounded, or malformed persisted/token values are rejected.
+
+* generation time is its semantic value `modifiedAt`;
+* edit time is the edited value `modifiedAt`;
+* delete time is deletion occurrence and does not change value `modifiedAt`;
+* invalidate time is assertion occurrence and does not change value `modifiedAt`;
+* validate time is assertion occurrence and does not change value `modifiedAt`.
+
+Reset-created/changed value generation/edit time is reset transaction time τ. Reset freshness assertions use their actual occurrence τ. Equal surviving reset values preserve receiver `modifiedAt`. Supported cross-host value ordering assumes clocks do not invert real value-event order; a source `modifiedAt>τ` for an already-observed value is outside that clock premise. The protocol does not repair unsynchronized clocks.
+
+## Coverage, causal prefixes, and lazy allocation
+
+`JournalCoverage[A]=n` proves the host has a complete account of A's authored prefix through n, despite gaps/compaction. `Validate.clearsThrough[A]=n` instead proves that this validation was justified by trusted evidence of a closed A prefix through n; it clears only applicable same-key/same-generation invalidates in that prefix. Reset may use validated source coverage it explicitly inspected to justify `clearsThrough`, without merging that coverage into receiver `journalCoverage`.
+
+A locally authored coordinate may claim only a prefix for which the transaction had valid closed-prefix evidence: ordinarily local journal/coverage, and for controlled reset additionally its validated source snapshot. Compaction preserves the vector claim even if it removes exact covered evidence.
+
+Validation knowledge is durable and monotone. For validations V1,V2 with the same author, key, and generation (regardless of value origin):
 
 ```text
-n = number of current or historic semantic node keys represented by either the
-    compacted logical journal or compacted notification journal
-r = number of durable fingerprints represented by compacted logical entries,
-    retained causal-context references or cursorCoverageFrontier
-a = 5 journal actions, a fixed constant
-C = maximum serialized size of one ConstValue, a fixed system constant
-K = maximum serialized size of one NodeKey, a fixed system constant
-d = maximum number of distinct direct semantic inputs of any node, a fixed
-    system constant
+V1.sequence < V2.sequence => V1.clearsThrough <=componentwise V2.clearsThrough
 ```
 
-These are storage-model assumptions, not consequences of the semantic types.
-`SimpleValue` and its `ConstValue` subtype permit recursively structured values
-and do not intrinsically bound string, array, record, nesting, or serialized
-size, so its definition does not establish C. The `NodeKey` format is
-implementation-defined and its identity-preservation contract does not bound
-encoding overhead, so that contract does not establish K. Bounded C, fixed
-finite schema arity, and an intended bounded-overhead key encoding are
-compatible with bounded K, but K remains a separate explicit premise. The same fixed finite schema bounds `NodeName` size and binding count; fixed C then bounds the complete `(nodeName,bindings)` address stored redundantly in each notification record. Every
-compliant `DatabaseFingerprint` is exactly 16 lowercase ASCII letters, so its
-serialized payload is normatively bounded rather than assumed. Graph
-finiteness does not establish d because in-degree could grow with n. A fixed
-finite schema with finitely many direct input positions per node definition is
-compatible with bounded d, but d also remains an explicit premise. C, K, and d
-are all assumed bounded independently of n and r; no runtime limit is implied.
+Every validation authoring path—ordinary pull/revalidation, migration, a genuinely synchronization-authored initial validation, and observed reset—starts with the greatest prior same-author/key/generation validation vector and componentwise-maxes newly justified closed prefixes into it. The prior vector is itself durable evidence for carry-forward; source coordinates learned only by reset remain in later validation state without being copied into host journalCoverage. A retained pair violating monotonicity is unsupported/corrupt. Structural load validation checks canonical map shape, supported unique fingerprints, and uint64 coordinates; lifecycle legitimacy of the claimed evidence is a separate authoring proof.
 
-The normative guarantee remains `size(compact(J)) = O(nr²)`, asymptotically in
-n and r. Journal entries contain `NodeKey` values, `DatabaseFingerprint`
-authors, and causal metadata, so this
-journal-only bound assumes fixed K. Hidden constants may also depend on the
-fixed number of action classes and fixed-width `UnixTimestamp`, sequence, and
-notification-index scalar coordinates. `DatabaseFingerprint` payloads are bounded by
-their normative 16-character ASCII representation.
-A `JournalEntryId` is bounded because it combines a fixed-width sequence with a
-normatively bounded `DatabaseFingerprint`; it is not a separate premise.
-Constant action coordinates use `O(r)`
-entries per key; at most `O(r)` retained validations each carry an `O(r)`
-context, including exact causal references. Other journal witnesses are no
-larger. The separate compact notification and coverage metadata add only `O(n+r)` and do not alter the result. The theorem does not
-claim independence from arbitrarily growing key encodings.
+Import does not advance the local clock/coordinate. Immediately before local authoring, allocation raises above all relevant retained/covered sequence authority. After commit, local coverage equals local clock and the local prefix never regresses.
 
-The broader persisted IncrementalGraph state may also store dependency,
-validity, and per-input information whose per-node width is bounded under fixed
-d. That graph state is not part of `J`, so d is not needed to count
-`compact(J)`. No total byte bound for all persisted graph state is asserted
-here; such a bound would also have to account for `ComputedValue` payload size.
+## Freshness
 
-This applies exclusively to fully canonical compacted state. Ordinary mutations may append immutable entries and skip compaction arbitrarily long, so no operation-count-independent bound is promised for an uncompacted physical journal.
+```text
+applicable(I,O) iff I.appliesTo="generation" or I.appliesTo.valueOrigin=O
+invalidateFrontier(J,K,G,O)[A] = greatest applicable invalidate of either mode by A
+hardInvalidateFrontier(J,K,G,O)[A] = greatest applicable hard invalidate by A
+covers(V,I) iff V.key=I.key and V.generation=I.generation
+                 and I.sequence <= V.clearsThrough[I.author]
+freshnessEffective(V,J,K,G,O) iff V.valueOrigin=O and V alone covers every applicable invalidateFrontier member
+journalFresh iff some applicable V is freshnessEffective
+journalHard iff hard frontier is nonempty and no applicable V alone covers it
+```
+
+**Validation Causality Theorem.** A validation clears only applicable invalidates within legitimately evidenced `clearsThrough` coordinates. Separate partial validations never combine. Empty hard frontier is non-hard. Initial validate is required positive freshness evidence, so freshness has no implicit empty-frontier exception. A delayed event under `clearsThrough` is already cleared; a later event above it is not.
+
+A derived stale-soft materialization retains the complete reusable incoming proof needed for cache-only revalidation. Stale-soft without that proof is unsupported: proof loss establishes must-recompute and requires a hard invalidate unless an applicable uncovered hard barrier already represents it. A zero-input stale materialization has no incoming proof to reuse and is hard-stale rather than soft-stale.
+
+## Projection theorems
+
+**Identifier Incarnation Theorem (NodeIdentifier domain).** A storage-level materialized NodeIdentifier maps to exactly one NodeKey. Removal retires it permanently; rematerializing the same NodeKey allocates a different identifier. Public `listMaterializedNodes()` exposes semantic address tuples, not these identifiers. Reset retains receiver identifiers for surviving materializations.
+
+**NodeKey Presence Projection Theorem (NodeKey domain).** K is materialized iff causal `presenceHead(J,K)` is GenerationJournalEntry; it is absent iff the head is delete or undefined. Each reset anchor is evaluated against its own joined causal vector before raw presence ordering, so a higher-ID event inside that vector cannot disable its absorber. A null explicit-absence anchor may suppress consumed presence without another post-cutoff event; a non-null anchor remains fallback until another actual generation/delete is outside that anchor's cut. Actual post-cutoff generation/delete events and generations activated by above-cut scoped events remain eligible; only actual generation/delete IDs order the result. History generation/delete/generation is valid. Polling history membership is not current presence.
+
+**Current Value Provenance Theorem (winning-generation domain).** The winning generation entry plus scoped value heads determine origin/modifiedAt identity; ComputedValue bytes remain graph state.
+
+**Freshness and Hardness Projection Theorems (precise-entry domain).** Current generation freshness uses one causal-prefix validation plus graph coherence, never numeric validate/invalidate ordering. Hard/soft authority follows the formulas above.
+
+**Polling Projection Theorem (PossibleNodeChange domain).** Polling hides identifiers, generations, modes, and causal contexts; it preserves action obligations but cannot reconstruct current graph state.
+
+Graph, journal, vectors, local clock, identifier/proof state, and timestamps install atomically.

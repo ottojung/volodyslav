@@ -90,10 +90,10 @@ When local live state is absent, Volodyslav first asks whether the synchronizati
 This is **absent-state self-restoration**, not reset of an existing database. It
 restores and validates the authoritative graph together with the durable local
 `DatabaseFingerprint`,
-logical journal entries, notification records, `localJournalClock`, `localJournalRecordClock`, `journalRecordHighWatermark`, and `cursorCoverageFrontier`. Absent-state
+journal entries, `journalCoverage`, and `localJournalClock`. Absent-state
 self-restoration accepts the retained journal representation published by a
 supported synchronization checkpoint whether or not canonical compaction ran
-before that checkpoint. It preserves both immutable collections and their coordinates exactly:
+before that checkpoint. It preserves the immutable collection and vector coordinates exactly:
 restoration neither requires `J == compact(J)` nor implicitly compacts, authors,
 re-authors, merges, or migrates journal history.
 
@@ -101,14 +101,16 @@ Before installation, restoration validates the ordinary load structure:
 
 - the durable `DatabaseFingerprint` belongs to
   the selected host/writer branch;
-- retained generation references resolve correctly;
-- retained validation causal references resolve correctly and match the
-  required key, generation, and author;
-- every referenced invalidate sequence precedes its validation sequence;
-- `localJournalClock` covers every retained or otherwise observed sequence;
-- every notification index names one immutable record;
-- the record high-watermark covers every retained record; and
-- the coverage frontier is componentwise valid and its local coordinate covers the high-watermark. Coordinate gaps are allowed.
+- retained generation references resolve correctly, and every generation's named initial freshness event has the same author, a greater sequence, the same key, and the generation's exact ID;
+- every retained value-specific freshness assertion resolves its exact same-key/generation value-origin event; reset-lineage consumed source identities need not be locally retained, but their coordinate shapes and authoring provenance must validate;
+- live `NodeIdentifier` values are unique and bijective with live semantic keys, and no retired identifier is live;
+- every materialization origin is the admissible canonical event for its winning generation and `modifiedAt`, rather than a superseded same-author head or lower equal-time candidate;
+- every retained `clearsThrough` has canonical map shape, unique supported fingerprint coordinates, and uint64 values;
+- retained same-author/key/generation validation vectors are componentwise monotone when comparable evidence is present;
+- `localJournalClock` equals the local fingerprint coverage coordinate and locally authored entries do not exceed it; foreign retained sequences may exceed it under lazy raising;
+- every retained entry satisfies the self-contained key/address invariant;
+- journal coverage dominates every retained entry sequence; and
+- the local coverage coordinate equals the durable local clock. Coordinate gaps are allowed.
 
 Canonical compacted form, surviving same-author historical monotonicity
 evidence, and complete diagnosis of unsupported history are not restoration
@@ -118,13 +120,13 @@ canonical does not imply valid, and non-canonical does not imply invalid. A
 supported uncompacted journal remains supported state; manually forged or
 corrupted history remains unsupported even if it happens to be canonical.
 
-Restoration resumes previously emitted durable state and MUST NOT classify the restored graph as an empty-to-restored transition. Durable encoded cursors preserve their exact immutable position and coverage metadata across restart, so each encoded cursor remains valid wherever its issuer coverage requirement is satisfied.
+Restoration resumes previously emitted durable state and MUST NOT classify the restored graph as an empty-to-restored transition. Durable encoded cursors preserve their exact vector coordinates across restart and remain portable to every host without adoption or coverage rejection.
 
 The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable database fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's fresh durable `DatabaseFingerprint` together with persistent logical and notification allocators, record high-watermark, and local coverage coordinate before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
+If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's fresh durable `DatabaseFingerprint` together with persistent journal allocator and local coverage coordinate before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 
@@ -231,7 +233,7 @@ Normal synchronization performs these lifecycle steps:
 
 The merge resolves state according to graph timestamps and dependency semantics, not textual repository merge rules. Locally newer state is retained, remotely newer compatible state may be taken, and affected derived state may be invalidated so that it is recomputed from the merged dependencies. A successful merge preserves graph coherence and does not make a partially constructed target active.
 
-Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so both logical and notification history may be uncompacted. It preserves immutable coordinates, both allocators, the record high-watermark, coverage frontier and durable fingerprint exactly. Restoration neither compacts nor renumbers and durable cursors retain meaning.
+Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so both journal history may be uncompacted. It preserves immutable coordinates, the allocator, journal coverage, and durable fingerprint exactly. Restoration neither compacts nor renumbers and durable cursors retain meaning.
 
 ### 7.3 Per-host failure behavior
 
@@ -241,144 +243,45 @@ Synchronization is therefore not globally atomic across all remote hosts. Its po
 
 After an initiated synchronization, Volodyslav attempts to reopen the local database and rerun the migration gate even if synchronization itself failed. If both synchronization and reopening fail, both failures are relevant. A synchronization error does not justify leaving the application interface attached to a closed database.
 
-### 7.4 Existing-live controlled reset
+### 7.4 Existing-live observed semantic reset
 
-Existing-live controlled reset is an authoritative semantic graph reconciliation:
-for a stable receiver snapshot R and structurally valid, schema-compatible source
-snapshot S, its postcondition is `SemanticGraph(reset(R,S)) == SemanticGraph(S)`.
-The semantic target, keyed by `NodeKey`, consists only of materialization
-presence, `ComputedValue`, freshness, and validity relationships. Source logical
-journal history, host and physical identity, identifiers, timestamps, and
-allocator ownership are not semantic target state.
+For stable validated snapshots R0,S0 and transaction time τ, reset constructs the complete target off-line, then atomically installs it. Target SemanticGraph equals S0 in NodeKey presence, ComputedValue, fresh/stale-soft/stale-hard class, and reusable proof relation semantically relowered to receiver NodeIdentifiers. Surviving keys retain receiver identifiers; absent→present allocates fresh; present→absent permanently retires. No intermediate state is visible. Reset does not import source journal or journalCoverage.
 
-Reset does **not** join source logical history as graph authority. It retains
-receiver logical authority and authors receiver logical entries only for
-committed before-to-final semantic transitions. Differences solely in source
-logical history cause no graph transition or receiver logical entry.
+Value classification is receiver-relative and exact:
 
-Notification infrastructure is independent of logical authority. Reset merges
-source notification records, source high-watermark, and source coverage frontier,
-even when the semantic graph is already
-equal. Thus a graph-silent reset may still change notification records,
-high-watermark, frontier, or notification allocator. Once
-those maxima and coordinates are incorporated, repeating the identical reset is
-silent.
-Absent-state self-restoration is different: it resumes this host's durable
-graph, logical and notification journals, and both allocator clocks rather than
-reconciling an existing live receiver.
+* absent→present: generation(add)+mandatory initial freshness, with value modifiedAt and generation time τ;
+* present→absent: delete at τ;
+* present X→present Y unequal by `isEqual`: ordinary edit scoped to surviving receiver generation, edit time/modifiedAt τ; if the target is soft/hard, a new matching invalidate is authored after that edit and pre-edit negative authority is not reused;
+* present A→present A: no generation/add/edit and preserve receiver modifiedAt;
+* freshness/proof-only changes preserve modifiedAt.
 
-The operation runs against stable receiver and source snapshots in an inactive
-target. It validates source structure and schema compatibility, maps source
-identifiers to semantic keys, retains receiver identifiers for surviving keys,
-allocates ordinary receiver identifiers only for new materializations, constructs
-all final values/freshness/validity, applies timestamps, classifies transitions,
-authors required local entries, validates the complete graph and both journals,
-and cuts over atomically. No computor runs and intermediate construction emits nothing.
+A second identical reset does not refresh timestamps.
 
-The value/presence classifier uses normative deep `isEqual` equality:
+### Causal absorption planning
 
-```text
-receiver          target             action
-absent            absent             none
-absent            value B            add
-value A           absent             delete
-value A           value A            none
-value A           unequal value B    add new generation
-```
+Reset reasons against the hypothetical journal/coverage union of both consumed snapshots without installing source history. Source-only journal entries are evidence for receiver authoring, never installed receiver authority. Reset-authored `clearsThrough` may use either validated consumed snapshot as closed-prefix evidence. The reset transaction observation watermark is the maximum sequence in receiver retained entries/coverage/local clock and validated source retained entries/coverage. Before its first local event it raises allocation above that watermark, then allocates monotonically. This observation does not install any source journalCoverage coordinate; only the receiver coordinate advances when reset authors.
 
-At reset time R, first materialization sets
-`createdAt=modifiedAt=add.time=R`. Changed materialization preserves `createdAt`,
-sets `modifiedAt=add.time=R`, and uses an add allocated above all receiver
-history observed by reset. This fresh generation makes old-generation value and
-freshness entries structurally inapplicable before value ordering. Equal values
-preserve both receiver timestamps and author no value event.
-Source timestamp differences are irrelevant. Freshness and validity-only changes
-preserve `modifiedAt`.
+For every reset-touched NodeKey, reset retains one compact `ResetLineage(consumedThrough,correspondence)` on receiver authority. A present target stores it on the receiver freshness assertion anchored to the retained value origin; present-to-absent stores it on the real public delete. Absent-to-absent authors an internal reset-observation anchored to the existing delete or to explicit null absence when the receiver has no presence entry, with no public action. A source null observation itself makes the key reset-touched even without a source add/delete. The null anchor remains effective after delayed consumed source entries are unioned: entries through `consumedThrough` cannot manufacture presence, while post-cutoff generations/deletes participate in ordinary presence order. `consumedThrough` componentwise carries every prior receiver-anchor lineage vector, every retained source-anchor lineage vector, validated source coverage, and every genuine retained public event coordinate for this NodeKey. This transfers causal absorption only—exact semantic correspondence remains independently scoped and is never widened from the vector. Thus reset-of-reset consumes the source snapshot's durable causal meaning without importing its journal or journalCoverage.
 
-This is logical-journal-minimal subject to reset authority: absent and equal-value
-states author no value action; deletion authors only delete; each new or genuinely
-changed value authors exactly one add. The fresh generation for a changed value
-is required to supersede already-observed old-generation history structurally,
-rather than an attempt to replace receiver history by timestamp comparison.
+Each lineage carrier is also an individual fallback assertion. Same-author assertions on the same tagged receiver anchor form a writer-local sequence chain: a later assertion replaces an earlier assertion while componentwise carrying its absorption vector. It still omits the earlier carrier coordinate, so an unchanged reset does not chase its own local clock. Across authors or anchors, assertion N supersedes assertion O only when N's own `consumedThrough` covers O's actual anchor-presence coordinate (when non-null) and O's immutable carrier coordinate. Joined per-anchor vectors summarize absorption but do not create cross-anchor observation. Thus `A1 -> B1 -> A2` selects A2 only because A2 actually observed B1, regardless of B1 having observed historical A1. A currently inapplicable maximal assertion remains future-relevant because a later raw displacement inside its cut can make it applicable again. Compaction retains the maximal assertion antichain and the per-author coordinates of its anchors. On an unchanged repeat, the bookkeeping exclusion set is exactly the reset-lineage carriers whose `lineage_anchor` equals the receiver's current tagged anchor plus that present value-origin/delete anchor event itself; their vectors remain knowledge, but their authoring coordinates are not recursively chased. Every carrier from another historical anchor is genuine observed history and advances the new prefix. Reset does not install those coordinates in receiver journalCoverage, and source causal vectors never imply or transitively copy exact semantic correspondence.
 
-Freshness is classified independently: fresh-to-stale authors invalidate,
-stale-to-fresh authors validate, and equal freshness is silent. A validation is
-scoped to the surviving generation, names the complete receiver-local
-`invalidateFrontier(K,G)` visible to reset, is allocated after every named
-invalidate, and commits with the coherent final proof state. A later unseen
-invalidate is not named and therefore still defeats it. Stale-to-stale proof
-hardening authors an internal invalidate only when reset creates or deliberately
-reasserts a must-recompute obligation. Any newly written hard-stale value gets a
-fresh generation-scoped invalidate after its add; this prevents an unseen
-validation clearing an old barrier from validating the new value. A newly
-materialized hard-stale node likewise receives add then invalidate. Settled
-hard-stale state is carried without gratuitous barriers.
+For each author A, an event at or below `consumedThrough[A]` was observed and is absorbed; a same-lineage scoped event, delete, or rematerialization above it remains live. Missing A means zero. Event authorship, not the physical carrier or reset-source container, selects the coordinate. Concurrent observations on the same receiver anchor join their vectors componentwise; JournalEntryId order alone proves no observation. Exact semantic correspondences are retained separately as the bounded set of source generation/origin pairs actually compared `isEqual` with that receiver anchor. The causal vector never implies correspondence for arbitrary origins beneath it.
 
-Source validity is transported as an administrative semantic proof, not copied
-by physical identifier or journal revision. Each source edge `D ⇝ N` is lowered
-to `(NodeKey(D),NodeKey(N))`, then raised to the final receiver identifiers.
-Source support proves N valid against source D; reset establishes equal final
-semantic values for D and N under the compatible dependency schema, so the
-relowered edge is sound. Source dependency closure therefore becomes final
-receiver dependency closure, and the source clean-node invariant transfers:
-each copied-fresh node has fresh direct inputs and every required incoming edge.
-Stale nodes retain exactly the source evidence transportable this way. Ordinary
-synchronization remains conservative and requires exact journal-derived
-`ValueRevision`; this reset proof does not weaken it.
+For a key/generation, the **consumed absorption prefix** contains the validated source coverage coordinates, every applicable receiver/source invalidate coordinate that the target must clear, and every coordinate already carried by an applicable receiver validation. For a fresh target, applicable invalidates means both modes. For a soft target, it means hard invalidates; the intended receiver-retained soft assertion remains deliberately above/outside the clearing validation. Receiver coverage growth caused solely by a reset assertion is not recursively added to this prefix. Consequently an unchanged repeated reset tests the same semantic obligation rather than chasing its own clock.
 
-For `A -> D`, if the receiver has fresh `A=a1,D=d` and the source has fresh
-`A=a2,D=d` plus `A ⇝ D`, reset gives A a fresh add generation, leaves D's value
-and `modifiedAt` unchanged, and relowers the source proof so D remains fresh.
-There is no transient invalidate/revalidate cycle because classification compares
-the two committed states around one atomic coherent final construction.
+* Fresh target: retain an existing validation only when that validation is present in the receiver journal that will be installed and its `clearsThrough` componentwise dominates the consumed absorption prefix. Otherwise author one receiver validation with that property. A source-only validation cannot satisfy this test, even when it covers every currently retained frontier member.
+* Hard target: ensure an applicable hard invalidate is uncleared and remove reusable incoming proofs. If reset edited the value, always author a new receiver hard invalidate after the edit; otherwise an already retained applicable hard barrier may represent the decision. Source-only authority is never sufficient retained authority.
+* Soft target: ensure a receiver-retained validation componentwise dominates the hard-mode consumed absorption prefix, then ensure one receiver-retained soft invalidate remains uncovered. If reset edited the value, always author a new receiver soft invalidate after the edit; otherwise an existing qualifying receiver soft assertion may be retained. A source-only soft invalidate cannot satisfy the second condition. A hard→soft stabilization may atomically author the clearing validation and then the soft invalidate.
 
-Supported reset trace: generation G contains B's observed edit `EB=(10,B)` with
-`EB.time=200` and value B. Reset occurs later at synchronized wall time 250 with
-target A.
-Reset authors receiver add `GR=(n,R)` with `n>10` and
-`GR.time=toUnixTimestamp(graph.modifiedAt)=250`. Presence selects GR before value ordering, so EB
-is structurally inapplicable independently of timestamp comparison. A later
-union which
-merely redelivers EB cannot resurrect B. This protects against already-observed
-history; genuinely unseen later normal synchronization remains governed by the
-ordinary synchronization rules.
+Separate old partial validations are not combined; the reset validation is one new assertion justified by its actual joint observation. Unseen/concurrent history above the consumed prefixes remains live. A delayed compacted event within a claimed prefix is cleared. Presence and value reconciliation interpret the per-author lineage vector exactly as above. This rule applies to present and absent targets and when reset preserved an already-present receiver generation; no author or carrier must first receive the receiver anchor.
 
-Same-receiver reset is idempotent once the exact source is already incorporated:
-if `R1=reset(R0,S)`, then, with no intervening relevant change,
-`reset(R1,S)==R1` for every receiver field reset may mutate. The second operation
-authors no entry, changes no semantic state, timestamp, identifier, witness,
-index, watermark, clock, coverage coordinate, or cursor. This follows directly
-from the classifiers and incorporated notification maxima: all values, presence,
-freshness, validity, hard-stale proof obligations, source records,
-high-watermark, and coverage coordinates already equal or are covered by the
-target. Identifier allocation occurs only for absent-to-present transitions;
-the fresh journal generation for a changed value retains the surviving receiver
-identifier.
+Idempotence compares the hypothetical combined frontier, not raw coverage growth. If an existing assertion already absorbs unchanged S0 and graph target matches, reset authors nothing and leaves graph, journal, receiver coverage, local clock, identifiers, and timestamps byte-for-byte unchanged.
 
-Existing-live controlled reset is an external administrative intervention, not
-a continuously running reconciliation protocol. All global convergence and
-quiescent-fixed-point claims assume eventual reset quiescence (finite reset
-churn): in the relevant execution suffix, only finitely many existing-live
-controlled resets occur. Equivalently, after some point no new controlled reset
-is invoked while the system is being allowed to converge. Ordinary
-synchronization may continue to run arbitrarily often after that point.
+**Observed Reset Absorption Theorem.** Let `R1=resetτ(R0,S0)` and `R2=sync(R1,S0)` with unchanged S0. R1 matches S0 SemanticGraph; changed/created values use τ and equal values preserve receiver modifiedAt; reset creates no equal-value generation; R2 has the same SemanticGraph and authors no receiver event, though it may import S0 journal/coverage. Events outside consumed prefixes remain governed by ordinary synchronization.
 
-Safety and liveness are separate. Every supported reset is individually correct
-and atomic, and its completed-reset cursor no-false-negative guarantees hold.
-After the last externally invoked controlled reset, repeated ordinary
-synchronization of unchanged supported state eventually performs no more
-notification replay. Continually alternating resets between hosts with
-different legitimate receiver-owned logical histories may keep causing
-conservative replay and frontier advancement. Such an infinite invocation
-schedule is outside the fixed-point theorem's environmental assumption; its
-states and individual resets remain supported. This assumption does not weaken
-same-receiver repeated-reset silence, ordinary synchronization fixed-point
-behavior after resets stop, or restart, migration, and compaction safety.
+**No Provenance-Only Hardening.** Existing valid proofs transport across equal semantic input/output values under the extensional computor contract, even when revision/provenance IDs differ.
 
-Reset establishes S now; it is not an anti-future-synchronization epoch. Later
-ordinary synchronization may learn history, select provenance metadata and
-timestamps, change freshness, or conservatively stale/delete caches. The operation introduces
-no epoch, reset ID, tombstone vector, history summary, or cursor mechanism.
+A source value with modifiedAt greater than τ contradicts the supported synchronized-clock premise for an already observed value-changing event. Reset rejects/classifies that snapshot as unsupported rather than silently backdating or repairing it.
 
 ### 7.5 Counter continuity during self-restoration
 
@@ -400,7 +303,7 @@ A edits K:
 
 B previously observed 10:
     journal merge retains 11 over covered edit 10
-    B imports the unchanged logical entry and its immutable notification record
+    B imports the unchanged precise journal entry
 ```
 
 The rollback below is invalid because sequence reuse makes the new edit conflict with immutable history:
@@ -538,12 +441,7 @@ Implementations and future changes MUST preserve the following lifecycle propert
 10. Tests and diagnostics SHOULD distinguish incompatibility, failed preconditions, corruption, and unsupported manipulation rather than using those terms interchangeably.
 11. New recovery, import, or restore behavior MUST be implemented as a Volodyslav-controlled lifecycle transition. Documentation alone MUST NOT redefine raw file manipulation as supported.
 12. Storage refactors MAY change physical artifacts without changing this specification, provided these lifecycle preconditions, transitions, and postconditions remain true.
-13. Existing-live reset MUST retain the receiving host's prior logical journal
-    and MUST NOT import source logical entries as graph authority. It may author
-    only the receiver-local logical transition entries required by reset.
-    Independently, it merges source notification records,
-    `journalRecordHighWatermark`, and `cursorCoverageFrontier` as specified by
-    the controlled-reset procedure.
+13. Existing-live reset MUST retain the receiver journal and coverage, MUST NOT import source journal or coverage, and may author only precise receiver-local semantic transitions and causal stabilization assertions required by observed reset.
 14. Absent-state self-restoration MUST restore the same host's current published clock and continue its counters without empty-graph classification.
 15. Raw cross-host copying of a live database remains unsupported; copied writer metadata does not establish ownership.
 

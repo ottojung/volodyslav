@@ -426,9 +426,7 @@ transactions are active. In these contexts, raw full-array writes to `valid[D]` 
 
 After applying precise merge decisions, the merge flow:
 
-1. Derives each source candidate's transient support from its existing `valid`
-   flags and journal-backed input `ValueRevision`s, and retains a proof only
-   when it names the exact final input revisions.
+1. Derives each source candidate's transient support from its existing `valid` flags and retains a proof only when structure matches and every source input/output value is `isEqual` to the final semantic value.
 2. Identifies **direct invalidation roots**: nodes whose decision is `invalidate`, same-coordinate
    freshness staleness, host-only invalidation, or any up-to-date node whose required incoming proof could
    not be transported. All incoming proofs are removed from each direct root.
@@ -531,24 +529,13 @@ Document this explicitly because it prevents a future reader from treating `vali
 **Proof sketch:**
 
 The merge validity algorithm does **not** mint proofs. It derives transient
-support from a source's preexisting flags and journal-backed value revisions,
-then classifies nodes without an exact final proof set as direct roots.
+support from a source's preexisting flags and extensional semantic value equality, then classifies nodes without a transportable proof as direct roots.
 
-A node for which no single validation covers the complete `invalidateFrontier(N,G)`
-is always a direct invalidation root. It receives no incoming validity proofs,
-even when a coherent older fresh source contains them. The journal does not
-distinguish explicit from propagated invalidation causes, so this conservative
-revocation applies to both during synchronization.
+A node with an uncovered member of `hardInvalidateFrontier(N,G)` is a hard invalidation root and receives no incoming proofs. An uncovered soft-only member of `invalidateFrontier(N,G)` instead makes the node stale while coherent proofs may remain cache-revalidatable. Journal invalidate mode distinguishes these cases; an older validation cannot cross either frontier.
 
-1. **Exact revision proof transport**: Candidate N from snapshot S has known
-   support only when `S.valid[D].has(N)` exists for every distinct direct input
-   D. Its support is the ordered tuple of those inputs' journal-derived
-   `ValueRevision`s. The proof survives only when that tuple equals the final
-   direct-input revisions. Identifier reconciliation and the physical carrier
-   do not alter revision identity.
+1. **Extensional proof transport**: Candidate N from S has support only when every distinct direct input D has `S.valid[D].has(N)`, structure/bindings match, every source input is `isEqual` to its final value, and the source output is `isEqual` to the retained final output. Equality permits transport but never mints an absent proof. Provenance/ValueRevision equality is unnecessary under the extensional computor contract.
 
-2. **Structural-edge survival**: A transported proof that passes the exact
-   revision check is preserved only if `D` is still a structural input of `N`
+2. **Structural-edge survival**: A transported proof that passes the extensional semantic check is preserved only if `D` is still a structural input of `N`
    in the merged graph. Removed or relowered inputs do not carry proofs.
 
 3. **Incoming-proof revocation for direct roots**: Every node in the merge plan
@@ -576,7 +563,7 @@ revocation applies to both during synchronization.
 
 7. **No proof minting**: The algorithm never creates a validity edge absent
    from the source snapshot whose coherent candidate supplied the proof. The
-   final edges are exactly those surviving structural and revision checks.
+   final edges are exactly those surviving structural and extensional-value checks.
 
 Final validation (`assertValidFinalMergeState`) checks unknown identifiers,
 compatibility with derived input edges, and required incoming validity for all

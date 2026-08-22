@@ -1,145 +1,37 @@
-# Journal compaction
+# IncrementalGraph journal compaction
 
-## Proof domain
+For supported J, canonical seeds are exactly:
 
-This specification uses the
-[journal supported-state boundary](incremental-graph-journal-types.md#supported-state-boundary),
-which inherits the lifecycle definition in `database-lifecycle.md`. Every
-preservation, dominance, freshness, closure, and merge claim below quantifies
-over supported reachable journal states and deliveries/unions that are
-supported protocol states, not arbitrary sets of fabricated entries.
-Compaction need not preserve discarded evidence solely to diagnose a past or
-future corrupted/unsupported history.
+```text
+N  = greatest E per (author,key,publicAction)             # polling, all actions non-null
+P  = causal presenceHead per key, plus reset-bridge anchor presence
+VH = winning-generation valueHead per author
+CE = exact equal-time candidate value heads
+IF = complete applicable invalidateFrontier for every retained winning-generation value origin
+HF = complete applicable hardInvalidateFrontier for every retained winning-generation value origin
+VV = greatest validation per (author,key,winning generation,retained value origin),
+     considering only targets in retained VH/CE value origins
+RLV = coordinate witnesses for each future-relevant (key,receiverAnchor,observedAuthor)
+      plus the maximal fallback-assertion antichain
+RLC = canonical carrier for each exact (key,retained receiver value anchor,source generation,source origin)
+```
 
-Compaction considers immutable `JournalEntry` contents only. Notification records, indexes, watermarks, and coverage are a separate layer and do not participate in logical selection.
+Start with `N∪P∪VH∪CE∪IF∪HF∪VV∪RLV∪RLC`; take the least closure adding each retained scoped event's exact GenerationJournalEntry, every retained value-specific assertion's exact value-origin event, and every retained generation's mandatory initial-freshness event. `compact(J)` is exactly this closure and discards everything else. `HF` may overlap `IF`: all-mode per-author maxima can be later soft invalidates while older hard per-author maxima remain causal must-recompute authority. Value-specific barriers for losing retained heads remain polling/candidate evidence but do not enter another origin's applicable frontier.
 
-## Canonical algorithm
+Frontiers are retained as whole sets, never reduced member-by-member against different validations. Thus `freshnessEffective` and `hardnessCleared` continue to require one actual validation covering the complete applicable frontier; compaction cannot combine partial validations. A delayed non-frontier invalidate under retained `clearsThrough` remains causally cleared, while an event above the prefix can become a new frontier member. Public maxima preserve action no-false-negatives.
 
-For each key K, compact add/delete coordinates and compute `presenceHead(K)`. If
-it is add G, retain:
-
-1. the maximum entry for every `(author,K,action)` coordinate;
-2. each author's greatest edit scoped to G when different from its coordinate
-   maximum;
-3. each author's greatest invalidate scoped to G, reconstructing `invalidateFrontier(K,G)`, and greatest validate scoped to G when different from coordinate maxima;
-4. every exact invalidate referenced by every retained validation causal context, including coordinate-max validations for losing generations; and
-5. every add referenced by a retained generation-scoped entry.
-
-If presence is absent, generation-authority witnesses are empty. Retained
-generation and causal references must be structurally resolvable and meaningful
-before selection. Implementations MAY also reject non-monotone contexts and
-other corruption defensively when evidence is available, but compaction
-correctness does not require complete diagnosis of unsupported history.
-Reference closure leaves no dangling retained context. Results have canonical
-`JournalEntryId` order.
-
-Let G win before compaction. Every losing add H is below a retained presence
-entry. Union cannot remove that entry; a greater delete makes K absent and a
-greater add establishes new G2 while bringing its own witnesses. Thus H can
-never regain authority in a future union. It is sound to discard H's value and
-freshness authority while retaining coordinate maxima.
-
-The algorithm preserves `presenceHead`; each winning-generation `valueHead(author,K,G)` by retaining add G and each author's greatest G-scoped edit; the exact equal-`time` `candidateEvents` inputs needed by `canonicalEvent(K,G)`; `invalidateFrontier(K,G)`; existence of an individual effective validation; every required generation reference; and every retained causal reference.
-
-For same author/key/generation validations, supported authoring makes later
-contexts componentwise nondecreasing. Thus an older discarded validation is
-dominated by the retained later one: every invalidate it covered remains
-covered. This is a reachable-state invariant guaranteed by a correct durable
-author, not a claim about arbitrary structurally constructible entries.
-
-## ACI closure proof
-
-For supported reachable journal states A and B whose delivery/union is a
-supported protocol state, canonical compaction satisfies:
+**Canonical Compaction/Future-Union Theorem.** On supported reachable histories, full frontier retention preserves freshness and hardness exactly, including histories where different validations cover different hard members. Causal-prefix dominance is stable under delayed events below the prefix, while events above it enter IF/HF. Value/presence heads are monotone. Validation knowledge is componentwise monotone per author/key/generation because every later validation carries forward its greatest prior vector; therefore VV dominates discarded older validations semantically. Therefore:
 
 ```text
 compact(compact(A) union B) = compact(A union B)
 ```
 
-A discarded coordinate loser cannot beat its retained maximum. Winning-generation value heads and equal-time canonical-event inputs remain explicit. A discarded older same-author invalidate is dominated by the retained frontier element. A discarded older same-author validation has a componentwise-dominated context by the supported-authoring monotonicity invariant. Every referenced invalidate and add remains resolvable. A delayed supported invalidate either adds an author coordinate or advances its frontier and defeats any validation that did not name it; this result is identical whether compaction ran before or after delivery. Partial validations never combine. Losing generations cannot regain authority, while a future greater add brings isolated value and freshness witnesses. Delayed delivery of another supported history cannot expose a same-author regression because no supported durable author can create one.
+Merge is ACI and physical survivors are uniquely determined. Generation initial freshness, reset validations, polling maxima, equal-time provenance, and delayed covered invalidates obey the same equality. Reset observation selection runs independently of raw presence order and first evaluates each anchor against its own joined vector. `receiverAnchor` is the tagged identity `null-absence`, `(delete,DeleteJournalEntry.id)`, or `(present,valueOrigin)`; vectors join only within that anchor.
 
-These cases establish closure under every later supported union. Since
-compaction is canonical and idempotent on this domain, closure plus ACI set union
-yields commutative, associative, and idempotent logical merge for supported
-histories. These are not algebraic claims over arbitrary sets of
-`JournalEntry` values. The conclusion does not follow from union alone. Logical equality excludes the complete notification layer.
+A fallback assertion is one immutable lineage carrier. Same-author assertions for the same receiver anchor use writer-local sequence succession: the later assertion canonically replaces the earlier one, and its vector must componentwise carry the earlier absorption vector even though it deliberately omits the earlier carrier coordinate. Across authors or anchors, assertion N dominates O only when N's own `consumedThrough` covers both O's anchor-presence coordinate (when non-null) and O's exact carrier coordinate. The joined per-anchor vector is absorption state, not proof that any one concurrent assertion observed another anchor.
 
-## Notification compaction
+The **future-relevant assertion set** is the maximal antichain under those rules, computed across every retained anchor, not merely anchors applicable to the current raw head. An inapplicable assertion such as delete-anchor O remains maximal when a post-cutoff A50 merely displaced it; it must survive because a later consumed B90 can make O applicable again. A dominated assertion cannot regain distinct fallback authority. For every anchor represented in the maximal antichain and every observed author, RLV retains the canonical greatest-coordinate carrier plus the maximal assertions themselves. Incomparable assertions use deterministic full-ID/tagged-anchor conflict order without pretending that order is causal.
 
-Notification compaction is separate:
+RLC uses a separate relevance predicate: when causal `presenceHead` is generation G, every exact carrier whose receiver value origin is a retained `valueHead(J,K,G,A)` is retained, even if that carrier is not currently RLV-applicable. It retains each exact `(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)` relation with deterministic full-ID tie-breaking. VV is independently restricted to those same retained value origins. Thus two receiver origins certified against one source pair remain distinct, ordinary edit count does not expand VV, exact equality evidence is not widened to a prefix, and delete/null/present anchors preserve future-union absorption.
 
-```text
-compactNotifications(N) =
-    for each semantic NodeKey, retain its greatest-index JournalRecord
-```
-
-It is pure deletion: `compactNotifications(N) subset-of N`. It creates or
-changes no record, index, logical entry, cursor, allocator, high-watermark,
-coverage coordinate. It may run independently,
-during synchronization or maintenance, repeatedly, or never. Uncompacted
-records may grow with operation count.
-
-For each deleted same-key R the retained W satisfies `W.index > R.index` and
-projects all five actions. Thus max-per-key compaction is canonical and:
-
-```text
-compactN(compactN(A) union B) == compactN(A union B)
-```
-
-Union plus compaction is commutative, associative, and idempotent. Resent old
-occurrences cannot resurrect in canonical compact state.
-
-## Deletion transparency and notification safety
-
-Let `results(N,C,F)` be the ordered query sequence. For every valid cursor and
-filter, if `N' = compactNotifications(N)`:
-
-```text
-results(N', C, F) =
-    the subsequence of results(N, C, F)
-    whose underlying JournalRecord survives in N'
-```
-
-No survivor changes position or crosses a cursor cut; no cursor is rebased; a
-cursor naming a deleted record remains valid. Compaction may remove future work
-but never claims consumer progress.
-
-If deleted R covered an action obligation, retained same-key W has `C < R < W`
-for every cursor not past R and expands to all actions. Notification compaction
-therefore introduces no action-specific false negative. W's witness time may
-replace the precise transition time because this API is conservative.
-
-## Combined compacted storage theorem
-
-For the combined durable journal state define:
-
-```text
-n = number of current or historic semantic keys represented by either the
-    compacted logical journal or compacted notification journal
-r = number of durable fingerprints represented by compacted logical entries,
-    retained causal references, or cursorCoverageFrontier
-```
-
-The existing fixed C, K, and d assumptions and bounded fingerprint contract
-remain as defined in the types specification. Broadening n and r cannot weaken
-the logical bound proved below: compact logical history is still `O(nr²)`. Fully compacted notifications retain at most one record per represented key.
-Each record's semantic address is bounded under fixed finite schema arity,
-bounded schema node names, fixed C for every binding `ConstValue`, and fixed K
-for its redundant identity-preserving `NodeKey`; therefore notifications are
-`O(n)`. Coverage metadata retains at most one bounded coordinate per represented fingerprint, `O(r)`; allocators and the high-watermark are constant-size. Thus, for `n > 0` and `r >= 1`, total compacted
-journal and cursor metadata remain `O(nr²)`. Application-owned persisted tokens
-are not journal storage. No operation-count-independent bound applies to either
-uncompacted history.
-
-## Optional timing and executable evidence
-
-Logical and notification compaction may run after any transaction, during
-maintenance or synchronization, repeatedly, or be skipped. Correctness is
-timing-independent and a crash before optional compaction leaves valid
-uncompacted state. Notification compaction performs no covering append.
-
-The executable model exhausts the retained logical supported-state universe and
-the bounded notification semilattice, and additionally exhausts bounded words of
-notification transitions while carrying action-specific obligations. These
-finite checks support, but do not replace, the analytical future-union, storage,
-and cursor proofs.
+For n semantic keys, r durable authors, and c distinct full `(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)` semantic reset correspondences that must remain recognizable to lagging replicas, polling/value evidence is O(nr); frontiers, lineage coordinate witnesses, and validation vectors are O(nr²). Same-author/same-anchor replacement leaves one assertion regardless of reset count. Cross-author or cross-anchor maximal assertions are bounded by the r durable writers on the supported reachable-state domain, yielding O(nr) future-relevant anchors and O(nr²) anchor/author coordinates. Multiple distinct exact correspondences and their O(r) vectors are the c relations counted by O(cr); repeated carriers for one exact relation collapse by same-anchor succession and RLC dominance. Coverage is O(r). Total is `O(nr²+cr+r)`, reducing to O(nr²+cr) for n>0,r>=1. The cr term is necessary: repeated equal reset against distinct rematerialization origins creates Ω(c) exact membership facts, and a source containing r durable authors makes each retained carrier Θ(r). A causal prefix cannot certify unrelated origins, and discarding exact pairs breaks lagging certified peers. n=0 with no represented historical key or correspondence has empty journal and O(r) coverage.
