@@ -355,17 +355,22 @@ and the filters themselves cannot be mutated.
 
 ## Cursor identity
 
-For polling only, `filterIdentity(F)` is a canonical opaque string derived from
-F's immutable structural form. It is not a public filter serialization or a way
-to construct a filter. The derivation uses distinct tags for wildcard, ground,
-and union; ground encodes `head` plus the production canonical ConstValue bytes
-for each argument (with a distinct wildcard tag). Those bytes accept exactly the
-recursive finite-number/string/boolean/array/ordered-record ConstValue domain,
-normalize `-0` with `+0` and equivalent JavaScript Number representations, and
-preserve array position and record key order exactly as `isEqual` does. `null`,
-`NaN`, infinities, and non-string record keys are rejected before identity
-construction. Union recursively sorts its two child identity byte strings before
-encoding. The identity is the complete canonical bytes encoded with canonical base64url; it is not a fixed-size digest and is injective over the supported filter domain modulo production `isEqual`.
+For polling only, `filterIdentity(F)` is `JSON.stringify` of this normalized
+identity value:
+
+* wildcard: `["wildcard"]`;
+* ground: `["ground", head, args]`, where every argument is either its actual
+  validated `ConstValue` or the identity-only marker `["wildcard"]`;
+* union: `["union", smallerChildIdentity, largerChildIdentity]`, where each
+  child identity is its recursively computed canonical identity string and the
+  strings are lexicographically sorted because union equality is commutative.
+
+This uses JavaScript JSON value serialization directly: finite numbers only,
+`-0` normalized to `0`, arrays positional, and record keys in ECMAScript
+`Object.keys` order. `null`, non-finite numbers, and invalid nested ConstValues
+are rejected. The identity remains opaque metadata, not a public filter
+serialization or filter reconstruction API, and is injective over the supported
+filter domain modulo production `isEqual`.
 The token decoder treats the identity as opaque and compares it with the identity
 computed from the call's live `to` filter. Different identities are rejected.
 

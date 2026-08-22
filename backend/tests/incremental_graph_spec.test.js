@@ -310,6 +310,8 @@ function deepClone(x) {
 
 const testCapabilities = getMockedRootCapabilities();
 
+class UnsupportedComputedValue {}
+
 /** Helper to build a graph and assert it "looks like" a IncrementalGraph. */
 async function buildGraph(db, nodeDefs) {
     const g = await createIncrementalGraph(testCapabilities, db, nodeDefs);
@@ -350,6 +352,45 @@ describe("IncrementalGraph Conformance: module surface", () => {
         expect(isUnchanged(0)).toBe(false);
         expect(isUnchanged("Unchanged")).toBe(false);
         expect(isUnchanged({})).toBe(false);
+    });
+});
+
+describe("ComputedValue write boundary", () => {
+    test.each([
+        { nested: NaN },
+        { nested: Infinity },
+        { nested: -Infinity },
+        { nested: { missing: undefined } },
+        BigInt(1),
+        new UnsupportedComputedValue(),
+    ])("pull rejects non-persistent computor result %#", async (invalidValue) => {
+        const graph = await buildGraph(new InMemoryDatabase(), [{
+            output: "invalid_value",
+            inputs: [],
+            computor: async () => invalidValue,
+            isDeterministic: true,
+            hasSideEffects: false,
+        }]);
+
+        await expect(graph.pull("invalid_value")).rejects.toMatchObject({
+            name: "InvalidComputorReturnValueError",
+        });
+    });
+
+    test("pull rejects a sparse array", async () => {
+        const sparse = [];
+        sparse.length = 1;
+        const graph = await buildGraph(new InMemoryDatabase(), [{
+            output: "sparse_value",
+            inputs: [],
+            computor: async () => sparse,
+            isDeterministic: true,
+            hasSideEffects: false,
+        }]);
+
+        await expect(graph.pull("sparse_value")).rejects.toMatchObject({
+            name: "InvalidComputorReturnValueError",
+        });
     });
 });
 

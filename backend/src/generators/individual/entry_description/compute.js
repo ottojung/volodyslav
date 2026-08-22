@@ -1,7 +1,7 @@
 /**
  * Computes the description for a specific event.
  *
- * Extracts the typed description text from the event, returning undefined
+ * Extracts the typed description text from the event, returning null
  * when the event has no meaningful description text.
  */
 
@@ -11,13 +11,13 @@ const { getType, getDescription } = require("../../../event");
 /** @typedef {import('../../incremental_graph/database/types').EntryDescriptionEntry} EntryDescriptionEntry */
 
 /**
- * Returns the text if it is non-empty, otherwise undefined.
+ * Returns the text if it is non-empty, otherwise null.
  *
  * @param {string | undefined | null} text
- * @returns {string | undefined}
+ * @returns {string | null}
  */
 function toDefinedText(text) {
-    return text && text.trim() !== "" ? text : undefined;
+    return text && text.trim() !== "" ? text : null;
 }
 
 /**
@@ -28,7 +28,7 @@ function toDefinedText(text) {
  */
 function computeEntryDescription(event) {
     if (getType(event) !== "diary") {
-        return { type: "entry_description", description: undefined };
+        return { type: "entry_description", description: null };
     }
 
     const description = toDefinedText(getDescription(event));

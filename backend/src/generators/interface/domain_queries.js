@@ -96,7 +96,7 @@ async function internalGetEventBasicContext(interfaceInstance, event) {
         return [event];
     }
 
-    return contextEntry.context;
+    return contextEntry.context.map(deserialize);
 }
 
 /**
@@ -366,7 +366,7 @@ async function internalEntryDiaryContent(interfaceInstance, eventId) {
     if (descriptionResult.type !== "entry_description") {
         throw new Error(`Expected entry_description entry but got type: ${descriptionResult.type}`);
     }
-    const typedText = descriptionResult.description;
+    const typedText = descriptionResult.description ?? undefined;
 
     // Pull materialized transcriptions, combining multiple into one string.
     const audioListResult = await graph.pull("event_audios_list", [eventId]);

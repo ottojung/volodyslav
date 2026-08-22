@@ -7,3 +7,6 @@
 export type ConstNumber = number;
 
 export type ConstValue = ConstNumber | string | boolean | Array<ConstValue> | { [key: string]: ConstValue };
+
+/** A recursively JSON-round-trippable semantic graph value. */
+export type ComputedValue = null | ConstNumber | string | boolean | Array<ComputedValue> | { [key: string]: ComputedValue };

@@ -292,7 +292,7 @@ class InvalidComputorReturnValue extends Error {
     constructor(nodeIdentity, value) {
         super(
             `Computor for node '${nodeIdentity}' returned an invalid value: ${value}. ` +
-                `Computors must return a valid ComputedValue or Unchanged, not null or undefined.`
+                `Computors must return a recursively JSON-round-trippable ComputedValue or Unchanged.`
         );
         this.name = "InvalidComputorReturnValueError";
         this.nodeKey = nodeIdentity;

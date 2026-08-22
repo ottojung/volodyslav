@@ -23,6 +23,10 @@ There is no leader, convergence host, all-to-all requirement, or computor
 execution. Normal `pull()` and `invalidate()` remain flag-based. The journal is
 history used to interpret candidates; the graph remains authoritative for
 current values, materialization, freshness, timestamps, and validity.
+Replica source-state validation proves that every cached value is a valid
+`ComputedValue` before synchronization selects or transfers it. Transfer copies
+that already-validated semantic value and does not introduce another value
+representation or coercion step.
 
 Graph materializations contain only values, freshness, real wall-clock
 `timestamps {createdAt,modifiedAt}`, `NodeIdentifier`/identifier lookup, and

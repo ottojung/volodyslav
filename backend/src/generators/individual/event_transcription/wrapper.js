@@ -25,12 +25,17 @@ const makeComputor = (capabilities) => async (inputs, _oldValue, bindings) => {
     if (typeof audioPath !== "string") {
         throw new Error("Expected audio path binding at position 1 for event_transcription(e, a) computor, got " + JSON.stringify(audioPath));
     }
-    return computeEventTranscription(
+    const result = await computeEventTranscription(
         capabilities,
         deserialize(eventEntry.value),
         transcriptionEntry.value,
         audioPath,
     );
+    return {
+        type: result.type,
+        event: eventEntry.value,
+        transcription: result.transcription,
+    };
 };
 
 module.exports = {

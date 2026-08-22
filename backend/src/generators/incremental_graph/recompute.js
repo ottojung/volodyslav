@@ -39,6 +39,7 @@ const { lookupNodeIdentifier } = require("./graph_state");
 const { normalizeInputEdges } = require("./database");
 const { propagatePotentiallyOutdated } = require("./propagation");
 const { removeIncomingValidity } = require("./validity");
+const { assertComputedValue } = require("./computed_value");
 
 /**
  * Return true when every dependency in inputEdges has a validity flag for N.
@@ -196,10 +197,10 @@ async function internalMaybeRecalculate(
         if (oldValue === undefined) {
             throw makeInvalidUnchangedError(nodeDefinition.outputKey);
         }
-    } else if (computedValue === null || computedValue === undefined) {
-        throw makeInvalidComputorReturnValueError(
-            nodeDefinition.outputKey,
-            computedValue
+    } else {
+        assertComputedValue(
+            computedValue,
+            makeInvalidComputorReturnValueError(nodeDefinition.outputKey, computedValue)
         );
     }
 

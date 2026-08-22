@@ -11,33 +11,25 @@ For one snapshot, choose the greatest event per `(author,NodeKey,publicAction)`,
 There is exactly one v1 string for a token value:
 
 ```text
-tokenString = BASE64URL-NOPAD(UTF-8(canonicalTokenJSON))
+tokenString = JSON.stringify(canonicalTokenObject)
 ```
 
-`BASE64URL-NOPAD` uses the RFC 4648 URL-safe alphabet `A-Z a-z 0-9 - _`
-and contains no `=` padding. UTF-8 decoding MUST be strict. After decoding and
-validation, re-encoding MUST reproduce the input string byte-for-byte; padded,
-non-alphabet, non-UTF-8, or otherwise noncanonical input throws
-`InvalidPossibleChangeCursorError`.
-
-`canonicalTokenJSON` is an object with exactly these members in this order:
+`canonicalTokenObject` is an object with exactly these members in this order:
 `change`, `cursor`, `filter`, `v`. It has no insignificant whitespace and is
-serialized with JavaScript `JSON.stringify` escaping: property names and
-strings use JSON double-quote/backslash/control-character escapes, other
-Unicode scalar values are emitted as their UTF-8 characters, and lone UTF-16
-surrogates use lowercase `\u` hexadecimal escapes. The version is exactly the
-JSON integer `1`; unknown fields and every other version or spelling are
-invalid.
+serialized by JavaScript `JSON.stringify`. The version is exactly the JSON
+integer `1`; unknown fields and every other version or spelling are invalid.
+Decoding performs `JSON.parse`, validates the exact recursive shape,
+reconstructs the canonical object, and requires
+`JSON.stringify(reconstructed) === tokenString`. Failure at any step throws
+`InvalidPossibleChangeCursorError`.
 
 `change` has exactly these members in this order: `nodeName`, `bindings`,
 `action`, `time`.
 
 * `nodeName` is a JSON string satisfying the normative `NodeName`/`ident`
   grammar.
-* `bindings` is a JSON array with one string per positional binding. Each
-  string is `BASE64URL-NOPAD(canonicalConstBytes(value))`, using the exact
-  production ConstValue codec specified below. This keeps ordered record
-  semantics without relying on JSON object member reordering.
+* `bindings` is the positional JSON array of actual validated `ConstValue`
+  values. There is no nested encoding.
 * `action` is exactly one of `"add"`, `"edit"`, `"delete"`, `"invalidate"`,
   or `"validate"`.
 * `time` is a JSON integer in the `UnixTimestamp` interval
@@ -46,47 +38,25 @@ invalid.
   canonical (zero is `0`, otherwise optional `-` followed by a nonzero digit
   and digits).
 
-`canonicalConstBytes` is the same injective codec used by `filterIdentity`:
-
-```text
-value  = "b0" | "b1"                         # false / true
-       | "n" + finiteNumberHex
-       | "s" + byteLength ":" UTF8(string)
-       | "a" + *(byteLength ":" value)
-       | "o" + *(byteLength ":" stringValue
-                  byteLength ":" value)
-```
-
-Lengths are canonical unsigned decimal ASCII (zero is `0`; no leading zeros)
-and count bytes. `finiteNumberHex` is the lowercase ECMAScript binary64 value
-written as Python `float.hex()`: normal values use
-`[-]0x1.<13 lowercase hex digits>p[+-]digits`, subnormal values use
-`[-]0x0.<13 lowercase hex digits>p-1022`, and zero is uniquely `0x0.0p+0`.
-The exponent has no leading zeros. Implementations may compute these bytes by
-any equivalent binary64 algorithm. Integer and floating source values denoting the
-same JavaScript Number therefore encode identically, and `-0` canonicalizes to
-`+0`. Arrays preserve position. Records emit key/value pairs in insertion order,
-so swapping keys changes the bytes as required by `isEqual`. Strings are strict
-UTF-8. The decoder must consume exactly one complete value and reject malformed
-lengths/tags, duplicate record keys, non-string keys, `null`, non-finite
-numbers, and trailing bytes. This is precisely the recursive finite-number,
-string, boolean, array, ordered-record `ConstValue` domain; it is not a second
-value domain.
+Bindings use the one value serialization rule: validate as `ConstValue`, then
+serialize with `JSON.stringify`. This supplies JavaScript Number formatting,
+normalizes `-0` to `0`, preserves array positions, escapes JavaScript strings,
+and enumerates record properties in ECMAScript `Object.keys` order. Thus
+integer-index-like keys are numeric-first and other string-key order remains
+semantic exactly as in DEF-EQUAL-01.
 
 `cursor` is a JSON array of entries `[fingerprint, coordinate]`. `fingerprint`
 is exactly `/^[a-z]{16}$/`. `coordinate` is a JSON **string** containing a
-canonical unsigned decimal integer in `[0,18446744073709551615]` (zero is
-`"0"`; otherwise it begins with `1`–`9`). Decimal strings preserve every uint64
-value losslessly in JavaScript. Entries are strictly ascending by fingerprint;
-duplicates and unsorted entries are invalid. Zero entries are retained rather
-than omitted; for a given vector, its canonical token includes exactly the
-entries present in that vector, while an absent map coordinate still means
-zero.
+canonical unsigned decimal integer in `[1,18446744073709551615]`. Decimal
+strings preserve every uint64 value losslessly in JavaScript. Entries are
+strictly ascending by fingerprint; duplicates, unsorted entries, and explicit
+zero coordinates are invalid. Missing coordinates mean zero, the encoder omits
+zero coordinates, and the baseline/all-zero vector is `[]`.
 
-`filter` is the already-canonical opaque `filterIdentity` string. The decoder
-validates that it is the canonical unpadded base64url representation of one
-complete filter byte value from `incremental-graph-node-filter.md`; it never
-reconstructs a public filter from it. Polling separately recomputes
+`filter` is the already-canonical opaque JSON `filterIdentity` string. The
+decoder validates only the normalized identity JSON grammar owned by
+`incremental-graph-node-filter.md`; it never reconstructs a public filter from
+it. Polling separately recomputes
 `filterIdentity(to)` and rejects a mismatch before scanning.
 
 The fixture `scripts/fixtures/possible-change-token-v1.json` is normative

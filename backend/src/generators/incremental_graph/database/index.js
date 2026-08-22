@@ -82,6 +82,7 @@ const {
     unifyStores,
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
+    isUnificationReadError,
 } = require('./unification');
 
 const {
@@ -193,6 +194,7 @@ module.exports = {
     unifyStores,
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
+    isUnificationReadError,
     GRAPH_SCHEME_KEY,
     GraphSchemeError,
     MissingGraphSchemeError,

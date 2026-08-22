@@ -22,12 +22,13 @@ const {
     GraphSchemeError,
     MissingGraphSchemeError,
 } = require("./database");
-const { makeInvalidMigrationDecisionError } = require("./migration_errors");
+const { makeInvalidMigrationDecisionError, isInvalidMigrationDecision } = require("./migration_errors");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { buildDecisionsMap, buildDesiredValid, loadMaterializedNodes } = require("./migration_validity");
 const { checkpointMigration } = require("./database");
-const { unifyStores, makeDbToDbAdapter } = require("./database");
+const { unifyStores, makeDbToDbAdapter, isUnificationReadError } = require("./database");
+const { assertComputedValue, isEqual } = require("./computed_value");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
@@ -124,8 +125,15 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
             }
             try {
                 const value = await valuePromise;
-                if (value === null || value === undefined) {
-                    throw makeInvalidMigrationDecisionError(`Migration value producer for ${keyString} did not return a computed value`);
+                assertComputedValue(
+                    value,
+                    makeInvalidMigrationDecisionError(`Migration value producer for ${keyString} did not return a valid ComputedValue`)
+                );
+                if (decision.kind === "override") {
+                    const previousValue = await prevStorage.values.get(key);
+                    if (previousValue === undefined || !isEqual(previousValue, value)) {
+                        throw makeInvalidMigrationDecisionError(`Migration override for ${keyString} changed its semantic value`);
+                    }
                 }
                 return value;
             } finally {
@@ -435,7 +443,14 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Only changed keys are written; stale keys are deleted first.
             // The new version is included in the lazy source's global sublevel,
             // so it is written atomically with the data — no separate version write.
-            await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
+            try {
+                await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
+            } catch (error) {
+                if (isUnificationReadError(error) && isInvalidMigrationDecision(error.cause)) {
+                    throw error.cause;
+                }
+                throw error;
+            }
             // One final fsync: all unification writes use sync:false for performance;
             // _rawSync() issues an empty batch with sync:true to flush the WAL
             // without rewriting any keys.

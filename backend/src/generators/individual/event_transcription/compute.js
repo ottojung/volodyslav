@@ -1,9 +1,15 @@
 const path = require("path");
 const { fromISOString } = require("../../../datetime");
 
-/** @typedef {import('../../incremental_graph/database/types').EventTranscriptionEntry} EventTranscriptionEntry */
 /** @typedef {import('../../../event').Event} Event */
 /** @typedef {import('../../incremental_graph/database/types').TranscriptionResult} TranscriptionResult */
+
+/**
+ * @typedef {object} ComputedEventTranscription
+ * @property {'event_transcription'} type
+ * @property {Event} event
+ * @property {TranscriptionResult} transcription
+ */
 
 class AudioNotAssociatedWithEventError extends Error {
     /**
@@ -190,7 +196,7 @@ function getEventAssetDirectorySuffix(event) {
  * @param {Event} event
  * @param {TranscriptionResult} transcription
  * @param {string} audioPath - Audio path relative to the assets root
- * @returns {EventTranscriptionEntry}
+ * @returns {ComputedEventTranscription}
  */
 function computeEventTranscription(capabilities, event, transcription, audioPath) {
     // Normalize both sides to forward-slash separators so that the check is

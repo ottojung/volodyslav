@@ -12,20 +12,20 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-02 (SchemaPattern):** An expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used only in schema definitions to denote families of nodes and for variable mapping.
 
-**TERM-03 (SimpleValue):** A value type defined recursively as: `number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them (see DEF-EQUAL-01). Excludes `undefined`, `null`, functions, and symbols.
+**TERM-03 (SimpleValue):** A value type defined recursively as: `null | number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them (see DEF-EQUAL-01). Excludes `undefined`, functions, symbols, and BigInt.
 
 **TERM-04 (ConstValue):** A persistence-safe subtype of `SimpleValue`. Its
 numeric leaves are finite JavaScript Numbers. All string, boolean, array, and
 record alternatives recursively contain only `ConstValue` values.
 
-**TERM-05 (ComputedValue):** The same persistence-safe recursive value domain as
-`ConstValue`: a finite JavaScript Number, string, boolean, array of
-`ComputedValue`, or insertion-ordered string-keyed record of `ComputedValue`.
-It excludes `NaN`, positive and negative infinity, `null`, `undefined`,
-functions, symbols, and BigInt at every depth. Thus every stored node value can
-round-trip through the JSON persistence required by REQ-DB-01. This restriction
-does not change DEF-EQUAL-01: record-key order remains semantic and `-0` equals
-`+0`.
+**TERM-05 (ComputedValue):** The recursively JSON-round-trippable semantic value
+domain: `null`, boolean, finite JavaScript Number, string, dense array of
+`ComputedValue`, or plain string-keyed record of `ComputedValue`. It excludes
+`undefined`, `NaN`, positive and negative infinity, functions, symbols, BigInt,
+sparse arrays, cycles, non-plain objects whose JSON representation changes
+semantic type, and every nested occurrence of those values. `ConstValue`
+remains the narrower binding domain and excludes `null`. Every `ComputedValue`
+round-trips through `JSON.parse(JSON.stringify(value))` under REQ-DB-01.
 
 **TERM-06 (BindingEnvironment):** A positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. Bindings are matched to argument positions by position, not by name.
 
@@ -216,6 +216,8 @@ For schema parsing and pattern matching, expressions are normalized using these 
 
 ```typescript
 function isEqual(a: SimpleValue, b: SimpleValue): boolean {
+  if (a === null || b === null) return a === b;
+
   if (typeof a === 'number' && typeof b === 'number') {
     if (isNaN(a) && isNaN(b)) {
       return true; // NaN is equal to NaN

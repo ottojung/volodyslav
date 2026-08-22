@@ -15,6 +15,7 @@ const {
     isUndecidedNodes,
     isDecisionConflict,
 } = require("../src/generators/incremental_graph");
+const { isInvalidMigrationDecision } = require("../src/generators/incremental_graph/migration_errors");
 const { toJsonKey } = require("./test_json_key_helper");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubDatetime, stubEnvironment } = require("./stubs");
@@ -2241,6 +2242,75 @@ describe("infrastructure failures", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("retry after failure", () => {
+    test.each([
+        ["equal primitive", 1, 1],
+        ["nested equal", { nested: [1, { ok: true }] }, { nested: [1, { ok: true }] }],
+        ["ECMAScript numeric equality", 1, 1.0],
+        ["integer-index enumeration equality", { "2": "two", "1": "one" }, { "1": "one", "2": "two" }],
+    ])("semantic-preserving override accepts %s", async (_name, previousValue, overrideValue) => {
+        const capabilities = await getTestCapabilities();
+        const { rootDatabase, nodeDefs, nodeKey, xStorage, yStorage } = await makeSimpleMigrationSetup();
+        await xStorage.values.put(nodeKey, previousValue);
+
+        await runMigration(capabilities, rootDatabase, nodeDefs, async (storage) => {
+            await storage.override(nodeKey, async () => overrideValue);
+        });
+
+        expect(await yStorage.values.get(nodeKey)).toEqual(overrideValue);
+    });
+
+    test.each([
+        ["changed primitive", 1, 2],
+        ["changed nested value", { nested: { value: 1 } }, { nested: { value: 2 } }],
+        ["changed non-index key order", { a: 1, b: 2 }, { b: 2, a: 1 }],
+    ])("semantic-changing override rejects %s without activating target", async (_name, previousValue, overrideValue) => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const nodeKey = toJsonKey("A");
+        const nodeDefs = [{ output: "A", inputs: [], computor: async () => previousValue, isDeterministic: true, hasSideEffects: false }];
+        await seedNode(xStorage, nodeKey);
+        await xStorage.values.put(nodeKey, previousValue);
+        await seedGraphScheme(xStorage, nodeDefs);
+        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
+        const before = await captureStorageSnapshot(xStorage);
+
+        const error = await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+            await storage.override(nodeKey, async () => overrideValue);
+        }).catch(reason => reason);
+
+        expect(error).toMatchObject({ name: "InvalidMigrationDecisionError" });
+        expect(isInvalidMigrationDecision(error)).toBe(true);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+        expect(await captureStorageSnapshot(xStorage)).toEqual(before);
+    });
+
+    test("migration create rejects an invalid ComputedValue", async () => {
+        const capabilities = await getTestCapabilities();
+        const xStorage = makeSchemaStorage();
+        const yStorage = makeSchemaStorage();
+        const nodeKeyA = toJsonKey("A");
+        const nodeKeyB = toJsonKey("B");
+        const nodeDefs = ["A", "B"].map(output => ({
+            output,
+            inputs: [],
+            computor: async () => ({ output }),
+            isDeterministic: true,
+            hasSideEffects: false,
+        }));
+        await seedNode(xStorage, nodeKeyA);
+        await seedGraphScheme(xStorage, [nodeDefs[0]]);
+        const mock = makeRootDatabaseMock({ prevVersion: "1", currentVersion: "2", xStorage, yStorage });
+
+        const error = await runMigration(capabilities, mock.rootDatabase, nodeDefs, async (storage) => {
+            await storage.keep(nodeKeyA);
+            await storage.create(nodeKeyB, async () => ({ nested: undefined }), "up-to-date");
+        }).catch(reason => reason);
+
+        expect(isInvalidMigrationDecision(error)).toBe(true);
+        expect(mock.setCurrentReplicaPointerCalled).toBe(false);
+    });
+
     test("failed migration followed by correct migration: second call applies migration and calls setCurrentReplicaPointer", async () => {
         const capabilities = await getTestCapabilities();
         const xStorage = makeSchemaStorage();
