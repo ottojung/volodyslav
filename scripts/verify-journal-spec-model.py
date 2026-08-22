@@ -99,6 +99,12 @@ def valid(es):
    if (v1.author,v1.key,v1.generation)==(v2.author,v2.key,v2.generation) and v1.sequence<v2.sequence:
     later=dict(v2.clears)
     if any(later.get(a,0)<q for a,q in v1.clears):return False
+ lineages=[e for e in es if e.lineage]
+ for e1 in lineages:
+  for e2 in lineages:
+   if e1.author==e2.author and e1.key==e2.key and lineage_anchor(e1)==lineage_anchor(e2)and e1.sequence<e2.sequence:
+    later=dict(e2.lineage[0])
+    if any(later.get(a,0)<q for a,q in e1.lineage[0]):return False
  return True
 def raw_ph(es,k):
  x=[e for e in es if e.key==k and e.kind in ("add","delete")];return max(x,key=lambda e:e.id) if x else None
@@ -139,8 +145,9 @@ def applicable_lineage_groups(es,k):
 def applicable_lineages(es,k):return tuple(e for _,members,_,_ in applicable_lineage_groups(es,k)for e in members)
 def assertion_dominates(newer,older,groups):
  """A reset assertion dominates only the exact assertion it observed."""
- ng=next(g for g in groups if newer in g[1]);og=next(g for g in groups if older in g[1])
- _,_,cut,_=ng;_,_,_,fallback=og
+ og=next(g for g in groups if older in g[1]);_,_,_,fallback=og
+ if newer.author==older.author and lineage_anchor(newer)==lineage_anchor(older):return newer.sequence>older.sequence
+ cut=dict(newer.lineage[0])
  return (not fallback or fallback.sequence<=cut.get(fallback.author,0))and older.sequence<=cut.get(older.author,0)
 def maximal_assertions(groups):
  assertions=[e for g in groups for e in g[1]]
@@ -1322,5 +1329,31 @@ for m in range(1,41):
  assert journal_projection(editChurn)==journal_projection(editCompact)and query(editChurn)==query(editCompact)
  FUTUREI=ev(1000,B,(K,N,BS),1000,"invalidate",VG.id,"hard",target=latest.id)
  assert compact(editCompact|{FUTUREI})==compact(editChurn|{FUTUREI})
+
+# Same-author/same-anchor reset succession is bounded without putting prior
+# carrier coordinates into consumedThrough. Advancing source coverage replaces
+# the prior assertion while preserving the greatest absorption coordinate.
+CHURNDELETE=dele(1,R,(KD,ND,BD),1);absentChurn=Rep(R,1,((R,1),),frozenset((CHURNDELETE,)),())
+for m in range(1,41):
+ cutoff=10*m;coverageSource=Rep(S,cutoff,((S,cutoff),),frozenset(),())
+ absentChurn,authored=reset(absentChurn,coverageSource,1000+m);assert len(authored)==1 and authored[0].kind=="observe"
+ absentChurn=replace(absentChurn,journal=compact(absentChurn.journal));carriers=[e for e in absentChurn.journal if e.lineage and lineage_anchor(e)==("delete",CHURNDELETE.id)]
+ assert len(carriers)==1 and dict(carriers[0].lineage[0])[S]==cutoff
+ physical=len(absentChurn.journal)+sum(len(e.lineage[0])for e in absentChurn.journal if e.lineage);assert physical<=8
+delayed=gen(cutoff-1,S,(KD,ND,BD),2000,"old",(cutoff,S));delayedV=ev(cutoff,S,(KD,ND,BD),2001,"validate",delayed.id)
+future=gen(cutoff+1,S,(KD,ND,BD),2002,"new",(cutoff+2,S));futureV=ev(cutoff+2,S,(KD,ND,BD),2003,"validate",future.id)
+assert ph(absentChurn.journal|{delayed,delayedV},KD)==CHURNDELETE and ph(absentChurn.journal|{future,futureV},KD)==future
+
+# The same fixed-origin/fixed-exact-pair churn keeps c=1 and one lineage carrier.
+PCRG=gen(1,R,(K,N,BS),1,"X",(2,R));PCRV=ev(2,R,(K,N,BS),2,"validate",PCRG.id);presentChurn=Rep(R,2,((R,2),),frozenset((PCRG,PCRV)),((K,M("pcr",PCRG.id,"X",PCRG.id,1,"fresh",True)),))
+PCSG=gen(1,S,(K,N,BS),1,"X",(2,S));PCSV=ev(2,S,(K,N,BS),2,"validate",PCSG.id);sourceNode=M("pcs",PCSG.id,"X",PCSG.id,1,"fresh",True)
+for m in range(1,41):
+ cutoff=10*m;presentSource=Rep(S,cutoff,((S,cutoff),),frozenset((PCSG,PCSV)),((K,sourceNode),))
+ presentChurn,authored=reset(presentChurn,presentSource,3000+m);assert len(authored)==1
+ presentChurn=replace(presentChurn,journal=compact(presentChurn.journal));carriers=[e for e in presentChurn.journal if e.lineage and e.target==PCRG.id and e.lineage[1:]==(PCSG.id,PCSG.id)]
+ relations={(e.target,*e.lineage[1:])for e in presentChurn.journal if e.lineage and e.lineage[1:]!=(None,None)}
+ assert len(carriers)==1 and len(relations)==1 and dict(carriers[0].lineage[0])[S]==cutoff
+ physical=len(presentChurn.journal)+sum(len(e.lineage[0])for e in presentChurn.journal if e.lineage);assert physical<=10
+assert reset_lineage_covers(presentChurn.journal,node(presentChurn,K),sourceNode)
 
 print("journal semantic verifier passed: convergence, causal validation, observed reset absorption/idempotence, extensional proof transport, polling, compaction, lazy clock, timestamps, and storage")

@@ -21,8 +21,9 @@ lineageActivated(G) iff postCutoffScoped(G)
 eligiblePresence = actual generation/delete events above their author cut,
                plus generation G itself when lineageActivated(G)
 fallbackAssertions = individual carriers in applicable lineage groups
-assertion N dominates O iff anchorCut(N) covers O's anchorPresence coordinate
-               when non-null and O's own immutable carrier coordinate
+assertion N dominates O iff either they have the same author and receiverAnchor
+               and N.sequence > O.sequence, or N's own consumedThrough covers
+               O's anchorPresence coordinate when non-null and O's carrier coordinate
 anchorFallback = anchorPresence of a maximal fallback assertion, using a
                canonical full-carrier-ID/tagged-anchor conflict tie-break only
                for incomparable maxima; otherwise explicit absence when a null assertion wins;
@@ -45,7 +46,7 @@ Frontiers are relative to the final selected value origin: generation-wide inval
 
 `lineageGroups(J,K)` groups all retained carriers by tagged receiver anchor and joins vectors only within each group. `applicableLineages(J,K)` is its current-presence subset: every null group plus each non-null group whose anchor is raw-current or whose raw displacement lies inside that group's cut. Once the raw displacement itself is genuinely post-cutoff, the group is currently inapplicable—but it is not necessarily disposable, because a future union can replace that displacement with consumed history and make the group applicable again.
 
-Fallback causality is assertion-specific, never inferred from a joined group's first carrier. For individual carriers N and O, N reset-observation-dominates O iff N's joined anchor cut covers O's actual anchor-presence coordinate (when non-null) and O's immutable carrier coordinate. Therefore `A1 -> B1 -> A2` selects A2 when A2 observed B1 even though B1 observed historical A1 in A's joined group; later B2 selects B2 only after observing A2. Concurrent incomparable assertions use canonical full carrier ID and tagged-anchor order solely as a deterministic conflict rule.
+Fallback causality is assertion-specific, never inferred from a joined group's first carrier. Same-author assertions on the same semantic anchor form a writer-local succession chain: larger sequence replaces smaller sequence, and supported authoring requires the later assertion's vector to componentwise dominate the earlier vector. This bounded replacement does not insert the omitted carrier coordinate into `consumedThrough`; the immutable same-writer order supplies succession while omission prevents an unchanged reset from chasing its own clock. For different authors or different anchors, assertion N dominates O only when N's **own** `consumedThrough` covers O's actual anchor-presence coordinate (when non-null) and O's immutable carrier coordinate. A vector contributed concurrently by another assertion in N's anchor group cannot manufacture that cross-anchor observation. Therefore `A1 -> B1 -> A2` selects A2 when A2 observed B1 even though B1 observed historical A1 in A's joined group; later B2 selects B2 only after observing A2. Concurrent incomparable assertions use canonical full carrier ID and tagged-anchor order solely as a deterministic conflict rule.
 
 RLV compaction takes the maximal assertion antichain across every retained lineage group, including currently inapplicable groups, and retains each represented anchor's per-author coordinate witnesses. This is the future-relevant retention predicate. A dominated assertion is safely subsumed by the assertion that observed it; an undominated inapplicable assertion remains because it can regain applicability under future union.
 

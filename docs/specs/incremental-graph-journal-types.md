@@ -39,6 +39,8 @@ ResetCorrespondence = {
 CausalPrefix = Map<DatabaseFingerprint,uint64>
 ```
 
+For two reset-lineage carriers `L1,L2` with the same durable author, NodeKey, and tagged receiver anchor, `L1.sequence<L2.sequence` implies `L1.consumedThrough <=componentwise L2.consumedThrough`. This is a supported-state structural invariant and the proof-carrying basis for bounded same-anchor succession: the later immutable same-writer assertion replaces the earlier assertion without placing `L1.id` in `L2.consumedThrough`. Different authors or different anchors receive no such implied observation order.
+
 An immutable generation entry establishes positive presence and initial value provenance for an actual absent-to-present materialization, so `publicAction(generation)="add"`. Reset never creates a generation to fence equal present history. Delete is negative presence. Edit is an unequal present-to-present value change scoped to the surviving generation. Every generation names exactly one later-ID, atomically authored initial validate/soft-invalidate/hard-invalidate.
 
 For generation `G` and its named initial event `I`, structural validity requires `I.author=G.author`, `I.sequence>G.sequence`, `I.key=G.key`, `I.generation=G.id`, and `I.kind` in `{validate,invalidate}`. The two entries install atomically. Sequence adjacency is not required, but a generation cannot name another author's future event.
