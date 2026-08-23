@@ -27,6 +27,50 @@ const {
 /** @typedef {import('../types').NodeName} NodeName */
 /** @typedef {import('../types').SchemaPattern} SchemaPattern */
 
+class InvalidConstValueError extends Error {
+    /** @param {string} path */
+    constructor(path) {
+        super(`Invalid ConstValue at ${path}: numbers must be finite and nested values must be ConstValue values`);
+        this.name = "InvalidConstValueError";
+        this.path = path;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidConstValueError}
+ */
+function isInvalidConstValueError(object) {
+    return object instanceof InvalidConstValueError;
+}
+
+/**
+ * Validate the recursive persistence-safe ConstValue contract.
+ * @param {unknown} value
+ * @param {string} path
+ * @returns {void}
+ */
+function validateConstValue(value, path) {
+    if (typeof value === "string" || typeof value === "boolean") return;
+    if (typeof value === "number") {
+        if (Number.isFinite(value)) return;
+        throw new InvalidConstValueError(path);
+    }
+    if (Array.isArray(value)) {
+        for (let index = 0; index < value.length; index += 1) {
+            validateConstValue(value[index], `${path}[${index}]`);
+        }
+        return;
+    }
+    if (value !== null && typeof value === "object") {
+        for (const [key, nestedValue] of Object.entries(value)) {
+            validateConstValue(nestedValue, `${path}.${key}`);
+        }
+        return;
+    }
+    throw new InvalidConstValueError(path);
+}
+
 /**
  * A node key object for concrete nodes.
  * @typedef {object} NodeKey
@@ -41,6 +85,9 @@ const {
  * @returns {NodeKeyString}
  */
 function serializeNodeKey(key) {
+    for (let index = 0; index < key.args.length; index += 1) {
+        validateConstValue(key.args[index], `args[${index}]`);
+    }
     const headStr = nodeNameToString(key.head);
     const serialized = JSON.stringify({ head: headStr, args: key.args });
     return stringToNodeKeyString(serialized);
@@ -232,4 +279,5 @@ module.exports = {
     stringToNodeName,
     stringToNodeKeyString,
     nodeKeyStringToString,
+    isInvalidConstValueError,
 };
