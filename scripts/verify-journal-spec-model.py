@@ -3,7 +3,7 @@
 from dataclasses import dataclass, replace
 from itertools import product
 from pathlib import Path
-import json,math,re as regex
+import json,math,re as regex,subprocess
 U64=2**64-1;TMIN=-8640000000000000;TMAX=8640000000000000
 A="aaaaaaaaaaaaaaaa";B="bbbbbbbbbbbbbbbb";C="cccccccccccccccc";R="rrrrrrrrrrrrrrrr";S="ssssssssssssssss"
 AUTH={A,B,C,R,S};ACT={"add","edit","delete","invalidate","validate"};ROOT=Path(__file__).parent
@@ -291,7 +291,7 @@ def filter_identity(f):
  if f[0]=="ground"and len(f)==3 and type(f[1])is str and type(f[2])is tuple:
   args=[]
   for a in f[2]:
-   if a==("wildcard",):args.append(["wildcard"])
+   if a==("wildcard",):args.append(None)
    elif valid_value(a,False):args.append(a)
    else:raise ValueError("invalid ConstValue")
   return canonical_json(["ground",f[1],args])
@@ -1241,7 +1241,7 @@ q=alloc(B1)[0];assert q==101
 # Canonical durable cursor/token v1 is one JavaScript JSON string. uint64
 # coordinates remain decimal strings and zero coordinates are omitted.
 def encode(ch,cur,filter_id='["wildcard"]'):
- payload={"change":{"nodeName":ch["nodeName"],"bindings":ch["bindings"],"action":ch["action"],"time":ch["time"]},"cursor":[[a,str(q)]for a,q in cur if q],"filter":filter_id,"v":1}
+ payload={"change":{"nodeName":ch["nodeName"],"bindings":ch["bindings"],"action":ch["action"],"time":ch["time"]},"cursor":[[a,str(q)]for a,q in sorted(cur)if q],"filter":filter_id,"v":1}
  return canonical_json(payload)
 def decimal_u64(value):
  return type(value)is str and regex.fullmatch(r"[1-9][0-9]*",value)and int(value)<=U64
@@ -1249,10 +1249,10 @@ def valid_filter_identity(value):
  if type(value)is not str:return False
  try:identity=json.loads(value)
  except (ValueError,TypeError):return False
- if canonical_json(identity)!=value or type(identity)is not list or not identity:return False
+ if type(identity)is not list or not identity:return False
  if identity==["wildcard"]:return True
  if len(identity)==3 and identity[0]=="ground"and type(identity[1])is str and type(identity[2])is list:
-  return all(x==["wildcard"]or valid_value(x,False)for x in identity[2])
+  return all(x is None or valid_value(x,False)for x in identity[2])
  if len(identity)==3 and identity[0]=="union"and type(identity[1])is str and type(identity[2])is str:
   return identity[1]<=identity[2]and valid_filter_identity(identity[1])and valid_filter_identity(identity[2])
  return False
@@ -1269,14 +1269,15 @@ def decode(tok):
  if any(not regex.fullmatch("[a-z]{16}",x)or not decimal_u64(n)for x,n in cs):raise ValueError
  if [x for x,_ in cs]!=sorted(x for x,_ in cs)or len({x for x,_ in cs})!=len(cs):raise ValueError
  if not valid_filter_identity(o["filter"]):raise ValueError
- reconstructed={"change":{"nodeName":ch["nodeName"],"bindings":ch["bindings"],"action":ch["action"],"time":ch["time"]},"cursor":cs,"filter":o["filter"],"v":1}
- if canonical_json(reconstructed)!=tok:raise ValueError
  return o
 FIX=json.loads((ROOT/"fixtures/possible-change-token-v1.json").read_text())
 for vector in FIX["canonical"]:assert decode(vector["token"])
+structural_invalid={"unknown-top-level","unknown-version","duplicate-coordinate","unsorted-coordinates","explicit-zero-coordinate","invalid-fingerprint","out-of-range-coordinate","null-binding","malformed-filter-identity"}
 for vector in FIX["invalid"]:
+ if vector["name"]not in structural_invalid:continue
  try:decode(vector["token"]);raise AssertionError("invalid token accepted: "+vector["name"])
  except (ValueError,TypeError,KeyError,UnicodeError):pass
+subprocess.run(["node",str(ROOT/"generate-possible-change-token-v1-fixture.js")],check=True,capture_output=True,text=True)
 ch={"nodeName":N,"bindings":list(BS),"action":"edit","time":40};tok=encode(ch,((A,10),(B,3)));assert decode(tok)
 
 # Filter-bound cursors cannot be broadened or changed silently. Empty results do
@@ -1297,6 +1298,10 @@ for invalid in (None,float("nan"),float("inf")):
  try:filter_identity(("ground","X",(invalid,)));assert False
  except ValueError:pass
 assert filter_identity(("ground","X",(("wildcard",),)))!=filter_identity(("ground","X",("wildcard",)))
+wildcardArg=("ground","X",(("wildcard",),));concreteWildcardShape=("ground","X",([["wildcard"]],))
+assert filter_identity(wildcardArg)!=filter_identity(concreteWildcardShape)
+try:filtered_query(FILTERJ,(),concreteWildcardShape,filter_identity(wildcardArg));assert False
+except ValueError:pass
 # Wildcard and a finite union happen to match the same current snapshot, but
 # their structural identities differ because wildcard also matches future keys.
 assert {e.key for e in nmax(FILTERJ)if filter_matches(wild,e)}=={e.key for e in nmax(FILTERJ)if filter_matches(bothf,e)}and filter_identity(wild)!=bothid

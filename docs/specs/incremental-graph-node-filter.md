@@ -360,7 +360,9 @@ identity value:
 
 * wildcard: `["wildcard"]`;
 * ground: `["ground", head, args]`, where every argument is either its actual
-  validated `ConstValue` or the identity-only marker `["wildcard"]`;
+  validated `ConstValue` or the identity-only marker `null`. `null` is outside
+  `ConstValue`, so a wildcard cannot collide with any concrete binding,
+  including the concrete array `["wildcard"]`;
 * union: `["union", smallerChildIdentity, largerChildIdentity]`, where each
   child identity is its recursively computed canonical identity string and the
   strings are lexicographically sorted because union equality is commutative.

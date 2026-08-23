@@ -20,7 +20,7 @@
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').ConstValue} ConstValue */
-/** @typedef {import('./types').ComputedValue} ComputedValue */
+/** @typedef {import('./types').VolodyslavNodeValue} ComputedValue */
 
 /**
  * @typedef {object} IncrementalGraphRecomputeAccess
@@ -39,7 +39,7 @@ const { lookupNodeIdentifier } = require("./graph_state");
 const { normalizeInputEdges } = require("./database");
 const { propagatePotentiallyOutdated } = require("./propagation");
 const { removeIncomingValidity } = require("./validity");
-const { assertComputedValue } = require("./computed_value");
+const { canonicalizeJsonValue } = require("./computed_value");
 
 /**
  * Return true when every dependency in inputEdges has a validity flag for N.
@@ -192,14 +192,16 @@ async function internalMaybeRecalculate(
     }
 
     const computedValue = await nodeDefinition.computor(inputValues, oldValue);
+    let canonicalComputedValue;
 
     if (isUnchanged(computedValue)) {
         if (oldValue === undefined) {
             throw makeInvalidUnchangedError(nodeDefinition.outputKey);
         }
     } else {
-        assertComputedValue(
+        canonicalComputedValue = canonicalizeJsonValue(
             computedValue,
+            true,
             makeInvalidComputorReturnValueError(nodeDefinition.outputKey, computedValue)
         );
     }
@@ -217,8 +219,11 @@ async function internalMaybeRecalculate(
         return { value: result, status: "unchanged" };
     }
 
-    await handleChanged(incrementalGraph, nodeIdentifier, inputEdges, computedValue, nodeDefinition.alreadyMaterialized, batch);
-    return { value: computedValue, status: "changed" };
+    if (canonicalComputedValue === undefined) {
+        throw makeInvalidComputorReturnValueError(nodeDefinition.outputKey, computedValue);
+    }
+    await handleChanged(incrementalGraph, nodeIdentifier, inputEdges, canonicalComputedValue, nodeDefinition.alreadyMaterialized, batch);
+    return { value: canonicalComputedValue, status: "changed" };
 }
 
 module.exports = {

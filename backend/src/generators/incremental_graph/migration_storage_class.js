@@ -27,7 +27,7 @@ const {
     propagateDeletes,
 } = require("./migration_storage_dependencies");
 
-/** @typedef {import('./database/types').ComputedValue} ComputedValue */
+/** @typedef {import('./recursive_types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').NodeName} NodeName */
@@ -123,7 +123,7 @@ class MigrationStorageClass {
      * The return type is not ComputedValue because the type may have changed in the new schema,
      * and it's up to the migration callback to handle it.
      * @param {NodeIdentifier} nodeKey
-     * @returns {Promise<{}>}
+     * @returns {Promise<unknown>}
      */
     async get(nodeKey) {
         if (!this.materializedNodes.has(nodeKey)) {

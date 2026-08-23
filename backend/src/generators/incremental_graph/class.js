@@ -25,7 +25,7 @@
 /** @typedef {import('./types').ConcreteNode} ConcreteNode */
 /** @typedef {import('./types').ResolvedConcreteNode} ResolvedConcreteNode */
 /** @typedef {import('./types').ConstValue} ConstValue */
-/** @typedef {import('./types').ComputedValue} ComputedValue */
+/** @typedef {import('./types').VolodyslavNodeValue} ComputedValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').RecomputeResult} RecomputeResult */

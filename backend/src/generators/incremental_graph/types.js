@@ -4,7 +4,8 @@
 
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
-/** @typedef {import('./database/types').ComputedValue} ComputedValue */
+/** @typedef {import('./database/types').VolodyslavNodeValue} VolodyslavNodeValue */
+/** @typedef {import('./recursive_types').ComputedValue} JsonComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./unchanged').Unchanged} Unchanged */
 
@@ -27,10 +28,19 @@
  * Each binding must be a ConstValue (JSON-serializable primitives, arrays, or records).
  *
  * @typedef {(
- *     inputs: Array<ComputedValue>,
- *     oldValue: ComputedValue | undefined,
+ *     inputs: Array<VolodyslavNodeValue>,
+ *     oldValue: VolodyslavNodeValue | undefined,
  *     bindings: Array<ConstValue>
- * ) => Promise<ComputedValue | Unchanged>} NodeDefComputor
+ * ) => Promise<VolodyslavNodeValue | Unchanged>} NodeDefComputor
+ */
+
+/**
+ * Generic computor contract for consumers outside the Volodyslav schema.
+ * @typedef {(
+ *     inputs: Array<JsonComputedValue>,
+ *     oldValue: JsonComputedValue | undefined,
+ *     bindings: Array<ConstValue>
+ * ) => Promise<JsonComputedValue | Unchanged>} GenericNodeDefComputor
  */
 
 /**
@@ -41,9 +51,9 @@
  * Simpler computor without bindings parameter (used for concrete instantiated nodes).
  *
  * @typedef {(
- *     inputs: Array<ComputedValue>,
- *     oldValue: ComputedValue | undefined
- * ) => Promise<ComputedValue | Unchanged>} ConcreteNodeComputor
+ *     inputs: Array<VolodyslavNodeValue>,
+ *     oldValue: VolodyslavNodeValue | undefined
+ * ) => Promise<VolodyslavNodeValue | Unchanged>} ConcreteNodeComputor
  */
 
 /**
@@ -98,7 +108,7 @@
 /**
  * Result of a recompute operation.
  * @typedef {object} RecomputeResult
- * @property {ComputedValue} value - The computed or cached value
+ * @property {VolodyslavNodeValue} value - The computed or cached value
  * @property {RecomputeStatus} status - Status of the operation
  */
 

@@ -2,7 +2,7 @@
  * Shared migration decision type definitions.
  */
 
-/** @typedef {import('./database/types').ComputedValue} ComputedValue */
+/** @typedef {import('./recursive_types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 
 /**

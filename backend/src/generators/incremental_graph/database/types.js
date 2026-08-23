@@ -406,8 +406,9 @@ function versionToString(Version) {
  */
 
 /**
- * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDescriptionEntry | DiaryMostImportantInfoSummaryEntry | OntologyEntry} ComputedValue
+ * Closed application node-value union. Generic graph semantics use the
+ * recursive `ComputedValue` from `recursive_types.d.ts` instead.
+ * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDescriptionEntry | DiaryMostImportantInfoSummaryEntry | OntologyEntry} VolodyslavNodeValue
  */
 
 /**
@@ -428,7 +429,7 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {ComputedValue | Freshness | NodeIdentifier[] | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
+ * @typedef {VolodyslavNodeValue | Freshness | NodeIdentifier[] | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
  */
 
 /**
@@ -455,7 +456,7 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<VolodyslavNodeValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<VolodyslavNodeValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
  */
 
 class SchemaPatternClass {

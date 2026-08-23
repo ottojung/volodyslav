@@ -60,7 +60,10 @@ it. Polling separately recomputes
 `filterIdentity(to)` and rejects a mismatch before scanning.
 
 The fixture `scripts/fixtures/possible-change-token-v1.json` is normative
-executable evidence for this grammar. Any field, byte, number, ordering, or
+executable evidence for this grammar. Its exact strings are generated and
+checked by `scripts/generate-possible-change-token-v1-fixture.js`, which uses the
+real JavaScript `JSON.stringify`; the Python semantic verifier checks structure
+but is not an exact-string JSON authority. Any field, byte, number, ordering, or
 encoding not admitted above is invalid. Thus “noncanonical token” is
 mechanically decidable by strict parse, validation, and exact re-encoding.
 

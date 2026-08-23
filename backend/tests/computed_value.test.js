@@ -1,12 +1,11 @@
-const { assertComputedValue, isEqual } = require("../src/generators/incremental_graph/computed_value");
+const { canonicalizeJsonValue, isEqual } = require("../src/generators/incremental_graph/computed_value");
 const { computeEntryDescription } = require("../src/generators/individual/entry_description");
 const { deserialize } = require("../src/event");
 
 class UnsupportedComputedValue {}
 
 function validate(value) {
-    assertComputedValue(value, new Error("invalid ComputedValue"));
-    return value;
+    return canonicalizeJsonValue(value, true, new Error("invalid ComputedValue"));
 }
 
 describe("ComputedValue persistence boundary", () => {
@@ -38,6 +37,7 @@ describe("ComputedValue persistence boundary", () => {
         { nested: { missing: undefined } },
         BigInt(1),
         new UnsupportedComputedValue(),
+        new Map(),
     ])("rejects unsupported value %#", (value) => {
         expect(() => validate(value)).toThrow("invalid ComputedValue");
     });
@@ -46,6 +46,32 @@ describe("ComputedValue persistence boundary", () => {
         const sparse = [];
         sparse.length = 1;
         expect(() => validate(sparse)).toThrow("invalid ComputedValue");
+    });
+
+    test("rejects JSON-transforming records and arrays", () => {
+        const record = { x: 1 };
+        Object.defineProperty(record, "toJSON", {
+            enumerable: false,
+            value() { return { x: 2 }; },
+        });
+        const array = [1];
+        Object.defineProperty(array, "toJSON", {
+            enumerable: false,
+            value() { return [2]; },
+        });
+        expect(() => validate(record)).toThrow("invalid ComputedValue");
+        expect(() => validate(array)).toThrow("invalid ComputedValue");
+    });
+
+    test("rejects accessors and returns detached canonical JSON data", () => {
+        const accessor = {};
+        Object.defineProperty(accessor, "x", { enumerable: true, get() { return 1; } });
+        expect(() => validate(accessor)).toThrow("invalid ComputedValue");
+
+        const input = { nested: { value: 1 } };
+        const canonical = validate(input);
+        input.nested.value = 2;
+        expect(canonical).toEqual({ nested: { value: 1 } });
     });
 
     test("uses ECMAScript record enumeration semantics", () => {

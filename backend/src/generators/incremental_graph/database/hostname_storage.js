@@ -64,7 +64,7 @@ function validateHostname(hostname) {
 /** @typedef {import('./types').Version} Version */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
-/** @typedef {import('./types').ComputedValue} ComputedValue */
+/** @typedef {import('./types').VolodyslavNodeValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').DatabaseKey} DatabaseKey */

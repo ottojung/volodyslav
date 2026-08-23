@@ -4,8 +4,7 @@
 
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph/database/types').CaloriesEntry} CaloriesEntry */
-/** @typedef {import('../incremental_graph/database/types').EventTranscriptionEntry} EventTranscriptionEntry */
-/** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph
+/** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
 
 /**
  * @typedef {object} InterfaceQueryAccess
@@ -16,6 +15,13 @@
 const { isEventNotFoundError } = require('../individual').event;
 const { deserialize } = require('../../event');
 const { SORTED_EVENTS_CACHE_SIZE } = require('./constants');
+
+/**
+ * @typedef {object} DomainEventTranscription
+ * @property {'event_transcription'} type
+ * @property {Event} event
+ * @property {import('../incremental_graph/database/types').TranscriptionResult} transcription
+ */
 
 /**
  * @param {InterfaceQueryAccess} interfaceInstance
@@ -37,7 +43,7 @@ async function internalGetCaloriesForEventId(interfaceInstance, eventId) {
  * @param {InterfaceQueryAccess} interfaceInstance
  * @param {string} eventId
  * @param {string} audioPath
- * @returns {Promise<EventTranscriptionEntry>}
+ * @returns {Promise<DomainEventTranscription>}
  */
 async function internalGetEventTranscriptionForAudioPath(
     interfaceInstance,
@@ -53,7 +59,11 @@ async function internalGetEventTranscriptionForAudioPath(
             `Expected event_transcription entry but got type: ${result.type}`
         );
     }
-    return result;
+    return {
+        type: result.type,
+        event: deserialize(result.event),
+        transcription: result.transcription,
+    };
 }
 
 /**

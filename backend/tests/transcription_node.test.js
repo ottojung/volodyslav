@@ -107,6 +107,7 @@ describe("transcription(a) node", () => {
             },
         });
         expect(capabilities.aiTranscription.transcribeStream).toHaveBeenCalledTimes(1);
+
         expect(capabilities.aiTranscription.transcribeStream.mock.calls[0][0].path).toBe(
             path.join(
                 capabilities.environment.eventLogAssetsDirectory(),
@@ -169,6 +170,12 @@ describe("event_transcription(e, a) node", () => {
             }),
         });
         expect(capabilities.aiTranscription.transcribeStream).toHaveBeenCalledTimes(1);
+
+        const domainResult = await iface.getEventTranscriptionForAudioPath("1", relativeAssetPath);
+        expect(domainResult.event.id.identifier).toBe("1");
+        expect(domainResult.event.date.toISOString()).toContain("2024-01-01");
+        expect(result.event.id).toBe("1");
+        expect(typeof result.event.date).toBe("string");
     });
 
     test("rejects when the audio path does not belong to the event", async () => {

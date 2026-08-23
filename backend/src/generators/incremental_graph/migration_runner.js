@@ -28,13 +28,13 @@ const { makeMigrationStorage } = require("./migration_storage");
 const { buildDecisionsMap, buildDesiredValid, loadMaterializedNodes } = require("./migration_validity");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter, isUnificationReadError } = require("./database");
-const { assertComputedValue, isEqual } = require("./computed_value");
+const { canonicalizeJsonValue, isEqual } = require("./computed_value");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./database/types').ComputedValue} ComputedValue */
+/** @typedef {import('./recursive_types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database').ReadableSchemaStorage} ReadableSchemaStorage */
@@ -125,17 +125,18 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
             }
             try {
                 const value = await valuePromise;
-                assertComputedValue(
+                const canonicalValue = canonicalizeJsonValue(
                     value,
+                    true,
                     makeInvalidMigrationDecisionError(`Migration value producer for ${keyString} did not return a valid ComputedValue`)
                 );
                 if (decision.kind === "override") {
                     const previousValue = await prevStorage.values.get(key);
-                    if (previousValue === undefined || !isEqual(previousValue, value)) {
+                    if (previousValue === undefined || !isEqual(previousValue, canonicalValue)) {
                         throw makeInvalidMigrationDecisionError(`Migration override for ${keyString} changed its semantic value`);
                     }
                 }
-                return value;
+                return canonicalValue;
             } finally {
                 producedValues.delete(keyString);
             }

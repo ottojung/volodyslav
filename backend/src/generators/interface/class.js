@@ -207,7 +207,7 @@ class InterfaceClass {
     /**
      * @param {string} head
      * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
-     * @returns {Promise<import('../incremental_graph/types').ComputedValue | undefined>}
+     * @returns {Promise<import('../incremental_graph/types').VolodyslavNodeValue | undefined>}
      */
     async getValue(head, args = []) {
         return await internalGetValue(this, head, args);
@@ -217,7 +217,7 @@ class InterfaceClass {
      * Pulls one concrete graph node for the graph API.
      * @param {string} head
      * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
-     * @returns {Promise<import('../incremental_graph/types').ComputedValue>}
+     * @returns {Promise<import('../incremental_graph/types').VolodyslavNodeValue>}
      */
     async pullGraphNode(head, args = []) {
         return await internalPullGraphNode(this, head, args);
@@ -330,7 +330,7 @@ class InterfaceClass {
     /**
      * @param {string} eventId
      * @param {string} audioPath - Audio path relative to the assets root
-     * @returns {Promise<import('../incremental_graph/database/types').EventTranscriptionEntry>}
+     * @returns {ReturnType<typeof internalGetEventTranscriptionForAudioPath>}
      */
     async getEventTranscriptionForAudioPath(eventId, audioPath) {
         return await internalGetEventTranscriptionForAudioPath(

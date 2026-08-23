@@ -10,7 +10,7 @@ const {
 } = require("./database");
 const { makeSchemaCompatibilityError } = require("./migration_errors");
 
-/** @typedef {import('./database/types').ComputedValue} ComputedValue */
+/** @typedef {import('./recursive_types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./types').CompiledNode} CompiledNode */

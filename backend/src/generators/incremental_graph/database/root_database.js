@@ -53,7 +53,7 @@ const {
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
 /** @typedef {import('./types').GlobalSublevelType} GlobalSublevelType */
 /** @typedef {import('./types').SublevelFormat} SublevelFormat */
-/** @typedef {import('./types').ComputedValue} ComputedValue */
+/** @typedef {import('./types').VolodyslavNodeValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */

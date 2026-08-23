@@ -26,6 +26,11 @@ sparse arrays, cycles, non-plain objects whose JSON representation changes
 semantic type, and every nested occurrence of those values. `ConstValue`
 remains the narrower binding domain and excludes `null`. Every `ComputedValue`
 round-trips through `JSON.parse(JSON.stringify(value))` under REQ-DB-01.
+Every value-introduction boundary serializes exactly once with the native
+`JSON.stringify`, parses exactly once with `JSON.parse`, proves the source and
+parsed value equal under DEF-EQUAL-01 and the selected null policy, and persists
+only the parsed plain JSON value. JSON hooks, accessors, sparse arrays, and
+non-plain objects are outside the domain rather than alternate encodings.
 
 **TERM-06 (BindingEnvironment):** A positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. Bindings are matched to argument positions by position, not by name.
 
