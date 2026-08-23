@@ -21,29 +21,11 @@ const {
     stringToNodeName,
     nodeKeyStringToString,
 } = require("./types");
-const { canonicalizeJsonValue } = require("../computed_value");
 
 /** @typedef {import('../types').ConstValue} ConstValue */
 /** @typedef {import('../types').NodeKeyString} NodeKeyString */
 /** @typedef {import('../types').NodeName} NodeName */
 /** @typedef {import('../types').SchemaPattern} SchemaPattern */
-
-class InvalidConstValueError extends Error {
-    /** @param {string} path */
-    constructor(path) {
-        super(`Invalid ConstValue at ${path}: numbers must be finite and nested values must be ConstValue values`);
-        this.name = "InvalidConstValueError";
-        this.path = path;
-    }
-}
-
-/**
- * @param {unknown} object
- * @returns {object is InvalidConstValueError}
- */
-function isInvalidConstValueError(object) {
-    return object instanceof InvalidConstValueError;
-}
 
 /**
  * A node key object for concrete nodes.
@@ -59,13 +41,8 @@ function isInvalidConstValueError(object) {
  * @returns {NodeKeyString}
  */
 function serializeNodeKey(key) {
-    const canonicalArgs = key.args.map((value, index) => canonicalizeJsonValue(
-        value,
-        false,
-        new InvalidConstValueError(`args[${index}]`)
-    ));
     const headStr = nodeNameToString(key.head);
-    const serialized = JSON.stringify({ head: headStr, args: canonicalArgs });
+    const serialized = JSON.stringify({ head: headStr, args: key.args });
     return stringToNodeKeyString(serialized);
 }
 
@@ -255,5 +232,4 @@ module.exports = {
     stringToNodeName,
     stringToNodeKeyString,
     nodeKeyStringToString,
-    isInvalidConstValueError,
 };

@@ -24,10 +24,7 @@ const {
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
 const { makeNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
-const {
-    DATABASE_FINGERPRINT_LENGTH,
-    requireValidFingerprint,
-} = require('./fingerprint');
+const { requireValidFingerprint } = require('./fingerprint');
 
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
@@ -53,7 +50,7 @@ const {
 /** @typedef {import('./types').SchemaSublevelType} SchemaSublevelType */
 /** @typedef {import('./types').GlobalSublevelType} GlobalSublevelType */
 /** @typedef {import('./types').SublevelFormat} SublevelFormat */
-/** @typedef {import('./types').VolodyslavNodeValue} ComputedValue */
+/** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').Freshness} Freshness */
 /** @typedef {import('./types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./types').DatabaseBatchOperation} DatabaseBatchOperation */
@@ -133,14 +130,14 @@ function assertNeverReplicaName(name) {
 
 /**
  * Database for storing node output values.
- * Key: persisted node identifier (e.g., "1-abcdefghijklmnop")
+ * Key: persisted node identifier (e.g., "1-abcdefghi")
  * Value: the computed value (object with type field)
  * @typedef {GenericDatabase<ComputedValue, NodeIdentifier>} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
- * Key: persisted node identifier (e.g., "1-abcdefghijklmnop")
+ * Key: persisted node identifier (e.g., "1-abcdefghi")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
  * @typedef {GenericDatabase<Freshness, NodeIdentifier>} FreshnessDatabase
  */
@@ -570,13 +567,7 @@ class RootDatabaseClass {
     async writeEmptyIdentifierLookup() {
         await this._computed.globalSublevel.put(IDENTIFIERS_KEY, []);
         await this._computed.globalSublevel.put(LAST_NODE_INDEX_KEY, 0);
-        const fingerprint = requireValidFingerprint(
-            random.basicString(
-                { seed: this._seed },
-                DATABASE_FINGERPRINT_LENGTH
-            ),
-            'fresh replica fingerprint generation'
-        );
+        const fingerprint = random.basicString({ seed: this._seed });
         await this._computed.globalSublevel.put('fingerprint', fingerprint);
         this._computed.fingerprint = fingerprint;
     }
@@ -689,13 +680,7 @@ class RootDatabaseClass {
                 await globalSublevel.put(IDENTIFIERS_KEY, []);
                 await globalSublevel.put(LAST_NODE_INDEX_KEY, 0);
                 if (!fingerprint) {
-                    fingerprint = requireValidFingerprint(
-                        random.basicString(
-                            { seed: this._seed },
-                            DATABASE_FINGERPRINT_LENGTH
-                        ),
-                        'fresh replica-switch target fingerprint generation'
-                    );
+                    fingerprint = random.basicString({ seed: this._seed });
                 }
                 await globalSublevel.put('fingerprint', fingerprint);
             } else {

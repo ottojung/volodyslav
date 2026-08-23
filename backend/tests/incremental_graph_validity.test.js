@@ -63,7 +63,7 @@ class InMemoryDatabase {
         this._identifierLookup = makeEmptyIdentifierLookup();
         this._identifierCounter = 0;
         this._pendingAllocations = new Map();
-        this._computed = { lastNodeIndex: 0, fingerprint: 'testfpflagvalaaa' };
+        this._computed = { lastNodeIndex: 0, fingerprint: 'testfpflagval' };
     }
 
     currentReplicaName() { return 'x'; }
@@ -104,7 +104,7 @@ class InMemoryDatabase {
     }
 
     getFingerprint() {
-        return 'testfpflagvalaaa';
+        return 'testfpflagval';
     }
 
     getVersion() { return this.version; }

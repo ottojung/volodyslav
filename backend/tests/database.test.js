@@ -713,7 +713,7 @@ describe('generators/database', () => {
                 ]);
                 await yStorage.global.put(IDENTIFIERS_KEY, []);
                 await yStorage.global.put('last_node_index', 0);
-                await yStorage.global.put('fingerprint', 'testfingerprinta');
+                await yStorage.global.put('fingerprint', 'testfingerprnt');
 
                 // Start an async operation that yields mid-way.
                 const operation = (async () => {
@@ -756,7 +756,7 @@ describe('generators/database', () => {
                     yStorage.values.putOp('data', { replica: 'y' }),
                     yStorage.global.putOp(IDENTIFIERS_KEY, []),
                     yStorage.global.putOp('last_node_index', 0),
-                    yStorage.global.putOp('fingerprint', 'testfingerprinta'),
+                    yStorage.global.putOp('fingerprint', 'testfingerprnt'),
                 ]);
 
                 // Read from x (active).
@@ -791,7 +791,7 @@ describe('generators/database', () => {
                 ]);
                 await yStorage.global.put(IDENTIFIERS_KEY, 12345);
                 await yStorage.global.put('last_node_index', 0);
-                await yStorage.global.put('fingerprint', 'testfingerprinta');
+                await yStorage.global.put('fingerprint', 'testfingerprnt');
 
                 // Start an operation, then try cutover — should fail.
                 const operation = db.getSchemaStorage().values.get('node');
@@ -819,12 +819,12 @@ describe('generators/database', () => {
                 await xStorage.batch([xStorage.values.putOp('count', 1)]);
                 await xStorage.global.put(IDENTIFIERS_KEY, []);
                 await xStorage.global.put('last_node_index', 0);
-                await xStorage.global.put('fingerprint', 'testfingerprinta');
+                await xStorage.global.put('fingerprint', 'testfingerprnt');
 
                 await yStorage.batch([yStorage.values.putOp('count', 2)]);
                 await yStorage.global.put(IDENTIFIERS_KEY, []);
                 await yStorage.global.put('last_node_index', 0);
-                await yStorage.global.put('fingerprint', 'testfingerprinta');
+                await yStorage.global.put('fingerprint', 'testfingerprnt');
 
                 // Toggle x -> y.
                 await db.setCurrentReplicaPointer('y');
@@ -863,7 +863,7 @@ describe('generators/database', () => {
                 ]);
                 await yStorage.global.put(IDENTIFIERS_KEY, []);
                 await yStorage.global.put('last_node_index', 0);
-                await yStorage.global.put('fingerprint', 'testfingerprinta');
+                await yStorage.global.put('fingerprint', 'testfingerprnt');
 
                 // Deferred control for the held pull-mode section.
                 /** @type {(value: undefined) => void} */

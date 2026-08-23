@@ -35,7 +35,7 @@ function makeRootDatabase() {
             return counter;
         },
         getFingerprint() {
-            return 'testresfingeraaa';
+            return 'testresfinger';
         },
         getVersion() { return this.version; },
         getLastNodeIndex() { return this._computed.lastNodeIndex; },
@@ -59,7 +59,7 @@ function makeRootDatabase() {
                 pendingAllocations.delete(keyString);
             }
         },
-        _computed: { lastNodeIndex: 0, fingerprint: 'testresfingeraaa' },
+        _computed: { lastNodeIndex: 0, fingerprint: 'testresfinger' },
     };
 }
 

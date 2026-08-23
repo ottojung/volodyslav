@@ -307,10 +307,11 @@ describe("compareNodeKeyStringByNodeKey", () => {
     });
 
     test("nodes with mixed arg types are sorted lexicographically", () => {
+        const withNull = nks("f", [null]);
         const withBool = nks("f", [false]);
         const withNum = nks("f", [1]);
         const withStr = nks("f", ["hello"]);
-        const sorted = [withStr, withNum, withBool].sort(compareNodeKeyStringByNodeKey);
-        expect(sorted).toEqual([withStr, withNum, withBool]);
+        const sorted = [withStr, withNum, withBool, withNull].sort(compareNodeKeyStringByNodeKey);
+        expect(sorted).toEqual([withStr, withNum, withBool, withNull]);
     });
 });

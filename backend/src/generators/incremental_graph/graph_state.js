@@ -44,7 +44,7 @@ const {
 /** @typedef {import('./database/root_database').FreshnessDatabase} FreshnessDatabase */
 /** @typedef {import('./database/root_database').ValidDatabase} ValidDatabase */
 /** @typedef {import('./database/root_database').TimestampsDatabase} TimestampsDatabase */
-/** @typedef {import('./database/types').VolodyslavNodeValue} ComputedValue */
+/** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */

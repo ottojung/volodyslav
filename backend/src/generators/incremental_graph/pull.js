@@ -28,7 +28,7 @@
 
 /** @typedef {import('./graph_state').BatchBuilder} BatchBuilder */
 /** @typedef {import('./graph_state').Transaction} Transaction */
-/** @typedef {import('./types').VolodyslavNodeValue} ComputedValue */
+/** @typedef {import('./types').ComputedValue} ComputedValue */
 /** @typedef {import('./types').ConstValue} ConstValue */
 /** @typedef {import('./types').NodeKeyString} NodeKeyString */
 /** @typedef {import('./database/types').NodeName} NodeName */

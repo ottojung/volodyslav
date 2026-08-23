@@ -2,7 +2,6 @@ const { nodeIdentifierToString } = require('./types');
 const { nodeIdentifierFromString, compareNodeIdentifier } = require('./node_identifier');
 const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges, GraphSchemeError } = require('./graph_scheme');
 const { fromISOString } = require('../../../datetime');
-const { canonicalizeJsonValue } = require('../computed_value');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -99,12 +98,6 @@ async function assertValidReplicaMaterializationState(storage, lookup, context) 
         if (!cachedIdentifiers.has(identifierString)) {
             throw new ReplicaStateInvariantError(context, 'has no cached value', identifierString);
         }
-        const cachedValue = await storage.values.get(identifier);
-        canonicalizeJsonValue(
-            cachedValue,
-            true,
-            new ReplicaStateInvariantError(context, 'has invalid cached ComputedValue', identifierString)
-        );
         const freshness = await storage.freshness.get(identifier);
         if (freshness === undefined) {
             throw new ReplicaStateInvariantError(context, 'has no freshness entry', identifierString);

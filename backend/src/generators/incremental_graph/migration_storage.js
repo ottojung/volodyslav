@@ -7,7 +7,7 @@
 
 const { MigrationStorageClass } = require("./migration_storage_class");
 
-/** @typedef {import('./recursive_types').ComputedValue} ComputedValue */
+/** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 
 /** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */

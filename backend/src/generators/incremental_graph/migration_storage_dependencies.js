@@ -17,7 +17,7 @@ const {
     checkSchemaCompatibility,
 } = require("./migration_storage_schema");
 
-/** @typedef {import('./recursive_types').ComputedValue} ComputedValue */
+/** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./types').CompiledNode} CompiledNode */
 /** @typedef {import('./types').NodeName} NodeName */

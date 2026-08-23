@@ -4,7 +4,8 @@
 
 /** @typedef {import('../../event').Event} Event */
 /** @typedef {import('../incremental_graph/database/types').CaloriesEntry} CaloriesEntry */
-/** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph */
+/** @typedef {import('../incremental_graph/database/types').EventTranscriptionEntry} EventTranscriptionEntry */
+/** @typedef {import('../incremental_graph').IncrementalGraph} IncrementalGraph
 
 /**
  * @typedef {object} InterfaceQueryAccess
@@ -15,13 +16,6 @@
 const { isEventNotFoundError } = require('../individual').event;
 const { deserialize } = require('../../event');
 const { SORTED_EVENTS_CACHE_SIZE } = require('./constants');
-
-/**
- * @typedef {object} DomainEventTranscription
- * @property {'event_transcription'} type
- * @property {Event} event
- * @property {import('../incremental_graph/database/types').TranscriptionResult} transcription
- */
 
 /**
  * @param {InterfaceQueryAccess} interfaceInstance
@@ -43,7 +37,7 @@ async function internalGetCaloriesForEventId(interfaceInstance, eventId) {
  * @param {InterfaceQueryAccess} interfaceInstance
  * @param {string} eventId
  * @param {string} audioPath
- * @returns {Promise<DomainEventTranscription>}
+ * @returns {Promise<EventTranscriptionEntry>}
  */
 async function internalGetEventTranscriptionForAudioPath(
     interfaceInstance,
@@ -59,11 +53,7 @@ async function internalGetEventTranscriptionForAudioPath(
             `Expected event_transcription entry but got type: ${result.type}`
         );
     }
-    return {
-        type: result.type,
-        event: deserialize(result.event),
-        transcription: result.transcription,
-    };
+    return result;
 }
 
 /**
@@ -106,7 +96,7 @@ async function internalGetEventBasicContext(interfaceInstance, event) {
         return [event];
     }
 
-    return contextEntry.context.map(deserialize);
+    return contextEntry.context;
 }
 
 /**
@@ -376,7 +366,7 @@ async function internalEntryDiaryContent(interfaceInstance, eventId) {
     if (descriptionResult.type !== "entry_description") {
         throw new Error(`Expected entry_description entry but got type: ${descriptionResult.type}`);
     }
-    const typedText = descriptionResult.description ?? undefined;
+    const typedText = descriptionResult.description;
 
     // Pull materialized transcriptions, combining multiple into one string.
     const audioListResult = await graph.pull("event_audios_list", [eventId]);

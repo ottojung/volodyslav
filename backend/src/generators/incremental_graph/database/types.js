@@ -242,15 +242,11 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {object} PersistedMetaEvent
- * @property {'add' | 'edit' | 'delete'} action
- * @property {SerializedEvent} event
+ * @typedef {import('../../individual/meta_events').MetaEvent} MetaEvent
  */
 
 /**
- * @typedef {object} PersistedContextEntry
- * @property {string} eventId
- * @property {Array<SerializedEvent>} context
+ * @typedef {import('../../individual/event_context/compute').EventContextEntry} ContextEntry
  */
 
 /**
@@ -268,13 +264,13 @@ function versionToString(Version) {
 /**
  * @typedef {object} MetaEventsEntry
  * @property {'meta_events'} type - The type of the entry
- * @property {Array<PersistedMetaEvent>} meta_events - Array of meta events
+ * @property {Array<MetaEvent>} meta_events - Array of meta events
  */
 
 /**
  * @typedef {object} EventContextDatabaseEntry
  * @property {'event_context'} type - The type of the entry
- * @property {Array<PersistedContextEntry>} contexts - Array of event contexts
+ * @property {Array<ContextEntry>} contexts - Array of event contexts
  */
 
 /**
@@ -320,7 +316,7 @@ function versionToString(Version) {
  * Combined event and transcription for a specific audio file associated with an event.
  * @typedef {object} EventTranscriptionEntry
  * @property {'event_transcription'} type - The type of the entry
- * @property {SerializedEvent} event - The associated serialized event
+ * @property {Event} event - The associated event
  * @property {TranscriptionResult} transcription - The AI transcription
  */
 
@@ -379,10 +375,10 @@ function versionToString(Version) {
 
 /**
  * The typed description for a specific event.
- * Returns null for the description when the event is not a diary entry or has no description.
+ * Returns undefined for the description when the event is not a diary entry or has no description.
  * @typedef {object} EntryDescriptionEntry
  * @property {'entry_description'} type - The type of the entry
- * @property {string | null} description - The typed description text, or null if none
+ * @property {string | undefined} description - The typed description text, or undefined if none
  */
 
 /**
@@ -406,9 +402,8 @@ function versionToString(Version) {
  */
 
 /**
- * Closed application node-value union. Generic graph semantics use the
- * recursive `ComputedValue` from `recursive_types.d.ts` instead.
- * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDescriptionEntry | DiaryMostImportantInfoSummaryEntry | OntologyEntry} VolodyslavNodeValue
+ * Database Value Disjoint Union Type
+ * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDescriptionEntry | DiaryMostImportantInfoSummaryEntry | OntologyEntry} ComputedValue
  */
 
 /**
@@ -429,7 +424,7 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {VolodyslavNodeValue | Freshness | NodeIdentifier[] | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
+ * @typedef {ComputedValue | Freshness | NodeIdentifier[] | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
  */
 
 /**
@@ -456,7 +451,7 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<VolodyslavNodeValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<VolodyslavNodeValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
  */
 
 class SchemaPatternClass {

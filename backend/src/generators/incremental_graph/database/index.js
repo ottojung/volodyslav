@@ -17,7 +17,7 @@ const {
 } = require('./types');
 const { makeRootDatabase, isRootDatabase, isInvalidReplicaPointerError, isSwitchReplicaError, isSchemaBatchVersionError, isMalformedIdentifierLookupError, MissingIdentifierLookupError, isMissingIdentifierLookupError, LAST_NODE_INDEX_KEY } = require('./root_database');
 const { makeTypedDatabase, isTypedDatabase } = require('./typed_database');
-const { DATABASE_FINGERPRINT_LENGTH, isInvalidFingerprintError, isValidFingerprint, requireValidFingerprint } = require('./fingerprint');
+const { isInvalidFingerprintError, isValidFingerprint, requireValidFingerprint } = require('./fingerprint');
 const {
     checkpointDatabase,
     checkpointMigration,
@@ -82,7 +82,6 @@ const {
     unifyStores,
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
-    isUnificationReadError,
 } = require('./unification');
 
 const {
@@ -131,7 +130,6 @@ module.exports = {
     MissingIdentifierLookupError,
     isMissingIdentifierLookupError,
     isInvalidFingerprintError,
-    DATABASE_FINGERPRINT_LENGTH,
     isValidFingerprint,
     requireValidFingerprint,
     LAST_NODE_INDEX_KEY,
@@ -194,7 +192,6 @@ module.exports = {
     unifyStores,
     makeDbToDbAdapter,
     makeInMemorySchemaStorage,
-    isUnificationReadError,
     GRAPH_SCHEME_KEY,
     GraphSchemeError,
     MissingGraphSchemeError,

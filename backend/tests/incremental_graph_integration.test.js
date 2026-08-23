@@ -8,10 +8,12 @@ const os = require("os");
 const { getRootDatabase } = require("../src/generators/incremental_graph/database");
 const {
     createIncrementalGraph,
+    isUnchanged,
 } = require("../src/generators/incremental_graph");
 const {
-    computor: metaEventsComputor,
+    computeMetaEvents,
 } = require("../src/generators/individual/meta_events");
+const { deserialize } = require("../src/event");
 const { getMockedRootCapabilities } = require("./spies");
 const { stubLogger, stubEnvironment } = require("./stubs");
 
@@ -72,7 +74,43 @@ describe("IncrementalGraph integration with meta_events", () => {
             {
                 output: "meta_events",
                 inputs: ["all_events"],
-                computor: metaEventsComputor,
+                computor: (inputs, oldValue, _bindings) => {
+                    const allEventsEntry = inputs[0];
+                    if (!allEventsEntry) {
+                        return { type: "meta_events", meta_events: [] };
+                    }
+
+                    const allEvents = allEventsEntry.events.map(deserialize);
+                    
+                    // If no previous value, compute from scratch
+                    if (!oldValue) {
+                        const result = computeMetaEvents(allEvents, []);
+                        // computeMetaEvents should never return Unchanged when previous is empty
+                        // But handle it defensively
+                        if (isUnchanged(result)) {
+                            return { type: "meta_events", meta_events: [] };
+                        }
+                        return {
+                            type: "meta_events",
+                            meta_events: result,
+                        };
+                    }
+
+                    const currentMetaEvents = oldValue.meta_events;
+                    const result = computeMetaEvents(
+                        allEvents,
+                        currentMetaEvents
+                    );
+
+                    if (isUnchanged(result)) {
+                        return result;
+                    }
+
+                    return {
+                        type: "meta_events",
+                        meta_events: result,
+                    };
+                },
                 isDeterministic: true,
                 hasSideEffects: false,
             },
@@ -90,9 +128,9 @@ describe("IncrementalGraph integration with meta_events", () => {
         expect(metaEventsEntry).toBeDefined();
         expect(metaEventsEntry.meta_events).toHaveLength(2);
         expect(metaEventsEntry.meta_events[0].action).toBe("add");
-        expect(metaEventsEntry.meta_events[0].event.id).toBe("1");
+        expect(metaEventsEntry.meta_events[0].event.id.identifier).toBe("1");
         expect(metaEventsEntry.meta_events[1].action).toBe("add");
-        expect(metaEventsEntry.meta_events[1].event.id).toBe("2");
+        expect(metaEventsEntry.meta_events[1].event.id.identifier).toBe("2");
 
         await db.close();
     });

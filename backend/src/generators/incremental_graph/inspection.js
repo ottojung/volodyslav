@@ -68,7 +68,7 @@ async function internalGetFreshness(
  * @param {IncrementalGraphInspectionAccess} incrementalGraph
  * @param {string} head
  * @param {Array<ConstValue>} [bindings=[]]
- * @returns {Promise<import('./types').VolodyslavNodeValue | undefined>}
+ * @returns {Promise<import('./types').ComputedValue | undefined>}
  */
 async function internalGetValue(incrementalGraph, head, bindings = []) {
     return daytimeActivity(incrementalGraph.sleeper, async () => {

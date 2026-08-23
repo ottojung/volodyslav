@@ -22,19 +22,18 @@ const {
     GraphSchemeError,
     MissingGraphSchemeError,
 } = require("./database");
-const { makeInvalidMigrationDecisionError, isInvalidMigrationDecision } = require("./migration_errors");
+const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { buildDecisionsMap, buildDesiredValid, loadMaterializedNodes } = require("./migration_validity");
 const { checkpointMigration } = require("./database");
-const { unifyStores, makeDbToDbAdapter, isUnificationReadError } = require("./database");
-const { canonicalizeJsonValue, isEqual } = require("./computed_value");
+const { unifyStores, makeDbToDbAdapter } = require("./database");
 
 /** @typedef {import('./database/root_database').RootDatabase} RootDatabase */
 /** @typedef {import('./database/root_database').SchemaStorage} SchemaStorage */
 /** @typedef {import('./database/types').NodeIdentifier} NodeIdentifier */
 /** @typedef {import('./database/types').NodeKeyString} NodeKeyString */
-/** @typedef {import('./recursive_types').ComputedValue} ComputedValue */
+/** @typedef {import('./database/types').ComputedValue} ComputedValue */
 /** @typedef {import('./database/types').Freshness} Freshness */
 /** @typedef {import('./database/types').TimestampRecord} TimestampRecord */
 /** @typedef {import('./database').ReadableSchemaStorage} ReadableSchemaStorage */
@@ -125,18 +124,10 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
             }
             try {
                 const value = await valuePromise;
-                const canonicalValue = canonicalizeJsonValue(
-                    value,
-                    true,
-                    makeInvalidMigrationDecisionError(`Migration value producer for ${keyString} did not return a valid ComputedValue`)
-                );
-                if (decision.kind === "override") {
-                    const previousValue = await prevStorage.values.get(key);
-                    if (previousValue === undefined || !isEqual(previousValue, canonicalValue)) {
-                        throw makeInvalidMigrationDecisionError(`Migration override for ${keyString} changed its semantic value`);
-                    }
+                if (value === null || value === undefined) {
+                    throw makeInvalidMigrationDecisionError(`Migration value producer for ${keyString} did not return a computed value`);
                 }
-                return canonicalValue;
+                return value;
             } finally {
                 producedValues.delete(keyString);
             }
@@ -444,14 +435,7 @@ async function runMigrationUnsafe(capabilities, rootDatabase, nodeDefs, callback
             // Only changed keys are written; stale keys are deleted first.
             // The new version is included in the lazy source's global sublevel,
             // so it is written atomically with the data — no separate version write.
-            try {
-                await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
-            } catch (error) {
-                if (isUnificationReadError(error) && isInvalidMigrationDecision(error.cause)) {
-                    throw error.cause;
-                }
-                throw error;
-            }
+            await unifyStores(makeDbToDbAdapter(lazySource, toStorage));
             // One final fsync: all unification writes use sync:false for performance;
             // _rawSync() issues an empty batch with sync:true to flush the WAL
             // without rewriting any keys.

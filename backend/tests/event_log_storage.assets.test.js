@@ -25,8 +25,6 @@ function makeEvent(id) {
     return {
         id: { identifier: id },
         date: fromISOString("2025-05-13T00:00:00.000Z"),
-        original: "asset test",
-        input: "asset test",
         creator: { name: "test", uuid: "uuid", version: "1.0.0", hostname: "test-host" },
     };
 }

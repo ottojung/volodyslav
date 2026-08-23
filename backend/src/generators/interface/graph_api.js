@@ -152,7 +152,7 @@ async function internalGetFreshness(interfaceInstance, head, args = []) {
  * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
  * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
- * @returns {Promise<import('../incremental_graph/types').VolodyslavNodeValue | undefined>}
+ * @returns {Promise<import('../incremental_graph/types').ComputedValue | undefined>}
  */
 async function internalGetValue(interfaceInstance, head, args = []) {
     const graph = await interfaceInstance.ensureInitialized();
@@ -163,7 +163,7 @@ async function internalGetValue(interfaceInstance, head, args = []) {
  * @param {InterfaceGraphAccess} interfaceInstance
  * @param {string} head
  * @param {Array<import('../incremental_graph/types').ConstValue>} [args]
- * @returns {Promise<import('../incremental_graph/types').VolodyslavNodeValue>}
+ * @returns {Promise<import('../incremental_graph/types').ComputedValue>}
  */
 async function internalPullGraphNode(interfaceInstance, head, args = []) {
     const graph = await interfaceInstance.ensureInitialized();
