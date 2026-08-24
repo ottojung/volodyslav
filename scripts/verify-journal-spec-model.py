@@ -3,7 +3,7 @@
 from dataclasses import dataclass, replace
 from itertools import product
 from pathlib import Path
-import base64,json,math,re as regex
+import json,math,re as regex,subprocess
 U64=2**64-1;TMIN=-8640000000000000;TMAX=8640000000000000
 A="aaaaaaaaaaaaaaaa";B="bbbbbbbbbbbbbbbb";C="cccccccccccccccc";R="rrrrrrrrrrrrrrrr";S="ssssssssssssssss"
 AUTH={A,B,C,R,S};ACT={"add","edit","delete","invalidate","validate"};ROOT=Path(__file__).parent
@@ -13,6 +13,7 @@ K,N,BS=addr(3);KI,NI,BI=addr(0);KD,ND,BD=addr(1);KE,NE,BE=addr(2)
 SCHEMA={K:(),KI:(),KD:(),KE:(KI,KD,KI)}
 def is_equal(a,b):
  # Exact executable form of DEF-EQUAL-01, including JavaScript number and key-order semantics.
+ if a is None or b is None:return a is None and b is None
  if isinstance(a,bool)or isinstance(b,bool):return type(a) is bool and type(b) is bool and a==b
  if isinstance(a,(int,float))and isinstance(b,(int,float)):
   return (math.isnan(a)and math.isnan(b))if isinstance(a,float)and isinstance(b,float)else a==b
@@ -23,6 +24,7 @@ def is_equal(a,b):
  return False
 nan=float("nan")
 assert is_equal(nan,nan) and is_equal([{"n":nan}],[{"n":nan}])
+assert is_equal(None,None) and is_equal({"value":None},{"value":None}) and not is_equal(None,{})
 assert is_equal({"a":1,"b":[2]}, {"a":1.0,"b":[2.0]})
 assert not is_equal({"a":1,"b":2}, {"b":2,"a":1})
 assert is_equal([1,{"x":[nan]}],[1.0,{"x":[nan]}]) and not is_equal(True,1)
@@ -259,38 +261,33 @@ def query(es,cursor=()):
  for e in sorted((e for e in nmax(es)if e.sequence>d.get(e.author,0)),key=lambda e:e.id):
   d[e.author]=e.sequence;out.append((e.kind,tuple(sorted(d.items()))))
  return tuple(out)
-def const_bytes(value):
- if type(value)is bool:return b"b1"if value else b"b0"
- if type(value)in (int,float):
+def normalized_const(value):
+ if type(value)is bool:return("boolean",value)
+ if type(value)in(int,float):
   try:number=float(value)
   except OverflowError:raise ValueError("non-finite ConstValue number")
   if not math.isfinite(number):raise ValueError("non-finite ConstValue number")
-  # JavaScript === equates both zero signs and every integer/float spelling of
-  # the same Number. float.hex is an injective canonical encoding thereafter.
-  if number==0:number=0.0
-  return ("n"+number.hex()).encode()
- if type(value)is str:
-  data=value.encode();return b"s"+str(len(data)).encode()+b":"+data
- if type(value)is list:
-  parts=[const_bytes(x)for x in value];return b"a"+b"".join(str(len(x)).encode()+b":"+x for x in parts)
+  return("number",0.0 if number==0 else number)
+ if type(value)is str:return("string",value)
+ if type(value)in(list,tuple):return("array",tuple(normalized_const(x)for x in value))
  if type(value)is dict and all(type(k)is str for k in value):
-  parts=[]
-  for k,v in value.items():parts.extend((const_bytes(k),const_bytes(v)))
-  return b"o"+b"".join(str(len(x)).encode()+b":"+x for x in parts)
+  return("record",tuple((k,normalized_const(v))for k,v in value.items()))
  raise ValueError("value is outside ConstValue")
-def filter_bytes(f):
- if f==("wildcard",):return b"W"
+def utf16_key(value):return value.encode("utf-16-be","surrogatepass")
+def filter_identity(f):
+ # This is the recursive semantic identity value. Exact identity strings belong
+ # solely to the JavaScript fixture generator and are consumed below.
+ if f==("wildcard",):return("wildcard",)
  if type(f)is not tuple or not f:raise ValueError("invalid filter")
- if f[0]=="ground"and len(f)==3 and type(f[1])is str and type(f[2])is tuple:
-  head=const_bytes(f[1]);args=[]
-  for a in f[2]:
-   x=b"W"if a==("wildcard",)else b"C"+const_bytes(a);args.append(str(len(x)).encode()+b":"+x)
-  return b"G"+str(len(head)).encode()+b":"+head+b"".join(args)
+ if f[0]=="ground"and len(f)==3 and regex.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*",f[1])and type(f[2])is tuple:
+  return("ground",f[1],tuple(None if a==("wildcard",)else normalized_const(a)for a in f[2]))
  if f[0]=="union"and len(f)==3:
-  children=sorted((filter_bytes(f[1]),filter_bytes(f[2])))
-  return b"U"+b"".join(str(len(x)).encode()+b":"+x for x in children)
+  children=(filter_identity(f[1]),filter_identity(f[2]))
+  # Python does not serialize these values. This key exists only to model the
+  # specified ECMAScript UTF-16 comparison for commutative semantic ordering.
+  children=tuple(sorted(children,key=lambda child:utf16_key(repr(child))))
+  return("union",children[0],children[1])
  raise ValueError("invalid filter")
-def filter_identity(f):return base64.urlsafe_b64encode(filter_bytes(f)).decode().rstrip("=")
 def filter_matches(f,e):
  if f==("wildcard",):return True
  if f[0]=="union":return filter_matches(f[1],e)or filter_matches(f[2],e)
@@ -1230,29 +1227,38 @@ A1,aa=receive(HA,HB);B1,ba=receive(HB,A1);assert not aa and not ba
 assert A1.journal==B1.journal and A1.coverage==B1.coverage and sem(A1)==sem(B1)and B1.clock==1
 q=alloc(B1)[0];assert q==101
 
-# Canonical cursor/token scalar domains.
-def encode(ch,cur,filter_id="*"):
- raw=json.dumps({"change":ch,"cursor":[list(x)for x in sorted(cur)],"filter":filter_id,"v":1},sort_keys=True,separators=(",",":"));return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
-def decode(tok):
- raw=base64.urlsafe_b64decode(tok+"="*((-len(tok))%4)).decode();o=json.loads(raw)
- if set(o)!={"change","cursor","filter","v"}or o["v"]!=1 or type(o["filter"])is not str or not o["filter"]:raise ValueError
- ch=o["change"]
- if type(ch)is not dict or set(ch)!={"nodeName","bindings","action","time"}or type(ch["nodeName"])is not str or type(ch["bindings"])is not list or ch["action"]not in ACT or not timestamp(ch["time"]):raise ValueError
- prodkey(ch["nodeName"],tuple(ch["bindings"]));cs=o["cursor"]
- if cs!=sorted(cs)or len({x for x,_ in cs})!=len(cs)or any(not regex.fullmatch("[a-z]{16}",x)or not uint(n)for x,n in cs):raise ValueError
- if encode(ch,[tuple(x)for x in cs],o["filter"])!=tok:raise ValueError
+# Canonical cursor/token scalar domains. JavaScript is the sole exact-string
+# authority; Python consumes its vectors and checks their semantic structure.
+subprocess.run(["node",str(ROOT/"generate-possible-change-token-v1-fixture.js")],check=True)
+TOKENS=json.loads((ROOT/"fixtures/possible-change-token-v1.json").read_text())
+def valid_const(value):
+ try:normalized_const(value);return True
+ except (ValueError,OverflowError):return False
+def valid_filter_value(value):
+ if value==["wildcard"]:return True
+ if type(value)is not list:return False
+ if len(value)==3 and value[0]=="ground":
+  return type(value[1])is str and regex.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*",value[1])is not None and type(value[2])is list and all(x is None or valid_const(x)for x in value[2])
+ if len(value)==3 and value[0]=="union":return valid_filter_value(value[1])and valid_filter_value(value[2])
+ return False
+def validate_token_semantics(token):
+ o=json.loads(token);assert list(o)==["change","cursor","filter","v"]and o["v"]==1
+ ch=o["change"];assert list(ch)==["nodeName","bindings","action","time"]
+ assert regex.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*",ch["nodeName"])and type(ch["bindings"])is list and all(valid_const(x)for x in ch["bindings"])
+ assert ch["action"]in ACT and timestamp(ch["time"])
+ prior=""
+ for fingerprint,coordinate in o["cursor"]:
+  assert regex.fullmatch(r"[a-z]{16}",fingerprint)and fingerprint>prior
+  assert regex.fullmatch(r"[1-9][0-9]*",coordinate)and int(coordinate)<=U64
+  prior=fingerprint
+ identity=json.loads(o["filter"]);assert valid_filter_value(identity)
  return o
-ch={"nodeName":N,"bindings":list(BS),"action":"edit","time":40};tok=encode(ch,((A,10),(B,3)));assert decode(tok)
-def bad(o):
- t=base64.urlsafe_b64encode(json.dumps(o,sort_keys=True,separators=(",",":")).encode()).decode().rstrip("=")
- try:decode(t)
- except (ValueError,TypeError,KeyError):return
- raise AssertionError("malformed token accepted")
-base={"change":ch,"cursor":[[A,1]],"filter":"*","v":1}
-for o in({**base,"cursor":[[A,True]]},{**base,"cursor":[[A,2**64]]},{**base,"cursor":[["bad",1]]},{**base,"cursor":[[A,1],[A,2]]},{**base,"cursor":[[B,1],[A,2]]},{**base,"v":2},{**base,"x":1},{**base,"change":{**ch,"time":True}},{**base,"change":{**ch,"time":TMAX+1}},{**base,"change":{**ch,"nodeName":7}},{**base,"change":{**ch,"bindings":{}}}):bad(o)
-noncanon=base64.urlsafe_b64encode(json.dumps(base).encode()).decode().rstrip("=")
-try:decode(noncanon);raise AssertionError("noncanonical token accepted")
-except ValueError:pass
+for vector in TOKENS["canonical"]:assert validate_token_semantics(vector["token"])==vector["value"]
+canonical_strings={vector["token"]for vector in TOKENS["canonical"]}
+assert all(vector["token"]not in canonical_strings for vector in TOKENS["invalid"])
+assert TOKENS["filterIdentity"]["unicodeUnion"]==TOKENS["filterIdentity"]["unicodeUnionSwapped"]
+sizes=TOKENS["filterIdentity"]["nestedUnionLinearSizes"]
+assert len(sizes)==33 and len(set(b-a for a,b in zip(sizes,sizes[1:])))==1
 
 # Filter-bound cursors cannot be broadened or changed silently. Empty results do
 # not manufacture continuation, and compaction has identical filtered behavior.
@@ -1281,7 +1287,6 @@ try:filtered_query(FILTERJ,k2page[-1][1],bothf,k2id);assert False
 except ValueError:pass
 assert not filtered_query(FILTERJ,(),nonef)
 assert filtered_query(FILTERJ,(),k2f)==filtered_query(compact(FILTERJ),(),k2f)
-filterToken=encode(ch,k2page[-1][1],k2id);assert decode(filterToken)["filter"]==k2id
 
 # Storage-category bounds across a generated n-by-r family, including n=0,r>0.
 def bounded_history(n,r):

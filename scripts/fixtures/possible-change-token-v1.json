@@ -1,0 +1,412 @@
+{
+  "description": "Normative v1 token strings generated with JavaScript JSON.stringify.",
+  "canonical": [
+    {
+      "name": "baseline-empty-cursor",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [],
+        "filter": "[\"wildcard\"]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "one-author",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"wildcard\"]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "multiple-authors",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "3"
+          ],
+          [
+            "bbbbbbbbbbbbbbbb",
+            "7"
+          ]
+        ],
+        "filter": "[\"wildcard\"]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"3\"],[\"bbbbbbbbbbbbbbbb\",\"7\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "direct-nested-bindings",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            {
+              "outer": [
+                true,
+                1e-7,
+                {
+                  "inner": "x"
+                }
+              ]
+            }
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"wildcard\"]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[{\"outer\":[true,1e-7,{\"inner\":\"x\"}]}],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "negative-zero",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            0
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"wildcard\"]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[0],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "positive-zero",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            0
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"wildcard\"]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[0],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "javascript-number-boundaries",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1e-7,
+            0.000001
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"wildcard\"]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1e-7,0.000001],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "uint64-maximum",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "18446744073709551615"
+          ]
+        ],
+        "filter": "[\"wildcard\"]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"18446744073709551615\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "wildcard-ground-argument",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"ground\",\"X\",[null]]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"ground\\\",\\\"X\\\",[null]]\",\"v\":1}"
+    },
+    {
+      "name": "concrete-wildcard-shaped-binding",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"ground\",\"X\",[[\"wildcard\"]]]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"ground\\\",\\\"X\\\",[[\\\"wildcard\\\"]]]\",\"v\":1}"
+    },
+    {
+      "name": "nested-unions",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"union\",[\"ground\",\"X\",[\"😀\"]],[\"union\",[\"ground\",\"X\",[1]],[\"ground\",\"X\",[2]]]]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"union\\\",[\\\"ground\\\",\\\"X\\\",[\\\"😀\\\"]],[\\\"union\\\",[\\\"ground\\\",\\\"X\\\",[1]],[\\\"ground\\\",\\\"X\\\",[2]]]]\",\"v\":1}"
+    },
+    {
+      "name": "unicode-union-forward",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"union\",[\"ground\",\"X\",[\"😀\"]],[\"ground\",\"X\",[\"\"]]]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"union\\\",[\\\"ground\\\",\\\"X\\\",[\\\"😀\\\"]],[\\\"ground\\\",\\\"X\\\",[\\\"\\\"]]]\",\"v\":1}"
+    },
+    {
+      "name": "unicode-union-swapped",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"union\",[\"ground\",\"X\",[\"😀\"]],[\"ground\",\"X\",[\"\"]]]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"union\\\",[\\\"ground\\\",\\\"X\\\",[\\\"😀\\\"]],[\\\"ground\\\",\\\"X\\\",[\\\"\\\"]]]\",\"v\":1}"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "whitespace",
+      "token": "{\n  \"change\": {\n    \"nodeName\": \"event\",\n    \"bindings\": [\n      1\n    ],\n    \"action\": \"edit\",\n    \"time\": 40\n  },\n  \"cursor\": [\n    [\n      \"aaaaaaaaaaaaaaaa\",\n      \"1\"\n    ]\n  ],\n  \"filter\": \"[\\\"wildcard\\\"]\",\n  \"v\": 1\n}"
+    },
+    {
+      "name": "wrong-top-level-order",
+      "token": "{\"v\":1,\"filter\":\"[\\\"wildcard\\\"]\",\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40}}"
+    },
+    {
+      "name": "wrong-change-order",
+      "token": "{\"change\":{\"time\":40,\"action\":\"edit\",\"bindings\":[1],\"nodeName\":\"event\"},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "unknown-field",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1,\"unknown\":true}"
+    },
+    {
+      "name": "unknown-version",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":2}"
+    },
+    {
+      "name": "legacy-base64-outer-token",
+      "token": "eyJjaGFuZ2UiOnsibm9kZU5hbWUiOiJldmVudCIsImJpbmRpbmdzIjpbMV0sImFjdGlvbiI6ImVkaXQiLCJ0aW1lIjo0MH0sImN1cnNvciI6W1siYWFhYWFhYWFhYWFhYWFhYSIsIjEiXV0sImZpbHRlciI6IltcIndpbGRjYXJkXCJdIiwidiI6MX0"
+    },
+    {
+      "name": "padded-base64-outer-token",
+      "token": "eyJjaGFuZ2UiOnsibm9kZU5hbWUiOiJldmVudCIsImJpbmRpbmdzIjpbMV0sImFjdGlvbiI6ImVkaXQiLCJ0aW1lIjo0MH0sImN1cnNvciI6W1siYWFhYWFhYWFhYWFhYWFhYSIsIjEiXV0sImZpbHRlciI6IltcIndpbGRjYXJkXCJdIiwidiI6MX0="
+    },
+    {
+      "name": "null-const-binding",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[null],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "nan-binding",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[NaN],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "infinity-binding",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[Infinity],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "duplicate-coordinate",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"],[\"aaaaaaaaaaaaaaaa\",\"2\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "unsorted-coordinates",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"bbbbbbbbbbbbbbbb\",\"1\"],[\"aaaaaaaaaaaaaaaa\",\"2\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "explicit-zero-coordinate",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"0\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "malformed-coordinate",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"01\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "out-of-range-coordinate",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"18446744073709551616\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "malformed-fingerprint",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"bad\",\"1\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "malformed-filter-identity",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"bad\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "malformed-ground-head",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"ground\\\",\\\"not a valid head!\\\",[]]\",\"v\":1}"
+    }
+  ],
+  "filterIdentity": {
+    "unicodeUnion": "[\"union\",[\"ground\",\"X\",[\"😀\"]],[\"ground\",\"X\",[\"\"]]]",
+    "unicodeUnionSwapped": "[\"union\",[\"ground\",\"X\",[\"😀\"]],[\"ground\",\"X\",[\"\"]]]",
+    "nestedUnionLinearSizes": [
+      20,
+      51,
+      82,
+      113,
+      144,
+      175,
+      206,
+      237,
+      268,
+      299,
+      330,
+      361,
+      392,
+      423,
+      454,
+      485,
+      516,
+      547,
+      578,
+      609,
+      640,
+      671,
+      702,
+      733,
+      764,
+      795,
+      826,
+      857,
+      888,
+      919,
+      950,
+      981,
+      1012
+    ]
+  }
+}
