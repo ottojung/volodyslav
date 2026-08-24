@@ -11,6 +11,11 @@ KV=json.loads((ROOT/"fixtures/node-key-serialization.json").read_text());TV=json
 def addr(i):v=KV[i];return(v["serialized"],v["nodeName"],tuple(v["bindings"]))
 K,N,BS=addr(3);KI,NI,BI=addr(0);KD,ND,BD=addr(1);KE,NE,BE=addr(2)
 SCHEMA={K:(),KI:(),KD:(),KE:(KI,KD,KI)}
+def js_object_keys(value):
+ keys=list(value.keys())
+ indexes=sorted((int(key),key)for key in keys if type(key)is str and regex.fullmatch(r"0|[1-9][0-9]*",key)and int(key)<=2**32-2 and str(int(key))==key)
+ index_keys={key for _,key in indexes}
+ return [key for _,key in indexes]+[key for key in keys if key not in index_keys]
 def is_equal(a,b):
  # Exact executable form of DEF-EQUAL-01, including JavaScript number and key-order semantics.
  if a is None or b is None:return a is None and b is None
@@ -20,7 +25,7 @@ def is_equal(a,b):
  if type(a) is not type(b):return False
  if isinstance(a,str):return a==b
  if isinstance(a,(list,tuple)):return len(a)==len(b)and all(is_equal(x,y)for x,y in zip(a,b))
- if isinstance(a,dict):return list(a.keys())==list(b.keys())and all(is_equal(a[k],b[k])for k in a)
+ if isinstance(a,dict):return js_object_keys(a)==js_object_keys(b)and all(is_equal(a[k],b[k])for k in js_object_keys(a))
  return False
 nan=float("nan")
 assert is_equal(nan,nan) and is_equal([{"n":nan}],[{"n":nan}])
@@ -28,6 +33,9 @@ assert is_equal(None,None) and is_equal({"value":None},{"value":None}) and not i
 assert is_equal({"a":1,"b":[2]}, {"a":1.0,"b":[2.0]})
 assert not is_equal({"a":1,"b":2}, {"b":2,"a":1})
 assert is_equal([1,{"x":[nan]}],[1.0,{"x":[nan]}]) and not is_equal(True,1)
+numeric_order_a={"2":"two","1":"one"};numeric_order_b={"1":"one","2":"two"}
+assert is_equal(numeric_order_a,numeric_order_b)
+assert not is_equal({"a":1,"b":2},{"b":2,"a":1})
 def prodkey(n,b):
  for v in KV:
   if v["nodeName"]==n and v["bindings"]==list(b):return v["serialized"]
@@ -271,8 +279,10 @@ def normalized_const(value):
  if type(value)is str:return("string",value)
  if type(value)in(list,tuple):return("array",tuple(normalized_const(x)for x in value))
  if type(value)is dict and all(type(k)is str for k in value):
-  return("record",tuple((k,normalized_const(v))for k,v in value.items()))
+  return("record",tuple((k,normalized_const(value[k]))for k in js_object_keys(value)))
  raise ValueError("value is outside ConstValue")
+assert normalized_const(numeric_order_a)==normalized_const(numeric_order_b)
+assert normalized_const({"a":1,"b":2})!=normalized_const({"b":2,"a":1})
 def utf16_key(value):return value.encode("utf-16-be","surrogatepass")
 def filter_identity(f):
  # This is the recursive semantic identity value. Exact identity strings belong
@@ -1257,6 +1267,12 @@ for vector in TOKENS["canonical"]:assert validate_token_semantics(vector["token"
 canonical_strings={vector["token"]for vector in TOKENS["canonical"]}
 assert all(vector["token"]not in canonical_strings for vector in TOKENS["invalid"])
 assert TOKENS["filterIdentity"]["unicodeUnion"]==TOKENS["filterIdentity"]["unicodeUnionSwapped"]
+assert TOKENS["filterIdentity"]["integerIndexOrderEqual"]
+assert TOKENS["filterIdentity"]["stringKeyOrderA"]!=TOKENS["filterIdentity"]["stringKeyOrderB"]
+assert set(TOKENS["constValueEvidence"]["accepted"])=={"ordinary-dense-array","ordinary-plain-record"}
+assert set(TOKENS["constValueEvidence"]["rejected"])=={"sparse","arrayToJson","transformingRecord","accessorRecord","symbolRecord","nestedInvalid"}
+assert TOKENS["constValueEvidence"]["transformingToJsonCollisionRejected"]
+assert "empty-cursor-nonbaseline" in {vector["name"]for vector in TOKENS["invalid"]}
 sizes=TOKENS["filterIdentity"]["nestedUnionLinearSizes"]
 assert len(sizes)==33 and len(set(b-a for a,b in zip(sizes,sizes[1:])))==1
 
@@ -1273,6 +1289,7 @@ assert filter_identity(("ground","X",(-0.0,)))==filter_identity(("ground","X",(0
 assert filter_identity(("ground","X",(1,)))==filter_identity(("ground","X",(1.0,)))
 nested1=[{"a":1,"b":[-0.0,{"x":True}]}];nested2=[{"a":1.0,"b":[0,{"x":True}]}]
 assert filter_identity(("ground","X",(nested1,)))==filter_identity(("ground","X",(nested2,)))
+assert filter_identity(("ground","X",(numeric_order_a,)))==filter_identity(("ground","X",(numeric_order_b,)))
 assert filter_identity(("ground","X",({"a":1,"b":2},)))!=filter_identity(("ground","X",({"b":2,"a":1},)))
 for invalid in (None,float("nan"),float("inf")):
  try:filter_identity(("ground","X",(invalid,)));assert False

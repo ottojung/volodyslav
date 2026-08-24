@@ -2,23 +2,6 @@
   "description": "Normative v1 token strings generated with JavaScript JSON.stringify.",
   "canonical": [
     {
-      "name": "baseline-empty-cursor",
-      "value": {
-        "change": {
-          "nodeName": "event",
-          "bindings": [
-            1
-          ],
-          "action": "edit",
-          "time": 40
-        },
-        "cursor": [],
-        "filter": "[\"wildcard\"]",
-        "v": 1
-      },
-      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
-    },
-    {
       "name": "one-author",
       "value": {
         "change": {
@@ -294,6 +277,94 @@
         "v": 1
       },
       "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"union\\\",[\\\"ground\\\",\\\"X\\\",[\\\"😀\\\"]],[\\\"ground\\\",\\\"X\\\",[\\\"\\\"]]]\",\"v\":1}"
+    },
+    {
+      "name": "integer-index-order-a",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"ground\",\"X\",[{\"1\":\"one\",\"2\":\"two\"}]]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"ground\\\",\\\"X\\\",[{\\\"1\\\":\\\"one\\\",\\\"2\\\":\\\"two\\\"}]]\",\"v\":1}"
+    },
+    {
+      "name": "integer-index-order-b",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"ground\",\"X\",[{\"1\":\"one\",\"2\":\"two\"}]]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"ground\\\",\\\"X\\\",[{\\\"1\\\":\\\"one\\\",\\\"2\\\":\\\"two\\\"}]]\",\"v\":1}"
+    },
+    {
+      "name": "string-key-order-a",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"ground\",\"X\",[{\"a\":1,\"b\":2}]]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"ground\\\",\\\"X\\\",[{\\\"a\\\":1,\\\"b\\\":2}]]\",\"v\":1}"
+    },
+    {
+      "name": "string-key-order-b",
+      "value": {
+        "change": {
+          "nodeName": "event",
+          "bindings": [
+            1
+          ],
+          "action": "edit",
+          "time": 40
+        },
+        "cursor": [
+          [
+            "aaaaaaaaaaaaaaaa",
+            "1"
+          ]
+        ],
+        "filter": "[\"ground\",\"X\",[{\"b\":2,\"a\":1}]]",
+        "v": 1
+      },
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"1\"]],\"filter\":\"[\\\"ground\\\",\\\"X\\\",[{\\\"b\\\":2,\\\"a\\\":1}]]\",\"v\":1}"
     }
   ],
   "invalid": [
@@ -348,6 +419,10 @@
     {
       "name": "explicit-zero-coordinate",
       "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[[\"aaaaaaaaaaaaaaaa\",\"0\"]],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
+    },
+    {
+      "name": "empty-cursor-nonbaseline",
+      "token": "{\"change\":{\"nodeName\":\"event\",\"bindings\":[1],\"action\":\"edit\",\"time\":40},\"cursor\":[],\"filter\":\"[\\\"wildcard\\\"]\",\"v\":1}"
     },
     {
       "name": "malformed-coordinate",
@@ -407,6 +482,24 @@
       950,
       981,
       1012
-    ]
+    ],
+    "integerIndexOrderEqual": "[\"ground\",\"X\",[{\"1\":\"one\",\"2\":\"two\"}]]",
+    "stringKeyOrderA": "[\"ground\",\"X\",[{\"a\":1,\"b\":2}]]",
+    "stringKeyOrderB": "[\"ground\",\"X\",[{\"b\":2,\"a\":1}]]"
+  },
+  "constValueEvidence": {
+    "accepted": [
+      "ordinary-dense-array",
+      "ordinary-plain-record"
+    ],
+    "rejected": [
+      "sparse",
+      "arrayToJson",
+      "transformingRecord",
+      "accessorRecord",
+      "symbolRecord",
+      "nestedInvalid"
+    ],
+    "transformingToJsonCollisionRejected": true
   }
 }

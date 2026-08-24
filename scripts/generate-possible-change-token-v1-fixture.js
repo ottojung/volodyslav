@@ -11,17 +11,46 @@ function compareUtf16(left, right) {
     return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function isConstValue(value) {
+function isConstValue(value, ancestors = new Set()) {
     if (value === null || value === undefined) return false;
     if (typeof value === "string" || typeof value === "boolean") return true;
     if (typeof value === "number") return Number.isFinite(value);
+    if (typeof value !== "object" || ancestors.has(value)) return false;
+    ancestors.add(value);
     if (Array.isArray(value)) {
-        return value.every((entry, index) =>
-            Object.hasOwn(value, index) && isConstValue(entry));
+        const keys = Reflect.ownKeys(value);
+        if (keys.length !== value.length + 1 || keys[keys.length - 1] !== "length") return false;
+        for (let index = 0; index < value.length; index += 1) {
+            if (keys[index] !== String(index)) return false;
+            const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+            if (!descriptor || !descriptor.enumerable || !("value" in descriptor)
+                || !isConstValue(descriptor.value, ancestors)) return false;
+        }
+        ancestors.delete(value);
+        return true;
     }
-    return typeof value === "object"
-        && Object.getPrototypeOf(value) === Object.prototype
-        && Object.keys(value).every(key => isConstValue(value[key]));
+    if (Object.getPrototypeOf(value) !== Object.prototype) return false;
+    for (const key of Reflect.ownKeys(value)) {
+        if (typeof key !== "string") return false;
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (!descriptor || !descriptor.enumerable || !("value" in descriptor)
+            || !isConstValue(descriptor.value, ancestors)) return false;
+    }
+    ancestors.delete(value);
+    return true;
+}
+
+function isEqual(left, right) {
+    if (left === null || right === null) return left === right;
+    if (typeof left === "number" && typeof right === "number") {
+        return Number.isNaN(left) ? Number.isNaN(right) : left === right;
+    }
+    if (typeof left !== typeof right || typeof left !== "object") return left === right;
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    return leftKeys.length === rightKeys.length
+        && leftKeys.every((key, index) => key === rightKeys[index]
+            && isEqual(left[key], right[key]));
 }
 
 function identityValue(filter) {
@@ -71,11 +100,11 @@ function isCanonicalToken(token) {
         if (change === null || typeof change !== "object" || Array.isArray(change)
             || Object.keys(change).join() !== "nodeName,bindings,action,time"
             || typeof change.nodeName !== "string" || !IDENT.test(change.nodeName)
-            || !Array.isArray(change.bindings) || !change.bindings.every(isConstValue)
+            || !Array.isArray(change.bindings) || !change.bindings.every(value => isConstValue(value))
             || !["add", "edit", "delete", "invalidate", "validate"].includes(change.action)
             || !Number.isSafeInteger(change.time)
             || Math.abs(change.time) > 8640000000000000) return false;
-        if (!Array.isArray(parsed.cursor)) return false;
+        if (!Array.isArray(parsed.cursor) || parsed.cursor.length === 0) return false;
         let prior = "";
         for (const coordinate of parsed.cursor) {
             if (!Array.isArray(coordinate) || coordinate.length !== 2
@@ -127,6 +156,48 @@ function buildFixture() {
     const privateUse = ground("X", ["\uE000"]);
     const unicodeUnion = union(emoji, privateUse);
     const nestedUnion = union(union(ground("X", [1]), ground("X", [2])), emoji);
+    const numericOrderA = {};
+    numericOrderA["2"] = "two";
+    numericOrderA["1"] = "one";
+    const numericOrderB = {};
+    numericOrderB["1"] = "one";
+    numericOrderB["2"] = "two";
+    const stringOrderA = { a: 1, b: 2 };
+    const stringOrderB = { b: 2, a: 1 };
+    if (!isEqual(numericOrderA, numericOrderB)
+        || JSON.stringify(numericOrderA) !== JSON.stringify(numericOrderB)
+        || filterIdentity(ground("X", [numericOrderA])) !== filterIdentity(ground("X", [numericOrderB]))
+        || isEqual(stringOrderA, stringOrderB)
+        || filterIdentity(ground("X", [stringOrderA])) === filterIdentity(ground("X", [stringOrderB]))) {
+        throw new Error("ECMAScript record ordering evidence failed");
+    }
+
+    const sparse = new Array(1);
+    const arrayToJson = [1];
+    Object.defineProperty(arrayToJson, "toJSON", { value: () => [1] });
+    const transformingRecord = { x: 1 };
+    Object.defineProperty(transformingRecord, "toJSON", { value: () => ({ x: 2 }) });
+    const collisionTarget = { x: 2 };
+    const accessorRecord = {};
+    Object.defineProperty(accessorRecord, "x", { enumerable: true, get: () => 1 });
+    const symbolRecord = { x: 1 };
+    symbolRecord[Symbol("extra")] = 2;
+    const nestedInvalid = { nested: sparse };
+    const rejectedConstValues = { sparse, arrayToJson, transformingRecord, accessorRecord, symbolRecord, nestedInvalid };
+    if (Object.values(rejectedConstValues).some(value => isConstValue(value))
+        || !isConstValue([1, { ordinary: true }]) || !isConstValue({ ordinary: [1, 2] })) {
+        throw new Error("data-only ConstValue evidence failed");
+    }
+    if (isEqual(transformingRecord, collisionTarget)
+        || JSON.stringify(transformingRecord) !== JSON.stringify(collisionTarget)) {
+        throw new Error("transforming toJSON collision trace was not reproduced");
+    }
+    try {
+        identityValue(ground("X", [transformingRecord]));
+        throw new Error("transforming toJSON collision source was accepted");
+    } catch (error) {
+        if (error.message !== "invalid ground argument") throw error;
+    }
 
     let chain = ground("X", ["g"]);
     const linearSizes = [filterIdentity(chain).length];
@@ -140,7 +211,6 @@ function buildFixture() {
     }
 
     const canonicalVectors = [
-        canonical("baseline-empty-cursor", { cursor: [] }),
         canonical("one-author"),
         canonical("multiple-authors", { cursor: [[B, "7"], [A, "3"]] }),
         canonical("direct-nested-bindings", { bindings: [{ outer: [true, 1e-7, { inner: "x" }] }] }),
@@ -153,6 +223,10 @@ function buildFixture() {
         canonical("nested-unions", { filter: nestedUnion }),
         canonical("unicode-union-forward", { filter: unicodeUnion }),
         canonical("unicode-union-swapped", { filter: union(privateUse, emoji) }),
+        canonical("integer-index-order-a", { filter: ground("X", [numericOrderA]) }),
+        canonical("integer-index-order-b", { filter: ground("X", [numericOrderB]) }),
+        canonical("string-key-order-a", { filter: ground("X", [stringOrderA]) }),
+        canonical("string-key-order-b", { filter: ground("X", [stringOrderB]) }),
     ];
 
     const base = tokenValue();
@@ -171,6 +245,7 @@ function buildFixture() {
         ["duplicate-coordinate", JSON.stringify({ ...base, cursor: [[A, "1"], [A, "2"]] })],
         ["unsorted-coordinates", JSON.stringify({ ...base, cursor: [[B, "1"], [A, "2"]] })],
         ["explicit-zero-coordinate", JSON.stringify({ ...base, cursor: [[A, "0"]] })],
+        ["empty-cursor-nonbaseline", JSON.stringify({ ...base, cursor: [] })],
         ["malformed-coordinate", JSON.stringify({ ...base, cursor: [[A, "01"]] })],
         ["out-of-range-coordinate", JSON.stringify({ ...base, cursor: [[A, (U64_MAX + 1n).toString()]] })],
         ["malformed-fingerprint", JSON.stringify({ ...base, cursor: [["bad", "1"]] })],
@@ -186,6 +261,14 @@ function buildFixture() {
             unicodeUnion: filterIdentity(unicodeUnion),
             unicodeUnionSwapped: filterIdentity(union(privateUse, emoji)),
             nestedUnionLinearSizes: linearSizes,
+            integerIndexOrderEqual: filterIdentity(ground("X", [numericOrderA])),
+            stringKeyOrderA: filterIdentity(ground("X", [stringOrderA])),
+            stringKeyOrderB: filterIdentity(ground("X", [stringOrderB])),
+        },
+        constValueEvidence: {
+            accepted: ["ordinary-dense-array", "ordinary-plain-record"],
+            rejected: Object.keys(rejectedConstValues),
+            transformingToJsonCollisionRejected: true,
         },
     };
 }

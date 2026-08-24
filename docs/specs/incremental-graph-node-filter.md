@@ -383,8 +383,10 @@ orders and requires one exact JavaScript-produced identity string.
 
 This uses JavaScript JSON value serialization directly: finite numbers only,
 `-0` normalized to `0`, arrays positional, and record keys in ECMAScript
-`Object.keys` order. `null`, non-finite numbers, and invalid nested ConstValues
-are rejected. The identity remains opaque metadata, not a public filter
+`Object.keys` order. `ConstValue` arrays and records are the dense/plain
+data-only representations defined by TERM-04: hooks, accessors, symbol or extra
+array properties, sparse arrays, cycles, `null`, non-finite numbers, and invalid
+nested values are rejected before identity construction. The identity remains opaque metadata, not a public filter
 serialization or filter reconstruction API, and is injective over the supported
 filter domain modulo production `isEqual`.
 For token validation, the inverse grammar accepts only the three exact array

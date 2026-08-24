@@ -14,9 +14,17 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-03 (SimpleValue):** A value type defined recursively as: `null | number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them (see DEF-EQUAL-01). Excludes `undefined`, functions, symbols, and BigInt.
 
-**TERM-04 (ConstValue):** A persistence-safe subtype of `SimpleValue`. Its
-numeric leaves are finite JavaScript Numbers. All string, boolean, array, and
-record alternatives recursively contain only `ConstValue` values.
+**TERM-04 (ConstValue):** A persistence-safe subtype of `SimpleValue`: boolean,
+finite JavaScript Number, string, dense data-only array of `ConstValue`, or
+plain data-only string-keyed record of `ConstValue`. `null` is excluded. Every
+array index is an own enumerable data property, arrays have no own keys except
+their dense canonical indices and `length`, and records have only own enumerable
+string data properties. Accessors, symbol keys, extra array properties,
+serialization hooks such as `toJSON`, sparse arrays, cycles, functions,
+`undefined`, BigInt, non-finite numbers, and non-plain objects are excluded at
+every depth. Consequently every `ConstValue` satisfies
+`isEqual(value, JSON.parse(JSON.stringify(value)))`, and canonical JSON cannot
+collapse two non-`isEqual` `ConstValue` values.
 
 **TERM-05 (ComputedValue):** The recursively JSON-round-trippable semantic value
 domain: `null`, boolean, finite JavaScript Number, string, dense array of
@@ -667,8 +675,12 @@ freshness sublevel. The public journal API consists of:
 - `graph.baselinePossibleNodeChange()` — Returns the universal opaque before-all
   sentinel carrying the empty/all-zero vector. It starts scanning at the first surviving per-author/action representative.
 
-- `possibleChangeTokenToString(token)` and `stringToPossibleChangeToken(string)`
-  provide canonical, versioned, validated durable token conversion without exposing raw journal identities; the hidden full vector round-trips.
+- `possibleChangeTokenToString(token: PossibleNodeChange): string` and
+  `stringToPossibleChangeToken(string): PossibleNodeChange` provide canonical,
+  versioned, validated durable conversion for non-baseline returned changes
+  without exposing raw journal identities; the hidden full vector round-trips.
+  `BaselinePossibleNodeChange` is intentionally excluded from durable v1 and is
+  recreated with `graph.baselinePossibleNodeChange()`.
 
 - `InvalidPossibleChangeCursorError` — Thrown before polling for a structurally malformed or non-canonical token or when the token's filter identity differs from the canonical identity of `to`. A cursor coordinate may exceed host coverage; the query remains valid and performs no write. Its
   public type guard uses `instanceof`.
