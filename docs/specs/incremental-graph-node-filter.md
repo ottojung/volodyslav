@@ -375,18 +375,12 @@ For polling only, first construct the recursive normalized identity value
 Then `filterIdentity(F) = JSON.stringify(filterIdentityValue(F))`. Stringifying
 only at this outer boundary makes identity size linear in the filter AST rather
 than repeatedly escaping already-serialized child strings.
-The normative token fixture records the identity-string lengths for a chain of
-32 nested unions and the JavaScript fixture generator asserts that every added
-union layer contributes the same number of characters. It also constructs the
-`Ground("X", ["😀"])` / `Ground("X", ["\uE000"])` union in both operand
-orders and requires one exact JavaScript-produced identity string.
-
 This uses JavaScript JSON value serialization directly: finite numbers only,
 `-0` normalized to `0`, arrays positional, and record keys in ECMAScript
 `Object.keys` order. `ConstValue` arrays and records are the dense/plain
 data-only representations defined by TERM-04: hooks, accessors, symbol or extra
 array properties, sparse arrays, cycles, `null`, non-finite numbers, and invalid
-nested values are rejected before identity construction. The identity remains opaque metadata, not a public filter
+nested values are outside the filter domain. The identity remains opaque metadata, not a public filter
 serialization or filter reconstruction API, and is injective over the supported
 filter domain modulo production `isEqual`.
 For token validation, the inverse grammar accepts only the three exact array

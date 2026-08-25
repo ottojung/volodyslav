@@ -14,31 +14,24 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-03 (SimpleValue):** A value type defined recursively as: `null | number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them (see DEF-EQUAL-01). Excludes `undefined`, functions, symbols, and BigInt.
 
-**TERM-04 (ConstValue):** A persistence-safe subtype of `SimpleValue`: boolean,
-finite JavaScript Number, string, dense data-only array of `ConstValue`, or
-plain data-only string-keyed record of `ConstValue`. `null` is excluded. Every
-array index is an own enumerable data property, arrays have no own keys except
-their dense canonical indices and `length`, and records have only own enumerable
-string data properties. Accessors, symbol keys, extra array properties,
-serialization hooks such as `toJSON`, sparse arrays, cycles, functions,
-`undefined`, BigInt, non-finite numbers, and non-plain objects are excluded at
-every depth. Consequently every `ConstValue` satisfies
-`isEqual(value, JSON.parse(JSON.stringify(value)))`, and canonical JSON cannot
-collapse two non-`isEqual` `ConstValue` values.
+**TERM-04 (ConstValue):** The binding-valid subset of `ComputedValue` that
+excludes `null`: boolean, finite JavaScript Number, string, dense array of
+`ConstValue`, or plain string-keyed JSON record of `ConstValue`. It uses the
+same ordinary JSON representation and round-trip invariant as `ComputedValue`;
+there is no separate ConstValue serialization algorithm.
 
 **TERM-05 (ComputedValue):** The recursively JSON-round-trippable semantic value
 domain: `null`, boolean, finite JavaScript Number, string, dense array of
-`ComputedValue`, or plain string-keyed record of `ComputedValue`. It excludes
-`undefined`, `NaN`, positive and negative infinity, functions, symbols, BigInt,
-sparse arrays, cycles, non-plain objects whose JSON representation changes
-semantic type, and every nested occurrence of those values. `ConstValue`
-remains the narrower binding domain and excludes `null`. Every `ComputedValue`
-round-trips through `JSON.parse(JSON.stringify(value))` under REQ-DB-01.
-Every value-introduction boundary serializes exactly once with the native
-`JSON.stringify`, parses exactly once with `JSON.parse`, proves the source and
-parsed value equal under DEF-EQUAL-01 and the selected null policy, and persists
-only the parsed plain JSON value. JSON hooks, accessors, sparse arrays, and
-non-plain objects are outside the domain rather than alternate encodings.
+`ComputedValue`, or plain string-keyed JSON record of `ComputedValue`. It
+excludes `undefined`, `NaN`, positive and negative infinity, functions, symbols,
+BigInt, sparse arrays or `undefined` array entries, cycles, JSON-transforming
+objects (including accessors and serialization hooks), non-JSON semantic
+objects, and every nested occurrence of those values.
+`ConstValue` is the binding-valid subset excluding `null`. For every valid
+`ComputedValue` `v`, ordinary JSON persistence MUST preserve semantic equality:
+`isEqual(v, JSON.parse(JSON.stringify(v))) === true`. This is an invariant of
+the admitted domain, not a normalization or replacement procedure. The graph
+stores a `ComputedValue`; ordinary JSON is only its persistence encoding.
 
 **TERM-06 (BindingEnvironment):** A positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. Bindings are matched to argument positions by position, not by name.
 

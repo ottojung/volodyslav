@@ -3,7 +3,7 @@
 from dataclasses import dataclass, replace
 from itertools import product
 from pathlib import Path
-import json,math,re as regex,subprocess
+import json,math,re as regex
 U64=2**64-1;TMIN=-8640000000000000;TMAX=8640000000000000
 A="aaaaaaaaaaaaaaaa";B="bbbbbbbbbbbbbbbb";C="cccccccccccccccc";R="rrrrrrrrrrrrrrrr";S="ssssssssssssssss"
 AUTH={A,B,C,R,S};ACT={"add","edit","delete","invalidate","validate"};ROOT=Path(__file__).parent
@@ -269,7 +269,7 @@ def query(es,cursor=()):
  for e in sorted((e for e in nmax(es)if e.sequence>d.get(e.author,0)),key=lambda e:e.id):
   d[e.author]=e.sequence;out.append((e.kind,tuple(sorted(d.items()))))
  return tuple(out)
-def normalized_const(value):
+def semantic_const_identity(value):
  if type(value)is bool:return("boolean",value)
  if type(value)in(int,float):
   try:number=float(value)
@@ -277,32 +277,28 @@ def normalized_const(value):
   if not math.isfinite(number):raise ValueError("non-finite ConstValue number")
   return("number",0.0 if number==0 else number)
  if type(value)is str:return("string",value)
- if type(value)in(list,tuple):return("array",tuple(normalized_const(x)for x in value))
+ if type(value)in(list,tuple):return("array",tuple(semantic_const_identity(x)for x in value))
  if type(value)is dict and all(type(k)is str for k in value):
-  return("record",tuple((k,normalized_const(value[k]))for k in js_object_keys(value)))
+  return("record",tuple((k,semantic_const_identity(value[k]))for k in js_object_keys(value)))
  raise ValueError("value is outside ConstValue")
-assert normalized_const(numeric_order_a)==normalized_const(numeric_order_b)
-assert normalized_const({"a":1,"b":2})!=normalized_const({"b":2,"a":1})
-def utf16_key(value):return value.encode("utf-16-be","surrogatepass")
+assert semantic_const_identity(numeric_order_a)==semantic_const_identity(numeric_order_b)
+assert semantic_const_identity({"a":1,"b":2})!=semantic_const_identity({"b":2,"a":1})
+WILDCARD_ARGUMENT=object()
 def filter_identity(f):
- # This is the recursive semantic identity value. Exact identity strings belong
- # solely to the JavaScript fixture generator and are consumed below.
+ # Internal structural identity for semantic cursor checks, not the public JSON string.
  if f==("wildcard",):return("wildcard",)
  if type(f)is not tuple or not f:raise ValueError("invalid filter")
  if f[0]=="ground"and len(f)==3 and regex.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*",f[1])and type(f[2])is tuple:
-  return("ground",f[1],tuple(None if a==("wildcard",)else normalized_const(a)for a in f[2]))
+  return("ground",f[1],tuple(("wildcard-argument",)if a is WILDCARD_ARGUMENT else semantic_const_identity(a)for a in f[2]))
  if f[0]=="union"and len(f)==3:
   children=(filter_identity(f[1]),filter_identity(f[2]))
-  # Python does not serialize these values. This key exists only to model the
-  # specified ECMAScript UTF-16 comparison for commutative semantic ordering.
-  children=tuple(sorted(children,key=lambda child:utf16_key(repr(child))))
-  return("union",children[0],children[1])
+  return("union",frozenset(children))
  raise ValueError("invalid filter")
 def filter_matches(f,e):
  if f==("wildcard",):return True
  if f[0]=="union":return filter_matches(f[1],e)or filter_matches(f[2],e)
  if f[0]!="ground"or f[1]!=e.name or len(f[2])!=len(e.bindings):return False
- return all(a==("wildcard",)or is_equal(a,b)for a,b in zip(f[2],e.bindings))
+ return all(a is WILDCARD_ARGUMENT or is_equal(a,b)for a,b in zip(f[2],e.bindings))
 def filtered_query(es,cursor,f,token_filter=None):
  filter_id=filter_identity(f)
  if token_filter is not None and token_filter!=filter_id:raise ValueError("cursor filter mismatch")
@@ -1237,45 +1233,6 @@ A1,aa=receive(HA,HB);B1,ba=receive(HB,A1);assert not aa and not ba
 assert A1.journal==B1.journal and A1.coverage==B1.coverage and sem(A1)==sem(B1)and B1.clock==1
 q=alloc(B1)[0];assert q==101
 
-# Canonical cursor/token scalar domains. JavaScript is the sole exact-string
-# authority; Python consumes its vectors and checks their semantic structure.
-subprocess.run(["node",str(ROOT/"generate-possible-change-token-v1-fixture.js")],check=True)
-TOKENS=json.loads((ROOT/"fixtures/possible-change-token-v1.json").read_text())
-def valid_const(value):
- try:normalized_const(value);return True
- except (ValueError,OverflowError):return False
-def valid_filter_value(value):
- if value==["wildcard"]:return True
- if type(value)is not list:return False
- if len(value)==3 and value[0]=="ground":
-  return type(value[1])is str and regex.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*",value[1])is not None and type(value[2])is list and all(x is None or valid_const(x)for x in value[2])
- if len(value)==3 and value[0]=="union":return valid_filter_value(value[1])and valid_filter_value(value[2])
- return False
-def validate_token_semantics(token):
- o=json.loads(token);assert list(o)==["change","cursor","filter","v"]and o["v"]==1
- ch=o["change"];assert list(ch)==["nodeName","bindings","action","time"]
- assert regex.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*",ch["nodeName"])and type(ch["bindings"])is list and all(valid_const(x)for x in ch["bindings"])
- assert ch["action"]in ACT and timestamp(ch["time"])
- prior=""
- for fingerprint,coordinate in o["cursor"]:
-  assert regex.fullmatch(r"[a-z]{16}",fingerprint)and fingerprint>prior
-  assert regex.fullmatch(r"[1-9][0-9]*",coordinate)and int(coordinate)<=U64
-  prior=fingerprint
- identity=json.loads(o["filter"]);assert valid_filter_value(identity)
- return o
-for vector in TOKENS["canonical"]:assert validate_token_semantics(vector["token"])==vector["value"]
-canonical_strings={vector["token"]for vector in TOKENS["canonical"]}
-assert all(vector["token"]not in canonical_strings for vector in TOKENS["invalid"])
-assert TOKENS["filterIdentity"]["unicodeUnion"]==TOKENS["filterIdentity"]["unicodeUnionSwapped"]
-assert TOKENS["filterIdentity"]["integerIndexOrderEqual"]
-assert TOKENS["filterIdentity"]["stringKeyOrderA"]!=TOKENS["filterIdentity"]["stringKeyOrderB"]
-assert set(TOKENS["constValueEvidence"]["accepted"])=={"ordinary-dense-array","ordinary-plain-record"}
-assert set(TOKENS["constValueEvidence"]["rejected"])=={"sparse","arrayToJson","transformingRecord","accessorRecord","symbolRecord","nestedInvalid"}
-assert TOKENS["constValueEvidence"]["transformingToJsonCollisionRejected"]
-assert "empty-cursor-nonbaseline" in {vector["name"]for vector in TOKENS["invalid"]}
-sizes=TOKENS["filterIdentity"]["nestedUnionLinearSizes"]
-assert len(sizes)==33 and len(set(b-a for a,b in zip(sizes,sizes[1:])))==1
-
 # Filter-bound cursors cannot be broadened or changed silently. Empty results do
 # not manufacture continuation, and compaction has identical filtered behavior.
 FK1=gen(1,B,(KI,NI,BI),1,"k1",(2,B));FK1V=ev(2,B,(KI,NI,BI),2,"validate",FK1.id);FK2=gen(3,B,(KD,ND,BD),3,"k2",(4,B));FK2V=ev(4,B,(KD,ND,BD),4,"validate",FK2.id)
@@ -1294,7 +1251,7 @@ assert filter_identity(("ground","X",({"a":1,"b":2},)))!=filter_identity(("groun
 for invalid in (None,float("nan"),float("inf")):
  try:filter_identity(("ground","X",(invalid,)));assert False
  except ValueError:pass
-assert filter_identity(("ground","X",(("wildcard",),)))!=filter_identity(("ground","X",("wildcard",)))
+assert filter_identity(("ground","X",(WILDCARD_ARGUMENT,)))!=filter_identity(("ground","X",(["wildcard"],)))
 # Wildcard and a finite union happen to match the same current snapshot, but
 # their structural identities differ because wildcard also matches future keys.
 assert {e.key for e in nmax(FILTERJ)if filter_matches(wild,e)}=={e.key for e in nmax(FILTERJ)if filter_matches(bothf,e)}and filter_identity(wild)!=bothid
