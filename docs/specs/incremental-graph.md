@@ -12,16 +12,26 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-02 (SchemaPattern):** An expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used only in schema definitions to denote families of nodes and for variable mapping.
 
-**TERM-03 (SimpleValue):** A value type defined recursively as: `number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them (see DEF-EQUAL-01). Excludes `undefined`, `null`, functions, and symbols.
+**TERM-03 (SimpleValue):** A value type defined recursively as: `null | number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them (see DEF-EQUAL-01). Excludes `undefined`, functions, symbols, and BigInt.
 
-**TERM-04 (ConstValue):** A persistence-safe subtype of `SimpleValue`. Its
-numeric leaves are finite JavaScript Numbers; `NaN`, positive infinity, and
-negative infinity remain valid numeric `SimpleValue`/`ComputedValue` values but
-are not `ConstValue` values because JSON persistence would replace them with
-`null`. All string, boolean, array, and record alternatives otherwise follow
-the recursive `SimpleValue` definition.
+**TERM-04 (ConstValue):** The binding-valid subset of `ComputedValue` that
+excludes `null`: boolean, finite JavaScript Number, string, dense array of
+`ConstValue`, or plain string-keyed JSON record of `ConstValue`. It uses the
+same ordinary JSON representation and round-trip invariant as `ComputedValue`;
+there is no separate ConstValue serialization algorithm.
 
-**TERM-05 (ComputedValue):** A subtype of `SimpleValue`.
+**TERM-05 (ComputedValue):** The recursively JSON-round-trippable semantic value
+domain: `null`, boolean, finite JavaScript Number, string, dense array of
+`ComputedValue`, or plain string-keyed JSON record of `ComputedValue`. It
+excludes `undefined`, `NaN`, positive and negative infinity, functions, symbols,
+BigInt, sparse arrays or `undefined` array entries, cycles, JSON-transforming
+objects (including accessors and serialization hooks), non-JSON semantic
+objects, and every nested occurrence of those values.
+`ConstValue` is the binding-valid subset excluding `null`. For every valid
+`ComputedValue` `v`, ordinary JSON persistence MUST preserve semantic equality:
+`isEqual(v, JSON.parse(JSON.stringify(v))) === true`. This is an invariant of
+the admitted domain, not a normalization or replacement procedure. The graph
+stores a `ComputedValue`; ordinary JSON is only its persistence encoding.
 
 **TERM-06 (BindingEnvironment):** A positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. Bindings are matched to argument positions by position, not by name.
 
@@ -212,6 +222,8 @@ For schema parsing and pattern matching, expressions are normalized using these 
 
 ```typescript
 function isEqual(a: SimpleValue, b: SimpleValue): boolean {
+  if (a === null || b === null) return a === b;
+
   if (typeof a === 'number' && typeof b === 'number') {
     if (isNaN(a) && isNaN(b)) {
       return true; // NaN is equal to NaN
@@ -656,8 +668,12 @@ freshness sublevel. The public journal API consists of:
 - `graph.baselinePossibleNodeChange()` — Returns the universal opaque before-all
   sentinel carrying the empty/all-zero vector. It starts scanning at the first surviving per-author/action representative.
 
-- `possibleChangeTokenToString(token)` and `stringToPossibleChangeToken(string)`
-  provide canonical, versioned, validated durable token conversion without exposing raw journal identities; the hidden full vector round-trips.
+- `possibleChangeTokenToString(token: PossibleNodeChange): string` and
+  `stringToPossibleChangeToken(string): PossibleNodeChange` provide canonical,
+  versioned, validated durable conversion for non-baseline returned changes
+  without exposing raw journal identities; the hidden full vector round-trips.
+  `BaselinePossibleNodeChange` is intentionally excluded from durable v1 and is
+  recreated with `graph.baselinePossibleNodeChange()`.
 
 - `InvalidPossibleChangeCursorError` — Thrown before polling for a structurally malformed or non-canonical token or when the token's filter identity differs from the canonical identity of `to`. A cursor coordinate may exceed host coverage; the query remains valid and performs no write. Its
   public type guard uses `instanceof`.

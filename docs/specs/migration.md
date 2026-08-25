@@ -53,8 +53,8 @@ All methods are `async`.
 |--------|-------------|
 | `get(nodeIdentifier)` | Return the previous-version value. |
 | `keep(nodeIdentifier)` | Preserve node as-is in the new version. |
-| `override(nodeIdentifier, value)` | Rewrite an existing cached value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`), while preserving its cache-state proof envelope. |
-| `invalidate(nodeIdentifier)` | Mark the node for recomputation. |
+| `override(nodeIdentifier, value)` | Rewrite the representation of an existing cached value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`). The result MUST be `isEqual` to the existing value and preserves its cache-state proof envelope. |
+| `invalidate(nodeIdentifier)` | Preserve the cached value while marking the node for recomputation. |
 | `delete(nodeIdentifier)` | Remove the node from the new version entirely. |
 | `create(nodeKeyString, value, freshness)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `freshness` must be `"up-to-date"` or `"potentially-outdated"`. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
 
@@ -123,7 +123,11 @@ after migration:
 
 `override` is a **semantic-preserving representation rewrite**. It changes the stored representation (e.g. on-disk format) while preserving the semantic value as seen by dependents. Because the value is semantically unchanged, `override()` does not propagate invalidation — it inherits freshness, timestamps, and validity from the old record. The same stale-node rule applies: a stale node carried through `override` loses its incoming proofs.
 
-`override()` MUST NOT be used when the migration changes the meaning or value of a node. If the value itself changes, use `invalidate()` instead, which triggers downstream recomputation so that dependents observe the new value.
+`override()` MUST NOT be used when the migration changes the meaning or value of
+a node; a non-`isEqual` result is rejected. `invalidate()` is not a replacement
+operation: it preserves the cached value and requires a later pull to recompute
+it. Migration has no operation that directly performs present X → present Y
+where `!isEqual(X, Y)`.
 
 The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
 
@@ -208,8 +212,12 @@ Migration preserves the journal, `journalCoverage`, `localJournalClock`, and dur
 accepts supported uncompacted state and does not implicitly compact. Durable
 tokens preserve meaning across cutover and restart.
 
-The ordinary classifier governs semantic changes. A journal-silent migration changes no journal metadata. A semantic transition authors its precise event set where required: every new generation includes exactly one later initial freshness assertion, and local authoring advances local coverage after lazy raising. Representation-only changes remain silent; `keep`, invalidate,
-and semantic-preserving override preserve `modifiedAt`. Graph, journal, allocator, and coverage commit atomically. Migration never seeds graph authority from polling evidence. Detailed rules are in
+The migration transition table governs journal changes. Every new generation
+includes exactly one later initial freshness assertion, and local authoring
+advances local coverage after lazy raising. Representation-only changes remain
+silent; `keep`, invalidation, and semantic-preserving `override` preserve the
+cached value and `modifiedAt`. Graph, journal, allocator, and coverage commit
+atomically. Migration never seeds graph authority from polling evidence. Detailed rules are in
 `docs/specs/incremental-graph-journal-migrations.md`.
 
 ## Atomicity guarantee

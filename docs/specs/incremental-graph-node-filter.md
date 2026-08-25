@@ -355,19 +355,42 @@ and the filters themselves cannot be mutated.
 
 ## Cursor identity
 
-For polling only, `filterIdentity(F)` is a canonical opaque string derived from
-F's immutable structural form. It is not a public filter serialization or a way
-to construct a filter. The derivation uses distinct tags for wildcard, ground,
-and union; ground encodes `head` plus the production canonical ConstValue bytes
-for each argument (with a distinct wildcard tag). Those bytes accept exactly the
-recursive finite-number/string/boolean/array/ordered-record ConstValue domain,
-normalize `-0` with `+0` and equivalent JavaScript Number representations, and
-preserve array position and record key order exactly as `isEqual` does. `null`,
-`NaN`, infinities, and non-string record keys are rejected before identity
-construction. Union recursively sorts its two child identity byte strings before
-encoding. The identity is the complete canonical bytes encoded with canonical base64url; it is not a fixed-size digest and is injective over the supported filter domain modulo production `isEqual`.
-The token decoder treats the identity as opaque and compares it with the identity
-computed from the call's live `to` filter. Different identities are rejected.
+For polling only, first construct the recursive normalized identity value
+`filterIdentityValue(F)`:
+
+* wildcard: `["wildcard"]`;
+* ground: `["ground", head, args]`, where every argument is either its actual
+  validated `ConstValue` or the identity-only marker `null`. `null` is outside
+  `ConstValue`, so a wildcard cannot collide with any concrete binding,
+  including the concrete array `["wildcard"]`;
+* union: `["union", smallerChildValue, largerChildValue]`, where both children
+  are recursively normalized identity **values**, not already-stringified
+  identities. To order them, compute `JSON.stringify(childValue)` for each
+  child as a temporary comparison key. Compare those keys using ECMAScript
+  String lexicographic order over UTF-16 code units: `a < b ? -1 : a > b ? 1 :
+  0`. Locale collation, including `localeCompare`, is forbidden. Store the
+  ordered child values in the union value. Union equality is commutative, but
+  unions are not flattened and associatively different trees remain distinct.
+
+Then `filterIdentity(F) = JSON.stringify(filterIdentityValue(F))`. Stringifying
+only at this outer boundary makes identity size linear in the filter AST rather
+than repeatedly escaping already-serialized child strings.
+This uses JavaScript JSON value serialization directly: finite numbers only,
+`-0` normalized to `0`, arrays positional, and record keys in ECMAScript
+`Object.keys` order. `ConstValue` arrays and records are the dense/plain
+data-only representations defined by TERM-04: hooks, accessors, symbol or extra
+array properties, sparse arrays, cycles, `null`, non-finite numbers, and invalid
+nested values are outside the filter domain. The identity remains opaque metadata, not a public filter
+serialization or filter reconstruction API, and is injective over the supported
+filter domain modulo production `isEqual`.
+For token validation, the inverse grammar accepts only the three exact array
+forms above. A ground head satisfies the normative `NodeName`/`ident` grammar;
+each ground argument is either the `null` wildcard marker or a valid
+`ConstValue`; and union children are recursively valid identity values in the
+exact canonical order just defined. The token decoder does not expose a public
+filter deserializer: it validates this metadata grammar and compares the opaque
+identity string with the identity computed from the call's live `to` filter.
+Different identities are rejected.
 
 REQ-NF-11: structurally equal filters under REQ-NF-06 MUST have identical
 `filterIdentity`; filters with different canonical structural forms MUST have

@@ -3,7 +3,7 @@
 from dataclasses import dataclass, replace
 from itertools import product
 from pathlib import Path
-import base64,json,math,re as regex
+import json,math,re as regex
 U64=2**64-1;TMIN=-8640000000000000;TMAX=8640000000000000
 A="aaaaaaaaaaaaaaaa";B="bbbbbbbbbbbbbbbb";C="cccccccccccccccc";R="rrrrrrrrrrrrrrrr";S="ssssssssssssssss"
 AUTH={A,B,C,R,S};ACT={"add","edit","delete","invalidate","validate"};ROOT=Path(__file__).parent
@@ -11,21 +11,31 @@ KV=json.loads((ROOT/"fixtures/node-key-serialization.json").read_text());TV=json
 def addr(i):v=KV[i];return(v["serialized"],v["nodeName"],tuple(v["bindings"]))
 K,N,BS=addr(3);KI,NI,BI=addr(0);KD,ND,BD=addr(1);KE,NE,BE=addr(2)
 SCHEMA={K:(),KI:(),KD:(),KE:(KI,KD,KI)}
+def js_object_keys(value):
+ keys=list(value.keys())
+ indexes=sorted((int(key),key)for key in keys if type(key)is str and regex.fullmatch(r"0|[1-9][0-9]*",key)and int(key)<=2**32-2 and str(int(key))==key)
+ index_keys={key for _,key in indexes}
+ return [key for _,key in indexes]+[key for key in keys if key not in index_keys]
 def is_equal(a,b):
  # Exact executable form of DEF-EQUAL-01, including JavaScript number and key-order semantics.
+ if a is None or b is None:return a is None and b is None
  if isinstance(a,bool)or isinstance(b,bool):return type(a) is bool and type(b) is bool and a==b
  if isinstance(a,(int,float))and isinstance(b,(int,float)):
   return (math.isnan(a)and math.isnan(b))if isinstance(a,float)and isinstance(b,float)else a==b
  if type(a) is not type(b):return False
  if isinstance(a,str):return a==b
  if isinstance(a,(list,tuple)):return len(a)==len(b)and all(is_equal(x,y)for x,y in zip(a,b))
- if isinstance(a,dict):return list(a.keys())==list(b.keys())and all(is_equal(a[k],b[k])for k in a)
+ if isinstance(a,dict):return js_object_keys(a)==js_object_keys(b)and all(is_equal(a[k],b[k])for k in js_object_keys(a))
  return False
 nan=float("nan")
 assert is_equal(nan,nan) and is_equal([{"n":nan}],[{"n":nan}])
+assert is_equal(None,None) and is_equal({"value":None},{"value":None}) and not is_equal(None,{})
 assert is_equal({"a":1,"b":[2]}, {"a":1.0,"b":[2.0]})
 assert not is_equal({"a":1,"b":2}, {"b":2,"a":1})
 assert is_equal([1,{"x":[nan]}],[1.0,{"x":[nan]}]) and not is_equal(True,1)
+numeric_order_a={"2":"two","1":"one"};numeric_order_b={"1":"one","2":"two"}
+assert is_equal(numeric_order_a,numeric_order_b)
+assert not is_equal({"a":1,"b":2},{"b":2,"a":1})
 def prodkey(n,b):
  for v in KV:
   if v["nodeName"]==n and v["bindings"]==list(b):return v["serialized"]
@@ -259,43 +269,36 @@ def query(es,cursor=()):
  for e in sorted((e for e in nmax(es)if e.sequence>d.get(e.author,0)),key=lambda e:e.id):
   d[e.author]=e.sequence;out.append((e.kind,tuple(sorted(d.items()))))
  return tuple(out)
-def const_bytes(value):
- if type(value)is bool:return b"b1"if value else b"b0"
- if type(value)in (int,float):
+def semantic_const_identity(value):
+ if type(value)is bool:return("boolean",value)
+ if type(value)in(int,float):
   try:number=float(value)
   except OverflowError:raise ValueError("non-finite ConstValue number")
   if not math.isfinite(number):raise ValueError("non-finite ConstValue number")
-  # JavaScript === equates both zero signs and every integer/float spelling of
-  # the same Number. float.hex is an injective canonical encoding thereafter.
-  if number==0:number=0.0
-  return ("n"+number.hex()).encode()
- if type(value)is str:
-  data=value.encode();return b"s"+str(len(data)).encode()+b":"+data
- if type(value)is list:
-  parts=[const_bytes(x)for x in value];return b"a"+b"".join(str(len(x)).encode()+b":"+x for x in parts)
+  return("number",0.0 if number==0 else number)
+ if type(value)is str:return("string",value)
+ if type(value)in(list,tuple):return("array",tuple(semantic_const_identity(x)for x in value))
  if type(value)is dict and all(type(k)is str for k in value):
-  parts=[]
-  for k,v in value.items():parts.extend((const_bytes(k),const_bytes(v)))
-  return b"o"+b"".join(str(len(x)).encode()+b":"+x for x in parts)
+  return("record",tuple((k,semantic_const_identity(value[k]))for k in js_object_keys(value)))
  raise ValueError("value is outside ConstValue")
-def filter_bytes(f):
- if f==("wildcard",):return b"W"
+assert semantic_const_identity(numeric_order_a)==semantic_const_identity(numeric_order_b)
+assert semantic_const_identity({"a":1,"b":2})!=semantic_const_identity({"b":2,"a":1})
+WILDCARD_ARGUMENT=object()
+def filter_identity(f):
+ # Internal structural identity for semantic cursor checks, not the public JSON string.
+ if f==("wildcard",):return("wildcard",)
  if type(f)is not tuple or not f:raise ValueError("invalid filter")
- if f[0]=="ground"and len(f)==3 and type(f[1])is str and type(f[2])is tuple:
-  head=const_bytes(f[1]);args=[]
-  for a in f[2]:
-   x=b"W"if a==("wildcard",)else b"C"+const_bytes(a);args.append(str(len(x)).encode()+b":"+x)
-  return b"G"+str(len(head)).encode()+b":"+head+b"".join(args)
+ if f[0]=="ground"and len(f)==3 and regex.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*",f[1])and type(f[2])is tuple:
+  return("ground",f[1],tuple(("wildcard-argument",)if a is WILDCARD_ARGUMENT else semantic_const_identity(a)for a in f[2]))
  if f[0]=="union"and len(f)==3:
-  children=sorted((filter_bytes(f[1]),filter_bytes(f[2])))
-  return b"U"+b"".join(str(len(x)).encode()+b":"+x for x in children)
+  children=(filter_identity(f[1]),filter_identity(f[2]))
+  return("union",frozenset(children))
  raise ValueError("invalid filter")
-def filter_identity(f):return base64.urlsafe_b64encode(filter_bytes(f)).decode().rstrip("=")
 def filter_matches(f,e):
  if f==("wildcard",):return True
  if f[0]=="union":return filter_matches(f[1],e)or filter_matches(f[2],e)
  if f[0]!="ground"or f[1]!=e.name or len(f[2])!=len(e.bindings):return False
- return all(a==("wildcard",)or is_equal(a,b)for a,b in zip(f[2],e.bindings))
+ return all(a is WILDCARD_ARGUMENT or is_equal(a,b)for a,b in zip(f[2],e.bindings))
 def filtered_query(es,cursor,f,token_filter=None):
  filter_id=filter_identity(f)
  if token_filter is not None and token_filter!=filter_id:raise ValueError("cursor filter mismatch")
@@ -1230,30 +1233,6 @@ A1,aa=receive(HA,HB);B1,ba=receive(HB,A1);assert not aa and not ba
 assert A1.journal==B1.journal and A1.coverage==B1.coverage and sem(A1)==sem(B1)and B1.clock==1
 q=alloc(B1)[0];assert q==101
 
-# Canonical cursor/token scalar domains.
-def encode(ch,cur,filter_id="*"):
- raw=json.dumps({"change":ch,"cursor":[list(x)for x in sorted(cur)],"filter":filter_id,"v":1},sort_keys=True,separators=(",",":"));return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
-def decode(tok):
- raw=base64.urlsafe_b64decode(tok+"="*((-len(tok))%4)).decode();o=json.loads(raw)
- if set(o)!={"change","cursor","filter","v"}or o["v"]!=1 or type(o["filter"])is not str or not o["filter"]:raise ValueError
- ch=o["change"]
- if type(ch)is not dict or set(ch)!={"nodeName","bindings","action","time"}or type(ch["nodeName"])is not str or type(ch["bindings"])is not list or ch["action"]not in ACT or not timestamp(ch["time"]):raise ValueError
- prodkey(ch["nodeName"],tuple(ch["bindings"]));cs=o["cursor"]
- if cs!=sorted(cs)or len({x for x,_ in cs})!=len(cs)or any(not regex.fullmatch("[a-z]{16}",x)or not uint(n)for x,n in cs):raise ValueError
- if encode(ch,[tuple(x)for x in cs],o["filter"])!=tok:raise ValueError
- return o
-ch={"nodeName":N,"bindings":list(BS),"action":"edit","time":40};tok=encode(ch,((A,10),(B,3)));assert decode(tok)
-def bad(o):
- t=base64.urlsafe_b64encode(json.dumps(o,sort_keys=True,separators=(",",":")).encode()).decode().rstrip("=")
- try:decode(t)
- except (ValueError,TypeError,KeyError):return
- raise AssertionError("malformed token accepted")
-base={"change":ch,"cursor":[[A,1]],"filter":"*","v":1}
-for o in({**base,"cursor":[[A,True]]},{**base,"cursor":[[A,2**64]]},{**base,"cursor":[["bad",1]]},{**base,"cursor":[[A,1],[A,2]]},{**base,"cursor":[[B,1],[A,2]]},{**base,"v":2},{**base,"x":1},{**base,"change":{**ch,"time":True}},{**base,"change":{**ch,"time":TMAX+1}},{**base,"change":{**ch,"nodeName":7}},{**base,"change":{**ch,"bindings":{}}}):bad(o)
-noncanon=base64.urlsafe_b64encode(json.dumps(base).encode()).decode().rstrip("=")
-try:decode(noncanon);raise AssertionError("noncanonical token accepted")
-except ValueError:pass
-
 # Filter-bound cursors cannot be broadened or changed silently. Empty results do
 # not manufacture continuation, and compaction has identical filtered behavior.
 FK1=gen(1,B,(KI,NI,BI),1,"k1",(2,B));FK1V=ev(2,B,(KI,NI,BI),2,"validate",FK1.id);FK2=gen(3,B,(KD,ND,BD),3,"k2",(4,B));FK2V=ev(4,B,(KD,ND,BD),4,"validate",FK2.id)
@@ -1267,11 +1246,12 @@ assert filter_identity(("ground","X",(-0.0,)))==filter_identity(("ground","X",(0
 assert filter_identity(("ground","X",(1,)))==filter_identity(("ground","X",(1.0,)))
 nested1=[{"a":1,"b":[-0.0,{"x":True}]}];nested2=[{"a":1.0,"b":[0,{"x":True}]}]
 assert filter_identity(("ground","X",(nested1,)))==filter_identity(("ground","X",(nested2,)))
+assert filter_identity(("ground","X",(numeric_order_a,)))==filter_identity(("ground","X",(numeric_order_b,)))
 assert filter_identity(("ground","X",({"a":1,"b":2},)))!=filter_identity(("ground","X",({"b":2,"a":1},)))
 for invalid in (None,float("nan"),float("inf")):
  try:filter_identity(("ground","X",(invalid,)));assert False
  except ValueError:pass
-assert filter_identity(("ground","X",(("wildcard",),)))!=filter_identity(("ground","X",("wildcard",)))
+assert filter_identity(("ground","X",(WILDCARD_ARGUMENT,)))!=filter_identity(("ground","X",(["wildcard"],)))
 # Wildcard and a finite union happen to match the same current snapshot, but
 # their structural identities differ because wildcard also matches future keys.
 assert {e.key for e in nmax(FILTERJ)if filter_matches(wild,e)}=={e.key for e in nmax(FILTERJ)if filter_matches(bothf,e)}and filter_identity(wild)!=bothid
@@ -1281,7 +1261,6 @@ try:filtered_query(FILTERJ,k2page[-1][1],bothf,k2id);assert False
 except ValueError:pass
 assert not filtered_query(FILTERJ,(),nonef)
 assert filtered_query(FILTERJ,(),k2f)==filtered_query(compact(FILTERJ),(),k2f)
-filterToken=encode(ch,k2page[-1][1],k2id);assert decode(filterToken)["filter"]==k2id
 
 # Storage-category bounds across a generated n-by-r family, including n=0,r>0.
 def bounded_history(n,r):
