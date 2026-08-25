@@ -126,7 +126,7 @@ The supported source is the host's current synchronized state, not an arbitrary 
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's fresh durable `DatabaseFingerprint` together with persistent journal allocator and local coverage coordinate before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. This establishes the host's own synchronization history and then merges other hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
+If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's probabilistically chosen durable `DatabaseFingerprint` together with persistent journal allocator and local coverage coordinate before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. Fingerprint collisions are possible; incompatible same-fingerprint histories fail synchronization under the journal conflict rule. This establishes the host's own synchronization history and then merges compatible hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 

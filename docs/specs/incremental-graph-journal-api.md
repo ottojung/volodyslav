@@ -2,7 +2,7 @@
 
 `possibleMaybeChanges({since,to})` returns visible `{nodeName,bindings,action,time}` with exact add/edit/delete/invalidate/validate. It hides NodeIdentifier, generation, invalidation mode, `clearsThrough`, and graph state.
 
-`PossibleChangeCursor={filterIdentity,through}` where `through=Map<DatabaseFingerprint,uint64>` is an accounted-prefix claim and `filterIdentity` is the canonical identity of the exact NodeFilter used to produce it. Missing vector coordinates are zero. Tokens port between hosts without adoption or rejection when coordinates exceed host coverage, but reuse with a different filter identity throws `InvalidPossibleChangeCursorError` before polling.
+`PossibleChangeCursor={filterIdentity,through}` where `through=Map<DatabaseFingerprint,uint64>` records the per-author resume position from which polling continues and `filterIdentity` is the canonical identity of the exact NodeFilter used to produce it. Missing vector coordinates are zero. Tokens port between hosts without adoption or rejection when coordinates exceed host coverage, but reuse with a different filter identity throws `InvalidPossibleChangeCursorError` before polling.
 
 For one snapshot, choose the greatest event per `(author,NodeKey,publicAction)`, keep those above the consumer coordinate and matching the self-contained address filter, order by `(sequence,author)`, and attach cumulative vector cursors. Soft/hard share invalidate. Every public graph event has a non-null exact action; internal reset-observation entries are excluded before this projection; reset add/edit/delete/freshness transitions use ordinary events.
 
@@ -35,6 +35,8 @@ Decoding performs `JSON.parse`, validates the exact recursive shape,
 reconstructs the canonical object, and requires
 `JSON.stringify(reconstructed) === tokenString`. Failure at any step throws
 `InvalidPossibleChangeCursorError`.
+
+The decoder performs parsing, structural validation, and canonical-format validation only. The canonical JSON is plainly inspectable and may be constructed or modified by a caller; decoding it does not prove that the graph previously issued it. If a caller supplies fabricated or modified cursor coordinates, polling uses those coordinates as the requested resume position. Changes at or below those coordinates may therefore be skipped, and the no-false-negatives guarantee does not apply to that caller-supplied position.
 
 `change` has exactly these members in this order: `nodeName`, `bindings`,
 `action`, `time`.
@@ -103,3 +105,5 @@ Filtered polling retains its deliberate limitation: no match exposes no continua
 **No-Action-Specific-False-Negatives.** Compaction retains a same-coordinate representative at least as new as every deleted public event, so virtual and physical polling agree for an unseen cursor/filter obligation. Reset stabilizing validate may be conservative extra notification; real reset transitions cannot be missing.
 
 **Cursor Portability.** Cursor meaning is consumer-global per author within its canonical filter identity and does not depend on receiver coverage.
+
+The journal's no-false-negatives guarantee applies only when `since` is either `graph.baselinePossibleNodeChange()` or a `PossibleNodeChange` actually returned by `possibleMaybeChanges()`, optionally round-tripped without modification through `possibleChangeTokenToString()` and `stringToPossibleChangeToken()`.

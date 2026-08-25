@@ -41,7 +41,6 @@ stores a `ComputedValue`; ordinary JSON is only its persistence encoding.
 
 **TERM-08 (NodeKey):** A string key used for storage, derived from `(nodeName, bindings)`.
 
-**TERM-09 (NodeValue):** Computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
 
 **TERM-10 (Freshness):** Conceptual state: `"up-to-date" | "potentially-outdated"`.
 
@@ -404,7 +403,7 @@ await graph.pull("full_event", [{id: "123"}]);
 1. Its observable behavior matches the baseline semantics (properties PROP-01, PROP-02, PROP-03, PROP-04)
 2. It satisfies all additional normative requirements not captured by PROP-01..04
 
-### 2.1 pull(nodeName, bindings) → NodeValue
+### 2.1 pull(nodeName, bindings) → ComputedValue
 
 **Signature:** `pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue>`
 
@@ -491,8 +490,8 @@ function makeIncrementalGraph(
 ### 3.2 IncrementalGraph Interface
 
 `PossibleNodeChange` and `BaselinePossibleNodeChange` are opaque nominal public
-types branded at compile time by a module-private, unexported `unique symbol`
-(or an equivalent non-forgeable type declaration). That symbol is not a runtime snapshot carrier. Cursor meaning uses the canonical versioned journal-owned codec and durable opaque metadata. A possible-change cursor combines visible readonly `{nodeName, bindings, action, time}` with an immutable cursor position; the baseline is a universal before-all sentinel. External TypeScript callers cannot construct either type structurally, and raw journal identities or cursor-vector coordinates are not ordinary public fields. The complete type,
+types branded at compile time by a module-private, unexported `unique symbol`.
+That symbol is not a runtime snapshot carrier. A possible-change cursor combines visible readonly `{nodeName, bindings, action, time}` with an immutable private in-memory cursor position; the baseline is a universal before-all sentinel. External TypeScript callers cannot construct either type structurally, and raw journal identities or cursor-vector coordinates are not ordinary public object fields. The durable codec is plain inspectable canonical JSON, and its decoder does not establish issuance history. The complete type,
 snapshot, and runtime-validation contract is in
 `incremental-graph-journal-api.md`.
 
@@ -670,16 +669,21 @@ freshness sublevel. The public journal API consists of:
 
 - `possibleChangeTokenToString(token: PossibleNodeChange): string` and
   `stringToPossibleChangeToken(string): PossibleNodeChange` provide canonical,
-  versioned, validated durable conversion for non-baseline returned changes
-  without exposing raw journal identities; the hidden full vector round-trips.
+  versioned, validated durable conversion for non-baseline returned changes.
+  The in-memory vector is private, while the plain JSON representation exposes
+  its fingerprint coordinates for inspection or modification. The decoder
+  validates format rather than issuance history.
   `BaselinePossibleNodeChange` is intentionally excluded from durable v1 and is
   recreated with `graph.baselinePossibleNodeChange()`.
 
 - `InvalidPossibleChangeCursorError` — Thrown before polling for a structurally malformed or non-canonical token or when the token's filter identity differs from the canonical identity of `to`. A cursor coordinate may exceed host coverage; the query remains valid and performs no write. Its
   public type guard uses `instanceof`.
 
-Journal notification has no false negatives for those three dimensions, but it
-may have false positives and collapse repeated occurrences of one exact action.
+For those three dimensions, journal notification has no false negatives only
+when `since` is the baseline or a cursor actually returned by polling,
+including an unmodified durable codec round-trip. Caller-fabricated or modified
+coordinates are requested resume positions and carry no such guarantee. Journal
+notification may have false positives and collapse repeated occurrences of one exact action.
 A returned action does not assert current graph state.
 
 The action meanings are closed: `add` is only absent-to-materialized; `edit` is

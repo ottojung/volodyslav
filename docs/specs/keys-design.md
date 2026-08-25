@@ -74,10 +74,10 @@ HTTP concrete-node routes remain `head + args` based to preserve existing API be
 
 ## NodeIdentifier requirements
 
-A `NodeIdentifier` is a deterministic, globally-namespaced identifier with the
-following properties:
+A `NodeIdentifier` is a deterministic identifier in a probabilistically
+distinct allocation namespace with the following properties:
 
-- globally and forever unique
+- collision-free within the supported history being interpreted
 - stable for the lifetime of that materialized node in storage
 - round-trippable as a nominal type
 - suitable for direct use as persisted key content and as a filesystem path segment
