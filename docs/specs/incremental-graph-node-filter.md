@@ -263,9 +263,12 @@ This is structural equality, not semantic set equality. Two filters that represe
 - `Union(A, A)` and `A` represent the same set (union is idempotent), but are not structurally equal.
 - `Union(Wildcard, A)` and `Wildcard` represent the same set (union with wildcard absorbs), but are not structurally equal.
 
-Implementations MAY normalize filters into a canonical structural form during construction. They MUST NOT introduce or eliminate match results as a consequence of normalization.
-
-REQ-NF-07: Implementations MAY normalize nested unions into a canonical form (e.g., flatten `Union(Union(A, B), C)` into a flat set). They MUST NOT introduce or eliminate match results as a consequence of normalization.
+`makeUnionFilter` preserves this binary structural tree. It does not flatten
+nested unions, remove duplicate children, apply wildcard absorption, or perform
+any other associative, idempotent, or absorption normalization. The only
+canonicalization of a union is the commutative left/right child ordering used by
+`filterIdentityValue` below. Consequently, associatively different union trees
+remain structurally different filters.
 
 ---
 
@@ -395,4 +398,4 @@ Different identities are rejected.
 REQ-NF-11: structurally equal filters under REQ-NF-06 MUST have identical
 `filterIdentity`; filters with different canonical structural forms MUST have
 different identities. Collision-resistant hashing is insufficient because the cursor contract requires collision-freedom. Token versioning changes
-before this derivation changes.
+before this derivation or structural normalization policy changes.

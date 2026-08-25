@@ -70,10 +70,29 @@ omits zero coordinates. The all-zero vector belongs only to the non-serializable
 `BaselinePossibleNodeChange`.
 
 `filter` is the already-canonical opaque JSON `filterIdentity` string. The
-decoder validates only the normalized identity JSON grammar owned by
-`incremental-graph-node-filter.md`; it never reconstructs a public filter from
-it. Polling separately recomputes
-`filterIdentity(to)` and rejects a mismatch before scanning.
+decoder parses and validates its nested JSON before reconstructing the outer
+token object:
+
+```js
+const filterIdentityValue = JSON.parse(parsed.filter);
+
+validateNormalizedFilterIdentityValue(filterIdentityValue);
+
+if (JSON.stringify(filterIdentityValue) !== parsed.filter) {
+    throw InvalidPossibleChangeCursorError;
+}
+```
+
+`validateNormalizedFilterIdentityValue` accepts only the normalized identity
+JSON grammar owned by `incremental-graph-node-filter.md`. In particular, every
+union identity value must already have its children in the exact normative
+order specified there. The inner exact re-encoding check rejects whitespace,
+noncanonical escapes, noncanonical property order, and every other alternate
+JSON spelling of the same identity value. The verified `parsed.filter` string
+is then placed unchanged in the reconstructed outer token object before the
+outer exact re-encoding check. The decoder never reconstructs a public filter
+from this metadata. Polling separately recomputes `filterIdentity(to)` and
+rejects a mismatch before scanning.
 
 Any field, byte, number, ordering, or encoding not admitted above is invalid.
 Thus “noncanonical token” is mechanically decidable by strict parse, validation,
