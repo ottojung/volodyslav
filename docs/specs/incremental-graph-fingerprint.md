@@ -4,16 +4,19 @@
 
 The database fingerprint is the local allocation fingerprint of the live
 database. It serves as the namespace suffix in node identifiers
-(`<base36-index>-<fingerprint>`), making them globally unique across hosts
-even when the same local index values are allocated.
+(`<base36-index>-<fingerprint>`), providing a probabilistically distinct
+allocation namespace across independently created hosts even when the same
+local index values are allocated.
 
 The canonical type name for this existing value is `DatabaseFingerprint`.
 Journal entries use the authoring host's `DatabaseFingerprint` directly; there
 is no journal-specific identity or second storage location.
 
-Each host obtains a distinct fingerprint through a supported lifecycle
-transition (fresh creation). The fingerprint is stored in replica-global
-metadata and is generated once during first database initialization. It never
+Fresh creation probabilistically chooses a fingerprint for each host. Hosts may,
+with low probability, choose the same fingerprint; the protocol does not
+guarantee collision-free allocation at creation time. The fingerprint is stored
+in replica-global metadata and is generated once during first database
+initialization. It never
 changes during the lifetime of a live database.
 
 ## Storage location
@@ -61,7 +64,8 @@ detect this as an `IdentifierLookupConflictError` (the same identifier
 mapped to different semantic keys) and fail cleanly for the affected host
 without corrupting either side.
 
-New hosts obtain a distinct fingerprint through the fresh-creation path
+New hosts obtain a probabilistically chosen fingerprint through the
+fresh-creation path
 (`database-lifecycle.md` §4.3). There is no supported "clone this database
 onto a new concurrently-writing host" transition.
 
@@ -122,9 +126,10 @@ remote hosts during sync/reset. However:
   This is the supported path for a host recovering its own prior synchronized
   state. Cross-host snapshot cloning is unsupported (see Generation above).
 
-Through the supported lifecycle transitions, each independently-created host
-obtains a distinct fingerprint. This is what makes node identifiers globally
-unique across hosts even when the same local index values are allocated.
+`DatabaseFingerprint` is a probabilistically chosen durable writer/allocation
+identifier. Expected distinctness gives node identifiers probabilistically
+distinct namespaces across independently created hosts. An unlucky collision
+may make independently created histories incompatible for synchronization.
 
 ## Journal authorship identity
 

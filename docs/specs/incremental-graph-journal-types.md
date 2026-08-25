@@ -2,6 +2,8 @@
 
 This document is normative over supported reachable states produced by the atomic authoring, receive, migration, observed-reset, restoration, and canonical-compaction transitions. Corrupt, forged, rolled-back, partially installed, or clock-unsupported states are outside the proof domain.
 
+Within one supported merged journal state, one `DatabaseFingerprint` denotes one durable author history. Histories that reveal incompatible same-fingerprint authors are rejected before entering that supported state; fresh fingerprint creation itself provides expected distinctness, not a mathematical uniqueness guarantee.
+
 ## One precise journal
 
 ```text
@@ -89,7 +91,7 @@ Validation knowledge is durable and monotone. For validations V1,V2 with the sam
 V1.sequence < V2.sequence => V1.clearsThrough <=componentwise V2.clearsThrough
 ```
 
-Every validation authoring path—ordinary pull/revalidation, migration, a genuinely synchronization-authored initial validation, and observed reset—starts with the greatest prior same-author/key/generation validation vector and componentwise-maxes newly justified closed prefixes into it. The prior vector is itself durable evidence for carry-forward; source coordinates learned only by reset remain in later validation state without being copied into host journalCoverage. A retained pair violating monotonicity is unsupported/corrupt. Structural load validation checks canonical map shape, supported unique fingerprints, and uint64 coordinates; lifecycle legitimacy of the claimed evidence is a separate authoring proof.
+Every validation authoring path—ordinary pull/revalidation, migration, a genuinely synchronization-authored initial validation, and observed reset—starts with the greatest prior same-author/key/generation validation vector and componentwise-maxes newly justified closed prefixes into it. The prior vector is itself durable evidence for carry-forward; source coordinates learned only by reset remain in later validation state without being copied into host journalCoverage. A retained pair violating monotonicity is unsupported/corrupt. Structural load validation checks canonical map shape, at most one coordinate per fingerprint, and uint64 coordinates; lifecycle legitimacy of the claimed evidence is a separate authoring proof.
 
 Import does not advance the local clock/coordinate. Immediately before local authoring, allocation raises above all relevant retained/covered sequence authority. After commit, local coverage equals local clock and the local prefix never regresses.
 

@@ -281,7 +281,7 @@ Before planning, synchronization MUST reject atomically:
    edit/invalidate/validate without a
    generation resolving to a same-key GenerationJournalEntry witness; a generation whose named initial freshness event differs in author/key/generation, is not validate/invalidate, or does not have a greater sequence; a value-specific assertion whose local value origin does not resolve to the same key/generation; or malformed/noncanonical `clearsThrough`/reset-lineage coordinates;
 7. the local coverage coordinate differs from `localJournalClock`, or local authoring failed to allocate above transaction-observed history;
-8. one JournalEntryId naming different immutable contents;
+8. one `JournalEntryId` naming different immutable contents, including when incompatible histories happened to choose the same `DatabaseFingerprint`;
 9. journal coverage below a surviving entry sequence; or
 10. non-monotone or malformed journal coverage, or a retained comparable same-author/key/generation validation pair whose later `clearsThrough` regresses.
 
@@ -291,6 +291,8 @@ validation-monotonicity check applies whenever a comparable retained pair is
 available; canonical compaction need not preserve discarded history solely to
 make an otherwise impossible comparison. These checks diagnose corrupted or
 unsupported input rather than proving lifecycle legitimacy.
+
+In particular, synchronization/import that observes the same `JournalEntryId` (`sequence`, `DatabaseFingerprint`) associated with different immutable journal entries MUST fail rather than silently merge those histories as one author. If the same persisted `NodeIdentifier` maps to incompatible semantic `NodeKey`s, item 3's existing identifier-conflict path likewise rejects the merge. No recovery mechanism is implied.
 
 Before journal join or conflict planning, validate each source against its own
 pre-merge journal. Every source materialization MUST resolve its source presence
