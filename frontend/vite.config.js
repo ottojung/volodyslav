@@ -86,8 +86,7 @@ export default defineConfig({
         },
     },
     build: {
-        // Use esbuild instead of terser for better Termux compatibility
-        minify: "esbuild",
+        minify: "oxc",
         // Optimize for Termux environment
         rollupOptions: {
             output: {
