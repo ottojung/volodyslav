@@ -132,11 +132,10 @@ Identifiers are allocated as `${nextIndex.toString(36)}-${fingerprint}` where
 machine-local database fingerprint (see `docs/specs/incremental-graph-fingerprint.md`).
 The fingerprint supplies a probabilistically distinct allocation namespace;
 independently created hosts can choose the same value, and creation makes no
-global uniqueness guarantee. A directly visible collision between distinct
-participating histories SHOULD be rejected, but detection is not exhaustive.
-If independent writers collide without a directly observable identifier/key
-conflict, their `NodeIdentifier` namespaces alias and identifier-uniqueness and
-normal merge guarantees do not apply.
+global uniqueness guarantee. If independent writers collide, their
+`NodeIdentifier` namespaces may alias and identifier-uniqueness and normal
+merge guarantees do not apply across the aliased histories. The protocol does
+not promise to detect or repair the collision.
 
 Gaps in the index sequence are acceptable (caused by failed or interleaved
 transactions). The `last_node_index` watermark tracks the largest committed index.

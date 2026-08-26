@@ -60,12 +60,7 @@ the project's seeded PRNG. It is generated exactly once:
 Taking a rendered snapshot from one host and using it to bootstrap a second,
 concurrently-writing host is outside the supported lifecycle model (see
 `database-lifecycle.md` §10). If performed anyway, the two hosts would share
-a fingerprint and could allocate colliding identifiers. When currently
-available hostname/branch metadata directly reveals two distinct participating
-histories with that fingerprint, synchronization SHOULD reject the source
-before journal union or graph reconciliation. This direct check is not an
-exhaustive proof about author coordinates already embedded in replicated
-journal or coverage state.
+a fingerprint and could allocate colliding identifiers.
 
 New hosts obtain a probabilistically chosen fingerprint through the
 fresh-creation path
@@ -132,29 +127,19 @@ remote hosts during sync/reset. However:
 `DatabaseFingerprint` is a probabilistically chosen durable writer/allocation
 identifier. Expected distinctness gives node identifiers probabilistically
 distinct namespaces across independently created hosts. An unlucky collision
-may make independently created histories incompatible for synchronization; no
-uniqueness guarantee is made at creation time.
-
-A fingerprint may recur across snapshots that are continuations or restorations
-of the same durable host history. Normal restart, reopening the same local
-database, supported self-restoration, migration of that writer state, and a
-controlled reset retaining the receiver fingerprint are all one writer history.
-
-When currently available hostname/branch lifecycle metadata directly reveals
-that separate synchronization sources represent distinct host histories with
-the same fingerprint, synchronization SHOULD treat the source as incompatible
-and reject it before journal union or graph reconciliation. The collision does
-not establish that either standalone database is malformed, and this protocol
-specifies no automatic remediation. Because no durable provenance mapping is
-retained for every replicated author coordinate, this check cannot detect every
-collision.
+may alias independently created histories; no uniqueness guarantee is made at
+creation time, and the collision does not by itself make either standalone
+database corrupt.
 
 The journal and synchronization model assumes that each
 `DatabaseFingerprint` in the interpreted author-coordinate universe denotes
-one durable writer history. An undetected collision can alias
+one durable writer history. A collision between independent writer histories
+can alias
 `JournalEntryId`, `journalCoverage`, causal-prefix coordinates, and
-`NodeIdentifier` allocation namespaces. When that premise is violated, the
-normal causal, convergence, and identifier-uniqueness guarantees do not apply.
+cursor coordinates, and `NodeIdentifier` allocation namespaces. When that
+premise is violated, the normal uniqueness, portability, causal, and
+convergence guarantees do not apply across the aliased histories. The protocol
+does not promise to detect or repair such a collision.
 
 ## Journal authorship identity
 
