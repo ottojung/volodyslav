@@ -2,13 +2,15 @@
 
 This document is normative over supported reachable states produced by the atomic authoring, receive, migration, observed-reset, restoration, and canonical-compaction transitions. Corrupt, forged, rolled-back, partially installed, or clock-unsupported states are outside the proof domain.
 
-Within one supported merged journal state, one `DatabaseFingerprint` denotes
-exactly one durable writer history. Synchronization uses existing host/branch
-lifecycle identity to reject distinct writer histories with the same
-fingerprint before journal union, so they never enter that supported state.
-Snapshots continuing or restoring the same durable writer history may retain
-the same fingerprint. Fresh fingerprint creation provides only probabilistic
-distinctness, not a mathematical or creation-time uniqueness guarantee.
+The correctness model assumes that each `DatabaseFingerprint` in the
+interpreted author-coordinate universe denotes exactly one durable writer
+history. Snapshots continuing or restoring the same durable writer history may
+retain the same fingerprint. Fresh fingerprint creation provides only
+probabilistic distinctness, not a mathematical or creation-time uniqueness
+guarantee, and lifecycle checks do not exhaustively prove the assumption.
+An undetected collision can alias `JournalEntryId`, `journalCoverage`,
+causal-prefix coordinates, and `NodeIdentifier` namespaces; states interpreted
+across that aliasing are outside the causal and convergence proof domain.
 
 ## One precise journal
 
