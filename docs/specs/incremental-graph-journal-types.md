@@ -7,10 +7,11 @@ interpreted author-coordinate universe denotes exactly one durable writer
 history. Snapshots continuing or restoring the same durable writer history may
 retain the same fingerprint. Fresh fingerprint creation provides only
 probabilistic distinctness, not a mathematical or creation-time uniqueness
-guarantee, and lifecycle checks do not exhaustively prove the assumption.
-An undetected collision can alias `JournalEntryId`, `journalCoverage`,
-causal-prefix coordinates, and `NodeIdentifier` namespaces; states interpreted
-across that aliasing are outside the causal and convergence proof domain.
+guarantee. A collision between independent writer histories can alias
+`JournalEntryId`, `journalCoverage`, causal-prefix and cursor coordinates, and
+`NodeIdentifier` namespaces; states interpreted across that aliasing are
+outside the ordinary uniqueness, portability, causal, and convergence proof
+domain. The protocol does not promise to detect or repair such a collision.
 
 ## One precise journal
 
