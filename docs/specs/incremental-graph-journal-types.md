@@ -18,7 +18,7 @@ domain. The protocol does not promise to detect or repair such a collision.
 ```text
 journal[JournalEntryId] = JournalEntry
 JournalEntryId = (sequence, author)
-JournalEntryBase = { author, sequence:uint64, key, nodeName, bindings, time }
+JournalEntryBase = { author, sequence:uint64, nodeName, bindings, time }
 GenerationJournalEntry = JournalEntryBase & {
     kind:"generation", initialFreshness:JournalEntryId
 }
@@ -48,13 +48,19 @@ ResetCorrespondence = {
     consumedValueOrigin:JournalEntryId
 }
 CausalPrefix = Map<DatabaseFingerprint,uint64>
+entryNodeKey(E) = NodeKey(E.nodeName,E.bindings)
 ```
+
+`entryNodeKey` uses the one normative, identity-preserving NodeKey serializer.
+`nodeName` and `bindings` are the journal's sole persisted semantic address;
+`key`, `E.key`, and “same-key” in journal algorithms are shorthand for the
+derived `entryNodeKey(E)`, never an additional journal field.
 
 For two reset-lineage carriers `L1,L2` with the same durable author, NodeKey, and tagged receiver anchor, `L1.sequence<L2.sequence` implies `L1.consumedThrough <=componentwise L2.consumedThrough`. This is a supported-state structural invariant and the proof-carrying basis for bounded same-anchor succession: the later immutable same-writer assertion replaces the earlier assertion without placing `L1.id` in `L2.consumedThrough`. Different authors or different anchors receive no such implied observation order.
 
 An immutable generation entry establishes positive presence and initial value provenance for an actual absent-to-present materialization, so `publicAction(generation)="add"`. Reset never creates a generation to fence equal present history. Delete is negative presence. Edit is an unequal present-to-present value change scoped to the surviving generation. Every generation names exactly one later-ID, atomically authored initial validate/soft-invalidate/hard-invalidate.
 
-For generation `G` and its named initial event `I`, structural validity requires `I.author=G.author`, `I.sequence>G.sequence`, `I.key=G.key`, `I.generation=G.id`, and `I.kind` in `{validate,invalidate}`. The two entries install atomically. Sequence adjacency is not required, but a generation cannot name another author's future event.
+For generation `G` and its named initial event `I`, structural validity requires `I.author=G.author`, `I.sequence>G.sequence`, `entryNodeKey(I)=entryNodeKey(G)`, `I.generation=G.id`, and `I.kind` in `{validate,invalidate}`. The two entries install atomically. Sequence adjacency is not required, but a generation cannot name another author's future event.
 
 ```text
 publicAction(E) = "add" for generation; undefined for reset-observation; otherwise E.kind
@@ -62,7 +68,7 @@ publicAction(E) = "add" for generation; undefined for reset-observation; otherwi
 
 Soft/hard both expose invalidate. Every public graph event exposes exactly one action. ResetObservationEntry is internal metadata in the same physical journal, has no public action, and is ignored by polling maxima.
 
-Every boundary validates closed shapes/scalars, immutable-ID agreement, and `key == NodeKey(nodeName,bindings)` using the production identity-preserving serializer. Every scoped event resolves to an exact same-key GenerationJournalEntry. Generation initial-freshness references resolve exactly.
+Every boundary validates closed shapes/scalars and immutable-ID agreement. Every scoped event resolves to an exact GenerationJournalEntry with the same derived `entryNodeKey`. Generation initial-freshness references resolve exactly.
 
 **Post-edit Negative-Freshness Invariant.** Any transaction that authors a same-generation edit for a new semantic value and leaves that value stale MUST author a new negative freshness assertion after the edit: soft when complete cache-revalidation proof remains, hard when recomputation is required. Pre-edit invalidates cannot represent the new value's negative authority. Equal-value operations author no edit and may reuse existing authority under the ordinary causal rules.
 
@@ -110,7 +116,7 @@ Import does not advance the local clock/coordinate. Immediately before local aut
 applicable(I,O) iff I.appliesTo="generation" or I.appliesTo.valueOrigin=O
 invalidateFrontier(J,K,G,O)[A] = greatest applicable invalidate of either mode by A
 hardInvalidateFrontier(J,K,G,O)[A] = greatest applicable hard invalidate by A
-covers(V,I) iff V.key=I.key and V.generation=I.generation
+covers(V,I) iff entryNodeKey(V)=entryNodeKey(I) and V.generation=I.generation
                  and I.sequence <= V.clearsThrough[I.author]
 freshnessEffective(V,J,K,G,O) iff V.valueOrigin=O and V alone covers every applicable invalidateFrontier member
 journalFresh iff some applicable V is freshnessEffective

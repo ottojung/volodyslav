@@ -48,12 +48,9 @@ available in its two reachable source snapshots and retained journal history.
 Insufficient evidence is handled conservatively. Synchronization invokes no
 computor and invents no `ComputedValue`; journal merge is ACI; bilateral gossip
 is decentralized; journal notifications have no action-specific false
-negatives; and fully compacted journal plus coverage storage is `O(nr²+cr+r)`, reducing to `O(nr²+cr)` for `n>0,r>=1`, under the journal size model's explicit fixed maximum serialized semantic-address size; `c` exact correspondence carriers each physically retain an `O(r)` causal vector;
+negatives; and fully compacted retained structural event/vector evidence is `O(nr²+cr)`, plus `O(r)` coverage; `c` exact correspondence carriers each physically retain an `O(r)` causal vector;
 `DatabaseFingerprint` is already bounded by its normative 16-character ASCII
-representation, and uncompacted storage may grow with operations. The broader storage model also assumes fixed maximum
-serialized `ConstValue` size C and fixed direct graph
-in-degree d for value-address and persisted dependency/validity state,
-respectively; these are separate premises, and d is not needed to count `J`.
+representation, and uncompacted storage may grow with operations. For serialized bytes, let `C` be the maximum serialized size of a represented journal semantic address (`nodeName` plus `bindings`) in the measured state; journal plus coverage is `O((nr+c)C + nr² + cr + r)` bytes. `C` is a measurement parameter, not a global maximum or runtime restriction. Broader graph storage scales with the actual serialized sizes of its `ConstValue` data and with direct graph in-degree; those quantities are separate from the structural journal count.
 
 The journal does not provide complete historical input-version provenance for
 cached derived values. For D with direct inputs I1...Ik, synchronization is not
@@ -432,7 +429,7 @@ events use author as the deterministic tie-break.
 
 ### Value through a carrier
 
-A authors `(sequence=12,author=A,key=K,action=edit,generation=G)`. A to B imports that exact entry and value; B to C transmits the same identity without renumbering. Receipt is silent. All hosts derive the same `[time,12,A]`, so support survives physical movement. Neither B nor C emits edit, and polling compares sequence 12 with the consumer's A coordinate regardless of carrier.
+A authors `(sequence=12,author=A,nodeName=N,bindings=B,action=edit,generation=G)`, whose semantic key is derived as `NodeKey(N,B)`. A to B imports that exact entry and value; B to C transmits the same identity without renumbering. Receipt is silent. All hosts derive the same `[time,12,A]`, so support survives physical movement. Neither B nor C emits edit, and polling compares sequence 12 with the consumer's A coordinate regardless of carrier.
 
 ### Same-writer later edit
 
