@@ -34,6 +34,25 @@ The **future-relevant assertion set** is the maximal antichain under those rules
 
 RLC uses a separate relevance predicate: when causal `presenceHead` is generation G, every exact carrier whose receiver value origin is a retained `valueHead(J,K,G,A)` is retained, even if that carrier is not currently RLV-applicable. It retains each exact `(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)` relation with deterministic full-ID tie-breaking. VV is independently restricted to those same retained value origins. Thus two receiver origins certified against one source pair remain distinct, ordinary edit count does not expand VV, exact equality evidence is not widened to a prefix, and delete/null/present anchors preserve future-union absorption.
 
-For n semantic keys, r durable authors, and c distinct full `(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)` semantic reset correspondences that must remain recognizable to lagging replicas, polling/value evidence is O(nr); frontiers, lineage coordinate witnesses, and validation vectors are O(nr²). Same-author/same-anchor replacement leaves one assertion regardless of reset count. Cross-author or cross-anchor maximal assertions are bounded by the r durable writers on the supported reachable-state domain, yielding O(nr) future-relevant anchors and O(nr²) anchor/author coordinates. Multiple distinct exact correspondences and their O(r) vectors are the c relations counted by O(cr); repeated carriers for one exact relation collapse by same-anchor succession and RLC dominance. Coverage is O(r). Thus retained structural event/vector evidence is `O(nr²+cr)`, plus `O(r)` coverage, reducing to O(nr²+cr) in total for n>0,r>=1. The cr term is necessary: repeated equal reset against distinct rematerialization origins creates Ω(c) exact membership facts, and a source containing r durable authors makes each retained carrier Θ(r). A causal prefix cannot certify unrelated origins, and discarding exact pairs breaks lagging certified peers. n=0 with no represented historical key or correspondence has empty journal and O(r) coverage.
-
-This is a structural count, not a serialized-byte bound. Let `C` be the maximum serialized size of one represented journal semantic address (`nodeName` plus `bindings`) in the state being measured. Address-bearing retained entries contribute `O((nr+c)C)` bytes, so journal plus coverage occupies `O((nr+c)C + nr² + cr + r)` bytes. `C` is a measurement parameter, not a fixed global maximum or a runtime size restriction.
+Let `n` be the number of represented current/historic semantic keys, `r` the
+number of represented durable authors, and `c` the number of distinct full
+`(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)` semantic reset
+correspondences that must remain recognizable to lagging replicas. Assume every
+represented NodeKey/semantic journal address has bounded serialized size
+independent of `n`, `r`, and `c`, and assume `n > 0` and `r > 0`. Polling/value
+evidence is O(nr); frontiers, lineage coordinate witnesses, and validation
+vectors are O(nr²). Same-author/same-anchor replacement leaves one assertion
+regardless of reset count. Cross-author or cross-anchor maximal assertions are
+bounded by the r durable writers on the supported reachable-state domain,
+yielding O(nr) future-relevant anchors and O(nr²) anchor/author coordinates.
+Multiple distinct exact correspondences and their O(r) vectors are the c
+relations counted by O(cr); repeated carriers for one exact relation collapse
+by same-anchor succession and RLC dominance. Coverage is O(r), which is absorbed
+by O(nr²) because `r <= nr²` under the stated assumptions. Therefore the fully
+compacted journal together with journal coverage occupies `O(nr² + cr)`
+storage. The cr term is necessary: repeated equal reset against distinct
+rematerialization origins creates Ω(c) exact membership facts, and a source
+containing r durable authors makes each retained carrier Θ(r). A causal prefix
+cannot certify unrelated origins, and discarding exact pairs breaks lagging
+certified peers. The bounded-address premise is an asymptotic assumption, not a
+runtime size restriction.

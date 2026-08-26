@@ -14,6 +14,16 @@ Production implementation, deployment ordering, and operational recovery tooling
 
 ## Complexity summary
 
-Let `n` be represented current/historic semantic keys, `r` durable authors, and `c` losslessly retained full `(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)` reset correspondences. Retained structural event/vector evidence uses `O(nr²+cr)`: public-action and causal evidence use `O(nr²)`, and each exact correspondence carrier includes an `O(r)` causal observation vector, giving `O(cr)`. Coverage is an additional `O(r)`. The `cr` term is necessary when lagging explicitly certified origins must remain recognizable. For `n=0,c=0`, the journal is empty while coverage may be `O(r)`. Application-owned filter-bound cursor strings are not database storage.
-
-That structural bound is not a serialized-byte bound. If `C` is the maximum serialized size of a represented journal semantic address (`nodeName` plus `bindings`) in the measured state, serialized journal plus coverage size is `O((nr+c)C + nr² + cr + r)`. `C` is neither a global maximum nor an application/runtime size cap.
+Let `n` be the number of represented current/historic semantic keys, `r` the
+number of represented durable authors, and `c` the number of losslessly
+retained full `(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)`
+reset correspondences. Assuming every represented NodeKey/semantic journal
+address has bounded serialized size independent of `n`, `r`, and `c`, and
+assuming `n > 0` and `r > 0`, the fully compacted journal together with journal
+coverage occupies `O(nr² + cr)` storage. Public-action, frontier, and causal
+evidence contribute `O(nr²)`; exact correspondence carriers contribute
+`O(cr)` because each carries an `O(r)` causal observation vector; and coverage's
+`O(r)` is absorbed by `O(nr²)` because `r <= nr²`. The `cr` term is necessary
+when lagging explicitly certified origins must remain recognizable.
+Application-owned filter-bound cursor strings are not database storage. The
+bounded-address premise is an asymptotic assumption, not a runtime size cap.
