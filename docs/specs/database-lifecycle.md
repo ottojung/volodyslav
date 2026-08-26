@@ -101,14 +101,14 @@ Before installation, restoration validates the ordinary load structure:
 
 - the durable `DatabaseFingerprint` belongs to
   the selected host/writer branch;
-- retained generation references resolve correctly, and every generation's named initial freshness event has the same author, a greater sequence, the same key, and the generation's exact ID;
+- retained generation references resolve correctly, and every generation's named initial freshness event has the same author, a greater sequence, the same derived `entryNodeKey`, and the generation's exact ID;
 - every retained value-specific freshness assertion resolves its exact same-key/generation value-origin event; reset-lineage consumed source identities need not be locally retained, but their coordinate shapes and authoring provenance must validate;
 - live `NodeIdentifier` values are unique and bijective with live semantic keys, and no retired identifier is live;
 - every materialization origin is the admissible canonical event for its winning generation and `modifiedAt`, rather than a superseded same-author head or lower equal-time candidate;
 - every retained `clearsThrough` has canonical map shape, unique supported fingerprint coordinates, and uint64 values;
 - retained same-author/key/generation validation vectors are componentwise monotone when comparable evidence is present;
 - `localJournalClock` equals the local fingerprint coverage coordinate and locally authored entries do not exceed it; foreign retained sequences may exceed it under lazy raising;
-- every retained entry satisfies the self-contained key/address invariant;
+- every retained entry has a self-contained `nodeName` and `bindings` address from which its NodeKey is derived;
 - journal coverage dominates every retained entry sequence; and
 - the local coverage coordinate equals the durable local clock. Coordinate gaps are allowed.
 
@@ -290,16 +290,16 @@ at or below a sequence it previously authored with the same `DatabaseFingerprint
 
 ```text
 A previously published:
-    JournalEntry(author=A, sequence=10, key=K, action=edit, generation=G)
+    JournalEntry(author=A, sequence=10, nodeName=N, bindings=B, action=edit, generation=G)
 
 A loses its live database.
 
 A restores its own synchronized snapshot:
-    JournalEntry(author=A, sequence=10, key=K, action=edit, generation=G)
+    JournalEntry(author=A, sequence=10, nodeName=N, bindings=B, action=edit, generation=G)
 
 A edits K:
     localJournalClock advances to 11
-    JournalEntry(author=A, sequence=11, key=K, action=edit, generation=G)
+    JournalEntry(author=A, sequence=11, nodeName=N, bindings=B, action=edit, generation=G)
 
 B previously observed 10:
     journal merge retains 11 over covered edit 10

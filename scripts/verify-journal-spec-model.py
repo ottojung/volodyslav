@@ -45,26 +45,27 @@ def timestamp(n):return type(n) is int and TMIN<=n<=TMAX
 assert all(timestamp(int(v["value"]))==v["valid"] for v in TV)
 @dataclass(frozen=True,order=True)
 class E:
- sequence:int;author:str;key:str;time:int;name:str;bindings:tuple;kind:str
+ sequence:int;author:str;time:int;name:str;bindings:tuple;kind:str
  generation:tuple|None=None;initial:tuple|None=None;mode:str|None=None;clears:tuple=();value:str|None=None
  target:tuple|None=None;lineage:tuple|None=None
  @property
  def id(self):return(self.sequence,self.author)
-def gen(q,a,address,t,val,initial):k,n,b=address;return E(q,a,k,t,n,b,"add",initial=initial,value=val)
+ @property
+ def key(self):return prodkey(self.name,self.bindings)
+def gen(q,a,address,t,val,initial):_,n,b=address;return E(q,a,t,n,b,"add",initial=initial,value=val)
 def ev(q,a,address,t,kind,g,mode=None,clears=(),value=None,target=None,lineage=None):
- k,n,b=address
+ _,n,b=address
  if kind=="validate"and target is None:target=g
- return E(q,a,k,t,n,b,kind,g,mode=mode,clears=tuple(sorted(clears)),value=value,target=target,lineage=lineage)
-def observe(q,a,address,t,target,lineage):k,n,b=address;return E(q,a,k,t,n,b,"observe",target=target,lineage=lineage)
-def dele(q,a,address,t,lineage=None):k,n,b=address;return E(q,a,k,t,n,b,"delete",lineage=lineage)
+ return E(q,a,t,n,b,kind,g,mode=mode,clears=tuple(sorted(clears)),value=value,target=target,lineage=lineage)
+def observe(q,a,address,t,target,lineage):_,n,b=address;return E(q,a,t,n,b,"observe",target=target,lineage=lineage)
+def dele(q,a,address,t,lineage=None):_,n,b=address;return E(q,a,t,n,b,"delete",lineage=lineage)
 def valid(es):
  es=tuple(es);d={}
  for e in es:
   if e.id in d and d[e.id]!=e:return False
   d[e.id]=e
   if e.author not in AUTH or not uint(e.sequence) or e.sequence==0 or not timestamp(e.time):return False
-  try:
-   if e.key!=prodkey(e.name,e.bindings):return False
+  try:e.key
   except ValueError:return False
   if e.kind=="add":
    if e.generation or not e.initial or e.mode or e.clears or e.target or e.lineage:return False
