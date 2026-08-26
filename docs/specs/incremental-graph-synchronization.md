@@ -278,12 +278,14 @@ Before planning, synchronization MUST reject atomically:
    edit/invalidate/validate without a
    generation resolving to a same-key GenerationJournalEntry witness; a generation whose named initial freshness event differs in author/key/generation, is not validate/invalidate, or does not have a greater sequence; a value-specific assertion whose local value origin does not resolve to the same key/generation; or malformed/noncanonical `clearsThrough`/reset-lineage coordinates;
 7. the local coverage coordinate differs from `localJournalClock`, or local authoring failed to allocate above transaction-observed history;
-8. one `JournalEntryId` naming different immutable contents;
-9. journal coverage below a surviving entry sequence; or
-10. non-monotone or malformed journal coverage, or a retained comparable same-author/key/generation validation pair whose later `clearsThrough` regresses.
+8. journal coverage below a surviving entry sequence; or
+9. non-monotone or malformed journal coverage, or a retained comparable same-author/key/generation validation pair whose later `clearsThrough` regresses.
 
-When evidence is simultaneously available, an implementation MAY additionally
-reject conflicting immutable content at one `JournalEntryId`. The mandatory
+When conflicting immutable contents for the same `JournalEntryId` are
+simultaneously available, an implementation MAY reject the source or merge as
+unsupported. This is a defensive diagnostic, not a guarantee that
+`DatabaseFingerprint` collisions or all aliased writer histories are detected.
+The mandatory
 validation-monotonicity check applies whenever a comparable retained pair is
 available; canonical compaction need not preserve discarded history solely to
 make an otherwise impossible comparison. These checks diagnose corrupted or
