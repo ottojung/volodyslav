@@ -1,5 +1,7 @@
 # IncrementalGraph journal types
 
+## Supported state boundary
+
 This document is normative over supported reachable states produced by the atomic authoring, receive, migration, observed-reset, restoration, and canonical-compaction transitions. Corrupt, forged, rolled-back, partially installed, or clock-unsupported states are outside the proof domain.
 
 The correctness model assumes that each `DatabaseFingerprint` in the
