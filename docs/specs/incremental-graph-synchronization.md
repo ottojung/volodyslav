@@ -48,9 +48,22 @@ available in its two reachable source snapshots and retained journal history.
 Insufficient evidence is handled conservatively. Synchronization invokes no
 computor and invents no `ComputedValue`; journal merge is ACI; bilateral gossip
 is decentralized; journal notifications have no action-specific false
-negatives; and fully compacted retained structural event/vector evidence is `O(nr²+cr)`, plus `O(r)` coverage; `c` exact correspondence carriers each physically retain an `O(r)` causal vector;
-`DatabaseFingerprint` is already bounded by its normative 16-character ASCII
-representation, and uncompacted storage may grow with operations. For serialized bytes, let `C` be the maximum serialized size of a represented journal semantic address (`nodeName` plus `bindings`) in the measured state; journal plus coverage is `O((nr+c)C + nr² + cr + r)` bytes. `C` is a measurement parameter, not a global maximum or runtime restriction. Broader graph storage scales with the actual serialized sizes of its `ConstValue` data and with direct graph in-degree; those quantities are separate from the structural journal count.
+negatives. Let `n` be the number of represented current/historic semantic keys,
+`r` the number of represented durable authors, and `c` the number of losslessly
+retained full `(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)`
+reset correspondences. Assuming every represented NodeKey/semantic journal
+address has bounded serialized size independent of `n`, `r`, and `c`, and
+assuming `n > 0` and `r > 0`, the fully compacted journal together with journal
+coverage occupies `O(nr² + cr)` storage. Public-action, frontier, and causal
+evidence contribute `O(nr²)`; the exact correspondence carriers contribute
+`O(cr)` because each physically retains an `O(r)` causal vector; and coverage's
+`O(r)` is absorbed by `O(nr²)` because `r <= nr²`. The `cr` term is necessary
+to keep exact reset correspondences recognizable. The bounded-address premise
+is an asymptotic assumption, not a runtime restriction. `DatabaseFingerprint`
+is already bounded by its normative 16-character ASCII representation, and
+uncompacted storage may grow with operations. Broader graph storage scales with
+the actual serialized sizes of its `ConstValue` data and with direct graph
+in-degree; those quantities are separate from the compacted journal bound.
 
 The journal does not provide complete historical input-version provenance for
 cached derived values. For D with direct inputs I1...Ik, synchronization is not
