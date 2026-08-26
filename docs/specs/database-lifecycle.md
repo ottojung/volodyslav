@@ -126,7 +126,7 @@ The supported source is the host's current synchronized state, not an arbitrary 
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's probabilistically chosen durable `DatabaseFingerprint` together with persistent journal allocator and local coverage coordinate before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. Fingerprint collisions are possible; incompatible same-fingerprint histories fail synchronization under the journal conflict rule. This establishes the host's own synchronization history and then merges compatible hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
+If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's probabilistically chosen durable `DatabaseFingerprint` together with persistent journal allocator and local coverage coordinate before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. Fingerprint collisions are possible; distinct same-fingerprint host histories fail the synchronization precondition before journal union or graph reconciliation. This establishes the host's own synchronization history and then merges compatible hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 
@@ -215,6 +215,16 @@ Normal synchronization requires:
 - remote snapshots that can be parsed into staging state; and
 - exact database-version compatibility for every host state that is merged.
 
+Distinct participating host histories, as recognized by the existing
+hostname/branch lifecycle identity, MUST have pairwise distinct
+`DatabaseFingerprint` values. A fingerprint may recur in snapshots that restore
+or continue the same durable host history, but it MUST NOT identify two distinct
+independently writable host histories in one synchronization operation. A
+duplicate fingerprint across distinct histories is incompatible input and
+aborts that source synchronization before journal union or graph
+reconciliation. It is a compatibility failure, not evidence that either
+standalone database is malformed.
+
 The in-process database is closed before synchronization changes its durable state. The operation is serialized against graph activity so checkpointing and merging see stable transition boundaries.
 
 ### 7.2 Normal synchronization flow
@@ -225,8 +235,8 @@ Normal synchronization performs these lifecycle steps:
 2. Render and checkpoint the local state, then synchronize the local host's branch with the repository.
 3. Fetch the participating host branches.
 4. For each other recognized host, load its snapshot into isolated staging state.
-5. Check version and structural merge preconditions.
-6. Compute and commit a graph-aware merge into a non-active target state.
+5. Check participant fingerprints, version, and structural merge preconditions.
+6. Only after those checks, union journals and compute and commit a graph-aware merge into a non-active target state.
 7. Cut over to the merged state only when the merge produced changes and completed successfully.
 8. Remove the host's staging state.
 9. Reopen the application database and run the migration gate before exposing it again.
@@ -238,6 +248,12 @@ Checkpointing serializes the complete stable supported state. Canonical compacti
 ### 7.3 Per-host failure behavior
 
 Host branches are processed independently. A failure for one host is recorded, staging cleanup is attempted, and synchronization continues with the remaining hosts. Successful earlier or later host merges remain committed. After all hosts have been attempted, Volodyslav reports an aggregate synchronization failure if any host failed.
+
+A fingerprint collision follows this failure behavior: the incompatible source
+is not journal-joined or graph-reconciled, no target is cut over for it, and the
+existing active local state remains selected. The protocol promises no
+automatic collision recovery; an operator may resolve the incompatibility
+outside synchronization.
 
 Synchronization is therefore not globally atomic across all remote hosts. Its postcondition on aggregate failure may include successful merges from compatible hosts. Reviewers must not classify this documented partial-success behavior as corruption.
 

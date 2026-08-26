@@ -2,7 +2,13 @@
 
 This document is normative over supported reachable states produced by the atomic authoring, receive, migration, observed-reset, restoration, and canonical-compaction transitions. Corrupt, forged, rolled-back, partially installed, or clock-unsupported states are outside the proof domain.
 
-Within one supported merged journal state, one `DatabaseFingerprint` denotes one durable author history. Histories that reveal incompatible same-fingerprint authors are rejected before entering that supported state; fresh fingerprint creation itself provides expected distinctness, not a mathematical uniqueness guarantee.
+Within one supported merged journal state, one `DatabaseFingerprint` denotes
+exactly one durable writer history. Synchronization uses existing host/branch
+lifecycle identity to reject distinct writer histories with the same
+fingerprint before journal union, so they never enter that supported state.
+Snapshots continuing or restoring the same durable writer history may retain
+the same fingerprint. Fresh fingerprint creation provides only probabilistic
+distinctness, not a mathematical or creation-time uniqueness guarantee.
 
 ## One precise journal
 

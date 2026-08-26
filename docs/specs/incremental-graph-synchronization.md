@@ -34,7 +34,13 @@ Graph materializations contain only values, freshness, real wall-clock
 counter, logical timestamp, vector clock, or CRDT field. Synchronization may install the selected existing provenance metadata, including `createdAt` and `modifiedAt`, even when its value is `isEqual` to the receiver value. This metadata-only replacement is not a local value edit and authors no edit event.
 
 Both inputs are retained as pre-merge graph+journal views for provenance checks.
-The journals are joined first. Nodes are then processed in schema DAG
+Before journal union, the synchronization lifecycle validates that snapshots
+which its existing hostname/branch identity recognizes as distinct host
+histories have different `DatabaseFingerprint` values. Equal fingerprints for
+distinct histories are incompatible-writer input and abort that source merge;
+restarts, self-restorations, migrations, and other continuations of the same
+durable host history are not distinct histories for this check. After this
+precondition succeeds, the journals are joined. Nodes are then processed in schema DAG
 topological order, and the reconciled graph and joined/locally extended journal
 commit atomically. Invalid graph/journal combinations outside reachable
 transitions are corruption, not conflicts for which this protocol invents data.
@@ -269,7 +275,15 @@ active and unmodified until T is complete, durable, and validated.
 
 ### Input validation and identifier reconciliation
 
-Before planning, synchronization MUST reject atomically:
+Before journal join or graph reconciliation, synchronization MUST reject two
+distinct participating host histories with the same `DatabaseFingerprint`.
+The duplicate writer coordinate is sufficient: implementations MUST NOT wait
+for equal `(sequence, author)` coordinates to reveal different payloads. This
+uses the existing hostname/branch lifecycle identity and does not introduce a
+new global writer identifier. A same-fingerprint continuation or restoration
+of one durable host history remains valid.
+
+After that participant check and before planning, synchronization MUST reject atomically:
 
 1. schema-version mismatch;
 2. an unparseable identifier lookup;
@@ -292,7 +306,13 @@ available; canonical compaction need not preserve discarded history solely to
 make an otherwise impossible comparison. These checks diagnose corrupted or
 unsupported input rather than proving lifecycle legitimacy.
 
-In particular, synchronization/import that observes the same `JournalEntryId` (`sequence`, `DatabaseFingerprint`) associated with different immutable journal entries MUST fail rather than silently merge those histories as one author. If the same persisted `NodeIdentifier` maps to incompatible semantic `NodeKey`s, item 3's existing identifier-conflict path likewise rejects the merge. No recovery mechanism is implied.
+The `JournalEntryId` content check remains defensive validation within an
+already admissible set of writer histories; it is not the fingerprint-collision
+detection boundary. In particular, synchronization/import that observes the same `JournalEntryId` (`sequence`, `DatabaseFingerprint`) associated with different immutable journal entries MUST fail rather than silently merge those histories as one author. If the same persisted `NodeIdentifier` maps to incompatible semantic `NodeKey`s, item 3's existing identifier-conflict path likewise rejects the merge. No recovery mechanism is implied.
+
+Fingerprint incompatibility aborts the source merge with no journal union,
+graph reconciliation, or cutover. The existing active local state remains
+selected, and the protocol promises no automatic remediation.
 
 Before journal join or conflict planning, validate each source against its own
 pre-merge journal. Every source materialization MUST resolve its source presence

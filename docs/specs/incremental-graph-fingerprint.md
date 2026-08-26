@@ -13,8 +13,9 @@ Journal entries use the authoring host's `DatabaseFingerprint` directly; there
 is no journal-specific identity or second storage location.
 
 Fresh creation probabilistically chooses a fingerprint for each host. Hosts may,
-with low probability, choose the same fingerprint; the protocol does not
-guarantee collision-free allocation at creation time. The fingerprint is stored
+with low probability, choose the same fingerprint; the protocol does not make
+any uniqueness guarantee at creation time. A collision between two
+independently valid fresh hosts is not by itself corruption. The fingerprint is stored
 in replica-global metadata and is generated once during first database
 initialization. It never
 changes during the lifetime of a live database.
@@ -59,10 +60,11 @@ the project's seeded PRNG. It is generated exactly once:
 Taking a rendered snapshot from one host and using it to bootstrap a second,
 concurrently-writing host is outside the supported lifecycle model (see
 `database-lifecycle.md` §10). If performed anyway, the two hosts would share
-a fingerprint and could allocate colliding identifiers. Sync merge would
-detect this as an `IdentifierLookupConflictError` (the same identifier
-mapped to different semantic keys) and fail cleanly for the affected host
-without corrupting either side.
+a fingerprint and could allocate colliding identifiers. Synchronization uses
+the existing hostname/branch lifecycle identity to recognize the snapshots as
+distinct host histories and rejects them before journal union or graph
+reconciliation. It does not wait for a concrete identifier or journal-entry
+payload conflict.
 
 New hosts obtain a probabilistically chosen fingerprint through the
 fresh-creation path
@@ -129,7 +131,21 @@ remote hosts during sync/reset. However:
 `DatabaseFingerprint` is a probabilistically chosen durable writer/allocation
 identifier. Expected distinctness gives node identifiers probabilistically
 distinct namespaces across independently created hosts. An unlucky collision
-may make independently created histories incompatible for synchronization.
+may make independently created histories incompatible for synchronization; no
+uniqueness guarantee is made at creation time.
+
+A fingerprint may recur across snapshots that are continuations or restorations
+of the same durable host history. Normal restart, reopening the same local
+database, supported self-restoration, migration of that writer state, and a
+controlled reset retaining the receiver fingerprint are all one writer history.
+
+When snapshots participate as separate synchronization sources, their existing
+hostname/branch lifecycle identities determine whether they represent distinct
+host histories. Distinct participating host histories MUST have pairwise
+distinct fingerprints. Equal fingerprints for two such histories are
+incompatible input, and synchronization MUST fail before journal union or graph
+reconciliation. The collision does not establish that either standalone
+database is malformed, and this protocol specifies no automatic remediation.
 
 ## Journal authorship identity
 
