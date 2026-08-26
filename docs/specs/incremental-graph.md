@@ -681,9 +681,12 @@ freshness sublevel. The public journal API consists of:
 
 For those three dimensions, journal notification has no false negatives only
 when `since` is the baseline or a cursor actually returned by polling,
-including an unmodified durable codec round-trip. Caller-fabricated or modified
-coordinates are requested resume positions and carry no such guarantee. Journal
-notification may have false positives and collapse repeated occurrences of one exact action.
+including an unmodified durable codec round-trip, and every fingerprint
+coordinate denotes the same durable writer history in the cursor's origin and
+receiving journal contexts. Independently created colliding writers violate
+that premise; v1 cannot detect the mismatch and may skip receiver changes.
+Caller-fabricated or modified coordinates are requested resume positions and
+carry no such guarantee. Journal notification may have false positives and collapse repeated occurrences of one exact action.
 A returned action does not assert current graph state.
 
 The action meanings are closed: `add` is only absent-to-materialized; `edit` is

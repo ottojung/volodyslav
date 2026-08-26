@@ -77,9 +77,8 @@ HTTP concrete-node routes remain `head + args` based to preserve existing API be
 A `NodeIdentifier` is a deterministic identifier in a probabilistically
 distinct allocation namespace with the following properties:
 
-- collision-free within one supported merged history because synchronization
-  rejects distinct participating host histories with equal fingerprints before
-  journal union or graph reconciliation
+- unique within an interpreted writer universe only under the premise that each
+  fingerprint denotes one durable writer history
 - stable for the lifetime of that materialized node in storage
 - round-trippable as a nominal type
 - suitable for direct use as persisted key content and as a filesystem path segment
@@ -133,8 +132,11 @@ Identifiers are allocated as `${nextIndex.toString(36)}-${fingerprint}` where
 machine-local database fingerprint (see `docs/specs/incremental-graph-fingerprint.md`).
 The fingerprint supplies a probabilistically distinct allocation namespace;
 independently created hosts can choose the same value, and creation makes no
-global uniqueness guarantee. Such distinct host histories are incompatible for
-synchronization and MUST be rejected before their journals or graphs merge.
+global uniqueness guarantee. A directly visible collision between distinct
+participating histories SHOULD be rejected, but detection is not exhaustive.
+If independent writers collide without a directly observable identifier/key
+conflict, their `NodeIdentifier` namespaces alias and identifier-uniqueness and
+normal merge guarantees do not apply.
 
 Gaps in the index sequence are acceptable (caused by failed or interleaved
 transactions). The `last_node_index` watermark tracks the largest committed index.

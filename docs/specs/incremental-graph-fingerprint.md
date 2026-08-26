@@ -60,11 +60,12 @@ the project's seeded PRNG. It is generated exactly once:
 Taking a rendered snapshot from one host and using it to bootstrap a second,
 concurrently-writing host is outside the supported lifecycle model (see
 `database-lifecycle.md` §10). If performed anyway, the two hosts would share
-a fingerprint and could allocate colliding identifiers. Synchronization uses
-the existing hostname/branch lifecycle identity to recognize the snapshots as
-distinct host histories and rejects them before journal union or graph
-reconciliation. It does not wait for a concrete identifier or journal-entry
-payload conflict.
+a fingerprint and could allocate colliding identifiers. When currently
+available hostname/branch metadata directly reveals two distinct participating
+histories with that fingerprint, synchronization SHOULD reject the source
+before journal union or graph reconciliation. This direct check is not an
+exhaustive proof about author coordinates already embedded in replicated
+journal or coverage state.
 
 New hosts obtain a probabilistically chosen fingerprint through the
 fresh-creation path
@@ -139,13 +140,21 @@ of the same durable host history. Normal restart, reopening the same local
 database, supported self-restoration, migration of that writer state, and a
 controlled reset retaining the receiver fingerprint are all one writer history.
 
-When snapshots participate as separate synchronization sources, their existing
-hostname/branch lifecycle identities determine whether they represent distinct
-host histories. Distinct participating host histories MUST have pairwise
-distinct fingerprints. Equal fingerprints for two such histories are
-incompatible input, and synchronization MUST fail before journal union or graph
-reconciliation. The collision does not establish that either standalone
-database is malformed, and this protocol specifies no automatic remediation.
+When currently available hostname/branch lifecycle metadata directly reveals
+that separate synchronization sources represent distinct host histories with
+the same fingerprint, synchronization SHOULD treat the source as incompatible
+and reject it before journal union or graph reconciliation. The collision does
+not establish that either standalone database is malformed, and this protocol
+specifies no automatic remediation. Because no durable provenance mapping is
+retained for every replicated author coordinate, this check cannot detect every
+collision.
+
+The journal and synchronization model assumes that each
+`DatabaseFingerprint` in the interpreted author-coordinate universe denotes
+one durable writer history. An undetected collision can alias
+`JournalEntryId`, `journalCoverage`, causal-prefix coordinates, and
+`NodeIdentifier` allocation namespaces. When that premise is violated, the
+normal causal, convergence, and identifier-uniqueness guarantees do not apply.
 
 ## Journal authorship identity
 

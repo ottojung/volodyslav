@@ -120,13 +120,13 @@ canonical does not imply valid, and non-canonical does not imply invalid. A
 supported uncompacted journal remains supported state; manually forged or
 corrupted history remains unsupported even if it happens to be canonical.
 
-Restoration resumes previously emitted durable state and MUST NOT classify the restored graph as an empty-to-restored transition. Durable encoded cursors preserve their exact vector coordinates across restart and remain portable to every host without adoption or coverage rejection.
+Restoration resumes previously emitted durable state and MUST NOT classify the restored graph as an empty-to-restored transition. Durable encoded cursors preserve their exact vector coordinates across restart and remain portable without adoption or coverage rejection when every fingerprint coordinate denotes the same durable writer history in the origin and receiver contexts.
 
 The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable database fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's probabilistically chosen durable `DatabaseFingerprint` together with persistent journal allocator and local coverage coordinate before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. Fingerprint collisions are possible; distinct same-fingerprint host histories fail the synchronization precondition before journal union or graph reconciliation. This establishes the host's own synchronization history and then merges compatible hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
+If the current hostname has no synchronized branch, startup uses the supported fresh-host lifecycle. It provisions the host's probabilistically chosen durable `DatabaseFingerprint` together with persistent journal allocator and local coverage coordinate before writable open, initializes local synchronization state, and runs normal synchronization from an empty graph. Fingerprint collisions are possible; synchronization SHOULD reject a distinct same-fingerprint history before journal union or graph reconciliation when currently available participant metadata directly reveals it. This establishes the host's own synchronization history and then merges compatible hosts' immutable journal entries under ordinary synchronization rules without adopting their database identities.
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 
@@ -215,15 +215,22 @@ Normal synchronization requires:
 - remote snapshots that can be parsed into staging state; and
 - exact database-version compatibility for every host state that is merged.
 
-Distinct participating host histories, as recognized by the existing
-hostname/branch lifecycle identity, MUST have pairwise distinct
-`DatabaseFingerprint` values. A fingerprint may recur in snapshots that restore
-or continue the same durable host history, but it MUST NOT identify two distinct
-independently writable host histories in one synchronization operation. A
-duplicate fingerprint across distinct histories is incompatible input and
-aborts that source synchronization before journal union or graph
-reconciliation. It is a compatibility failure, not evidence that either
-standalone database is malformed.
+If currently available hostname/branch lifecycle metadata directly reveals two
+distinct participating histories with the same `DatabaseFingerprint`,
+synchronization SHOULD reject that source before journal union or graph
+reconciliation. A fingerprint may recur in snapshots that restore or continue
+the same durable host history. A directly revealed duplicate across distinct
+histories is a compatibility failure, not evidence that either standalone
+database is malformed.
+
+This participant check is not exhaustive. In particular, the persistent model
+does not map every author coordinate already embedded in replicated journal or
+coverage state back to its originating hostname/branch history. The supported
+journal and synchronization domain therefore assumes that each fingerprint in
+the interpreted author-coordinate universe denotes one durable writer history.
+An undetected collision may alias `JournalEntryId`, `journalCoverage`, causal
+prefixes, and `NodeIdentifier` namespaces; the normal causal and convergence
+guarantees do not apply across such aliasing.
 
 The in-process database is closed before synchronization changes its durable state. The operation is serialized against graph activity so checkpointing and merging see stable transition boundaries.
 
@@ -249,11 +256,11 @@ Checkpointing serializes the complete stable supported state. Canonical compacti
 
 Host branches are processed independently. A failure for one host is recorded, staging cleanup is attempted, and synchronization continues with the remaining hosts. Successful earlier or later host merges remain committed. After all hosts have been attempted, Volodyslav reports an aggregate synchronization failure if any host failed.
 
-A fingerprint collision follows this failure behavior: the incompatible source
-is not journal-joined or graph-reconciled, no target is cut over for it, and the
-existing active local state remains selected. The protocol promises no
-automatic collision recovery; an operator may resolve the incompatibility
-outside synchronization.
+A directly detected fingerprint collision follows this failure behavior: the
+incompatible source is not journal-joined or graph-reconciled, no target is cut
+over for it, and the existing active local state remains selected. Detection is
+not exhaustive. The protocol promises no automatic collision recovery; an
+operator may resolve the incompatibility outside synchronization.
 
 Synchronization is therefore not globally atomic across all remote hosts. Its postcondition on aggregate failure may include successful merges from compatible hosts. Reviewers must not classify this documented partial-success behavior as corruption.
 
