@@ -842,20 +842,27 @@ Three modes are defined:
 | `nighttime` | Recomputation operations. Multiple `nighttime`-mode callers may execute concurrently at the graph level (but are serialized per-node). |
 | `holiday` | Lifecycle operations (database opens, schema migrations). Blocks all other modes. |
 
-Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to prevent two concurrent pulls from recomputing the same node simultaneously.
+All methods that select or use the active replica first acquire shared
+`enterGarden` access and retain it for their complete use of that replica.
+`closeGarden` is exclusive: it blocks new entrants, waits for existing entrants
+to finish, and protects active-pointer replacement and retirement of the old
+replica. Additionally, `pull()` acquires a **per-node mutex** inside the mode
+mutex to prevent two concurrent pulls from recomputing the same node
+simultaneously. The complete primitive, cutover, and acquisition-order protocol
+is normative in `incremental-graph-locking-design.md`.
 
 ### 5.2 Locking Properties per Method
 
 | Method | Lock mode | Can run concurrently with |
 |--------|-----------|--------------------------|
-| `pull()` | `nighttime` (+ per-node mutex) | Other `pull()` calls on different nodes; **NOT** with `daytime`-mode methods |
-| `invalidate()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `getFreshness()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `getValue()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `listMaterializedNodes()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `getCreationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `getModificationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `possibleMaybeChanges()` | `enterGarden` (shared garden access) | Daytime and nighttime methods; read-only fixed notification snapshot; never allocates or updates journal state; does not acquire `DOME_ACTIVITY_KEY` or darkroom; structural operations excluded by garden; replica cutover serialized via `closeGarden` + `holiday` |
+| `pull()` | `enterGarden` → `nighttime` (+ per-node mutex) | Other `pull()` calls on different nodes; **NOT** with `daytime`-mode methods or `closeGarden` |
+| `invalidate()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
+| `getFreshness()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
+| `getValue()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
+| `listMaterializedNodes()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
+| `getCreationTime()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
+| `getModificationTime()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
+| `possibleMaybeChanges()` | `enterGarden` | Daytime and nighttime methods; holds shared access through complete fixed-snapshot consumption; never allocates or updates journal state or acquires dome/darkroom; **NOT** with `closeGarden` |
 | `getSchemas()` | none (in-memory read) | Everything |
 | `getSchemaByHead()` | none (in-memory read) | Everything |
 | `getDbVersion()` | none (in-memory read) | Everything |
@@ -875,16 +882,17 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 
 ### Computors and graph access
 
-Computors MAY invoke the `pull` method, or any other methods of the `IncrementalGraph` interface.
-Nodes `pull`ed in this way are **not** schema-derived dependencies of the calling computor's node.
-The implementation MUST NOT treat them as inputs for freshness propagation or validity
-indexing. This means:
+**REQ-COMP-NOREENTER-01 (No re-entrant graph calls):** A computor MUST NOT invoke
+any method of the `IncrementalGraph` public interface from within its execution.
+The only graph traversal available during computation is the specification's
+internal schema-derived dependency mechanism, which resolves declared inputs
+before invoking the computor and does not expose a graph handle to it.
 
-- freshness updates during `invalidate()` are not propagated through dynamically-pulled nodes,
-- dynamically-pulled nodes do not appear in `inputEdges(N)` or `valid`,
-- validity-proof restoration does not consider dynamically-pulled nodes.
-
-Dynamically-pulled nodes are not part of the flag-based validity algorithm. They are ad-hoc queries
-performed during a computor's execution and do not affect the structural dependency graph.
+Calling a public graph method from a computor is undefined behavior. An
+implementation is not required to detect or reject the call. Its result may
+appear to work, block indefinitely, throw, corrupt the enclosing operation, or
+fail in any other way. Once such a call occurs, this specification provides no
+safety, liveness, freshness, atomicity, or deadlock guarantee for the affected
+execution, and callers MUST NOT rely on any behavior they observe.
 
 ---

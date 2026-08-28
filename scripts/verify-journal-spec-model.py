@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from itertools import product
 from pathlib import Path
 import json,math,re as regex
-U64=2**64-1;TMIN=-8640000000000000;TMAX=8640000000000000
+TMIN=-8640000000000000;TMAX=8640000000000000
 A="aaaaaaaaaaaaaaaa";B="bbbbbbbbbbbbbbbb";C="cccccccccccccccc";R="rrrrrrrrrrrrrrrr";S="ssssssssssssssss"
 AUTH={A,B,C,R,S};ACT={"add","edit","delete","invalidate","validate"};ROOT=Path(__file__).parent
 KV=json.loads((ROOT/"fixtures/node-key-serialization.json").read_text());TV=json.loads((ROOT/"fixtures/unix-timestamp-domain.json").read_text())
@@ -40,8 +40,8 @@ def prodkey(n,b):
  for v in KV:
   if v["nodeName"]==n and v["bindings"]==list(b):return v["serialized"]
  raise ValueError
-def uint(n):return type(n) is int and 0<=n<=U64
-def journal_sequence(n):return type(n) is int and 1<=n<=U64
+def causal_coordinate(n):return type(n) is int and n>=0
+def journal_sequence(n):return type(n) is int and n>0
 def timestamp(n):return type(n) is int and TMIN<=n<=TMAX
 assert all(timestamp(int(v["value"]))==v["valid"] for v in TV)
 @dataclass(frozen=True,order=True)
@@ -86,12 +86,12 @@ def valid(es):
    if e.kind not in ("delete","invalidate","validate","observe"):return False
    if type(e.lineage)is not tuple or len(e.lineage)!=3:return False
    through,sg,so=e.lineage
-   if type(through)is not tuple or tuple(sorted(through))!=through or len({a for a,_ in through})!=len(through)or any(a not in AUTH or not uint(q)for a,q in through):return False
+   if type(through)is not tuple or tuple(sorted(through))!=through or len({a for a,_ in through})!=len(through)or any(a not in AUTH or not causal_coordinate(q)for a,q in through):return False
    if (sg is None)!=(so is None):return False
    if e.kind in ("delete","observe")and sg is not None:return False
    if e.kind in ("validate","invalidate")and sg is None:return False
    if sg is not None and any(type(x)is not tuple or len(x)!=2 or not journal_sequence(x[0])or x[1]not in AUTH for x in(sg,so)):return False
-  if tuple(sorted(e.clears))!=e.clears or len({a for a,_ in e.clears})!=len(e.clears) or any(a not in AUTH or not uint(q) for a,q in e.clears):return False
+  if tuple(sorted(e.clears))!=e.clears or len({a for a,_ in e.clears})!=len(e.clears) or any(a not in AUTH or not causal_coordinate(q) for a,q in e.clears):return False
  for e in es:
   if e.generation:
    g=d.get(e.generation)
@@ -767,7 +767,7 @@ CM=compact(MONO);assert V2 in CM and V1 not in CM
 IS90=ev(90,S,(K,N,BS),20,"invalidate",G.id,"hard");assert covers(V2,IS90) and fresh(set(CM)|{IS90},K,G.id)
 assert compact(set(compact(MONO))|{G,V0,IS90})==compact(set(MONO)|{IS90})
 Vbad=ev(104,R,(K,N,BS),34,"validate",G.id,clears=((R,102),));assert not valid((*MONO,Vbad))
-Vdup=replace(Vbad,sequence=105,clears=((S,100),(S,100)));Voverflow=replace(Vbad,sequence=106,clears=((S,2**64),));assert not valid((*MONO,Vdup))and not valid((*MONO,Voverflow))
+Vdup=replace(Vbad,sequence=105,clears=((S,100),(S,100)));Vlarge=replace(Vbad,sequence=106,clears=((R,102),(S,2**128),));assert not valid((*MONO,Vdup))and valid((*MONO,Vlarge))
 
 # Whole-frontier retention prevents two partial validations from combining through compaction.
 HR=ev(30,R,(K,N,BS),30,"invalidate",G.id,"hard");PVR=ev(31,R,(K,N,BS),31,"validate",G.id,clears=((R,30),));SR=ev(32,R,(K,N,BS),32,"invalidate",G.id,"soft")

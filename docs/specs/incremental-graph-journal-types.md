@@ -23,9 +23,10 @@ collision detection or repair is not required.
 
 ```text
 journal[JournalEntryId] = JournalEntry
-PositiveJournalSequence = integer in [1, 18446744073709551615]
-JournalEntryId = (sequence:PositiveJournalSequence, author)
-JournalEntryBase = { author, sequence:PositiveJournalSequence, nodeName, bindings, time }
+JournalSequence = positive arbitrary-precision integer
+CausalCoordinate = non-negative arbitrary-precision integer
+JournalEntryId = (sequence:JournalSequence, author)
+JournalEntryBase = { author, sequence:JournalSequence, nodeName, bindings, time }
 GenerationJournalEntry = JournalEntryBase & {
     kind:"generation", initialFreshness:JournalEntryId
 }
@@ -54,7 +55,7 @@ ResetCorrespondence = {
     consumedGeneration:JournalEntryId,
     consumedValueOrigin:JournalEntryId
 }
-CausalPrefix = Map<DatabaseFingerprint,uint64>
+CausalPrefix = Map<DatabaseFingerprint,CausalCoordinate>
 entryNodeKey(E) = NodeKey(E.nodeName,E.bindings)
 ```
 
@@ -77,7 +78,9 @@ Soft/hard both expose invalidate. Every public graph event exposes exactly one a
 
 Every boundary validates closed shapes/scalars and immutable-ID agreement. Every scoped event resolves to an exact GenerationJournalEntry with the same derived `entryNodeKey`. Generation initial-freshness references resolve exactly.
 
-Zero is a sentinel coordinate for missing causal-prefix, coverage, and cursor knowledge; it is never a journal event coordinate. Every persisted `JournalEntryId`, including entry IDs and generation, initial-freshness, value-origin, absent-anchor, and reset-correspondence references, validates `PositiveJournalSequence`. A fresh database initializes `localJournalClock` and its local `journalCoverage` coordinate to zero. Its first authored event allocates sequence 1; subsequent allocation always chooses a positive coordinate above all transaction-observed retained and covered authority.
+Zero is a sentinel coordinate for missing causal-prefix, coverage, and cursor knowledge; it is never a journal event coordinate. Every persisted `JournalEntryId`, including entry IDs and generation, initial-freshness, value-origin, absent-anchor, and reset-correspondence references, validates `JournalSequence`. A fresh database initializes `localJournalClock` and its local `journalCoverage` coordinate to zero. Its first authored event allocates sequence 1; subsequent allocation always chooses the unbounded integer successor of a coordinate at least as great as all transaction-observed retained and covered authority.
+
+Journal coordinates are mathematical integers independent of a machine-word bound. At persistence and JSON boundaries, every `JournalSequence` and `CausalCoordinate` is encoded as a canonical non-negative decimal integer string: no sign, whitespace, exponent, leading `+`, or redundant leading zeros is admitted, and `"0"` is the sole zero spelling. Runtime implementations use JavaScript `BigInt` and MUST NOT represent journal coordinates as JavaScript `Number` or perform a lossy `Number` conversion. Journal-event sequence fields and references additionally reject `"0"`; causal, coverage, clock, and cursor coordinates admit it where the model permits absence of knowledge.
 
 **Post-edit Negative-Freshness Invariant.** Any transaction that authors a same-generation edit for a new semantic value and leaves that value stale MUST author a new negative freshness assertion after the edit: soft when complete cache-revalidation proof remains, hard when recomputation is required. Pre-edit invalidates cannot represent the new value's negative authority. Equal-value operations author no edit and may reuse existing authority under the ordinary causal rules.
 
@@ -89,7 +92,7 @@ Observed reset attaches `resetLineage` to a receiver-retained freshness assertio
 
 Reset causal observation and semantic correspondence are distinct. `consumedThrough` is the joinable per-author prefix inspected across both snapshots; missing means zero. Concurrent observations for one receiver anchor join by componentwise maximum, without inferring causality from carrier JournalEntryId. `correspondence`, when present, names exactly one source generation/origin actually compared `isEqual` with the receiver value anchor. Concurrent/later exact correspondences form a bounded retained set; causal coordinates alone never certify semantic equality.
 
-For every author A, an A-authored key event at or below joined `consumedThrough[A]` is absorbed. A same-lineage event above it remains eligible regardless of carrier. Structural validation requires canonical vectors and exact shapes. Delete/reset-observation absent lineage has null correspondence; validate/invalidate present lineage has a non-null exact correspondence. Both correspondence IDs use `PositiveJournalSequence` and supported fingerprints. Booleans, duplicate/unsorted coordinates, mismatched kind/correspondence, malformed IDs, and unknown fields are rejected.
+For every author A, an A-authored key event at or below joined `consumedThrough[A]` is absorbed. A same-lineage event above it remains eligible regardless of carrier. Structural validation requires canonical vectors and exact shapes. Delete/reset-observation absent lineage has null correspondence; validate/invalidate present lineage has a non-null exact correspondence. Both correspondence IDs use `JournalSequence` and supported fingerprints. Booleans, duplicate/unsorted coordinates, mismatched kind/correspondence, malformed IDs, and unknown fields are rejected.
 
 ## UnixTimestamp and event time
 
@@ -115,7 +118,7 @@ Validation knowledge is durable and monotone. For validations V1,V2 with the sam
 V1.sequence < V2.sequence => V1.clearsThrough <=componentwise V2.clearsThrough
 ```
 
-Every validation authoring path—ordinary pull/revalidation, migration, a genuinely synchronization-authored initial validation, and observed reset—starts with the greatest prior same-author/key/generation validation vector and componentwise-maxes newly justified closed prefixes into it. The prior vector is itself durable evidence for carry-forward; source coordinates learned only by reset remain in later validation state without being copied into host journalCoverage. A retained pair violating monotonicity is unsupported/corrupt. Structural load validation checks canonical map shape, at most one coordinate per fingerprint, and uint64 coordinates; lifecycle legitimacy of the claimed evidence is a separate authoring proof.
+Every validation authoring path—ordinary pull/revalidation, migration, a genuinely synchronization-authored initial validation, and observed reset—starts with the greatest prior same-author/key/generation validation vector and componentwise-maxes newly justified closed prefixes into it. The prior vector is itself durable evidence for carry-forward; source coordinates learned only by reset remain in later validation state without being copied into host journalCoverage. A retained pair violating monotonicity is unsupported/corrupt. Structural load validation checks canonical map shape, at most one coordinate per fingerprint, and `CausalCoordinate` values; lifecycle legitimacy of the claimed evidence is a separate authoring proof.
 
 Import does not advance the local clock/coordinate. Fresh local clock and coverage start at zero. Immediately before local authoring, allocation raises above all relevant retained/covered sequence authority, so the first event is 1 when no greater authority has been observed and no authored event can be 0. After commit, local coverage equals local clock and the local prefix never regresses.
 
