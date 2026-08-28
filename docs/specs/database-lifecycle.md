@@ -105,10 +105,10 @@ Before installation, restoration validates the ordinary load structure:
 - every retained value-specific freshness assertion resolves its exact same-key/generation value-origin event; reset-lineage consumed source identities need not be locally retained, but their coordinate shapes and authoring provenance must validate;
 - live `NodeIdentifier` values are unique and bijective with live semantic keys, and no retired identifier is live;
 - every materialization origin is the admissible canonical event for its winning generation and `modifiedAt`, rather than a superseded same-author head or lower equal-time candidate;
-- every retained `clearsThrough` has canonical map shape, unique supported fingerprint coordinates, and uint64 values;
+- every retained `clearsThrough` has canonical map shape, unique supported fingerprint coordinates, and non-negative arbitrary-precision `CausalCoordinate` values;
 - retained same-author/key/generation validation vectors are componentwise monotone when comparable evidence is present;
 - `localJournalClock` equals the local fingerprint coverage coordinate and locally authored entries do not exceed it; foreign retained sequences may exceed it under lazy raising;
-- a fresh database initializes both `localJournalClock` and its local fingerprint coverage coordinate to zero; zero denotes no authored event, the first authored event is sequence 1, and every persisted journal-entry ID/reference has sequence in `[1,18446744073709551615]`;
+- a fresh database initializes both `localJournalClock` and its local fingerprint coverage coordinate to zero; zero denotes no authored event, the first authored event is sequence 1, and every persisted journal-entry ID/reference has a positive arbitrary-precision `JournalSequence`;
 - every retained entry has a self-contained `nodeName` and `bindings` address from which its NodeKey is derived;
 - journal coverage dominates every retained entry sequence; and
 - the local coverage coordinate equals the durable local clock. Coordinate gaps are allowed.
@@ -310,7 +310,7 @@ B previously observed 10:
 The rollback below is invalid because sequence reuse makes the new edit conflict with immutable history:
 
 ```text
-restore OA at sequence 0
+restore OA with localJournalClock 0 and no journal events
 emit sequence 1
 peer already has sequence 10
 

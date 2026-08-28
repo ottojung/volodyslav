@@ -2,7 +2,7 @@
 
 `possibleMaybeChanges({since,to})` returns visible `{nodeName,bindings,action,time}` with exact add/edit/delete/invalidate/validate. It hides NodeIdentifier, generation, invalidation mode, `clearsThrough`, and graph state.
 
-`PossibleChangeCursor={filterIdentity,through}` where `through=Map<DatabaseFingerprint,uint64>` records the per-author resume position from which polling continues and `filterIdentity` is the canonical identity of the exact NodeFilter used to produce it. Missing vector coordinates are zero. Coordinates beyond receiver coverage neither require adoption nor cause rejection. Portability additionally requires each fingerprint coordinate to denote the same durable writer history in the token's origin and receiving journal contexts. Reuse with a different filter identity throws `InvalidPossibleChangeCursorError` before polling.
+`PossibleChangeCursor={filterIdentity,through}` where `through=Map<DatabaseFingerprint,CausalCoordinate>` records the per-author resume position from which polling continues and `filterIdentity` is the canonical identity of the exact NodeFilter used to produce it. Missing vector coordinates are zero. Coordinates beyond receiver coverage neither require adoption nor cause rejection. Portability additionally requires each fingerprint coordinate to denote the same durable writer history in the token's origin and receiving journal contexts. Reuse with a different filter identity throws `InvalidPossibleChangeCursorError` before polling.
 
 For one snapshot, choose the greatest event per `(author,NodeKey,publicAction)`, keep those above the consumer coordinate and matching the self-contained address filter, order by `(sequence,author)`, and attach cumulative vector cursors. Soft/hard share invalidate. Every public graph event has a non-null exact action; internal reset-observation entries are excluded before this projection; reset add/edit/delete/freshness transitions use ordinary events.
 
@@ -73,8 +73,10 @@ semantic exactly as in DEF-EQUAL-01.
 Every returned `PossibleNodeChange` has consumed at least its event's positive
 author coordinate; therefore an empty cursor is invalid in durable v1. `fingerprint`
 is exactly `/^[a-z]{16}$/`. `coordinate` is a JSON **string** containing a
-canonical unsigned decimal integer in `[1,18446744073709551615]`. Decimal
-strings preserve every uint64 value losslessly in JavaScript. Entries are
+canonical positive decimal integer string: its first digit is nonzero and all
+remaining characters are decimal digits. Coordinates are arbitrary precision;
+the decoder constructs JavaScript `BigInt` values directly and never passes
+through JavaScript `Number`. Entries are
 strictly ascending by fingerprint; duplicates, unsorted entries, and explicit
 zero coordinates are invalid. Missing coordinates mean zero and the encoder
 omits zero coordinates. The all-zero vector belongs only to the non-serializable
