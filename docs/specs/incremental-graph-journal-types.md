@@ -4,16 +4,20 @@
 
 This document is normative over supported reachable states produced by the atomic authoring, receive, migration, observed-reset, restoration, and canonical-compaction transitions. Corrupt, forged, rolled-back, partially installed, or clock-unsupported states are outside the proof domain.
 
-The correctness model assumes that each `DatabaseFingerprint` in the
-interpreted author-coordinate universe denotes exactly one durable writer
-history. Snapshots continuing or restoring the same durable writer history may
-retain the same fingerprint. Fresh fingerprint creation provides only
-probabilistic distinctness, not a mathematical or creation-time uniqueness
-guarantee. A collision between independent writer histories can alias
-`JournalEntryId`, `journalCoverage`, causal-prefix and cursor coordinates, and
-`NodeIdentifier` namespaces; states interpreted across that aliasing are
-outside the ordinary uniqueness, portability, causal, and convergence proof
-domain. The protocol does not promise to detect or repair such a collision.
+The journal, causal-prefix, cursor, compaction, synchronization, and convergence
+properties in this specification are conditional on each `DatabaseFingerprint`
+in the interpreted history denoting one durable writer history. Snapshots
+continuing or restoring the same durable writer history may retain the same
+fingerprint. Fresh creation does not guarantee this premise: independently
+created writers may choose the same fingerprint.
+
+If independent writer histories collide under one fingerprint, identities such
+as `JournalEntryId`, causal-prefix coordinates, `journalCoverage` coordinates,
+cursor coordinates, and `NodeIdentifier` namespaces may alias. The colliding
+histories may remain structurally well-formed, but behavior across their aliased
+identities and coordinates is outside the guarantees of this specification. An
+implementation MAY detect and reject an observable collision, but complete
+collision detection or repair is not required.
 
 ## One precise journal
 
