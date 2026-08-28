@@ -102,19 +102,30 @@ apply; implementations need not detect the condition. Volodyslav does not
 detect, repair, compensate for, or preserve causality across unsynchronized
 wall clocks.
 
-This specification uses the exact definitions in the [journal synchronization specification](incremental-graph-journal-sync.md#logical-projection), including `presenceHead`, `generation`, `valueEvents`, `valueHead`, `candidateEvents`, `canonicalEvent`, `origin`, `ValueRevision`, `covers`, both invalidation frontiers, `freshnessEffective`, and `hardnessCleared`. In shorthand:
+This specification uses the exact definitions in the [journal projections section](incremental-graph-journal-sync.md#journal-projections), including `rawPresenceHead`, `presenceHead`, `generation`, `valueEvents`, `valueHead`, `candidateEvents`, `canonicalEvent`, `ValueRevision`, `covers`, both invalidation frontiers, `freshnessEffective`, and `hardnessCleared`. For a source pre-merge snapshot `S=(graphS,JS)` and its materialization `x`, in shorthand:
 
 ```text
-modifiedAtUnix(x) = toUnixTimestamp(graph.timestamps[x].modifiedAt)
-ValueRevision(x,G) = [modifiedAtUnix(x), origin(x,G).sequence, origin(x,G).author]
-invalidateFrontier(x,G)[A] = greatest invalidate of either mode by A
-hardInvalidateFrontier(x,G)[A] = greatest hard invalidate by A
-freshnessEffective(V,x,G) iff V alone covers every all-mode frontier member
-hardnessCleared(V,x,G) iff V alone covers every hard-frontier member
+modifiedAtUnix(S,x) = toUnixTimestamp(graphS.timestamps[x].modifiedAt)
+nodeKey(S,x) = the NodeKey obtained from graphS's identifier lookup for x
+canonicalEvent(S,x,G) = canonicalEvent(JS,nodeKey(S,x),G,modifiedAtUnix(S,x))
+valueHead(S,x,G,A) = valueHead(JS,nodeKey(S,x),G,A)
+ValueRevision(S,x,G) = [modifiedAtUnix(S,x), canonicalEvent(S,x,G).sequence,
+                        canonicalEvent(S,x,G).author]
+invalidateFrontier(S,x,G)[A] = invalidateFrontier(JS,nodeKey(S,x),G,canonicalEvent(S,x,G).id)[A]
+hardInvalidateFrontier(S,x,G)[A] = hardInvalidateFrontier(JS,nodeKey(S,x),G,canonicalEvent(S,x,G).id)[A]
+freshnessEffective(V,S,x,G) iff freshnessEffective(V,JS,nodeKey(S,x),G,canonicalEvent(S,x,G).id)
+hardnessCleared(V,S,x,G) iff hardnessCleared(V,JS,nodeKey(S,x),G,canonicalEvent(S,x,G).id)
 ```
 
+Every occurrence below that omits `S` uses the candidate's own validated
+pre-merge graph+journal snapshot. For example, `ValueRevision(x,G)` means
+`ValueRevision(S,x,G)` and `canonicalEvent(x,G)` means
+`canonicalEvent(S,x,G)` for the snapshot from which `x` was obtained. Neither
+function is reevaluated against the joined journal when establishing that
+candidate's alleged provenance.
+
 A value event for winning generation G is usable only when it is the GenerationJournalEntry G or an edit explicitly scoped to G, its `time` equals `modifiedAtUnix(x)`, and it is
-`valueHead(author,x,G)`. An unresolvable, superseded, or differently scoped
+`valueHead(S,x,G,author)`. An unresolvable, superseded, or differently scoped
 materialization is provenance-obsolete. `ValueRevision(x,G)` is compared
 lexicographically and totally. Equal revisions with unequal `ComputedValue`s
 violate the reachable-state invariant; synchronization rejects corruption and
@@ -132,9 +143,10 @@ canonical provenance among events with equal modifiedAtUnix:
     JournalEntryId = (sequence,author)
 ```
 
-Thus `modifiedAtVirtual` and `modifiedBy` provide exact deterministic identity
-when finite-resolution wall times collide. `modifiedAtVirtual` does not replace
-wall time and is not intended to repair an unsynchronized system clock.
+Thus the canonical journal event's `(sequence,author)` provides exact
+deterministic identity when finite-resolution wall times collide. This suffix
+does not replace wall time and is not intended to repair an unsynchronized
+system clock.
 For `T1 < T2`, T2 wins by wall time regardless of journal sequences. For equal
 T, greater sequence wins. For equal timestamp and equal sequence, greater author
 database fingerprint wins because distinct concurrent authors may allocate the same

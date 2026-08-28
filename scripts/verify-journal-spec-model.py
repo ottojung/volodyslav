@@ -190,7 +190,7 @@ def vheads(es,k,g):
   if (e.kind=="add" and e.id==g) or(e.kind=="edit" and e.key==k and e.generation==g):
    if e.author not in o or o[e.author].sequence<e.sequence:o[e.author]=e
  return frozenset(o.values())
-def origin(es,k,g,t):return max((e for e in vheads(es,k,g) if e.time==t),key=lambda e:e.id)
+def canonical_event(es,k,g,t):return max((e for e in vheads(es,k,g) if e.time==t),key=lambda e:e.id)
 def front(es,k,g,hard=False,value_origin=None):
  o={}
  for e in es:
@@ -312,7 +312,7 @@ def journal_projection(es):
  for k in sorted({e.key for e in es}):
   p=ph(es,k);g=generation(es,k);values=()
   if g:
-   heads=vheads(es,k,g);values=tuple(sorted((t,origin(es,k,g,t).id)for t in {e.time for e in heads}))
+   heads=vheads(es,k,g);values=tuple(sorted((t,canonical_event(es,k,g,t).id)for t in {e.time for e in heads}))
   states=()if not g else tuple(sorted((h.id,fresh(es,k,g,h.id),hard(es,k,g,h.id))for h in vheads(es,k,g)))
   out.append((k,None if not p else(p.kind,p.id),g,values,states))
  return tuple(out),query(es)
@@ -345,7 +345,7 @@ def admissible_candidates(j,k,g,candidates):
  out=[]
  for m in candidates:
   if not m or m.value is None or m.generation!=g:continue
-  try:c=origin(j,k,g,m.modified)
+  try:c=canonical_event(j,k,g,m.modified)
   except (ValueError,KeyError):continue
   if c.id==m.origin:out.append(m)
  return out
@@ -379,7 +379,7 @@ def validate_replica(r,schema=SCHEMA):
  for k,m in r.nodes:
   if k not in schema or generation(r.journal,k)!=m.generation:return False
   candidates=[e for e in r.journal if ((e.kind=="add"and e.id==m.origin)or(e.kind=="edit"and e.id==m.origin)) and e.key==k and ((e.kind=="add"and e.id==m.generation)or e.generation==m.generation)]
-  try:canonical=origin(r.journal,k,m.generation,m.modified)
+  try:canonical=canonical_event(r.journal,k,m.generation,m.modified)
   except (ValueError,KeyError):return False
   if not candidates or canonical.id!=m.origin or candidates[0].time!=m.modified or not is_equal(candidates[0].value,m.value):return False
   if classify(r.journal,k,m.generation,m.origin)!=m.state:return False

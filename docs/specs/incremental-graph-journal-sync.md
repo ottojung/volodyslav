@@ -4,13 +4,15 @@
 
 ```text
 presenceEvents(J,K) = generation/delete entries for K
+rawPresenceHead(J,K) = greatest member of presenceEvents(J,K) by
+               JournalEntryId=(sequence,author), or undefined when that set is empty
 lineageGroup(A) = all reset-lineage carriers with tagged receiver anchor A
 anchorPresence(A) = absent for null; the named delete for delete anchor; the
                generation containing the named value origin for present anchor
 anchorCut(A)[author] = componentwise maximum across lineageGroup(A)
-superseded(A) iff A is non-null, rawPresenceHead differs from anchorPresence(A),
-               and rawPresenceHead.sequence is above
-               anchorCut(A)[rawPresenceHead.author]
+superseded(A) iff A is non-null, rawPresenceHead(J,K) is defined and differs
+               from anchorPresence(A), and rawPresenceHead(J,K).sequence is above
+               anchorCut(A)[rawPresenceHead(J,K).author]
 applicableLineages = every null lineage group plus every non-null lineage group
                for which superseded(A) is false
 cut[A] = max consumedThrough[A] across applicableLineages, missing as zero
@@ -33,12 +35,27 @@ presenceHead = greatest eligiblePresence by that actual presence event's own
 generation = presenceHead.id iff it is GenerationJournalEntry
 valueEvents(J,K,G) = generation G union edits scoped to G
 valueHead(J,K,G,A) = greatest A-authored value event
-candidateEvents = defined per-author valueHeads
-canonicalEvent(J,H,K,G) = greatest-ID candidate matching H.modifiedAt
-ValueRevision = (modifiedAt,canonicalEvent.sequence,canonicalEvent.author)
+candidateEvents(J,K,G) = the set of defined valueHead(J,K,G,A), over all authors A
+canonicalEvent(J,K,G,T) = greatest-ID candidate in candidateEvents(J,K,G)
+               whose event time equals T
+ValueRevision(J,H,K,G) = (H.modifiedAt,canonicalEvent(J,K,G,H.modifiedAt).sequence,
+               canonicalEvent(J,K,G,H.modifiedAt).author)
+applicable(I,O) iff I is generation-wide or I.valueOrigin=O
+invalidateFrontier(J,K,G,O)[A] = greatest A-authored applicable invalidate
+               of either mode for K and G
+hardInvalidateFrontier(J,K,G,O)[A] = greatest A-authored applicable hard
+               invalidate for K and G
+covers(V,I) iff V and I have the same key and generation and
+               I.sequence <= V.clearsThrough[I.author]
+freshnessEffective(V,J,K,G,O) iff V.valueOrigin=O and V alone covers every
+               member of invalidateFrontier(J,K,G,O)
+hardnessCleared(V,J,K,G,O) iff V.valueOrigin=O and V alone covers every
+               member of hardInvalidateFrontier(J,K,G,O)
+journalHard(J,K,G,O) iff hardInvalidateFrontier(J,K,G,O) is nonempty and
+               no validation V satisfies hardnessCleared(V,J,K,G,O)
 ```
 
-Presence selection precedes value. A GenerationJournalEntry is the generation and initial value event; it is not generation-scoped. ValueRevision remains wall-time-first with exact equal-time provenance.
+Presence selection precedes value. A GenerationJournalEntry is the generation and initial value event; it is not generation-scoped. `H` is one graph materialization from the graph snapshot paired with journal snapshot `J`; `canonicalEvent` and `ValueRevision` are evaluated only in that same snapshot, before any journal union. `canonicalEvent` is undefined when no candidate has `time=T`. ValueRevision remains wall-time-first with the journal event's exact `(sequence,author)` equal-time suffix.
 
 Freshness uses `clearsThrough`, `covers`, both frontiers, `freshnessEffective`, and `journalHard` exactly as defined in the types specification. A validation applies only to its mandatory exact `valueOrigin`; positive evidence never crosses an edit. Causal vectors never combine across validations.
 
