@@ -56,7 +56,32 @@ All methods are `async`.
 | `override(nodeIdentifier, value)` | Rewrite the representation of an existing cached value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`). The result MUST be `isEqual` to the existing value and preserves its cache-state proof envelope. |
 | `invalidate(nodeIdentifier)` | Preserve the cached value while marking the node for recomputation. |
 | `delete(nodeIdentifier)` | Remove the node from the new version entirely. |
-| `create(nodeKeyString, value, freshness)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `freshness` must be `"up-to-date"` or `"potentially-outdated"`. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
+| `create(nodeKeyString, value, cacheState)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `cacheState` is exactly one of the closed variants below. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
+
+`cacheState` makes the cache assertion and its proof requirements distinct:
+
+```text
+{ state: "up-to-date" }
+{ state: "stale-soft",
+  proof: { inputs: [{ nodeIdentifier: NodeIdentifier, value: ComputedValue }, ...] } }
+{ state: "stale-hard" }
+```
+
+An up-to-date create asserts a clean computed value. A stale-soft create asserts
+that the cached derived value was computed from the exact input values in
+`proof.inputs`; migration resolves the new node's distinct direct inputs and
+requires exactly one entry for each, no extras, matching identifiers, and
+`isEqual` values in the target replica. This establishes the complete reusable
+incoming validity proof, and migration creates every corresponding incoming
+validity edge. A stale-soft envelope is invalid for a zero-input node, so every
+zero-input stale create is necessarily stale-hard. A stale-hard create asserts
+must-recompute state and carries no reusable incoming proof.
+
+Missing or unknown variants, extra fields, a proof on a variant that does not
+accept one, a missing or duplicate proof input, a non-input identifier, a
+non-materialized input, or a non-`isEqual` input value throws
+`InvalidMigrationDecisionError`. Validation completes before the create mutates
+the target replica.
 
 ### Traversal methods
 
@@ -138,13 +163,19 @@ The intended use case is format migration: the database version changes the seri
 Migration explicit invalidation deliberately reasserts the obligation and
 authors a fresh causal invalidate even when the node was already stale, its
 incoming proofs were already absent, and an older outstanding invalidate
-exists. `create(..., "potentially-outdated")` authors a new generation plus soft invalidate when migration establishes sufficient reusable proofs, or hard invalidate when it establishes must-recompute state. The migration decision/proof envelope must distinguish these supported outcomes.
+exists. `create(..., { state: "stale-soft", proof })` authors a new generation
+plus soft invalidate after establishing the complete reusable incoming proof.
+`create(..., { state: "stale-hard" })` authors a new generation plus hard
+invalidate and installs no incoming proof.
 These entries use no migration-specific action and follow normal allocation,
 atomicity, frontier, cursor, and compaction rules.
 
 **Propagated invalidation** (automatic recursive propagation) preserves all validity proofs — both incoming and outgoing. It is freshness-only: downstream nodes are marked stale but retain their complete proof sets.
 
-`create(..., "up-to-date")` is a clean-cache assertion and authors generation(add)+initial validate after validation. `create(..., "potentially-outdated")` seeds a cached value and authors generation(add)+exactly one initial soft/hard invalidate according to its proof envelope.
+`create(..., { state: "up-to-date" })` is a clean-cache assertion and authors
+generation(add)+initial validate after validation. The stale-soft and stale-hard
+variants author generation(add)+exactly one initial soft or hard invalidate
+respectively.
 
 ### Propagation rules
 

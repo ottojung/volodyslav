@@ -436,8 +436,10 @@ After presence and value selection, the merge flow processes nodes in schema top
 
 Migration rebuilds `valid` from the final migrated graph state:
 
-- `create` nodes marked `up-to-date` receive incoming valid flags for their current derived inputs because the migration callback supplies an up-to-date value.
-- `create` nodes marked `potentially-outdated` receive no incoming valid flags.
+- `create` nodes with `{ state: "up-to-date" }` receive incoming valid flags for their current derived inputs because the migration callback supplies an up-to-date value; their initial journal assertion is `validate`.
+- Derived `create` nodes with `{ state: "stale-soft", proof: { inputs } }` receive the complete incoming valid-flag set after the envelope proves exactly every distinct current input identifier and an `isEqual` value used to compute the cached output; their initial journal assertion is soft `invalidate`.
+- `create` nodes with `{ state: "stale-hard" }` receive no incoming valid flags and their initial journal assertion is hard `invalidate`. Zero-input stale creates necessarily use this variant.
+- Missing, incomplete, structurally mismatched, or non-`isEqual` create proof envelopes throw `InvalidMigrationDecisionError` before target mutation.
 - `override` and `keep` nodes preserve incoming valid flags when previous proof, schema compatibility, value identity, and freshness rules justify preserving that exact proof.
 - **Explicit `invalidate`** nodes receive no incoming valid flags. Outgoing proofs from the explicitly invalidated node to its dependents survive when structurally and semantically transportable.
 - **Propagated `invalidate`** nodes preserve all historical incoming and outgoing proofs subject to normal structural compatibility and endpoint survival. Propagated invalidation changes freshness only.
