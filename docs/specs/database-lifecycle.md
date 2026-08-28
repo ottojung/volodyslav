@@ -108,6 +108,7 @@ Before installation, restoration validates the ordinary load structure:
 - every retained `clearsThrough` has canonical map shape, unique supported fingerprint coordinates, and uint64 values;
 - retained same-author/key/generation validation vectors are componentwise monotone when comparable evidence is present;
 - `localJournalClock` equals the local fingerprint coverage coordinate and locally authored entries do not exceed it; foreign retained sequences may exceed it under lazy raising;
+- a fresh database initializes both `localJournalClock` and its local fingerprint coverage coordinate to zero; zero denotes no authored event, the first authored event is sequence 1, and every persisted journal-entry ID/reference has sequence in `[1,18446744073709551615]`;
 - every retained entry has a self-contained `nodeName` and `bindings` address from which its NodeKey is derived;
 - journal coverage dominates every retained entry sequence; and
 - the local coverage coordinate equals the durable local clock. Coordinate gaps are allowed.
