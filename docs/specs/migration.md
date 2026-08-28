@@ -63,23 +63,39 @@ All methods are `async`.
 ```text
 { state: "up-to-date" }
 { state: "stale-soft",
-  proof: { inputs: [{ nodeIdentifier: NodeIdentifier, value: ComputedValue }, ...] } }
+  proof: { inputs: [{ nodeKeyString: NodeKeyString, value: ComputedValue }, ...] } }
 { state: "stale-hard" }
 ```
 
 An up-to-date create asserts a clean computed value. A stale-soft create asserts
 that the cached derived value was computed from the exact input values in
-`proof.inputs`; migration resolves the new node's distinct direct inputs and
-requires exactly one entry for each, no extras, matching identifiers, and
-`isEqual` values in the target replica. This establishes the complete reusable
-incoming validity proof, and migration creates every corresponding incoming
-validity edge. A stale-soft envelope is invalid for a zero-input node, so every
-zero-input stale create is necessarily stale-hard. A stale-hard create asserts
+`proof.inputs`. Each proof entry identifies its input by canonical semantic
+`NodeKeyString`, never by a target `NodeIdentifier`. After the callback has
+finished and all migration decisions have been collected, finalization derives
+the created node's distinct direct semantic input keys from the new graph
+scheme. `proof.inputs` MUST contain exactly one entry for every such key and no
+entry for any other key; repeated entries for the same canonical key are
+duplicates and invalid.
+
+Finalization builds the planned target `NodeKeyString` to `NodeIdentifier`
+lookup from every surviving old node and every `create` decision, then resolves
+each required proof key through that lookup. Each key MUST resolve to a target
+materialization, and that materialization's final value (after applying its
+`keep`, `override`, or `create` decision) MUST be `isEqual` to the value supplied
+in the proof entry. Only after all of these checks succeed does migration install
+an incoming validity edge from each internally resolved target identifier to the
+created node. Callback order, allocator behavior, and callback-visible side
+effects are not part of proof identity or resolution. This establishes the
+complete reusable incoming validity proof even when one created node depends on
+another created node.
+
+A stale-soft envelope is invalid for a zero-input node, so every zero-input
+stale create is necessarily stale-hard. A stale-hard create asserts
 must-recompute state and carries no reusable incoming proof.
 
 Missing or unknown variants, extra fields, a proof on a variant that does not
-accept one, a missing or duplicate proof input, a non-input identifier, a
-non-materialized input, or a non-`isEqual` input value throws
+accept one, a missing or duplicate proof input key, an extra input key, an
+unresolved or non-materialized input key, or a non-`isEqual` final input value throws
 `InvalidMigrationDecisionError`. Validation completes before the create mutates
 the target replica.
 
