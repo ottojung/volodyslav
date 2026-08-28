@@ -988,6 +988,19 @@ multiR=Rep(R,11,((A,6),(R,11)),frozenset(set(baseJ)|{MER,MHR}),tuple(sorted((*ro
 multiS=Rep(S,21,((A,6),(S,21)),frozenset(set(baseJ)|{MES,MHS}),tuple(sorted((*roots,(KE,M("ms",GE.id,"new",MES.id,20,"hard",False))))))
 multiDeleted,multiDeleteEvents=receive(multiR,multiS,100);assert node(multiDeleted,KE)is None and len(multiDeleteEvents)==1 and multiDeleteEvents[0].kind=="delete"
 
+# Joined equal-time canonicalization precedes coherence. The lower E1 is valid
+# and coherent in its source snapshot, but union makes unsupported E2 canonical;
+# the multi-input conservative no-coherent rule therefore deletes the node.
+TIED_E1=ev(30,R,(KE,NE,BE),50,"edit",GE.id,value="lower-coherent");TIED_E1V=ev(31,R,(KE,NE,BE),51,"validate",GE.id,target=TIED_E1.id)
+TIED_E2=ev(40,S,(KE,NE,BE),50,"edit",GE.id,value="greater-unsupported");TIED_E2H=ev(41,S,(KE,NE,BE),51,"invalidate",GE.id,"hard",target=TIED_E2.id)
+tiedLower=M("tied-r",GE.id,"lower-coherent",TIED_E1.id,50,"fresh",True,((KI,"a"),(KD,"c")))
+tiedGreater=M("tied-s",GE.id,"greater-unsupported",TIED_E2.id,50,"hard",False)
+tiedR=Rep(R,31,((A,6),(R,31)),frozenset(set(baseJ)|{TIED_E1,TIED_E1V}),tuple(sorted((*roots,(KE,tiedLower)))))
+tiedS=Rep(S,41,((A,6),(S,41)),frozenset(set(baseJ)|{TIED_E2,TIED_E2H}),tuple(sorted((*roots,(KE,tiedGreater)))))
+tiedResult,tiedEvents=receive(tiedR,tiedS,100)
+assert canonical_event(tiedResult.journal,KE,GE.id,50).id==TIED_E2.id
+assert node(tiedResult,KE)is None and len(tiedEvents)==1 and tiedEvents[0].kind=="delete"
+
 # Joined-history provenance obsoletes a lower same-author value head.
 PO10=ev(10,B,(KE,NE,BE),10,"edit",GE.id,value="old");PO10V=ev(11,B,(KE,NE,BE),11,"validate",GE.id,target=PO10.id);PO20=ev(20,B,(KE,NE,BE),5,"edit",GE.id,value="canonical");PO20V=ev(21,B,(KE,NE,BE),21,"validate",GE.id,target=PO20.id)
 provOld=M("pr",GE.id,"old",PO10.id,10,"fresh",True,((KI,"a"),(KD,"c")));provNew=M("ps",GE.id,"canonical",PO20.id,5,"fresh",True,((KI,"a"),(KD,"c")))

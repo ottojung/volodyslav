@@ -102,31 +102,31 @@ apply; implementations need not detect the condition. Volodyslav does not
 detect, repair, compensate for, or preserve causality across unsynchronized
 wall clocks.
 
-This specification uses the exact definitions in the [journal projections section](incremental-graph-journal-sync.md#journal-projections), including `rawPresenceHead`, `presenceHead`, `generation`, `valueEvents`, `valueHead`, `candidateEvents`, `canonicalEvent`, `ValueRevision`, `covers`, both invalidation frontiers, `freshnessEffective`, and `hardnessCleared`. For a source pre-merge snapshot `S=(graphS,JS)` and its materialization `x`, in shorthand:
+This specification uses the exact definitions in the [journal projections section](incremental-graph-journal-sync.md#journal-projections), including `rawPresenceHead`, `presenceHead`, `generation`, `valueEvents`, `valueHead`, `candidateEvents`, `canonicalEvent`, `ValueRevision`, `covers`, both invalidation frontiers, `freshnessEffective`, and `hardnessCleared`. It gives source provenance and joined collision resolution different names so the journal snapshot is explicit. For a source pre-merge snapshot `S=(graphS,JS)`, its materialization `x`, and an already-unioned journal `J`, the shorthand is:
 
 ```text
 modifiedAtUnix(S,x) = toUnixTimestamp(graphS.timestamps[x].modifiedAt)
 nodeKey(S,x) = the NodeKey obtained from graphS's identifier lookup for x
-canonicalEvent(S,x,G) = canonicalEvent(JS,nodeKey(S,x),G,modifiedAtUnix(S,x))
+sourceCanonicalEvent(S,x,G) = canonicalEvent(JS,nodeKey(S,x),G,modifiedAtUnix(S,x))
+joinedCanonicalEvent(J,K,G,T) = canonicalEvent(J,K,G,T)
 valueHead(S,x,G,A) = valueHead(JS,nodeKey(S,x),G,A)
-ValueRevision(S,x,G) = [modifiedAtUnix(S,x), canonicalEvent(S,x,G).sequence,
-                        canonicalEvent(S,x,G).author]
-invalidateFrontier(S,x,G)[A] = invalidateFrontier(JS,nodeKey(S,x),G,canonicalEvent(S,x,G).id)[A]
-hardInvalidateFrontier(S,x,G)[A] = hardInvalidateFrontier(JS,nodeKey(S,x),G,canonicalEvent(S,x,G).id)[A]
-freshnessEffective(V,S,x,G) iff freshnessEffective(V,JS,nodeKey(S,x),G,canonicalEvent(S,x,G).id)
-hardnessCleared(V,S,x,G) iff hardnessCleared(V,JS,nodeKey(S,x),G,canonicalEvent(S,x,G).id)
+ValueRevision(S,x,G) = [modifiedAtUnix(S,x), sourceCanonicalEvent(S,x,G).sequence,
+                        sourceCanonicalEvent(S,x,G).author]
+invalidateFrontier(S,x,G)[A] = invalidateFrontier(JS,nodeKey(S,x),G,sourceCanonicalEvent(S,x,G).id)[A]
+hardInvalidateFrontier(S,x,G)[A] = hardInvalidateFrontier(JS,nodeKey(S,x),G,sourceCanonicalEvent(S,x,G).id)[A]
+freshnessEffective(V,S,x,G) iff freshnessEffective(V,JS,nodeKey(S,x),G,sourceCanonicalEvent(S,x,G).id)
+hardnessCleared(V,S,x,G) iff hardnessCleared(V,JS,nodeKey(S,x),G,sourceCanonicalEvent(S,x,G).id)
 ```
 
-Every occurrence below that omits `S` uses the candidate's own validated
-pre-merge graph+journal snapshot. For example, `ValueRevision(x,G)` means
-`ValueRevision(S,x,G)` and `canonicalEvent(x,G)` means
-`canonicalEvent(S,x,G)` for the snapshot from which `x` was obtained. Neither
-function is reevaluated against the joined journal when establishing that
-candidate's alleged provenance.
+`sourceCanonicalEvent` and `ValueRevision(S,x,G)` are evaluated only in the
+candidate's own validated pre-merge graph+journal snapshot. They are never
+reevaluated against the joined journal when establishing that candidate's
+alleged provenance. `joinedCanonicalEvent` is evaluated only after journal
+union and winning-generation selection.
 
 A value event for winning generation G is usable only when it is the GenerationJournalEntry G or an edit explicitly scoped to G, its `time` equals `modifiedAtUnix(x)`, and it is
 `valueHead(S,x,G,author)`. An unresolvable, superseded, or differently scoped
-materialization is provenance-obsolete. `ValueRevision(x,G)` is compared
+materialization is provenance-obsolete. `ValueRevision(S,x,G)` is compared
 lexicographically and totally. Equal revisions with unequal `ComputedValue`s
 violate the reachable-state invariant; synchronization rejects corruption and
 does not add a hash tie-break.
@@ -157,9 +157,11 @@ primary global value clock.
 
 For an exact `modifiedAtUnix` collision inside G, the greatest matching event by
 `JournalEntryId=(sequence,author)` is canonical. A source candidate resolves its
-alleged event from its own pre-merge reachable snapshot and is admissible after
-journal join only if that event is `canonicalEvent(x,G)`. Selection MUST NOT keep another
-tied candidate and attribute the canonical event to it. If the canonical
+alleged event with `sourceCanonicalEvent(S,x,G)` from its own pre-merge reachable
+snapshot and is admissible after journal join only if that event is
+`joinedCanonicalEvent(J,nodeKey(S,x),G,modifiedAtUnix(S,x))`, where `J` is the
+unioned journal. Selection MUST NOT keep another tied candidate and attribute
+the joined canonical event to it. If the joined canonical
 candidate is unsupported, lower tied coherent candidates are excluded and the
 conservative no-coherent rule applies.
 
@@ -204,18 +206,20 @@ coherence comparison, even when one is the retained edit notification maximum.
 
 ### 2. Candidate resolution
 
-Every candidate enters this phase with `ValueRevision(N,G)` already resolved in
+Every candidate enters this phase with `ValueRevision(S,x,G)` already resolved in
 its own validated pre-merge source. Apply the joined heads and discard candidates
 made obsolete only by valid joined history. An internally unresolvable source
 cannot reach this phase. A source container is never part of semantic identity.
 
-When G-scoped source events share `modifiedAt`, determine `canonicalEvent(N,G)`
-before coherence selection and discard candidates alleged to originate at a
-lower tied event. This ordering is necessary because provenance is not persisted
-on materializations.
+When G-scoped source events share `modifiedAt=T`, determine
+`joinedCanonicalEvent(J,K,G,T)` in the already-unioned journal before coherence
+selection and discard every candidate alleged to originate at a lower tied
+event. This elimination is final even when the joined canonical candidate is
+unsupported and a lower candidate is coherent. This ordering is necessary
+because provenance is not persisted on materializations.
 
 For a zero-input node choose the candidate with greatest
-`ValueRevision(N,G)`. This is the complete root rule.
+`ValueRevision(S,x,G)`. This is the complete root rule.
 
 ### 3. Derived coherence
 
@@ -329,7 +333,7 @@ collision.
 Before journal join or conflict planning, validate each source against its own
 pre-merge journal. Every source materialization MUST resolve its source presence
 generation, a current value origin (the GenerationJournalEntry itself or a scoped edit) matching its `modifiedAt`,
-and the exact `canonicalEvent` selected from the admissible winning-generation
+and the exact `sourceCanonicalEvent(S,x,G)` selected from the admissible winning-generation
 per-author value heads. A superseded same-author event or lower equal-time event
 is not a valid origin even when its bytes and time match. Its source
 freshness and validity must agree with the effective-validation barrier for N,G
@@ -442,7 +446,7 @@ G1 is old and G2 is the newer winning generation. A carries D on G1 with edit
 `E1=(author=A,modifiedAt=T,generation=G1)`. B carries D on G2 with event
 `E2=(author=B,modifiedAt=T,generation=G2)`, and A sorts above B. Joined presence
 selects G2, so E1 is inapplicable before the author tie-break.
-`canonicalEvent(D,G2)` considers only G2 events and selects E2. No conservative
+`joinedCanonicalEvent(J,D,G2,T)` considers only G2 events and selects E2. No conservative
 delete occurs merely because a losing generation used the same timestamp.
 
 ### Causally later equal-time edit
@@ -450,7 +454,7 @@ delete occurs merely because a losing generation used the same timestamp.
 A authors `E1=(sequence=10,author=A,generation=G,time=T)`. B synchronizes A and
 then genuinely changes D in G, authoring
 `E2=(sequence=11,author=B,generation=G,time=T)`. Wall time need not advance.
-Even when A sorts above B, sequence-first `canonicalEvent(D,G)` selects E2 in
+Even when A sorts above B, sequence-first `sourceCanonicalEvent(B,D,G)` selects E2 in
 B's reachable post-transaction snapshot. Only truly concurrent equal-sequence
 events use author as the deterministic tie-break.
 

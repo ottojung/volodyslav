@@ -13,6 +13,22 @@ transitions and journal effects are:
 | present | same value via `keep` | no value event |
 | present | same cached value via explicit or proof-hardening `invalidate` | only the appropriate soft or hard `invalidate` |
 
+`create(nodeKeyString, value, cacheState)` accepts the closed cache-state union
+defined by the migration API: `{ state: "up-to-date" }`,
+`{ state: "stale-soft", proof: { inputs } }`, or `{ state: "stale-hard" }`.
+Up-to-date, stale-soft, and stale-hard create author the table's initial
+`validate`, soft `invalidate`, and hard `invalidate`, respectively.
+
+For stale-soft derived create, `proof.inputs` must contain exactly every
+distinct direct input identifier and the exact input value from which the
+created output was computed. Migration checks target materialization,
+structural correspondence, completeness, uniqueness, and `isEqual` input
+values, then installs the complete incoming validity proof. Stale-hard create
+installs no incoming proof. A zero-input stale create cannot satisfy the
+nonempty reusable-proof contract and must use stale-hard. An invalid or
+incomplete cache-state/proof envelope throws `InvalidMigrationDecisionError`
+before journal or graph mutation.
+
 `override()` requires `isEqual` semantic equality and is value-journal-silent.
 `invalidate()` preserves the cached value; it changes only freshness and the
 recomputation obligation and therefore never authors `add` or `edit`.
