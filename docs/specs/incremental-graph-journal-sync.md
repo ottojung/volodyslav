@@ -20,7 +20,10 @@ postCutoffScoped(G) iff a generation-scoped event E for G exists, E is not
                itself an applicable reset-lineage carrier, and
                E.sequence > cut[E.author]
 lineageActivated(G) iff postCutoffScoped(G)
-eligiblePresence = actual generation/delete events above their author cut,
+applicableAnchorPresences = every defined anchorPresence of an applicable
+               reset-lineage group
+eligiblePresence = actual generation/delete events above their author cut that
+               are not members of applicableAnchorPresences,
                plus generation G itself when lineageActivated(G)
 fallbackAssertions = individual carriers in applicable lineage groups
 assertion N dominates O iff either they have the same author and receiverAnchor
@@ -56,6 +59,10 @@ journalHard(J,K,G,O) iff hardInvalidateFrontier(J,K,G,O) is nonempty and
 ```
 
 Presence selection precedes value. A GenerationJournalEntry is the generation and initial value event; it is not generation-scoped. `H` is one graph materialization from the graph snapshot paired with journal snapshot `J`; `canonicalEvent` and `ValueRevision` are evaluated only in that same snapshot, before any journal union. `canonicalEvent` is undefined when no candidate has `time=T`. ValueRevision remains wall-time-first with the journal event's exact `(sequence,author)` equal-time suffix.
+
+An applicable reset anchor's presence event participates only through `anchorFallback`; its locally authored sequence does not independently make it an ordinary post-cutoff candidate. A genuinely post-cutoff scoped event can nevertheless activate that anchor generation through `lineageActivated(G)`, after which the generation participates in ordinary presence ordering.
+
+Concrete lower-sequence live-delete trace: source A's generation is at A:9 with its initial freshness event at A:10, and reset consumes A through sequence 10. The receiver has unrelated observed clock 100, so it authors its retained anchor generation at receiver sequence 101 (and its initial freshness assertion after that). Source A subsequently authors delete A:11. The receiver anchor is excluded from ordinary candidates and remains only the fallback; A:11 is above A's cutoff, remains live, and wins even though `11 < 101`. The result is absent.
 
 Freshness uses `clearsThrough`, `covers`, both frontiers, `freshnessEffective`, and `journalHard` exactly as defined in the types specification. A validation applies only to its mandatory exact `valueOrigin`; positive evidence never crosses an edit. Causal vectors never combine across validations.
 

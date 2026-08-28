@@ -23,8 +23,9 @@ collision detection or repair is not required.
 
 ```text
 journal[JournalEntryId] = JournalEntry
-JournalEntryId = (sequence, author)
-JournalEntryBase = { author, sequence:uint64, nodeName, bindings, time }
+PositiveJournalSequence = integer in [1, 18446744073709551615]
+JournalEntryId = (sequence:PositiveJournalSequence, author)
+JournalEntryBase = { author, sequence:PositiveJournalSequence, nodeName, bindings, time }
 GenerationJournalEntry = JournalEntryBase & {
     kind:"generation", initialFreshness:JournalEntryId
 }
@@ -76,6 +77,8 @@ Soft/hard both expose invalidate. Every public graph event exposes exactly one a
 
 Every boundary validates closed shapes/scalars and immutable-ID agreement. Every scoped event resolves to an exact GenerationJournalEntry with the same derived `entryNodeKey`. Generation initial-freshness references resolve exactly.
 
+Zero is a sentinel coordinate for missing causal-prefix, coverage, and cursor knowledge; it is never a journal event coordinate. Every persisted `JournalEntryId`, including entry IDs and generation, initial-freshness, value-origin, absent-anchor, and reset-correspondence references, validates `PositiveJournalSequence`. A fresh database initializes `localJournalClock` and its local `journalCoverage` coordinate to zero. Its first authored event allocates sequence 1; subsequent allocation always chooses a positive coordinate above all transaction-observed retained and covered authority.
+
 **Post-edit Negative-Freshness Invariant.** Any transaction that authors a same-generation edit for a new semantic value and leaves that value stale MUST author a new negative freshness assertion after the edit: soft when complete cache-revalidation proof remains, hard when recomputation is required. Pre-edit invalidates cannot represent the new value's negative authority. Equal-value operations author no edit and may reuse existing authority under the ordinary causal rules.
 
 Generation-wide invalidates represent explicit/concurrent causal invalidation that applies regardless of which value origin wins. Initial-stale, post-edit, reset/migration cache-status, proof-loss, and propagated-input-staleness assertions are value-specific and name the exact value origin whose cache state they describe. For selected origin O, an invalidate is applicable iff it is generation-wide or names O. Both causal frontiers and validation effectiveness are computed only from applicable invalidates; a losing value's cache-status barrier cannot stale a different selected value.
@@ -86,7 +89,7 @@ Observed reset attaches `resetLineage` to a receiver-retained freshness assertio
 
 Reset causal observation and semantic correspondence are distinct. `consumedThrough` is the joinable per-author prefix inspected across both snapshots; missing means zero. Concurrent observations for one receiver anchor join by componentwise maximum, without inferring causality from carrier JournalEntryId. `correspondence`, when present, names exactly one source generation/origin actually compared `isEqual` with the receiver value anchor. Concurrent/later exact correspondences form a bounded retained set; causal coordinates alone never certify semantic equality.
 
-For every author A, an A-authored key event at or below joined `consumedThrough[A]` is absorbed. A same-lineage event above it remains eligible regardless of carrier. Structural validation requires canonical vectors and exact shapes. Delete/reset-observation absent lineage has null correspondence; validate/invalidate present lineage has a non-null exact correspondence. Both correspondence IDs contain nonzero uint64 sequences and supported fingerprints. Booleans, duplicate/unsorted coordinates, mismatched kind/correspondence, malformed IDs, and unknown fields are rejected.
+For every author A, an A-authored key event at or below joined `consumedThrough[A]` is absorbed. A same-lineage event above it remains eligible regardless of carrier. Structural validation requires canonical vectors and exact shapes. Delete/reset-observation absent lineage has null correspondence; validate/invalidate present lineage has a non-null exact correspondence. Both correspondence IDs use `PositiveJournalSequence` and supported fingerprints. Booleans, duplicate/unsorted coordinates, mismatched kind/correspondence, malformed IDs, and unknown fields are rejected.
 
 ## UnixTimestamp and event time
 
@@ -114,7 +117,7 @@ V1.sequence < V2.sequence => V1.clearsThrough <=componentwise V2.clearsThrough
 
 Every validation authoring path—ordinary pull/revalidation, migration, a genuinely synchronization-authored initial validation, and observed reset—starts with the greatest prior same-author/key/generation validation vector and componentwise-maxes newly justified closed prefixes into it. The prior vector is itself durable evidence for carry-forward; source coordinates learned only by reset remain in later validation state without being copied into host journalCoverage. A retained pair violating monotonicity is unsupported/corrupt. Structural load validation checks canonical map shape, at most one coordinate per fingerprint, and uint64 coordinates; lifecycle legitimacy of the claimed evidence is a separate authoring proof.
 
-Import does not advance the local clock/coordinate. Immediately before local authoring, allocation raises above all relevant retained/covered sequence authority. After commit, local coverage equals local clock and the local prefix never regresses.
+Import does not advance the local clock/coordinate. Fresh local clock and coverage start at zero. Immediately before local authoring, allocation raises above all relevant retained/covered sequence authority, so the first event is 1 when no greater authority has been observed and no authored event can be 0. After commit, local coverage equals local clock and the local prefix never regresses.
 
 ## Freshness
 

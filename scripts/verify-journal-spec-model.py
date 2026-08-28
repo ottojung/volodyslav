@@ -41,6 +41,7 @@ def prodkey(n,b):
   if v["nodeName"]==n and v["bindings"]==list(b):return v["serialized"]
  raise ValueError
 def uint(n):return type(n) is int and 0<=n<=U64
+def journal_sequence(n):return type(n) is int and 1<=n<=U64
 def timestamp(n):return type(n) is int and TMIN<=n<=TMAX
 assert all(timestamp(int(v["value"]))==v["valid"] for v in TV)
 @dataclass(frozen=True,order=True)
@@ -64,7 +65,7 @@ def valid(es):
  for e in es:
   if e.id in d and d[e.id]!=e:return False
   d[e.id]=e
-  if e.author not in AUTH or not uint(e.sequence) or e.sequence==0 or not timestamp(e.time):return False
+  if e.author not in AUTH or not journal_sequence(e.sequence) or not timestamp(e.time):return False
   try:e.key
   except ValueError:return False
   if e.kind=="add":
@@ -89,7 +90,7 @@ def valid(es):
    if (sg is None)!=(so is None):return False
    if e.kind in ("delete","observe")and sg is not None:return False
    if e.kind in ("validate","invalidate")and sg is None:return False
-   if sg is not None and any(type(x)is not tuple or len(x)!=2 or not uint(x[0])or x[0]==0 or x[1]not in AUTH for x in(sg,so)):return False
+   if sg is not None and any(type(x)is not tuple or len(x)!=2 or not journal_sequence(x[0])or x[1]not in AUTH for x in(sg,so)):return False
   if tuple(sorted(e.clears))!=e.clears or len({a for a,_ in e.clears})!=len(e.clears) or any(a not in AUTH or not uint(q) for a,q in e.clears):return False
  for e in es:
   if e.generation:
@@ -1024,6 +1025,17 @@ lineageR0=Rep(R,100,((R,100),),frozenset(),())
 lineageR1,lineageResetEvents=reset(lineageR0,lineageS0,100)
 assert node(lineageR1,K).value=="A"and node(lineageR1,K).generation[0]>100
 lineageAgain,lineageAgainEvents=reset(lineageR1,lineageS0,100);assert not lineageAgainEvents and lineageAgain==lineageR1
+# An anchor authored above unrelated receiver clock 100 is fallback authority,
+# not a raw post-cutoff candidate. Source A:11 remains live above the A:10 cut
+# and defeats the numerically higher receiver anchor.
+CUTG=gen(9,A,(KD,ND,BD),9,"cut",(10,A));CUTV=ev(10,A,(KD,ND,BD),10,"validate",CUTG.id)
+cutSource=Rep(A,10,((A,10),),frozenset((CUTG,CUTV)),((KD,M("cut-source",CUTG.id,"cut",CUTG.id,9,"fresh",True)),))
+cutReceiver=Rep(R,100,((R,100),),frozenset(),())
+cutReset,cutResetEvents=reset(cutReceiver,cutSource,100)
+cutAnchor=node(cutReset,KD).generation
+assert cutAnchor==(101,R)and dict(next(e.lineage[0]for e in cutResetEvents if e.lineage))[A]==10
+CUTDELETE=dele(11,A,(KD,ND,BD),101)
+assert ph(cutReset.journal|{CUTG,CUTV,CUTDELETE},KD)==CUTDELETE
 LE=ev(21,S,(K,N,BS),101,"edit",LG.id,value="B");LEV=ev(22,S,(K,N,BS),102,"validate",LG.id,target=LE.id)
 lineageS1=Rep(S,22,((S,22),),frozenset((LG,LGV,LE,LEV)),((K,M("ls",LG.id,"B",LE.id,101,"fresh",True)),))
 lineageEdited,lineageEditEvents=receive(lineageR1,lineageS1);assert not lineageEditEvents and node(lineageEdited,K).value=="B"and node(lineageEdited,K).generation==LG.id
