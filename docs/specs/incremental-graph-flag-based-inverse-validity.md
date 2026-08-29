@@ -14,7 +14,11 @@ The schema is fixed for the lifetime of one `IncrementalGraph` instance. A node'
 list is determined by the node definition, its bindings, and the compilation/instantiation logic.
 
 The computor does **not** discover dependencies at runtime. It receives already-pulled input values.
-It does not receive a dependency-registration API, and it does not return a dependency list.
+It does not receive a dependency-registration API, graph handle, or internal traversal capability,
+and it does not return a dependency list. A supported computor satisfies
+`REQ-COMP-NOREENTER-01` and makes no call to the public `IncrementalGraph` interface. Internal
+schema-derived pulls that obtain its input values are graph implementation operations rather than
+computor operations.
 
 Only successful `pull` / recompute operations may write `values[N]`. There is no direct value
 replacement operation in this algorithm.
@@ -438,6 +442,7 @@ Migration rebuilds `valid` from the final migrated graph state:
 
 - `create` nodes with `{ state: "up-to-date" }` receive incoming valid flags for their current derived inputs because the migration callback supplies an up-to-date value; their initial journal assertion is `validate`.
 - Derived `create` nodes with `{ state: "stale-soft", proof: { inputs } }` receive the complete incoming valid-flag set after satisfying [the `MigrationStorage` semantic-key proof identity and finalization contract](migration.md#migrationstorage-api); their initial journal assertion is soft `invalidate`.
+- Proof inputs may resolve to surviving materializations decided by `keep`, `override`, `invalidate`, or `create`; each supplied value must be `isEqual` to the final cached value. An explicit `invalidate` removes that input's incoming proofs while preserving its cached semantic value and its outgoing proof to the created node.
 - `create` nodes with `{ state: "stale-hard" }` receive no incoming valid flags and their initial journal assertion is hard `invalidate`. Zero-input stale creates necessarily use this variant.
 - Missing, incomplete, structurally mismatched, or non-`isEqual` create proof envelopes throw `InvalidMigrationDecisionError` before target mutation.
 - `override` and `keep` nodes preserve incoming valid flags when previous proof, schema compatibility, value identity, and freshness rules justify preserving that exact proof.

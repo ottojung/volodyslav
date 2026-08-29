@@ -274,6 +274,11 @@ Both frontiers are evaluated after value selection. A generation-wide invalidate
 
 Operationally, a derived stale-soft materialization MUST retain the complete reusable incoming proof required for cache-only revalidation. If reconciliation cannot retain or transport that proof, the result is must-recompute and requires an uncovered hard barrier. A zero-input stale materialization has no incoming proof to reuse and therefore cannot be stale-soft in the supported model; its negative freshness assertion is hard.
 
+All freshness and proof-transport claims quantify only over schema-declared
+direct inputs. Computors satisfying `REQ-COMP-NOREENTER-01` receive those input
+values and make no public `IncrementalGraph` calls, so synchronization transports
+proofs over exactly the dependency graph represented by the schema.
+
 Process freshness in schema topological order. A derived node is fresh only when its own applicable journal authority is fresh, it retains a coherent proof, and every final distinct direct input is fresh. If its own authority would be fresh but an input is stale, retain the coherent proof and author one value-specific soft invalidate unless an applicable soft/hard assertion already represents that state. The resulting stale-soft node then propagates the same test to its dependents. Without a coherent proof, use the existing hardening/deletion rules.
 
 ### 6. Freshness and synchronization authoring

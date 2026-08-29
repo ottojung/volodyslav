@@ -81,13 +81,16 @@ Finalization builds the planned target `NodeKeyString` to `NodeIdentifier`
 lookup from every surviving old node and every `create` decision, then resolves
 each required proof key through that lookup. Each key MUST resolve to a target
 materialization, and that materialization's final value (after applying its
-`keep`, `override`, or `create` decision) MUST be `isEqual` to the value supplied
-in the proof entry. Only after all of these checks succeed does migration install
-an incoming validity edge from each internally resolved target identifier to the
-created node. Callback order, allocator behavior, and callback-visible side
-effects are not part of proof identity or resolution. This establishes the
-complete reusable incoming validity proof even when one created node depends on
-another created node.
+`keep`, `override`, `invalidate`, or `create` decision) MUST be `isEqual` to the
+value supplied in the proof entry. An `invalidate` decision preserves that final
+cached value while removing the input materialization's own incoming proofs; its
+outgoing proof to the created node remains valid. Only after all of these checks
+succeed does migration install an incoming validity edge from each internally
+resolved target identifier to the created node. Callback order, allocator
+behavior, and callback-visible side effects are not part of proof identity or
+resolution. This establishes the complete reusable incoming validity proof even
+when one created node depends on another created node or on a stale input whose
+cached semantic value is unchanged.
 
 A stale-soft envelope is invalid for a zero-input node, so every zero-input
 stale create is necessarily stale-hard. A stale-hard create asserts
@@ -216,7 +219,7 @@ This preserves the materialization invariant that every materialized node has al
 | `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
 | `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
-| `InvalidMigrationDecisionError` | `override` or `create` called without the cache-state proof required by its API. |
+| `InvalidMigrationDecisionError` | A `create` cache-state variant is unknown or malformed; stale-soft proof inputs are malformed, incomplete, duplicate, extra, unresolved, or not `isEqual` to their final target values; proof data is supplied to a create variant that does not accept it; an `override` result is invalid or not `isEqual` to the existing semantic value; or another migration decision fails the semantic validation specified by this API. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 
