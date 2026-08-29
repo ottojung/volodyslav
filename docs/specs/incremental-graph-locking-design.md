@@ -17,8 +17,9 @@ The target behavior is:
 4. Observations of the same concrete node must not coexist (telescope
    mutex).
 5. Observations of different concrete nodes may coexist.
-6. Inactive-replica construction may overlap active graph activity; final
-   replica cutover suspends active-replica use.
+6. Lifecycle replacement workflows exclude ordinary graph activity for their
+   complete maintenance interval, including inactive-replica construction and
+   final cutover.
 7. Transaction commits for the same replica are serialized (the commit
    mutex is per-replica, not global, so commits to different replicas
    proceed concurrently).
@@ -66,10 +67,14 @@ pointer and the lifetime of the replica to which it points.
   using the replica. Garden ownership covers the complete operation lifetime,
   including asynchronous iteration or consumption of a fixed snapshot.
 
-Every operation that uses the active replica enters the garden before acquiring
-a dome mode or any replica-local lock. `possibleMaybeChanges()` needs no dome
-mode, but holds its garden entrance from active-replica selection through
-creation and complete consumption of its fixed committed snapshot.
+Every outer public operation that selects and uses the active replica enters the
+garden before acquiring a dome mode or any replica-local lock. An internal
+schema-derived `pullNode` call is not a new public operation: it receives the
+caller's active-replica context together with proof that shared garden and
+nighttime dome ownership remain live, and MUST NOT re-enter the garden or
+reacquire any dome mode. `possibleMaybeChanges()` needs no dome mode, but holds
+its garden entrance from active-replica selection through creation and complete
+consumption of its fixed committed snapshot.
 
 ## Lock Keys
 
@@ -158,11 +163,13 @@ lookup while no darkroom finalization is in progress.
 4. Inside the telescope, open a transaction — the darkroom is NOT acquired at
    this point. The transaction body (dependency pulls and computor execution)
    runs outside the per-replica darkroom lock.
-5. Run dependency pulls and the computor. Each dependency pull is a recursive
-   call to `pullNode` — it acquires its own telescope mutex, creates its own
-   transaction, commits independently under its own darkroom (step 6), and
-   returns the computed value. Dependencies commit before the parent computor
-   runs.
+5. Run dependency pulls and the computor. Each schema-derived dependency pull
+   is an internal recursive call to `pullNode` with the outer call's
+   active-replica context and inherited garden/nighttime ownership. It MUST NOT
+   enter the garden or acquire dome mode again. It acquires its own telescope
+   mutex, creates its own transaction, commits independently under its own
+   darkroom (step 6), and returns the computed value. Dependencies commit before
+   the parent computor runs.
 6. After the transaction body returns, acquire the per-replica darkroom lock
    **only for the short finalization phase**:
    - reconcile validity mutations against the current committed state;
@@ -180,11 +187,15 @@ contend. If a parent computor fails, successfully committed dependency pulls
 remain committed — their darkroom finalizations complete before the parent
 computor is invoked and before the parent transaction finalizes.
 
-Nested pulls (dependencies) share the same dome nighttime activity but acquire
-their own telescope mutex per concrete node and create their own Transaction
-(each with its own darkroom finalization). This matches the volatile-consistency
-spec: every call to pullNode is structurally identical, whether top-level or
-nested.
+Only the outer public `pull()` acquires shared garden access and nighttime dome
+mode. Schema-derived recursive `pullNode` calls inherit both ownership proofs
+and the selected active replica for the entire recursive call tree; they never
+re-enter the garden and never reacquire dome mode. Each `pullNode`, outer or
+nested, does perform the replica-local portion of the protocol: it acquires its
+own telescope mutex for the concrete node and creates its own Transaction with
+its own darkroom finalization. Thus recursive calls share the lifetime/phase
+prefix but have structurally identical telescope/transaction/finalization
+suffixes.
 
 ### Fresh dependency-cone lemma
 
@@ -218,10 +229,14 @@ verifier claims require every computor to obey `REQ-COMP-NOREENTER-01`: a
 computor does not invoke the public `IncrementalGraph` interface. Arbitrary
 re-entrant public calls are undefined behavior and are outside the model.
 
-**Proof by induction on DAG height.** Semantic changes occur only through
-graph-writing operations governed by these locks. External invalidation is
-daytime, while synchronization construction, migration, reset, and cutover use
-incompatible daytime/holiday phases; none can overlap P's nighttime holder.
+**Proof by induction on DAG height.** Semantic changes to the active replica
+occur only through graph-writing operations governed by these locks. External
+invalidation is daytime and therefore cannot overlap P. A detached inactive
+replica can be constructed without its own garden ownership, but construction
+cannot change P's selected active replica. Supported synchronization, migration,
+reset, and restoration workflows additionally hold the exclusive maintenance
+boundary for their complete construction-and-cutover interval, so they cannot
+overlap P; cutover itself is protected by `closeGarden` and holiday mode.
 Same-node pulls serialize on the node's telescope.
 
 For a zero-input leaf D, distinguish the two pull paths. If D was stale, its
@@ -280,21 +295,32 @@ telescope and consumes A's published result before D returns to K.
 
 ### `migration / replica cutover`
 
-Migration, synchronization, reset, restoration, and any other replacement
-workflow may construct and validate an inactive replica without entering or
-closing the garden. Expensive construction therefore remains concurrent with
-ordinary use of the active replica. Final cutover uses this defined protocol:
+Constructing or validating a detached inactive replica does not intrinsically
+require garden ownership: the helper performing that work neither selects nor
+mutates the active replica. That fact does not grant lifecycle concurrency.
+Migration, synchronization, reset, restoration, and every other supported
+replacement workflow hold one exclusive maintenance interval around both
+inactive construction and cutover, as required by the lifecycle specification.
+The interval uses this protocol:
 
-1. Finish construction and release every construction-only lock.
-2. Acquire `closeGarden` and wait for all active-replica users to leave.
-3. While holding the closed garden, acquire `HOLIDAY_GATE_KEY`, then acquire
+1. Acquire `closeGarden` and wait for all active-replica users to leave.
+2. While holding the closed garden, acquire `HOLIDAY_GATE_KEY`, then acquire
    `DOME_ACTIVITY_KEY` in `holiday` mode.
+3. Construct, validate, and durably flush the inactive target while ordinary
+   graph activity remains excluded. Construction may use construction-only
+   locks, but releases them before pointer replacement.
 4. Atomically replace the active-replica pointer, then close/deactivate the
    previous active replica.
 5. Release holiday dome mode, the holiday gate, and finally the closed garden.
 
+A lower-level detached-construction helper may run concurrently in a context
+that never publishes its result, but it is not a supported lifecycle replacement
+workflow. Any workflow capable of cutover MUST enter the exclusive maintenance
+interval before taking its source snapshot or constructing its target and MUST
+NOT release that interval until cutover or abort is complete.
+
 No active-replica pointer or old-replica lifetime transition occurs outside
-steps 3–4. Restoration of absent state follows the same publication protocol
+step 4. Restoration of absent state follows the same publication protocol
 when it installs an active replica. Journal compaction is not an independent
 mutation or replacement of the active replica: it runs only while constructing
 an inactive replica in one of these already-exclusive replacement workflows,
@@ -341,9 +367,10 @@ The implementation keeps this acquisition discipline:
 4. acquire the journal allocator mutex after all applicable telescopes;
 5. acquire the per-replica darkroom last.
 
-Locks are released in reverse order. Construction-only locks are released
-before `closeGarden` is requested. No code holding a dome, telescope, allocator,
-or darkroom lock may request garden access, no code holding a telescope may
+Locks are released in reverse order. Replacement workflows acquire
+`closeGarden` before construction-only locks; those construction-only locks are
+released before active-pointer replacement. No code holding a dome, telescope,
+allocator, or darkroom lock may request garden access, no code holding a telescope may
 request another dome mode, and no allocator/darkroom path acquires a telescope.
 
 Inspection reads and invalidates only take the global mode lock, so they cannot
@@ -387,11 +414,11 @@ garden shared entrance
     -> journal allocator mutex when allocation is required
       -> darkroom commit mutex
 
-release construction locks
-  -> closeGarden
-    -> holiday gate
-      -> holiday dome mode
-        -> active-pointer replacement and old-replica retirement
+closeGarden
+  -> holiday gate
+    -> holiday dome mode
+      -> construction-only locks, released before cutover
+      -> active-pointer replacement and old-replica retirement
 ```
 
 No path reverses this order. Exclusive synchronization, migration and reset keep

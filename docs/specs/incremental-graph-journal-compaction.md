@@ -49,10 +49,17 @@ Multiple distinct exact correspondences and their O(r) vectors are the c
 relations counted by O(cr); repeated carriers for one exact relation collapse
 by same-anchor succession and RLC dominance. Coverage is O(r), which is absorbed
 by O(nr²) because `r <= nr²` under the stated assumptions. Therefore the fully
-compacted journal together with journal coverage occupies `O(nr² + cr)`
-storage. The cr term is necessary: repeated equal reset against distinct
-rematerialization origins creates Ω(c) exact membership facts, and a source
-containing r durable authors makes each retained carrier Θ(r). A causal prefix
-cannot certify unrelated origins, and discarding exact pairs breaks lagging
-certified peers. The bounded-address premise is an asymptotic assumption, not a
-runtime size restriction.
+compacted journal together with journal coverage retains `O(nr² + cr)` logical
+records and vector-coordinate slots. The cr term is necessary: repeated equal
+reset against distinct rematerialization origins creates Ω(c) exact membership
+facts, and a source containing r durable authors makes each retained carrier
+Θ(r). A causal prefix cannot certify unrelated origins, and discarding exact
+pairs breaks lagging certified peers.
+
+For serialized storage, let `b` be the maximum byte length of an
+arbitrary-precision journal sequence or causal coordinate retained in the
+particular compacted state. Under the bounded-address premise, the byte size is
+`O(b(nr² + cr))`. Coordinate encodings are unbounded, so `b` can grow while
+`n`, `r`, and `c` stay fixed; `O(nr² + cr)` by itself is only the logical-item
+bound. The bounded-address premise is an asymptotic assumption, not a runtime
+size restriction.

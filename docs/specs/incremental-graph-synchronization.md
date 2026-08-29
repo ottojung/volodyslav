@@ -54,16 +54,23 @@ retained full `(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)`
 reset correspondences. Assuming every represented NodeKey/semantic journal
 address has bounded serialized size independent of `n`, `r`, and `c`, and
 assuming `n > 0` and `r > 0`, the fully compacted journal together with journal
-coverage occupies `O(nr² + cr)` storage. Public-action, frontier, and causal
-evidence contribute `O(nr²)`; the exact correspondence carriers contribute
-`O(cr)` because each physically retains an `O(r)` causal vector; and coverage's
-`O(r)` is absorbed by `O(nr²)` because `r <= nr²`. The `cr` term is necessary
-to keep exact reset correspondences recognizable. The bounded-address premise
-is an asymptotic assumption, not a runtime restriction. `DatabaseFingerprint`
-is already bounded by its normative 16-character ASCII representation, and
-uncompacted storage may grow with operations. Broader graph storage scales with
-the actual serialized sizes of its `ConstValue` data and with direct graph
-in-degree; those quantities are separate from the compacted journal bound.
+coverage retains `O(nr² + cr)` logical records and vector-coordinate slots.
+Public-action, frontier, and causal evidence contribute `O(nr²)` such items;
+the exact correspondence carriers contribute `O(cr)` because each retains an
+`O(r)` causal vector; and coverage's `O(r)` is absorbed by `O(nr²)` because
+`r <= nr²`. The `cr` term is necessary to keep exact reset correspondences
+recognizable.
+
+For a serialized byte bound, let `b` be the maximum byte length of an
+arbitrary-precision journal sequence or causal coordinate retained in the
+particular compacted state. Under the bounded-address premise, compacted
+journal-plus-coverage storage is `O(b(nr² + cr))` bytes. Because coordinate
+encodings are unbounded, `b` may grow independently of `n`, `r`, and `c`.
+`DatabaseFingerprint` is already bounded by its normative 16-character ASCII
+representation, and uncompacted storage may grow with operations. Broader graph
+storage scales with the actual serialized sizes of its `ConstValue` data and
+with direct graph in-degree; those quantities are separate from the compacted
+journal bound.
 
 The journal does not provide complete historical input-version provenance for
 cached derived values. For D with direct inputs I1...Ik, synchronization is not
