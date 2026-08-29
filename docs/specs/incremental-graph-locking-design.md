@@ -199,7 +199,8 @@ suffixes.
 
 ### Fresh dependency-cone lemma
 
-In every reachable state, if a derived node D is up-to-date, every direct
+For supported executions in which every computor satisfies
+`REQ-COMP-NOREENTER-01`, if a derived node D is up-to-date, every direct
 incoming validity proof required for D is present and coherent. A direct
 input's semantic value change or invalidation consumes that proof and propagates
 `potentially-outdated` through the validity edge before the input can later
@@ -220,14 +221,14 @@ outcomes to every ancestor in D's dependency cone.
 
 ### Nighttime dependency-stability lemma
 
-Let P be an active enclosing `pull(K)` holding nighttime dome mode. If a
+Assume every computor invocation satisfies `REQ-COMP-NOREENTER-01`, so its graph
+dependencies are exactly the schema-derived inputs supplied by
+`IncrementalGraph` and it makes no public `IncrementalGraph` call. Let P be an
+active enclosing `pull(K)` holding nighttime dome mode. If a
 recursive `pull(D)` within P returns semantic value/revision d, whether by
 recomputation or the up-to-date fast path, D cannot commit a different semantic
 value before P releases nighttime mode. This holds transitively for every
-dependency result consumed by a parent computor. The lemma and its bounded
-verifier claims require every computor to obey `REQ-COMP-NOREENTER-01`: a
-computor does not invoke the public `IncrementalGraph` interface. Arbitrary
-re-entrant public calls are undefined behavior and are outside the model.
+schema-declared dependency result consumed by a parent computor.
 
 **Proof by induction on DAG height.** Semantic changes to the active replica
 occur only through graph-writing operations governed by these locks. External
@@ -269,7 +270,8 @@ darkroom publication. Different-node pulls may execute concurrently; it does
 not follow that already-pulled different-node semantic values may change
 arbitrarily. No optimistic revision retry is needed.
 
-The bounded verifier includes distinct return and telescope-release steps for
+The bounded verifier models supported computor executions satisfying
+`REQ-COMP-NOREENTER-01` and includes distinct return and telescope-release steps for
 D, followed by reacquisition after K has consumed D but before K publishes. It
 reaches this second same-node pull after both the first pull's fresh fast path
 and its stale dependency-settling path, and asserts that the second invocation
@@ -381,10 +383,11 @@ incremental graph is a DAG, so any wait edge from node `A` to node `B` implies
 that `A` depends on `B`. A deadlock cycle would therefore imply a dependency
 cycle, which the graph constructor already rejects.
 
-Thus garden/holiday waits cannot participate in a reverse edge, replica-local
+Thus, for supported executions satisfying `REQ-COMP-NOREENTER-01`,
+garden/holiday waits cannot participate in a reverse edge, replica-local
 locks follow one global order, and recursive telescope waits can cycle only if
-the schema dependency graph cycles. The theorem assumes computors obey the
-public-interface precondition below; re-entrant graph calls are outside it.
+the schema dependency graph cycles. This establishes deadlock freedom for the
+specified computor execution model.
 
 ## Why `withoutMutex` Must Not Return
 

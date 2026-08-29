@@ -882,17 +882,38 @@ is normative in `incremental-graph-locking-design.md`.
 
 ### Computors and graph access
 
+The supported computor execution model consists of an invocation whose
+graph-visible dependencies are exactly the schema-declared inputs supplied by
+`IncrementalGraph`, together with `oldValue` and the other values explicitly
+defined by the computor API. The public `IncrementalGraph` interface is not part
+of the computor execution environment, and the computor receives no hidden
+graph handle.
+
 **REQ-COMP-NOREENTER-01 (No re-entrant graph calls):** A computor MUST NOT invoke
 any method of the `IncrementalGraph` public interface from within its execution.
-The only graph traversal available during computation is the specification's
-internal schema-derived dependency mechanism, which resolves declared inputs
-before invoking the computor and does not expose a graph handle to it.
+Its semantic dependency universe is exactly its schema-declared inputs.
 
 Calling a public graph method from a computor is undefined behavior. An
-implementation is not required to detect or reject the call. Its result may
-appear to work, block indefinitely, throw, corrupt the enclosing operation, or
-fail in any other way. Once such a call occurs, this specification provides no
-safety, liveness, freshness, atomicity, or deadlock guarantee for the affected
-execution, and callers MUST NOT rely on any behavior they observe.
+implementation is not required to detect, reject, serialize, or make the call
+safe. Once such a call occurs, this specification provides no safety, liveness,
+freshness, atomicity, or deadlock guarantee for the affected execution.
+
+Internal schema-derived dependency traversal is part of `IncrementalGraph`
+execution rather than a graph call by the computor. The implementation resolves
+each declared dependency through internal recursive `pullNode` calls before
+invoking the computor and supplies the resulting values as inputs. Those calls
+are fully specified and inherit the outer public `pull()` call's active-replica,
+garden, and nighttime context; they do not re-enter the garden or reacquire dome
+mode.
+
+#### Rationale
+
+The schema represents dependency identity. Freshness propagation, validity
+proofs, invalidation propagation, synchronization proof transport, locking, and
+dependency-stability reasoning all operate over those declared dependencies.
+Graph queries made by a computor would introduce dependencies outside that
+semantic graph. Keeping public graph access outside the computor environment
+therefore aligns computation and every proof about it around one schema-defined
+dependency graph.
 
 ---

@@ -22,7 +22,11 @@ Up-to-date, stale-soft, and stale-hard create author the table's initial
 For stale-soft derived create, the semantic-key proof identity and finalization
 contract is defined by [the `MigrationStorage` API](migration.md#migrationstorage-api).
 Finalization installs the complete incoming validity proof only after that
-contract succeeds. Stale-hard create installs no incoming proof. A zero-input
+contract succeeds. A proof input resolved through `keep`, `override`,
+`invalidate`, or `create` is compared with the surviving materialization's
+final cached value. Explicit invalidation removes that input's incoming proofs
+but preserves its cached semantic value and outgoing proof to the created
+dependent. Stale-hard create installs no incoming proof. A zero-input
 stale create cannot satisfy the nonempty reusable-proof contract and must use
 stale-hard. An invalid or incomplete cache-state/proof envelope throws
 `InvalidMigrationDecisionError` before journal or graph mutation.
