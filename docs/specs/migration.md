@@ -52,8 +52,8 @@ All methods are `async`.
 | Method | Description |
 |--------|-------------|
 | `get(nodeIdentifier)` | Return the previous-version value. |
-| `keep(nodeIdentifier)` | Preserve node as-is in the new version. |
-| `override(nodeIdentifier, value)` | Rewrite the representation of an existing cached value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`). The result MUST be `isEqual` to the existing value and preserves its cache-state proof envelope. |
+| `keep(nodeIdentifier)` | Preserve the cached semantic value, freshness, and timestamps in the new version. Validity proofs follow the proof-retention and hardening rules below. |
+| `override(nodeIdentifier, value)` | Rewrite the representation of an existing cached value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`). The result MUST be `isEqual` to the existing value. Freshness and timestamps are preserved, while validity proofs follow the same proof-retention and hardening rules as `keep`. |
 | `invalidate(nodeIdentifier)` | Preserve the cached value while marking the node for recomputation. |
 | `delete(nodeIdentifier)` | Remove the node from the new version entirely. |
 | `create(nodeKeyString, value, cacheState)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `cacheState` is exactly one of the closed variants below. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
@@ -165,7 +165,7 @@ after migration:
 
 **Migration-time propagated invalidation** is different: the migration callback explicitly calls `invalidate()` on a node, and the propagation runs in memory with full provenance. In that case outgoing proofs survive and freshness-only propagation preserves validity edges.
 
-`override` is a **semantic-preserving representation rewrite**. It changes the stored representation (e.g. on-disk format) while preserving the semantic value as seen by dependents. Because the value is semantically unchanged, `override()` does not propagate invalidation — it inherits freshness, timestamps, and validity from the old record. The same stale-node rule applies: a stale node carried through `override` loses its incoming proofs.
+`override` is a **semantic-preserving representation rewrite**. It changes the stored representation (e.g. on-disk format) while preserving the semantic value as seen by dependents. Because the value is semantically unchanged, `override()` does not propagate invalidation. It preserves freshness and timestamps; validity proofs follow the same proof-retention and hardening rules as `keep`. In particular, a stale node carried through `override` loses its incoming proofs.
 
 `override()` MUST NOT be used when the migration changes the meaning or value of
 a node; a non-`isEqual` result is rejected. `invalidate()` is not a replacement
@@ -219,7 +219,7 @@ This preserves the materialization invariant that every materialized node has al
 | `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
 | `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
-| `InvalidMigrationDecisionError` | A `create` cache-state variant is unknown or malformed; stale-soft proof inputs are malformed, incomplete, duplicate, extra, unresolved, or not `isEqual` to their final target values; proof data is supplied to a create variant that does not accept it; an `override` result is invalid or not `isEqual` to the existing semantic value; or another migration decision fails the semantic validation specified by this API. |
+| `InvalidMigrationDecisionError` | A `create` cache-state variant is unknown or malformed; stale-soft proof inputs are malformed, incomplete, duplicate, extra, unresolved, or not `isEqual` to their final target values; proof data is supplied to a create variant that does not accept it; or an `override` result is invalid or not `isEqual` to the existing semantic value. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 
