@@ -155,7 +155,7 @@ Ordinary evolution preserves these lifecycle invariants:
 2. **Durable-before-visible commit.** A successful transaction persists its settled state before corresponding volatile state is treated as committed.
 3. **Coherent graph state.** Values, dependency relationships, freshness, and associated derived metadata describe one settled graph state after a successful transaction.
 4. **Atomic transaction boundary.** Other operations observe the state before or after a transaction's finalization, not a deliberately exposed partial finalization.
-5. **Exclusive maintenance boundary.** Migration, synchronization, reset, and active-state cutover wait for ordinary graph activity and prevent new ordinary activity until maintenance completes.
+5. **Exclusive maintenance boundary.** Migration, synchronization, reset, restoration, and active-state cutover wait for ordinary graph activity and prevent new ordinary activity for the complete maintenance interval, including source snapshotting, inactive-target construction and validation, cutover, or abort. A detached-target construction helper does not intrinsically use the active-replica lifetime lock, but a supported lifecycle workflow that can publish its result still invokes that helper inside this exclusive interval.
 6. **Schema-mediated access.** Runtime operations use the graph schema and database abstraction to address and evolve state. They do not infer a new schema from arbitrary persisted contents.
 
 These invariants are obligations of supported write paths. If a supported operation reports success while violating one of them, that is a lifecycle bug.

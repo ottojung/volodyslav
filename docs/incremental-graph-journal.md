@@ -20,10 +20,18 @@ retained full `(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)`
 reset correspondences. Assuming every represented NodeKey/semantic journal
 address has bounded serialized size independent of `n`, `r`, and `c`, and
 assuming `n > 0` and `r > 0`, the fully compacted journal together with journal
-coverage occupies `O(nr² + cr)` storage. Public-action, frontier, and causal
-evidence contribute `O(nr²)`; exact correspondence carriers contribute
-`O(cr)` because each carries an `O(r)` causal observation vector; and coverage's
-`O(r)` is absorbed by `O(nr²)` because `r <= nr²`. The `cr` term is necessary
-when lagging explicitly certified origins must remain recognizable.
-Application-owned filter-bound cursor strings are not database storage. The
-bounded-address premise is an asymptotic assumption, not a runtime size cap.
+coverage retains `O(nr² + cr)` logical records and vector-coordinate slots.
+Public-action, frontier, and causal evidence contribute `O(nr²)` such items;
+exact correspondence carriers contribute `O(cr)` because each carries an
+`O(r)` causal observation vector; and coverage's `O(r)` is absorbed by
+`O(nr²)` because `r <= nr²`. The `cr` term is necessary when lagging explicitly
+certified origins must remain recognizable.
+
+This is a logical-item bound, not an unqualified byte-storage bound. Let `b` be
+the maximum serialized byte length of any arbitrary-precision journal sequence
+or causal coordinate retained in the particular compacted state. Under the
+bounded-address premise, serialized journal-plus-coverage size is
+`O(b(nr² + cr))` bytes. `b` may grow independently of `n`, `r`, and `c`, so it
+cannot be omitted from a byte bound. Application-owned filter-bound cursor
+strings are not database storage. The bounded-address premise is an asymptotic
+assumption, not a runtime size cap.
