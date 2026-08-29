@@ -6,11 +6,18 @@ Observed semantic reset copies a semantic projection of causally enriched replic
 
 Normative details are in the [types](specs/incremental-graph-journal-types.md), [API](specs/incremental-graph-journal-api.md), [emission](specs/incremental-graph-journal-emission.md), [compaction](specs/incremental-graph-journal-compaction.md), [journal synchronization](specs/incremental-graph-journal-sync.md), [graph synchronization](specs/incremental-graph-synchronization.md), [migration](specs/incremental-graph-journal-migrations.md), and [lifecycle](specs/database-lifecycle.md) specifications.
 
-## Implementation/rollout scope
+## Persistent-state boundary
 
-This specification defines the target persistent schema and semantics. Rollout is one coordinated schema-version boundary: implementations must not interpret a database using a mixed model. Before cutover, migration validates the old supported state and atomically constructs graph, the single journal, coverage vector, allocator, fingerprint, and related metadata. After cutover, only the model defined here is readable or writable. No compatibility layer, parallel collection, or dual-write period is part of the design.
+A supported database contains the graph, the single journal, coverage vector,
+allocator, fingerprint, and related metadata defined by this specification. A
+schema-version installation validates its source state and atomically constructs
+that complete persistent state. Readers and writers operate only on a fully
+installed schema version and MUST NOT interpret a partially constructed or mixed
+persistent state.
 
-Production implementation, deployment ordering, and operational recovery tooling are outside this specification. Until all components implement the complete boundary, the feature remains unavailable rather than partially enabled.
+Production tooling and operational recovery procedures are outside this
+specification. The journal subsystem is available only when every component
+required by this boundary is present.
 
 ## Complexity summary
 

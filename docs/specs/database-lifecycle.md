@@ -22,14 +22,12 @@ Other persistent subsystems, such as assets and runtime scheduler state, have th
 
 Normative terms such as **MUST**, **MUST NOT**, **SHOULD**, and **MAY** describe the supported model. A statement that a state "cannot happen" means that it cannot happen through a supported Volodyslav lifecycle transition.
 
-For the journal subsystem, "supported" means produced by lifecycle transitions
-of a journal-enabled implementation satisfying the journal specifications. As
-specified by the journal's
-[implementation/rollout scope](../incremental-graph-journal.md#implementationrollout-scope),
-a state created by pre-journal software is outside that journal-state universe
-until deployment establishes the target persistent representation. This is not
-an operational declaration that an older database is corrupt; its upgrade is a
-deployment compatibility concern outside these semantic lifecycle transitions.
+For the journal subsystem, "supported" means produced by the lifecycle
+transitions in this document while satisfying the journal specifications. A
+schema-version installation enters that state universe only by validating its
+source state and atomically constructing the complete graph, single journal,
+coverage vector, allocator, fingerprint, and related metadata required by the
+[persistent-state boundary](../incremental-graph-journal.md#persistent-state-boundary).
 
 ## 2. Lifecycle states and transitions
 
@@ -46,7 +44,7 @@ The supported transitions are:
 1. **Bootstrap**: absent local state becomes a local database through a Volodyslav-controlled restore or fresh creation path.
 2. **Open**: existing local state is opened and its required lifecycle metadata is interpreted.
 3. **Ordinary evolution**: application operations transactionally update the current database while preserving graph and persistence invariants.
-4. **Migration**: a usable older database is transformed to the current application version and committed by a controlled cutover.
+4. **Migration**: a usable database at the source application version is transformed to the target application version and committed by a controlled cutover.
 5. **Synchronization**: a stable local database is checkpointed and exchanged with compatible host states, then reopened through the migration gate.
 6. **Controlled reset**: a synchronization path selects a host snapshot as the new logical state and commits it through the database abstraction.
 
@@ -325,7 +323,7 @@ A database version identifies the interpretation of synchronized graph state, no
 
 ### 8.1 Local open and migration
 
-A local stored version that differs from the running version enters the migration transition. The running application must not use the old state as current before migration succeeds.
+A local stored version that differs from the running version enters the migration transition. The running application must not use the source state as current before migration succeeds.
 
 ### 8.2 Synchronization boundary
 

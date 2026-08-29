@@ -47,7 +47,7 @@ The boot protocol decides how the live LevelDB is seeded/opened; the snapshot re
 2. **Fresh DB**: a newly initialized DB where active replica version metadata is absent.
 3. **Current version**: the application version expected by the running build.
 4. **Migration checkpoint**: the `checkpointSession`-based write sequence (via `checkpointMigration`) that prepares migrated replica state and records pre/post rendered snapshots.
-5. **Replica cutover**: the committed switch of `_meta/current_replica` from old replica to migrated replica.
+5. **Replica cutover**: the committed switch of `_meta/current_replica` from the source replica to the target replica.
 6. **Fatal startup crash**: startup abort where IncrementalGraph is not exposed.
 7. **Structural validation**: boot-time checks for `_meta/current_replica == x or y` and `_meta/current_replica ∈ {x,y}`.
 8. **Effective version**: the version metadata associated with the active replica after startup completes.
@@ -183,7 +183,7 @@ This protocol is restart-safe by re-running deterministic checks from the beginn
    - Next start follows same path as above (open/validate/version-check).
 
 3. **Crash during migration checkpoint before replica cutover commit**
-   - Active replica pointer remains at old replica; next start retries migration path.
+   - Active replica pointer remains at the source replica; next start retries migration path.
 
 4. **Crash after replica cutover commit, before follow-up side effects**
    - New replica is active on next start; startup continues from structural/version checks.
@@ -216,7 +216,7 @@ A compliant implementation must emit enough structured log information to recons
 | ID | Scenario | Expected result |
 |---|---|---|
 | V1 | Live DB exists, valid, current version | Startup succeeds without migration |
-| V2 | Live DB exists, valid, old version | Migration runs, then startup succeeds |
+| V2 | Live DB exists, valid, source version differs from running version | Migration runs, then startup succeeds |
 | V2b | Fresh DB (no version recorded yet) | Current version is recorded without migration, then startup succeeds |
 | V3 | Live DB missing, hostname branch exists | Reset bootstrap path used, then open/validate/migrate as needed |
 | V4 | Live DB missing, hostname branch absent | Fallback normal sync path used, then open/validate/migrate as needed |
@@ -256,8 +256,7 @@ These touchpoints are informative and do not define protocol semantics.
 
 ## 14) Non-goals
 
-1. Supporting legacy current replica pointers (for example `invalid value`).
+1. Supporting current replica pointers outside the specified pointer format (for example `invalid value`).
 2. Soft recovery from format mismatch.
 3. General corruption-repair workflow for malformed local/remote data.
 4. Expanding bootstrap fallback beyond the single explicit missing-hostname-branch condition.
-

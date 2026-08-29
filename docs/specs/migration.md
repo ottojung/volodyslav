@@ -1,10 +1,10 @@
 # Incremental Graph Migration
 
-This database-version migration operates within the target journal-enabled
-persistent model after the journal subsystem has been established. Upgrading a
-database created by a pre-journal implementation is an implementation rollout
-concern outside this semantic migration specification; see the journal
-[implementation/rollout scope](../incremental-graph-journal.md#implementationrollout-scope).
+This database-version migration accepts a supported source state produced by the
+journal-enabled lifecycle and constructs a supported target state at the next
+application version. Both states satisfy the journal
+[persistent-state boundary](../incremental-graph-journal.md#persistent-state-boundary),
+and the transition preserves the journal invariants specified below.
 
 This document describes the **migration system** for upgrading incremental-graph database state between application versions.
 
@@ -16,7 +16,7 @@ This document describes the **migration system** for upgrading incremental-graph
 
 When the application version changes, any computed values stored in the previous version's namespace may become stale or structurally incompatible with the new schema.  The migration system provides a strict, fail-fast API—`MigrationStorage`—that lets migration authors:
 
-* **read** old values,
+* **read** source-version values,
 * **decide** what happens to each previously-materialized node (keep, override, invalidate, or delete),
 * **traverse** the previous version's dependency graph.
 
@@ -78,7 +78,7 @@ entry for any other key; repeated entries for the same canonical key are
 duplicates and invalid.
 
 Finalization builds the planned target `NodeKeyString` to `NodeIdentifier`
-lookup from every surviving old node and every `create` decision, then resolves
+lookup from every surviving source node and every `create` decision, then resolves
 each required proof key through that lookup. Each key MUST resolve to a target
 materialization, and that materialization's final value (after applying its
 `keep`, `override`, `invalidate`, or `create` decision) MUST be `isEqual` to the
