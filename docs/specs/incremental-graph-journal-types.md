@@ -58,9 +58,25 @@ causallyBefore(E,F) iff
     (E.author!=F.author and E.sequence<=F.causalContext[E.author])
 ```
 
-Every writer persists `causalSummary`, the componentwise maximum of the causal contexts and identities of all events genuinely observed by committed local operations. It differs from `journalCoverage`: a summary proves happened-before knowledge, while coverage proves complete possession of a journal prefix. Import alone changes neither value; a receive, migration, or reset operation advances `causalSummary` only when its stable observed snapshot participates in a committed semantic decision. Reset may therefore learn source causality without importing source journal or coverage.
+Every writer persists `causalSummary`, the componentwise maximum of the causal contexts and identities of all events genuinely observed by committed local operations. It differs from `journalCoverage`: a summary proves happened-before knowledge, while coverage proves complete possession of a journal prefix. Reset may learn source causality without importing source journal or coverage.
 
-For every locally authored event E, `E.causalContext` is the transaction's observed causal summary before E. After publication the local summary includes E's identity. Consecutive same-author events carry forward every foreign coordinate componentwise, so learned causality cannot disappear. When an operation observes event F, it joins F's identity and every coordinate in `F.causalContext`; therefore A:10 observed by B:3 and B:3 observed by C:7 implies A:10 is in C:7's context. Compaction preserves `causalSummary` and immutable retained contexts. Repeating an operation with no new semantic decision or newly relevant causal knowledge is silent.
+A successful receive of stable source snapshot S is itself a genuine causal observation. Its atomic receiver transition sets:
+
+```text
+observedSource(S) = componentwiseMax(
+    S.causalSummary,
+    { E.author -> E.sequence | E is a source event actually read },
+    { E.causalContext | E is a source event actually read }
+)
+receiver.causalSummary' = componentwiseMax(
+    receiver.causalSummary,
+    observedSource(S)
+)
+```
+
+This transition commits even when journal/coverage import produces no graph change and no local event. It allocates nothing, leaves `localJournalCounter` unchanged, and changes the local coverage coordinate only through ordinary coverage union. It may be the receive's sole persistent change. Repeating the receive after the same causal knowledge is represented is silent.
+
+For every locally authored event E, `E.causalContext` is the transaction's observed causal summary before E. After publication the local summary includes E's identity. Consecutive same-author events carry forward every foreign coordinate componentwise, so learned causality cannot disappear. When an operation observes event F, it joins F's identity and every coordinate in `F.causalContext`; therefore A:10 received by B and followed later by B:1 makes A:10 causally before B:1, and A:10 observed by B:3 then B:3 observed by C:7 makes A:10 causally before C:7. Compaction preserves `causalSummary` and immutable retained contexts.
 
 Ordinary graph authoring includes relevant knowledge in the transaction-visible database. Synchronization-authored barriers include the joined authority causing the decision. Migration-authored events include supported source authority used by the decision. Controlled reset includes the validated source snapshot it actually observes. Generation/initial-freshness and edit/post-edit-freshness pairs remain ordered by their common author's local sequences.
 

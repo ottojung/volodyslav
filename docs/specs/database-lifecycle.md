@@ -226,14 +226,14 @@ Normal synchronization performs these lifecycle steps:
 3. Fetch the participating host branches.
 4. For each other recognized host, load its snapshot into isolated staging state.
 5. Check version and structural merge preconditions.
-6. Only after those checks, union journals and compute and commit a graph-aware merge into a non-active target state.
-7. Cut over to the merged state only when the merge produced changes and completed successfully.
+6. Only after those checks, union journals, coverage, and causal summaries and compute and commit a graph-aware merge into a non-active target state. The causal-summary join includes the source durable summary plus every source event identity and immutable context actually observed.
+7. Cut over when the merge completed successfully and changed graph, journal, coverage, or causal summary. A receive whose only new state is causal knowledge is a committed transition and allocates no journal event.
 8. Remove the host's staging state.
 9. Reopen the application database and run the migration gate before exposing it again.
 
 The merge resolves state according to graph timestamps and dependency semantics, not textual repository merge rules. Locally newer state is retained, remotely newer compatible state may be taken, and affected derived state may be invalidated so that it is recomputed from the merged dependencies. A successful merge preserves graph coherence and does not make a partially constructed target active.
 
-Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so both journal history may be uncompacted. It preserves immutable coordinates, the allocator, journal coverage, and durable fingerprint exactly. Restoration neither compacts nor renumbers and durable cursors retain meaning.
+Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so journal history may be uncompacted. It preserves immutable coordinates, local counter, journal coverage, causal summary, and durable fingerprint exactly. Restoration neither compacts nor renumbers and durable cursors retain meaning.
 
 ### 7.3 Per-host failure behavior
 

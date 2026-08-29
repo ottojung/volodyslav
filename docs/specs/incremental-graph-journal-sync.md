@@ -11,14 +11,36 @@ concurrentWinner(S) = greatest member of causalMaxima(S) by (time,author)
 
 The second operation is used only after causal domination is removed. Its sequence fields are not compared. Supported synchronized clocks exclude a causally later semantic event with an earlier occurrence time.
 
-Reset groups are keyed by tagged receiver anchor: null absence, delete ID, or present value-origin ID. For each group, join `absorbsThrough` componentwise to obtain its absorption cut. An actual key event E is post-absorption exactly when `E.sequence > cut[E.author]`. A generation scoped event above its author's cut activates its generation. Reset carriers and correspondences alone never activate a generation.
-
-Each reset carrier is one fallback assertion. Remove an assertion O when `causallyBefore(O,N)` for another assertion N. Among the resulting concurrent maxima, occurrence time and then author fingerprint select the deterministic fallback. `absorbsThrough` never establishes this ordering. An applicable anchor is fallback authority when no live post-absorption presence event displaces it; it is not ordinary last-write-wins presence.
+For each NodeKey K, the reset presence projection is defined completely as follows.
 
 ```text
-eligiblePresence(J,K) = semantically eligible generation/delete events that
-                        are live relative to applicable absorption cuts,
-                        plus activated generations
+taggedAnchor(L) =
+    ("null")                                      for explicit null absence
+    ("delete", L.absentAnchor)                    for delete-anchored absence
+    ("present", L.receiverValueOrigin)            for present lineage
+
+anchorPresence(A) =
+    undefined                                     when A=("null")
+    the exact DeleteJournalEntry named by A       when A=("delete",id)
+    the generation containing the exact origin   when A=("present",origin)
+
+anchorCarriers(J,K,A) = reset-lineage carriers for K whose taggedAnchor is A
+anchorCut(J,K,A) = componentwise maximum of every carrier.absorbsThrough
+```
+
+All named witnesses and origins must resolve to K. For a presence event E, `inside(A,E)` means `E.sequence <= anchorCut(A)[E.author]`; `after(A,E)` means the same-author comparison `E.sequence > anchorCut(A)[E.author]`. Missing coordinates are zero.
+
+`displacements(A)` is every actual generation/delete for K distinct from `anchorPresence(A)`. Anchor A is currently applicable exactly when every causally maximal member of `displacements(A)` is inside A's cut. It is currently displaced when at least one causally maximal displacement is after A's cut. Delayed history inside the cut cannot displace the anchor. Different anchors are tested independently against their own cuts.
+
+`applicableAnchors(J,K)` is precisely the anchors satisfying that test. Its `applicableCut[K][author]` is the componentwise maximum of their `anchorCut` values, missing as zero. An actual generation/delete E is ordinarily eligible when `E.sequence > applicableCut[K][E.author]` and E is not the concrete witness of an applicable anchor. For each generation G, a non-reset-bookkeeping scoped event E activates G when `E.generation=G.id` and `E.sequence > applicableCut[K][E.author]`; activation makes G's actual GenerationJournalEntry eligible but does not make E a synthetic presence event. Applicable reset carriers and exact correspondence metadata never activate a generation.
+
+`fallbackAssertions(J,K)` is every individual carrier belonging to an applicable anchor. Remove O when another such carrier N satisfies `causallyBefore(O,N)`. The survivors are the fallback antichain. Occurrence time and then author fingerprint select among genuinely concurrent survivors; sequence is absent from that conflict key. The selected carrier contributes its `anchorPresence`, including explicit absence for a null anchor. `absorbsThrough` establishes only semantic absorption and never assertion happened-before.
+
+A currently displaced anchor remains part of retained reset history even though it contributes neither cut nor fallback now: future union can make it applicable. Null, delete, and present anchors use the same applicability test; only their concrete fallback witness differs.
+
+```text
+eligiblePresence(J,K) = ordinary eligible generation/delete events
+                        plus actual generations activated by scoped events
 presenceMaxima(J,K) = causalMaxima(eligiblePresence(J,K))
 presenceHead(J,K) = concurrentWinner(presenceMaxima(J,K)), or the selected
                     reset fallback when no eligible actual event exists
@@ -48,10 +70,10 @@ Proof transport requires existing source proof, matching schema/bindings/input s
 
 ## Directional receive and convergence
 
-For `R <- S`, S is read-only. R validates stable snapshots, unions and canonically compacts journal authority, joins coverage, reconciles presence/value, transports proof, then derives freshness topologically. Import does not advance `localJournalCounter`. Copying a generation/value emits no receiver generation/edit. Imported hard authority is sufficient and is not echoed.
+For `R <- S`, S is read-only. R validates stable snapshots, computes `observedSource(S)` from S's summary plus every observed source identity/context, unions and canonically compacts journal authority, joins coverage, reconciles presence/value, transports proof, then derives freshness topologically. Atomic publication componentwise joins `observedSource(S)` into R's `causalSummary` even when no graph decision or local event occurs. This observation does not advance `localJournalCounter`; local coverage changes only through ordinary coverage union. Copying a generation/value emits no receiver generation/edit. Imported hard authority is sufficient and is not echoed.
 
 When receive makes a genuinely new destructive decision because of positive authority p, it authors barrier b at the next receiver-local coordinate and includes p in b's `causalContext`. Thus `causallyBefore(p,b)`, and redelivery of that exact p cannot defeat b. A genuinely unseen concurrent positive p2 may remain maximal; if it later causes another destructive decision, that new barrier observes and dominates p2. The same rule governs hardening and deletion barriers.
 
 For a finite connected execution without continuing user authoring, measure unseen positive authorities that can trigger a new destructive decision. Each decision removes at least its observed authority from that set permanently; it introduces only a negative barrier, not a positive candidate. An unseen concurrent positive can cause at most one later decrease when observed. Therefore destructive authoring terminates. ACI union, immutable contexts, deterministic causal maxima, concurrent conflict selection, exact proof transport, and canonical compaction then give equal journals and SemanticGraph on all connected replicas. The argument is symmetric for every receive direction.
 
-Settled repeated receive is silent. With no intervening change, reverse catch-up produces equal canonical journals, coverage, causal summaries, and SemanticGraph while neither importer changes its local counter.
+The first receive may change only causal knowledge. A repeat is silent once source journal, coverage, semantic projection, and `observedSource(S)` are represented. With no intervening change, reverse catch-up produces equal canonical journals, coverage, causal summaries, and SemanticGraph while neither importer changes its local counter.

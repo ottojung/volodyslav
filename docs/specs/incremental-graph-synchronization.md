@@ -18,14 +18,14 @@ For `R <- S`:
 
 1. enter the lifecycle/garden protocol and validate stable R and S snapshots;
 2. union journal entries by exact identity, rejecting unequal payloads for one identity;
-3. componentwise join `journalCoverage` without changing R's local counter;
+3. componentwise join `journalCoverage` and join S's durable summary plus every observed source event identity/context into R's `causalSummary`, without changing R's local counter;
 4. compute canonical causal presence, value provenance, and freshness authority;
 5. reconcile identifiers and graph materializations;
 6. reconstruct validity only from transportable source proofs;
 7. author receiver-local semantic barriers only for genuinely new decisions;
 8. canonically compact and atomically publish graph, journal, coverage, counter, causal summary, identifiers, timestamps, and proofs.
 
-The same joined evidence produces the same semantic result in either receive direction. Physical receiver identifiers may differ, but their semantic NodeKey projection and proof relations agree.
+The same joined evidence produces the same semantic result in either receive direction. Physical receiver identifiers may differ, but their semantic NodeKey projection and proof relations agree. A receive commits newly observed causal knowledge even when it makes no graph change and authors no event; after that commit an ordinary local event carries the imported knowledge in its context.
 
 ## Journal-derived selection
 
@@ -105,7 +105,7 @@ Canonical compaction satisfies `compact(compact(A) union B)=compact(A union B)`.
 
 **Pairwise symmetry.** Given the same compatible snapshots and no receiver-only decision, both receive directions select equal presence, values, freshness class, and transferable proof.
 
-**Absorption and idempotence.** A settled receive repeats silently. Reverse catch-up with no intervening authoring yields equal canonical journals, coverage, causal summaries, and semantic graphs without raising importer counters.
+**Absorption and idempotence.** A receive may first persist source causal knowledge as its only change. It repeats silently once that knowledge and the other joined state are represented. Reverse catch-up with no intervening authoring yields equal canonical journals, coverage, causal summaries, and semantic graphs without advancing importer counters.
 
 **Finite destructive progress.** After user authoring stops, consider the finite set of positive authorities not yet observed by a barrier they can trigger. Each genuinely new destructive decision causally dominates at least one such observed authority and introduces only negative authority. That exact positive cannot trigger again. Each unseen concurrent positive can cause at most one later decrease when observed. Destructive authoring therefore terminates.
 
