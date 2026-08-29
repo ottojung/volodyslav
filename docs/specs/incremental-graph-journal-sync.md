@@ -1,109 +1,57 @@
 # IncrementalGraph journal synchronization
 
-## Journal projections
+## Causal projections
+
+For a finite event set S:
 
 ```text
-presenceEvents(J,K) = generation/delete entries for K
-rawPresenceHead(J,K) = greatest member of presenceEvents(J,K) by
-               JournalEntryId=(sequence,author), or undefined when that set is empty
-lineageGroup(A) = all reset-lineage carriers with tagged receiver anchor A
-anchorPresence(A) = absent for null; the named delete for delete anchor; the
-               generation containing the named value origin for present anchor
-anchorCut(A)[author] = componentwise maximum across lineageGroup(A)
-superseded(A) iff A is non-null, rawPresenceHead(J,K) is defined and differs
-               from anchorPresence(A), and rawPresenceHead(J,K).sequence is above
-               anchorCut(A)[rawPresenceHead(J,K).author]
-applicableLineages = every null lineage group plus every non-null lineage group
-               for which superseded(A) is false
-cut[A] = max consumedThrough[A] across applicableLineages, missing as zero
-postCutoffScoped(G) iff a generation-scoped event E for G exists, E is not
-               itself an applicable reset-lineage carrier, and
-               E.sequence > cut[E.author]
-lineageActivated(G) iff postCutoffScoped(G)
-applicableAnchorPresences = every defined anchorPresence of an applicable
-               reset-lineage group
-eligiblePresence = actual generation/delete events above their author cut that
-               are not members of applicableAnchorPresences,
-               plus generation G itself when lineageActivated(G)
-fallbackAssertions = individual carriers in applicable lineage groups
-assertion N dominates O iff either they have the same author and receiverAnchor
-               and N.sequence > O.sequence, or N's own consumedThrough covers
-               O's anchorPresence coordinate when non-null and O's carrier coordinate
-anchorFallback = anchorPresence of a maximal fallback assertion, using a
-               canonical full-carrier-ID/tagged-anchor conflict tie-break only
-               for incomparable maxima; otherwise explicit absence when a null assertion wins;
-               otherwise the greatest raw presence event
-presenceHead = greatest eligiblePresence by that actual presence event's own
-               JournalEntryId, or anchorFallback when eligiblePresence is empty
-generation = presenceHead.id iff it is GenerationJournalEntry
-valueEvents(J,K,G) = generation G union edits scoped to G
-valueHead(J,K,G,A) = greatest A-authored value event
-candidateEvents(J,K,G) = the set of defined valueHead(J,K,G,A), over all authors A
-canonicalEvent(J,K,G,T) = greatest-ID candidate in candidateEvents(J,K,G)
-               whose event time equals T
-ValueRevision(J,H,K,G) = (H.modifiedAt,canonicalEvent(J,K,G,H.modifiedAt).sequence,
-               canonicalEvent(J,K,G,H.modifiedAt).author)
-applicable(I,O) iff I is generation-wide or I.valueOrigin=O
-invalidateFrontier(J,K,G,O)[A] = greatest A-authored applicable invalidate
-               of either mode for K and G
-hardInvalidateFrontier(J,K,G,O)[A] = greatest A-authored applicable hard
-               invalidate for K and G
-covers(V,I) iff V and I have the same key and generation and
-               I.sequence <= V.clearsThrough[I.author]
-freshnessEffective(V,J,K,G,O) iff V.valueOrigin=O and V alone covers every
-               member of invalidateFrontier(J,K,G,O)
-hardnessCleared(V,J,K,G,O) iff V.valueOrigin=O and V alone covers every
-               member of hardInvalidateFrontier(J,K,G,O)
-journalHard(J,K,G,O) iff hardInvalidateFrontier(J,K,G,O) is nonempty and
-               no validation V satisfies hardnessCleared(V,J,K,G,O)
+causalMaxima(S) = { E in S | no F in S has causallyBefore(E,F) }
+concurrentWinner(S) = greatest member of causalMaxima(S) by (time,author)
 ```
 
-Presence selection precedes value. A GenerationJournalEntry is the generation and initial value event; it is not generation-scoped. `H` is one graph materialization from the graph snapshot paired with journal snapshot `J`; `canonicalEvent` and `ValueRevision` are evaluated only in that same snapshot, before any journal union. `canonicalEvent` is undefined when no candidate has `time=T`. ValueRevision remains wall-time-first with the journal event's exact `(sequence,author)` equal-time suffix.
+The second operation is used only after causal domination is removed. Its sequence fields are not compared. Supported synchronized clocks exclude a causally later semantic event with an earlier occurrence time.
 
-An applicable reset anchor's presence event participates only through `anchorFallback`; its locally authored sequence does not independently make it an ordinary post-cutoff candidate. A genuinely post-cutoff scoped event can nevertheless activate that anchor generation through `lineageActivated(G)`, after which the generation participates in ordinary presence ordering.
+Reset groups are keyed by tagged receiver anchor: null absence, delete ID, or present value-origin ID. For each group, join `absorbsThrough` componentwise to obtain its absorption cut. An actual key event E is post-absorption exactly when `E.sequence > cut[E.author]`. A generation scoped event above its author's cut activates its generation. Reset carriers and correspondences alone never activate a generation.
 
-Concrete lower-sequence live-delete trace: source A's generation is at A:9 with its initial freshness event at A:10, and reset consumes A through sequence 10. The receiver has unrelated observed clock 100, so it authors its retained anchor generation at receiver sequence 101 (and its initial freshness assertion after that). Source A subsequently authors delete A:11. The receiver anchor is excluded from ordinary candidates and remains only the fallback; A:11 is above A's cutoff, remains live, and wins even though `11 < 101`. The result is absent.
-
-Freshness uses `clearsThrough`, `covers`, both frontiers, `freshnessEffective`, and `journalHard` exactly as defined in the types specification. A validation applies only to its mandatory exact `valueOrigin`; positive evidence never crosses an edit. Causal vectors never combine across validations.
-
-Frontiers are relative to the final selected value origin: generation-wide invalidates always apply, while value-specific cache-status invalidates apply only to their named origin. A reset lineage retains an otherwise unsupported receiver cache only against the exact source generation/origin reset semantically consumed or another exact source generation/origin explicitly retained for that receiver anchor. Its causal vector is also a lineage bridge: for every event author A, consumed events at or below the A coordinate are absorbed, while later scoped events, deletes, and rematerializations activate the source lineage despite a numerically greater receiver anchor. Anchor applicability is evaluated against each anchor's own cut before raw ordering: a delayed higher-ID event inside that cut cannot disable the certificate that absorbs it; a non-null anchor is superseded only when the raw displacement itself is post-cutoff. An unrelated lower-ID live presence event remains eligible without releasing a consumed raw event. Any non-bookkeeping scoped event above its own author coordinate activates its referenced generation; the generation's older add need not itself be above the cutoff, and an applicable reset carrier/exact correspondence alone never activates it. Activation and presence ordering are separate: a scoped event can make its generation eligible, but only generation/delete IDs order presence, so an edit/validate/invalidate cannot resurrect a generation after a later delete. Missing coordinates are zero, and carrier identity is irrelevant. Present-to-absent reset anchors the vector on its real delete; absent-to-absent reset uses a no-action ResetObservationEntry anchored to that delete or to null explicit absence. A retained null observation continues suppressing delayed consumed history, but a later present lineage anchored to the current receiver generation makes that generation the fallback; the older null anchor cannot erase it. Reset lineage never authorizes an unrelated unsupported cache.
-
-`lineageGroups(J,K)` groups all retained carriers by tagged receiver anchor and joins vectors only within each group. `applicableLineages(J,K)` is its current-presence subset: every null group plus each non-null group whose anchor is raw-current or whose raw displacement lies inside that group's cut. Once the raw displacement itself is genuinely post-cutoff, the group is currently inapplicable—but it is not necessarily disposable, because a future union can replace that displacement with consumed history and make the group applicable again.
-
-Fallback causality is assertion-specific, never inferred from a joined group's first carrier. Same-author assertions on the same semantic anchor form a writer-local succession chain: larger sequence replaces smaller sequence, and supported authoring requires the later assertion's vector to componentwise dominate the earlier vector. This bounded replacement does not insert the omitted carrier coordinate into `consumedThrough`; the immutable same-writer order supplies succession while omission prevents an unchanged reset from chasing its own clock. For different authors or different anchors, assertion N dominates O only when N's **own** `consumedThrough` covers O's actual anchor-presence coordinate (when non-null) and O's immutable carrier coordinate. A vector contributed concurrently by another assertion in N's anchor group cannot manufacture that cross-anchor observation. Therefore `A1 -> B1 -> A2` selects A2 when A2 observed B1 even though B1 observed historical A1 in A's joined group; later B2 selects B2 only after observing A2. Concurrent incomparable assertions use canonical full carrier ID and tagged-anchor order solely as a deterministic conflict rule.
-
-RLV compaction takes the maximal assertion antichain across every retained lineage group, including currently inapplicable groups, and retains each represented anchor's per-author coordinate witnesses. This is the future-relevant retention predicate. A dominated assertion is safely subsumed by the assertion that observed it; an undominated inapplicable assertion remains because it can regain applicability under future union.
-
-This selector governs RLV causal authority only. Exact correspondence has a different candidate-domain predicate: after causal presence selects generation G, an exact carrier is RLC-relevant when its receiver value origin is one of the retained per-author value heads of G. It remains relevant even when its present anchor does not resolve to the raw presence head, because post-cutoff activation can make G causal-current across a raw delete. Current-anchor reset bookkeeping is different again: it contains only receiver carriers whose tagged `lineage_anchor` equals the current receiver semantic anchor and that anchor's own value-origin/delete event.
-
-## Extensional proof transport
-
-A validity edge is evidence that a retained output is valid for semantic input values, not permanently tied to their container/provenance IDs. A source proof may be transported/re-lowered only when:
-
-1. the source actually contains every required valid edge;
-2. schema, bindings, and direct-input structure match, with duplicate input positions collapsed exactly as graph semantics require;
-3. every source direct-input value is `isEqual` to the final selected input value; and
-4. the source retained output is `isEqual` to the final retained output.
-
-Equality never mints a proof; it only permits transport of an existing proof. This is sound under the normative **extensional computor contract**: for fixed semantic bindings and input values, a proof that output d is valid remains evidence for equal input/output values independent of NodeIdentifier and journal provenance. `oldValue` is merely an optimization input; `Unchanged` asserts semantic output equality. Multi-input proofs require all distinct inputs. Computors whose validity depends on hidden nondeterminism, identity, time, or other unmodeled state must not return cache-valid/Unchanged evidence and are outside transferable-proof support.
-
-Thus equal values at revisions R10/S100 do not harden solely because provenance differs.
-
-## Directional receive
-
-For `R <- S`, S is read-only:
+Each reset carrier is one fallback assertion. Remove an assertion O when `causallyBefore(O,N)` for another assertion N. Among the resulting concurrent maxima, occurrence time and then author fingerprint select the deterministic fallback. `absorbsThrough` never establishes this ordering. An applicable anchor is fallback authority when no live post-absorption presence event displaces it; it is not ordinary last-write-wins presence.
 
 ```text
-J0=compact(JR union JS)
-C0=componentwiseMax(CR,CS)
+eligiblePresence(J,K) = semantically eligible generation/delete events that
+                        are live relative to applicable absorption cuts,
+                        plus activated generations
+presenceMaxima(J,K) = causalMaxima(eligiblePresence(J,K))
+presenceHead(J,K) = concurrentWinner(presenceMaxima(J,K)), or the selected
+                    reset fallback when no eligible actual event exists
+generation = presenceHead.id iff presenceHead is generation
+valueEvents(J,K,G) = generation G plus edits scoped to G
+valueHead(J,K,G,A) = greatest-sequence A-authored admissible value event
+valueCandidates(J,K,G) = defined valueHead values over authors
+canonicalAtTime(T) = concurrentWinner(causalMaxima(candidates with time=T))
 ```
 
-Import alone leaves R's local clock unchanged. Reconcile presence/value deterministically, rebuild proofs by extensional transport, then derive causal freshness topologically. Fresh requires fresh direct inputs; stale inputs propagate a value-specific soft invalidate while a coherent reusable proof remains. An imported uncovered applicable hard barrier is sufficient and never echoed. Receiver-local delete/hardening is authored only for a genuinely new decision not represented by imported authority. Copying a generation/value never authors a receiver generation/edit.
+Candidate semantic precedence is set based: remove causally dominated events, then choose the greater `modifiedAt` among concurrent maxima, then fingerprint for exact concurrent equal-time conflict. The event ID remains exact provenance, not an ordered revision tuple. Selection is staged as presence, required joined provenance/canonicalization, coherence classification, then precedence within eligible candidates. Unsupported derived caches do not suppress coherent candidates merely because their event is causally later or has a later timestamp. Equal-time joined canonical provenance retains the canonical event's actual origin.
 
-Before genuine local authoring, lazily allocate above all observed retained/covered authority; then update only receiver coverage. Install atomically.
+Examples:
 
-**Ordinary Convergence.** Compatible replicas with the same relevant journal evidence and no new local decision reconcile to equal SemanticGraph (presence, values, freshness class, reusable proofs).
+* A adds at A:500; B observes it and deletes at B:3 with context A:500. The add is causally before the delete, so deletion wins.
+* A adds at A:500 at T1 while B concurrently adds at B:3 at T2. If T2>T1, B wins by occurrence time.
+* Concurrent A and B adds at the same T resolve by fingerprint only.
+* A edits at A:100 at T; B observes it and edits at B:2 at T. B's edit is canonical because A's edit causally precedes it. The foreign sequence magnitudes are irrelevant.
 
-**Directional Absorption.** Settled repeated receive is silent.
+If reset absorbs A through 10, a later A:11 delete is live because 11 is above A's absorption coordinate. The reset carrier can have any author and local sequence. A reset followed by synchronization with the unchanged source remains at its fallback; unseen or concurrent source history above an absorbed prefix stays live.
 
-**Reverse Catch-Up.** With no intervening change and no decision authoring, `R1=sync(R0,S0); S1=sync(S0,R1)` yields identical canonical journals, coverage, and SemanticGraph; S's local clock need not rise on import.
+## Freshness and coherence
+
+Freshness uses exact origin applicability, per-author all-mode and hard frontiers, and one validation's `clearsThrough` exactly as defined by the types specification. `causalContext` cannot substitute for clearing proof. Generation-wide invalidates always apply; value-specific assertions apply only to their origin. Fresh direct inputs are required for fresh derived state. Stale inputs create a value-specific soft assertion only with coherent reusable proof; otherwise hard authority is retained or authored.
+
+Proof transport requires existing source proof, matching schema/bindings/input structure, equal final direct-input values, and equal output. Multi-input proof requires every distinct input. Hidden nondeterminism, identity, time, or other unmodeled state is outside the extensional computor contract.
+
+## Directional receive and convergence
+
+For `R <- S`, S is read-only. R validates stable snapshots, unions and canonically compacts journal authority, joins coverage, reconciles presence/value, transports proof, then derives freshness topologically. Import does not advance `localJournalCounter`. Copying a generation/value emits no receiver generation/edit. Imported hard authority is sufficient and is not echoed.
+
+When receive makes a genuinely new destructive decision because of positive authority p, it authors barrier b at the next receiver-local coordinate and includes p in b's `causalContext`. Thus `causallyBefore(p,b)`, and redelivery of that exact p cannot defeat b. A genuinely unseen concurrent positive p2 may remain maximal; if it later causes another destructive decision, that new barrier observes and dominates p2. The same rule governs hardening and deletion barriers.
+
+For a finite connected execution without continuing user authoring, measure unseen positive authorities that can trigger a new destructive decision. Each decision removes at least its observed authority from that set permanently; it introduces only a negative barrier, not a positive candidate. An unseen concurrent positive can cause at most one later decrease when observed. Therefore destructive authoring terminates. ACI union, immutable contexts, deterministic causal maxima, concurrent conflict selection, exact proof transport, and canonical compaction then give equal journals and SemanticGraph on all connected replicas. The argument is symmetric for every receive direction.
+
+Settled repeated receive is silent. With no intervening change, reverse catch-up produces equal canonical journals, coverage, causal summaries, and SemanticGraph while neither importer changes its local counter.

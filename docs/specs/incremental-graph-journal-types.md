@@ -1,159 +1,117 @@
 # IncrementalGraph journal types
 
-## Supported state boundary
+## Supported state and identity
 
-This document is normative over supported reachable states produced by the atomic authoring, receive, migration, observed-reset, restoration, and canonical-compaction transitions. Corrupt, forged, rolled-back, partially installed, or clock-unsupported states are outside the proof domain.
-
-The journal, causal-prefix, cursor, compaction, synchronization, and convergence
-properties in this specification are conditional on each `DatabaseFingerprint`
-in the interpreted history denoting one durable writer history. Snapshots
-continuing or restoring the same durable writer history may retain the same
-fingerprint. Fresh creation does not guarantee this premise: independently
-created writers may choose the same fingerprint.
-
-If independent writer histories collide under one fingerprint, identities such
-as `JournalEntryId`, causal-prefix coordinates, `journalCoverage` coordinates,
-cursor coordinates, and `NodeIdentifier` namespaces may alias. The colliding
-histories may remain structurally well-formed, but behavior across their aliased
-identities and coordinates is outside the guarantees of this specification. An
-implementation MAY detect and reject an observable collision, but complete
-collision detection or repair is not required.
-
-## One precise journal
+This specification covers reachable states produced by atomic authoring, receive, migration, controlled reset, restoration, and canonical compaction. Corrupt, forged, rolled-back, partially installed, fingerprint-colliding, or clock-unsupported states are outside its proof domain. Each `DatabaseFingerprint` denotes one durable writer history.
 
 ```text
-journal[JournalEntryId] = JournalEntry
 JournalSequence = positive arbitrary-precision integer
 CausalCoordinate = non-negative arbitrary-precision integer
-JournalEntryId = (sequence:JournalSequence, author)
-JournalEntryBase = { author, sequence:JournalSequence, nodeName, bindings, time }
+CausalPrefix = Map<DatabaseFingerprint,CausalCoordinate>
+JournalEntryId = (author:DatabaseFingerprint, sequence:JournalSequence)
+JournalEntryBase = {
+    author, sequence, causalContext:CausalPrefix,
+    nodeName, bindings, time:UnixTimestamp
+}
 GenerationJournalEntry = JournalEntryBase & {
     kind:"generation", initialFreshness:JournalEntryId
 }
 DeleteJournalEntry = JournalEntryBase & { kind:"delete", resetLineage?:ResetLineage }
 ResetObservationEntry = JournalEntryBase & {
-    kind:"reset-observation", absentAnchor:JournalEntryId | null,
+    kind:"reset-observation", absentAnchor:JournalEntryId|null,
     resetLineage:ResetLineage
 }
 GenerationScopedBase = JournalEntryBase & { generation:JournalEntryId }
 EditJournalEntry = GenerationScopedBase & { kind:"edit" }
 InvalidateJournalEntry = GenerationScopedBase & {
     kind:"invalidate", mode:"soft"|"hard",
-    appliesTo:"generation" | { valueOrigin:JournalEntryId },
+    appliesTo:"generation"|{valueOrigin:JournalEntryId},
     resetLineage?:ResetLineage
 }
 ValidateJournalEntry = GenerationScopedBase & {
     kind:"validate", clearsThrough:CausalPrefix,
-    valueOrigin:JournalEntryId,
-    resetLineage?:ResetLineage
+    valueOrigin:JournalEntryId, resetLineage?:ResetLineage
 }
 ResetLineage = {
-    consumedThrough:CausalPrefix,
-    correspondence:ResetCorrespondence | null
+    absorbsThrough:CausalPrefix,
+    correspondence:ResetCorrespondence|null
 }
 ResetCorrespondence = {
     consumedGeneration:JournalEntryId,
     consumedValueOrigin:JournalEntryId
 }
-CausalPrefix = Map<DatabaseFingerprint,CausalCoordinate>
 entryNodeKey(E) = NodeKey(E.nodeName,E.bindings)
 ```
 
-`entryNodeKey` uses the one normative, identity-preserving NodeKey serializer.
-`nodeName` and `bindings` are the journal's sole persisted semantic address;
-`key`, `E.key`, and “same-key” in journal algorithms are shorthand for the
-derived `entryNodeKey(E)`, never an additional journal field.
+`JournalEntryId` is an immutable identity and address. A `JournalSequence` has meaning only within its `DatabaseFingerprint` author. No algorithm compares sequence magnitudes from different authors as evidence of temporal, causal, revision, presence, conflict, or destructive precedence. Sequence supports same-author identity, order, frontiers, coverage, cursor progress, and monotonicity only.
 
-For two reset-lineage carriers `L1,L2` with the same durable author, NodeKey, and tagged receiver anchor, `L1.sequence<L2.sequence` implies `L1.consumedThrough <=componentwise L2.consumedThrough`. This is a supported-state structural invariant and the proof-carrying basis for bounded same-anchor succession: the later immutable same-writer assertion replaces the earlier assertion without placing `L1.id` in `L2.consumedThrough`. Different authors or different anchors receive no such implied observation order.
+`entryNodeKey` uses the normative identity-preserving serializer. `nodeName` and `bindings` are the sole persisted semantic address. Every boundary validates closed shapes, exact references, positive event coordinates, canonical vectors, and arbitrary-precision decimal encoding. Runtime implementations use `BigInt`, never lossy JavaScript `Number` conversion. Zero means missing vector knowledge and is never an event sequence.
 
-An immutable generation entry establishes positive presence and initial value provenance for an actual absent-to-present materialization, so `publicAction(generation)="add"`. Reset never creates a generation to fence equal present history. Delete is negative presence. Edit is an unequal present-to-present value change scoped to the surviving generation. Every generation names exactly one later-ID, atomically authored initial validate/soft-invalidate/hard-invalidate.
+## Causal context
 
-For generation `G` and its named initial event `I`, structural validity requires `I.author=G.author`, `I.sequence>G.sequence`, `entryNodeKey(I)=entryNodeKey(G)`, `I.generation=G.id`, and `I.kind` in `{validate,invalidate}`. The two entries install atomically. Sequence adjacency is not required, but a generation cannot name another author's future event.
-In addition, `I` MUST name `G.id` as its exact value origin: an initial
-validation has `I.valueOrigin=G.id`, and an initial soft or hard invalidation has
-`I.appliesTo={valueOrigin:G.id}`. A generation-wide invalidation and an
-assertion naming any edit or other value origin in the generation are not valid
-initial freshness assertions.
+`causalContext` is the immutable closed per-author causal prefix observed by the authoring operation before publication. Missing coordinates mean zero. For distinct events:
 
 ```text
-publicAction(E) = "add" for generation; undefined for reset-observation; otherwise E.kind
+causallyBefore(E,F) iff
+    (E.author=F.author and E.sequence<F.sequence)
+    or
+    (E.author!=F.author and E.sequence<=F.causalContext[E.author])
 ```
 
-Soft/hard both expose invalidate. Every public graph event exposes exactly one action. ResetObservationEntry is internal metadata in the same physical journal, has no public action, and is ignored by polling maxima.
+Every writer persists `causalSummary`, the componentwise maximum of the causal contexts and identities of all events genuinely observed by committed local operations. It differs from `journalCoverage`: a summary proves happened-before knowledge, while coverage proves complete possession of a journal prefix. Import alone changes neither value; a receive, migration, or reset operation advances `causalSummary` only when its stable observed snapshot participates in a committed semantic decision. Reset may therefore learn source causality without importing source journal or coverage.
 
-Every boundary validates closed shapes/scalars and immutable-ID agreement. Every scoped event resolves to an exact GenerationJournalEntry with the same derived `entryNodeKey`. Generation initial-freshness references resolve exactly.
+For every locally authored event E, `E.causalContext` is the transaction's observed causal summary before E. After publication the local summary includes E's identity. Consecutive same-author events carry forward every foreign coordinate componentwise, so learned causality cannot disappear. When an operation observes event F, it joins F's identity and every coordinate in `F.causalContext`; therefore A:10 observed by B:3 and B:3 observed by C:7 implies A:10 is in C:7's context. Compaction preserves `causalSummary` and immutable retained contexts. Repeating an operation with no new semantic decision or newly relevant causal knowledge is silent.
 
-Zero is a sentinel coordinate for missing causal-prefix, coverage, and cursor knowledge; it is never a journal event coordinate. Every persisted `JournalEntryId`, including entry IDs and generation, initial-freshness, value-origin, absent-anchor, and reset-correspondence references, validates `JournalSequence`. A fresh database initializes `localJournalClock` and its local `journalCoverage` coordinate to zero. Its first authored event allocates sequence 1; subsequent allocation always chooses the unbounded integer successor of a coordinate at least as great as all transaction-observed retained and covered authority.
+Ordinary graph authoring includes relevant knowledge in the transaction-visible database. Synchronization-authored barriers include the joined authority causing the decision. Migration-authored events include supported source authority used by the decision. Controlled reset includes the validated source snapshot it actually observes. Generation/initial-freshness and edit/post-edit-freshness pairs remain ordered by their common author's local sequences.
 
-Journal coordinates are mathematical integers independent of a machine-word bound. At persistence and JSON boundaries, every `JournalSequence` and `CausalCoordinate` is encoded as a canonical non-negative decimal integer string: no sign, whitespace, exponent, leading `+`, or redundant leading zeros is admitted, and `"0"` is the sole zero spelling. Runtime implementations use JavaScript `BigInt` and MUST NOT represent journal coordinates as JavaScript `Number` or perform a lossy `Number` conversion. Journal-event sequence fields and references additionally reject `"0"`; causal, coverage, clock, and cursor coordinates admit it where the model permits absence of knowledge.
+## Allocation, coverage, and persistence
 
-**Post-edit Negative-Freshness Invariant.** Any transaction that authors a same-generation edit for a new semantic value and leaves that value stale MUST author a new negative freshness assertion after the edit: soft when complete cache-revalidation proof remains, hard when recomputation is required. Pre-edit invalidates cannot represent the new value's negative authority. Equal-value operations author no edit and may reuse existing authority under the ordinary causal rules.
+`localJournalCounter` is the last coordinate allocated in the local fingerprint namespace. A fresh writer starts at zero and authors sequence 1. Under the allocator mutex each committed event takes the next local successor; imports and foreign coordinates never change the counter. Thus a B writer at B:4 next authors B:5 even after observing A:1000000. After local authoring, `journalCoverage[localFingerprint]=localJournalCounter`. Publication atomically commits graph, journal, counter, local coverage, causal metadata, identifiers, timestamps, and proofs.
 
-Generation-wide invalidates represent explicit/concurrent causal invalidation that applies regardless of which value origin wins. Initial-stale, post-edit, reset/migration cache-status, proof-loss, and propagated-input-staleness assertions are value-specific and name the exact value origin whose cache state they describe. For selected origin O, an invalidate is applicable iff it is generation-wide or names O. Both causal frontiers and validation effectiveness are computed only from applicable invalidates; a losing value's cache-status barrier cannot stale a different selected value.
+`journalCoverage[A]=n` proves complete accounting for A's prefix through A:n despite compaction. `clearsThrough[A]=n` is narrower validation evidence: it proves that one validation may clear applicable A-authored invalidates through A:n. `absorbsThrough[A]=n` is reset semantics: it intentionally absorbs applicable A-authored history through A:n. These vectors are never interchangeable.
 
-Every validation names the exact value origin it validates. The initial validation names its GenerationJournalEntry; validation after an edit names that edit. Positive evidence for one origin never freshens another origin, even when its causal prefix includes the other origin’s invalidates.
+Restoration preserves the fingerprint, journal, coverage, local counter, and causal summary. It validates own counter/coverage consistency, positive event coordinates, per-author coverage, context shape and coordinates, references, and same-author monotone foreign-context carry-forward. If A authored through A:10, its next event is greater than 10; foreign magnitudes impose no condition.
 
-Observed reset attaches `resetLineage` to a receiver-retained freshness assertion for a present target or to the real reset-authored DeleteJournalEntry for a present-to-absent target. When both snapshots are already absent and either side has represented key history, it authors an internal ResetObservationEntry anchored to the receiver delete (or explicit null absence when no receiver presence event exists). A null anchor is a durable virtual absence, not a condition that the future union's raw presence head remain null: events at or below its vector remain absorbed after union, and ordinary generation/delete ordering applies only among events above that vector. With no post-cutoff presence event, causal presence remains absent. This metadata-only entry has no public action and cannot masquerade as add/edit/delete/validate/invalidate.
+## Event and value invariants
 
-Reset causal observation and semantic correspondence are distinct. `consumedThrough` is the joinable per-author prefix inspected across both snapshots; missing means zero. Concurrent observations for one receiver anchor join by componentwise maximum, without inferring causality from carrier JournalEntryId. `correspondence`, when present, names exactly one source generation/origin actually compared `isEqual` with the receiver value anchor. Concurrent/later exact correspondences form a bounded retained set; causal coordinates alone never certify semantic equality.
+A generation records absent-to-present presence and its initial value. It names one later, atomically installed same-author validate or invalidate for the exact generation value origin. Delete records negative presence. Edit records an unequal present-to-present value change in the surviving generation. A stale post-edit value receives a later value-specific soft assertion when reusable proof remains, or hard assertion when recomputation is required. Equal-value operations emit no edit.
 
-For every author A, an A-authored key event at or below joined `consumedThrough[A]` is absorbed. A same-lineage event above it remains eligible regardless of carrier. Structural validation requires canonical vectors and exact shapes. Delete/reset-observation absent lineage has null correspondence; validate/invalidate present lineage has a non-null exact correspondence. Both correspondence IDs use `JournalSequence` and supported fingerprints. Booleans, duplicate/unsorted coordinates, mismatched kind/correspondence, malformed IDs, and unknown fields are rejected.
+Generation-wide invalidates represent explicit semantic invalidation independent of value origin. Initial-stale, post-edit, reset/migration cache-status, proof-loss, and propagated-input assertions name one exact value origin. Validations likewise name the exact value origin they validate. Positive evidence never crosses an edit.
 
-## UnixTimestamp and event time
+`modifiedAt` is semantic value occurrence time and resolves only causally concurrent semantic value changes. Delete and assertion `time` are their occurrence times. Causality is decided before time; time does not clear invalidations, establish proof, imply reset absorption, determine hardness, or prove observation. Supported executions use synchronized clocks and require causally later semantic events not to have earlier occurrence times. Exact concurrent equal-time conflicts use author fingerprint.
 
-`UnixTimestamp` persists as a signed integer millisecond count since `1970-01-01T00:00:00Z`. Its supported domain is exactly the integer interval `[-8640000000000000,8640000000000000]`, excluding booleans. `toUnixTimestamp(DateTime)=DateTime.toMillis()` and `fromUnixTimestamp(t)` constructs the exact UTC instant; both require exact integer round-trip. Out-of-domain, fractional, approximate, clamped, rounded, or malformed persisted/token values are rejected.
+## Reset lineage
 
-* generation time is its semantic value `modifiedAt`;
-* edit time is the edited value `modifiedAt`;
-* delete time is deletion occurrence and does not change value `modifiedAt`;
-* invalidate time is assertion occurrence and does not change value `modifiedAt`;
-* validate time is assertion occurrence and does not change value `modifiedAt`.
-
-Reset-created/changed value generation/edit time is reset transaction time τ. Reset freshness assertions use their actual occurrence τ. Equal surviving reset values preserve receiver `modifiedAt`. Supported cross-host value ordering assumes clocks do not invert real value-event order; a source `modifiedAt>τ` for an already-observed value is outside that clock premise. The protocol does not repair unsynchronized clocks.
-
-## Coverage, causal prefixes, and lazy allocation
-
-`JournalCoverage[A]=n` proves the host has a complete account of A's authored prefix through n, despite gaps/compaction. `Validate.clearsThrough[A]=n` instead proves that this validation was justified by trusted evidence of a closed A prefix through n; it clears only applicable same-key/same-generation invalidates in that prefix. Reset may use validated source coverage it explicitly inspected to justify `clearsThrough`, without merging that coverage into receiver `journalCoverage`.
-
-A locally authored coordinate may claim only a prefix for which the transaction had valid closed-prefix evidence: ordinarily local journal/coverage, and for controlled reset additionally its validated source snapshot. Compaction preserves the vector claim even if it removes exact covered evidence.
-
-Validation knowledge is durable and monotone. For validations V1,V2 with the same author, key, and generation (regardless of value origin):
+`causalContext` records what a reset assertion observed. `absorbsThrough` records source/history coordinates intentionally replaced. `ResetCorrespondence` records the exact source generation/value origin actually compared `isEqual` with the receiver anchor. Causal observation never implies semantic correspondence.
 
 ```text
-V1.sequence < V2.sequence => V1.clearsThrough <=componentwise V2.clearsThrough
+absorbedBy(L,E) iff E.sequence <= L.absorbsThrough[E.author]
 ```
 
-Every validation authoring path—ordinary pull/revalidation, migration, a genuinely synchronization-authored initial validation, and observed reset—starts with the greatest prior same-author/key/generation validation vector and componentwise-maxes newly justified closed prefixes into it. The prior vector is itself durable evidence for carry-forward; source coordinates learned only by reset remain in later validation state without being copied into host journalCoverage. A retained pair violating monotonicity is unsupported/corrupt. Structural load validation checks canonical map shape, at most one coordinate per fingerprint, and `CausalCoordinate` values; lifecycle legitimacy of the claimed evidence is a separate authoring proof.
+This comparison is within E's author coordinate. A later event above that author's absorbed prefix remains live irrespective of the reset carrier's author or sequence. Present reset lineage is attached to a retained receiver freshness assertion; present-to-absent lineage is attached to its public delete; absent-to-absent lineage uses an internal no-action reset observation anchored to a delete or explicit null absence. Reset does not import source journal or source coverage.
 
-Import does not advance the local clock/coordinate. Fresh local clock and coverage start at zero. Immediately before local authoring, allocation raises above all relevant retained/covered sequence authority, so the first event is 1 when no greater authority has been observed and no authored event can be 0. After commit, local coverage equals local clock and the local prefix never regresses.
+Assertions are ordered by ordinary event causality. Same-author assertions are ordered by local sequence; cross-author succession is recorded by `causalContext`. Causally maximal concurrent assertions resolve by occurrence time and then author fingerprint. Their `absorbsThrough` vectors may join only as semantic absorption for the same tagged receiver anchor and never prove assertion succession. Exact correspondences remain separately retained.
+
+A reset is settled when the receiver semantic projection, freshness authority, required correspondence, absorption prefix, and causal knowledge relevant to future source union already equal the result of the validated snapshots. Repeating a settled reset emits nothing. Newly relevant observed source absorption or causality is retained even when graph bytes do not change.
 
 ## Freshness
 
 ```text
 applicable(I,O) iff I.appliesTo="generation" or I.appliesTo.valueOrigin=O
-invalidateFrontier(J,K,G,O)[A] = greatest applicable invalidate of either mode by A
-hardInvalidateFrontier(J,K,G,O)[A] = greatest applicable hard invalidate by A
-covers(V,I) iff entryNodeKey(V)=entryNodeKey(I) and V.generation=I.generation
+invalidateFrontier(J,K,G,O)[A] = greatest applicable invalidate authored by A
+hardInvalidateFrontier(J,K,G,O)[A] = greatest applicable hard invalidate authored by A
+covers(V,I) iff V and I have the same key and generation
                  and I.sequence <= V.clearsThrough[I.author]
-freshnessEffective(V,J,K,G,O) iff V.valueOrigin=O and V alone covers every applicable invalidateFrontier member
-journalFresh iff some applicable V is freshnessEffective
-journalHard iff hard frontier is nonempty and no applicable V alone covers it
+freshnessEffective(V,J,K,G,O) iff V.valueOrigin=O
+                 and V alone covers every all-mode frontier member
+journalHard iff the hard frontier is nonempty
+                 and no applicable V alone covers every hard member
 ```
 
-**Validation Causality Theorem.** A validation clears only applicable invalidates within legitimately evidenced `clearsThrough` coordinates. Separate partial validations never combine. Empty hard frontier is non-hard. Initial validate is required positive freshness evidence, so freshness has no implicit empty-frontier exception. A delayed event under `clearsThrough` is already cleared; a later event above it is not.
+Every `greatest` above compares sequences from one author only. Partial validations do not combine. A delayed invalidate beneath a clearing coordinate is cleared; a later same-author invalidate is not. Validations for the same author/key/generation monotonically carry their prior `clearsThrough`, independent of value origin. A soft stale derived value requires complete reusable incoming proof; proof loss and zero-input stale state require hard authority. Hard-to-soft transition requires positive validation clearing the hard frontier before an uncovered soft assertion can represent the state. Imported hard authority is sufficient and is not echoed.
 
-A derived stale-soft materialization retains the complete reusable incoming proof needed for cache-only revalidation. Stale-soft without that proof is unsupported: proof loss establishes must-recompute and requires a hard invalidate unless an applicable uncovered hard barrier already represents it. A zero-input stale materialization has no incoming proof to reuse and is hard-stale rather than soft-stale.
+## Projection contracts
 
-## Projection theorems
+Presence selection precedes joined value provenance, coherence classification, and precedence among candidates eligible at that stage. A coherent derived cache may beat a newer unsupported cache; equal-time joined canonical provenance is not reassigned merely because another candidate is coherent. Proof transport is extensional: schema/bindings/direct-input structure must match, all direct-input and output values must be `isEqual`, and source proof must exist. Equality permits transport but never creates proof.
 
-**Identifier Incarnation Theorem (NodeIdentifier domain).** A storage-level materialized NodeIdentifier maps to exactly one NodeKey. Removal retires it permanently; rematerializing the same NodeKey allocates a different identifier. Public `listMaterializedNodes()` exposes semantic address tuples, not these identifiers. Reset retains receiver identifiers for surviving materializations.
-
-**NodeKey Presence Projection Theorem (NodeKey domain).** K is materialized iff causal `presenceHead(J,K)` is GenerationJournalEntry; it is absent iff the head is delete or undefined. Each reset anchor is evaluated against its own joined causal vector before raw presence ordering, so a higher-ID event inside that vector cannot disable its absorber. A null explicit-absence anchor may suppress consumed presence without another post-cutoff event; a non-null anchor remains fallback until another actual generation/delete is outside that anchor's cut. Actual post-cutoff generation/delete events and generations activated by above-cut scoped events remain eligible; only actual generation/delete IDs order the result. History generation/delete/generation is valid. Polling history membership is not current presence.
-
-**Current Value Provenance Theorem (winning-generation domain).** The winning generation entry plus scoped value heads determine origin/modifiedAt identity; ComputedValue bytes remain graph state.
-
-**Freshness and Hardness Projection Theorems (precise-entry domain).** Current generation freshness uses one causal-prefix validation plus graph coherence, never numeric validate/invalidate ordering. Hard/soft authority follows the formulas above.
-
-**Polling Projection Theorem (PossibleNodeChange domain).** Polling hides identifiers, generations, modes, and causal contexts; it preserves action obligations but cannot reconstruct current graph state.
-
-Graph, journal, vectors, local clock, identifier/proof state, and timestamps install atomically.
+Polling hides raw IDs, generation, modes, causal contexts, and reset metadata. Storage-level `NodeIdentifier` incarnation remains distinct from semantic `NodeKey`; removal retires an identifier and rematerialization allocates another.

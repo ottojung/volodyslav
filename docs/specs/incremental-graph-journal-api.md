@@ -80,7 +80,7 @@ requires each fingerprint coordinate to denote the same durable writer history
 in the token's origin and receiving journal contexts. Reuse with a different
 filter identity throws `InvalidPossibleChangeCursorError` before polling.
 
-For one snapshot, choose the greatest event per `(author,NodeKey,publicAction)`, keep those above the consumer coordinate and matching the self-contained address filter, order by `(sequence,author)`, and attach cumulative vector cursors. Soft/hard share invalidate. Every public graph event has a non-null exact action; internal reset-observation entries are excluded before this projection; reset add/edit/delete/freshness transitions use ordinary events.
+For one snapshot, choose the greatest local sequence per `(author,NodeKey,publicAction)`, keep those above that author's consumer coordinate and matching the self-contained address filter, order author-major by `(author,sequence)`, and attach cumulative vector cursors. Author is therefore compared before sequence, and sequence is compared only inside one author. This deterministic delivery order makes no cross-author temporal or causal claim. Soft/hard share invalidate. Every public graph event has a non-null exact action; internal reset-observation entries are excluded before this projection; reset add/edit/delete/freshness transitions use ordinary events.
 
 ## Durable possible-change token v1 codec (normative)
 
@@ -112,7 +112,7 @@ reconstructs the canonical object, and requires
 `JSON.stringify(reconstructed) === tokenString`. Failure at any step throws
 `InvalidPossibleChangeCursorError`.
 
-The decoder performs parsing, structural validation, and canonical-format validation only. The canonical JSON is plainly inspectable and may be constructed or modified by a caller; decoding it does not prove that the graph previously issued it. If a caller supplies fabricated or modified cursor coordinates, polling uses those coordinates as the requested resume position. Changes at or below those coordinates may therefore be skipped, and the no-false-negatives guarantee does not apply to that caller-supplied position.
+The decoder performs parsing, structural validation, and canonical-format validation only. The canonical JSON is plainly inspectable and may be constructed or modified by a caller; decoding it does not prove that the graph issued it. If a caller supplies fabricated or modified cursor coordinates, polling uses those coordinates as the requested resume position. Changes at or below those coordinates may therefore be skipped, and the no-false-negatives guarantee does not apply to that caller-supplied position.
 
 Cursor coordinates identify writer histories only through
 `DatabaseFingerprint`. Durable v1 carries no hostname, branch identity, or

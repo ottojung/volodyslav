@@ -432,7 +432,7 @@ After presence and value selection, the merge flow processes nodes in schema top
 
 1. Derive each source candidate's coherent, extensional support from its existing `valid` flags. A proof is transportable only when structure matches, the source contains every required proof edge, every source input value is `isEqual` to the final selected input value, and the source output is `isEqual` to the final retained output. Select the value origin before evaluating journal freshness.
 2. Evaluate `hardInvalidateFrontier` and `invalidateFrontier` for that selected origin. An uncovered hard frontier makes the node hard-stale and permits no incoming proofs. An uncovered soft-only frontier makes the node stale-soft and retains a complete coherent proof for cache-only revalidation.
-3. When synchronization itself must remove a previously reusable proof and no uncovered applicable hard barrier represents that fact, author exactly one new value-specific hard invalidate. An imported uncovered hard barrier is sufficient and is never echoed.
+3. When synchronization itself must remove a reusable proof and no uncovered applicable hard barrier represents that fact, author exactly one new value-specific hard invalidate. An imported uncovered hard barrier is sufficient and is never echoed.
 4. Propagate stale state in topological order. A derived node is fresh only when its own journal authority is fresh, its coherent proof is retained, and all distinct direct inputs are fresh. A stale input with an otherwise coherent proof produces stale-soft and one value-specific soft invalidate unless applicable authority already represents it. Without a coherent proof, apply the hardening or deletion rules.
 5. Remove proof entries for deleted/discarded identifiers and for dependencies that are no longer structural inputs. Never mint or union proof edges.
 
@@ -535,7 +535,7 @@ support from a source's preexisting flags and extensional semantic value equalit
 
 A node with an uncovered member of `hardInvalidateFrontier(N,G)` is hard-stale and receives no incoming proofs. An uncovered soft-only member of `invalidateFrontier(N,G)` instead makes the node stale-soft while complete coherent proofs remain cache-revalidatable. Journal invalidate mode distinguishes these cases; an older validation cannot cross either frontier.
 
-1. **Extensional proof transport**: Candidate N from S has support only when every distinct direct input D has `S.valid[D].has(N)`, structure/bindings match, every source input is `isEqual` to its final value, and the source output is `isEqual` to the retained final output. Equality permits transport but never mints an absent proof. Provenance/ValueRevision equality is unnecessary under the extensional computor contract.
+1. **Extensional proof transport**: Candidate N from S has support only when every distinct direct input D has `S.valid[D].has(N)`, structure/bindings match, every source input is `isEqual` to its final value, and the source output is `isEqual` to the retained final output. Equality permits transport but never mints an absent proof. Exact provenance identity is unnecessary under the extensional computor contract.
 
 2. **Structural-edge survival**: A transported proof that passes the extensional semantic check is preserved only if `D` is still a structural input of `N`
    in the merged graph. Removed or relowered inputs do not carry proofs.

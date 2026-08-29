@@ -426,7 +426,7 @@ compatibility rules.
 
 ## Journal integration without weakening graph locking
 
-One durable local-author allocator is serialized by the journal allocator mutex. Import never allocates an event ID, changes imported identity, or advances the local clock/coverage coordinate. Immediately before actual local authoring, allocation lazily raises above all transaction-observed retained/covered sequences.
+One durable local-author allocator is serialized by the journal allocator mutex. It allocates the next immutable coordinate in the local `DatabaseFingerprint` sequence namespace. Import never allocates an event ID, changes imported identity, or advances the local counter/coverage coordinate. Foreign sequence magnitudes never influence allocation.
 
 ### Lock order
 
@@ -447,7 +447,7 @@ closeGarden
 No path reverses this order. Exclusive synchronization, migration and reset keep
 their existing inactive-construction phases. The darkroom remains short: work is
 prepared first and allocator values are tentatively chosen under their mutex.
-The final graph, journal entries, `localJournalClock`, and journal coverage are committed
+The final graph, journal entries, `localJournalCounter`, journal coverage, and relevant causal metadata are committed
 atomically under darkroom finalization. A choice published by that commit is
 permanently non-reusable and committed counters never move backwards. An abort
 before publication exposes neither durable allocator advancement nor a durable
@@ -456,7 +456,7 @@ gaps caused by allocator behavior are permitted only when committed allocator
 progression skips numbers; journal compaction may leave holes among surviving entries. This does not widen the darkroom or weaken
 dome/telescope serialization.
 
-A newly authored generation and its exact `initialFreshness` target allocate in order and commit atomically. Validation reads the transaction-visible all-mode frontier and commits a `clearsThrough` prefix justified by local closed-prefix evidence; controlled reset may additionally use the validated source snapshot under exclusive maintenance. Hardness evaluation separately reads the hard subset. Hard invalidation similarly commits its barrier after observed journal history. Sync raises the receiver allocator above observed sequences before local authoring and advances coverage only in the final atomic commit.
+A newly authored generation and its exact `initialFreshness` target allocate in local order and commit atomically. Validation reads the transaction-visible all-mode frontier and commits a `clearsThrough` prefix justified by local closed-prefix evidence; controlled reset may additionally use the validated source snapshot under exclusive maintenance. Hardness evaluation separately reads the hard subset. A hard invalidate's `causalContext` covers the stable authority that caused it. Synchronization takes the next receiver-local coordinate and advances coverage only in the final atomic commit.
 
 `possibleMaybeChanges()` enters the garden and takes one committed read snapshot
 from the selected active replica. It retains that same garden entrance until
