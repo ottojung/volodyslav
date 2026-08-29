@@ -65,16 +65,36 @@ pointer and the lifetime of the replica to which it points.
   the previous active replica are permitted only inside `closeGarden`.
 - An entrant MUST NOT copy the active pointer, leave the garden, and continue
   using the replica. Garden ownership covers the complete operation lifetime,
-  including asynchronous iteration or consumption of a fixed snapshot.
+  including asynchronous snapshot reads performed by the procedure before it
+  returns. Active-replica-backed work MUST NOT continue after the procedure
+  leaves the garden.
 
 Every outer public operation that selects and uses the active replica enters the
 garden before acquiring a dome mode or any replica-local lock. An internal
 schema-derived `pullNode` call is not a new public operation: it receives the
 caller's active-replica context together with proof that shared garden and
 nighttime dome ownership remain live, and MUST NOT re-enter the garden or
-reacquire any dome mode. `possibleMaybeChanges()` needs no dome mode, but holds
-its garden entrance from active-replica selection through creation and complete
-consumption of its fixed committed snapshot.
+reacquire any dome mode. `possibleMaybeChanges()` needs no dome mode and follows
+this complete lifetime protocol:
+
+```text
+enterGarden
+    select active replica
+    take fixed committed snapshot
+    completely consume snapshot internally
+    materialize Array<PossibleNodeChange>
+leaveGarden
+
+promise resolves with ordinary in-memory array
+```
+
+The procedure holds its garden entrance throughout active-replica selection,
+snapshot creation, snapshot consumption, and array materialization. It releases
+the garden before its promise resolves. The return type is
+`Promise<Array<PossibleNodeChange>>`, not an async iterator. After resolution,
+the caller holds only the ordinary array: retaining it, iterating it slowly, or
+abandoning it cannot retain garden ownership. No database snapshot, replica
+reference, iterator, or lifetime capability escapes through the return value.
 
 ## Lock Keys
 
@@ -440,7 +460,8 @@ A newly authored generation and its exact `initialFreshness` target allocate in 
 
 `possibleMaybeChanges()` enters the garden and takes one committed read snapshot
 from the selected active replica. It retains that same garden entrance until
-the fixed snapshot has been completely consumed; it never continues reading a
-saved replica pointer after leaving. It never acquires the dome, telescope,
-writer allocator, or darkroom, appends an entry, changes coverage, or invokes a
-computor.
+the fixed snapshot has been completely consumed and the result array has been
+materialized, then leaves the garden before resolving its promise with that
+ordinary in-memory array. It never continues reading a saved replica pointer
+after leaving. It never acquires the dome, telescope, writer allocator, or
+darkroom, appends an entry, changes coverage, or invokes a computor.

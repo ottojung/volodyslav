@@ -104,7 +104,7 @@ def valid(es):
    if not t or t.key!=e.key or t.kind!="delete":return False
   if e.kind=="add":
    f=d.get(e.initial)
-   if not f or f.kind not in ("validate","invalidate") or f.author!=e.author or f.sequence<=e.sequence or f.key!=e.key or f.generation!=e.id:return False
+   if not f or f.kind not in ("validate","invalidate") or f.author!=e.author or f.sequence<=e.sequence or f.key!=e.key or f.generation!=e.id or f.target!=e.id:return False
  vals=[e for e in es if e.kind=="validate"]
  for v1 in vals:
   for v2 in vals:
@@ -557,6 +557,16 @@ def reset(r,s,tau):
 # Common generation and independent fresh histories expose naive fresh+fresh -> hard.
 G=gen(1,A,(K,N,BS),1,"d",(2,A));V0=ev(2,A,(K,N,BS),2,"validate",G.id,clears=())
 crossG=gen(10,A,(KD,ND,BD),1,"bad",(20,B));crossV=ev(20,B,(KD,ND,BD),2,"validate",crossG.id);assert not valid((crossG,crossV))
+# Every initial freshness form names the generation entry as its exact value
+# origin. Generation-wide and other-origin assertions are inadmissible.
+IGV=gen(30,A,(KI,NI,BI),30,"validate",(31,A));IV=ev(31,A,(KI,NI,BI),31,"validate",IGV.id)
+IGS=gen(40,A,(KI,NI,BI),40,"soft",(41,A));IS0=ev(41,A,(KI,NI,BI),41,"invalidate",IGS.id,"soft",target=IGS.id)
+IGH=gen(50,A,(KI,NI,BI),50,"hard",(51,A));IH0=ev(51,A,(KI,NI,BI),51,"invalidate",IGH.id,"hard",target=IGH.id)
+assert valid((IGV,IV)) and valid((IGS,IS0)) and valid((IGH,IH0))
+IGW=gen(60,A,(KI,NI,BI),60,"wide",(61,A));IW=ev(61,A,(KI,NI,BI),61,"invalidate",IGW.id,"hard")
+assert not valid((IGW,IW))
+IGO=gen(70,A,(KI,NI,BI),70,"origin",(72,A));IOE=ev(71,A,(KI,NI,BI),71,"edit",IGO.id,value="other");IOF=ev(72,A,(KI,NI,BI),72,"validate",IGO.id,target=IOE.id)
+assert not valid((IGO,IOE,IOF))
 IR=ev(10,R,(K,N,BS),10,"invalidate",G.id,"hard");VR=ev(11,R,(K,N,BS),11,"validate",G.id,clears=((R,10),))
 IS=ev(20,S,(K,N,BS),20,"invalidate",G.id,"hard");VS=ev(21,S,(K,N,BS),21,"validate",G.id,clears=((S,20),))
 JR=frozenset((G,V0,IR,VR));JS=frozenset((G,V0,IS,VS));assert valid(JR)and valid(JS)

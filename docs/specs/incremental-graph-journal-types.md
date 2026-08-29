@@ -69,6 +69,11 @@ For two reset-lineage carriers `L1,L2` with the same durable author, NodeKey, an
 An immutable generation entry establishes positive presence and initial value provenance for an actual absent-to-present materialization, so `publicAction(generation)="add"`. Reset never creates a generation to fence equal present history. Delete is negative presence. Edit is an unequal present-to-present value change scoped to the surviving generation. Every generation names exactly one later-ID, atomically authored initial validate/soft-invalidate/hard-invalidate.
 
 For generation `G` and its named initial event `I`, structural validity requires `I.author=G.author`, `I.sequence>G.sequence`, `entryNodeKey(I)=entryNodeKey(G)`, `I.generation=G.id`, and `I.kind` in `{validate,invalidate}`. The two entries install atomically. Sequence adjacency is not required, but a generation cannot name another author's future event.
+In addition, `I` MUST name `G.id` as its exact value origin: an initial
+validation has `I.valueOrigin=G.id`, and an initial soft or hard invalidation has
+`I.appliesTo={valueOrigin:G.id}`. A generation-wide invalidation and an
+assertion naming any edit or other value origin in the generation are not valid
+initial freshness assertions.
 
 ```text
 publicAction(E) = "add" for generation; undefined for reset-observation; otherwise E.kind

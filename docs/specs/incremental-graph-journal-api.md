@@ -1,8 +1,84 @@
 # IncrementalGraph journal polling API
 
-`possibleMaybeChanges({since,to})` returns visible `{nodeName,bindings,action,time}` with exact add/edit/delete/invalidate/validate. It hides NodeIdentifier, generation, invalidation mode, `clearsThrough`, and graph state.
+## Public token types (normative)
 
-`PossibleChangeCursor={filterIdentity,through}` where `through=Map<DatabaseFingerprint,CausalCoordinate>` records the per-author resume position from which polling continues and `filterIdentity` is the canonical identity of the exact NodeFilter used to produce it. Missing vector coordinates are zero. Coordinates beyond receiver coverage neither require adoption nor cause rejection. Portability additionally requires each fingerprint coordinate to denote the same durable writer history in the token's origin and receiving journal contexts. Reuse with a different filter identity throws `InvalidPossibleChangeCursorError` before polling.
+`PossibleNodeChange` is an opaque nominal public value. Its visible readonly
+fields are equivalent to:
+
+```ts
+{
+    nodeName: NodeName;
+    bindings: readonly ConstValue[];
+    action: "add" | "edit" | "delete" | "invalidate" | "validate";
+    time: UnixTimestamp;
+}
+```
+
+It also carries immutable implementation-private cursor state containing the
+information required for same-filter continuation, including the canonical
+filter identity and per-writer cursor vector. This state is not an ordinary
+public object field and its runtime representation is implementation-private.
+It does not expose raw `JournalEntryId`, generation, invalidation mode, or causal
+journal internals. The nominal brand is module-private and unexported, so
+TypeScript callers cannot manufacture a `PossibleNodeChange` structurally.
+
+`BaselinePossibleNodeChange` is a distinct opaque nominal type. It is the
+filter-independent universal before-all/all-zero polling sentinel, created by
+`graph.baselinePossibleNodeChange()`. It is not serializable by the durable
+`PossibleNodeChange` codec.
+
+The public manufacturing boundary is exactly:
+
+```text
+graph.baselinePossibleNodeChange()
+    -> BaselinePossibleNodeChange
+
+graph.possibleMaybeChanges(...)
+    -> PossibleNodeChange values
+
+stringToPossibleChangeToken(...)
+    -> PossibleNodeChange after complete structural/canonical validation
+```
+
+The decoder establishes a syntactically valid nominal `PossibleNodeChange`; it
+does not establish that a graph issued the cursor. The guarantees for fabricated
+or modified cursor coordinates and issuance history are specified with the codec
+below.
+
+The complete polling signature is:
+
+```ts
+possibleMaybeChanges({
+    since,
+    to,
+}: {
+    since: PossibleNodeChange | BaselinePossibleNodeChange;
+    to: NodeFilter;
+}): Promise<Array<PossibleNodeChange>>;
+```
+
+The promise resolves with a fully materialized ordinary in-memory array, not an
+async iterator.
+
+```text
+PossibleNodeChange
+    public: nodeName, bindings, action, time
+    private: filter identity + vector cursor
+
+BaselinePossibleNodeChange
+    opaque universal before-all sentinel
+
+JournalEntry / JournalEntryId / generation / causal frontier
+    internal journal concepts, not public polling values
+```
+
+The private cursor state records the per-author resume position from which
+polling continues and the canonical identity of the exact `NodeFilter` used to
+produce it. Missing vector coordinates are zero. Coordinates beyond receiver
+coverage neither require adoption nor cause rejection. Portability additionally
+requires each fingerprint coordinate to denote the same durable writer history
+in the token's origin and receiving journal contexts. Reuse with a different
+filter identity throws `InvalidPossibleChangeCursorError` before polling.
 
 For one snapshot, choose the greatest event per `(author,NodeKey,publicAction)`, keep those above the consumer coordinate and matching the self-contained address filter, order by `(sequence,author)`, and attach cumulative vector cursors. Soft/hard share invalidate. Every public graph event has a non-null exact action; internal reset-observation entries are excluded before this projection; reset add/edit/delete/freshness transitions use ordinary events.
 
