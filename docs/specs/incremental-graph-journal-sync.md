@@ -34,11 +34,11 @@ anchorCut(J,K,A) = componentwise maximum of every carrier.absorbsThrough and
 
 All named witnesses and origins must resolve to K. A generation-wide invalidate cannot carry reset lineage. For a presence or scoped event E, `inside(A,E)` means `E.sequence <= anchorCut(A)[E.author]`; `after(A,E)` means the same-author comparison `E.sequence > anchorCut(A)[E.author]`. Missing coordinates are zero.
 
-`displacements(A)` is every actual generation/delete for K distinct from `anchorPresence(A)`. Anchor A is currently applicable exactly when every causally maximal member of `displacements(A)` is inside A's cut. It is currently displaced when at least one causally maximal displacement is after A's cut. Delayed history inside the cut cannot displace the anchor. Different anchors are tested independently against their own cuts.
+`displacements(A)` is every actual generation/delete for K distinct from `anchorPresence(A)`, and `maximalDisplacements(A)=causalMaxima(displacements(A))`. Causal domination is computed before any member is classified against the cut. Anchor A is currently applicable exactly when every member of `maximalDisplacements(A)` is inside A's cut. It is currently displaced when at least one member is after A's cut. A causally dominated after-cut event is not independently live when its dominating maximal displacement is inside the cut. Delayed history inside the cut cannot displace the anchor. Different anchors are tested independently against their own cuts.
 
 `applicableAnchors(J,K)` is precisely the anchors satisfying that test. There is no joined cut across different anchors. For each applicable anchor A independently:
 
-1. its ordinary live presence events are actual generation/delete events E with `after(A,E)`, excluding A's concrete witness;
+1. its ordinary live presence events are the members E of `maximalDisplacements(A)` with `after(A,E)`; cut classification never resurrects a causally dominated displacement;
 2. a non-reset-bookkeeping scoped event E with `after(A,E)` activates its exact generation G; activation admits G's actual GenerationJournalEntry but E is not a synthetic presence event;
 3. reset carriers and exact correspondence metadata never activate a generation;
 4. causal maxima followed by occurrence time and fingerprint choose A's live presence result when the set is nonempty;

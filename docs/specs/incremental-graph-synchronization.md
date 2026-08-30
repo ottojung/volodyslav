@@ -34,7 +34,7 @@ The same joined evidence produces the same semantic result in either receive dir
 
 ### Presence
 
-Select semantically eligible generation/delete events, respecting reset absorption and activated generations. Remove causal descendants' predecessors. Among concurrent causal maxima, greater occurrence time wins and exact equal time uses fingerprint. Same-author presence order follows local sequence.
+For each reset anchor, first compute causal maxima of all actual generation/delete displacements and only then classify those maxima as inside or after that anchor's cut. An after-cut displacement dominated by an inside-cut maximum supplies no live presence candidate. Scoped events retain their separate compound activation authority. Reconcile semantically eligible results by causal dominance; among concurrent causal maxima, greater occurrence time wins and exact equal time uses fingerprint. Same-author presence order follows local sequence.
 
 Reset anchors remain fallback authority for the observed state. They are ordered as assertions by event causality; concurrent reset assertions use occurrence time then fingerprint. `absorbsThrough` decides which source events are absorbed, not which assertion observed another. A real generation/delete or activated generation above its own author's absorbed coordinate is live and can displace fallback.
 

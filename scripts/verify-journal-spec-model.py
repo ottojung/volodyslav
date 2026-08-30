@@ -399,9 +399,12 @@ def anchor_result(journal: Iterable[Event] | JournalState, node: NodeKey, anchor
     cut = anchor_cut(journal, node, anchor, carriers)
     witness = anchor_presence(values, node, anchor)
     live: list[PresenceResult] = []
-    for presence in presence_events(values, node):
-        if ((witness is None or presence.id != witness.id)
-                and presence.sequence > coordinate(cut, presence.author)):
+    displacements = [presence for presence in presence_events(values, node)
+                     if witness is None or presence.id != witness.id]
+    # Domination precedes cut classification.  An inside-cut maximum therefore
+    # suppresses every after-cut displacement in its causal past.
+    for presence in causal_maxima(displacements):
+        if presence.sequence > coordinate(cut, presence.author):
             live.append(PresenceResult(presence, presence))
     for scoped in values:
         if (scoped.node == node and scoped.generation is not None
@@ -515,7 +518,7 @@ def reset_subsumes(journal: Iterable[Event] | JournalState,
     groups = anchor_groups(journal, older.node)
     older_anchor = tagged_anchor(older)
     effective_older_cut = anchor_cut(
-        journal, older.node, older_anchor, groups[older_anchor])
+        journal, older.node, older_anchor, groups.get(older_anchor, ()))
     return (newer.node == older.node
             and causally_before(older, newer)
             and prefix_covers(newer.absorbs_through, effective_older_cut))
@@ -560,14 +563,21 @@ def compact(journal: Iterable[Event] | JournalState) -> JournalState:
     keep.update(reset_seeds)
     keep.update(correspondence_seeds(values))
     cut_summaries: set[AnchorCutSummary] = set()
-    nodes = {event.node for event in values}
+    nodes = ({event.node for event in values}
+             | {summary.node for summary in journal_cut_summaries(journal)})
     for node in nodes:
         groups = anchor_groups(journal, node)
         node_reset_seeds = [event for event in reset_seeds if event.node == node]
-        # AC: one non-assertion joined cut for every tagged anchor surviving in RL.
-        for anchor in {tagged_anchor(event) for event in node_reset_seeds}:
+        # AC: one joined cut for every represented anchor.  This is the
+        # canonical anchor-indexed absorption archive used by delayed union.
+        represented_anchors = (set(groups)
+                               | {summary.anchor
+                                  for summary in journal_cut_summaries(journal)
+                                  if summary.node == node})
+        for anchor in represented_anchors:
             cut_summaries.add(AnchorCutSummary(
-                node, anchor, anchor_cut(journal, node, anchor, groups[anchor])))
+                node, anchor, anchor_cut(
+                    journal, node, anchor, groups.get(anchor, ()))))
         # P: results and authorities for future-relevant assertions, or ordinary maxima.
         if node_reset_seeds:
             for assertion in node_reset_seeds:
@@ -790,6 +800,7 @@ def verify_scoped_activation_and_future_anchor() -> None:
                           causal_context={"A": 11})
     joined = current + [inside_future]
     assert anchor_is_applicable(joined, node, future_anchor, [carrier])
+    assert presence_selection(joined, node) == consumed_generation
 
     null_anchor: Anchor = ("null", None)
     null_carrier = event("N", 1, node, "reset-observation", time=60,
@@ -797,6 +808,45 @@ def verify_scoped_activation_and_future_anchor() -> None:
     null_history = [consumed_generation, displacement, inside_future, null_carrier]
     assert anchor_is_applicable(null_history, node, null_anchor, [null_carrier])
     assert anchor_presence(null_history, node, null_anchor) is None
+
+
+def verify_delayed_same_anchor_cut_recovery() -> None:
+    """A delayed concurrent carrier recovers its anchor's archived cut."""
+    node = ("delayed-anchor", ())
+    generation = event("A", 1, node, "generation", time=1)
+    anchor_zero: Anchor = ("null", None)
+    older = event("B", 1, node, "reset-observation", time=2,
+                  reset_lineage=lineage({"A": 1, "X": 10}))
+    newer = event("D", 1, node, "validate", time=3,
+                  causal_context={"B": 1}, generation=generation.id,
+                  value_origin=generation.id,
+                  reset_lineage=lineage({"A": 1, "X": 10}))
+    assert tagged_anchor(older) == anchor_zero
+    assert tagged_anchor(newer) != anchor_zero
+    base = JournalState(frozenset({generation, older, newer}))
+    assert reset_subsumes(base, newer, older)
+    compacted_base = compact(base)
+    assert older not in compacted_base
+    archived = next(summary for summary in compacted_base.anchor_cuts
+                    if summary.node == node and summary.anchor == anchor_zero)
+    assert coordinate(archived.absorbs_through, "X") == 10
+
+    # C is authored without observing N, so it is concurrent with N and
+    # survives the fallback antichain when delivered later.
+    concurrent = event("C", 1, node, "reset-observation", time=4,
+                       reset_lineage=lineage({}))
+    delayed = JournalState(frozenset({concurrent}))
+    left = compact(compacted_base | delayed)
+    right = compact(base | delayed)
+    assert left == right
+    assert presence_selection(left, node) == presence_selection(right, node)
+    assert concurrent in future_reset_assertions(left)
+    recovered = next(summary for summary in left.anchor_cuts
+                     if summary.node == node and summary.anchor == anchor_zero)
+    assert coordinate(recovered.absorbs_through, "X") == 10
+    restarted = compact(left)
+    assert restarted == left
+    assert presence_selection(restarted, node) == presence_selection(right, node)
 
 
 def verify_reset_correspondence_compaction() -> None:
@@ -932,7 +982,17 @@ def verify_reset_compaction_bounds() -> None:
                 reset_lineage=lineage({"A": sequence - 1})))
     compacted = compact(history)
     assert len(future_reset_assertions(history)) == 1
-    assert len(compacted) <= 12  # n=1, r=1, c=0; independent of 80 operations
+    represented_anchors = {tagged_anchor(entry) for entry in history
+                           if is_reset_carrier(entry)}
+    assert len(compacted.anchor_cuts) == len(represented_anchors)
+    # Repeated assertions on one fixed anchor collapse independently of count.
+    fixed_anchor_history = [event(
+        "A", index, ("fixed-anchor", ()), "reset-observation", time=index,
+        reset_lineage=lineage({"A": index - 1}))
+                            for index in range(1, 81)]
+    fixed_compacted = compact(fixed_anchor_history)
+    assert len(fixed_compacted.anchor_cuts) == 1
+    assert len(fixed_compacted) <= 3
 
     relation_node = ("relation-churn", ())
     receiver_generation = event("R", 1, relation_node, "generation", time=1)
@@ -1027,6 +1087,7 @@ def main() -> None:
     verify_reset_and_migration_preserve_effective_cuts()
     verify_reset_applicability_and_cuts()
     verify_scoped_activation_and_future_anchor()
+    verify_delayed_same_anchor_cut_recovery()
     verify_reset_correspondence_compaction()
     verify_compacted_anchor_cut_preservation()
     verify_delete_vs_activation_authority()
