@@ -40,6 +40,9 @@ ResetCorrespondence = {
     consumedGeneration:JournalEntryId,
     consumedValueOrigin:JournalEntryId
 }
+ResetAnchorCutSummary = {
+    nodeName, bindings, taggedAnchor, absorbsThrough:CausalPrefix
+}
 entryNodeKey(E) = NodeKey(E.nodeName,E.bindings)
 ```
 
@@ -112,7 +115,11 @@ taggedAnchor(E) =
                                      when E is InvalidateJournalEntry
 ```
 
-This function is defined only for entries carrying `resetLineage`. A reset-lineage invalidate is necessarily value-specific; `appliesTo="generation"` is invalid on such a carrier. Every referenced delete, value origin, and containing generation resolves exactly and has the carrier's NodeKey. A delete carrier anchors itself. `ResetCorrespondence` is permitted only on a present carrier and its receiver side is the exact value origin in that carrier's tagged anchor.
+This function is defined only for entries carrying `resetLineage`. A reset-lineage invalidate is necessarily value-specific; `appliesTo="generation"` is invalid on such a carrier. Every referenced receiver delete, receiver value origin, and containing generation resolves exactly and has the carrier's NodeKey. A delete carrier anchors itself. `ResetCorrespondence` is permitted only on a present carrier and its receiver side is the exact value origin in that carrier's tagged anchor.
+
+`consumedGeneration` and `consumedValueOrigin` are source-side semantic identities observed by reset, not local journal references. Their ID shapes and fingerprint provenance are validated under the reset snapshot contract, but the named source entries need not exist in the receiver journal. Their presence never causes local exact-reference closure or retention.
+
+Canonical compaction persists at most one `ResetAnchorCutSummary` per future-relevant `(NodeKey,taggedAnchor)`. It is non-assertion metadata: it has no event ID, causal context, occurrence time, public action, fallback vote, or correspondence. Its sole meaning is the same-anchor componentwise absorption join needed to reconstruct `anchorCut`; union joins summaries only with summaries and carriers of that exact tagged anchor.
 
 ```text
 absorbedBy(L,E) iff E.sequence <= L.absorbsThrough[E.author]

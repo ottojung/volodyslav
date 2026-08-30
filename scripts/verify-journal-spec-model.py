@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bounded executable model of the normative causal journal selectors."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import combinations
 from typing import Iterable, Mapping
 
@@ -74,6 +74,54 @@ class Event:
     def correspondence(self) -> Correspondence | None:
         return (None if self.reset_lineage is None
                 else self.reset_lineage.correspondence)
+
+
+@dataclass(frozen=True)
+class AnchorCutSummary:
+    """Non-assertion compact state preserving one tagged anchor's joined cut."""
+    node: NodeKey
+    anchor: Anchor
+    absorbs_through: Prefix
+
+    def __hash__(self) -> int:
+        return hash((self.node, self.anchor, tuple(sorted(self.absorbs_through.items()))))
+
+
+@dataclass(frozen=True)
+class JournalState:
+    events: frozenset[Event]
+    anchor_cuts: frozenset[AnchorCutSummary] = frozenset()
+
+    def __iter__(self):
+        return iter(self.events)
+
+    def __contains__(self, item):
+        return item in self.events
+
+    def __len__(self):
+        return len(self.events) + len(self.anchor_cuts)
+
+    def __or__(self, other):
+        return merge_state(self, other)
+
+    def __ror__(self, other):
+        return merge_state(other, self)
+
+
+def journal_events(journal: Iterable[Event] | JournalState) -> tuple[Event, ...]:
+    return tuple(journal.events if isinstance(journal, JournalState) else journal)
+
+
+def journal_cut_summaries(journal: Iterable[Event] | JournalState
+                          ) -> tuple[AnchorCutSummary, ...]:
+    return tuple(journal.anchor_cuts if isinstance(journal, JournalState) else ())
+
+
+def merge_state(left, right) -> JournalState:
+    events = frozenset(journal_events(left)) | frozenset(journal_events(right))
+    summaries = frozenset(journal_cut_summaries(left)) | frozenset(
+        journal_cut_summaries(right))
+    return JournalState(events, summaries)
 
 
 @dataclass
@@ -218,8 +266,9 @@ def anchor_presence(journal: Iterable[Event], node: NodeKey,
     return generation_event(journal, generation)
 
 
-def anchor_groups(journal: Iterable[Event], node: NodeKey) -> dict[Anchor, tuple[Event, ...]]:
-    values = tuple(journal)
+def anchor_groups(journal: Iterable[Event] | JournalState,
+                  node: NodeKey) -> dict[Anchor, tuple[Event, ...]]:
+    values = journal_events(journal)
     groups: dict[Anchor, list[Event]] = {}
     for event in values:
         if event.node == node and is_reset_carrier(event):
@@ -235,16 +284,19 @@ def anchor_groups(journal: Iterable[Event], node: NodeKey) -> dict[Anchor, tuple
             if event.correspondence is not None:
                 assert anchor[0] == "present" and anchor[1] is not None
                 source_generation, source_origin = event.correspondence
-                assert next(candidate for candidate in values
-                            if candidate.id == source_generation).node == event.node
-                assert next(candidate for candidate in values
-                            if candidate.id == source_origin).node == event.node
+                assert source_generation[1] > 0 and source_origin[1] > 0
+                assert source_generation[0] and source_origin[0]
             groups.setdefault(anchor, []).append(event)
     return {anchor: tuple(carriers) for anchor, carriers in groups.items()}
 
 
-def anchor_cut(carriers: Iterable[Event]) -> dict[str, int]:
-    return join_prefixes(*(carrier.absorbs_through for carrier in carriers))
+def anchor_cut(journal: Iterable[Event] | JournalState, node: NodeKey,
+               anchor: Anchor, carriers: Iterable[Event]) -> dict[str, int]:
+    summaries = [summary.absorbs_through
+                 for summary in journal_cut_summaries(journal)
+                 if summary.node == node and summary.anchor == anchor]
+    return join_prefixes(
+        *(carrier.absorbs_through for carrier in carriers), *summaries)
 
 
 def presence_events(journal: Iterable[Event], node: NodeKey) -> tuple[Event, ...]:
@@ -252,21 +304,21 @@ def presence_events(journal: Iterable[Event], node: NodeKey) -> tuple[Event, ...
                  if event.node == node and event.kind in {"generation", "delete"})
 
 
-def anchor_is_applicable(journal: Iterable[Event], node: NodeKey,
+def anchor_is_applicable(journal: Iterable[Event] | JournalState, node: NodeKey,
                          anchor: Anchor, carriers: Iterable[Event]) -> bool:
     witness = anchor_presence(journal, node, anchor)
     displacements = [event for event in presence_events(journal, node)
                      if witness is None or event.id != witness.id]
-    cut = anchor_cut(carriers)
+    cut = anchor_cut(journal, node, anchor, carriers)
     return all(event.sequence <= coordinate(cut, event.author)
                for event in causal_maxima(displacements))
 
 
-def applicable_anchor_groups(journal: Iterable[Event], node: NodeKey
+def applicable_anchor_groups(journal: Iterable[Event] | JournalState, node: NodeKey
                              ) -> dict[Anchor, tuple[Event, ...]]:
-    values = tuple(journal)
-    return {anchor: carriers for anchor, carriers in anchor_groups(values, node).items()
-            if anchor_is_applicable(values, node, anchor, carriers)}
+    values = journal_events(journal)
+    return {anchor: carriers for anchor, carriers in anchor_groups(journal, node).items()
+            if anchor_is_applicable(journal, node, anchor, carriers)}
 
 
 def activated_generations(journal: Iterable[Event], node: NodeKey,
@@ -281,7 +333,8 @@ def activated_generations(journal: Iterable[Event], node: NodeKey,
     return result
 
 
-def fallback_antichain(journal: Iterable[Event], node: NodeKey) -> tuple[Event, ...]:
+def fallback_antichain(journal: Iterable[Event] | JournalState,
+                       node: NodeKey) -> tuple[Event, ...]:
     groups = applicable_anchor_groups(journal, node)
     return causal_maxima(carrier for carriers in groups.values() for carrier in carriers)
 
@@ -296,10 +349,10 @@ class PresenceResult:
     authority: Event
 
 
-def anchor_result(journal: Iterable[Event], node: NodeKey, anchor: Anchor,
+def anchor_result(journal: Iterable[Event] | JournalState, node: NodeKey, anchor: Anchor,
                   carriers: Iterable[Event], assertion: Event) -> PresenceResult:
-    values = tuple(journal)
-    cut = anchor_cut(carriers)
+    values = journal_events(journal)
+    cut = anchor_cut(journal, node, anchor, carriers)
     witness = anchor_presence(values, node, anchor)
     live: list[PresenceResult] = []
     for presence in presence_events(values, node):
@@ -321,13 +374,14 @@ def anchor_result(journal: Iterable[Event], node: NodeKey, anchor: Anchor,
     return next(result for result in live if result.authority == authority)
 
 
-def presence_selection(journal: Iterable[Event], node: NodeKey) -> Event | None:
-    values = tuple(journal)
-    groups = applicable_anchor_groups(values, node)
-    assertions = fallback_antichain(values, node)
+def presence_selection(journal: Iterable[Event] | JournalState,
+                       node: NodeKey) -> Event | None:
+    values = journal_events(journal)
+    groups = applicable_anchor_groups(journal, node)
+    assertions = fallback_antichain(journal, node)
     if not assertions:
         return concurrent_winner(causal_maxima(presence_events(values, node)))
-    results = [anchor_result(values, node, tagged_anchor(assertion),
+    results = [anchor_result(journal, node, tagged_anchor(assertion),
                              groups[tagged_anchor(assertion)], assertion)
                for assertion in assertions]
     maximal_authorities = causal_maxima(result.authority for result in results)
@@ -446,24 +500,29 @@ def correspondence_seeds(journal: Iterable[Event]) -> frozenset[Event]:
     return frozenset(result)
 
 
-def compact(journal: Iterable[Event]) -> frozenset[Event]:
+def compact(journal: Iterable[Event] | JournalState) -> JournalState:
     """Exactly N/P/VH/ET/IF/HF/VV/RL/RC plus reference closure."""
-    values = frozenset(journal)
+    values = frozenset(journal_events(journal))
     # N
     keep: set[Event] = set(polling_maxima(values))
     # RL and RC
     reset_seeds = future_reset_assertions(values)
     keep.update(reset_seeds)
     keep.update(correspondence_seeds(values))
+    cut_summaries: set[AnchorCutSummary] = set()
     nodes = {event.node for event in values}
     for node in nodes:
-        groups = anchor_groups(values, node)
+        groups = anchor_groups(journal, node)
         node_reset_seeds = [event for event in reset_seeds if event.node == node]
+        # AC: one non-assertion joined cut for every tagged anchor surviving in RL.
+        for anchor in {tagged_anchor(event) for event in node_reset_seeds}:
+            cut_summaries.add(AnchorCutSummary(
+                node, anchor, anchor_cut(journal, node, anchor, groups[anchor])))
         # P: results and authorities for future-relevant assertions, or ordinary maxima.
         if node_reset_seeds:
             for assertion in node_reset_seeds:
                 anchor = tagged_anchor(assertion)
-                result = anchor_result(values, node, anchor, groups[anchor], assertion)
+                result = anchor_result(journal, node, anchor, groups[anchor], assertion)
                 keep.add(result.authority)
                 if result.presence is not None:
                     keep.add(result.presence)
@@ -504,15 +563,13 @@ def compact(journal: Iterable[Event]) -> frozenset[Event]:
         references = {reference for event in keep
                       for reference in (event.generation, event.value_origin,
                                         event.applies_to if isinstance(event.applies_to, tuple) else None,
-                                        event.absent_anchor,
-                                        event.correspondence[0] if event.correspondence else None,
-                                        event.correspondence[1] if event.correspondence else None)
+                                        event.absent_anchor)
                       if reference is not None}
         for event in values:
             if event.id in references and event not in keep:
                 keep.add(event)
                 changed = True
-    return frozenset(keep)
+    return JournalState(frozenset(keep), frozenset(cut_summaries))
 
 
 def event(author: str, sequence: int, node: NodeKey, kind: str, **fields) -> Event:
@@ -559,8 +616,8 @@ def reset_fixture() -> tuple[NodeKey, list[Event], Anchor, Anchor]:
 def verify_reset_applicability_and_cuts() -> None:
     node, journal, present_anchor, delete_anchor = reset_fixture()
     groups = anchor_groups(journal, node)
-    assert anchor_cut(groups[present_anchor]) == {"A": 10}
-    assert anchor_cut(groups[delete_anchor]) == {"A": 11}
+    assert anchor_cut(journal, node, present_anchor, groups[present_anchor]) == {"A": 10}
+    assert anchor_cut(journal, node, delete_anchor, groups[delete_anchor]) == {"A": 11}
     # A:10 is delayed consumed displacement for the present anchor; A:11 is live.
     assert not anchor_is_applicable(journal, node, present_anchor, groups[present_anchor])
     assert anchor_is_applicable(journal, node, delete_anchor, groups[delete_anchor])
@@ -587,7 +644,8 @@ def verify_scoped_activation_and_future_anchor() -> None:
     activated = journal + [scoped]
     delete_group = anchor_groups(activated, node)[("delete", ("A", 10))]
     assert consumed_generation.id in activated_generations(
-        activated, node, anchor_cut(delete_group))
+        activated, node,
+        anchor_cut(activated, node, ("delete", ("A", 10)), delete_group))
     assert scoped not in presence_events(activated, node)
 
     # An inapplicable anchor can become applicable when a future inside-cut
@@ -617,17 +675,68 @@ def verify_scoped_activation_and_future_anchor() -> None:
 def verify_reset_correspondence_compaction() -> None:
     node = ("reset", ())
     receiver_generation = event("R", 1, node, "generation", time=1)
-    source_generation = event("A", 4, node, "generation", time=1)
-    source_edit = event("A", 5, node, "edit", time=2,
-                        generation=source_generation.id)
+    source_generation = ("A", 4)
+    source_origin = ("A", 5)
     carrier = event("R", 2, node, "validate", time=3,
                     generation=receiver_generation.id,
                     value_origin=receiver_generation.id,
                     reset_lineage=lineage(
-                        {"A": 5}, (source_generation.id, source_edit.id)))
-    compacted = compact([receiver_generation, source_generation, source_edit, carrier])
-    assert carrier in compacted and source_generation in compacted and source_edit in compacted
-    assert carrier.correspondence == (source_generation.id, source_edit.id)
+                        {"A": 5}, (source_generation, source_origin)))
+    compacted = compact([receiver_generation, carrier])
+    assert carrier in compacted and receiver_generation in compacted
+    assert all(entry.id not in {source_generation, source_origin} for entry in compacted)
+    assert carrier.correspondence == (source_generation, source_origin)
+    # Restart from compact state retains the relation without source journal entries.
+    restarted = compact(compacted)
+    assert correspondence_seeds(restarted) == frozenset({carrier})
+
+
+def verify_compacted_anchor_cut_preservation() -> None:
+    node = ("cut-preservation", ())
+    generation = event("A", 1, node, "generation", time=1)
+    old_null = event(
+        "B", 1, node, "reset-observation", time=10,
+        reset_lineage=lineage({"A": 1, "X": 10}))
+    surviving_null = event(
+        "C", 1, node, "reset-observation", time=40,
+        reset_lineage=lineage({}))
+    present = event(
+        "D", 1, node, "validate", time=30,
+        causal_context={"B": 1}, generation=generation.id,
+        value_origin=generation.id,
+        reset_lineage=lineage({"A": 1, "X": 10}))
+    consumed = event("X", 5, node, "generation", time=50)
+    journal = [generation, old_null, surviving_null, present, consumed]
+    assert presence_selection(journal, node) is None
+    compacted = compact(journal)
+    null_summary = next(summary for summary in compacted.anchor_cuts
+                        if summary.anchor == ("null", None))
+    assert coordinate(null_summary.absorbs_through, "X") == 10
+    assert old_null not in compacted
+    assert presence_selection(compacted, node) == presence_selection(journal, node)
+
+    delayed = event("X", 11, node, "delete", time=60)
+    assert compact(compacted | {delayed}) == compact(set(journal) | {delayed})
+
+
+def verify_delete_vs_activation_authority() -> None:
+    node = ("activation-authority", ())
+    generation = event("A", 1, node, "generation", time=1)
+    activating_edit = event("B", 1, node, "edit", time=30,
+                            generation=generation.id)
+    delete = event(
+        "D", 1, node, "delete", time=20,
+        reset_lineage=lineage({"A": 1, "B": 1, "D": 1}))
+    null = event(
+        "N", 1, node, "reset-observation", time=10,
+        reset_lineage=lineage({"A": 1, "D": 1}))
+    # Activation yields compound (presence=G, authority=E); E wins concurrency.
+    assert presence_selection([generation, activating_edit, delete, null], node) == generation
+
+    observed_delete = replace(delete, time=40, causal_context={"B": 1})
+    # The real delete causally dominates the activation authority.
+    assert presence_selection(
+        [generation, activating_edit, observed_delete, null], node) == observed_delete
 
 
 def verify_anchor_scoped_absorption() -> None:
@@ -643,14 +752,17 @@ def verify_anchor_scoped_absorption() -> None:
     without_edit = [generation, null_assertion, present_assertion]
     assert presence_selection(without_edit, node) is None
     groups = anchor_groups(without_edit, node)
-    assert coordinate(anchor_cut(groups[("null", None)]), "B") == 0
-    assert coordinate(anchor_cut(groups[("present", generation.id)]), "B") == 10
+    assert coordinate(anchor_cut(without_edit, node, ("null", None),
+                                 groups[("null", None)]), "B") == 0
+    assert coordinate(anchor_cut(without_edit, node, ("present", generation.id),
+                                 groups[("present", generation.id)]), "B") == 10
 
     scoped = event("B", 5, node, "edit", time=40, generation=generation.id)
     with_edit = without_edit + [scoped]
     # P's B:10 cannot be lent to N. B:5 activates G relative to N's own cut.
     assert generation.id in activated_generations(
-        with_edit, node, anchor_cut(groups[("null", None)]))
+        with_edit, node,
+        anchor_cut(with_edit, node, ("null", None), groups[("null", None)]))
     assert presence_selection(with_edit, node) == generation
 
 
@@ -764,7 +876,7 @@ def verify_compaction_future_union() -> None:
         (set(reset_history), {scoped}),
         (set(reset_history + [hard]), {validation}),
         (set(reset_history + [validation]), {hard, scoped}),
-        ({receiver_generation, source_generation, source_origin}, {relation_carrier}),
+        ({receiver_generation, relation_carrier}, {source_generation, source_origin}),
     ]
     for left, right in cases:
         assert compact(compact(left) | right) == compact(left | right)
@@ -787,6 +899,8 @@ def main() -> None:
     verify_reset_applicability_and_cuts()
     verify_scoped_activation_and_future_anchor()
     verify_reset_correspondence_compaction()
+    verify_compacted_anchor_cut_preservation()
+    verify_delete_vs_activation_authority()
     verify_anchor_scoped_absorption()
     verify_no_coherent_candidates()
     verify_reset_compaction_bounds()

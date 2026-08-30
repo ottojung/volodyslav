@@ -28,7 +28,8 @@ anchorPresence(A) =
     the generation containing the exact origin   when A=("present",origin)
 
 anchorCarriers(J,K,A) = reset-lineage carriers for K whose taggedAnchor is A
-anchorCut(J,K,A) = componentwise maximum of every carrier.absorbsThrough
+anchorCut(J,K,A) = componentwise maximum of every carrier.absorbsThrough and
+                   the compact ResetAnchorCutSummary for exactly (K,A), if present
 ```
 
 All named witnesses and origins must resolve to K. A generation-wide invalidate cannot carry reset lineage. For a presence or scoped event E, `inside(A,E)` means `E.sequence <= anchorCut(A)[E.author]`; `after(A,E)` means the same-author comparison `E.sequence > anchorCut(A)[E.author]`. Missing coordinates are zero.
@@ -43,7 +44,7 @@ All named witnesses and origins must resolve to K. A generation-wide invalidate 
 4. causal maxima followed by occurrence time and fingerprint choose A's live presence result when the set is nonempty;
 5. otherwise A's result is `anchorPresence(A)`, including absence for the null anchor.
 
-`fallbackAssertions(J,K)` is every individual carrier belonging to an applicable anchor. Remove O only when another carrier N satisfies `causallyBefore(O,N)`. Each survivor supplies the result derived with its own anchor's cut. Reconcile survivor results by causal authority: a live presence result uses the presence event that selected it, an activated generation uses the scoped activating event, and an anchor fallback uses its carrier. Remove causally dominated authorities, then use authority occurrence time and author fingerprint for genuine concurrency. Sequence is absent from that conflict key. `absorbsThrough` establishes only semantic absorption for its one tagged anchor and never assertion happened-before.
+`fallbackAssertions(J,K)` is every individual carrier belonging to an applicable anchor. Remove O only when another carrier N satisfies `causallyBefore(O,N)`. Each survivor supplies the result derived with its own anchor's cut. A live actual presence result has compound authority `(presenceEvent, presenceEvent)`. An activated generation has compound authority `(presence=G, conflictAuthority=E)`, where G is the actual GenerationJournalEntry and E is the scoped event that activated it; E never becomes a presence event. An anchor fallback has `(presence=anchorPresence, conflictAuthority=carrier)`. Reconcile results by removing causally dominated `conflictAuthority` events, then use conflict-authority occurrence time and author fingerprint for genuine concurrency. Thus a real delete D is compared with E, not with G, when competing against an activated generation. Sequence is absent from that conflict key. `absorbsThrough` establishes only semantic absorption for its one tagged anchor and never assertion happened-before.
 
 If there is no reset assertion, apply the ordinary causal-maximal presence rule to all actual presence events. A currently displaced anchor remains retained but contributes no result until applicable. Null, delete, and present anchors use the same applicability test; only their concrete fallback witness differs.
 

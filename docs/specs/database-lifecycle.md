@@ -100,10 +100,11 @@ Before installation, restoration validates the ordinary load structure:
 - the durable `DatabaseFingerprint` belongs to
   the selected host/writer branch;
 - retained generation references resolve correctly, and every generation's named initial freshness event has the same author, a greater sequence, the same derived `entryNodeKey`, and the generation's exact ID;
-- every retained value-specific freshness assertion resolves its exact same-key/generation value-origin event; reset-lineage consumed source identities need not be locally retained, but their coordinate shapes and authoring provenance must validate;
+- every retained value-specific freshness assertion resolves its exact same-key/generation receiver value-origin event; reset correspondence source identities need not be locally retained, but their ID shapes, fingerprint provenance, and source-snapshot introduction proof must validate;
 - live `NodeIdentifier` values are unique and bijective with live semantic keys, and no retired identifier is live;
 - every materialization origin is the admissible canonical event for its winning generation and `modifiedAt`, rather than a causally dominated same-author head or noncanonical equal-time candidate;
 - every retained `clearsThrough`, `absorbsThrough`, and `causalContext` has canonical map shape, unique supported fingerprint coordinates, and non-negative arbitrary-precision `CausalCoordinate` values;
+- every compact reset-anchor cut summary has one canonical `(NodeKey,taggedAnchor)` key, a canonical `absorbsThrough`, and no event identity, fallback authority, public action, or correspondence;
 - retained event contexts are supported by observed-state authoring and same-author later events monotonically carry foreign causal knowledge;
 - retained same-author/key/generation validation vectors are componentwise monotone when comparable evidence is present;
 - `localJournalCounter` equals the local fingerprint coverage coordinate and locally authored entries do not exceed it; sequence magnitudes belonging to other authors are incomparable;

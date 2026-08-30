@@ -447,7 +447,7 @@ closeGarden
 No path reverses this order. Exclusive synchronization, migration and reset keep
 their existing inactive-construction phases. The darkroom remains short: work is
 prepared first and allocator values are tentatively chosen under their mutex.
-The final graph, journal entries, `localJournalCounter`, journal coverage, and relevant causal metadata are committed
+The final graph, journal entries, compact reset-anchor cut summaries, `localJournalCounter`, journal coverage, and relevant causal metadata are committed
 atomically under darkroom finalization. A choice published by that commit is
 permanently non-reusable and committed counters never move backwards. An abort
 before publication exposes neither durable allocator advancement nor a durable
