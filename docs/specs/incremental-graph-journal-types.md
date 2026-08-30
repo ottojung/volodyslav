@@ -100,13 +100,29 @@ Generation-wide invalidates represent explicit semantic invalidation independent
 
 `causalContext` records what a reset assertion observed. `absorbsThrough` records source/history coordinates intentionally replaced. `ResetCorrespondence` records the exact source generation/value origin actually compared `isEqual` with the receiver anchor. Causal observation never implies semantic correspondence.
 
+Reset anchor identity is derived from the carrier's existing fields; it is not a persisted field:
+
+```text
+taggedAnchor(E) =
+    ("null")                         when E is ResetObservationEntry and E.absentAnchor=null
+    ("delete",E.absentAnchor)        when E is ResetObservationEntry and E.absentAnchor!=null
+    ("delete",E.id)                  when E is DeleteJournalEntry
+    ("present",E.valueOrigin)        when E is ValidateJournalEntry
+    ("present",E.appliesTo.valueOrigin)
+                                     when E is InvalidateJournalEntry
+```
+
+This function is defined only for entries carrying `resetLineage`. A reset-lineage invalidate is necessarily value-specific; `appliesTo="generation"` is invalid on such a carrier. Every referenced delete, value origin, and containing generation resolves exactly and has the carrier's NodeKey. A delete carrier anchors itself. `ResetCorrespondence` is permitted only on a present carrier and its receiver side is the exact value origin in that carrier's tagged anchor.
+
 ```text
 absorbedBy(L,E) iff E.sequence <= L.absorbsThrough[E.author]
 ```
 
 This comparison is within E's author coordinate. A later event above that author's absorbed prefix remains live irrespective of the reset carrier's author or sequence. Present reset lineage is attached to a retained receiver freshness assertion; present-to-absent lineage is attached to its public delete; absent-to-absent lineage uses an internal no-action reset observation anchored to a delete or explicit null absence. Reset does not import source journal or source coverage.
 
-Assertions are ordered by ordinary event causality. Same-author assertions are ordered by local sequence; cross-author succession is recorded by `causalContext`. Causally maximal concurrent assertions resolve by occurrence time and then author fingerprint. Their `absorbsThrough` vectors may join only as semantic absorption for the same tagged receiver anchor and never prove assertion succession. Exact correspondences remain separately retained.
+Assertions are ordered by ordinary event causality. Same-author assertions are ordered by local sequence; cross-author succession is recorded by `causalContext`. Causally maximal concurrent assertions resolve by occurrence time and then author fingerprint. `absorbsThrough` vectors join only among carriers with the same derived tagged anchor. Different anchors never lend absorption coordinates to one another. Exact correspondences remain separately retained.
+
+When a reset operation authors a carrier for K after observing a future-relevant assertion for K, the new carrier componentwise carries that assertion's `absorbsThrough`, even when their tagged anchors differ. This is new absorption evidence established by the reset operation's actual observation; selection never infers it by joining concurrent anchors. Consequently a same-writer sequence of settled reset decisions carries every earlier future-relevant absorption prefix that it consumes, while exact correspondence facts remain separate.
 
 A reset is settled when the receiver semantic projection, freshness authority, required correspondence, absorption prefix, and causal knowledge relevant to future source union already equal the result of the validated snapshots. Repeating a settled reset emits nothing. Newly relevant observed source absorption or causality is retained even when graph bytes do not change.
 

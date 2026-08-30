@@ -63,7 +63,23 @@ A source validity edge can be transported only when:
 
 Equality permits transport of proof; it does not create proof. Multi-input derived nodes require every distinct input. `oldValue` is an optimization and `Unchanged` asserts semantic equality. Computors dependent on hidden time, identity, nondeterminism, or other unmodeled state must not claim transferable validity.
 
-If coherent candidates exist, choose among candidates eligible at the coherence stage using causal/concurrent value precedence. If none exists, preserve supported multi-input deletion behavior: delete an unsupported derived materialization when required rather than retaining an arbitrary cache. A retained exact reset correspondence may support only the receiver anchor and exact source generation/origin pair actually compared.
+If coherent candidates exist, choose among candidates eligible at the coherence stage using causal/concurrent value precedence. A retained exact reset correspondence may support only the receiver anchor and exact source generation/origin pair actually compared.
+
+### No coherent candidate
+
+Let `unsupportedPrecedence(S)` remove causally dominated candidates from S, then choose greater `modifiedAt` among concurrent maxima, then author fingerprint for exact concurrent equal-time conflict. Same-author sequence participates only through causality. Let a candidate's **stale-retention identity** be its exact canonical value origin together with the final distinct direct-input semantic identities against which its stale cache would be reused.
+
+After provenance and coherence classification finds no coherent candidate:
+
+| Distinct direct inputs | Candidate state | Result |
+|---|---|---|
+| zero | any nonempty admissible set | retain `unsupportedPrecedence(admissible)` under the root rule |
+| one | any nonempty admissible set | retain `unsupportedPrecedence(admissible)` stale |
+| multiple | every present unsupported candidate has the same stale-retention identity and both sides represent that identity | retain `unsupportedPrecedence(candidates with that identity)` stale |
+| multiple | present unsupported candidates have different stale-retention identities | delete |
+| multiple | an unsupported candidate is opposite absence | remain absent/delete; do not copy the unsupported cache into the absent side |
+
+Thus every permitted retention has one defined candidate selector. Multi-input retention requires agreement on the exact supported candidate identity; mere value equality, timestamp order, reset absorption, or causal observation does not manufacture that agreement. Deletion authors one causal barrier only when the joined journal does not already represent the decision.
 
 ## Freshness
 

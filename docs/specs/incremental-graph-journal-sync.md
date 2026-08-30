@@ -14,10 +14,13 @@ The second operation is used only after causal domination is removed. Its sequen
 For each NodeKey K, the reset presence projection is defined completely as follows.
 
 ```text
-taggedAnchor(L) =
-    ("null")                                      for explicit null absence
-    ("delete", L.absentAnchor)                    for delete-anchored absence
-    ("present", L.receiverValueOrigin)            for present lineage
+taggedAnchor(E) =
+    ("null")                         for ResetObservationEntry with absentAnchor=null
+    ("delete",E.absentAnchor)        for ResetObservationEntry with absentAnchor!=null
+    ("delete",E.id)                  for DeleteJournalEntry carrying resetLineage
+    ("present",E.valueOrigin)        for ValidateJournalEntry carrying resetLineage
+    ("present",E.appliesTo.valueOrigin)
+                                     for value-specific InvalidateJournalEntry carrying resetLineage
 
 anchorPresence(A) =
     undefined                                     when A=("null")
@@ -28,22 +31,27 @@ anchorCarriers(J,K,A) = reset-lineage carriers for K whose taggedAnchor is A
 anchorCut(J,K,A) = componentwise maximum of every carrier.absorbsThrough
 ```
 
-All named witnesses and origins must resolve to K. For a presence event E, `inside(A,E)` means `E.sequence <= anchorCut(A)[E.author]`; `after(A,E)` means the same-author comparison `E.sequence > anchorCut(A)[E.author]`. Missing coordinates are zero.
+All named witnesses and origins must resolve to K. A generation-wide invalidate cannot carry reset lineage. For a presence or scoped event E, `inside(A,E)` means `E.sequence <= anchorCut(A)[E.author]`; `after(A,E)` means the same-author comparison `E.sequence > anchorCut(A)[E.author]`. Missing coordinates are zero.
 
 `displacements(A)` is every actual generation/delete for K distinct from `anchorPresence(A)`. Anchor A is currently applicable exactly when every causally maximal member of `displacements(A)` is inside A's cut. It is currently displaced when at least one causally maximal displacement is after A's cut. Delayed history inside the cut cannot displace the anchor. Different anchors are tested independently against their own cuts.
 
-`applicableAnchors(J,K)` is precisely the anchors satisfying that test. Its `applicableCut[K][author]` is the componentwise maximum of their `anchorCut` values, missing as zero. An actual generation/delete E is ordinarily eligible when `E.sequence > applicableCut[K][E.author]` and E is not the concrete witness of an applicable anchor. For each generation G, a non-reset-bookkeeping scoped event E activates G when `E.generation=G.id` and `E.sequence > applicableCut[K][E.author]`; activation makes G's actual GenerationJournalEntry eligible but does not make E a synthetic presence event. Applicable reset carriers and exact correspondence metadata never activate a generation.
+`applicableAnchors(J,K)` is precisely the anchors satisfying that test. There is no joined cut across different anchors. For each applicable anchor A independently:
 
-`fallbackAssertions(J,K)` is every individual carrier belonging to an applicable anchor. Remove O when another such carrier N satisfies `causallyBefore(O,N)`. The survivors are the fallback antichain. Occurrence time and then author fingerprint select among genuinely concurrent survivors; sequence is absent from that conflict key. The selected carrier contributes its `anchorPresence`, including explicit absence for a null anchor. `absorbsThrough` establishes only semantic absorption and never assertion happened-before.
+1. its ordinary live presence events are actual generation/delete events E with `after(A,E)`, excluding A's concrete witness;
+2. a non-reset-bookkeeping scoped event E with `after(A,E)` activates its exact generation G; activation admits G's actual GenerationJournalEntry but E is not a synthetic presence event;
+3. reset carriers and exact correspondence metadata never activate a generation;
+4. causal maxima followed by occurrence time and fingerprint choose A's live presence result when the set is nonempty;
+5. otherwise A's result is `anchorPresence(A)`, including absence for the null anchor.
 
-A currently displaced anchor remains part of retained reset history even though it contributes neither cut nor fallback now: future union can make it applicable. Null, delete, and present anchors use the same applicability test; only their concrete fallback witness differs.
+`fallbackAssertions(J,K)` is every individual carrier belonging to an applicable anchor. Remove O only when another carrier N satisfies `causallyBefore(O,N)`. Each survivor supplies the result derived with its own anchor's cut. Reconcile survivor results by causal authority: a live presence result uses the presence event that selected it, an activated generation uses the scoped activating event, and an anchor fallback uses its carrier. Remove causally dominated authorities, then use authority occurrence time and author fingerprint for genuine concurrency. Sequence is absent from that conflict key. `absorbsThrough` establishes only semantic absorption for its one tagged anchor and never assertion happened-before.
+
+If there is no reset assertion, apply the ordinary causal-maximal presence rule to all actual presence events. A currently displaced anchor remains retained but contributes no result until applicable. Null, delete, and present anchors use the same applicability test; only their concrete fallback witness differs.
 
 ```text
-eligiblePresence(J,K) = ordinary eligible generation/delete events
-                        plus actual generations activated by scoped events
-presenceMaxima(J,K) = causalMaxima(eligiblePresence(J,K))
-presenceHead(J,K) = concurrentWinner(presenceMaxima(J,K)), or the selected
-                    reset fallback when no eligible actual event exists
+anchorResult(J,K,A) = result derived relative only to anchorCut(A)
+presenceHead(J,K) = causal/concurrent reconciliation of results supplied by
+                    causal-maximal applicable fallback assertions;
+                    ordinary causal presence when there is no assertion
 generation = presenceHead.id iff presenceHead is generation
 valueEvents(J,K,G) = generation G plus edits scoped to G
 valueHead(J,K,G,A) = greatest-sequence A-authored admissible value event
