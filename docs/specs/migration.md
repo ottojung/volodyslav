@@ -258,16 +258,27 @@ If no previous version is found, the migration is a no-op.
 
 ## Journal interaction
 
-Migration preserves the journal, `journalCoverage`, `localJournalCounter`, and durable fingerprint without renumbering. It
+Migration carries journal entries, `resetAnchorCuts`, `journalCoverage`,
+`localJournalCounter`, `causalSummary`, and the durable `DatabaseFingerprint`
+into the target without renumbering or changing cut-summary coordinates. A
+migration decision that legitimately authors events advances journal, local
+counter, local coverage, and causal summary only through the ordinary atomic
+authoring rule. It
 accepts supported uncompacted state and does not implicitly compact. Durable
 tokens preserve meaning across cutover and restart.
+
+Migration validates every cut summary's canonical `(NodeKey,taggedAnchor)` and
+`absorbsThrough` shape. The transition retains all source journal entries and
+adds only the events required by its decisions in the migration transition
+table; those authored events do not alter existing `resetAnchorCuts`.
 
 The migration transition table governs journal changes. Every new generation
 includes exactly one later same-author initial freshness assertion. Local
 authoring takes the next local sequence, carries source authority relevant to
 the decision in `causalContext`, and advances only local coverage/counter.
 Representation-only changes remain silent; `keep`, invalidation, and semantic-preserving `override` preserve the
-cached value and `modifiedAt`. Graph, journal, counter, coverage, and causal metadata commit
+cached value and `modifiedAt`. Graph, journal, reset-anchor cut summaries,
+counter, coverage, causal summary, and durable fingerprint commit
 atomically. Migration never seeds graph authority from polling evidence. Detailed rules are in
 `docs/specs/incremental-graph-journal-migrations.md`.
 

@@ -102,6 +102,8 @@ Generation/initial freshness and edit/post-edit assertion pairs allocate in same
 
 Controlled reset validates both snapshots but imports neither source journal nor source coverage. Its event context may include genuinely observed source causal history. `absorbsThrough` records source history intentionally consumed, while exact `ResetCorrespondence` records semantic `isEqual` evidence. These roles remain separate from `clearsThrough`.
 
+For every future-relevant reset anchor consumed from either snapshot, reset reads the effective cut formed by same-anchor carriers plus the exact `ResetAnchorCutSummary`. Any authored reset lineage carries that complete cut. Summary-only absorption is therefore preserved even though source cut-summary records themselves are not installed on the receiver. Cuts from different anchors combine here only because this controlled-reset decision observed and consumed each anchor; journal projection never combines concurrent anchor cuts.
+
 Fresh target may require one receiver validation covering the justified closed prefix. Hard target retains hard authority and no reusable incoming proof. Soft target requires cleared hard authority, reusable proof, and uncovered soft authority. Source-only authority is not silently installed as receiver-local reset authority.
 
 Repeated reset is silent exactly when semantic graph, freshness authority, exact correspondence, absorption prefixes, and causally relevant future-union knowledge are already represented. A newly learned source prefix or context that changes future semantics is persisted even if current graph bytes are equal. Reset with unchanged source does not chase its own metadata carriers.

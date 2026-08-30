@@ -204,6 +204,28 @@ def replica_journal_state(replica: Replica) -> JournalState:
     return JournalState(frozenset(replica.journal.values()), summaries)
 
 
+def migrate_replica(source: Replica) -> Replica:
+    """Format migration preserves every journal persistence coordinate."""
+    return Replica(
+        source.author,
+        journal=dict(source.journal),
+        reset_anchor_cuts={key: dict(cut)
+                           for key, cut in source.reset_anchor_cuts.items()},
+        causal_summary=dict(source.causal_summary),
+        journal_coverage=dict(source.journal_coverage),
+        local_counter=source.local_counter)
+
+
+def controlled_reset_absorption(
+        observed: Iterable[Event] | JournalState, node: NodeKey,
+        consumed_anchors: Iterable[Anchor], base: Prefix = {}) -> dict[str, int]:
+    """Carry complete effective cuts for anchors genuinely consumed by reset."""
+    groups = anchor_groups(observed, node)
+    cuts = [anchor_cut(observed, node, anchor, groups[anchor])
+            for anchor in consumed_anchors]
+    return join_prefixes(base, *cuts)
+
+
 def author_event(replica: Replica, node: NodeKey, kind: str, **fields) -> Event:
     replica.local_counter += 1
     event = Event(replica.author, replica.local_counter, node, kind,
@@ -488,16 +510,22 @@ def prefix_covers(covering: Prefix, covered: Prefix) -> bool:
                for author, value in covered.items())
 
 
-def reset_subsumes(newer: Event, older: Event) -> bool:
+def reset_subsumes(journal: Iterable[Event] | JournalState,
+                   newer: Event, older: Event) -> bool:
+    groups = anchor_groups(journal, older.node)
+    older_anchor = tagged_anchor(older)
+    effective_older_cut = anchor_cut(
+        journal, older.node, older_anchor, groups[older_anchor])
     return (newer.node == older.node
             and causally_before(older, newer)
-            and prefix_covers(newer.absorbs_through, older.absorbs_through))
+            and prefix_covers(newer.absorbs_through, effective_older_cut))
 
 
-def future_reset_assertions(journal: Iterable[Event]) -> frozenset[Event]:
-    carriers = tuple(event for event in journal if is_reset_carrier(event))
+def future_reset_assertions(journal: Iterable[Event] | JournalState) -> frozenset[Event]:
+    carriers = tuple(event for event in journal_events(journal)
+                     if is_reset_carrier(event))
     return frozenset(older for older in carriers
-                     if not any(reset_subsumes(newer, older)
+                     if not any(reset_subsumes(journal, newer, older)
                                 for newer in carriers))
 
 
@@ -528,7 +556,7 @@ def compact(journal: Iterable[Event] | JournalState) -> JournalState:
     # N
     keep: set[Event] = set(polling_maxima(values))
     # RL and RC
-    reset_seeds = future_reset_assertions(values)
+    reset_seeds = future_reset_assertions(journal)
     keep.update(reset_seeds)
     keep.update(correspondence_seeds(values))
     cut_summaries: set[AnchorCutSummary] = set()
@@ -642,6 +670,58 @@ def verify_receive_anchor_cut_summaries() -> None:
     received_state = replica_journal_state(receiver) | {delayed}
     assert presence_selection(received_state, node) is None
     assert not receive(receiver, source)
+
+
+def verify_reset_and_migration_preserve_effective_cuts() -> None:
+    node = ("effective-reset-cut", ())
+    generation = event("A", 1, node, "generation", time=1)
+    survivor = event(
+        "C", 1, node, "reset-observation", time=2,
+        reset_lineage=lineage({"A": 1}))  # own B coordinate is zero
+    null_anchor: Anchor = ("null", None)
+    compact_source = JournalState(
+        frozenset({generation, survivor}),
+        frozenset({AnchorCutSummary(
+            node, null_anchor, {"A": 1, "B": 10})}))
+
+    carried = controlled_reset_absorption(
+        compact_source, node, [null_anchor])
+    assert carried == {"A": 1, "B": 10}
+    receiver_carrier = event(
+        "R", 1, node, "validate", time=3,
+        causal_context={"C": 1}, generation=generation.id,
+        value_origin=generation.id, reset_lineage=lineage(carried))
+    reset_state = JournalState(frozenset({generation, receiver_carrier}))
+    delayed_b5 = event("B", 5, node, "generation", time=4)
+    assert presence_selection(reset_state | {delayed_b5}, node) == generation
+    restarted = compact(compact(reset_state))
+    assert presence_selection(restarted | {delayed_b5}, node) == generation
+    assert compact(compact(reset_state) | {delayed_b5}) == compact(
+        reset_state | {delayed_b5})
+    later_b11 = event("B", 11, node, "generation", time=5)
+    assert presence_selection(restarted | {later_b11}, node) == later_b11
+
+    # Summary-only B:10 prevents cross-anchor subsumption until it is carried.
+    incomplete = event(
+        "D", 1, node, "validate", time=3, causal_context={"C": 1},
+        generation=generation.id, value_origin=generation.id,
+        reset_lineage=lineage({"A": 1}))
+    incomplete_state = compact_source | {incomplete}
+    assert survivor in future_reset_assertions(incomplete_state)
+    complete = replace(incomplete, reset_lineage=lineage(carried))
+    complete_state = compact_source | {complete}
+    assert survivor not in future_reset_assertions(complete_state)
+
+    # Migration preserves the compact source state without interpreting AC as causality.
+    source_replica = Replica(
+        "M", journal={event.id: event for event in compact_source.events},
+        reset_anchor_cuts={(node, null_anchor): {"A": 1, "B": 10}},
+        causal_summary={"A": 1, "C": 1}, journal_coverage={"A": 1, "C": 1},
+        local_counter=0)
+    target_replica = migrate_replica(source_replica)
+    assert target_replica == source_replica
+    assert presence_selection(
+        replica_journal_state(target_replica) | {delayed_b5}, node) is None
 
 
 def reset_fixture() -> tuple[NodeKey, list[Event], Anchor, Anchor]:
@@ -944,6 +1024,7 @@ def verify_causal_laws() -> None:
 def main() -> None:
     verify_pure_receive_then_author()
     verify_receive_anchor_cut_summaries()
+    verify_reset_and_migration_preserve_effective_cuts()
     verify_reset_applicability_and_cuts()
     verify_scoped_activation_and_future_anchor()
     verify_reset_correspondence_compaction()

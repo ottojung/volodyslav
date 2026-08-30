@@ -42,6 +42,9 @@ is soft; unrepresented must-recompute is hard; existing uncovered hard authority
 is carried. A migration-authored invalidate takes the next local sequence and
 its `causalContext` covers supported source authority used by the decision.
 Proof-loss hardening therefore causally follows the observed authority without
-comparing foreign sequences. Migration validates canonical addresses,
-generation references, timestamp domains, causal contexts, and graph/proof
-consistency before atomic graph/journal/coverage/counter/causal-metadata cutover.
+comparing foreign sequences. Migration preserves `resetAnchorCuts` exactly;
+these summaries remain absorption metadata and do not enter causal context or
+causal summary. Migration validates canonical addresses, generation references,
+timestamp domains, causal contexts, reset-anchor cut summaries, and graph/proof
+consistency before atomic graph/journal/resetAnchorCuts/coverage/counter/
+causalSummary/fingerprint cutover.

@@ -151,6 +151,8 @@ Assertions are ordered by ordinary event causality. Same-author assertions are o
 
 When a reset operation authors a carrier for K after observing a future-relevant assertion for K, the new carrier componentwise carries that assertion's `absorbsThrough`, even when their tagged anchors differ. This is new absorption evidence established by the reset operation's actual observation; selection never infers it by joining concurrent anchors. Consequently a same-writer sequence of settled reset decisions carries every earlier future-relevant absorption prefix that it consumes, while exact correspondence facts remain separate.
 
+For controlled reset, “observing an anchor A” means observing its effective `anchorCut(K,A)`: the componentwise join of every retained same-anchor carrier vector and `resetAnchorCuts[K,A]`. Reset planning computes this value before deciding what authority to author. A new reset lineage that consumes A componentwise carries the complete effective cut, including coordinates present only in the compact summary. When one reset decision consumes several future-relevant anchors, its new lineage may join their effective cuts because the operation actually observed each one; ordinary projection continues to evaluate every concurrent anchor independently.
+
 A reset is settled when the receiver semantic projection, freshness authority, required correspondence, absorption prefix, and causal knowledge relevant to future source union already equal the result of the validated snapshots. Repeating a settled reset emits nothing. Newly relevant observed source absorption or causality is retained even when graph bytes do not change.
 
 ## Freshness
