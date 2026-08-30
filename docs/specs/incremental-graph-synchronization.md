@@ -18,12 +18,13 @@ For `R <- S`:
 
 1. enter the lifecycle/garden protocol and validate stable R and S snapshots;
 2. union journal entries by exact identity, rejecting unequal payloads for one identity;
-3. componentwise join `journalCoverage` and join S's durable summary plus every observed source event identity/context into R's `causalSummary`, without changing R's local counter;
-4. compute canonical causal presence, value provenance, and freshness authority;
-5. reconcile identifiers and graph materializations;
-6. reconstruct validity only from transportable source proofs;
-7. author receiver-local semantic barriers only for genuinely new decisions;
-8. canonically compact and atomically publish graph, journal, coverage, counter, causal summary, identifiers, timestamps, and proofs.
+3. componentwise join `ResetAnchorCutSummary.absorbsThrough` by exact `(NodeKey,taggedAnchor)`; these summaries remain absorption metadata and do not enter `causalSummary`;
+4. componentwise join `journalCoverage` and join S's durable causal summary plus every observed source event identity/context into R's `causalSummary`, without changing R's local counter;
+5. compute canonical causal presence, value provenance, and freshness authority using the already-joined reset-anchor cuts;
+6. reconcile identifiers and graph materializations;
+7. reconstruct validity only from transportable source proofs;
+8. author receiver-local semantic barriers only for genuinely new decisions;
+9. canonically compact and atomically publish graph, journal, reset-anchor cut summaries, coverage, counter, causal summary, identifiers, timestamps, and proofs.
 
 The same joined evidence produces the same semantic result in either receive direction. Physical receiver identifiers may differ, but their semantic NodeKey projection and proof relations agree. A receive commits newly observed causal knowledge even when it makes no graph change and authors no event; after that commit an ordinary local event carries the imported knowledge in its context.
 
@@ -113,7 +114,7 @@ Deletion is closed over derived dependants that cannot retain coherent proof. Th
 
 ## Polling and compaction interaction
 
-Polling maxima are selected per `(author,NodeKey,publicAction)` by that author's local sequence. Returned events use author-major `(author,sequence)` order and cumulative vector cursors; this order makes no cross-author temporal claim. Compaction retains these maxima, causal selection antichains, exact provenance, complete freshness frontiers, validations, reset assertions/correspondences, and causal closure.
+Polling maxima are selected per `(author,NodeKey,publicAction)` by that author's local sequence. Returned events use author-major `(author,sequence)` order and cumulative vector cursors; this order makes no cross-author temporal claim. Compaction retains these maxima, causal selection antichains, exact provenance, complete freshness frontiers, validations, reset assertions/correspondences, reset-anchor cut summaries, and causal closure.
 
 Canonical compaction satisfies `compact(compact(A) union B)=compact(A union B)`. Immutable contexts and persisted causal summary preserve the future-relevant meaning of discarded history.
 

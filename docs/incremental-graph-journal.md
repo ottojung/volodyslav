@@ -8,7 +8,7 @@ Normative details are in the [types](specs/incremental-graph-journal-types.md), 
 
 ## Persistent-state boundary
 
-A supported database contains the graph, the single journal, coverage vector,
+A supported database contains the graph, the single journal, reset-anchor cut summaries, coverage vector,
 local counter, causal summary, fingerprint, and related metadata defined by this specification. A
 schema-version installation validates its source state and atomically constructs
 that complete persistent state. Readers and writers operate only on a fully

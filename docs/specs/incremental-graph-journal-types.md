@@ -43,6 +43,7 @@ ResetCorrespondence = {
 ResetAnchorCutSummary = {
     nodeName, bindings, taggedAnchor, absorbsThrough:CausalPrefix
 }
+resetAnchorCuts[NodeKey,taggedAnchor] = ResetAnchorCutSummary
 entryNodeKey(E) = NodeKey(E.nodeName,E.bindings)
 ```
 
@@ -75,9 +76,13 @@ receiver.causalSummary' = componentwiseMax(
     receiver.causalSummary,
     observedSource(S)
 )
+receiver.resetAnchorCuts'[K,A] = componentwiseMax(
+    receiver.resetAnchorCuts[K,A],
+    S.resetAnchorCuts[K,A]
+)
 ```
 
-This transition commits even when journal/coverage import produces no graph change and no local event. It allocates nothing, leaves `localJournalCounter` unchanged, and changes the local coverage coordinate only through ordinary coverage union. It may be the receive's sole persistent change. Repeating the receive after the same causal knowledge is represented is silent.
+The cut-summary equation is evaluated independently for every exact `(NodeKey,taggedAnchor)` and before presence projection. Cut summaries do not enter `causalSummary`. This transition commits even when journal/coverage import produces no graph change and no local event. It allocates nothing, leaves `localJournalCounter` unchanged, and changes the local coverage coordinate only through ordinary coverage union. Causal-summary or cut-summary growth may be the receive's sole persistent change. Repeating the receive after the same causal and absorption knowledge is represented is silent.
 
 For every locally authored event E, `E.causalContext` is the transaction's observed causal summary before E. After publication the local summary includes E's identity. Consecutive same-author events carry forward every foreign coordinate componentwise, so learned causality cannot disappear. When an operation observes event F, it joins F's identity and every coordinate in `F.causalContext`; therefore A:10 received by B and followed later by B:1 makes A:10 causally before B:1, and A:10 observed by B:3 then B:3 observed by C:7 makes A:10 causally before C:7. Compaction preserves `causalSummary` and immutable retained contexts.
 
@@ -85,11 +90,26 @@ Ordinary graph authoring includes relevant knowledge in the transaction-visible 
 
 ## Allocation, coverage, and persistence
 
-`localJournalCounter` is the last coordinate allocated in the local fingerprint namespace. A fresh writer starts at zero and authors sequence 1. Under the allocator mutex each committed event takes the next local successor; imports and foreign coordinates never change the counter. Thus a B writer at B:4 next authors B:5 even after observing A:1000000. After local authoring, `journalCoverage[localFingerprint]=localJournalCounter`. Publication atomically commits graph, journal, counter, local coverage, causal metadata, identifiers, timestamps, and proofs.
+`localJournalCounter` is the last coordinate allocated in the local fingerprint namespace. A fresh writer starts at zero and authors sequence 1. Under the allocator mutex each committed event takes the next local successor; imports and foreign coordinates never change the counter. Thus a B writer at B:4 next authors B:5 even after observing A:1000000. After local authoring, `journalCoverage[localFingerprint]=localJournalCounter`. Publication atomically commits graph, journal, reset-anchor cut summaries, counter, local coverage, causal metadata, identifiers, timestamps, and proofs.
 
 `journalCoverage[A]=n` proves complete accounting for A's prefix through A:n despite compaction. `clearsThrough[A]=n` is narrower validation evidence: it proves that one validation may clear applicable A-authored invalidates through A:n. `absorbsThrough[A]=n` is reset semantics: it intentionally absorbs applicable A-authored history through A:n. These vectors are never interchangeable.
 
 Restoration preserves the fingerprint, journal, coverage, local counter, and causal summary. It validates own counter/coverage consistency, positive event coordinates, per-author coverage, context shape and coordinates, references, and same-author monotone foreign-context carry-forward. If A authored through A:10, its next event is greater than 10; foreign magnitudes impose no condition.
+
+## UnixTimestamp and event time
+
+`UnixTimestamp` is a signed integer millisecond count since `1970-01-01T00:00:00Z`. Its persisted form is a canonically spelled JSON decimal integer in the exact inclusive range `[-8640000000000000,8640000000000000]`: zero is `0`, and every other value is an optional `-` followed by a nonzero digit and digits. Booleans, fractions, strings, exponent spellings, negative zero, rounding, clamping, and values outside that range are invalid. `toUnixTimestamp(DateTime)` is the exact integer returned by `DateTime.toMillis()`. `fromUnixTimestamp(t)` constructs the exact UTC instant, and both conversions require exact round-trip equality.
+
+| Entry kind | Normative `time` |
+|---|---|
+| generation | the generated value's `modifiedAt` |
+| edit | the edited value's `modifiedAt` |
+| delete | deletion occurrence time |
+| validate | validation occurrence time |
+| invalidate | invalidation occurrence time |
+| reset-observation | controlled-reset transaction time |
+
+Controlled reset uses transaction time τ for every generation/edit caused by a changed or created value and for every reset-authored delete, validate, invalidate, or reset-observation. An equal surviving value keeps its graph `modifiedAt`; any reset assertion authored for it still has occurrence time τ. Causally later semantic events have non-earlier occurrence times in supported executions.
 
 ## Event and value invariants
 

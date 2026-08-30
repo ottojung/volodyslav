@@ -100,7 +100,7 @@ Before installation, restoration validates the ordinary load structure:
 - the durable `DatabaseFingerprint` belongs to
   the selected host/writer branch;
 - retained generation references resolve correctly, and every generation's named initial freshness event has the same author, a greater sequence, the same derived `entryNodeKey`, and the generation's exact ID;
-- every retained value-specific freshness assertion resolves its exact same-key/generation receiver value-origin event; reset correspondence source identities need not be locally retained, but their ID shapes, fingerprint provenance, and source-snapshot introduction proof must validate;
+- every retained value-specific freshness assertion resolves its exact same-key/generation receiver value-origin event; reset correspondence source identities need not be locally retained, so restoration validates their positive canonical ID shapes and supported fingerprint identities and relies on the supported-state invariant that only validated reset authoring introduces them;
 - live `NodeIdentifier` values are unique and bijective with live semantic keys, and no retired identifier is live;
 - every materialization origin is the admissible canonical event for its winning generation and `modifiedAt`, rather than a causally dominated same-author head or noncanonical equal-time candidate;
 - every retained `clearsThrough`, `absorbsThrough`, and `causalContext` has canonical map shape, unique supported fingerprint coordinates, and non-negative arbitrary-precision `CausalCoordinate` values;
@@ -227,14 +227,14 @@ Normal synchronization performs these lifecycle steps:
 3. Fetch the participating host branches.
 4. For each other recognized host, load its snapshot into isolated staging state.
 5. Check version and structural merge preconditions.
-6. Only after those checks, union journals, coverage, and causal summaries and compute and commit a graph-aware merge into a non-active target state. The causal-summary join includes the source durable summary plus every source event identity and immutable context actually observed.
-7. Cut over when the merge completed successfully and changed graph, journal, coverage, or causal summary. A receive whose only new state is causal knowledge is a committed transition and allocates no journal event.
+6. Only after those checks, union journals, reset-anchor cut summaries, coverage, and causal summaries and compute and commit a graph-aware merge into a non-active target state. Cut summaries join componentwise by exact `(NodeKey,taggedAnchor)` before presence projection and never enter causal summary. The causal-summary join includes the source durable summary plus every source event identity and immutable context actually observed.
+7. Cut over when the merge completed successfully and changed graph, journal, reset-anchor cut summaries, coverage, or causal summary. A receive whose only new state is causal or absorption metadata is a committed transition and allocates no journal event.
 8. Remove the host's staging state.
 9. Reopen the application database and run the migration gate before exposing it again.
 
 The merge resolves state according to graph timestamps and dependency semantics, not textual repository merge rules. Locally newer state is retained, remotely newer compatible state may be taken, and affected derived state may be invalidated so that it is recomputed from the merged dependencies. A successful merge preserves graph coherence and does not make a partially constructed target active.
 
-Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so journal history may be uncompacted. It preserves immutable coordinates, local counter, journal coverage, causal summary, and durable fingerprint exactly. Restoration neither compacts nor renumbers and durable cursors retain meaning.
+Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so journal history may be uncompacted. It preserves immutable coordinates, reset-anchor cut summaries, local counter, journal coverage, causal summary, and durable fingerprint exactly. Restoration neither compacts nor renumbers and durable cursors retain meaning.
 
 ### 7.3 Per-host failure behavior
 

@@ -11,6 +11,8 @@ NodeKey = tuple[str, tuple[str, ...]]
 Anchor = tuple[str, EntryId | None]  # null, delete, or present(value origin)
 Correspondence = tuple[EntryId, EntryId]  # source generation and value origin
 StaleIdentity = tuple[EntryId, tuple[str, ...]]
+MIN_UNIX_TIMESTAMP = -8_640_000_000_000_000
+MAX_UNIX_TIMESTAMP = 8_640_000_000_000_000
 
 
 def coordinate(prefix: Prefix, author: str) -> int:
@@ -47,6 +49,11 @@ class Event:
     absent_anchor: EntryId | None = None
     reset_lineage: ResetLineage | None = None
     stale_identity: StaleIdentity | None = None
+
+    def __post_init__(self) -> None:
+        assert self.sequence > 0
+        assert isinstance(self.time, int) and not isinstance(self.time, bool)
+        assert MIN_UNIX_TIMESTAMP <= self.time <= MAX_UNIX_TIMESTAMP
 
     @property
     def id(self) -> EntryId:
@@ -128,6 +135,8 @@ def merge_state(left, right) -> JournalState:
 class Replica:
     author: str
     journal: dict[EntryId, Event] = field(default_factory=dict)
+    reset_anchor_cuts: dict[tuple[NodeKey, Anchor], dict[str, int]] = field(
+        default_factory=dict)
     causal_summary: dict[str, int] = field(default_factory=dict)
     journal_coverage: dict[str, int] = field(default_factory=dict)
     local_counter: int = 0
@@ -168,18 +177,31 @@ def observed_source(source: Replica) -> dict[str, int]:
 def receive(receiver: Replica, source: Replica) -> bool:
     """Atomic import and causal observation; never allocates a local event."""
     before = (dict(receiver.journal), dict(receiver.journal_coverage),
-              dict(receiver.causal_summary), receiver.local_counter)
+              dict(receiver.causal_summary),
+              {key: dict(value) for key, value in receiver.reset_anchor_cuts.items()},
+              receiver.local_counter)
     for event_id, event in source.journal.items():
         if event_id in receiver.journal:
             assert receiver.journal[event_id] == event
         receiver.journal[event_id] = event
     receiver.journal_coverage = join_prefixes(
         receiver.journal_coverage, source.journal_coverage)
+    for key, source_cut in source.reset_anchor_cuts.items():
+        receiver.reset_anchor_cuts[key] = join_prefixes(
+            receiver.reset_anchor_cuts.get(key, {}), source_cut)
     receiver.causal_summary = join_prefixes(
         receiver.causal_summary, observed_source(source))
     after = (receiver.journal, receiver.journal_coverage,
-             receiver.causal_summary, receiver.local_counter)
+             receiver.causal_summary, receiver.reset_anchor_cuts,
+             receiver.local_counter)
     return before != after
+
+
+def replica_journal_state(replica: Replica) -> JournalState:
+    summaries = frozenset(
+        AnchorCutSummary(node, anchor, cut)
+        for (node, anchor), cut in replica.reset_anchor_cuts.items())
+    return JournalState(frozenset(replica.journal.values()), summaries)
 
 
 def author_event(replica: Replica, node: NodeKey, kind: str, **fields) -> Event:
@@ -597,6 +619,31 @@ def verify_pure_receive_then_author() -> None:
     assert causally_before(authored, later)
 
 
+def verify_receive_anchor_cut_summaries() -> None:
+    node = ("received-cut", ())
+    generation = event("A", 1, node, "generation", time=1)
+    null_assertion = event(
+        "N", 1, node, "reset-observation", time=2,
+        reset_lineage=lineage({"A": 1}))
+    key = (node, ("null", None))
+    source = Replica(
+        "S", journal={generation.id: generation, null_assertion.id: null_assertion},
+        reset_anchor_cuts={key: {"A": 1, "B": 10}},
+        causal_summary={"A": 1, "N": 1}, journal_coverage={"A": 1, "N": 1})
+    receiver = Replica(
+        "R", journal=dict(source.journal), causal_summary=dict(source.causal_summary),
+        journal_coverage=dict(source.journal_coverage), local_counter=7)
+    assert receive(receiver, source)  # cut growth is the only persistent change
+    assert receiver.local_counter == 7
+    assert receiver.reset_anchor_cuts[key] == {"A": 1, "B": 10}
+    assert coordinate(receiver.causal_summary, "B") == 0
+
+    delayed = event("B", 5, node, "generation", time=3)
+    received_state = replica_journal_state(receiver) | {delayed}
+    assert presence_selection(received_state, node) is None
+    assert not receive(receiver, source)
+
+
 def reset_fixture() -> tuple[NodeKey, list[Event], Anchor, Anchor]:
     node = ("n", ("x",))
     g1 = event("A", 5, node, "generation", time=5)
@@ -896,6 +943,7 @@ def verify_causal_laws() -> None:
 
 def main() -> None:
     verify_pure_receive_then_author()
+    verify_receive_anchor_cut_summaries()
     verify_reset_applicability_and_cuts()
     verify_scoped_activation_and_future_anchor()
     verify_reset_correspondence_compaction()
