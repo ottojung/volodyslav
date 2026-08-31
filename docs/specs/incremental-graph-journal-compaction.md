@@ -1,65 +1,50 @@
 # IncrementalGraph journal compaction
 
-For supported J, canonical seeds are exactly:
+Canonical compaction retains these seeds:
 
 ```text
-N  = greatest E per (author,key,publicAction)             # polling, all actions non-null
-P  = causal presenceHead per key, plus reset-bridge anchor presence
-VH = winning-generation valueHead per author
-CE = exact equal-time candidate value heads
-IF = complete applicable invalidateFrontier for every retained winning-generation value origin
-HF = complete applicable hardInvalidateFrontier for every retained winning-generation value origin
-VV = greatest validation per (author,key,winning generation,retained value origin),
-     considering only targets in retained VH/CE value origins
-RLV = coordinate witnesses for each future-relevant (key,receiverAnchor,observedAuthor)
-      plus the maximal fallback-assertion antichain
-RLC = canonical carrier for each exact (key,retained receiver value anchor,source generation,source origin)
+N  greatest local sequence per (author,key,publicAction), excluding no-action events
+P  each RL survivor's per-anchor result presence and its selecting authority;
+   ordinary causal-maximal presence when RL is empty
+AC one non-assertion ResetAnchorCutSummary per tagged anchor whose absorption
+   evidence has ever been represented for the key
+VH same-author value head per author for each retained generation
+ET causal maxima needed for exact-time canonical provenance
+IF complete applicable all-mode invalidate frontier for each retained value origin
+HF complete applicable hard frontier for each retained value origin
+VV greatest validation per (author,key,generation,retained value origin)
+RL future-relevant reset assertion antichain across all tagged anchors and only
+   the anchor witnesses referenced by its survivors
+RC one canonical evidence carrier per exact
+   (key,receiverValueOrigin,sourceGeneration,sourceValueOrigin) relation
 ```
 
-Start with `N∪P∪VH∪CE∪IF∪HF∪VV∪RLV∪RLC`; take the least closure adding each retained scoped event's exact GenerationJournalEntry, every retained value-specific assertion's exact value-origin event, and every retained generation's mandatory initial-freshness event. `compact(J)` is exactly this closure and discards everything else. `HF` may overlap `IF`: all-mode per-author maxima can be later soft invalidates while older hard per-author maxima remain causal must-recompute authority. Value-specific barriers for losing retained heads remain polling/candidate evidence but do not enter another origin's applicable frontier.
+It then takes the least closure containing each scoped event's generation, each value-specific assertion's origin, every generation's initial freshness event, and event identities/contexts needed to validate retained references. `compact(J)` is exactly that closure. Presence and equal-time seeds are sets of causal maxima. Concurrent maxima are retained even when the current deterministic conflict winner is one member, because a future event may causally dominate only part of the antichain.
 
-Frontiers are retained as whole sets, never reduced member-by-member against different validations. Thus `freshnessEffective` and `hardnessCleared` continue to require one actual validation covering the complete applicable frontier; compaction cannot combine partial validations. A delayed non-frontier invalidate under retained `clearsThrough` remains causally cleared, while an event above the prefix can become a new frontier member. Public maxima preserve action no-false-negatives.
+Frontiers remain whole sets; compaction cannot combine partial validations. `HF` may contain an older same-author hard member when the all-mode head is soft. Value-specific barriers for losing heads remain only when required by polling, candidate provenance, or future union and never stale another origin.
 
-**Canonical Compaction/Future-Union Theorem.** On supported reachable histories, full frontier retention preserves freshness and hardness exactly, including histories where different validations cover different hard members. Causal-prefix dominance is stable under delayed events below the prefix, while events above it enter IF/HF. Value/presence heads are monotone. Validation knowledge is componentwise monotone per author/key/generation because every later validation carries forward its greatest prior vector; therefore VV dominates discarded older validations semantically. Therefore:
+For assertions on the same NodeKey in state J, define `resetSubsumes(J,N,O)` when `causallyBefore(O,N)` and N's `absorbsThrough` componentwise covers the complete effective `anchorCut(J,K,taggedAnchor(O))`. This relation permits O's fallback assertion to leave RL; it never transfers O's vector to N's anchor. Summary-only coordinates therefore prevent subsumption unless N actually carries them. RL is the global per-key antichain of assertions not subsumed by another assertion, across all tagged anchors, whether currently applicable or displaced. It is not one survivor per retained anchor. Concurrent assertions remain because neither causality nor absorption can be borrowed across them.
+
+Before discarding any carrier, AC computes `anchorCut(A)` from every carrier and incoming cut summary belonging to A for every represented tagged anchor A. It persists that complete join in one canonical non-assertion summary even when no current RL survivor uses A. Therefore a carrier arriving later on A obtains exactly the cut it would obtain if it had been unioned before compaction. This archive is anchor-indexed: an entry never contributes to another anchor during projection. P evaluates each RL result against AC plus its retained same-anchor carriers. Only witnesses referenced by RL/RC survivors enter ordinary exact-reference closure; an AC entry is absorption state rather than an exact-reference seed.
+
+For each exact relation `(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)`, RC removes causally dominated carriers and retains one canonical carrier from the survivors by occurrence time and author fingerprint. Every carrier states the identical equality fact, so one carrier preserves relation membership; its absorption semantics are not used as RC evidence. The source generation/origin IDs are not local references and do not enter closure. If matching source events independently exist locally, N/P/VH/ET/IF/HF/VV determine their retention. RL and AC independently preserve future-relevant absorption. Physical carrier count does not define c.
+
+## Future-union theorem
+
+Every locally authored event carries forward all observed cross-author causal coordinates. Every successful receive joins the source durable summary, each observed source identity, and each observed immutable context into receiver `causalSummary`, including an import-only semantic no-op. `causalSummary` therefore retains observation closure even if witnessed events are compacted. Consequently a discarded event's causal meaning survives in retained descendants or in the durable summary used by later authoring. If neither retained semantics nor the summary depends on a discarded event, future union can only reintroduce it as an event already dominated by retained context or as a semantically irrelevant non-frontier/non-head event.
+
+Per-author heads and frontiers are monotone under future union. Immutable contexts keep causal domination stable; a future event can dominate some current maxima but cannot make a discarded dominated event maximal without also confronting its retained dominator. Validation vectors monotonically carry same-author/key/generation clearing evidence. RL preserves fallback assertions, AC preserves every represented anchor's complete same-anchor absorption cut, and RC preserves exact correspondence membership without retaining source entries. If O on A is subsumed by N on another anchor, AC(A) remains even when A has no RL survivor. A later carrier C on A therefore receives O's cut coordinates when C is concurrent with N, exactly as in union-before-compaction. AC union is a componentwise join keyed by the exact `(NodeKey,taggedAnchor)`, so delayed union cannot erase or lend absorption. Polling retains per-author maxima. Therefore, for supported histories:
 
 ```text
 compact(compact(A) union B) = compact(A union B)
 ```
 
-Merge is ACI and physical survivors are uniquely determined. Generation initial freshness, reset validations, polling maxima, equal-time provenance, and delayed covered invalidates obey the same equality. Reset observation selection runs independently of raw presence order and first evaluates each anchor against its own joined vector. `receiverAnchor` is the tagged identity `null-absence`, `(delete,DeleteJournalEntry.id)`, or `(present,valueOrigin)`; vectors join only within that anchor.
+The equality covers causal presence/value traces, delayed history, freshness, reset fallback, correspondences, and public polling. Merge is associative, commutative, and idempotent.
 
-A fallback assertion is one immutable lineage carrier. Same-author assertions for the same receiver anchor use writer-local sequence succession: the later assertion canonically replaces the earlier one, and its vector must componentwise carry the earlier absorption vector even though it deliberately omits the earlier carrier coordinate. Across authors or anchors, assertion N dominates O only when N's own `consumedThrough` covers both O's anchor-presence coordinate (when non-null) and O's exact carrier coordinate. The joined per-anchor vector is absorption state, not proof that any one concurrent assertion observed another anchor.
+## Bound
 
-The **future-relevant assertion set** is the maximal antichain under those rules, computed across every retained anchor, not merely anchors applicable to the current raw head. An inapplicable assertion such as delete-anchor O remains maximal when a post-cutoff A50 merely displaced it; it must survive because a later consumed B90 can make O applicable again. A dominated assertion cannot regain distinct fallback authority. For every anchor represented in the maximal antichain and every observed author, RLV retains the canonical greatest-coordinate carrier plus the maximal assertions themselves. Incomparable assertions use deterministic full-ID/tagged-anchor conflict order without pretending that order is causal.
+Let n be the number of represented semantic keys, r the number of durable authors, c the number of distinct exact reset correspondence relations required by lagging replicas, and a the number of distinct `(NodeKey,taggedAnchor)` identities whose absorption evidence has been represented. Per-author polling/value/presence evidence and the global RL antichain contribute `O(nr)` events. AC stores one `O(r)` vector for each of the a identities, contributing `O(ar)` coordinates. Event contexts, frontiers, validations, and closure witnesses contribute `O(nr²)`. RC contributes one carrier with `O(r)` coordinates for each relation, or `O(cr)`. Coverage and causal summary contribute `O(r)`.
 
-RLC uses a separate relevance predicate: when causal `presenceHead` is generation G, every exact carrier whose receiver value origin is a retained `valueHead(J,K,G,A)` is retained, even if that carrier is not currently RLV-applicable. It retains each exact `(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)` relation with deterministic full-ID tie-breaking. VV is independently restricted to those same retained value origins. Thus two receiver origins certified against one source pair remain distinct, ordinary edit count does not expand VV, exact equality evidence is not widened to a prefix, and delete/null/present anchors preserve future-union absorption.
+Thus compacted journal, coverage, causal metadata, and reset-anchor absorption metadata contain `O(nr² + ar + cr)` logical records and coordinates. If b is the maximum byte length of any retained arbitrary-precision coordinate, serialized storage is `O(b(nr² + ar + cr))`.
 
-Let `n` be the number of represented current/historic semantic keys, `r` the
-number of represented durable authors, and `c` the number of distinct full
-`(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)` semantic reset
-correspondences that must remain recognizable to lagging replicas. Assume every
-represented NodeKey/semantic journal address has bounded serialized size
-independent of `n`, `r`, and `c`, and assume `n > 0` and `r > 0`. Polling/value
-evidence is O(nr); frontiers, lineage coordinate witnesses, and validation
-vectors are O(nr²). Same-author/same-anchor replacement leaves one assertion
-regardless of reset count. Cross-author or cross-anchor maximal assertions are
-bounded by the r durable writers on the supported reachable-state domain,
-yielding O(nr) future-relevant anchors and O(nr²) anchor/author coordinates.
-Multiple distinct exact correspondences and their O(r) vectors are the c
-relations counted by O(cr); repeated carriers for one exact relation collapse
-by same-anchor succession and RLC dominance. Coverage is O(r), which is absorbed
-by O(nr²) because `r <= nr²` under the stated assumptions. Therefore the fully
-compacted journal together with journal coverage retains `O(nr² + cr)` logical
-records and vector-coordinate slots. The cr term is necessary: repeated equal
-reset against distinct rematerialization origins creates Ω(c) exact membership
-facts, and a source containing r durable authors makes each retained carrier
-Θ(r). A causal prefix cannot certify unrelated origins, and discarding exact
-pairs breaks lagging certified peers.
-
-For serialized storage, let `b` be the maximum byte length of an
-arbitrary-precision journal sequence or causal coordinate retained in the
-particular compacted state. Under the bounded-address premise, the byte size is
-`O(b(nr² + cr))`. Coordinate encodings are unbounded, so `b` can grow while
-`n`, `r`, and `c` stay fixed; `O(nr² + cr)` by itself is only the logical-item
-bound. The bounded-address premise is an asymptotic assumption, not a runtime
-size restriction.
+The a term is necessary. Distinct anchors may carry independent vectors, and an unseen carrier may later arrive concurrently on any one of them. Omitting the exact anchor's vector makes union-after-compaction distinguishable from union-before-compaction; combining vectors across anchors changes projection semantics. Consequently no representation bounded only by n, r, and c can preserve arbitrary exact anchor cuts under unrestricted delayed union. AC collapses repeated evidence for the same anchor componentwise, so its size is independent of assertion count once the set of anchor identities is fixed.

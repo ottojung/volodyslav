@@ -17,7 +17,7 @@ This document describes the **migration system** for upgrading incremental-graph
 When the application version changes, any computed values stored in the previous version's namespace may become stale or structurally incompatible with the new schema.  The migration system provides a strict, fail-fast API—`MigrationStorage`—that lets migration authors:
 
 * **read** source-version values,
-* **decide** what happens to each previously-materialized node (keep, override, invalidate, or delete),
+* **decide** what happens to each source materialized node (keep, override, invalidate, or delete),
 * **traverse** the previous version's dependency graph.
 
 A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
@@ -133,7 +133,7 @@ Calling the same decision twice (except for `override` and `create`) is allowed 
 
 ### Operation semantics
 
-`keep` preserves the value, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. When a stale node carried through `keep` has incoming proofs before migration and migration drops them, the `proofs present before → proofs absent after` transition newly establishes hard invalidation. Migration MUST atomically author a normal generation-scoped causal invalidate above all observed journal history unless a barrier authored or installed by that exact migration decision already represents it. The same rule applies to `override`.
+`keep` preserves the value, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. When a stale node carried through `keep` has incoming proofs before migration and migration drops them, the `proofs present before → proofs absent after` transition newly establishes hard invalidation. Migration MUST atomically author a normal generation-scoped hard invalidate unless a barrier authored or installed by that exact migration decision already represents it. The event takes the next local sequence and its `causalContext` covers the supported source authority used to decide hardening. The same rule applies to `override`.
 
 Within a stale `keep`/`override` region whose nodes still have incoming proofs,
 those proofs may disappear. A stale B whose dependent C is also stale can lose
@@ -258,15 +258,27 @@ If no previous version is found, the migration is a no-op.
 
 ## Journal interaction
 
-Migration preserves the journal, `journalCoverage`, `localJournalClock`, and durable fingerprint without renumbering. It
+Migration carries journal entries, `resetAnchorCuts`, `journalCoverage`,
+`localJournalCounter`, `causalSummary`, and the durable `DatabaseFingerprint`
+into the target without renumbering or changing cut-summary coordinates. A
+migration decision that legitimately authors events advances journal, local
+counter, local coverage, and causal summary only through the ordinary atomic
+authoring rule. It
 accepts supported uncompacted state and does not implicitly compact. Durable
 tokens preserve meaning across cutover and restart.
 
+Migration validates every cut summary's canonical `(NodeKey,taggedAnchor)` and
+`absorbsThrough` shape. The transition retains all source journal entries and
+adds only the events required by its decisions in the migration transition
+table; those authored events do not alter existing `resetAnchorCuts`.
+
 The migration transition table governs journal changes. Every new generation
-includes exactly one later initial freshness assertion, and local authoring
-advances local coverage after lazy raising. Representation-only changes remain
-silent; `keep`, invalidation, and semantic-preserving `override` preserve the
-cached value and `modifiedAt`. Graph, journal, allocator, and coverage commit
+includes exactly one later same-author initial freshness assertion. Local
+authoring takes the next local sequence, carries source authority relevant to
+the decision in `causalContext`, and advances only local coverage/counter.
+Representation-only changes remain silent; `keep`, invalidation, and semantic-preserving `override` preserve the
+cached value and `modifiedAt`. Graph, journal, reset-anchor cut summaries,
+counter, coverage, causal summary, and durable fingerprint commit
 atomically. Migration never seeds graph authority from polling evidence. Detailed rules are in
 `docs/specs/incremental-graph-journal-migrations.md`.
 

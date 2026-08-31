@@ -1,7 +1,7 @@
 # IncrementalGraph journal migration
 
 Migration uses the one journal and atomic semantic classification. Migration
-never directly replaces the semantic value of an already-materialized node;
+never directly changes the semantic value of an already-materialized node;
 the `MigrationStorage` API has no present-unequal transition. Its reachable
 transitions and journal effects are:
 
@@ -36,10 +36,15 @@ stale-hard. An invalid or incomplete cache-state/proof envelope throws
 recomputation obligation and therefore never authors `add` or `edit`.
 
 Every migration validation names the exact current value origin and carries
-prior same-author/key/generation causal knowledge. Validation uses legitimate
-local closed-prefix evidence in `clearsThrough`. Propagated stale with reusable
-proof is soft; unrepresented must-recompute is hard; existing uncovered hard
-authority is carried. Event times and lazy allocation follow the types
-specification. Migration validates canonical addresses, generation references,
-timestamp domains, causal vectors, and graph/proof consistency before atomic
-cutover.
+prior same-author/key/generation clearing evidence. Validation uses legitimate
+closed-prefix evidence in `clearsThrough`. Propagated stale with reusable proof
+is soft; unrepresented must-recompute is hard; existing uncovered hard authority
+is carried. A migration-authored invalidate takes the next local sequence and
+its `causalContext` covers supported source authority used by the decision.
+Proof-loss hardening therefore causally follows the observed authority without
+comparing foreign sequences. Migration preserves `resetAnchorCuts` exactly;
+these summaries remain absorption metadata and do not enter causal context or
+causal summary. Migration validates canonical addresses, generation references,
+timestamp domains, causal contexts, reset-anchor cut summaries, and graph/proof
+consistency before atomic graph/journal/resetAnchorCuts/coverage/counter/
+causalSummary/fingerprint cutover.

@@ -83,12 +83,12 @@ The synchronization repository is part of creation even when the resulting datab
 
 ### 4.2 Restoring this host's synchronized state
 
-When local live state is absent, Volodyslav first asks whether the synchronization repository contains the current synchronized state previously published for this same host and writer. The synchronization lifecycle must recognize the selected branch as the branch assigned to the current host/writer.
+When local live state is absent, Volodyslav first asks whether the synchronization repository contains the current synchronized state published for this same host and writer. The synchronization lifecycle must recognize the selected branch as the branch assigned to the current host/writer.
 
 This is **absent-state self-restoration**, not reset of an existing database. It
 restores and validates the authoritative graph together with the durable local
-`DatabaseFingerprint`,
-journal entries, `journalCoverage`, and `localJournalClock`. Absent-state
+`DatabaseFingerprint`, journal entries, `resetAnchorCuts`, `journalCoverage`,
+`localJournalCounter`, and `causalSummary`. Absent-state
 self-restoration accepts the retained journal representation published by a
 supported synchronization checkpoint whether or not canonical compaction ran
 before that checkpoint. It preserves the immutable collection and vector coordinates exactly:
@@ -100,16 +100,18 @@ Before installation, restoration validates the ordinary load structure:
 - the durable `DatabaseFingerprint` belongs to
   the selected host/writer branch;
 - retained generation references resolve correctly, and every generation's named initial freshness event has the same author, a greater sequence, the same derived `entryNodeKey`, and the generation's exact ID;
-- every retained value-specific freshness assertion resolves its exact same-key/generation value-origin event; reset-lineage consumed source identities need not be locally retained, but their coordinate shapes and authoring provenance must validate;
+- every retained value-specific freshness assertion resolves its exact same-key/generation receiver value-origin event; reset correspondence source identities need not be locally retained, so restoration validates their positive canonical ID shapes and supported fingerprint identities and relies on the supported-state invariant that only validated reset authoring introduces them;
 - live `NodeIdentifier` values are unique and bijective with live semantic keys, and no retired identifier is live;
-- every materialization origin is the admissible canonical event for its winning generation and `modifiedAt`, rather than a superseded same-author head or lower equal-time candidate;
-- every retained `clearsThrough` has canonical map shape, unique supported fingerprint coordinates, and non-negative arbitrary-precision `CausalCoordinate` values;
+- every materialization origin is the admissible canonical event for its winning generation and `modifiedAt`, rather than a causally dominated same-author head or noncanonical equal-time candidate;
+- every retained `clearsThrough`, `absorbsThrough`, and `causalContext` has canonical map shape, unique supported fingerprint coordinates, and non-negative arbitrary-precision `CausalCoordinate` values;
+- every compact reset-anchor cut summary has one canonical `(NodeKey,taggedAnchor)` key, a canonical `absorbsThrough`, and no event identity, fallback authority, public action, or correspondence; the summary remains valid when no retained journal carrier currently uses its anchor;
+- retained event contexts are supported by observed-state authoring and same-author later events monotonically carry foreign causal knowledge;
 - retained same-author/key/generation validation vectors are componentwise monotone when comparable evidence is present;
-- `localJournalClock` equals the local fingerprint coverage coordinate and locally authored entries do not exceed it; foreign retained sequences may exceed it under lazy raising;
-- a fresh database initializes both `localJournalClock` and its local fingerprint coverage coordinate to zero; zero denotes no authored event, the first authored event is sequence 1, and every persisted journal-entry ID/reference has a positive arbitrary-precision `JournalSequence`;
+- `localJournalCounter` equals the local fingerprint coverage coordinate and locally authored entries do not exceed it; sequence magnitudes belonging to other authors are incomparable;
+- a fresh database initializes both `localJournalCounter` and its local fingerprint coverage coordinate to zero; zero denotes no authored event, the first authored event is sequence 1, and every persisted journal-entry ID/reference has a positive arbitrary-precision `JournalSequence`;
 - every retained entry has a self-contained `nodeName` and `bindings` address from which its NodeKey is derived;
 - journal coverage dominates every retained entry sequence; and
-- the local coverage coordinate equals the durable local clock. Coordinate gaps are allowed.
+- the local coverage coordinate equals the durable local counter. Coordinate gaps are allowed.
 
 Canonical compacted form, surviving same-author historical monotonicity
 evidence, and complete diagnosis of unsupported history are not restoration
@@ -119,7 +121,7 @@ canonical does not imply valid, and non-canonical does not imply invalid. A
 supported uncompacted journal remains supported state; manually forged or
 corrupted history remains unsupported even if it happens to be canonical.
 
-Restoration resumes previously emitted durable state and MUST NOT classify the restored graph as an empty-to-restored transition. Durable encoded cursors preserve their exact vector coordinates across restart and remain portable without adoption or coverage rejection when every fingerprint coordinate denotes the same durable writer history in the origin and receiver contexts.
+Restoration resumes its emitted durable state and MUST NOT classify the restored graph as an empty-to-restored transition. Durable encoded cursors preserve their exact vector coordinates across restart and remain portable without adoption or coverage rejection when every fingerprint coordinate denotes the same durable writer history in the origin and receiver contexts.
 
 The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable database fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 
@@ -183,7 +185,7 @@ The migration framework enforces lifecycle-level compatibility conditions, inclu
 - dependency changes must remain coherent, including deletion propagation and fan-in constraints; and
 - the target state must carry the running database version and the metadata required to reopen it.
 
-Migration constructs the target state away from the currently active state. It makes that target active only after validation, transformation, durable writes, and flushing succeed. Therefore, a failure before cutover leaves the previously active state selected and available for a later retry or diagnosis.
+Migration constructs the target state away from the currently active state. It makes that target active only after validation, transformation, durable writes, and flushing succeed. Therefore, a failure before cutover leaves the active source state selected and available for a later retry or diagnosis.
 
 Migration checkpointing records the state around the migration as part of the controlled lifecycle. Checkpoint publication is operational bookkeeping around the database transition, not an independent restore API. A failure reported after the database cutover may mean that the database transition committed but its post-migration checkpoint did not; callers and operators must not assume that every reported migration failure implies an unchanged database.
 
@@ -225,14 +227,14 @@ Normal synchronization performs these lifecycle steps:
 3. Fetch the participating host branches.
 4. For each other recognized host, load its snapshot into isolated staging state.
 5. Check version and structural merge preconditions.
-6. Only after those checks, union journals and compute and commit a graph-aware merge into a non-active target state.
-7. Cut over to the merged state only when the merge produced changes and completed successfully.
+6. Only after those checks, union journals, reset-anchor cut summaries, coverage, and causal summaries and compute and commit a graph-aware merge into a non-active target state. Cut summaries join componentwise by exact `(NodeKey,taggedAnchor)` before presence projection and never enter causal summary. The causal-summary join includes the source durable summary plus every source event identity and immutable context actually observed.
+7. Cut over when the merge completed successfully and changed graph, journal, reset-anchor cut summaries, coverage, or causal summary. A receive whose only new state is causal or absorption metadata is a committed transition and allocates no journal event.
 8. Remove the host's staging state.
 9. Reopen the application database and run the migration gate before exposing it again.
 
 The merge resolves state according to graph timestamps and dependency semantics, not textual repository merge rules. Locally newer state is retained, remotely newer compatible state may be taken, and affected derived state may be invalidated so that it is recomputed from the merged dependencies. A successful merge preserves graph coherence and does not make a partially constructed target active.
 
-Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so both journal history may be uncompacted. It preserves immutable coordinates, the allocator, journal coverage, and durable fingerprint exactly. Restoration neither compacts nor renumbers and durable cursors retain meaning.
+Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so journal history may be uncompacted. It preserves immutable coordinates, reset-anchor cut summaries, local counter, journal coverage, causal summary, and durable fingerprint exactly. Restoration neither compacts nor renumbers and durable cursors retain meaning.
 
 ### 7.3 Per-host failure behavior
 
@@ -258,13 +260,15 @@ A second identical reset does not refresh timestamps.
 
 ### Causal absorption planning
 
-Reset reasons against the hypothetical journal/coverage union of both consumed snapshots without installing source history. Source-only journal entries are evidence for receiver authoring, never installed receiver authority. Reset-authored `clearsThrough` may use either validated consumed snapshot as closed-prefix evidence. The reset transaction observation watermark is the maximum sequence in receiver retained entries/coverage/local clock and validated source retained entries/coverage. Before its first local event it raises allocation above that watermark, then allocates monotonically. This observation does not install any source journalCoverage coordinate; only the receiver coordinate advances when reset authors.
+Reset reasons against both validated snapshots without installing source history. Source-only journal entries are evidence for receiver authoring, never installed receiver authority. Reset-authored `clearsThrough` may use either validated snapshot as closed-prefix evidence. Reset joins genuinely observed source event identities and immutable contexts into the receiver decision's `causalContext` and persisted causal summary, then allocates only the next receiver-local coordinate. This observation does not install any source `journalCoverage` coordinate; only the receiver coordinate advances when reset authors.
 
-For every reset-touched NodeKey, reset retains one compact `ResetLineage(consumedThrough,correspondence)` on receiver authority. A present target stores it on the receiver freshness assertion anchored to the retained value origin; present-to-absent stores it on the real public delete. Absent-to-absent authors an internal reset-observation anchored to the existing delete or to explicit null absence when the receiver has no presence entry, with no public action. A source null observation itself makes the key reset-touched even without a source add/delete. The null anchor remains effective after delayed consumed source entries are unioned: entries through `consumedThrough` cannot manufacture presence, while post-cutoff generations/deletes participate in ordinary presence order. `consumedThrough` componentwise carries every prior receiver-anchor lineage vector, every retained source-anchor lineage vector, validated source coverage, and every genuine retained public event coordinate for this NodeKey. This transfers causal absorption only—exact semantic correspondence remains independently scoped and is never widened from the vector. Thus reset-of-reset consumes the source snapshot's durable causal meaning without importing its journal or journalCoverage.
+For every reset-touched NodeKey, reset retains one compact `ResetLineage(absorbsThrough,correspondence)` on receiver authority. A present target stores it on the receiver freshness assertion anchored to the retained value origin; present-to-absent stores it on the real public delete. Absent-to-absent authors an internal reset-observation anchored to the existing delete or to explicit null absence when the receiver has no presence entry, with no public action. A source null observation itself makes the key reset-touched even without a source add/delete. The null anchor remains effective after delayed consumed source entries are unioned: entries through `absorbsThrough` cannot manufacture presence, while post-cutoff generations/deletes participate in ordinary presence order.
 
-Each lineage carrier is also an individual fallback assertion. Same-author assertions on the same tagged receiver anchor form a writer-local sequence chain: a later assertion replaces an earlier assertion while componentwise carrying its absorption vector. It still omits the earlier carrier coordinate, so an unchanged reset does not chase its own local clock. Across authors or anchors, assertion N supersedes assertion O only when N's own `consumedThrough` covers O's actual anchor-presence coordinate (when non-null) and O's immutable carrier coordinate. Joined per-anchor vectors summarize absorption but do not create cross-anchor observation. Thus `A1 -> B1 -> A2` selects A2 only because A2 actually observed B1, regardless of B1 having observed historical A1. A currently inapplicable maximal assertion remains future-relevant because a later raw displacement inside its cut can make it applicable again. Compaction retains the maximal assertion antichain and the per-author coordinates of its anchors. On an unchanged repeat, the bookkeeping exclusion set is exactly the reset-lineage carriers whose `lineage_anchor` equals the receiver's current tagged anchor plus that present value-origin/delete anchor event itself; their vectors remain knowledge, but their authoring coordinates are not recursively chased. Every carrier from another historical anchor is genuine observed history and advances the new prefix. Reset does not install those coordinates in receiver journalCoverage, and source causal vectors never imply or transitively copy exact semantic correspondence.
+Reset planning enumerates every receiver and source tagged anchor it consumes and computes that anchor's effective cut from both retained same-anchor carriers and the snapshot's `resetAnchorCuts` entry. The new lineage componentwise carries every such effective cut, validated source coverage, and every genuine retained public event coordinate consumed for this NodeKey. Independently, controlled reset enumerates every source anchor represented by either a reset-lineage carrier or a cut summary, computes its effective cut from both forms, and joins that cut into receiver `resetAnchorCuts` by exact `(NodeKey,taggedAnchor)`. This includes anchors with no causal-maximal carrier, displaced anchors, and anchors different from the new receiver anchor. Uncompacted and compacted representations of the same source absorption state therefore install the same receiver archive. This transfers semantic absorption only—exact semantic correspondence remains independently scoped and is never widened from the vector. Reset-of-reset consumes the source snapshot's durable reset meaning without importing its journal or `journalCoverage`.
 
-For each author A, an event at or below `consumedThrough[A]` was observed and is absorbed; a same-lineage scoped event, delete, or rematerialization above it remains live. Missing A means zero. Event authorship, not the physical carrier or reset-source container, selects the coordinate. Concurrent observations on the same receiver anchor join their vectors componentwise; JournalEntryId order alone proves no observation. Exact semantic correspondences are retained separately as the bounded set of source generation/origin pairs actually compared `isEqual` with that receiver anchor. The causal vector never implies correspondence for arbitrary origins beneath it.
+Each lineage carrier is also an individual fallback assertion. Assertion N causally dominates assertion O exactly when `causallyBefore(O,N)`: same-author succession follows local sequence, and cross-author succession follows N's immutable `causalContext`. Causally maximal concurrent assertions resolve by occurrence time and then author fingerprint. `absorbsThrough` summarizes semantic absorption and never proves assertion observation. A currently inapplicable maximal assertion remains future-relevant because later union can make it applicable again, so compaction retains the maximal assertion antichain and anchor witnesses. Reset does not install source coordinates in receiver `journalCoverage`, and causal context never implies or copies exact semantic correspondence.
+
+For each author A, an event at or below `absorbsThrough[A]` is intentionally absorbed; a same-lineage scoped event, delete, or rematerialization above it remains live. Missing A means zero. Event authorship selects the coordinate. Concurrent observations on the same receiver anchor join absorption vectors componentwise without creating happened-before. Exact semantic correspondences are retained separately as the bounded set of source generation/origin pairs actually compared `isEqual` with that receiver anchor.
 
 For a key/generation, the **consumed absorption prefix** contains the validated source coverage coordinates, every applicable receiver/source invalidate coordinate that the target must clear, and every coordinate already carried by an applicable receiver validation. For a fresh target, applicable invalidates means both modes. For a soft target, it means hard invalidates; the intended receiver-retained soft assertion remains deliberately above/outside the clearing validation. Receiver coverage growth caused solely by a reset assertion is not recursively added to this prefix. Consequently an unchanged repeated reset tests the same semantic obligation rather than chasing its own clock.
 
@@ -274,7 +278,7 @@ For a key/generation, the **consumed absorption prefix** contains the validated 
 
 Separate old partial validations are not combined; the reset validation is one new assertion justified by its actual joint observation. Unseen/concurrent history above the consumed prefixes remains live. A delayed compacted event within a claimed prefix is cleared. Presence and value reconciliation interpret the per-author lineage vector exactly as above. This rule applies to present and absent targets and when reset preserved an already-present receiver generation; no author or carrier must first receive the receiver anchor.
 
-Idempotence compares the hypothetical combined frontier, not raw coverage growth. If an existing assertion already absorbs unchanged S0 and graph target matches, reset authors nothing and leaves graph, journal, receiver coverage, local clock, identifiers, and timestamps byte-for-byte unchanged.
+Before testing idempotence, reset computes `resultingResetAnchorCuts` by componentwise joining receiver cut summaries with every source effective cut at its exact `(NodeKey,taggedAnchor)`. Settledness requires the target SemanticGraph, required freshness/proof authority, exact correspondence, every consumed effective cut in reset-authored lineage, required causal knowledge, and that complete resulting archive. If only the archive is missing, reset atomically installs its growth without authoring an event or changing graph, receiver coverage, local counter, causal summary, identifiers, or timestamps. Once all of these effects are represented, an identical reset leaves graph, journal, reset-anchor cut summaries, receiver coverage, local counter, causal summary, identifiers, and timestamps byte-for-byte unchanged.
 
 **Observed Reset Absorption Theorem.** Let `R1=resetτ(R0,S0)` and `R2=sync(R1,S0)` with unchanged S0. R1 matches S0 SemanticGraph; changed/created values use τ and equal values preserve receiver modifiedAt; reset creates no equal-value generation; R2 has the same SemanticGraph and authors no receiver event, though it may import S0 journal/coverage. Events outside consumed prefixes remain governed by ordinary synchronization.
 
@@ -285,10 +289,10 @@ A source value with modifiedAt greater than τ contradicts the supported synchro
 ### 7.5 Counter continuity during self-restoration
 
 A writer MUST never resume authoritative mutation with a local action sequence
-at or below a sequence it previously authored with the same `DatabaseFingerprint`.
+at or below a sequence it authored with the same `DatabaseFingerprint`.
 
 ```text
-A previously published:
+A published:
     JournalEntry(author=A, sequence=10, nodeName=N, bindings=B, action=edit, generation=G)
 
 A loses its live database.
@@ -297,10 +301,10 @@ A restores its own synchronized snapshot:
     JournalEntry(author=A, sequence=10, nodeName=N, bindings=B, action=edit, generation=G)
 
 A edits K:
-    localJournalClock advances to 11
+    localJournalCounter advances to 11
     JournalEntry(author=A, sequence=11, nodeName=N, bindings=B, action=edit, generation=G)
 
-B previously observed 10:
+B observed 10:
     journal merge retains 11 over covered edit 10
     B imports the unchanged precise journal entry
 ```
@@ -308,7 +312,7 @@ B previously observed 10:
 The rollback below is invalid because sequence reuse makes the new edit conflict with immutable history:
 
 ```text
-restore OA with localJournalClock 0 and no journal events
+restore OA with localJournalCounter 0 and no journal events
 emit sequence 1
 peer already has sequence 10
 
