@@ -212,7 +212,8 @@ def restore_iterator(replica: Replica, encoded: str) -> JournalIterator:
     try:
         parsed = json.loads(encoded)
         assert list(parsed) == ["v", "progress", "issuanceCoverage"]
-        assert parsed["v"] == 1 and not isinstance(parsed["v"], bool)
+        assert type(parsed["v"]) is int
+        assert parsed["v"] == 1
         def decode(values) -> dict[str, int]:
             result: dict[str, int] = {}
             previous = ""
@@ -1357,7 +1358,12 @@ def verify_consumable_journal_iterator() -> None:
     restarted = restore_iterator(replica, encoded)
     assert restarted.progress == snapshot_iterator.progress
     assert iterator_to_string(restarted) == encoded
-    for malformed in (encoded + " ", '{"v":1,"progress":[],"issuanceCoverage":[],"x":1}'):
+    malformed_states = (
+        encoded + " ",
+        '{"v":1,"progress":[],"issuanceCoverage":[],"x":1}',
+        '{"v":1.0,"progress":[],"issuanceCoverage":[]}',
+    )
+    for malformed in malformed_states:
         try:
             restore_iterator(replica, malformed)
             assert False
