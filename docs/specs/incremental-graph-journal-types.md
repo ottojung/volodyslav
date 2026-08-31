@@ -177,7 +177,10 @@ Every `greatest` above compares sequences from one author only. Partial validati
 
 Presence selection precedes joined value provenance, coherence classification, and precedence among candidates eligible at that stage. A coherent derived cache may beat a newer unsupported cache; equal-time joined canonical provenance is not reassigned merely because another candidate is coherent. Proof transport is extensional: schema/bindings/direct-input structure must match, all direct-input and output values must be `isEqual`, and source proof must exist. Equality permits transport but never creates proof.
 
-Polling hides raw IDs, generation, modes, causal contexts, and reset metadata. Storage-level `NodeIdentifier` incarnation remains distinct from semantic `NodeKey`; removal retires an identifier and rematerialization allocates another.
+Possible-change notifications hide raw IDs, generation, modes, causal contexts,
+and reset metadata. Storage-level `NodeIdentifier` incarnation remains distinct
+from semantic `NodeKey`; removal retires an identifier and rematerialization
+allocates another.
 
 ## Iterator state facts
 

@@ -95,6 +95,28 @@ the garden before its promise resolves. The return type is
 the caller holds only the ordinary array: retaining it, iterating it slowly, or
 abandoning it cannot retain garden ownership. No database snapshot, replica reference, or lifetime capability escapes through the return value. The owning `JournalIterator` survives, but it retains only application-owned progress and issuance vectors, not the snapshot.
 
+`graph.journal.iteratorFromString()` reads authoritative coverage and therefore
+is an asynchronous active-replica operation. It uses this complete protocol:
+
+```text
+enterGarden
+    select active replica
+    parse and canonically validate durable iterator state
+    read stable current journalCoverage
+    require journalCoverage to dominate issuanceCoverage
+    construct an iterator bound to this graph context
+leaveGarden
+
+promise resolves with the bound iterator
+```
+
+The garden entrance protects active-replica selection, its lifetime, and the
+coverage read through construction. Cutover, migration, synchronization, and
+close cannot replace or destroy the selected replica during that interval. No
+dome mode is required. Validation or insufficient coverage rejects before an
+iterator escapes, and the procedure retains no active-replica pointer after it
+leaves the garden.
+
 ## Lock Keys
 
 The implementation derives keys from functor-based factories.
@@ -464,3 +486,8 @@ materialized, then leaves the garden before resolving its promise with that
 ordinary in-memory array. It never continues reading a saved replica pointer
 after leaving. It never acquires the dome, telescope, writer allocator, or
 darkroom, appends an entry, changes coverage, or invokes a computor.
+
+`graph.journal.iteratorFromString()` likewise enters the garden, selects the
+active replica, and reads its stable `journalCoverage` before deciding whether
+restoration is safe. It leaves before its promise resolves and returns an
+iterator bound to the graph context, not a saved active-replica pointer.

@@ -19,7 +19,7 @@ interface JournalIterator {
 
 graph.journal.makeIterator(): JournalIterator;
 iteratorToString(iterator: JournalIterator): string;
-graph.journal.iteratorFromString(state: string): JournalIterator;
+graph.journal.iteratorFromString(state: string): Promise<JournalIterator>;
 ```
 
 The notification contains no journal ID, writer, generation, causal context,
@@ -31,6 +31,10 @@ invalidation both project to `"invalidate"`.
 `makeIterator()` creates a consumer before all journal history. Progress belongs
 to the iterator and is a vector of per-`DatabaseFingerprint` coordinates;
 missing coordinates mean zero. It is independent of every `NodeFilter`.
+Every iterator is permanently bound to the graph context that created or
+restored it. `iterate()` therefore accepts no graph argument, `clone()` retains
+the same binding, and transferring progress to another graph requires durable
+serialization followed by that graph's coverage-checked `iteratorFromString()`.
 
 ## Iteration (normative)
 
@@ -66,8 +70,9 @@ points.
 ## Durable iterator-state v1 codec (normative)
 
 `iteratorToString` serializes the iterator's progress and its recorded issuance
-coverage, never a `PossibleChange` or filter. `iteratorFromString` parses the
-state in the receiving journal context and restores an independent iterator.
+coverage, never a `PossibleChange` or filter. `iteratorFromString` asynchronously
+parses the state in the receiving graph's active-replica context and restores an
+independent iterator bound to that graph.
 There is exactly one v1 encoding:
 
 ```text
@@ -93,8 +98,8 @@ writer history in issuer and receiver.
 
 `issuanceCoverage` records the coverage frontier that proves the published
 progress safe. It is empty for a newly created before-all iterator and becomes
-the captured coverage when iteration successfully advances. Before restoration is usable,
-the
+the captured coverage when iteration successfully advances. Before restoration
+is usable, the
 receiving journal's current `journalCoverage` MUST componentwise dominate it;
 otherwise `iteratorFromString` throws `InsufficientIteratorCoverageError` and
 creates no iterator. This prevents progress `A:100` from skipping `A:51..100`

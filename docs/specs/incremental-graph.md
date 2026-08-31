@@ -507,7 +507,7 @@ interface IncrementalGraph {
   // Journal API
   journal: {
     makeIterator(): JournalIterator;
-    iteratorFromString(state: string): JournalIterator;
+    iteratorFromString(state: string): Promise<JournalIterator>;
   };
 
   // Inspection API (read-only)
@@ -844,6 +844,7 @@ is normative in `incremental-graph-locking-design.md`.
 | `getCreationTime()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
 | `getModificationTime()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
 | `JournalIterator.iterate()` | `enterGarden` | Daytime and nighttime methods; holds shared access through complete fixed-snapshot consumption; never allocates or updates journal state or acquires dome/darkroom; **NOT** with `closeGarden` |
+| `graph.journal.iteratorFromString()` | `enterGarden` | Daytime and nighttime methods; holds shared access through canonical validation and the stable coverage read; **NOT** with `closeGarden` |
 | `getSchemas()` | none (in-memory read) | Everything |
 | `getSchemaByHead()` | none (in-memory read) | Everything |
 | `getDbVersion()` | none (in-memory read) | Everything |
@@ -853,7 +854,7 @@ is normative in `incremental-graph-locking-design.md`.
 | Category | Methods |
 |----------|---------|
 | **Read-write** (modify graph state) | `pull()`, `invalidate()` |
-| **Read-only** (observe graph state) | `JournalIterator.iterate()`, `getFreshness()`, `getValue()`, `listMaterializedNodes()`, `getCreationTime()`, `getModificationTime()`, `getSchemas()`, `getSchemaByHead()`, `getDbVersion()` |
+| **Read-only** (observe graph state) | `JournalIterator.iterate()`, `graph.journal.iteratorFromString()`, `getFreshness()`, `getValue()`, `listMaterializedNodes()`, `getCreationTime()`, `getModificationTime()`, `getSchemas()`, `getSchemaByHead()`, `getDbVersion()` |
 
 **REQ-CONCUR-03 (Read-only Safety):** All read-only methods MUST NOT modify any stored graph state (values, freshness, timestamps, materialization records).
 
