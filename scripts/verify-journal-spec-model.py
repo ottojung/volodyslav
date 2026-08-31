@@ -226,6 +226,22 @@ def controlled_reset_absorption(
     return join_prefixes(base, *cuts)
 
 
+def controlled_reset_archive(
+        receiver: Iterable[Event] | JournalState,
+        source: Iterable[Event] | JournalState) -> JournalState:
+    """Preserve source AC by exact anchor without importing source events."""
+    joined: dict[tuple[NodeKey, Anchor], dict[str, int]] = {}
+    for summary in (*journal_cut_summaries(receiver),
+                    *journal_cut_summaries(source)):
+        key = summary.node, summary.anchor
+        joined[key] = join_prefixes(
+            joined.get(key, {}), summary.absorbs_through)
+    return JournalState(
+        frozenset(journal_events(receiver)),
+        frozenset(AnchorCutSummary(node, anchor, cut)
+                  for (node, anchor), cut in joined.items()))
+
+
 def author_event(replica: Replica, node: NodeKey, kind: str, **fields) -> Event:
     replica.local_counter += 1
     event = Event(replica.author, replica.local_counter, node, kind,
@@ -734,6 +750,59 @@ def verify_reset_and_migration_preserve_effective_cuts() -> None:
         replica_journal_state(target_replica) | {delayed_b5}, node) is None
 
 
+def verify_controlled_reset_preserves_anchor_archive() -> None:
+    node = ("reset-archive", ())
+    source_generation = event("S", 1, node, "generation", time=1)
+    anchor_zero: Anchor = ("null", None)
+    historical = event(
+        "H", 1, node, "reset-observation", time=2,
+        reset_lineage=lineage({"S": 1, "X": 10}))
+    current = event(
+        "N", 1, node, "validate", time=3, causal_context={"H": 1},
+        generation=source_generation.id, value_origin=source_generation.id,
+        reset_lineage=lineage({"S": 1, "X": 10}))
+    source = compact({source_generation, historical, current})
+    assert historical not in source
+    assert all(tagged_anchor(carrier) != anchor_zero
+               for carrier in future_reset_assertions(source))
+    assert coordinate(next(
+        summary.absorbs_through for summary in source.anchor_cuts
+        if summary.node == node and summary.anchor == anchor_zero), "X") == 10
+
+    receiver_generation = event("R", 1, node, "generation", time=1)
+    receiver = JournalState(frozenset({receiver_generation}))
+    receiver_with_archive = controlled_reset_archive(receiver, source)
+    carried = controlled_reset_absorption(
+        source, node, [tagged_anchor(current)])
+    reset_carrier = event(
+        "R", 2, node, "validate", time=4, causal_context={"N": 1},
+        generation=receiver_generation.id, value_origin=receiver_generation.id,
+        reset_lineage=lineage(carried))
+    reset_state = JournalState(
+        receiver_with_archive.events | {reset_carrier},
+        receiver_with_archive.anchor_cuts)
+
+    # C knows the receiver witness but is concurrent with the reset decision.
+    concurrent = event(
+        "C", 1, node, "reset-observation", time=5,
+        reset_lineage=lineage({"R": 1}))
+    inside = event("X", 5, node, "generation", time=6)
+    outside = event("X", 11, node, "generation", time=7)
+    with_inside = reset_state | {concurrent, inside}
+    assert presence_selection(with_inside, node) is None
+    direct_archive_interpretation = source | receiver | {reset_carrier, concurrent, inside}
+    assert presence_selection(with_inside, node) == presence_selection(
+        direct_archive_interpretation, node)
+    assert presence_selection(reset_state | {concurrent, outside}, node) == outside
+
+    restarted = compact(with_inside)
+    assert presence_selection(restarted, node) is None
+    assert any(summary.node == node and summary.anchor == anchor_zero
+               and coordinate(summary.absorbs_through, "X") == 10
+               for summary in restarted.anchor_cuts)
+    assert compact(restarted) == restarted
+
+
 def reset_fixture() -> tuple[NodeKey, list[Event], Anchor, Anchor]:
     node = ("n", ("x",))
     g1 = event("A", 5, node, "generation", time=5)
@@ -1085,6 +1154,7 @@ def main() -> None:
     verify_pure_receive_then_author()
     verify_receive_anchor_cut_summaries()
     verify_reset_and_migration_preserve_effective_cuts()
+    verify_controlled_reset_preserves_anchor_archive()
     verify_reset_applicability_and_cuts()
     verify_scoped_activation_and_future_anchor()
     verify_delayed_same_anchor_cut_recovery()

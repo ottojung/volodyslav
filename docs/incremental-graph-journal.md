@@ -22,23 +22,28 @@ required by this boundary is present.
 ## Complexity summary
 
 Let `n` be the number of represented current/historic semantic keys, `r` the
-number of represented durable authors, and `c` the number of losslessly
+number of represented durable authors, `a` the number of distinct
+`(NodeKey,taggedAnchor)` identities whose absorption evidence has been represented, and `c` the number of losslessly
 retained full `(key,receiverValueOrigin,sourceGeneration,sourceValueOrigin)`
 reset correspondences. Assuming every represented NodeKey/semantic journal
-address has bounded serialized size independent of `n`, `r`, and `c`, and
+address has bounded serialized size independent of `n`, `r`, `a`, and `c`, and
 assuming `n > 0` and `r > 0`, the fully compacted journal together with journal
-coverage and causal metadata retain `O(nr² + cr)` logical records and vector-coordinate slots.
+coverage, causal metadata, and reset-anchor absorption metadata retain `O(nr² + ar + cr)` logical records and vector-coordinate slots.
 Public-action, frontier, per-event context, and causal evidence contribute `O(nr²)` such items;
 exact correspondence carriers contribute `O(cr)` because each carries an
-`O(r)` causal observation vector; and coverage's `O(r)` is absorbed by
+`O(r)` causal observation vector; one joined `O(r)` cut is retained for each of the `a` exact anchor identities; and coverage's `O(r)` is absorbed by
 `O(nr²)` because `r <= nr²`. The `cr` term is necessary when lagging explicitly
-certified origins must remain recognizable.
+certified origins must remain recognizable. The `ar` term is necessary because
+an archived cut may outlive every carrier for its exact anchor, and a delayed
+concurrent carrier can make that anchor relevant again. Repeated evidence for
+one exact anchor collapses componentwise, but `a` may grow independently of
+`n`, `r`, and `c`.
 
 This is a logical-item bound, not an unqualified byte-storage bound. Let `b` be
 the maximum serialized byte length of any arbitrary-precision journal sequence
 or causal coordinate retained in the particular compacted state. Under the
 bounded-address premise, serialized journal-plus-coverage size is
-`O(b(nr² + cr))` bytes. `b` may grow independently of `n`, `r`, and `c`, so it
+`O(b(nr² + ar + cr))` bytes. `b` may grow independently of `n`, `r`, `a`, and `c`, so it
 cannot be omitted from a byte bound. Application-owned filter-bound cursor
 strings are not database storage. The bounded-address premise is an asymptotic
 assumption, not a runtime size cap.
