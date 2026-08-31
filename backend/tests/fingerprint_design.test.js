@@ -72,14 +72,14 @@ function makeLogger() {
 }
 
 const NODE_A = nodeIdentifierFromString('1-abcdefghi');
-const HOST_NODE_A = nodeIdentifierFromString('1-remotehostabcdef');
+const HOST_NODE_A = nodeIdentifierFromString('1-remotehos');
 const TS1 = '2024-01-01T00:00:01.000Z';
 
 describe('fingerprint design', () => {
     let db;
 
     test.each([
-        'abcdefghijklmnop',
+        'abcdefghi',
     ])('accepts valid fingerprint %s', (fingerprint) => {
         expect(isValidFingerprint(fingerprint)).toBe(true);
     });
@@ -88,7 +88,7 @@ describe('fingerprint design', () => {
         undefined,
         123,
         'abcdefghijklmno',
-        'abcdefghijklmnopq',
+        'abcdefghiq',
         'abcdefghijklmno1',
         'ABCDEFGHIJKLMNOP',
         'abcdefghijklmnoé',
@@ -114,8 +114,8 @@ describe('fingerprint design', () => {
 
             const fingerprint = db.getFingerprint();
             expect(typeof fingerprint).toBe('string');
-            expect(fingerprint).toHaveLength(16);
-            expect(fingerprint).toMatch(/^[a-z]{16}$/);
+            expect(fingerprint).toHaveLength(9);
+            expect(fingerprint).toMatch(/^[a-z]{9}$/);
 
             const global = db.getSchemaStorage().global;
             const storedFingerprint = await global.get('fingerprint');
@@ -415,7 +415,7 @@ describe('fingerprint design', () => {
 
             // Put a different fingerprint in the host's global sublevel.
             const hostGlobal = db.hostnameSchemaStorage(hostname).global;
-            await hostGlobal.put('fingerprint', 'remotehostabcdef');
+            await hostGlobal.put('fingerprint', 'remotehos');
             await hostGlobal.put(IDENTIFIERS_KEY, []);
             await hostGlobal.put(LAST_NODE_INDEX_KEY, 0);
             await hostGlobal.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [] }));
@@ -457,7 +457,7 @@ describe('fingerprint design', () => {
             await H.timestamps.put(HOST_NODE_A, { createdAt: TS1, modifiedAt: TS1 });
             await H.freshness.put(HOST_NODE_A, 'up-to-date');
             await H.values.put(HOST_NODE_A, { value: { id: 'a', type: 'test', description: 'a' }, isDirty: false });
-            await H.global.put('fingerprint', 'remotehostabcdef');
+            await H.global.put('fingerprint', 'remotehos');
             await H.global.put(IDENTIFIERS_KEY, serializeIdentifierLookup(makeIdentifierLookup([
                 [HOST_NODE_A, '{"head":"event","args":[]}'],
             ])));
@@ -485,7 +485,7 @@ describe('fingerprint design', () => {
             expect(persistedFingerprint).toBe(localFingerprint);
 
             // Host's fingerprint should NOT have been adopted.
-            expect(persistedFingerprint).not.toBe('remotehostabcdef');
+            expect(persistedFingerprint).not.toBe('remotehos');
         } finally {
             cleanup(tmpDir);
         }
@@ -605,7 +605,7 @@ describe('fingerprint design', () => {
             // Local fingerprint.
             await L.global.put('fingerprint', localFingerprint);
             // Host has a different fingerprint.
-            await H.global.put('fingerprint', 'remotehostabcdef');
+            await H.global.put('fingerprint', 'remotehos');
 
             const logger = makeLogger();
             const switched = await mergeHostIntoReplica(logger, db, hostname);

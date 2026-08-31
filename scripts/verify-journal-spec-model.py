@@ -219,7 +219,7 @@ def restore_iterator(replica: Replica, encoded: str) -> JournalIterator:
             previous = ""
             for author, text in values:
                 assert isinstance(author, str)
-                assert re.fullmatch(r"[a-z]{16}", author) is not None
+                assert re.fullmatch(r"[a-z]{9}", author) is not None
                 assert author > previous
                 assert isinstance(text, str) and text.isdigit()
                 assert text[0] != "0"
@@ -1291,8 +1291,8 @@ def verify_values_freshness_notifications() -> None:
 
 def verify_consumable_journal_iterator() -> None:
     foo, bar = ("foo", ()), ("bar", ())
-    author = "aaaaaaaaaaaaaaaa"
-    receiver_author = "bbbbbbbbbbbbbbbb"
+    author = "aaaaaaaaa"
+    receiver_author = "bbbbbbbbb"
     replica = Replica(author)
     for entry in (event(author, 1, foo, "edit"),
                   event(author, 2, bar, "edit"),
@@ -1470,6 +1470,63 @@ def verify_causal_laws() -> None:
     assert causally_before(a, b) and causally_before(b, c) and causally_before(a, c)
 
 
+def verify_generated_supported_histories() -> None:
+    """Exhaustively check all prefix-closed subsets of a small valid history.
+
+    Prefix closure keeps every generated state authorable: an author's second
+    event is present only with its first, and its causal context names events
+    that are present.  The loop reports the smallest failing state directly.
+    """
+    node = ("generated", ())
+    authors = ("aaaaaaaaa", "bbbbbbbbb")
+    streams = {
+        authors[0]: (
+            event(authors[0], 1, node, "generation", time=1),
+            event(authors[0], 2, node, "edit", time=2,
+                  causal_context={authors[0]: 1}, generation=(authors[0], 1)),
+        ),
+        authors[1]: (
+            event(authors[1], 1, node, "generation", time=1),
+            event(authors[1], 2, node, "delete", time=2,
+                  causal_context={authors[1]: 1}),
+        ),
+    }
+    states: list[JournalState] = []
+    for a_length in range(3):
+        for b_length in range(3):
+            events = streams[authors[0]][:a_length] + streams[authors[1]][:b_length]
+            states.append(JournalState(frozenset(events)))
+
+    def projection(state: JournalState) -> tuple[EntryId | None, frozenset[EntryId]]:
+        selected = presence_selection(state, node)
+        return (None if selected is None else selected.id,
+                frozenset(item.id for item in notification_maxima(state.events)))
+
+    for state in states:
+        reduced = compact(state)
+        assert compact(reduced) == reduced, ("compact-idempotence", state)
+        assert projection(state) == projection(reduced), ("projection", state)
+        for future in states:
+            assert compact(compact(state) | future) == compact(state | future), (
+                "future-union", state, future)
+    for left in states:
+        assert compact(left | left) == compact(left), ("merge-idempotence", left)
+        for right in states:
+            assert compact(left | right) == compact(right | left), (
+                "merge-commutativity", left, right)
+            for third in states:
+                assert compact((left | right) | third) == compact(
+                    left | (right | third)), ("merge-associativity", left, right, third)
+
+    # Foreign sequence magnitude is deliberately varied while time and author
+    # stay fixed: neither causal maxima nor conflict selection may change.
+    low = event(authors[0], 1, node, "edit", time=7)
+    foreign_low = event(authors[1], 1, node, "edit", time=7)
+    foreign_high = event(authors[1], 10_000, node, "edit", time=7)
+    assert concurrent_winner(causal_maxima((low, foreign_low))).author == authors[1]
+    assert concurrent_winner(causal_maxima((low, foreign_high))).author == authors[1]
+
+
 def main() -> None:
     verify_pure_receive_then_author()
     verify_receive_anchor_cut_summaries()
@@ -1489,6 +1546,7 @@ def main() -> None:
     verify_consumable_journal_iterator()
     verify_compaction_future_union()
     verify_causal_laws()
+    verify_generated_supported_histories()
     print("journal causal-context model: all bounded checks passed")
 
 

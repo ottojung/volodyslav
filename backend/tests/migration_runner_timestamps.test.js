@@ -122,8 +122,8 @@ function makeSchemaStorage() {
 function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage }) {
     const rootDatabase = {
         version: currentVersion,
-        _computed: { lastNodeIndex: 0, fingerprint: "testfingerprinta" },
-        getFingerprint() { return "testfingerprinta"; },
+        _computed: { lastNodeIndex: 0, fingerprint: "testprint" },
+        getFingerprint() { return "testprint"; },
         getVersion() { return this.version; },
         getLastNodeIndex() { return this._computed.lastNodeIndex; },
         advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },

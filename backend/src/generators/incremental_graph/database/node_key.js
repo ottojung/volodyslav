@@ -50,25 +50,56 @@ function isInvalidConstValueError(object) {
  * @param {string} path
  * @returns {void}
  */
-function validateConstValue(value, path) {
+function validateConstValue(value, path, ancestors = new Set()) {
     if (typeof value === "string" || typeof value === "boolean") return;
     if (typeof value === "number") {
         if (Number.isFinite(value)) return;
         throw new InvalidConstValueError(path);
     }
+    if (value === null || typeof value !== "object" || ancestors.has(value)) {
+        throw new InvalidConstValueError(path);
+    }
+
+    const prototype = Object.getPrototypeOf(value);
     if (Array.isArray(value)) {
+        if (prototype !== Array.prototype || Object.getOwnPropertySymbols(value).length !== 0) {
+            throw new InvalidConstValueError(path);
+        }
+        ancestors.add(value);
         for (let index = 0; index < value.length; index += 1) {
-            validateConstValue(value[index], `${path}[${index}]`);
+            if (!Object.prototype.hasOwnProperty.call(value, index)) {
+                ancestors.delete(value);
+                throw new InvalidConstValueError(`${path}[${index}]`);
+            }
+            const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+            if (descriptor === undefined || !("value" in descriptor)) {
+                ancestors.delete(value);
+                throw new InvalidConstValueError(`${path}[${index}]`);
+            }
+            validateConstValue(descriptor.value, `${path}[${index}]`, ancestors);
         }
+        const names = Object.getOwnPropertyNames(value);
+        if (names.some(name => name !== "length" && !/^(0|[1-9][0-9]*)$/.test(name))) {
+            ancestors.delete(value);
+            throw new InvalidConstValueError(path);
+        }
+        ancestors.delete(value);
         return;
     }
-    if (value !== null && typeof value === "object") {
-        for (const [key, nestedValue] of Object.entries(value)) {
-            validateConstValue(nestedValue, `${path}.${key}`);
-        }
-        return;
+
+    if (prototype !== Object.prototype || Object.getOwnPropertySymbols(value).length !== 0) {
+        throw new InvalidConstValueError(path);
     }
-    throw new InvalidConstValueError(path);
+    ancestors.add(value);
+    for (const key of Object.getOwnPropertyNames(value)) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) {
+            ancestors.delete(value);
+            throw new InvalidConstValueError(`${path}.${key}`);
+        }
+        validateConstValue(descriptor.value, `${path}.${key}`, ancestors);
+    }
+    ancestors.delete(value);
 }
 
 /**
@@ -202,8 +233,8 @@ function compareConstValue(a, b) {
     // Both are objects (non-array, non-null).
     if (a !== null && typeof a === "object" && !Array.isArray(a) &&
         b !== null && typeof b === "object" && !Array.isArray(b)) {
-        const sortedEntriesA = Object.entries(a).sort(([k1], [k2]) => k1 < k2 ? -1 : k1 > k2 ? 1 : 0);
-        const sortedEntriesB = Object.entries(b).sort(([k1], [k2]) => k1 < k2 ? -1 : k1 > k2 ? 1 : 0);
+        const sortedEntriesA = Object.entries(a);
+        const sortedEntriesB = Object.entries(b);
         const minLen = Math.min(sortedEntriesA.length, sortedEntriesB.length);
         for (let i = 0; i < minLen; i++) {
             const entryA = sortedEntriesA[i];

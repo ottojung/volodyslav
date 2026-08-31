@@ -1,8 +1,8 @@
 /**
- * Persisted allocation fingerprints contain exactly sixteen lowercase ASCII
+ * Persisted allocation fingerprints contain exactly nine lowercase ASCII
  * letters.
  */
-const DATABASE_FINGERPRINT_LENGTH = 16;
+const DATABASE_FINGERPRINT_LENGTH = 9;
 const FINGERPRINT_PATTERN = new RegExp(`^[a-z]{${DATABASE_FINGERPRINT_LENGTH}}$`);
 
 /**
@@ -17,7 +17,7 @@ class InvalidFingerprintError extends Error {
     constructor(context, value) {
         super(
             `Invalid fingerprint in ${context}: expected a string matching ` +
-            `/^[a-z]{16}$/, got ${JSON.stringify(value)}`
+            `/^[a-z]{9}$/, got ${JSON.stringify(value)}`
         );
         this.name = 'InvalidFingerprintError';
         this.context = context;

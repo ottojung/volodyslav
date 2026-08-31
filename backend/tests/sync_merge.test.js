@@ -127,7 +127,7 @@ function entriesForSameStringNodeKeys(nodeIdentifiers) {
  */
 async function writeGraphScheme(storage) {
     if (await storage.global.get('fingerprint') === undefined) {
-        await storage.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+        await storage.global.put('fingerprint', 'zzzzzzzzz');
     }
     const scheme = {
         format: 1,
@@ -212,15 +212,15 @@ async function mergeAndReopenIfSwitched(capabilities, logger, db, hostname) {
 
 describe('compareMaterializationCandidates', () => {
     test('newer timestamp dominates identifier', () => {
-        const a = makeMaterializationCandidate(nodeIdentifierFromString('a'), TS2, 'aaaaaaaaaaaaaaaa');
-        const z = makeMaterializationCandidate(nodeIdentifierFromString('z'), TS1, 'zzzzzzzzzzzzzzzz');
+        const a = makeMaterializationCandidate(nodeIdentifierFromString('a'), TS2, 'aaaaaaaaa');
+        const z = makeMaterializationCandidate(nodeIdentifierFromString('z'), TS1, 'zzzzzzzzz');
         expect(Math.sign(compareMaterializationCandidates(a, z))).toBe(1);
         expect(Math.sign(compareMaterializationCandidates(z, a))).toBe(-1);
     });
 
     test('identifier breaks timestamp ties by canonical string order', () => {
-        const nodeA = makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS1, 'aaaaaaaaaaaaaaaa');
-        const nodeB = makeMaterializationCandidate(nodeIdentifierFromString('node-b'), TS1, 'aaaaaaaaaaaaaaaa');
+        const nodeA = makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS1, 'aaaaaaaaa');
+        const nodeB = makeMaterializationCandidate(nodeIdentifierFromString('node-b'), TS1, 'aaaaaaaaa');
         expect(Math.sign(compareMaterializationCandidates(nodeA, nodeB))).toBe(-1);
         expect(Math.sign(compareMaterializationCandidates(nodeB, nodeA))).toBe(1);
     });
@@ -228,17 +228,17 @@ describe('compareMaterializationCandidates', () => {
 
 
     test('source fingerprint breaks timestamp and identifier ties', () => {
-        const lowFingerprint = makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS1, 'aaaaaaaaaaaaaaaa');
-        const highFingerprint = makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS1, 'zzzzzzzzzzzzzzzz');
+        const lowFingerprint = makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS1, 'aaaaaaaaa');
+        const highFingerprint = makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS1, 'zzzzzzzzz');
         expect(Math.sign(compareMaterializationCandidates(lowFingerprint, highFingerprint))).toBe(-1);
         expect(Math.sign(compareMaterializationCandidates(highFingerprint, lowFingerprint))).toBe(1);
     });
 
     test('comparator laws hold for representative triples', () => {
         const candidates = [
-            makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS1, 'aaaaaaaaaaaaaaaa'),
-            makeMaterializationCandidate(nodeIdentifierFromString('node-b'), TS1, 'aaaaaaaaaaaaaaaa'),
-            makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS2, 'aaaaaaaaaaaaaaaa'),
+            makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS1, 'aaaaaaaaa'),
+            makeMaterializationCandidate(nodeIdentifierFromString('node-b'), TS1, 'aaaaaaaaa'),
+            makeMaterializationCandidate(nodeIdentifierFromString('node-a'), TS2, 'aaaaaaaaa'),
         ];
         for (const left of candidates) {
             expect(compareMaterializationCandidates(left, left)).toBe(0);
@@ -339,7 +339,7 @@ describe('mergeHostIntoReplica', () => {
 
             // Write different scheme B on host
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, JSON.stringify({
                 format: 1,
                 nodes: [{ head: "Y", arity: 0, inputTemplates: [] }],
@@ -381,7 +381,7 @@ describe('mergeHostIntoReplica', () => {
             await L.values.put(nodeId, {});
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
             await writeIdentifierLookup(H, []);
 
@@ -420,7 +420,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, remoteValue);
             await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
@@ -459,7 +459,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS2, remoteValue);
             await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
@@ -507,7 +507,7 @@ describe('mergeHostIntoReplica', () => {
             // Write valid flags to L before merge
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, remoteValue);
             await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
@@ -555,7 +555,7 @@ describe('mergeHostIntoReplica', () => {
             await L.valid.put(targetParent, [targetChild]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, hostParent, TS1, undefined);
             await writeNode(H, hostChild, TS2, undefined);
@@ -602,7 +602,7 @@ describe('mergeHostIntoReplica', () => {
             const remoteValue = { value: { id: 'h-only', type: 'test', description: 'h only' }, isDirty: false };
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, remoteValue);
             const L = db.schemaStorageForReplica('x');
@@ -652,7 +652,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[nodeP, keyP]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             // P in H is older
             await writeNode(H, nodeP, TS1, undefined);
@@ -692,7 +692,7 @@ describe('mergeHostIntoReplica', () => {
             // Write an H-only node without a timestamps record.
             const hOnlyNode = NODE_H;
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await H.values.put(hOnlyNode, {});
             await H.freshness.put(hOnlyNode, 'up-to-date');
@@ -724,7 +724,7 @@ describe('mergeHostIntoReplica', () => {
             expect(before).toBe('x');
             const L = db.schemaStorageForReplica('x');
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeIdentifierLookup(L, []);
             await writeIdentifierLookup(H, []);
@@ -771,7 +771,7 @@ describe('mergeHostIntoReplica', () => {
             await L.valid.put(nodeA, [nodeB]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             // In H: A is older; B is newer AND now depends on A.
             await writeNode(H, nodeA, TS1, undefined);
@@ -835,7 +835,7 @@ describe('mergeHostIntoReplica', () => {
             await L.valid.put(nodeA, [nodeB]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, undefined);
             await writeNode(H, nodeB, TS2, remoteValueB);
@@ -946,7 +946,7 @@ describe('mergeHostIntoReplica', () => {
             const nodeA = NODE_A;
             const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS2, remoteValue);
             const L = db.schemaStorageForReplica('x');
@@ -994,7 +994,7 @@ describe('mergeHostIntoReplica', () => {
             // No nodes in H → no changes → no cutover.
             const L = db.schemaStorageForReplica('x');
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeIdentifierLookup(L, []);
             await writeIdentifierLookup(H, []);
@@ -1031,7 +1031,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS2, valueA);
             await writeNode(H, nodeB, TS2, valueB);
@@ -1081,7 +1081,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, valueA);
             await writeNode(H, nodeB, TS1, valueB);
@@ -1124,7 +1124,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, valueA);
             await writeNode(H, nodeB, TS1, valueB);
@@ -1163,7 +1163,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, { source: 'A' });
             await writeNode(H, nodeB, TS1, { source: 'B host' });
@@ -1203,7 +1203,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, { source: 'A host' });
             await writeNode(H, nodeB, TS1, { source: 'B' });
@@ -1235,7 +1235,7 @@ describe('mergeHostIntoReplica', () => {
             const nodeA = NODE_A;
             const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS2, remoteValue);
             const L = db.schemaStorageForReplica('x');
@@ -1271,7 +1271,7 @@ describe('mergeHostIntoReplica', () => {
             const nodeA = NODE_A;
             const remoteValue = { value: { id: 'remote', type: 'test', description: 'remote value' }, isDirty: false };
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS2, remoteValue);
             const L = db.schemaStorageForReplica('x');
@@ -1323,7 +1323,7 @@ describe('mergeHostIntoReplica', () => {
             await L.valid.put(targetId, [dependentId]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, hostId, TS2, { value: { id: 'host', type: 'test', description: 'host' }, isDirty: false });
             await writeNode(H, dependentId, TS2, undefined);
@@ -1362,7 +1362,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(L, targetId, TS3, undefined);
             await writeIdentifierLookup(L, [[targetId, nodeKey]]);
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, hostId, TS1, undefined);
             await writeIdentifierLookup(H, [[hostId, nodeKey]]);
@@ -1394,7 +1394,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(L, targetId, TS1, undefined);
             await writeIdentifierLookup(L, [[targetId, nodeKey]]);
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, hostId, TS3, undefined);
             await writeIdentifierLookup(H, [[hostId, nodeKey]]);
@@ -1441,7 +1441,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(L, targetCId, TS3, undefined);
             await writeIdentifierLookup(L, [[bId, keyB], [targetCId, keyC]]);
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, bId, TS2, undefined);
             await writeNode(H, hostCId, TS1, undefined);
@@ -1805,7 +1805,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[nodeAId, keyA], [nodeBId, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeXId, TS2, { source: 'remote X' });
             await writeIdentifierLookup(H, [[nodeXId, keyX]]);
@@ -1850,7 +1850,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[nodeAId, keyA], [nodeBId, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeAId, TS2, { source: 'A new remote' });
             await writeNode(H, nodeBId, TS1, { source: 'B old' });
@@ -1897,7 +1897,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[nodeAId, keyA], [nodeBId, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeAId, TS1, { source: 'A remote' });
             await writeNode(H, nodeBId, TS1, { source: 'B remote' });
@@ -1939,7 +1939,7 @@ describe('mergeHostIntoReplica', () => {
             await L.valid.put(nodeB, [nodeC]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS2, { source: 'A host' });
             await writeNode(H, nodeB, TS2, { source: 'B host' });
@@ -2057,7 +2057,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetA, keyA]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, oldHostA, TS1, { source: 'A host' });
             await writeNode(H, hostB, TS3, { source: 'B host' });
@@ -2109,7 +2109,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetA, keyA]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, hostA, TS1, equalValue);
             await writeNode(H, hostB, TS2, { source: 'B host' });
@@ -2301,7 +2301,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetA, keyA]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, hostA, TS1, { source: 'A host' });
             await writeNode(H, hostB, TS2, { source: 'B host' });
@@ -2422,7 +2422,7 @@ describe('mergeHostIntoReplica', () => {
             const nodeA = nodeIdentifierFromString('133-abcdefghi');
             const keyA = stringToNodeKeyString('{"head":"host_stale_A","args":[]}');
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await H.values.put(nodeA, { v: 'host' });
             await H.freshness.put(nodeA, 'up-to-date');
@@ -2456,7 +2456,7 @@ describe('mergeHostIntoReplica', () => {
             await L.timestamps.del(nodeA);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeIdentifierLookup(H, []);
 
@@ -2574,7 +2574,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, HOST_UTC_TS, remoteValue);
             await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
@@ -2623,7 +2623,7 @@ describe('mergeHostIntoReplica', () => {
             await writeNode(L, idB, TS1, {});
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeIdentifierLookup(H, [
                 [idA, keyA],
@@ -2674,7 +2674,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, { value: 'remote' });
             await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
@@ -2713,7 +2713,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, { value: 'remote' });
             await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
@@ -2776,7 +2776,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS2, { value: 'remote' });
             await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
@@ -2805,7 +2805,7 @@ describe('mergeHostIntoReplica', () => {
 
             const nodeA = NODE_A;
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, { value: 'host-only' });
             const L = db.schemaStorageForReplica('x');
@@ -2840,7 +2840,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeIdentifierLookup(H, []);
 
@@ -2883,7 +2883,7 @@ describe('mergeHostIntoReplica', () => {
             await L.valid.put(nodeA, [nodeB]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, { value: 'host A' });
             await writeNode(H, nodeB, TS2, { value: 'host B' });
@@ -2933,7 +2933,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetC, keyC]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, hostC, TS1, { value: 'host C' });
             await writeNode(H, hostA, TS2, { value: 'host A' });
@@ -2973,7 +2973,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, { value: 'stable' });
             await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
@@ -3024,7 +3024,7 @@ describe('mergeHostIntoReplica', () => {
 
             // Step 2: Remote source has newer A₀ at TS2 (> TS1).
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS2, a0Value);
             await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
@@ -3095,7 +3095,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             // Host: same value version TS1, but stale
             await writeNode(H, nodeA, TS1, { value: 'v' });
@@ -3138,7 +3138,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             // Host: up-to-date at TS1 (same version)
             await writeNode(H, nodeA, TS1, { value: 'v host' });
@@ -3182,7 +3182,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             // Host has v0@TS1, stale (older value)
             await writeNode(H, nodeA, TS1, { value: 'v0' });
@@ -3224,7 +3224,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             // Host has v1@TS2, up-to-date (newer value)
             await writeNode(H, nodeA, TS2, { value: 'v1' });
@@ -3267,7 +3267,7 @@ describe('mergeHostIntoReplica', () => {
 
             // Step 2: Host B snapshot has N=v1 at TS2 (newer).
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS2, { value: 'v1' });
             await writeIdentifierLookup(H, entriesForSameStringNodeKeys([nodeA]));
@@ -3323,7 +3323,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, entriesForSameStringNodeKeys([nodeA]));
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             // Host: stale at TS1 (same version)
             await writeNode(H, nodeA, TS1, { value: 'v' });
@@ -3409,7 +3409,7 @@ describe('mergeHostIntoReplica', () => {
             await L.valid.put(cTarget, [aTarget]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
 
             // Host: B at TS1, C at TS2 (force-take), A at TS1 potentially-outdated
@@ -3473,7 +3473,7 @@ describe('mergeHostIntoReplica', () => {
             await L.valid.put(nodeB, [nodeC]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, { value: 'A host' });
             await H.freshness.put(nodeA, 'potentially-outdated');
@@ -3545,7 +3545,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[xTarget, keyX], [nTarget, keyN]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             // X at TS2 (force-take), N at TS1 up-to-date
             await writeNode(H, xHost, TS2, { value: 'X host' });
@@ -3603,7 +3603,7 @@ describe('mergeHostIntoReplica', () => {
             await L.valid.put(nodeB, [nodeC]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, nodeA, TS1, { value: 'A host' });
             await H.freshness.put(nodeA, 'potentially-outdated');
@@ -3664,7 +3664,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetCId, keyC]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, hostCId, TS1, { source: 'host C' });
             await writeNode(H, hostAId, TS2, { source: 'A computed from host C' });
@@ -3779,7 +3779,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             // Host A at TS1 (older), host B at TS3 (newer)
             await writeNode(H, nodeA, TS1, { source: 'host A' });
@@ -3864,7 +3864,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[nodeA, keyA], [nodeB, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             // Host A at TS2 (newer), host B at TS1 (older)
             await writeNode(H, nodeA, TS2, hostAValue);
@@ -3941,7 +3941,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetAId, keyA]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             await writeNode(H, hostAId, TS1, { source: 'host A' });
             await writeNode(H, hostXId, TS2, { source: 'X from host' });
@@ -4014,7 +4014,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetAId, keyA]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             await writeNode(H, hostAId, TS1, { source: 'host A' });
             await writeNode(H, hostBId, TS2, { source: 'host B' });
@@ -4121,7 +4121,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetAId, keyA]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             await writeNode(H, hostAId, TS1, { source: 'host A' });
             await writeNode(H, hostBId, TS2, { source: 'host B' });
@@ -4210,7 +4210,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetAId, keyA]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             await writeNode(H, hostAId, TS1, { source: 'host A' });
             await writeNode(H, hostBId, TS2, { source: 'host B' });
@@ -4279,7 +4279,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetCId, keyC]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await writeGraphScheme(H);
             await writeNode(H, hostCId, TS1, { source: 'host C' });
             await writeNode(H, hostAId, TS2, { source: 'stale A' });
@@ -4412,7 +4412,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetAId, keyA]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             await writeNode(H, hostAId, TS1, { source: 'host A' });
             await writeNode(H, hostBId, TS2, { source: 'B from host' });
@@ -4505,7 +4505,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetAId, keyA], [targetBId, keyB]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             await writeNode(H, hostAId, TS1, { source: 'host A' });
             await writeNode(H, hostBId, TS1, { source: 'host B' });
@@ -4575,7 +4575,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetAId, keyA]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             await writeNode(H, hostAId, TS1, { source: 'host A' });
             await writeNode(H, hostBId, TS2, { source: 'B from host' });
@@ -4642,7 +4642,7 @@ describe('mergeHostIntoReplica', () => {
             await writeIdentifierLookup(L, [[targetAId, keyA], [targetBId, keyB], [targetDId, keyD]]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             await writeNode(H, hostAId, TS1, { source: 'host A' });
             await writeNode(H, hostBId, TS1, { source: 'host B' });
@@ -4993,7 +4993,7 @@ describe('mergeHostIntoReplica', () => {
             const hostname2 = 'peer-eq';
             await db.setHostnameGlobal(hostname2, 'version', db.version);
             const H = db.hostnameSchemaStorage(hostname2);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, schemeStr);
             await writeNode(H, nodeA, TS1, { v: 1 });
             await writeNode(H, nodeB, TS1, { v: 2 });
@@ -5271,7 +5271,7 @@ describe('mergeHostIntoReplica', () => {
             await L.valid.put(nodeShared, [nodeDep1, nodeDep2]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
             await writeNode(H, nodeShared, TS1, { v: 1 });
             await writeNode(H, nodeDep1, TS2, { v: 2 });
@@ -5319,7 +5319,7 @@ describe('mergeHostIntoReplica', () => {
             await L.valid.put(nodeShared, [nodeDep2, nodeDep1]);
 
             const H = db.hostnameSchemaStorage(hostname);
-            await H.global.put('fingerprint', 'zzzzzzzzzzzzzzzz');
+            await H.global.put('fingerprint', 'zzzzzzzzz');
             await H.global.put(GRAPH_SCHEME_KEY, JSON.stringify(scheme));
             await writeNode(H, nodeShared, TS2, { v: 4 });
             await writeNode(H, nodeDep1, TS1, { v: 5 });
@@ -5439,8 +5439,8 @@ describe('mergeHostIntoReplica', () => {
         const key = stringToNodeKeyString('{"head":"shared","args":[]}');
         const scheme = { format: 1, nodes: [{ head: 'shared', arity: 0, inputTemplates: [] }] };
         const { forward, reverse } = await runSwapMerge(
-            { fingerprint: 'aaaaaaaaaaaaaaaa', records: [{ identifier, key, modifiedAt: TS1, value: { side: 'a' } }] },
-            { fingerprint: 'zzzzzzzzzzzzzzzz', records: [{ identifier, key, modifiedAt: TS1, value: { side: 'z' } }] },
+            { fingerprint: 'aaaaaaaaa', records: [{ identifier, key, modifiedAt: TS1, value: { side: 'a' } }] },
+            { fingerprint: 'zzzzzzzzz', records: [{ identifier, key, modifiedAt: TS1, value: { side: 'z' } }] },
             scheme
         );
         expect(forward).toEqual(reverse);
@@ -5461,12 +5461,12 @@ describe('mergeHostIntoReplica', () => {
             { head: 'D', arity: 0, inputTemplates: [{ head: 'A', args: [] }, { head: 'B', args: [] }] },
         ] };
         const { forward, reverse } = await runSwapMerge(
-            { fingerprint: 'aaaaaaaaaaaaaaaa', records: [
+            { fingerprint: 'aaaaaaaaa', records: [
                 { identifier: aShared, key: keyA, modifiedAt: TS1, value: { a: 'left' }, valid: [d] },
                 { identifier: bLeft, key: keyB, modifiedAt: TS2, value: { b: 'left' }, valid: [d] },
                 { identifier: d, key: keyD, modifiedAt: TS2, value: { d: 'left' } },
             ] },
-            { fingerprint: 'zzzzzzzzzzzzzzzz', records: [
+            { fingerprint: 'zzzzzzzzz', records: [
                 { identifier: aShared, key: keyA, modifiedAt: TS1, value: { a: 'right' }, valid: [d] },
                 { identifier: bRight, key: keyB, modifiedAt: TS1, value: { b: 'right' }, valid: [d] },
                 { identifier: d, key: keyD, modifiedAt: TS1, value: { d: 'right' } },
@@ -5488,11 +5488,11 @@ describe('mergeHostIntoReplica', () => {
             { head: 'B', arity: 0, inputTemplates: [{ head: 'A', args: [] }] },
         ] };
         const { forward, reverse } = await runSwapMerge(
-            { fingerprint: 'aaaaaaaaaaaaaaaa', records: [
+            { fingerprint: 'aaaaaaaaa', records: [
                 { identifier: aShared, key: keyA, modifiedAt: TS1, value: { a: 'left' }, valid: [b] },
                 { identifier: b, key: keyB, modifiedAt: TS2, value: { b: 'left' } },
             ] },
-            { fingerprint: 'zzzzzzzzzzzzzzzz', records: [
+            { fingerprint: 'zzzzzzzzz', records: [
                 { identifier: aShared, key: keyA, modifiedAt: TS1, value: { a: 'right' }, valid: [b] },
                 { identifier: b, key: keyB, modifiedAt: TS1, value: { b: 'right' } },
             ] },
@@ -5513,11 +5513,11 @@ describe('mergeHostIntoReplica', () => {
             { head: 'B', arity: 0, inputTemplates: [{ head: 'A', args: [] }] },
         ] };
         const { forward, reverse } = await runSwapMerge(
-            { fingerprint: 'aaaaaaaaaaaaaaaa', records: [
+            { fingerprint: 'aaaaaaaaa', records: [
                 { identifier: a, key: keyA, modifiedAt: TS1, value: { a: 'left' }, valid: [b] },
                 { identifier: b, key: keyB, modifiedAt: TS1, value: { b: 'left' } },
             ] },
-            { fingerprint: 'zzzzzzzzzzzzzzzz', records: [
+            { fingerprint: 'zzzzzzzzz', records: [
                 { identifier: a, key: keyA, modifiedAt: TS1, value: { a: 'right' }, valid: [b] },
                 { identifier: b, key: keyB, modifiedAt: TS1, value: { b: 'right' } },
             ] },
@@ -5539,15 +5539,15 @@ describe('mergeHostIntoReplica', () => {
             { head: 'A', arity: 0, inputTemplates: [] },
             { head: 'B', arity: 0, inputTemplates: [{ head: 'A', args: [] }] },
         ] };
-        // Selected source (left, 'aaaaaaaaaaaaaaaa'): A up-to-date, B up-to-date,
-        // valid[A].has(B) exists.  Losing source (right, 'zzzzzzzzzzzzzzzz'):
+        // Selected source (left, 'aaaaaaaaa'): A up-to-date, B up-to-date,
+        // valid[A].has(B) exists.  Losing source (right, 'zzzzzzzzz'):
         // older timestamps, stale B, no validity entry for the edge.
         const { forward, reverse } = await runSwapMerge(
-            { fingerprint: 'aaaaaaaaaaaaaaaa', records: [
+            { fingerprint: 'aaaaaaaaa', records: [
                 { identifier: aLeft, key: keyA, modifiedAt: TS2, value: { a: 'selected' }, valid: [bLeft] },
                 { identifier: bLeft, key: keyB, modifiedAt: TS2, value: { b: 'selected' } },
             ] },
-            { fingerprint: 'zzzzzzzzzzzzzzzz', records: [
+            { fingerprint: 'zzzzzzzzz', records: [
                 { identifier: aRight, key: keyA, modifiedAt: TS1, value: { a: 'losing' } },
                 { identifier: bRight, key: keyB, modifiedAt: TS1, value: { b: 'losing' }, freshness: 'potentially-outdated' },
             ] },
@@ -5570,16 +5570,16 @@ describe('mergeHostIntoReplica', () => {
             { head: 'A', arity: 0, inputTemplates: [] },
             { head: 'B', arity: 0, inputTemplates: [{ head: 'A', args: [] }] },
         ] };
-        // Selected source (left, 'aaaaaaaaaaaaaaaa'): A selected record, B selected
+        // Selected source (left, 'aaaaaaaaa'): A selected record, B selected
         // record / potentially-outdated, no validity entry.  Losing source
-        // (right, 'zzzzzzzzzzzzzzzz'): older timestamps, up-to-date B, one proof:
+        // (right, 'zzzzzzzzz'): older timestamps, up-to-date B, one proof:
         // valid[A].has(B) — proof exists literally only on the losing replica.
         const { forward, reverse } = await runSwapMerge(
-            { fingerprint: 'aaaaaaaaaaaaaaaa', records: [
+            { fingerprint: 'aaaaaaaaa', records: [
                 { identifier: aLeft, key: keyA, modifiedAt: TS2, value: { a: 'selected' } },
                 { identifier: bLeft, key: keyB, modifiedAt: TS2, value: { b: 'selected' }, freshness: 'potentially-outdated' },
             ] },
-            { fingerprint: 'zzzzzzzzzzzzzzzz', records: [
+            { fingerprint: 'zzzzzzzzz', records: [
                 { identifier: aRight, key: keyA, modifiedAt: TS1, value: { a: 'losing' }, valid: [bRight] },
                 { identifier: bRight, key: keyB, modifiedAt: TS1, value: { b: 'losing' } },
             ] },
@@ -5596,8 +5596,8 @@ describe('mergeHostIntoReplica', () => {
         const key = stringToNodeKeyString('{"head":"Only","args":[]}');
         const scheme = { format: 1, nodes: [{ head: 'Only', arity: 0, inputTemplates: [] }] };
         const { forward, reverse } = await runSwapMerge(
-            { fingerprint: 'aaaaaaaaaaaaaaaa', records: [] },
-            { fingerprint: 'zzzzzzzzzzzzzzzz', records: [{ identifier: only, key, createdAt: '2023-12-29T00:00:00.000Z', modifiedAt: TS2, value: { only: true }, freshness: 'potentially-outdated' }] },
+            { fingerprint: 'aaaaaaaaa', records: [] },
+            { fingerprint: 'zzzzzzzzz', records: [{ identifier: only, key, createdAt: '2023-12-29T00:00:00.000Z', modifiedAt: TS2, value: { only: true }, freshness: 'potentially-outdated' }] },
             scheme
         );
         expect(forward).toEqual(reverse);
@@ -5622,13 +5622,13 @@ describe('mergeHostIntoReplica', () => {
             { head: 'E', arity: 0, inputTemplates: [{ head: 'D', args: [] }] },
         ] };
         const { forward, reverse } = await runSwapMerge(
-            { fingerprint: 'aaaaaaaaaaaaaaaa', records: [
+            { fingerprint: 'aaaaaaaaa', records: [
                 { identifier: a, key: keyA, modifiedAt: TS2, value: { a: 'left' }, valid: [d] },
                 { identifier: b, key: keyB, modifiedAt: TS1, value: { b: 'left' }, valid: [d] },
                 { identifier: d, key: keyD, modifiedAt: TS2, value: { d: 'left' }, valid: [e] },
                 { identifier: e, key: keyE, modifiedAt: TS2, value: { e: 'left' } },
             ] },
-            { fingerprint: 'zzzzzzzzzzzzzzzz', records: [
+            { fingerprint: 'zzzzzzzzz', records: [
                 { identifier: a, key: keyA, modifiedAt: TS1, value: { a: 'right' }, valid: [d] },
                 { identifier: b, key: keyB, modifiedAt: TS2, value: { b: 'right' }, valid: [d] },
                 { identifier: d, key: keyD, modifiedAt: TS1, value: { d: 'right' }, valid: [e] },
@@ -5647,8 +5647,8 @@ describe('mergeHostIntoReplica', () => {
         const createdAtA = '2023-12-31T00:00:00.000Z';
         const createdAtB = '2023-12-30T00:00:00.000Z';
         const { forward, reverse } = await runSwapMerge(
-            { fingerprint: 'aaaaaaaaaaaaaaaa', records: [{ identifier, key, createdAt: createdAtA, modifiedAt: TS1, value: { side: 'a' } }] },
-            { fingerprint: 'zzzzzzzzzzzzzzzz', records: [{ identifier, key, createdAt: createdAtB, modifiedAt: TS1, value: { side: 'z' } }] },
+            { fingerprint: 'aaaaaaaaa', records: [{ identifier, key, createdAt: createdAtA, modifiedAt: TS1, value: { side: 'a' } }] },
+            { fingerprint: 'zzzzzzzzz', records: [{ identifier, key, createdAt: createdAtB, modifiedAt: TS1, value: { side: 'z' } }] },
             scheme
         );
         expect(forward).toEqual(reverse);
@@ -5661,8 +5661,8 @@ describe('mergeHostIntoReplica', () => {
         const key = stringToNodeKeyString('{"head":"shared","args":[]}');
         const scheme = { format: 1, nodes: [{ head: 'shared', arity: 0, inputTemplates: [] }] };
         const { forward, reverse } = await runSwapMerge(
-            { fingerprint: 'aaaaaaaaaaaaaaaa', records: [{ identifier, key, modifiedAt: TS1, value: { side: 'a' }, freshness: 'potentially-outdated' }] },
-            { fingerprint: 'zzzzzzzzzzzzzzzz', records: [{ identifier, key, modifiedAt: TS1, value: { side: 'z' }, freshness: 'up-to-date' }] },
+            { fingerprint: 'aaaaaaaaa', records: [{ identifier, key, modifiedAt: TS1, value: { side: 'a' }, freshness: 'potentially-outdated' }] },
+            { fingerprint: 'zzzzzzzzz', records: [{ identifier, key, modifiedAt: TS1, value: { side: 'z' }, freshness: 'up-to-date' }] },
             scheme
         );
         expect(forward).toEqual(reverse);
@@ -5676,8 +5676,8 @@ describe('mergeHostIntoReplica', () => {
         const key = stringToNodeKeyString('{"head":"shared","args":[]}');
         const scheme = { format: 1, nodes: [{ head: 'shared', arity: 0, inputTemplates: [] }] };
         const { forward, reverse } = await runSwapMerge(
-            { fingerprint: 'zzzzzzzzzzzzzzzz', records: [{ identifier: lower, key, modifiedAt: TS1, value: { id: 'lower' } }] },
-            { fingerprint: 'aaaaaaaaaaaaaaaa', records: [{ identifier: higher, key, modifiedAt: TS1, value: { id: 'higher' } }] },
+            { fingerprint: 'zzzzzzzzz', records: [{ identifier: lower, key, modifiedAt: TS1, value: { id: 'lower' } }] },
+            { fingerprint: 'aaaaaaaaa', records: [{ identifier: higher, key, modifiedAt: TS1, value: { id: 'higher' } }] },
             scheme
         );
         expect(forward).toEqual(reverse);
@@ -5690,8 +5690,8 @@ describe('mergeHostIntoReplica', () => {
         const key = stringToNodeKeyString('{"head":"shared","args":[]}');
         const scheme = { format: 1, nodes: [{ head: 'shared', arity: 0, inputTemplates: [] }] };
         const { forward, reverse } = await runSwapMerge(
-            { fingerprint: 'zzzzzzzzzzzzzzzz', records: [{ identifier: olderHigh, key, modifiedAt: TS1, value: { id: 'older' } }] },
-            { fingerprint: 'aaaaaaaaaaaaaaaa', records: [{ identifier: newerLow, key, modifiedAt: TS2, value: { id: 'newer' } }] },
+            { fingerprint: 'zzzzzzzzz', records: [{ identifier: olderHigh, key, modifiedAt: TS1, value: { id: 'older' } }] },
+            { fingerprint: 'aaaaaaaaa', records: [{ identifier: newerLow, key, modifiedAt: TS2, value: { id: 'newer' } }] },
             scheme
         );
         expect(forward).toEqual(reverse);

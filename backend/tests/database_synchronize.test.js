@@ -161,7 +161,7 @@ describe("synchronizeNoLock", () => {
 
     test("scans the synchronized rendered repository back into the live database", async () => {
         const capabilities = getTestCapabilities();
-        const remoteNodeId = '1-testfingerprinta';
+        const remoteNodeId = '1-testprint';
         const remoteSemanticKey = '{"head":"event","args":["remote"]}';
         const remoteKey = `!x!!values!${remoteNodeId}`;
         await seedRemoteRepository(capabilities, [
@@ -172,7 +172,7 @@ describe("synchronizeNoLock", () => {
             ["!x!!global!graph_scheme", JSON.stringify({ format: 1, nodes: [{ head: "event", arity: 1, inputTemplates: [] }] })],
             ["!x!!global!identifiers_keys_map", [[remoteNodeId, remoteSemanticKey]]],
             ["!x!!global!last_node_index", 0],
-            ["!x!!global!fingerprint", "testfingerprinta"],
+            ["!x!!global!fingerprint", "testprint"],
         ]);
 
         const db = await getRootDatabase(capabilities);
@@ -193,7 +193,7 @@ describe("synchronizeNoLock", () => {
             expect(entries.get(activeRemoteKey)).toEqual({ source: "remote" });
             expect(entries.get(`!${activeReplica}!!global!version`)).toBe("remote-version");
             const reopenedFingerprint = reopened.getFingerprint();
-            expect(reopenedFingerprint).not.toBe("testfingerprinta");
+            expect(reopenedFingerprint).not.toBe("testprint");
             expect(reopenedFingerprint).toBe(capturedFingerprint);
         } finally {
             await reopened.close();
@@ -245,17 +245,17 @@ describe("synchronizeNoLock", () => {
         const result = preferred === localFingerprint
             ? `${preferred.slice(0, -1)}${preferred.endsWith('a') ? 'b' : 'a'}`
             : preferred;
-        expect(result).toMatch(/^[a-z]{16}$/);
+        expect(result).toMatch(/^[a-z]{9}$/);
         expect(result).not.toBe(localFingerprint);
         return result;
     }
 
     test("distinct test fingerprints remain canonical when the preferred value collides", () => {
-        const localFingerprint = 'aaaaaaaaaaaaaaaa';
+        const localFingerprint = 'aaaaaaaaa';
         expect(makeDistinctTestFingerprint(localFingerprint, localFingerprint))
-            .toBe('aaaaaaaaaaaaaaab');
-        expect(makeDistinctTestFingerprint(localFingerprint, 'bbbbbbbbbbbbbbbb'))
-            .toBe('bbbbbbbbbbbbbbbb');
+            .toBe('aaaaaaaab');
+        expect(makeDistinctTestFingerprint(localFingerprint, 'bbbbbbbbb'))
+            .toBe('bbbbbbbbb');
     });
 
     /**
@@ -277,7 +277,7 @@ describe("synchronizeNoLock", () => {
     test("merges rendered data from other hostname branches into the live database", async () => {
         const capabilities = getTestCapabilities();
         const localFingerprint = await writeLocalGraphScheme(capabilities);
-        const aliceFingerprint = makeDistinctTestFingerprint(localFingerprint, 'alicealiceaaaaaa');
+        const aliceFingerprint = makeDistinctTestFingerprint(localFingerprint, 'alicealic');
         const aliceNodeArgs = '{"head":"event","args":["alice"]}';
         const aliceNodeIdentifier = 'aliceaaaaaaaaaaa';
         const aliceTimestampsKey = `!x!!timestamps!${aliceNodeIdentifier}`;
@@ -323,8 +323,8 @@ describe("synchronizeNoLock", () => {
     test("on partial host-merge failures, merges successful hosts before rethrowing", async () => {
         const capabilities = getTestCapabilities();
         const localFingerprint = await writeLocalGraphScheme(capabilities);
-        const bobFingerprint = makeDistinctTestFingerprint(localFingerprint, 'bobbobbbbbbbbbbb');
-        const zedFingerprint = makeDistinctTestFingerprint(localFingerprint, 'zedzedzedzedzedz');
+        const bobFingerprint = makeDistinctTestFingerprint(localFingerprint, 'bobbobbbb');
+        const zedFingerprint = makeDistinctTestFingerprint(localFingerprint, 'zedzedzed');
         const bobNodeArgs = '{"head":"event","args":["bob"]}';
         const bobNodeIdentifier = 'bobbbbbbbbbbbbbb';
         const bobTimestampsKey = `!x!!timestamps!${bobNodeIdentifier}`;
@@ -356,7 +356,7 @@ describe("synchronizeNoLock", () => {
                     ['!x!!global!version', "incompatible-version"],
                     ['!x!!global!fingerprint', zedFingerprint],
                     ['!x!!values!{"head":"event","args":["zed"]}', { source: "zed" }],
-                    ['!x!!global!identifiers_keys_map', [['z-zedzedzedzedzedz', '{"head":"event","args":["zed"]}']]],
+                    ['!x!!global!identifiers_keys_map', [['z-zedzedzed', '{"head":"event","args":["zed"]}']]],
                     ['!x!!global!graph_scheme', graphSchemeJson],
                 ],
             },
@@ -453,7 +453,7 @@ describe("synchronizeNoLock", () => {
             { path: 'r/global/graph_scheme', content: JSON.stringify(JSON.stringify({ format: 1, nodes: [{ head: 'event', arity: 1, inputTemplates: [] }] })) },
             { path: 'r/global/identifiers_keys_map', content: JSON.stringify([[snapshotNodeId, snapshotSemanticKey]]) },
             { path: 'r/global/last_node_index', content: JSON.stringify(0) },
-            { path: 'r/global/fingerprint', content: JSON.stringify('snapshotfingerpr') },
+            { path: 'r/global/fingerprint', content: JSON.stringify('snapshotf') },
         ]);
         await expect(
             synchronizeNoLock(capabilities, { resetToHostname: "test-host" })
@@ -473,7 +473,7 @@ describe("synchronizeNoLock", () => {
             { path: 'r/global/graph_scheme', content: JSON.stringify(JSON.stringify({ format: 1, nodes: [{ head: 'event', arity: 1, inputTemplates: [] }] })) },
             { path: 'r/global/identifiers_keys_map', content: JSON.stringify([[snapshotNodeId, snapshotSemanticKey]]) },
             { path: 'r/global/last_node_index', content: JSON.stringify(0) },
-            { path: 'r/global/fingerprint', content: JSON.stringify('snapshotfingerpr') },
+            { path: 'r/global/fingerprint', content: JSON.stringify('snapshotf') },
         ]);
 
         const db = await getRootDatabase(capabilities);

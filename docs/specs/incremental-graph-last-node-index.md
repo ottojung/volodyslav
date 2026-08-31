@@ -37,10 +37,10 @@ const id = `${nextIndex.toString(36)}-${fingerprint}`;
 The index prefix is base36 without padding or alignment:
 
 ```
-1-abcdefghijklmnop
-2-abcdefghijklmnop
-z-abcdefghijklmnop
-10-abcdefghijklmnop
+1-abcdefghi
+2-abcdefghi
+z-abcdefghi
+10-abcdefghi
 ```
 
 ## Gaps

@@ -4,7 +4,7 @@
 
 Synchronization merges compatible, validated `IncrementalGraph` snapshots while preserving exact journal identity, causal authority, freshness evidence, reset correspondence, and graph invariants. The source is read-only. A receiver publishes one atomic final state or remains unchanged.
 
-Supported replicas share schema/computor semantics and synchronized wall clocks, and each durable `DatabaseFingerprint` identifies one writer history. Journal entries, graph records, proof edges, timestamps, references, vectors, and closed shapes are validated before use. Fingerprint collisions, rollback under one fingerprint, forged authority, clock inversion, partial persistence, and public computor reentry are outside the supported model.
+Supported replicas share schema/computor semantics, and each durable `DatabaseFingerprint` identifies one writer history. Journal entries, graph records, proof edges, timestamps, references, vectors, and closed shapes are validated before use. Fingerprint collisions, rollback under one fingerprint, forged authority, partial persistence, and public computor reentry are outside the supported model.
 
 The fundamental coordinate invariant is:
 

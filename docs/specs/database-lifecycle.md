@@ -284,7 +284,7 @@ Before testing idempotence, reset computes `resultingResetAnchorCuts` by compone
 
 **No Provenance-Only Hardening.** Existing valid proofs transport across equal semantic input/output values under the extensional computor contract, even when revision/provenance IDs differ.
 
-A source value with modifiedAt greater than τ contradicts the supported synchronized-clock premise for an already observed value-changing event. Reset rejects/classifies that snapshot as unsupported rather than silently backdating or repairing it.
+Reset chooses τ by advancing the receiver semantic clock past its persisted value and to at least every observed source semantic timestamp. A wall-clock rollback therefore cannot backdate reset output.
 
 ### 7.5 Counter continuity during self-restoration
 

@@ -57,7 +57,7 @@ class InMemoryDatabase {
         this._identifierCounter = 0;
         /** @type {Map<string, string>} */
         this._pendingAllocations = new Map();
-        this._computed = { lastNodeIndex: 0, fingerprint: 'testspecfingerpr' };
+        this._computed = { lastNodeIndex: 0, fingerprint: 'specprint' };
     }
 
     currentReplicaName() { return 'x'; }
@@ -98,7 +98,7 @@ class InMemoryDatabase {
     }
 
     getFingerprint() {
-        return 'testspecfingerpr';
+        return 'specprint';
     }
 
     getVersion() { return this.version; }

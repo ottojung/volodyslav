@@ -2,7 +2,7 @@
 
 ## Supported state and identity
 
-This specification covers reachable states produced by atomic authoring, receive, migration, controlled reset, restoration, and canonical compaction. Corrupt, forged, rolled-back, partially installed, fingerprint-colliding, or clock-unsupported states are outside its proof domain. Each `DatabaseFingerprint` denotes one durable writer history.
+This specification covers reachable states produced by atomic authoring, receive, migration, controlled reset, restoration, and canonical compaction. Corrupt, forged, rolled-back, partially installed, or fingerprint-colliding states are outside its proof domain. Each `DatabaseFingerprint` denotes one durable writer history.
 
 ```text
 JournalSequence = positive arbitrary-precision integer
@@ -117,7 +117,7 @@ A generation records absent-to-present presence and its initial value. It names 
 
 Generation-wide invalidates represent explicit semantic invalidation independent of value origin. Initial-stale, post-edit, reset/migration cache-status, proof-loss, and propagated-input assertions name one exact value origin. Validations likewise name the exact value origin they validate. Positive evidence never crosses an edit.
 
-`modifiedAt` is semantic value occurrence time and resolves only causally concurrent semantic value changes. Delete and assertion `time` are their occurrence times. Causality is decided before time; time does not clear invalidations, establish proof, imply reset absorption, determine hardness, or prove observation. Supported executions use synchronized clocks and require causally later semantic events not to have earlier occurrence times. Exact concurrent equal-time conflicts use author fingerprint.
+`modifiedAt` is semantic value occurrence time and resolves only causally concurrent semantic value changes. Delete and assertion `time` are their occurrence times. Causality is decided before time; time does not clear invalidations, establish proof, imply reset absorption, determine hardness, or prove observation. Authoring advances the persisted semantic clock to at least the wall-clock sample and every observed predecessor timestamp, so causally later semantic events cannot have earlier occurrence times. Wall-clock synchronization and monotonicity are not correctness assumptions. Exact concurrent equal-time conflicts use author fingerprint.
 
 ## Reset lineage
 
@@ -192,3 +192,39 @@ Issuance coverage records the coverage context in which durable progress was
 issued so another replica can prove restoration safe. No operation substitutes
 one fact for another, and no coordinate is compared with a different author's
 coordinate.
+
+## Persisted semantic clock
+
+Each writable database persists `semanticClock`, the greatest semantic
+occurrence timestamp it has authored or observed. Before authoring a semantic
+transaction it atomically chooses
+
+`τ = max(wallClockSample, semanticClock, every observed semantic timestamp)`
+
+and persists `semanticClock = τ` with the graph and journal transition. Multiple
+entries in one transaction share τ. A later transaction may reuse τ; exact
+equal-time concurrency is resolved by author fingerprint, while happened-before
+remains exclusively the event ID and causal context. Receive advances
+`semanticClock` to the maximum received semantic timestamp. Reset does the same
+before choosing its transaction time. Restart restores the field, and migration
+initializes a missing field to the maximum semantic timestamp in the migrated
+snapshot. Consequently wall-clock rollback and NTP adjustment cannot backdate a
+causally later event and do not make a database unsupported. The timestamp is a
+conflict-order component, never provenance or evidence of causality.
+
+## Reset-anchor archive retention
+
+`resetAnchorCuts` is retained permanently in the current lifecycle. Collection
+would be safe only with a stable frontier acknowledged by every writer that can
+still synchronize, plus durable explicit retirement of every writer excluded
+from that acknowledgement set. Volodyslav has neither global acknowledgement
+nor host retirement, so absence from recent synchronization cannot prove that a
+delayed writer will never reintroduce an anchor. Time-, count-, and
+last-seen-based collection are therefore unsafe: each can violate future-union
+equivalence.
+
+Operationally, storage includes the documented `a*r` term and can grow with the
+number of distinct historical tagged anchors. Repeated evidence for one exact
+anchor joins into one componentwise cut; evidence for distinct anchors remains
+distinct even after their carriers disappear. This is an intentional durability
+cost, not a temporary compaction omission.

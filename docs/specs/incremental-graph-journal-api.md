@@ -81,7 +81,7 @@ JSON.stringify({v:1,progress:P,issuanceCoverage:I})
 
 Members occur in exactly that order with no insignificant whitespace. `P` and
 `I` are arrays of `[fingerprint,coordinate]`, strictly ascending by fingerprint.
-Fingerprints match `/^[a-z]{16}$/`. Coordinates are JSON strings containing
+Fingerprints match `/^[a-z]{9}$/`. Coordinates are JSON strings containing
 canonical positive decimal integers; zero coordinates are omitted and missing
 coordinates mean zero. Coordinates are arbitrary precision and are decoded
 directly to `BigInt`, never through `Number`. Empty arrays are valid for the
