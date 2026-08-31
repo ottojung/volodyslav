@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A `NodeFilter` restricts journal queries to a specific set of node keys. It is used as the `to` parameter of `graph.possibleMaybeChanges` so that journal consumers ask only about changes to the part of the graph they depend on.
+A `NodeFilter` restricts journal queries to a specific set of node keys. It is used as the `pattern` parameter of `JournalIterator.iterate` so that journal consumers ask only about changes to the part of the graph they depend on.
 
 `NodeFilter` is an **object API**, not a parseable string language.
 
@@ -35,7 +35,7 @@ A `NodeFilter` is one of the following concrete variants.
 
 A `Wildcard` has two distinct meanings depending on context:
 
-- **As a top-level `NodeFilter`:** `Wildcard` matches every node key. Passing `makeWildcard()` directly as the `to` parameter of `graph.possibleMaybeChanges` returns possible changes for all nodes.
+- **As a top-level `NodeFilter`:** `Wildcard` matches every node key. Passing `makeWildcard()` directly as the `pattern` parameter of `JournalIterator.iterate` returns possible changes for all nodes.
 
 - **Inside `GroundFilter.args`:** A `Wildcard` at a particular argument position matches any single `ConstValue` at that position. It does not match arbitrary-length or zero-length sequences. It does not match nested structure.
 
@@ -167,7 +167,7 @@ frozen or otherwise impossible to mutate. This covers `GroundFilter.args`,
 nested `ConstValue` data, and `UnionFilter.left` / `UnionFilter.right`.
 
 REQ-NF-10b: Because every filter is immutable, an asynchronous
-`graph.possibleMaybeChanges` call observes one stable filter value for its
+`JournalIterator.iterate` call observes one stable filter value for its
 complete execution. Reusing one filter across concurrent asynchronous queries
 is deterministic: all queries observe the same immutable filter. No
 mutation-during-query caveat applies.
@@ -206,7 +206,7 @@ where the type is already known, runtime re-verification is not required.
 
 The opaque wildcard singleton is recognized only through module-owned identity
 or nominal branding. Generic serialized data cannot recreate that singleton.
-Public serialization and deserialization of filters remain out of scope. The polling-only opaque `filterIdentity` defined below is one-way metadata and never reconstructs a filter or wildcard singleton.
+Public serialization and deserialization of filters remain out of scope.
 
 `isWildcard` recognizes the opaque wildcard singleton through nominal branding
 or module-owned identity checks. It MUST NOT match by structural duck-typing
@@ -265,10 +265,7 @@ This is structural equality, not semantic set equality. Two filters that represe
 
 `makeUnionFilter` preserves this binary structural tree. It does not flatten
 nested unions, remove duplicate children, apply wildcard absorption, or perform
-any other associative, idempotent, or absorption normalization. The only
-canonicalization of a union is the commutative left/right child ordering used by
-`filterIdentityValue` below. Consequently, associatively different union trees
-remain structurally different filters.
+any other associative, idempotent, or absorption normalization. Associatively different union trees remain structurally different filters.
 
 ---
 
@@ -335,9 +332,11 @@ original objects cannot change the filter.
 
 ```
 const filter = makeGroundFilter("X", [constValue("a")]);
+const first = graph.journal.makeIterator();
+const second = first.clone();
 const [r1, r2] = await Promise.all([
-    graph.possibleMaybeChanges({ since: s1, to: filter }),
-    graph.possibleMaybeChanges({ since: s2, to: filter }),
+    first.iterate({ pattern: filter }),
+    second.iterate({ pattern: filter }),
 ]);
 ```
 
@@ -355,47 +354,3 @@ const f2 = makeGroundFilter("X", [constValue("a")]);
 `f1` and `f2` are structurally equal at construction and remain equal
 indefinitely, because no construction input can be mutated after construction
 and the filters themselves cannot be mutated.
-
-## Cursor identity
-
-For polling only, first construct the recursive normalized identity value
-`filterIdentityValue(F)`:
-
-* wildcard: `["wildcard"]`;
-* ground: `["ground", head, args]`, where every argument is either its actual
-  validated `ConstValue` or the identity-only marker `null`. `null` is outside
-  `ConstValue`, so a wildcard cannot collide with any concrete binding,
-  including the concrete array `["wildcard"]`;
-* union: `["union", smallerChildValue, largerChildValue]`, where both children
-  are recursively normalized identity **values**, not already-stringified
-  identities. To order them, compute `JSON.stringify(childValue)` for each
-  child as a temporary comparison key. Compare those keys using ECMAScript
-  String lexicographic order over UTF-16 code units: `a < b ? -1 : a > b ? 1 :
-  0`. Locale collation, including `localeCompare`, is forbidden. Store the
-  ordered child values in the union value. Union equality is commutative, but
-  unions are not flattened and associatively different trees remain distinct.
-
-Then `filterIdentity(F) = JSON.stringify(filterIdentityValue(F))`. Stringifying
-only at this outer boundary makes identity size linear in the filter AST rather
-than repeatedly escaping already-serialized child strings.
-This uses JavaScript JSON value serialization directly: finite numbers only,
-`-0` normalized to `0`, arrays positional, and record keys in ECMAScript
-`Object.keys` order. `ConstValue` arrays and records are the dense/plain
-data-only representations defined by TERM-04: hooks, accessors, symbol or extra
-array properties, sparse arrays, cycles, `null`, non-finite numbers, and invalid
-nested values are outside the filter domain. The identity remains opaque metadata, not a public filter
-serialization or filter reconstruction API, and is injective over the supported
-filter domain modulo production `isEqual`.
-For token validation, the inverse grammar accepts only the three exact array
-forms above. A ground head satisfies the normative `NodeName`/`ident` grammar;
-each ground argument is either the `null` wildcard marker or a valid
-`ConstValue`; and union children are recursively valid identity values in the
-exact canonical order just defined. The token decoder does not expose a public
-filter deserializer: it validates this metadata grammar and compares the opaque
-identity string with the identity computed from the call's live `to` filter.
-Different identities are rejected.
-
-REQ-NF-11: structurally equal filters under REQ-NF-06 MUST have identical
-`filterIdentity`; filters with different canonical structural forms MUST have
-different identities. Collision-resistant hashing is insufficient because the cursor contract requires collision-freedom. Token versioning changes
-before this derivation or structural normalization policy changes.

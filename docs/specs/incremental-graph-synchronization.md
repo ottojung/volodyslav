@@ -114,9 +114,9 @@ Input validation checks format version, exact NodeKey serialization, unique iden
 
 Deletion is closed over derived dependants that cannot retain coherent proof. The transaction reasons over the full dependency cone before publication. Sequential sources are processed from fresh stable snapshots; each successful source is fully installed before the next. A failure publishes none of that source transaction. Migration and synchronization cutover obey the garden/dome/telescope/darkroom protocol.
 
-## Polling and compaction interaction
+## Iterator and compaction interaction
 
-Polling maxima are selected per `(author,NodeKey,publicAction)` by that author's local sequence. Returned events use author-major `(author,sequence)` order and cumulative vector cursors; this order makes no cross-author temporal claim. Compaction retains these maxima, causal selection antichains, exact provenance, complete freshness frontiers, validations, reset assertions/correspondences, reset-anchor cut summaries, and causal closure.
+Iterator notification representatives are selected per `(author,NodeKey,publicAction)` by that author's local sequence inside the captured range. Returned notifications use author-major `(author,sequence)` order; this order makes no cross-author temporal claim. Compaction retains the representatives, causal selection antichains, exact provenance, complete freshness frontiers, validations, reset assertions/correspondences, reset-anchor cut summaries, and causal closure. Iterators advance to their captured `journalCoverage` frontier even across unmatched or physically discarded entries. Synchronization may increase coverage and make transferred iterator state restorable, but never changes application-owned iterator progress or treats receipt as consumption.
 
 Canonical compaction satisfies `compact(compact(A) union B)=compact(A union B)`. Immutable contexts and persisted causal summary preserve the future-relevant meaning of discarded history.
 

@@ -187,7 +187,7 @@ plus soft invalidate after establishing the complete reusable incoming proof.
 `create(..., { state: "stale-hard" })` authors a new generation plus hard
 invalidate and installs no incoming proof.
 These entries use no migration-specific action and follow normal allocation,
-atomicity, frontier, cursor, and compaction rules.
+atomicity, frontier, iterator, and compaction rules.
 
 **Propagated invalidation** (automatic recursive propagation) preserves all validity proofs — both incoming and outgoing. It is freshness-only: downstream nodes are marked stale but retain their complete proof sets.
 
@@ -279,7 +279,7 @@ the decision in `causalContext`, and advances only local coverage/counter.
 Representation-only changes remain silent; `keep`, invalidation, and semantic-preserving `override` preserve the
 cached value and `modifiedAt`. Graph, journal, reset-anchor cut summaries,
 counter, coverage, causal summary, and durable fingerprint commit
-atomically. Migration never seeds graph authority from polling evidence. Detailed rules are in
+atomically. Migration never seeds graph authority from iterator notifications. Detailed rules are in
 `docs/specs/incremental-graph-journal-migrations.md`.
 
 ## Atomicity guarantee

@@ -121,7 +121,7 @@ canonical does not imply valid, and non-canonical does not imply invalid. A
 supported uncompacted journal remains supported state; manually forged or
 corrupted history remains unsupported even if it happens to be canonical.
 
-Restoration resumes its emitted durable state and MUST NOT classify the restored graph as an empty-to-restored transition. Durable encoded cursors preserve their exact vector coordinates across restart and remain portable without adoption or coverage rejection when every fingerprint coordinate denotes the same durable writer history in the origin and receiver contexts.
+Restoration resumes its emitted durable state and MUST NOT classify the restored graph as an empty-to-restored transition. Durable iterator states preserve exact progress and issuance-coverage vectors across restart. Cross-host restoration additionally requires receiver journal coverage to dominate the recorded issuance coverage, with every fingerprint denoting the same durable writer history.
 
 The supported source is the host's current synchronized state, not an arbitrary historical checkpoint. Restoring an older checkpoint under the same author/clock is unsupported unless a future recovery protocol supplies anti-rollback state or assigns a new durable database fingerprint. Any failure to query, obtain, validate, or install the expected current state is fatal; startup does not silently fall back to an empty database.
 
@@ -234,7 +234,7 @@ Normal synchronization performs these lifecycle steps:
 
 The merge resolves state according to graph timestamps and dependency semantics, not textual repository merge rules. Locally newer state is retained, remotely newer compatible state may be taken, and affected derived state may be invalidated so that it is recomputed from the merged dependencies. A successful merge preserves graph coherence and does not make a partially constructed target active.
 
-Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so journal history may be uncompacted. It preserves immutable coordinates, reset-anchor cut summaries, local counter, journal coverage, causal summary, and durable fingerprint exactly. Restoration neither compacts nor renumbers and durable cursors retain meaning.
+Checkpointing serializes the complete stable supported state. Canonical compaction is optional, so journal history may be uncompacted. It preserves immutable coordinates, reset-anchor cut summaries, local counter, journal coverage, causal summary, and durable fingerprint exactly. Restoration neither compacts nor renumbers, so durable iterator progress retains meaning. Synchronization changes coverage but never application-owned iterator progress.
 
 ### 7.3 Per-host failure behavior
 

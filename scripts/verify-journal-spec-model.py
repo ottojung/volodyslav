@@ -3,7 +3,8 @@
 
 from dataclasses import dataclass, field, replace
 from itertools import combinations
-from typing import Iterable, Mapping
+from typing import Callable, Iterable, Mapping
+import json
 
 Prefix = Mapping[str, int]
 EntryId = tuple[str, int]
@@ -140,6 +141,95 @@ class Replica:
     causal_summary: dict[str, int] = field(default_factory=dict)
     journal_coverage: dict[str, int] = field(default_factory=dict)
     local_counter: int = 0
+
+
+class IteratorBusyError(Exception):
+    """One mutable iterator permits only one active consumption."""
+
+
+class IteratorRestoreCoverageError(Exception):
+    """The receiving replica cannot prove the iterator's issuance frontier."""
+
+
+@dataclass
+class JournalIterator:
+    """Mutable consumer progress plus the coverage that made it safe to issue."""
+    progress: dict[str, int]
+    issuance_coverage: dict[str, int]
+    busy: bool = False
+
+    def clone(self) -> "JournalIterator":
+        return JournalIterator(dict(self.progress), dict(self.issuance_coverage))
+
+    def iterate(
+            self, replica: Replica, pattern: Callable[[Event], bool],
+            after_snapshot: Callable[[], None] | None = None,
+            fail: bool = False) -> tuple[Event, ...]:
+        if self.busy:
+            raise IteratorBusyError
+        self.busy = True
+        try:
+            snapshot = dict(replica.journal_coverage)
+            snapshot_events = tuple(replica.journal.values())
+            if after_snapshot is not None:
+                after_snapshot()
+            visible = notification_maxima(
+                entry for entry in snapshot_events
+                if entry.sequence <= coordinate(snapshot, entry.author)
+                and entry.sequence > coordinate(self.progress, entry.author))
+            result = tuple(sorted(
+                (entry for entry in visible if pattern(entry)),
+                key=lambda entry: (entry.author, entry.sequence)))
+            if fail:
+                raise RuntimeError("modeled scan failure")
+            # Publishing progress is the successful-call boundary.  In
+            # particular it uses the snapshot frontier, not the last match.
+            self.progress = join_prefixes(self.progress, snapshot)
+            self.issuance_coverage = join_prefixes(
+                self.issuance_coverage, snapshot)
+            return result
+        finally:
+            self.busy = False
+
+
+def make_iterator(replica: Replica) -> JournalIterator:
+    del replica
+    return JournalIterator({}, {})
+
+
+def iterator_to_string(iterator: JournalIterator) -> str:
+    def vector(prefix: Prefix) -> list[list[str]]:
+        return [[author, str(value)] for author, value in sorted(prefix.items())
+                if value > 0]
+    return json.dumps({"v": 1, "progress": vector(iterator.progress),
+                       "issuanceCoverage": vector(iterator.issuance_coverage)},
+                      separators=(",", ":"))
+
+
+def restore_iterator(replica: Replica, encoded: str) -> JournalIterator:
+    try:
+        parsed = json.loads(encoded)
+        assert list(parsed) == ["v", "progress", "issuanceCoverage"]
+        assert parsed["v"] == 1 and not isinstance(parsed["v"], bool)
+        def decode(values) -> dict[str, int]:
+            result: dict[str, int] = {}
+            previous = ""
+            for author, text in values:
+                assert isinstance(author, str) and author > previous
+                assert isinstance(text, str) and text.isdigit()
+                assert text[0] != "0"
+                result[author] = int(text)
+                previous = author
+            return result
+        progress = decode(parsed["progress"])
+        issuance = decode(parsed["issuanceCoverage"])
+        assert prefix_covers(issuance, progress)
+        assert iterator_to_string(JournalIterator(progress, issuance)) == encoded
+    except (AssertionError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        raise ValueError("invalid canonical iterator state") from None
+    if not prefix_covers(replica.journal_coverage, issuance):
+        raise IteratorRestoreCoverageError
+    return JournalIterator(progress, issuance)
 
 
 def causally_before(left: Event, right: Event) -> bool:
@@ -541,7 +631,7 @@ def no_coherent_candidate(input_count: int, candidates: Iterable[Event],
     return unsupported_precedence(values)
 
 
-def polling_maxima(journal: Iterable[Event]) -> frozenset[Event]:
+def notification_maxima(journal: Iterable[Event]) -> frozenset[Event]:
     groups: dict[tuple[str, NodeKey, str], list[Event]] = {}
     for event in journal:
         if event.public_action is not None:
@@ -599,7 +689,7 @@ def compact(journal: Iterable[Event] | JournalState) -> JournalState:
     """Exactly N/P/VH/ET/IF/HF/VV/RL/RC plus reference closure."""
     values = frozenset(journal_events(journal))
     # N
-    keep: set[Event] = set(polling_maxima(values))
+    keep: set[Event] = set(notification_maxima(values))
     # RL and RC
     reset_seeds = future_reset_assertions(journal)
     keep.update(reset_seeds)
@@ -1164,7 +1254,7 @@ def verify_reset_compaction_bounds() -> None:
     assert len(relation_compacted) <= 8  # n=1, fixed r, c=1
 
 
-def verify_values_freshness_polling() -> None:
+def verify_values_freshness_notifications() -> None:
     node = ("v", ())
     generation = event("A", 100, node, "generation", time=10)
     observed_edit = event("B", 2, node, "edit", time=10,
@@ -1189,8 +1279,114 @@ def verify_values_freshness_polling() -> None:
     other = ("other", ())
     poll = [event("A", 1, node, "edit"), event("A", 2, node, "edit"),
             event("A", 3, other, "edit"), event("A", 4, node, "delete")]
-    maxima = polling_maxima(poll)
+    maxima = notification_maxima(poll)
     assert {entry.id for entry in maxima} == {("A", 2), ("A", 3), ("A", 4)}
+
+
+def verify_consumable_journal_iterator() -> None:
+    foo, bar = ("foo", ()), ("bar", ())
+    replica = Replica("A")
+    for entry in (event("A", 1, foo, "edit"),
+                  event("A", 2, bar, "edit"),
+                  event("A", 3, bar, "delete")):
+        replica.journal[entry.id] = entry
+    replica.journal_coverage = {"A": 3}
+
+    # A fresh iterator is before all history. Matches and nonmatches consume
+    # the complete captured frontier; changing filters cannot revisit either.
+    iterator = make_iterator(replica)
+    assert iterator.progress == {}
+    assert [entry.id for entry in iterator.iterate(
+        replica, lambda entry: entry.node == foo)] == [("A", 1)]
+    assert iterator.progress == {"A": 3}
+    assert iterator.iterate(replica, lambda entry: entry.node == bar) == ()
+
+    empty = make_iterator(replica)
+    assert empty.iterate(replica, lambda _entry: False) == ()
+    assert empty.progress == {"A": 3}
+
+    # Clones copy a position, then own independent mutable progress.
+    original = make_iterator(replica)
+    clone = original.clone()
+    replica.journal[("A", 4)] = event("A", 4, foo, "edit")
+    replica.journal_coverage = {"A": 4}
+    original.iterate(replica, lambda _entry: True)
+    assert original.progress == {"A": 4} and clone.progress == {}
+    clone.iterate(replica, lambda _entry: False)
+    assert clone.progress == {"A": 4}
+
+    # Tail growth after capture belongs to the next call.
+    snapshot_iterator = make_iterator(replica)
+    def append_after_capture() -> None:
+        replica.journal[("A", 5)] = event("A", 5, foo, "delete")
+        replica.journal_coverage = {"A": 5}
+    first = snapshot_iterator.iterate(
+        replica, lambda _entry: True, after_snapshot=append_after_capture)
+    assert ("A", 5) not in {entry.id for entry in first}
+    assert snapshot_iterator.progress == {"A": 4}
+    assert [entry.id for entry in snapshot_iterator.iterate(
+        replica, lambda _entry: True)] == [("A", 5)]
+
+    # Failure is atomic, and overlap fails deterministically.
+    failed = make_iterator(replica)
+    before = dict(failed.progress)
+    try:
+        failed.iterate(replica, lambda _entry: True, fail=True)
+    except RuntimeError:
+        pass
+    assert failed.progress == before
+    failed.busy = True
+    try:
+        failed.iterate(replica, lambda _entry: True)
+        assert False
+    except IteratorBusyError:
+        pass
+    finally:
+        failed.busy = False
+
+    # The canonical durable state round-trips exactly and same-host restart
+    # retains its per-author progress.
+    encoded = iterator_to_string(snapshot_iterator)
+    restarted = restore_iterator(replica, encoded)
+    assert restarted.progress == snapshot_iterator.progress
+    assert iterator_to_string(restarted) == encoded
+    for malformed in (encoded + " ", '{"v":1,"progress":[],"issuanceCoverage":[],"x":1}'):
+        try:
+            restore_iterator(replica, malformed)
+            assert False
+        except ValueError:
+            pass
+
+    # A receiver cannot restore until synchronization establishes the exact
+    # per-author issuance coverage. A large foreign coordinate never stands in
+    # for a smaller coordinate of another author.
+    source = Replica("A", journal=dict(replica.journal),
+                     journal_coverage=dict(replica.journal_coverage),
+                     local_counter=5)
+    source_iterator = make_iterator(source)
+    source_iterator.iterate(source, lambda _entry: False)
+    transferred = iterator_to_string(source_iterator)
+    receiver = Replica("B", journal_coverage={"B": 10_000}, local_counter=10_000)
+    try:
+        restore_iterator(receiver, transferred)
+        assert False
+    except IteratorRestoreCoverageError:
+        pass
+    receive(receiver, source)
+    restored = restore_iterator(receiver, transferred)
+    assert restored.progress == {"A": 5}
+
+    # Compact and uncompacted snapshots expose the same retained public
+    # obligations and advance to the same explicit snapshot frontier.
+    compact_replica = Replica(
+        "A", journal={entry.id: entry for entry in compact(replica.journal.values()).events},
+        journal_coverage=dict(replica.journal_coverage), local_counter=5)
+    full_iterator, compact_iterator = make_iterator(replica), make_iterator(compact_replica)
+    full = full_iterator.iterate(replica, lambda entry: entry.node == foo)
+    reduced = compact_iterator.iterate(compact_replica, lambda entry: entry.node == foo)
+    assert [(entry.id, entry.public_action) for entry in full] == [
+        (entry.id, entry.public_action) for entry in reduced]
+    assert full_iterator.progress == compact_iterator.progress == {"A": 5}
 
 
 def verify_compaction_future_union() -> None:
@@ -1248,7 +1444,8 @@ def main() -> None:
     verify_anchor_scoped_absorption()
     verify_no_coherent_candidates()
     verify_reset_compaction_bounds()
-    verify_values_freshness_polling()
+    verify_values_freshness_notifications()
+    verify_consumable_journal_iterator()
     verify_compaction_future_union()
     verify_causal_laws()
     print("journal causal-context model: all bounded checks passed")

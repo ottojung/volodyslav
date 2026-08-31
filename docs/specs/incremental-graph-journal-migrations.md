@@ -48,3 +48,13 @@ causal summary. Migration validates canonical addresses, generation references,
 timestamp domains, causal contexts, reset-anchor cut summaries, and graph/proof
 consistency before atomic graph/journal/resetAnchorCuts/coverage/counter/
 causalSummary/fingerprint cutover.
+
+## Iterator-state preservation
+
+A migration that preserves durable writer fingerprints and immutable journal
+coordinates preserves `JournalIterator` progress and issuance coverage exactly;
+it neither rebases nor renumbers either vector. Compaction during migration has
+the same rule. A migration that legitimately changes writer history or
+coordinates MUST explicitly reject the affected durable iterator-state version
+at restoration rather than silently reinterpret it. Newly created iterators
+remain the before-all migration-independent starting point.
