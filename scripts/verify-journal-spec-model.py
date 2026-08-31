@@ -229,13 +229,25 @@ def controlled_reset_absorption(
 def controlled_reset_archive(
         receiver: Iterable[Event] | JournalState,
         source: Iterable[Event] | JournalState) -> JournalState:
-    """Preserve source AC by exact anchor without importing source events."""
+    """Materialize every source effective anchor cut without importing events."""
     joined: dict[tuple[NodeKey, Anchor], dict[str, int]] = {}
-    for summary in (*journal_cut_summaries(receiver),
-                    *journal_cut_summaries(source)):
+    for summary in journal_cut_summaries(receiver):
         key = summary.node, summary.anchor
         joined[key] = join_prefixes(
             joined.get(key, {}), summary.absorbs_through)
+    source_nodes = ({event.node for event in journal_events(source)
+                     if is_reset_carrier(event)}
+                    | {summary.node for summary in journal_cut_summaries(source)})
+    for node in source_nodes:
+        groups = anchor_groups(source, node)
+        anchors = (set(groups)
+                   | {summary.anchor for summary in journal_cut_summaries(source)
+                      if summary.node == node})
+        for anchor in anchors:
+            key = node, anchor
+            joined[key] = join_prefixes(
+                joined.get(key, {}),
+                anchor_cut(source, node, anchor, groups.get(anchor, ())))
     return JournalState(
         frozenset(journal_events(receiver)),
         frozenset(AnchorCutSummary(node, anchor, cut)
@@ -761,7 +773,10 @@ def verify_controlled_reset_preserves_anchor_archive() -> None:
         "N", 1, node, "validate", time=3, causal_context={"H": 1},
         generation=source_generation.id, value_origin=source_generation.id,
         reset_lineage=lineage({"S": 1, "X": 10}))
-    source = compact({source_generation, historical, current})
+    uncompacted_source = JournalState(
+        frozenset({source_generation, historical, current}))
+    assert not uncompacted_source.anchor_cuts
+    source = compact(uncompacted_source)
     assert historical not in source
     assert all(tagged_anchor(carrier) != anchor_zero
                for carrier in future_reset_assertions(source))
@@ -772,6 +787,9 @@ def verify_controlled_reset_preserves_anchor_archive() -> None:
     receiver_generation = event("R", 1, node, "generation", time=1)
     receiver = JournalState(frozenset({receiver_generation}))
     receiver_with_archive = controlled_reset_archive(receiver, source)
+    receiver_from_uncompacted = controlled_reset_archive(
+        receiver, uncompacted_source)
+    assert receiver_from_uncompacted == receiver_with_archive
     carried = controlled_reset_absorption(
         source, node, [tagged_anchor(current)])
     reset_carrier = event(
@@ -781,6 +799,10 @@ def verify_controlled_reset_preserves_anchor_archive() -> None:
     reset_state = JournalState(
         receiver_with_archive.events | {reset_carrier},
         receiver_with_archive.anchor_cuts)
+    uncompacted_reset_state = JournalState(
+        receiver_from_uncompacted.events | {reset_carrier},
+        receiver_from_uncompacted.anchor_cuts)
+    assert uncompacted_reset_state == reset_state
 
     # C knows the receiver witness but is concurrent with the reset decision.
     concurrent = event(
@@ -790,10 +812,14 @@ def verify_controlled_reset_preserves_anchor_archive() -> None:
     outside = event("X", 11, node, "generation", time=7)
     with_inside = reset_state | {concurrent, inside}
     assert presence_selection(with_inside, node) is None
+    assert presence_selection(
+        uncompacted_reset_state | {concurrent, inside}, node) is None
     direct_archive_interpretation = source | receiver | {reset_carrier, concurrent, inside}
     assert presence_selection(with_inside, node) == presence_selection(
         direct_archive_interpretation, node)
     assert presence_selection(reset_state | {concurrent, outside}, node) == outside
+    assert presence_selection(
+        uncompacted_reset_state | {concurrent, outside}, node) == outside
 
     restarted = compact(with_inside)
     assert presence_selection(restarted, node) is None
