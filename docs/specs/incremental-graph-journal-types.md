@@ -47,7 +47,7 @@ resetAnchorCuts[NodeKey,taggedAnchor] = ResetAnchorCutSummary
 entryNodeKey(E) = NodeKey(E.nodeName,E.bindings)
 ```
 
-`JournalEntryId` is an immutable identity and address. A `JournalSequence` has meaning only within its `DatabaseFingerprint` author. No algorithm compares sequence magnitudes from different authors as evidence of temporal, causal, revision, presence, conflict, or destructive precedence. Sequence supports same-author identity, order, frontiers, coverage, cursor progress, and monotonicity only.
+`JournalEntryId` is an immutable identity and address. A `JournalSequence` has meaning only within its `DatabaseFingerprint` author. No algorithm compares sequence magnitudes from different authors as evidence of temporal, causal, revision, presence, conflict, or destructive precedence. Sequence supports same-author identity, order, frontiers, coverage, iterator progress, and monotonicity only.
 
 `entryNodeKey` uses the normative identity-preserving serializer. `nodeName` and `bindings` are the sole persisted semantic address. Every boundary validates closed shapes, exact references, positive event coordinates, canonical vectors, and arbitrary-precision decimal encoding. Runtime implementations use `BigInt`, never lossy JavaScript `Number` conversion. Zero means missing vector knowledge and is never an event sequence.
 
@@ -177,4 +177,18 @@ Every `greatest` above compares sequences from one author only. Partial validati
 
 Presence selection precedes joined value provenance, coherence classification, and precedence among candidates eligible at that stage. A coherent derived cache may beat a newer unsupported cache; equal-time joined canonical provenance is not reassigned merely because another candidate is coherent. Proof transport is extensional: schema/bindings/direct-input structure must match, all direct-input and output values must be `isEqual`, and source proof must exist. Equality permits transport but never creates proof.
 
-Polling hides raw IDs, generation, modes, causal contexts, and reset metadata. Storage-level `NodeIdentifier` incarnation remains distinct from semantic `NodeKey`; removal retires an identifier and rematerialization allocates another.
+Possible-change notifications hide raw IDs, generation, modes, causal contexts,
+and reset metadata. Storage-level `NodeIdentifier` incarnation remains distinct
+from semantic `NodeKey`; removal retires an identifier and rematerialization
+allocates another.
+
+## Iterator state facts
+
+`IteratorProgress`, `JournalCoverage`, `CausalSummary`, and
+`IteratorIssuanceCoverage` are separate per-author vectors. Progress proves what
+one application-owned consumer has consumed. Coverage proves what a replica
+completely possesses. Causal summary proves observed happened-before knowledge.
+Issuance coverage records the coverage context in which durable progress was
+issued so another replica can prove restoration safe. No operation substitutes
+one fact for another, and no coordinate is compared with a different author's
+coordinate.

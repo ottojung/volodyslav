@@ -1,205 +1,133 @@
-# IncrementalGraph journal polling API
+# IncrementalGraph consumable journal iterator API
 
-## Public token types (normative)
+## Public API (normative)
 
-`PossibleNodeChange` is an opaque nominal public value. Its visible readonly
-fields are equivalent to:
+`PossibleChange` is notification data with exactly these visible readonly fields:
 
 ```ts
-{
+type PossibleChange = Readonly<{
     nodeName: NodeName;
     bindings: readonly ConstValue[];
     action: "add" | "edit" | "delete" | "invalidate" | "validate";
     time: UnixTimestamp;
+}>;
+
+interface JournalIterator {
+    iterate({ pattern }: { pattern: NodeFilter }): Promise<Array<PossibleChange>>;
+    clone(): JournalIterator;
 }
+
+graph.journal.makeIterator(): JournalIterator;
+iteratorToString(iterator: JournalIterator): string;
+graph.journal.iteratorFromString(state: string): Promise<JournalIterator>;
 ```
 
-It also carries immutable implementation-private cursor state containing the
-information required for same-filter continuation, including the canonical
-filter identity and per-writer cursor vector. This state is not an ordinary
-public object field and its runtime representation is implementation-private.
-It does not expose raw `JournalEntryId`, generation, invalidation mode, or causal
-journal internals. The nominal brand is module-private and unexported, so
-TypeScript callers cannot manufacture a `PossibleNodeChange` structurally.
+The notification contains no journal ID, writer, generation, causal context,
+invalidation mode, reset metadata, filter identity, progress, issuance evidence,
+or other continuation state. It is data and is neither nominal nor a capability.
+Internal reset-observation entries have no public projection. Soft and hard
+invalidation both project to `"invalidate"`.
 
-`BaselinePossibleNodeChange` is a distinct opaque nominal type. It is the
-filter-independent universal before-all/all-zero polling sentinel, created by
-`graph.baselinePossibleNodeChange()`. It is not serializable by the durable
-`PossibleNodeChange` codec.
+`makeIterator()` creates a consumer before all journal history. Progress belongs
+to the iterator and is a vector of per-`DatabaseFingerprint` coordinates;
+missing coordinates mean zero. It is independent of every `NodeFilter`.
+Every iterator is permanently bound to the graph context that created or
+restored it. `iterate()` therefore accepts no graph argument, `clone()` retains
+the same binding, and transferring progress to another graph requires durable
+serialization followed by that graph's coverage-checked `iteratorFromString()`.
 
-The public manufacturing boundary is exactly:
+## Iteration (normative)
+
+At the start of `iterate`, the journal captures one stable journal snapshot and
+its `journalCoverage` frontier `S`. Let `P` be the iterator progress at entry.
+The call scans the complete per-author range `(P,S]`. From that fixed snapshot,
+it selects the greatest local sequence per
+`(author,NodeKey,publicAction)` in the range, filters those representatives with
+the supplied self-contained-address `NodeFilter`, orders the result by
+`(author,sequence)`, and materializes their public projections. Author ordering
+is deterministic only; sequence magnitude is compared only within one author
+and makes no cross-author temporal or causal claim.
+
+On successful completion, the iterator progress becomes the componentwise
+maximum of `P` and `S`, including coordinates represented only by unmatched or
+compacted-away entries. Thus an empty result consumes the entire captured
+range, and changing the filter on a later call does not revisit skipped entries.
+Events and coverage received or authored after `S` was captured belong to a
+later call; iteration never chases a growing tail.
+
+The eager array and progress publication form one atomic consumption boundary.
+The implementation computes the complete result before publishing progress. If
+snapshotting, scanning, filtering, projection, or materialization fails,
+progress remains `P` and no partial result is returned.
+
+Only one `iterate` may be active on an iterator. An overlapping call fails
+immediately with `JournalIteratorBusyError`, before capturing or changing
+progress. `clone()` synchronously copies the exact current progress and issuance
+coverage into independent mutable state. Advancing either clone has no effect on
+the other; callers use clones for parallel independent consumers and replay
+points.
+
+## Durable iterator-state v1 codec (normative)
+
+`iteratorToString` serializes the iterator's progress and its recorded issuance
+coverage, never a `PossibleChange` or filter. `iteratorFromString` asynchronously
+parses the state in the receiving graph's active-replica context and restores an
+independent iterator bound to that graph.
+There is exactly one v1 encoding:
 
 ```text
-graph.baselinePossibleNodeChange()
-    -> BaselinePossibleNodeChange
-
-graph.possibleMaybeChanges(...)
-    -> PossibleNodeChange values
-
-stringToPossibleChangeToken(...)
-    -> PossibleNodeChange after complete structural/canonical validation
+JSON.stringify({v:1,progress:P,issuanceCoverage:I})
 ```
 
-The decoder establishes a syntactically valid nominal `PossibleNodeChange`; it
-does not establish that a graph issued the cursor. The guarantees for fabricated
-or modified cursor coordinates and issuance history are specified with the codec
-below.
+Members occur in exactly that order with no insignificant whitespace. `P` and
+`I` are arrays of `[fingerprint,coordinate]`, strictly ascending by fingerprint.
+Fingerprints match `/^[a-z]{16}$/`. Coordinates are JSON strings containing
+canonical positive decimal integers; zero coordinates are omitted and missing
+coordinates mean zero. Coordinates are arbitrary precision and are decoded
+directly to `BigInt`, never through `Number`. Empty arrays are valid for the
+before-all/empty-coverage state. `I` MUST componentwise dominate `P`.
 
-The complete polling signature is:
+The decoder accepts only the exact object shape and version, validates the
+fingerprint grammar, arrays, ordering, uniqueness, decimal spelling, and vector
+relation, reconstructs the canonical object, and requires its exact
+`JSON.stringify` result to equal the input. Malformed, noncanonical, unknown-
+version, or unknown-field input throws `InvalidJournalIteratorStateError`.
+Fingerprint collisions have the same consequence as elsewhere in the journal:
+the safety guarantees require each fingerprint to denote the same durable
+writer history in issuer and receiver.
 
-```ts
-possibleMaybeChanges({
-    since,
-    to,
-}: {
-    since: PossibleNodeChange | BaselinePossibleNodeChange;
-    to: NodeFilter;
-}): Promise<Array<PossibleNodeChange>>;
-```
+`issuanceCoverage` records the coverage frontier that proves the published
+progress safe. It is empty for a newly created before-all iterator and becomes
+the captured coverage when iteration successfully advances. Before restoration
+is usable, the
+receiving journal's current `journalCoverage` MUST componentwise dominate it;
+otherwise `iteratorFromString` throws `InsufficientIteratorCoverageError` and
+creates no iterator. This prevents progress `A:100` from skipping `A:51..100`
+on a replica covered only through `A:50`. Synchronization can later establish
+the missing coverage, after which the unchanged string can be restored.
+Comparisons are componentwise by author only.
 
-The promise resolves with a fully materialized ordinary in-memory array, not an
-async iterator.
+Iterator progress (consumer consumption), `journalCoverage` (complete possessed
+prefixes), `causalSummary` (happened-before knowledge), and issuance coverage
+(restore evidence) are distinct. Synchronization changes journal coverage and
+causal summary but never application-owned iterator progress. A successful
+iteration updates progress and records the captured coverage as issuance
+evidence.
 
-```text
-PossibleNodeChange
-    public: nodeName, bindings, action, time
-    private: filter identity + vector cursor
+## Persistence, migration, and compaction
 
-BaselinePossibleNodeChange
-    opaque universal before-all sentinel
+Restart, checkpoint restoration, and compaction preserve immutable writer
+coordinates, so an encoded iterator retains its meaning without rebasing.
+Migration preserves iterator meaning whenever it preserves journal writer
+histories and coordinates; a migration that cannot do so MUST explicitly reject
+that iterator-state version rather than reinterpret it. There is no baseline
+token: a newly made iterator is the natural before-all consumer.
 
-JournalEntry / JournalEntryId / generation / causal frontier
-    internal journal concepts, not public polling values
-```
-
-The private cursor state records the per-author resume position from which
-polling continues and the canonical identity of the exact `NodeFilter` used to
-produce it. Missing vector coordinates are zero. Coordinates beyond receiver
-coverage neither require adoption nor cause rejection. Portability additionally
-requires each fingerprint coordinate to denote the same durable writer history
-in the token's origin and receiving journal contexts. Reuse with a different
-filter identity throws `InvalidPossibleChangeCursorError` before polling.
-
-For one snapshot, choose the greatest local sequence per `(author,NodeKey,publicAction)`, keep those above that author's consumer coordinate and matching the self-contained address filter, order author-major by `(author,sequence)`, and attach cumulative vector cursors. Author is therefore compared before sequence, and sequence is compared only inside one author. This deterministic delivery order makes no cross-author temporal or causal claim. Soft/hard share invalidate. Every public graph event has a non-null exact action; internal reset-observation entries are excluded before this projection; reset add/edit/delete/freshness transitions use ordinary events.
-
-## Durable possible-change token v1 codec (normative)
-
-Durable v1 conversion applies only to non-baseline `PossibleNodeChange` values:
-
-```ts
-possibleChangeTokenToString(token: PossibleNodeChange): string
-stringToPossibleChangeToken(tokenString: string): PossibleNodeChange
-```
-
-`BaselinePossibleNodeChange` is deliberately not serializable. It is the
-filter-independent universal before-all sentinel and callers recreate it with
-`graph.baselinePossibleNodeChange()`. Passing it to the encoder is outside the
-encoder's input type, and the decoder never returns it. In particular, an empty
-cursor plus a fabricated visible change is not a baseline encoding.
-
-There is exactly one v1 string for a token value:
-
-```text
-tokenString = JSON.stringify(canonicalTokenObject)
-```
-
-`canonicalTokenObject` is an object with exactly these members in this order:
-`change`, `cursor`, `filter`, `v`. It has no insignificant whitespace and is
-serialized by JavaScript `JSON.stringify`. The version is exactly the JSON
-integer `1`; unknown fields and every other version or spelling are invalid.
-Decoding performs `JSON.parse`, validates the exact recursive shape,
-reconstructs the canonical object, and requires
-`JSON.stringify(reconstructed) === tokenString`. Failure at any step throws
-`InvalidPossibleChangeCursorError`.
-
-The decoder performs parsing, structural validation, and canonical-format validation only. The canonical JSON is plainly inspectable and may be constructed or modified by a caller; decoding it does not prove that the graph issued it. If a caller supplies fabricated or modified cursor coordinates, polling uses those coordinates as the requested resume position. Changes at or below those coordinates may therefore be skipped, and the no-false-negatives guarantee does not apply to that caller-supplied position.
-
-Cursor coordinates identify writer histories only through
-`DatabaseFingerprint`. Durable v1 carries no hostname, branch identity, or
-provenance. If independently created writer histories collide on a fingerprint,
-moving a cursor from one history to the other can skip changes at coordinates
-the receiver interprets as already consumed. The decoder cannot detect this
-from a v1 token. Portability and no-false-negatives therefore require every
-fingerprint coordinate to denote the same durable writer history in the token's
-origin context and the receiving graph's journal context.
-
-`change` has exactly these members in this order: `nodeName`, `bindings`,
-`action`, `time`.
-
-* `nodeName` is a JSON string satisfying the normative `NodeName`/`ident`
-  grammar.
-* `bindings` is the positional JSON array of actual validated `ConstValue`
-  values. There is no nested encoding.
-* `action` is exactly one of `"add"`, `"edit"`, `"delete"`, `"invalidate"`,
-  or `"validate"`.
-* `time` is a JSON integer in the `UnixTimestamp` interval
-  `[-8640000000000000,8640000000000000]`; booleans, fractions, exponent
-  spellings, and negative zero are invalid. Decimal integer spelling is
-  canonical (zero is `0`, otherwise optional `-` followed by a nonzero digit
-  and digits).
-
-Bindings use the one value serialization rule: validate as `ConstValue`, then
-serialize with `JSON.stringify`. This supplies JavaScript Number formatting,
-normalizes `-0` to `0`, preserves array positions, escapes JavaScript strings,
-and enumerates record properties in ECMAScript `Object.keys` order. Thus
-integer-index-like keys are numeric-first and other string-key order remains
-semantic exactly as in DEF-EQUAL-01.
-
-`cursor` is a non-empty JSON array of entries `[fingerprint, coordinate]`.
-Every returned `PossibleNodeChange` has consumed at least its event's positive
-author coordinate; therefore an empty cursor is invalid in durable v1. `fingerprint`
-is exactly `/^[a-z]{16}$/`. `coordinate` is a JSON **string** containing a
-canonical positive decimal integer string: its first digit is nonzero and all
-remaining characters are decimal digits. Coordinates are arbitrary precision;
-the decoder constructs JavaScript `BigInt` values directly and never passes
-through JavaScript `Number`. Entries are
-strictly ascending by fingerprint; duplicates, unsorted entries, and explicit
-zero coordinates are invalid. Missing coordinates mean zero and the encoder
-omits zero coordinates. The all-zero vector belongs only to the non-serializable
-`BaselinePossibleNodeChange`.
-
-`filter` is the already-canonical opaque JSON `filterIdentity` string. The
-decoder parses and validates its nested JSON before reconstructing the outer
-token object:
-
-```js
-const filterIdentityValue = JSON.parse(parsed.filter);
-
-validateNormalizedFilterIdentityValue(filterIdentityValue);
-
-if (JSON.stringify(filterIdentityValue) !== parsed.filter) {
-    throw InvalidPossibleChangeCursorError;
-}
-```
-
-`validateNormalizedFilterIdentityValue` accepts only the normalized identity
-JSON grammar owned by `incremental-graph-node-filter.md`. In particular, every
-union identity value must already have its children in the exact normative
-order specified there. The inner exact re-encoding check rejects whitespace,
-noncanonical escapes, noncanonical property order, and every other alternate
-JSON spelling of the same identity value. The verified `parsed.filter` string
-is then placed unchanged in the reconstructed outer token object before the
-outer exact re-encoding check. The decoder never reconstructs a public filter
-from this metadata. Polling separately recomputes `filterIdentity(to)` and
-rejects a mismatch before scanning.
-
-Any field, byte, number, ordering, or encoding not admitted above is invalid.
-Thus “noncanonical token” is mechanically decidable by strict parse, validation,
-reconstruction, and exact re-encoding with ordinary JavaScript `JSON.stringify`.
-
-Filtered polling retains its deliberate limitation: no match exposes no continuation and no scan cursor is introduced. Same-filter continuation is exact. A token from a filtered-out lower event followed by a higher match may advance past that lower event only for that identical filter; changing or broadening the filter is an explicit cursor/filter mismatch, never a silent skip.
-
-**No-Action-Specific-False-Negatives.** Compaction retains a same-coordinate representative at least as new as every deleted public event, so virtual and physical polling agree for an unseen cursor/filter obligation. Reset stabilizing validate may be conservative extra notification; real reset transitions cannot be missing.
-
-**Cursor Portability.** Cursor meaning is consumer-global per fingerprint
-coordinate within its canonical filter identity and does not depend on receiver
-coverage, provided that coordinate denotes the same durable writer history in
-the origin and receiver contexts. A fingerprint collision between independent
-writers violates this premise, and v1 cannot diagnose it.
-
-The journal's no-false-negatives guarantee applies only when `since` is either
-`graph.baselinePossibleNodeChange()` or a `PossibleNodeChange` actually returned
-by `possibleMaybeChanges()`, optionally round-tripped without modification
-through `possibleChangeTokenToString()` and `stringToPossibleChangeToken()`, and
-every fingerprint coordinate still denotes the same durable writer history in
-the issuing and receiving journal contexts.
+For iterator progress `P` and captured frontier `S`, compaction MUST preserve
+every required matching public notification in `(P,S]` and iteration over the
+physical compact journal MUST advance to `S`, even when retained entries do not
+reach every coverage coordinate. Per-`(author,NodeKey,publicAction)` retained
+representatives satisfy this because each representative is at least as new as
+every removed member of that exact obligation group. Progress advancement uses
+the captured coverage frontier, not returned notifications or retained-entry
+maxima. Compaction never renumbers or rebases iterator state.

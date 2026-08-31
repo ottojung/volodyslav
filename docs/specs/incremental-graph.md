@@ -489,11 +489,10 @@ function makeIncrementalGraph(
 
 ### 3.2 IncrementalGraph Interface
 
-`PossibleNodeChange` and `BaselinePossibleNodeChange` are opaque nominal public
-types branded at compile time by a module-private, unexported `unique symbol`.
-That symbol is not a runtime snapshot carrier. A possible-change cursor combines visible readonly `{nodeName, bindings, action, time}` with an immutable private in-memory cursor position; the baseline is a universal before-all sentinel. External TypeScript callers cannot construct either type structurally, and raw journal identities or cursor-vector coordinates are not ordinary public object fields. The durable codec is plain inspectable canonical JSON, and its decoder does not establish issuance history. The complete type,
-snapshot, and runtime-validation contract is in
-`incremental-graph-journal-api.md`.
+`PossibleChange` is the plain readonly notification payload and `JournalIterator`
+is the mutable, cloneable consumer described by
+`incremental-graph-journal-api.md`. Iterator progress is filter-independent and
+is not carried by notifications.
 
 ```typescript
 interface IncrementalGraph {
@@ -505,13 +504,11 @@ interface IncrementalGraph {
   getCreationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
   getModificationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
 
-  // Journal API (read-only)
-  baselinePossibleNodeChange(): BaselinePossibleNodeChange;
-
-  possibleMaybeChanges({ since, to }: {
-    since: PossibleNodeChange | BaselinePossibleNodeChange,
-    to: NodeFilter,
-  }): Promise<Array<PossibleNodeChange>>;
+  // Journal API
+  journal: {
+    makeIterator(): JournalIterator;
+    iteratorFromString(state: string): Promise<JournalIterator>;
+  };
 
   // Inspection API (read-only)
   getFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | undefined>;
@@ -619,7 +616,7 @@ type Computor = (
 ) => Promise<ComputedValue | Unchanged>;
 ```
 
-**Normative API boundary:** Computor invocation deliberately receives no journal cursor. The runtime exposes neither a computation-position nor bootstrap cursor. `graph.baselinePossibleNodeChange()` means only at the universal all-zero cursor position; it is not the position at which the invocation started and is not a substitute. No raw journal entry identity, `journalGet`, context object, or hidden graph handle is provided.
+**Normative API boundary:** Computor invocation deliberately receives no journal iterator or computation position. No raw journal entry identity, `journalGet`, context object, or hidden graph handle is provided.
 
 **Note on Return Type:** Computors MAY return `Unchanged` as an optimization sentinel. However, `Unchanged` is NOT part of the semantic `Outcomes` set (see §1.1). When a computor returns `Unchanged`, it is semantically equivalent to returning the current stored value (which must be a `ComputedValue`). The `pull()` operation always returns `Promise<ComputedValue>` — the `Unchanged` sentinel is handled internally and never exposed to callers.
 
@@ -650,7 +647,9 @@ type Computor = (
 | `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 | `MissingTimestampError` | `nodeKey: string` | `getCreationTime`/`getModificationTime` called for a node with no recorded timestamps (public API) |
-| `InvalidPossibleChangeCursorError` | none | `possibleMaybeChanges()` receives a structurally malformed/non-canonical cursor, an invalid payload, or a cursor whose filter identity differs from the query filter |
+| `InvalidJournalIteratorStateError` | none | iterator restoration receives malformed or noncanonical durable state |
+| `InsufficientIteratorCoverageError` | none | receiver coverage does not dominate recorded issuance coverage |
+| `JournalIteratorBusyError` | none | an `iterate()` call overlaps another call on the same iterator |
 
 **REQ-ERR-01 (Error Type Guards):** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value: unknown): value is InvalidExpressionError`).
 
@@ -658,36 +657,18 @@ type Computor = (
 
 ### 3.6 Journal API
 
-The graph database owns value bytes and identifiers. The precise journal exactly projects supported current NodeKey presence/provenance/freshness authority, while the bounded visible polling API is conservative history and never a complete graph-state source. It
-observes exactly materialization presence, `ComputedValue`, and the authoritative
-freshness sublevel. The public journal API consists of:
+The graph database owns value bytes and identifiers. The precise journal projects
+supported current NodeKey presence/provenance/freshness authority, while the
+bounded visible iterator is conservative history and never a complete graph-state
+source. `graph.journal.makeIterator()` creates a before-all consumer;
+`iterator.iterate({ pattern })` returns an eager `Array<PossibleChange>` and
+consumes its complete captured coverage range; `clone()` creates an independent
+consumer. `iteratorToString()` and `graph.journal.iteratorFromString()` provide
+the canonical durable codec and coverage-safe restoration. Full semantics are in
+`docs/specs/incremental-graph-journal-api.md`.
 
-- `graph.possibleMaybeChanges({ since, to })` — Queries possible node changes since a previously observed position, restricted to nodes matching the given filter. Returns `Promise<Array<PossibleNodeChange>>`. The `since` parameter accepts `PossibleNodeChange | BaselinePossibleNodeChange`; the `to` parameter is a `NodeFilter`. See `docs/specs/incremental-graph-journal-api.md` for the full specification.
-
-- `graph.baselinePossibleNodeChange()` — Returns the universal opaque before-all
-  sentinel carrying the empty/all-zero vector. It starts scanning at the first surviving per-author/action representative.
-
-- `possibleChangeTokenToString(token: PossibleNodeChange): string` and
-  `stringToPossibleChangeToken(string): PossibleNodeChange` provide canonical,
-  versioned, validated durable conversion for non-baseline returned changes.
-  The in-memory vector is private, while the plain JSON representation exposes
-  its fingerprint coordinates for inspection or modification. The decoder
-  validates format rather than issuance history.
-  `BaselinePossibleNodeChange` is intentionally excluded from durable v1 and is
-  recreated with `graph.baselinePossibleNodeChange()`.
-
-- `InvalidPossibleChangeCursorError` — Thrown before polling for a structurally malformed or non-canonical token or when the token's filter identity differs from the canonical identity of `to`. A cursor coordinate may exceed host coverage; the query remains valid and performs no write. Its
-  public type guard uses `instanceof`.
-
-For those three dimensions, journal notification has no false negatives only
-when `since` is the baseline or a cursor actually returned by polling,
-including an unmodified durable codec round-trip, and every fingerprint
-coordinate denotes the same durable writer history in the cursor's origin and
-receiving journal contexts. Independently created colliding writers violate
-that premise; v1 cannot detect the mismatch and may skip receiver changes.
-Caller-fabricated or modified coordinates are requested resume positions and
-carry no such guarantee. Journal notification may have false positives and collapse repeated occurrences of one exact action.
-A returned action does not assert current graph state.
+Journal notification may have false positives and collapse repeated occurrences
+of one exact action. A returned action does not assert current graph state.
 
 The action meanings are closed: `add` is only absent-to-materialized; `edit` is
 only a normative `ComputedValue` inequality while materialized; `delete` is only
@@ -700,7 +681,7 @@ The journal's no-false-negatives contract covers exactly:
 2. `ComputedValue`;
 3. freshness sublevel.
 
-For possible-change polling, a graph change means a precise committed transition in
+For possible-change iteration, a graph change means a precise committed transition in
 one of those dimensions. Other persisted or public graph metadata may change
 without a precise journal event. Where permitted by the authoritative graph
 operation, this includes `NodeIdentifier`, `createdAt`, `modifiedAt`, validity
@@ -756,7 +737,7 @@ freshness action is emitted because freshness did not change. Extending the
 observable surface requires a separate explicit contract change rather than
 broadening an existing action.
 
-The journal type system, emission rules, synchronization model, migration interaction and durable version-vector cursor rules are specified in:
+The journal type system, emission rules, synchronization model, migration interaction and durable iterator-state rules are specified in:
 
 ```text
 docs/specs/incremental-graph-journal-types.md
@@ -862,7 +843,8 @@ is normative in `incremental-graph-locking-design.md`.
 | `listMaterializedNodes()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
 | `getCreationTime()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
 | `getModificationTime()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
-| `possibleMaybeChanges()` | `enterGarden` | Daytime and nighttime methods; holds shared access through complete fixed-snapshot consumption; never allocates or updates journal state or acquires dome/darkroom; **NOT** with `closeGarden` |
+| `JournalIterator.iterate()` | `enterGarden` | Daytime and nighttime methods; holds shared access through complete fixed-snapshot consumption; never allocates or updates journal state or acquires dome/darkroom; **NOT** with `closeGarden` |
+| `graph.journal.iteratorFromString()` | `enterGarden` | Daytime and nighttime methods; holds shared access through canonical validation and the stable coverage read; **NOT** with `closeGarden` |
 | `getSchemas()` | none (in-memory read) | Everything |
 | `getSchemaByHead()` | none (in-memory read) | Everything |
 | `getDbVersion()` | none (in-memory read) | Everything |
@@ -872,7 +854,7 @@ is normative in `incremental-graph-locking-design.md`.
 | Category | Methods |
 |----------|---------|
 | **Read-write** (modify graph state) | `pull()`, `invalidate()` |
-| **Read-only** (observe graph state) | `possibleMaybeChanges()`, `getFreshness()`, `getValue()`, `listMaterializedNodes()`, `getCreationTime()`, `getModificationTime()`, `getSchemas()`, `getSchemaByHead()`, `getDbVersion()` |
+| **Read-only** (observe graph state) | `JournalIterator.iterate()`, `graph.journal.iteratorFromString()`, `getFreshness()`, `getValue()`, `listMaterializedNodes()`, `getCreationTime()`, `getModificationTime()`, `getSchemas()`, `getSchemaByHead()`, `getDbVersion()` |
 
 **REQ-CONCUR-03 (Read-only Safety):** All read-only methods MUST NOT modify any stored graph state (values, freshness, timestamps, materialization records).
 

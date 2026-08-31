@@ -86,3 +86,12 @@ When receive makes a genuinely new destructive decision because of positive auth
 For a finite connected execution without continuing user authoring, measure unseen positive authorities that can trigger a new destructive decision. Each decision removes at least its observed authority from that set permanently; it introduces only a negative barrier, not a positive candidate. An unseen concurrent positive can cause at most one later decrease when observed. Therefore destructive authoring terminates. ACI union, immutable contexts, deterministic causal maxima, concurrent conflict selection, exact proof transport, and canonical compaction then give equal journals and SemanticGraph on all connected replicas. The argument is symmetric for every receive direction.
 
 The first receive may change only causal knowledge. A repeat is silent once source journal, coverage, semantic projection, and `observedSource(S)` are represented. With no intervening change, reverse catch-up produces equal canonical journals, coverage, causal summaries, and SemanticGraph while neither importer changes its local counter.
+
+## Iterator restoration interaction
+
+Journal synchronization unions immutable events and increases
+`journalCoverage`; it does not mutate any application-owned `JournalIterator`.
+A transferred durable iterator state is restorable only when receiver coverage
+componentwise dominates its recorded issuance coverage. A receive may establish
+that condition. Receipt of events is possession, not consumption, so existing
+iterator progress remains unchanged.

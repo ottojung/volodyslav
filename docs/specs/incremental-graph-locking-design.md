@@ -74,7 +74,7 @@ garden before acquiring a dome mode or any replica-local lock. An internal
 schema-derived `pullNode` call is not a new public operation: it receives the
 caller's active-replica context together with proof that shared garden and
 nighttime dome ownership remain live, and MUST NOT re-enter the garden or
-reacquire any dome mode. `possibleMaybeChanges()` needs no dome mode and follows
+reacquire any dome mode. `JournalIterator.iterate()` needs no dome mode and follows
 this complete lifetime protocol:
 
 ```text
@@ -82,7 +82,7 @@ enterGarden
     select active replica
     take fixed committed snapshot
     completely consume snapshot internally
-    materialize Array<PossibleNodeChange>
+    materialize Array<PossibleChange>
 leaveGarden
 
 promise resolves with ordinary in-memory array
@@ -91,10 +91,31 @@ promise resolves with ordinary in-memory array
 The procedure holds its garden entrance throughout active-replica selection,
 snapshot creation, snapshot consumption, and array materialization. It releases
 the garden before its promise resolves. The return type is
-`Promise<Array<PossibleNodeChange>>`, not an async iterator. After resolution,
+`Promise<Array<PossibleChange>>`, not an async iterator. After resolution,
 the caller holds only the ordinary array: retaining it, iterating it slowly, or
-abandoning it cannot retain garden ownership. No database snapshot, replica
-reference, iterator, or lifetime capability escapes through the return value.
+abandoning it cannot retain garden ownership. No database snapshot, replica reference, or lifetime capability escapes through the return value. The owning `JournalIterator` survives, but it retains only application-owned progress and issuance vectors, not the snapshot.
+
+`graph.journal.iteratorFromString()` reads authoritative coverage and therefore
+is an asynchronous active-replica operation. It uses this complete protocol:
+
+```text
+enterGarden
+    select active replica
+    parse and canonically validate durable iterator state
+    read stable current journalCoverage
+    require journalCoverage to dominate issuanceCoverage
+    construct an iterator bound to this graph context
+leaveGarden
+
+promise resolves with the bound iterator
+```
+
+The garden entrance protects active-replica selection, its lifetime, and the
+coverage read through construction. Cutover, migration, synchronization, and
+close cannot replace or destroy the selected replica during that interval. No
+dome mode is required. Validation or insufficient coverage rejects before an
+iterator escapes, and the procedure retains no active-replica pointer after it
+leaves the garden.
 
 ## Lock Keys
 
@@ -458,10 +479,15 @@ dome/telescope serialization.
 
 A newly authored generation and its exact `initialFreshness` target allocate in local order and commit atomically. Validation reads the transaction-visible all-mode frontier and commits a `clearsThrough` prefix justified by local closed-prefix evidence; controlled reset may additionally use the validated source snapshot under exclusive maintenance. Hardness evaluation separately reads the hard subset. A hard invalidate's `causalContext` covers the stable authority that caused it. Synchronization takes the next receiver-local coordinate and advances coverage only in the final atomic commit.
 
-`possibleMaybeChanges()` enters the garden and takes one committed read snapshot
+`JournalIterator.iterate()` enters the garden and takes one committed read snapshot
 from the selected active replica. It retains that same garden entrance until
 the fixed snapshot has been completely consumed and the result array has been
 materialized, then leaves the garden before resolving its promise with that
 ordinary in-memory array. It never continues reading a saved replica pointer
 after leaving. It never acquires the dome, telescope, writer allocator, or
 darkroom, appends an entry, changes coverage, or invokes a computor.
+
+`graph.journal.iteratorFromString()` likewise enters the garden, selects the
+active replica, and reads its stable `journalCoverage` before deciding whether
+restoration is safe. It leaves before its promise resolves and returns an
+iterator bound to the graph context, not a saved active-replica pointer.

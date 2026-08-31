@@ -136,7 +136,7 @@ The journal and synchronization model assumes that each
 one durable writer history. A collision between independent writer histories
 can alias
 `JournalEntryId`, `journalCoverage`, causal-prefix coordinates, and
-cursor coordinates, and `NodeIdentifier` allocation namespaces. When that
+iterator progress and issuance-coverage coordinates, and `NodeIdentifier` allocation namespaces. When that
 premise is violated, the normal uniqueness, portability, causal, and
 convergence guarantees do not apply across the aliased histories. The protocol
 does not promise to detect or repair such a collision.

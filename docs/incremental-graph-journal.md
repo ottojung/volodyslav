@@ -44,6 +44,5 @@ the maximum serialized byte length of any arbitrary-precision journal sequence
 or causal coordinate retained in the particular compacted state. Under the
 bounded-address premise, serialized journal-plus-coverage size is
 `O(b(nr² + ar + cr))` bytes. `b` may grow independently of `n`, `r`, `a`, and `c`, so it
-cannot be omitted from a byte bound. Application-owned filter-bound cursor
-strings are not database storage. The bounded-address premise is an asymptotic
+cannot be omitted from a byte bound. Application-owned durable iterator-state strings are not database storage. The bounded-address premise is an asymptotic
 assumption, not a runtime size cap.
