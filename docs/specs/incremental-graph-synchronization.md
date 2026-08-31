@@ -106,7 +106,7 @@ For every reset anchor consumed from either snapshot, reset reads the effective 
 
 Fresh target may require one receiver validation covering the justified closed prefix. Hard target retains hard authority and no reusable incoming proof. Soft target requires cleared hard authority, reusable proof, and uncovered soft authority. Source-only authority is not silently installed as receiver-local reset authority.
 
-Repeated reset is silent exactly when semantic graph, freshness authority, exact correspondence, absorption prefixes, and causally relevant future-union knowledge are already represented. A newly learned source prefix or context that changes future semantics is persisted even if current graph bytes are equal. Reset with unchanged source does not chase its own metadata carriers.
+Repeated reset is silent exactly when semantic graph, freshness authority, exact correspondence, consumed lineage cuts, causal knowledge, and the complete exact-anchor `resultingResetAnchorCuts` are already represented. If only that archive join is missing, reset commits the summaries without authoring an event or advancing the local counter. A newly learned source prefix, archive cut, or context that changes future semantics is persisted even if current graph bytes are equal. Reset with unchanged source does not chase its own metadata carriers.
 
 ## Validation, deletion closure, and cutover
 

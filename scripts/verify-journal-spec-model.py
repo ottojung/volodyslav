@@ -254,6 +254,20 @@ def controlled_reset_archive(
                   for (node, anchor), cut in joined.items()))
 
 
+def apply_controlled_reset_archive(receiver: Replica,
+                                   source: Iterable[Event] | JournalState) -> bool:
+    """Commit exact-anchor archive growth without allocating an event."""
+    before = ({key: dict(cut) for key, cut in receiver.reset_anchor_cuts.items()},
+              dict(receiver.journal), receiver.local_counter)
+    result = controlled_reset_archive(replica_journal_state(receiver), source)
+    receiver.reset_anchor_cuts = {
+        (summary.node, summary.anchor): dict(summary.absorbs_through)
+        for summary in result.anchor_cuts
+    }
+    after = (receiver.reset_anchor_cuts, receiver.journal, receiver.local_counter)
+    return before != after
+
+
 def author_event(replica: Replica, node: NodeKey, kind: str, **fields) -> Event:
     replica.local_counter += 1
     event = Event(replica.author, replica.local_counter, node, kind,
@@ -829,6 +843,49 @@ def verify_controlled_reset_preserves_anchor_archive() -> None:
     assert compact(restarted) == restarted
 
 
+def verify_archive_only_reset_idempotence() -> None:
+    node = ("archive-only-reset", ())
+    generation = event("S", 1, node, "generation", time=1)
+    historical = event(
+        "H", 1, node, "reset-observation", time=2,
+        reset_lineage=lineage({"S": 1, "X": 10}))
+    current = event(
+        "N", 1, node, "validate", time=3, causal_context={"H": 1},
+        generation=generation.id, value_origin=generation.id,
+        reset_lineage=lineage({"S": 1, "X": 10}))
+    source = JournalState(frozenset({generation, historical, current}))
+    anchor_zero: Anchor = ("null", None)
+    receiver = Replica(
+        "R", journal={generation.id: generation, current.id: current},
+        causal_summary={"H": 1, "N": 1, "S": 1},
+        journal_coverage={"N": 1, "S": 1}, local_counter=7)
+    journal_before = dict(receiver.journal)
+    summary_before = dict(receiver.causal_summary)
+    coverage_before = dict(receiver.journal_coverage)
+
+    assert apply_controlled_reset_archive(receiver, source)
+    assert receiver.journal == journal_before
+    assert receiver.local_counter == 7
+    assert receiver.causal_summary == summary_before
+    assert receiver.journal_coverage == coverage_before
+    assert receiver.reset_anchor_cuts[(node, anchor_zero)]["X"] == 10
+
+    settled = ({key: dict(cut) for key, cut in receiver.reset_anchor_cuts.items()},
+               dict(receiver.journal), dict(receiver.causal_summary),
+               dict(receiver.journal_coverage), receiver.local_counter)
+    assert not apply_controlled_reset_archive(receiver, source)
+    assert settled == (
+        receiver.reset_anchor_cuts, receiver.journal, receiver.causal_summary,
+        receiver.journal_coverage, receiver.local_counter)
+
+    concurrent = event(
+        "C", 1, node, "reset-observation", time=5,
+        reset_lineage=lineage({"S": 1}))
+    inside = event("X", 5, node, "generation", time=6)
+    assert presence_selection(
+        replica_journal_state(receiver) | {concurrent, inside}, node) is None
+
+
 def reset_fixture() -> tuple[NodeKey, list[Event], Anchor, Anchor]:
     node = ("n", ("x",))
     g1 = event("A", 5, node, "generation", time=5)
@@ -1181,6 +1238,7 @@ def main() -> None:
     verify_receive_anchor_cut_summaries()
     verify_reset_and_migration_preserve_effective_cuts()
     verify_controlled_reset_preserves_anchor_archive()
+    verify_archive_only_reset_idempotence()
     verify_reset_applicability_and_cuts()
     verify_scoped_activation_and_future_anchor()
     verify_delayed_same_anchor_cut_recovery()
