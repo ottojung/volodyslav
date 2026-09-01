@@ -29,6 +29,7 @@ const path = require('path');
 const {
     parseValue,
     relativePathToKey,
+    requireValidRenderedValue,
 } = require('../encoding');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
@@ -206,7 +207,9 @@ function makeFsToDbAdapter(capabilities, rootDatabase, inputDir, sublevel) {
                 throw new UnrecordedKeyError(rawKey);
             }
             const content = await capabilities.reader.readFileAsText(absPath);
-            return parseValue(content);
+            const value = parseValue(content);
+            requireValidRenderedValue(rawKey, value);
+            return value;
         },
 
         async readTarget(rawKey) {

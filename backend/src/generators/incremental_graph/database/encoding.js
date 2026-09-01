@@ -1,3 +1,5 @@
+const { findInvalidPersistenceSafeValue } = require('./persistence_safe_value');
+
 /**
  * Key encoding and value serialisation module for the incremental-graph database
  * snapshot format.
@@ -261,12 +263,27 @@ function databaseValueToRenderedValue(rawKey, storedValue) {
 }
 
 /**
+ * Reject a rendered ComputedValue before comparison or physical JSON encoding.
+ * Non-value sublevels have their own boundary validators.
+ * @param {string} rawKey
+ * @param {unknown} renderedValue
+ * @returns {void}
+ */
+function requireValidRenderedValue(rawKey, renderedValue) {
+    if (!isComputedValueRawKey(rawKey)) return;
+    const invalid = findInvalidPersistenceSafeValue(renderedValue, 'computedValue');
+    if (invalid !== undefined) throw invalid;
+}
+
+/**
  * @param {string} rawKey
  * @param {unknown} renderedValue
  * @returns {unknown}
  */
 function renderedValueToDatabaseValue(rawKey, renderedValue) {
-    return isComputedValueRawKey(rawKey) ? { value: renderedValue } : renderedValue;
+    if (!isComputedValueRawKey(rawKey)) return renderedValue;
+    requireValidRenderedValue(rawKey, renderedValue);
+    return { value: renderedValue };
 }
 
 module.exports = {
@@ -276,4 +293,5 @@ module.exports = {
     parseValue,
     databaseValueToRenderedValue,
     renderedValueToDatabaseValue,
+    requireValidRenderedValue,
 };
