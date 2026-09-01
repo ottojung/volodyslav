@@ -72,7 +72,7 @@ onto a new concurrently-writing host" transition.
 
 A `DatabaseFingerprint` is exactly 9 lowercase ASCII letters. Every compliant
 implementation MUST generate, persist, import, and validate the one canonical
-full-string representation `/^[a-z]{9}$/`; fresh creation uses
+full-string representation `/^[a-z]{16}$/`; fresh creation uses
 `random.basicString(capabilities, DATABASE_FINGERPRINT_LENGTH)`. The fingerprint
 length is not configurable through the database API.
 

@@ -3,15 +3,12 @@
 const { findInvalidPersistenceSafeValue } = require("./persistence_safe_value");
 
 /**
- * @typedef {object} StoredComputedValue
- * @property {ComputedValue} value
+ * @typedef {ComputedValue} StoredComputedValue
  */
 
 /**
- * Level reserves top-level null to mean “no value”. This adapter stores every
- * semantic ComputedValue in a one-field JSON record so semantic null remains a
- * present value while callers and rendered snapshots continue to observe the
- * raw ComputedValue.
+ * This validation adapter is representation-transparent: the semantic value is
+ * the value stored in LevelDB.
  */
 class ComputedValueDatabaseClass {
     /** @type {import('./types').SimpleSublevel<StoredComputedValue, NodeIdentifier>} */
@@ -27,20 +24,20 @@ class ComputedValueDatabaseClass {
     /** @param {NodeIdentifier} key @returns {Promise<ComputedValue | undefined>} */
     async get(key) {
         const stored = await this.sublevel.get(key);
-        return stored === undefined ? undefined : stored.value;
+        return stored;
     }
 
     /** @param {NodeIdentifier} key @param {ComputedValue} value @returns {Promise<void>} */
     async put(key, value) {
         requirePersistenceSafeComputedValue(value);
-        await this.sublevel.put(key, { value });
+        await this.sublevel.put(key, value);
     }
 
     /** @param {NodeIdentifier} key @param {ComputedValue} value @returns {Promise<void>} */
     async noFlushPut(key, value) {
         requirePersistenceSafeComputedValue(value);
         const options = { sync: false, keyEncoding: undefined };
-        await this.sublevel.put(key, { value }, options);
+        await this.sublevel.put(key, value, options);
     }
 
     /** @param {NodeIdentifier} key @returns {Promise<void>} */
@@ -61,7 +58,7 @@ class ComputedValueDatabaseClass {
      */
     putOp(key, value) {
         requirePersistenceSafeComputedValue(value);
-        return { sublevel: this.sublevel, type: "put", key, value: { value } };
+        return { sublevel: this.sublevel, type: "put", key, value };
     }
 
     /**

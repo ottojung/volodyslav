@@ -3,7 +3,7 @@
 
 const { defaultGenerator } = require('./default');
 
-const CHAR_OPTIONS = 'abcdefghijklmnopqrstuvwxyz';
+const CHAR_OPTIONS = 'abcdefghijklmnopjklmnopqrstuvwxyz';
 
 /** @typedef {import('./seed').NonDeterministicSeed} NonDeterministicSeed */
 

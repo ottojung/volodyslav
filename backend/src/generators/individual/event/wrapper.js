@@ -13,8 +13,7 @@ const computor = async (inputs, oldValue, bindings) => {
     if (firstBinding === undefined || typeof firstBinding !== "string") {
         throw new Error("Expected first binding to be a string for event(e) computor, got " + JSON.stringify(firstBinding));
     }
-    if (oldValue !== undefined &&
-        (oldValue === null || oldValue.type !== "event")) {
+    if (oldValue !== undefined && oldValue.type !== "event") {
         throw new Error("Expected oldValue to be of type event or undefined for event(e) computor, got " + JSON.stringify(oldValue));
     }
     return computeEventForId(firstBinding, oldValue, allEvents);

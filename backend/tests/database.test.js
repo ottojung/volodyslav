@@ -584,7 +584,7 @@ describe('generators/database', () => {
 
                 const yStorage = db.schemaStorageForReplica('y');
                 await yStorage.global.put('version', db.version);
-                await yStorage.global.put(IDENTIFIERS_KEY, [['1-abcdefghi', '2-abcdefghi'], ['1-abcdefghi', '3-abcdefghi']]);
+                await yStorage.global.put(IDENTIFIERS_KEY, [['1-abcdefghijklmnop', '2-abcdefghijklmnop'], ['1-abcdefghijklmnop', '3-abcdefghijklmnop']]);
 
                 await expect(db.setCurrentReplicaPointer('y')).rejects.toThrow();
                 expect(db.currentReplicaName()).toBe('x');

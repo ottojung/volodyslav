@@ -245,13 +245,13 @@ describe("synchronizeNoLock", () => {
         const result = preferred === localFingerprint
             ? `${preferred.slice(0, -1)}${preferred.endsWith('a') ? 'b' : 'a'}`
             : preferred;
-        expect(result).toMatch(/^[a-z]{9}$/);
+        expect(result).toMatch(/^[a-z]{16}$/);
         expect(result).not.toBe(localFingerprint);
         return result;
     }
 
     test("distinct test fingerprints remain canonical when the preferred value collides", () => {
-        const localFingerprint = 'aaaaaaaaa';
+        const localFingerprint = 'aaaaaaaaaaaaaaaa';
         expect(makeDistinctTestFingerprint(localFingerprint, localFingerprint))
             .toBe('aaaaaaaab');
         expect(makeDistinctTestFingerprint(localFingerprint, 'bbbbbbbbb'))
@@ -279,7 +279,7 @@ describe("synchronizeNoLock", () => {
         const localFingerprint = await writeLocalGraphScheme(capabilities);
         const aliceFingerprint = makeDistinctTestFingerprint(localFingerprint, 'alicealic');
         const aliceNodeArgs = '{"head":"event","args":["alice"]}';
-        const aliceNodeIdentifier = 'aliceaaaaaaaaaaa';
+        const aliceNodeIdentifier = 'aliceaaaaaaaaaaaaaaaaaa';
         const aliceTimestampsKey = `!x!!timestamps!${aliceNodeIdentifier}`;
         const aliceGraphScheme = JSON.stringify({ format: 1, nodes: [{ head: "event", arity: 1, inputTemplates: [] }] });
         await stubIncrementalDatabaseRemoteBranches(capabilities, [
@@ -442,7 +442,7 @@ describe("synchronizeNoLock", () => {
 
     test("resetToHostname succeeds even when snapshot omits _meta/current_replica", async () => {
         const capabilities = getTestCapabilities();
-        const snapshotNodeId = '1-snapshotfp';
+        const snapshotNodeId = '1-snapshotfingerprip';
         const snapshotSemanticKey = '{"head":"event","args":["reset"]}';
         const snapshotKey = `!x!!values!${snapshotNodeId}`;
         await seedHostnameBranchWithRenderedFiles(capabilities, [
@@ -453,7 +453,7 @@ describe("synchronizeNoLock", () => {
             { path: 'r/global/graph_scheme', content: JSON.stringify(JSON.stringify({ format: 1, nodes: [{ head: 'event', arity: 1, inputTemplates: [] }] })) },
             { path: 'r/global/identifiers_keys_map', content: JSON.stringify([[snapshotNodeId, snapshotSemanticKey]]) },
             { path: 'r/global/last_node_index', content: JSON.stringify(0) },
-            { path: 'r/global/fingerprint', content: JSON.stringify('snapshotf') },
+            { path: 'r/global/fingerprint', content: JSON.stringify('snapshotfingerpri') },
         ]);
         await expect(
             synchronizeNoLock(capabilities, { resetToHostname: "test-host" })
@@ -462,7 +462,7 @@ describe("synchronizeNoLock", () => {
 
     test("reset preserves local fingerprint when database exists", async () => {
         const capabilities = getTestCapabilities();
-        const snapshotNodeId = '1-snapshotfp';
+        const snapshotNodeId = '1-snapshotfingerprip';
         const snapshotSemanticKey = '{"head":"event","args":["reset"]}';
         const snapshotKey = `!x!!values!${snapshotNodeId}`;
         await seedHostnameBranchWithRenderedFiles(capabilities, [
@@ -473,7 +473,7 @@ describe("synchronizeNoLock", () => {
             { path: 'r/global/graph_scheme', content: JSON.stringify(JSON.stringify({ format: 1, nodes: [{ head: 'event', arity: 1, inputTemplates: [] }] })) },
             { path: 'r/global/identifiers_keys_map', content: JSON.stringify([[snapshotNodeId, snapshotSemanticKey]]) },
             { path: 'r/global/last_node_index', content: JSON.stringify(0) },
-            { path: 'r/global/fingerprint', content: JSON.stringify('snapshotf') },
+            { path: 'r/global/fingerprint', content: JSON.stringify('snapshotfingerpri') },
         ]);
 
         const db = await getRootDatabase(capabilities);

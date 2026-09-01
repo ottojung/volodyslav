@@ -220,7 +220,7 @@ def restore_iterator(replica: Replica, encoded: str) -> JournalIterator:
             previous = ""
             for author, text in values:
                 assert isinstance(author, str)
-                assert re.fullmatch(r"[a-z]{9}", author) is not None
+                assert re.fullmatch(r"[a-z]{16}", author) is not None
                 assert author > previous
                 assert isinstance(text, str) and text.isdigit()
                 assert text[0] != "0"
@@ -1337,7 +1337,7 @@ def verify_values_freshness_notifications() -> None:
 
 def verify_consumable_journal_iterator() -> None:
     foo, bar = ("foo", ()), ("bar", ())
-    author = "aaaaaaaaa"
+    author = "aaaaaaaaaaaaaaaa"
     receiver_author = "bbbbbbbbb"
     replica = Replica(author)
     for entry in (event(author, 1, foo, "edit"),
@@ -1518,7 +1518,7 @@ def verify_causal_laws() -> None:
 
 def verify_persisted_semantic_clock() -> None:
     node = ("semantic-clock", ())
-    local = Replica("aaaaaaaaa")
+    local = Replica("aaaaaaaaaaaaaaaa")
     first, = author_semantic_transaction(local, 100, node, ("edit",))
     rolled_back, = author_semantic_transaction(local, 20, node, ("edit",))
     assert (first.time, rolled_back.time, local.semantic_clock) == (100, 100, 100), (
@@ -1562,29 +1562,29 @@ def verify_persisted_semantic_clock() -> None:
 
     # Equal time is neither identity nor happened-before. Concurrent selection
     # uses author only after causal maxima have been established.
-    concurrent_low = event("aaaaaaaaa", 1, node, "edit", time=700)
-    concurrent_high = event("zzzzzzzzz", 1, node, "edit", time=700)
+    concurrent_low = event("aaaaaaaaaaaaaaaa", 1, node, "edit", time=700)
+    concurrent_high = event("zzzzzzzzzzzzzzzz", 1, node, "edit", time=700)
     assert not causally_before(concurrent_low, concurrent_high)
     assert not causally_before(concurrent_high, concurrent_low)
     assert concurrent_winner(causal_maxima(
         (concurrent_low, concurrent_high))) == concurrent_high
 
     causal_later = event(
-        "aaaaaaaaa", 2, node, "edit", time=700,
-        causal_context={"aaaaaaaaa": 1, "zzzzzzzzz": 1})
+        "aaaaaaaaaaaaaaaa", 2, node, "edit", time=700,
+        causal_context={"aaaaaaaaaaaaaaaa": 1, "zzzzzzzzzzzzzzzz": 1})
     assert causally_before(concurrent_high, causal_later)
     assert concurrent_winner(causal_maxima(
         (concurrent_high, causal_later))) == causal_later
 
     foreign_large = replace(concurrent_high, sequence=10_000)
     assert concurrent_winner(causal_maxima(
-        (concurrent_low, foreign_large))).author == "zzzzzzzzz"
+        (concurrent_low, foreign_large))).author == "zzzzzzzzzzzzzzzz"
 
 
 def verify_generated_supported_histories() -> None:
     """Explore states reached by valid authoring operations and synchronization."""
     node = ("generated", ())
-    authors = ("aaaaaaaaa", "bbbbbbbbb", "ccccccccc", "rrrrrrrrr")
+    authors = ("aaaaaaaaaaaaaaaa", "bbbbbbbbb", "ccccccccc", "rrrrrrrrr")
     generation = event(authors[0], 1, node, "generation", time=1)
     edit = event(authors[0], 2, node, "edit", time=2,
                  causal_context={authors[0]: 1}, generation=generation.id)

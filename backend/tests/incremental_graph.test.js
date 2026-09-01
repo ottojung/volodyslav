@@ -53,36 +53,6 @@ describe("generators/incremental_graph", () => {
     });
 
     describe("pull()", () => {
-        test("accepts null as a persistence-safe ComputedValue", async () => {
-            const capabilities = getTestCapabilities();
-            const db = await getRootDatabase(capabilities);
-            const graph = await createIncrementalGraph(capabilities, db, [{
-                output: "nullable",
-                inputs: [],
-                computor: () => null,
-                isDeterministic: true,
-                hasSideEffects: false,
-            }]);
-
-            await expect(graph.pull("nullable")).resolves.toBeNull();
-            await db.close();
-
-            const reopenedDb = await getRootDatabase(capabilities);
-            const reopenedGraph = await createIncrementalGraph(
-                capabilities,
-                reopenedDb,
-                [{
-                    output: "nullable",
-                    inputs: [],
-                    computor: () => null,
-                    isDeterministic: true,
-                    hasSideEffects: false,
-                }]
-            );
-            await expect(reopenedGraph.getValue("nullable")).resolves.toBeNull();
-            await reopenedDb.close();
-        });
-
         test("rejects a ComputedValue with JSON-transforming behavior", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);

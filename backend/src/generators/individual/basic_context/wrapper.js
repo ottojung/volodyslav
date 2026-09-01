@@ -18,8 +18,7 @@ const computor = async (inputs, oldValue, bindings) => {
                 JSON.stringify(firstBinding)
         );
     }
-    if (oldValue !== undefined &&
-        (oldValue === null || oldValue.type !== "basic_context")) {
+    if (oldValue !== undefined && oldValue.type !== "basic_context") {
         throw new Error(
             "Expected oldValue to be of type basic_context or undefined for basic_context(e) computor, got " +
                 JSON.stringify(oldValue)

@@ -254,12 +254,8 @@ function isComputedValueRawKey(rawKey) {
  * @returns {unknown}
  */
 function databaseValueToRenderedValue(rawKey, storedValue) {
-    if (!isComputedValueRawKey(rawKey)) return storedValue;
-    if (storedValue === null || typeof storedValue !== "object" ||
-        Object.keys(storedValue).length !== 1 || !("value" in storedValue)) {
-        throw new Error(`Invalid stored ComputedValue container at ${rawKey}`);
-    }
-    return Reflect.get(storedValue, "value");
+    void rawKey;
+    return storedValue;
 }
 
 /**
@@ -281,9 +277,8 @@ function requireValidRenderedValue(rawKey, renderedValue) {
  * @returns {unknown}
  */
 function renderedValueToDatabaseValue(rawKey, renderedValue) {
-    if (!isComputedValueRawKey(rawKey)) return renderedValue;
     requireValidRenderedValue(rawKey, renderedValue);
-    return { value: renderedValue };
+    return renderedValue;
 }
 
 module.exports = {

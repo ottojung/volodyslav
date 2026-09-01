@@ -1076,7 +1076,7 @@ describe("Incremental graph validity", () => {
             try {
                 const storage = db.getSchemaStorage();
                 await storage.batch([
-                    storage.values.putOp(nodeIdentifierFromString("1-abcdefghi"), { v: "stored" }),
+                    storage.values.putOp(nodeIdentifierFromString("1-abcdefghijklmnop"), { v: "stored" }),
                 ]);
 
                 expect(await storage.global.get("version")).toBeUndefined();

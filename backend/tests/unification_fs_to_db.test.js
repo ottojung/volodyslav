@@ -104,32 +104,7 @@ describe('makeFsToDbAdapter', () => {
         }
     });
 
-    test('rejects lossy rendered ComputedValue even when JSON comparison resembles stored null', async () => {
-        const { capabilities, tmpDir } = makeTestCapabilities();
-        const inputDir = path.join(tmpDir, 'x-input');
-        fs.mkdirSync(path.join(inputDir, 'values'), { recursive: true });
-        fs.writeFileSync(path.join(inputDir, X_VALUES_REL), '1e400');
-
-        const db = await makeSeededDatabase(capabilities, [[X_VALUES_KEY, null]]);
-        try {
-            await expect(
-                unifyStores(makeFsToDbAdapter(capabilities, db, inputDir, 'x'))
-            ).rejects.toMatchObject({
-                name: 'UnificationReadError',
-                cause: {
-                    name: 'InvalidPersistenceSafeValueError',
-                    reason: 'numbers must be finite',
-                },
-            });
-            const entries = await collectRawEntries(db);
-            expect(entries.get(X_VALUES_KEY)).toBeNull();
-        } finally {
-            await db.close();
-        }
-    });
-
     test.each([
-        ['null', null],
         ['12.5', 12.5],
     ])('imports persistence-safe rendered ComputedValue %s', async (content, expected) => {
         const { capabilities, tmpDir } = makeTestCapabilities();

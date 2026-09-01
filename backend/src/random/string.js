@@ -4,7 +4,7 @@
 
 const { defaultGenerator } = require('./default');
 
-const ALPHANUMERIC_CHARS = '0123456789abcdefghijklmnopqrstuvwxyz';
+const ALPHANUMERIC_CHARS = '0123456789abcdefghijklmnopjklmnopqrstuvwxyz';
 
 /** @typedef {import('./seed').NonDeterministicSeed} NonDeterministicSeed */
 
