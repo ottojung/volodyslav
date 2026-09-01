@@ -1471,52 +1471,125 @@ def verify_causal_laws() -> None:
 
 
 def verify_generated_supported_histories() -> None:
-    """Exhaustively check all prefix-closed subsets of a small valid history.
-
-    Prefix closure keeps every generated state authorable: an author's second
-    event is present only with its first, and its causal context names events
-    that are present.  The loop reports the smallest failing state directly.
-    """
+    """Explore states reached by valid authoring operations and synchronization."""
     node = ("generated", ())
-    authors = ("aaaaaaaaa", "bbbbbbbbb")
-    streams = {
-        authors[0]: (
-            event(authors[0], 1, node, "generation", time=1),
-            event(authors[0], 2, node, "edit", time=2,
-                  causal_context={authors[0]: 1}, generation=(authors[0], 1)),
-        ),
-        authors[1]: (
-            event(authors[1], 1, node, "generation", time=1),
-            event(authors[1], 2, node, "delete", time=2,
-                  causal_context={authors[1]: 1}),
-        ),
+    authors = ("aaaaaaaaa", "bbbbbbbbb", "ccccccccc", "rrrrrrrrr")
+    generation = event(authors[0], 1, node, "generation", time=1)
+    edit = event(authors[0], 2, node, "edit", time=2,
+                 causal_context={authors[0]: 1}, generation=generation.id)
+    invalidate = event(authors[1], 1, node, "invalidate", time=3,
+                       causal_context={authors[0]: 2}, generation=generation.id,
+                       applies_to=edit.id, mode="hard")
+    validate = event(authors[2], 1, node, "validate", time=4,
+                     causal_context={authors[0]: 2, authors[1]: 1},
+                     generation=generation.id, value_origin=edit.id,
+                     clears_through={authors[1]: 1})
+    reset = event(
+        authors[3], 1, node, "validate", time=5,
+        causal_context={authors[0]: 2, authors[1]: 1, authors[2]: 1},
+        generation=generation.id, value_origin=edit.id,
+        reset_lineage=lineage(
+            {authors[0]: 2, authors[1]: 1, authors[2]: 1},
+            (("sssssssss", 1), ("sssssssss", 2))))
+    delete = event(authors[0], 3, node, "delete", time=6,
+                   causal_context={authors[0]: 2})
+    operations = (generation, edit, invalidate, validate, reset, delete)
+    prerequisites = {
+        generation.id: frozenset(),
+        edit.id: frozenset({generation.id}),
+        invalidate.id: frozenset({generation.id, edit.id}),
+        validate.id: frozenset({generation.id, edit.id, invalidate.id}),
+        reset.id: frozenset({generation.id, edit.id, invalidate.id, validate.id}),
+        delete.id: frozenset({generation.id, edit.id}),
     }
-    states: list[JournalState] = []
-    for a_length in range(3):
-        for b_length in range(3):
-            events = streams[authors[0]][:a_length] + streams[authors[1]][:b_length]
-            states.append(JournalState(frozenset(events)))
 
-    def projection(state: JournalState) -> tuple[EntryId | None, frozenset[EntryId]]:
+    states_by_ids: dict[frozenset[EntryId], JournalState] = {
+        frozenset(): JournalState(frozenset())
+    }
+    pending = [frozenset()]
+    while pending:
+        ids = pending.pop(0)
+        for authored in operations:
+            if authored.id in ids or not prerequisites[authored.id].issubset(ids):
+                continue
+            next_ids = ids | {authored.id}
+            if next_ids not in states_by_ids:
+                next_events = frozenset(
+                    candidate for candidate in operations if candidate.id in next_ids)
+                states_by_ids[next_ids] = JournalState(next_events)
+                pending.append(next_ids)
+    states = list(states_by_ids.values())
+    assert len(states) > 6
+
+    def projection(state: JournalState) -> tuple[
+            EntryId | None, str | None, frozenset[EntryId]]:
         selected = presence_selection(state, node)
-        return (None if selected is None else selected.id,
+        selected_freshness = None
+        if selected is not None and selected.kind == "generation":
+            origins = value_events(state.events, node, selected.id)
+            winner = concurrent_winner(causal_maxima(origins))
+            if winner is not None:
+                selected_freshness = freshness(
+                    state.events, node, selected.id, winner.id)
+        return (None if selected is None else selected.id, selected_freshness,
                 frozenset(item.id for item in notification_maxima(state.events)))
 
     for state in states:
         reduced = compact(state)
         assert compact(reduced) == reduced, ("compact-idempotence", state)
         assert projection(state) == projection(reduced), ("projection", state)
+        archived_full = controlled_reset_archive(JournalState(frozenset()), state)
+        archived_reduced = controlled_reset_archive(
+            JournalState(frozenset()), reduced)
+        assert archived_full == archived_reduced, ("reset-archive", state)
+
+        coverage = observed_events_prefix(state.events)
+        full_replica = Replica(authors[0],
+                               journal={entry.id: entry for entry in state.events},
+                               journal_coverage=coverage)
+        compact_replica = Replica(
+            authors[0], journal={entry.id: entry for entry in reduced.events},
+            journal_coverage=coverage,
+            reset_anchor_cuts={(summary.node, summary.anchor):
+                               dict(summary.absorbs_through)
+                               for summary in reduced.anchor_cuts})
+        full_iterator = make_iterator(full_replica)
+        reduced_iterator = make_iterator(compact_replica)
+        observed_full = full_iterator.iterate(lambda _entry: True)
+        observed_reduced = reduced_iterator.iterate(lambda _entry: True)
+        assert {(entry.id, entry.public_action) for entry in observed_full} == {
+            (entry.id, entry.public_action) for entry in observed_reduced}
+        assert full_iterator.progress == reduced_iterator.progress == coverage
+
         for future in states:
             assert compact(compact(state) | future) == compact(state | future), (
                 "future-union", state, future)
+
     for left in states:
         assert compact(left | left) == compact(left), ("merge-idempotence", left)
         for right in states:
             assert compact(left | right) == compact(right | left), (
                 "merge-commutativity", left, right)
+
+            left_replica = Replica(authors[0],
+                                   journal={entry.id: entry for entry in left.events},
+                                   journal_coverage=observed_events_prefix(left.events))
+            right_replica = Replica(authors[1],
+                                    journal={entry.id: entry for entry in right.events},
+                                    journal_coverage=observed_events_prefix(right.events))
+            receive(left_replica, right_replica)
+            receive(right_replica, left_replica)
+            assert replica_journal_state(left_replica) == replica_journal_state(right_replica), (
+                "receive-convergence", left, right)
+
+    # Every three-way partition exercises compaction after intermediate merge,
+    # rather than merely checking associativity of raw frozenset union.
+    for first in states:
+        for second in states:
             for third in states:
-                assert compact((left | right) | third) == compact(
-                    left | (right | third)), ("merge-associativity", left, right, third)
+                assert compact(compact(first | second) | third) == compact(
+                    first | compact(second | third)), (
+                        "compacted-merge-associativity", first, second, third)
 
     # Foreign sequence magnitude is deliberately varied while time and author
     # stay fixed: neither causal maxima nor conflict selection may change.

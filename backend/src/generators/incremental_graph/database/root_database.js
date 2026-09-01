@@ -133,14 +133,14 @@ function assertNeverReplicaName(name) {
 
 /**
  * Database for storing node output values.
- * Key: persisted node identifier (e.g., "1-abcdefghijklmnop")
+ * Key: persisted node identifier (e.g., "1-abcdefghi")
  * Value: the computed value (object with type field)
  * @typedef {GenericDatabase<ComputedValue, NodeIdentifier>} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
- * Key: persisted node identifier (e.g., "1-abcdefghijklmnop")
+ * Key: persisted node identifier (e.g., "1-abcdefghi")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
  * @typedef {GenericDatabase<Freshness, NodeIdentifier>} FreshnessDatabase
  */

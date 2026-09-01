@@ -79,7 +79,12 @@ function validateConstValue(value, path, ancestors = new Set()) {
             validateConstValue(descriptor.value, `${path}[${index}]`, ancestors);
         }
         const names = Object.getOwnPropertyNames(value);
-        if (names.some(name => name !== "length" && !/^(0|[1-9][0-9]*)$/.test(name))) {
+        const expectedNames = [
+            ...Array.from({ length: value.length }, (_, index) => String(index)),
+            "length",
+        ];
+        if (names.length !== expectedNames.length ||
+            names.some((name, index) => name !== expectedNames[index])) {
             ancestors.delete(value);
             throw new InvalidConstValueError(path);
         }

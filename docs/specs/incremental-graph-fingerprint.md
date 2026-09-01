@@ -35,8 +35,9 @@ require a special `rendered/_meta/` scan path for this feature.
 
 ## Generation
 
-The fingerprint is generated with `random.basicString(capabilities)` using
-the project's seeded PRNG. It is generated exactly once:
+The fingerprint is generated with
+`random.basicString(capabilities, DATABASE_FINGERPRINT_LENGTH)` using the
+project's seeded PRNG. It is generated exactly once:
 
 1. **Fresh first boot**: No `r/global/fingerprint` exists and no `r/`
    snapshot data is available. A new fingerprint is generated.
@@ -72,8 +73,8 @@ onto a new concurrently-writing host" transition.
 A `DatabaseFingerprint` is exactly 9 lowercase ASCII letters. Every compliant
 implementation MUST generate, persist, import, and validate the one canonical
 full-string representation `/^[a-z]{9}$/`; fresh creation uses
-`random.basicString(capabilities)` at its fixed default length of 9. The length
-is not configurable.
+`random.basicString(capabilities, DATABASE_FINGERPRINT_LENGTH)`. The fingerprint
+length is not configurable through the database API.
 
 Every fingerprint loaded from active replica metadata, replica-switch target
 metadata, a rendered snapshot used for restore/reset, or the standalone
@@ -144,12 +145,3 @@ does not promise to detect or repair such a collision.
 ## Journal authorship identity
 
 The durable fingerprint is the author coordinate of every locally authored `JournalEntryId` and every local coverage coordinate. It does not impose cross-author order. Supported restart, self-restoration, and migration preserve the fingerprint with journal, coverage, and allocator; rollback under the same identity is unsupported. Controlled reset retains the receiver fingerprint and does not import source journal or coverage.
-
-## Persisted-format compatibility
-
-Supported released creation paths generated nine lowercase letters. The former
-`/^[a-z]{9,}$/` boundary was overly permissive: longer strings could be admitted
-only through manually altered or otherwise unsupported state, not emitted by a
-supported release. Canonical validation therefore rejects rather than migrates
-longer values; there is no supported longer fingerprint whose durable journal
-identity could be shortened safely.

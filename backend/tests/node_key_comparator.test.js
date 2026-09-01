@@ -253,11 +253,17 @@ describe("compareNodeKey", () => {
         cyclic.self = cyclic;
         const sparse = [];
         sparse.length = 1;
+        const nonIndexNumericProperty = [];
+        Object.defineProperty(nonIndexNumericProperty, "4294967295", {
+            value: 1,
+            enumerable: true,
+        });
         const accessor = {};
         Object.defineProperty(accessor, "value", { enumerable: true, get: () => 1 });
         const invalid = [
             null, Object.create(Date.prototype), new Instance(), Object.create(null),
-            { toJSON() { return "changed"; } }, accessor, sparse, [undefined],
+            { toJSON() { return "changed"; } }, accessor, sparse,
+            nonIndexNumericProperty, [undefined],
             cyclic, 1n, () => 1, Symbol("x"), Number.NaN, Infinity,
             { nested: [1, { invalid: Object.create(Date.prototype) }] },
         ];
