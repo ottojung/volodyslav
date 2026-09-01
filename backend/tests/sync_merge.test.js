@@ -4056,7 +4056,10 @@ describe('mergeHostIntoReplica', () => {
             await db.initializeActiveIdentifierLookup();
 
             const computeD = jest.fn(async ([inputA, inputB], oldValue) => {
-                return { source: `D from ${inputA.source} and ${inputB.source}`, oldValue };
+                return {
+                    source: `D from ${inputA.source} and ${inputB.source}`,
+                    hadOldValue: oldValue !== undefined,
+                };
             });
             const graph = await createIncrementalGraph(capabilities, db, [
                 { output: 'A', inputs: [], computor: async () => targetAValue, isDeterministic: true, hasSideEffects: false },
@@ -4066,7 +4069,7 @@ describe('mergeHostIntoReplica', () => {
 
             await expect(graph.pull('D')).resolves.toEqual({
                 source: 'D from target A and host B',
-                oldValue: undefined,
+                hadOldValue: false,
             });
             expect(computeD).toHaveBeenCalledTimes(1);
             expect(computeD.mock.calls[0][0]).toEqual([targetAValue, { source: 'host B' }]);

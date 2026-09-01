@@ -26,6 +26,7 @@ const { makeInvalidMigrationDecisionError } = require("./migration_errors");
 const { holidayActivity } = require("./lock");
 const { makeMigrationStorage } = require("./migration_storage");
 const { buildDecisionsMap, buildDesiredValid, loadMaterializedNodes } = require("./migration_validity");
+const { findInvalidPersistenceSafeValue } = require("./database");
 const { checkpointMigration } = require("./database");
 const { unifyStores, makeDbToDbAdapter } = require("./database");
 
@@ -124,8 +125,11 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
             }
             try {
                 const value = await valuePromise;
-                if (value === null || value === undefined) {
-                    throw makeInvalidMigrationDecisionError(`Migration value producer for ${keyString} did not return a computed value`);
+                const invalid = findInvalidPersistenceSafeValue(value, "computedValue");
+                if (value === undefined || invalid !== undefined) {
+                    throw makeInvalidMigrationDecisionError(
+                        `Migration value producer for ${keyString} did not return a persistence-safe ComputedValue: ${invalid?.message ?? "undefined is not a ComputedValue"}`
+                    );
                 }
                 return value;
             } finally {

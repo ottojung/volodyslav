@@ -123,7 +123,7 @@ class MigrationStorageClass {
      * The return type is not ComputedValue because the type may have changed in the new schema,
      * and it's up to the migration callback to handle it.
      * @param {NodeIdentifier} nodeKey
-     * @returns {Promise<{}>}
+     * @returns {Promise<unknown>}
      */
     async get(nodeKey) {
         if (!this.materializedNodes.has(nodeKey)) {

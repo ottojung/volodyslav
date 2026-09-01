@@ -1,8 +1,10 @@
 const path = require("path");
+const { deserialize } = require('../../../event');
 const { fromISOString } = require("../../../datetime");
 
 /** @typedef {import('../../incremental_graph/database/types').EventTranscriptionEntry} EventTranscriptionEntry */
 /** @typedef {import('../../../event').Event} Event */
+/** @typedef {import('../../../event').SerializedEvent} SerializedEvent */
 /** @typedef {import('../../incremental_graph/database/types').TranscriptionResult} TranscriptionResult */
 
 class AudioNotAssociatedWithEventError extends Error {
@@ -187,12 +189,13 @@ function getEventAssetDirectorySuffix(event) {
  * belongs to the event.
  *
  * @param {TranscriptionCapabilities} capabilities
- * @param {Event} event
+ * @param {SerializedEvent} serializedEvent
  * @param {TranscriptionResult} transcription
  * @param {string} audioPath - Audio path relative to the assets root
  * @returns {EventTranscriptionEntry}
  */
-function computeEventTranscription(capabilities, event, transcription, audioPath) {
+function computeEventTranscription(capabilities, serializedEvent, transcription, audioPath) {
+    const event = deserialize(serializedEvent);
     // Normalize both sides to forward-slash separators so that the check is
     // consistent with the canonical `<YYYY-MM>/<DD>/<event id>/<filename>`
     // layout documented in the spec, regardless of the host OS path separator.
@@ -212,7 +215,7 @@ function computeEventTranscription(capabilities, event, transcription, audioPath
     if (!normalizedAudioPath.startsWith(expectedPrefix)) {
         throw new AudioNotAssociatedWithEventError(audioPath, event.id.identifier);
     }
-    return { type: "event_transcription", event, transcription };
+    return { type: "event_transcription", event: serializedEvent, transcription };
 }
 
 module.exports = {

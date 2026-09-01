@@ -40,6 +40,7 @@ function makeComputor(box, _capabilities) {
 
         if (
             oldValue !== undefined &&
+            oldValue !== null &&
             oldValue.type === "ontology" &&
             JSON.stringify(serialize(oldValue.ontology)) === JSON.stringify(serialize(nextOntology))
         ) {

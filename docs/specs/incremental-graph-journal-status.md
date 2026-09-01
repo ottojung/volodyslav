@@ -3,7 +3,9 @@
 The journal documents are one normative target design. Production currently
 implements the foundational persistence invariants used by that design:
 canonical DatabaseFingerprint validation, persistence-safe ConstValue values,
-and order-sensitive NodeKey identity. The Python verifier is an executable
+production enforcement of persistence-safe ComputedValue values at computor,
+open, synchronization, reset, and migration boundaries, and order-sensitive
+NodeKey identity. The Python verifier is an executable
 reference model for journal causality, reset, compaction, synchronization, and
 iterator laws.
 

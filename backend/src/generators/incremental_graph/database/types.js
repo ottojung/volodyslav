@@ -242,11 +242,15 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {import('../../individual/meta_events').MetaEvent} MetaEvent
+ * @typedef {object} SerializedMetaEvent
+ * @property {'add' | 'delete' | 'edit'} action
+ * @property {SerializedEvent} event
  */
 
 /**
- * @typedef {import('../../individual/event_context/compute').EventContextEntry} ContextEntry
+ * @typedef {object} SerializedContextEntry
+ * @property {string} eventId
+ * @property {Array<SerializedEvent>} context
  */
 
 /**
@@ -264,13 +268,13 @@ function versionToString(Version) {
 /**
  * @typedef {object} MetaEventsEntry
  * @property {'meta_events'} type - The type of the entry
- * @property {Array<MetaEvent>} meta_events - Array of meta events
+ * @property {Array<SerializedMetaEvent>} meta_events - Array of meta events
  */
 
 /**
  * @typedef {object} EventContextDatabaseEntry
  * @property {'event_context'} type - The type of the entry
- * @property {Array<ContextEntry>} contexts - Array of event contexts
+ * @property {Array<SerializedContextEntry>} contexts - Array of event contexts
  */
 
 /**
@@ -316,7 +320,7 @@ function versionToString(Version) {
  * Combined event and transcription for a specific audio file associated with an event.
  * @typedef {object} EventTranscriptionEntry
  * @property {'event_transcription'} type - The type of the entry
- * @property {Event} event - The associated event
+ * @property {SerializedEvent} event - The associated event
  * @property {TranscriptionResult} transcription - The AI transcription
  */
 
@@ -378,7 +382,7 @@ function versionToString(Version) {
  * Returns undefined for the description when the event is not a diary entry or has no description.
  * @typedef {object} EntryDescriptionEntry
  * @property {'entry_description'} type - The type of the entry
- * @property {string | undefined} description - The typed description text, or undefined if none
+ * @property {string | null} description - The typed description text, or null if none
  */
 
 /**
@@ -403,7 +407,7 @@ function versionToString(Version) {
 
 /**
  * Database Value Disjoint Union Type
- * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDescriptionEntry | DiaryMostImportantInfoSummaryEntry | OntologyEntry} ComputedValue
+ * @typedef {AllEventsEntry | SortedEventsDescendingEntry | SortedEventsAscendingEntry | LastNEntriesEntry | FirstNEntriesEntry | EventsCountEntry | ConfigEntry | MetaEventsEntry | EventContextDatabaseEntry | EventEntry | BasicContextEntry | CaloriesEntry | TranscriptionEntry | EventTranscriptionEntry | EventAudiosListEntry | EntryDescriptionEntry | DiaryMostImportantInfoSummaryEntry | OntologyEntry | null} ComputedValue
  */
 
 /**
@@ -424,7 +428,7 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {ComputedValue | Freshness | NodeIdentifier[] | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
+ * @typedef {ComputedValue | import('./computed_value_database').StoredComputedValue | Freshness | NodeIdentifier[] | TimestampRecord | Version | IdentifiersKeysMap} DatabaseStoredValue
  */
 
 /**
@@ -451,7 +455,7 @@ function versionToString(Version) {
 
 /**
  * A batch operation for the database.
- * @typedef {DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
+ * @typedef {DatabasePutOperation<import('./computed_value_database').StoredComputedValue> | DatabasePutOperation<ComputedValue> | DatabasePutOperation<Freshness> | DatabasePutOperation<NodeIdentifier[]> | DatabasePutOperation<TimestampRecord> | DatabasePutOperation<Version> | DatabasePutOperation<IdentifiersKeysMap> | DatabaseDelOperation<import('./computed_value_database').StoredComputedValue> | DatabaseDelOperation<ComputedValue> | DatabaseDelOperation<Freshness> | DatabaseDelOperation<NodeIdentifier[]> | DatabaseDelOperation<TimestampRecord> | DatabaseDelOperation<Version> | DatabaseDelOperation<IdentifiersKeysMap>} DatabaseBatchOperation
  */
 
 class SchemaPatternClass {

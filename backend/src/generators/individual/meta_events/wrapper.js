@@ -1,4 +1,3 @@
-const { isUnchanged } = require('../../incremental_graph');
 const { deserialize } = require('../../../event');
 const { computeMetaEvents } = require('./compute');
 
@@ -19,8 +18,14 @@ const computor = async (inputs, oldValue, _bindings) => {
 
     /** @type {Array<import('./compute').MetaEvent>} */
     let currentMetaEvents = [];
+    /** @type {Array<import('../../incremental_graph/database/types').SerializedMetaEvent>} */
+    let serializedCurrentMetaEvents = [];
     if (oldValue && oldValue.type === "meta_events") {
-        currentMetaEvents = oldValue.meta_events;
+        serializedCurrentMetaEvents = oldValue.meta_events;
+        currentMetaEvents = serializedCurrentMetaEvents.map(metaEvent => ({
+            action: metaEvent.action,
+            event: deserialize(metaEvent.event),
+        }));
     }
 
     const result = computeMetaEvents(
@@ -28,13 +33,31 @@ const computor = async (inputs, oldValue, _bindings) => {
         currentMetaEvents
     );
 
-    if (isUnchanged(result) && oldValue !== undefined) {
-        return result;
+    if (!Array.isArray(result)) {
+        return oldValue === undefined
+            ? { type: "meta_events", meta_events: serializedCurrentMetaEvents }
+            : result;
     }
+
+    const serializedById = new Map();
+    for (const metaEvent of serializedCurrentMetaEvents) {
+        serializedById.set(metaEvent.event.id, metaEvent.event);
+    }
+    for (const serializedEvent of allEventsEntry.events) {
+        serializedById.set(serializedEvent.id, serializedEvent);
+    }
+
+    const serializedResult = result.map(metaEvent => {
+            const serializedEvent = serializedById.get(metaEvent.event.id.identifier);
+            if (serializedEvent === undefined) {
+                throw new Error(`Missing serialized event ${metaEvent.event.id.identifier}`);
+            }
+            return { action: metaEvent.action, event: serializedEvent };
+        });
 
     return {
         type: "meta_events",
-        meta_events: isUnchanged(result) ? currentMetaEvents : result,
+        meta_events: serializedResult,
     };
 };
 

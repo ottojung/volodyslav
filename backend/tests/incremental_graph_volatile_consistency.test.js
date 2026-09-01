@@ -542,7 +542,10 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
                         op.value !== null &&
                         typeof op.value === "object" &&
                         "value" in op.value &&
-                        op.value.value === "inner-data"
+                        op.value.value !== null &&
+                        typeof op.value.value === "object" &&
+                        "value" in op.value.value &&
+                        op.value.value.value === "inner-data"
                 )
             );
             const outerFlush = capturedBatches.find((batch) =>
@@ -552,7 +555,10 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
                         op.value !== null &&
                         typeof op.value === "object" &&
                         "value" in op.value &&
-                        op.value.value === "outer(inner-data)"
+                        op.value.value !== null &&
+                        typeof op.value.value === "object" &&
+                        "value" in op.value.value &&
+                        op.value.value.value === "outer(inner-data)"
                 )
             );
             expect(innerFlush).toBeDefined();
@@ -562,7 +568,7 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
                 expect.arrayContaining([
                     expect.objectContaining({
                         type: "put",
-                        value: { value: "inner-data" },
+                        value: { value: { value: "inner-data" } },
                     }),
                     expect.objectContaining({
                         type: "put",
@@ -575,7 +581,7 @@ describe("Property 11 — Nested pulls submit independent batches", () => {
                 expect.arrayContaining([
                     expect.objectContaining({
                         type: "put",
-                        value: { value: "outer(inner-data)" },
+                        value: { value: { value: "outer(inner-data)" } },
                     }),
                     expect.objectContaining({
                         type: "put",
@@ -880,4 +886,3 @@ describe("Dependency lock ordering", () => {
         await db.close();
     });
 });
-

@@ -53,6 +53,57 @@ describe("generators/incremental_graph", () => {
     });
 
     describe("pull()", () => {
+        test("accepts null as a persistence-safe ComputedValue", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+            const graph = await createIncrementalGraph(capabilities, db, [{
+                output: "nullable",
+                inputs: [],
+                computor: () => null,
+                isDeterministic: true,
+                hasSideEffects: false,
+            }]);
+
+            await expect(graph.pull("nullable")).resolves.toBeNull();
+            await db.close();
+
+            const reopenedDb = await getRootDatabase(capabilities);
+            const reopenedGraph = await createIncrementalGraph(
+                capabilities,
+                reopenedDb,
+                [{
+                    output: "nullable",
+                    inputs: [],
+                    computor: () => null,
+                    isDeterministic: true,
+                    hasSideEffects: false,
+                }]
+            );
+            await expect(reopenedGraph.getValue("nullable")).resolves.toBeNull();
+            await reopenedDb.close();
+        });
+
+        test("rejects a ComputedValue with JSON-transforming behavior", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+            const graph = await createIncrementalGraph(capabilities, db, [{
+                output: "lossy",
+                inputs: [],
+                computor: () => ({
+                    type: "all_events",
+                    events: [],
+                    toJSON() { return "changed"; },
+                }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            }]);
+
+            await expect(graph.pull("lossy")).rejects.toThrow(
+                /persistence-safe ComputedValue/
+            );
+            await db.close();
+        });
+
         test("lazily evaluates only necessary nodes", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);

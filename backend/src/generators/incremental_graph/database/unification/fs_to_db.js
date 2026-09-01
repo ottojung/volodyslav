@@ -26,7 +26,10 @@
  */
 
 const path = require('path');
-const { relativePathToKey, parseValue } = require('../encoding');
+const {
+    parseValue,
+    relativePathToKey,
+} = require('../encoding');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/reader').FileReader} FileReader */

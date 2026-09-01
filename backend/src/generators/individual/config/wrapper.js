@@ -40,6 +40,7 @@ function makeComputor(box, _capabilities) {
         const nextValue = { type: "config", config: box.value };
         if (
             oldValue !== undefined &&
+            oldValue !== null &&
             oldValue.type === "config" &&
             JSON.stringify(
                 oldValue.config === null ? null : serialize(oldValue.config)

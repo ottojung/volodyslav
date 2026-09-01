@@ -21,6 +21,7 @@ const {
     stringToNodeName,
     nodeKeyStringToString,
 } = require("./types");
+const { findInvalidPersistenceSafeValue } = require("./persistence_safe_value");
 
 /** @typedef {import('../types').ConstValue} ConstValue */
 /** @typedef {import('../types').NodeKeyString} NodeKeyString */
@@ -50,61 +51,14 @@ function isInvalidConstValueError(object) {
  * @param {string} path
  * @returns {void}
  */
-function validateConstValue(value, path, ancestors = new Set()) {
-    if (typeof value === "string" || typeof value === "boolean") return;
-    if (typeof value === "number") {
-        if (Number.isFinite(value)) return;
+function validateConstValue(value, path) {
+    if (value === null) {
         throw new InvalidConstValueError(path);
     }
-    if (value === null || typeof value !== "object" || ancestors.has(value)) {
-        throw new InvalidConstValueError(path);
+    const invalid = findInvalidPersistenceSafeValue(value, path);
+    if (invalid !== undefined) {
+        throw new InvalidConstValueError(invalid.path);
     }
-
-    const prototype = Object.getPrototypeOf(value);
-    if (Array.isArray(value)) {
-        if (prototype !== Array.prototype || Object.getOwnPropertySymbols(value).length !== 0) {
-            throw new InvalidConstValueError(path);
-        }
-        ancestors.add(value);
-        for (let index = 0; index < value.length; index += 1) {
-            if (!Object.prototype.hasOwnProperty.call(value, index)) {
-                ancestors.delete(value);
-                throw new InvalidConstValueError(`${path}[${index}]`);
-            }
-            const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-            if (descriptor === undefined || !("value" in descriptor)) {
-                ancestors.delete(value);
-                throw new InvalidConstValueError(`${path}[${index}]`);
-            }
-            validateConstValue(descriptor.value, `${path}[${index}]`, ancestors);
-        }
-        const names = Object.getOwnPropertyNames(value);
-        const expectedNames = [
-            ...Array.from({ length: value.length }, (_, index) => String(index)),
-            "length",
-        ];
-        if (names.length !== expectedNames.length ||
-            names.some((name, index) => name !== expectedNames[index])) {
-            ancestors.delete(value);
-            throw new InvalidConstValueError(path);
-        }
-        ancestors.delete(value);
-        return;
-    }
-
-    if (prototype !== Object.prototype || Object.getOwnPropertySymbols(value).length !== 0) {
-        throw new InvalidConstValueError(path);
-    }
-    ancestors.add(value);
-    for (const key of Object.getOwnPropertyNames(value)) {
-        const descriptor = Object.getOwnPropertyDescriptor(value, key);
-        if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) {
-            ancestors.delete(value);
-            throw new InvalidConstValueError(`${path}.${key}`);
-        }
-        validateConstValue(descriptor.value, `${path}.${key}`, ancestors);
-    }
-    ancestors.delete(value);
 }
 
 /**

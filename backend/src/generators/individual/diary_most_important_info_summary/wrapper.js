@@ -49,6 +49,7 @@ function makeComputor(box) {
         const nextValue = box.value;
         if (
             oldValue !== undefined &&
+            oldValue !== null &&
             oldValue.type === "diary_most_important_info_summary" &&
             JSON.stringify(oldValue) === JSON.stringify(nextValue)
         ) {

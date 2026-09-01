@@ -87,11 +87,11 @@ describe('fingerprint design', () => {
     test.each([
         undefined,
         123,
-        'abcdefghijklmno',
+        'abcdefgh',
         'abcdefghiq',
-        'abcdefghijklmno1',
-        'ABCDEFGHIJKLMNOP',
-        'abcdefghijklmnoé',
+        'abcdefghij',
+        'ABCDEFGHI',
+        'abcdefghé',
         '',
         'abcdefghi-',
     ])('rejects malformed fingerprint %p', (fingerprint) => {

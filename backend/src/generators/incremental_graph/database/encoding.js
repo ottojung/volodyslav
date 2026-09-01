@@ -241,9 +241,39 @@ function parseValue(content) {
     return JSON.parse(content);
 }
 
+/** @param {string} rawKey @returns {boolean} */
+function isComputedValueRawKey(rawKey) {
+    return /^![^!]+!!values!/.test(rawKey);
+}
+
+/**
+ * @param {string} rawKey
+ * @param {unknown} storedValue
+ * @returns {unknown}
+ */
+function databaseValueToRenderedValue(rawKey, storedValue) {
+    if (!isComputedValueRawKey(rawKey)) return storedValue;
+    if (storedValue === null || typeof storedValue !== "object" ||
+        Object.keys(storedValue).length !== 1 || !("value" in storedValue)) {
+        throw new Error(`Invalid stored ComputedValue container at ${rawKey}`);
+    }
+    return Reflect.get(storedValue, "value");
+}
+
+/**
+ * @param {string} rawKey
+ * @param {unknown} renderedValue
+ * @returns {unknown}
+ */
+function renderedValueToDatabaseValue(rawKey, renderedValue) {
+    return isComputedValueRawKey(rawKey) ? { value: renderedValue } : renderedValue;
+}
+
 module.exports = {
     keyToRelativePath,
     relativePathToKey,
     serializeValue,
     parseValue,
+    databaseValueToRenderedValue,
+    renderedValueToDatabaseValue,
 };

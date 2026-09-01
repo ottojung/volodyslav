@@ -81,6 +81,7 @@ function makeComputor(box, capabilities) {
 
         if (
             oldValue !== undefined &&
+            oldValue !== null &&
             oldValue.type === "all_events" &&
             serializedEventsEqual(oldValue.events, nextValue.events)
         ) {

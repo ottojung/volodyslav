@@ -32,6 +32,14 @@ objects, and every nested occurrence of those values.
 `isEqual(v, JSON.parse(JSON.stringify(v))) === true`. This is an invariant of
 the admitted domain, not a normalization or replacement procedure. The graph
 stores a `ComputedValue`; ordinary JSON is only its persistence encoding.
+Computor results are validated before graph-state publication. Database open,
+synchronization, reset import, and migration validate every cached value before
+the containing replica becomes supported active state. `null` is a valid cached
+value; `undefined` alone represents absence from the value sublevel.
+The Level backend reserves a top-level `null` as “no stored value”, so its
+physical value record is a one-field presence envelope. That envelope is not a
+semantic `ComputedValue`: typed storage and rendered snapshots expose the raw
+value, including raw JSON `null`, and validation applies to that raw value.
 
 **TERM-06 (BindingEnvironment):** A positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. Bindings are matched to argument positions by position, not by name.
 
