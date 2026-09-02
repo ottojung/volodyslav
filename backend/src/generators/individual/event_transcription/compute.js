@@ -1,5 +1,6 @@
 const path = require("path");
 const { deserialize } = require('../../../event');
+const { eventToPersistedEvent } = require('../persisted_event');
 const { fromISOString } = require("../../../datetime");
 
 /** @typedef {import('../../incremental_graph/database/types').EventTranscriptionEntry} EventTranscriptionEntry */
@@ -215,7 +216,7 @@ function computeEventTranscription(capabilities, serializedEvent, transcription,
     if (!normalizedAudioPath.startsWith(expectedPrefix)) {
         throw new AudioNotAssociatedWithEventError(audioPath, event.id.identifier);
     }
-    return { type: "event_transcription", event: serializedEvent, transcription };
+    return { type: "event_transcription", event: eventToPersistedEvent(event), transcription };
 }
 
 module.exports = {

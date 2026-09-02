@@ -91,7 +91,7 @@ distinct allocation namespace with the following properties:
 ```
 
 - The index prefix is a base36 integer (characters `0-9a-z`), no padding or alignment.
-- The `DatabaseFingerprint` is exactly 9 lowercase ASCII letters
+- The `DatabaseFingerprint` is exactly 16 lowercase ASCII letters
   (`[a-z]{16}`).
 - The separator is a single hyphen `-`.
 

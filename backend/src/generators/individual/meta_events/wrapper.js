@@ -1,5 +1,6 @@
 const { deserialize } = require('../../../event');
 const { computeMetaEvents } = require('./compute');
+const { eventToPersistedEvent, persistedEventToEvent } = require('../persisted_event');
 
 /**
  * @type {import('../../incremental_graph/types').NodeDefComputor}
@@ -18,13 +19,13 @@ const computor = async (inputs, oldValue, _bindings) => {
 
     /** @type {Array<import('./compute').MetaEvent>} */
     let currentMetaEvents = [];
-    /** @type {Array<import('../../incremental_graph/database/types').SerializedMetaEvent>} */
+    /** @type {Array<import('../../incremental_graph/database/types').PersistedMetaEvent>} */
     let serializedCurrentMetaEvents = [];
     if (oldValue && oldValue.type === "meta_events") {
         serializedCurrentMetaEvents = oldValue.meta_events;
         currentMetaEvents = serializedCurrentMetaEvents.map(metaEvent => ({
             action: metaEvent.action,
-            event: deserialize(metaEvent.event),
+            event: persistedEventToEvent(metaEvent.event),
         }));
     }
 
@@ -41,18 +42,13 @@ const computor = async (inputs, oldValue, _bindings) => {
 
     const serializedById = new Map();
     for (const metaEvent of serializedCurrentMetaEvents) {
-        serializedById.set(metaEvent.event.id, metaEvent.event);
-    }
-    for (const serializedEvent of allEventsEntry.events) {
-        serializedById.set(serializedEvent.id, serializedEvent);
+        serializedById.set(metaEvent.event.id.identifier, metaEvent.event);
     }
 
     const serializedResult = result.map(metaEvent => {
-            const serializedEvent = serializedById.get(metaEvent.event.id.identifier);
-            if (serializedEvent === undefined) {
-                throw new Error(`Missing serialized event ${metaEvent.event.id.identifier}`);
-            }
-            return { action: metaEvent.action, event: serializedEvent };
+            const persistedEvent = serializedById.get(metaEvent.event.id.identifier) ??
+                eventToPersistedEvent(metaEvent.event);
+            return { action: metaEvent.action, event: persistedEvent };
         });
 
     return {

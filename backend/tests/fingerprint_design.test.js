@@ -72,7 +72,7 @@ function makeLogger() {
 }
 
 const NODE_A = nodeIdentifierFromString('1-abcdefghijklmnop');
-const HOST_NODE_A = nodeIdentifierFromString('1-remotehos');
+const HOST_NODE_A = nodeIdentifierFromString('1-remotehostfinger');
 const TS1 = '2024-01-01T00:00:01.000Z';
 
 describe('fingerprint design', () => {
@@ -87,7 +87,9 @@ describe('fingerprint design', () => {
     test.each([
         undefined,
         123,
+        'abcdefghi',
         'abcdefgh',
+        'abcdefghijklmno',
         'abcdefghijklmnopq',
         'abcdefghijklmnopj',
         'ABCDEFGHI',

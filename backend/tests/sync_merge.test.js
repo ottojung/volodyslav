@@ -544,8 +544,8 @@ describe('mergeHostIntoReplica', () => {
 
             const targetParent = nodeIdentifierFromString('6-abcdefghijklmnop');
             const targetChild = nodeIdentifierFromString('7-abcdefghijklmnop');
-            const hostParent = nodeIdentifierFromString('8-hostfpbb');
-            const hostChild = nodeIdentifierFromString('9-hostfpbb');
+            const hostParent = nodeIdentifierFromString('8-hostfingerprintx');
+            const hostChild = nodeIdentifierFromString('9-hostfingerprintx');
             const parentKey = stringToNodeKeyString('{"head":"parent","args":[]}');
             const childKey = stringToNodeKeyString('{"head":"child","args":[]}');
             const L = db.schemaStorageForReplica('x');
@@ -1388,7 +1388,7 @@ describe('mergeHostIntoReplica', () => {
             await db.setGlobalVersion(db.version);
             await db.setHostnameGlobal(hostname, 'version', db.version);
             const targetId = nodeIdentifierFromString('30-abcdefghijklmnop');
-            const hostId = nodeIdentifierFromString('31-hostfpbb');
+            const hostId = nodeIdentifierFromString('31-hostfingerprintx');
             const nodeKey = stringToNodeKeyString('{"head":"newer-host","args":[]}');
             const L = db.schemaStorageForReplica('x');
             await writeNode(L, targetId, TS1, undefined);
@@ -1697,7 +1697,7 @@ describe('mergeHostIntoReplica', () => {
 
                 const nodeA = NODE_A;
                 const nodeB = NODE_B;
-                const nodeC = nodeIdentifierFromString('93-ccccccccc');
+                const nodeC = nodeIdentifierFromString('93-cccccccccccccccc');
                 const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
                 const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
                 const keyC = stringToNodeKeyString('{"head":"C","args":[]}');
@@ -2923,8 +2923,8 @@ describe('mergeHostIntoReplica', () => {
             // C is kept (target TS3 > host TS1), so A's source input (Cₕ) differs
             // from final input (Cₜ) → directly relowered.
             const targetC = nodeIdentifierFromString('203-abcdefghijklmnop');
-            const hostC = nodeIdentifierFromString('204-hostfpbb');
-            const hostA = nodeIdentifierFromString('205-hostfpbb');
+            const hostC = nodeIdentifierFromString('204-hostfingerprintx');
+            const hostA = nodeIdentifierFromString('205-hostfingerprintx');
             const keyC = stringToNodeKeyString('{"head":"c_counter_collision","args":[]}');
             const keyA = stringToNodeKeyString('{"head":"a_counter_collision","args":[]}');
 
@@ -3387,9 +3387,9 @@ describe('mergeHostIntoReplica', () => {
             const bTarget = nodeIdentifierFromString('301-abcdefghijklmnop');
             const cTarget = nodeIdentifierFromString('302-abcdefghijklmnop');
             const aTarget = nodeIdentifierFromString('303-abcdefghijklmnop');
-            const bHost = nodeIdentifierFromString('304-hostfpbb');
-            const cHost = nodeIdentifierFromString('305-hostfpbb');
-            const aHost = nodeIdentifierFromString('306-hostfpbb');
+            const bHost = nodeIdentifierFromString('304-hostfingerprintx');
+            const cHost = nodeIdentifierFromString('305-hostfingerprintx');
+            const aHost = nodeIdentifierFromString('306-hostfingerprintx');
 
             const keyB = stringToNodeKeyString('{"head":"depB","args":[]}');
             const keyC = stringToNodeKeyString('{"head":"depC","args":[]}');
@@ -3530,8 +3530,8 @@ describe('mergeHostIntoReplica', () => {
 
             const xTarget = nodeIdentifierFromString('320-abcdefghijklmnop');
             const nTarget = nodeIdentifierFromString('321-abcdefghijklmnop');
-            const xHost = nodeIdentifierFromString('322-hostfpbb');
-            const nHost = nodeIdentifierFromString('323-hostfpbb');
+            const xHost = nodeIdentifierFromString('322-hostfingerprintx');
+            const nHost = nodeIdentifierFromString('323-hostfingerprintx');
 
             const keyX = stringToNodeKeyString('{"head":"sourceX","args":[]}');
             const keyN = stringToNodeKeyString('{"head":"derivedN","args":[]}');
@@ -5037,7 +5037,7 @@ describe('mergeHostIntoReplica', () => {
             db = await getRootDatabase(capabilities);
 
             const nodeA = nodeIdentifierFromString('500-aaaaaaaaaaaaaaaa');
-            const nodeB = nodeIdentifierFromString('501-bbbbbbbbb');
+            const nodeB = nodeIdentifierFromString('501-bbbbbbbbbbbbbbbb');
             const keyA = stringToNodeKeyString('{"head":"X","args":[]}');
             const keyB = stringToNodeKeyString('{"head":"Y","args":[]}');
 
@@ -5121,8 +5121,8 @@ describe('mergeHostIntoReplica', () => {
             db = await getRootDatabase(capabilities);
 
             const nodeA = nodeIdentifierFromString('520-aaaaaaaaaaaaaaaa');
-            const nodeB = nodeIdentifierFromString('521-bbbbbbbbb');
-            const nodeC = nodeIdentifierFromString('522-ccccccccc');
+            const nodeB = nodeIdentifierFromString('521-bbbbbbbbbbbbbbbb');
+            const nodeC = nodeIdentifierFromString('522-cccccccccccccccc');
             const keyA = stringToNodeKeyString('{"head":"A","args":[]}');
             const keyB = stringToNodeKeyString('{"head":"B","args":[]}');
             const keyC = stringToNodeKeyString('{"head":"C","args":[]}');
@@ -5202,7 +5202,7 @@ describe('mergeHostIntoReplica', () => {
             db = await getRootDatabase(capabilities);
 
             const nodeA = nodeIdentifierFromString('610-aaaaaaaaaaaaaaaa');
-            const nodeB = nodeIdentifierFromString('611-bbbbbbbbb');
+            const nodeB = nodeIdentifierFromString('611-bbbbbbbbbbbbbbbb');
             const keyA = stringToNodeKeyString('{"head":"recon_A","args":[]}');
             const keyB = stringToNodeKeyString('{"head":"recon_B","args":[]}');
 

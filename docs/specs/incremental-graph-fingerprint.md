@@ -70,7 +70,7 @@ onto a new concurrently-writing host" transition.
 
 ## Format
 
-A `DatabaseFingerprint` is exactly 9 lowercase ASCII letters. Every compliant
+A `DatabaseFingerprint` is exactly 16 lowercase ASCII letters. Every compliant
 implementation MUST generate, persist, import, and validate the one canonical
 full-string representation `/^[a-z]{16}$/`; fresh creation uses
 `random.basicString(capabilities, DATABASE_FINGERPRINT_LENGTH)`. The fingerprint

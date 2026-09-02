@@ -88,9 +88,9 @@ describe("IncrementalGraph integration with meta_events", () => {
         expect(metaEventsEntry).toBeDefined();
         expect(metaEventsEntry.meta_events).toHaveLength(2);
         expect(metaEventsEntry.meta_events[0].action).toBe("add");
-        expect(metaEventsEntry.meta_events[0].event.id).toBe("1");
+        expect(metaEventsEntry.meta_events[0].event.id.identifier).toBe("1");
         expect(metaEventsEntry.meta_events[1].action).toBe("add");
-        expect(metaEventsEntry.meta_events[1].event.id).toBe("2");
+        expect(metaEventsEntry.meta_events[1].event.id.identifier).toBe("2");
 
         await db.close();
     });

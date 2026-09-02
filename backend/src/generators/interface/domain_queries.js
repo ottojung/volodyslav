@@ -13,6 +13,8 @@
  * @property {() => IncrementalGraph} _requireInitializedGraph
  */
 
+const { persistedEvent } = require('../individual');
+
 const { isEventNotFoundError } = require('../individual').event;
 const { deserialize } = require('../../event');
 const { SORTED_EVENTS_CACHE_SIZE } = require('./constants');
@@ -27,8 +29,8 @@ async function internalGetCaloriesForEventId(interfaceInstance, eventId) {
     const result = await interfaceInstance
         ._requireInitializedGraph()
         .pull("calories", [eventId]);
-    if (result === null || result.type !== "calories") {
-        throw new Error(`Expected calories entry but got type: ${JSON.stringify(result)}`);
+    if (result.type !== "calories") {
+        throw new Error(`Expected calories entry but got type: ${result.type}`);
     }
     return result;
 }
@@ -48,9 +50,9 @@ async function internalGetEventTranscriptionForAudioPath(
     const result = await interfaceInstance
         ._requireInitializedGraph()
         .pull("event_transcription", [eventId, audioPath]);
-    if (result === null || result.type !== "event_transcription") {
+    if (result.type !== "event_transcription") {
         throw new Error(
-            `Expected event_transcription entry but got type: ${JSON.stringify(result)}`
+            `Expected event_transcription entry but got type: ${result.type}`
         );
     }
     return result;
@@ -66,8 +68,8 @@ async function internalGetBasicContextForEventId(interfaceInstance, eventId) {
     const result = await interfaceInstance
         ._requireInitializedGraph()
         .pull("basic_context", [eventId]);
-    if (result === null || result.type !== "basic_context") {
-        throw new Error(`Expected basic_context entry but got type: ${JSON.stringify(result)}`);
+    if (result.type !== "basic_context") {
+        throw new Error(`Expected basic_context entry but got type: ${result.type}`);
     }
     return result;
 }
@@ -96,7 +98,7 @@ async function internalGetEventBasicContext(interfaceInstance, event) {
         return [event];
     }
 
-    return contextEntry.context.map(deserialize);
+    return contextEntry.context.map(persistedEvent.persistedEventToEvent);
 }
 
 /**
@@ -108,8 +110,8 @@ async function internalGetConfig(interfaceInstance) {
     const result = await interfaceInstance
         ._requireInitializedGraph()
         .pull("config");
-    if (result === null || result.type !== "config") {
-        throw new Error(`Expected config entry but got type: ${JSON.stringify(result)}`);
+    if (result.type !== "config") {
+        throw new Error(`Expected config entry but got type: ${result.type}`);
     }
     return result.config;
 }
@@ -124,8 +126,8 @@ async function internalGetDiarySummary(interfaceInstance) {
     const result = await interfaceInstance
         ._requireInitializedGraph()
         .pull("diary_most_important_info_summary");
-    if (result === null || result.type !== "diary_most_important_info_summary") {
-        throw new Error(`Expected diary_most_important_info_summary entry but got type: ${JSON.stringify(result)}`);
+    if (result.type !== "diary_most_important_info_summary") {
+        throw new Error(`Expected diary_most_important_info_summary entry but got type: ${result.type}`);
     }
     return result;
 }
@@ -139,8 +141,8 @@ async function internalGetOntology(interfaceInstance) {
     const result = await interfaceInstance
         ._requireInitializedGraph()
         .pull("ontology");
-    if (result === null || result.type !== "ontology") {
-        throw new Error(`Expected ontology entry but got type: ${JSON.stringify(result)}`);
+    if (result.type !== "ontology") {
+        throw new Error(`Expected ontology entry but got type: ${result.type}`);
     }
     return result.ontology;
 }
@@ -194,9 +196,9 @@ async function* internalGetSortedEvents(interfaceInstance, order) {
         order === "dateAscending" ? "first_entries" : "last_entries";
 
     const cacheEntry = await graph.pull(cacheNodeHead, [SORTED_EVENTS_CACHE_SIZE]);
-    if (cacheEntry === null || cacheEntry.type !== cacheNodeHead) {
+    if (cacheEntry.type !== cacheNodeHead) {
         throw new Error(
-            `Expected ${cacheNodeHead} entry but got type: ${JSON.stringify(cacheEntry)}`
+            `Expected ${cacheNodeHead} entry but got type: ${cacheEntry.type}`
         );
     }
 
@@ -216,9 +218,9 @@ async function* internalGetSortedEvents(interfaceInstance, order) {
     // at most SORTED_EVENTS_CACHE_SIZE, the cache already holds everything and
     // we can return early (handles the "exactly 100 events" boundary case).
     const countEntry = await graph.pull("events_count");
-    if (countEntry === null || countEntry.type !== "events_count") {
+    if (countEntry.type !== "events_count") {
         throw new Error(
-            `Expected events_count entry but got type: ${JSON.stringify(countEntry)}`
+            `Expected events_count entry but got type: ${countEntry.type}`
         );
     }
     if (countEntry.count <= SORTED_EVENTS_CACHE_SIZE) {
@@ -237,9 +239,9 @@ async function* internalGetSortedEvents(interfaceInstance, order) {
             : "sorted_events_descending";
 
     const fullEntry = await graph.pull(fullNodeName);
-    if (fullEntry === null || fullEntry.type !== fullNodeName) {
+    if (fullEntry.type !== fullNodeName) {
         throw new Error(
-            `Expected ${fullNodeName} entry but got type: ${JSON.stringify(fullEntry)}`
+            `Expected ${fullNodeName} entry but got type: ${fullEntry.type}`
         );
     }
 
@@ -262,8 +264,8 @@ async function internalGetEventsCount(interfaceInstance) {
     const result = await interfaceInstance
         ._requireInitializedGraph()
         .pull("events_count");
-    if (result === null || result.type !== "events_count") {
-        throw new Error(`Expected events_count entry but got type: ${JSON.stringify(result)}`);
+    if (result.type !== "events_count") {
+        throw new Error(`Expected events_count entry but got type: ${result.type}`);
     }
     return result.count;
 }
@@ -277,8 +279,8 @@ async function internalGetAllEvents(interfaceInstance) {
     const result = await interfaceInstance
         ._requireInitializedGraph()
         .pull("all_events");
-    if (result === null || result.type !== "all_events") {
-        throw new Error(`Expected all_events entry but got type: ${JSON.stringify(result)}`);
+    if (result.type !== "all_events") {
+        throw new Error(`Expected all_events entry but got type: ${result.type}`);
     }
     return result.events.map(deserialize);
 }
@@ -294,8 +296,8 @@ async function internalGetEvent(interfaceInstance, eventId) {
         const result = await interfaceInstance
             ._requireInitializedGraph()
             .pull("event", [eventId]);
-        if (result === null || result.type !== "event") {
-            throw new Error(`Expected event entry but got type: ${JSON.stringify(result)}`);
+        if (result.type !== "event") {
+            throw new Error(`Expected event entry but got type: ${result.type}`);
         }
         return deserialize(result.value);
     } catch (error) {
@@ -323,8 +325,8 @@ async function internalIsTranscribed(interfaceInstance, eventId) {
     const graph = interfaceInstance._requireInitializedGraph();
 
     const audioListResult = await graph.pull("event_audios_list", [eventId]);
-    if (audioListResult === null || audioListResult.type !== "event_audios_list") {
-        throw new Error(`Expected event_audios_list entry but got type: ${JSON.stringify(audioListResult)}`);
+    if (audioListResult.type !== "event_audios_list") {
+        throw new Error(`Expected event_audios_list entry but got type: ${audioListResult.type}`);
     }
 
     // No audio files: nothing to transcribe, entry is ready.
@@ -363,15 +365,15 @@ async function internalEntryDiaryContent(interfaceInstance, eventId) {
 
     // Pull the typed description.
     const descriptionResult = await graph.pull("entry_description", [eventId]);
-    if (descriptionResult === null || descriptionResult.type !== "entry_description") {
-        throw new Error(`Expected entry_description entry but got type: ${JSON.stringify(descriptionResult)}`);
+    if (descriptionResult.type !== "entry_description") {
+        throw new Error(`Expected entry_description entry but got type: ${descriptionResult.type}`);
     }
-    const typedText = descriptionResult.description ?? undefined;
+    const typedText = descriptionResult.description;
 
     // Pull materialized transcriptions, combining multiple into one string.
     const audioListResult = await graph.pull("event_audios_list", [eventId]);
-    if (audioListResult === null || audioListResult.type !== "event_audios_list") {
-        throw new Error(`Expected event_audios_list entry but got type: ${JSON.stringify(audioListResult)}`);
+    if (audioListResult.type !== "event_audios_list") {
+        throw new Error(`Expected event_audios_list entry but got type: ${audioListResult.type}`);
     }
 
     /** @type {string[]} */
@@ -382,7 +384,7 @@ async function internalEntryDiaryContent(interfaceInstance, eventId) {
             continue;
         }
         const transcriptionResult = await graph.pull("event_transcription", [eventId, audioPath]);
-        if (transcriptionResult === null || transcriptionResult.type !== "event_transcription") {
+        if (transcriptionResult.type !== "event_transcription") {
             continue;
         }
         const { transcription } = transcriptionResult;
