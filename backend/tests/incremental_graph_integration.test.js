@@ -94,4 +94,46 @@ describe("IncrementalGraph integration with meta_events", () => {
 
         await db.close();
     });
+
+    test("an edit retains the historical add and records the new event version", async () => {
+        const capabilities = getTestCapabilities();
+        const db = await getRootDatabase(capabilities);
+        const events = [{
+            id: "same-id",
+            date: "2024-01-01",
+            original: "test version one",
+            input: "test version one",
+            creator: { name: "test", uuid: "00000000-0000-0000-0000-000000000001", version: "0.0.0" },
+        }];
+        const graph = await createIncrementalGraph(capabilities, db, [
+            {
+                output: "all_events",
+                inputs: [],
+                computor: () => ({ type: "all_events", events }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+            {
+                output: "meta_events",
+                inputs: ["all_events"],
+                computor: metaEvents.computor,
+                isDeterministic: true,
+                hasSideEffects: false,
+            },
+        ]);
+
+        await graph.invalidate("all_events");
+        const first = await graph.pull("meta_events");
+        expect(first.meta_events).toHaveLength(1);
+
+        events[0] = { ...events[0], original: "test version two", input: "test version two" };
+        await graph.invalidate("all_events");
+        const second = await graph.pull("meta_events");
+
+        expect(second.meta_events).toHaveLength(2);
+        expect(second.meta_events.map(metaEvent => metaEvent.action)).toEqual(["add", "edit"]);
+        expect(second.meta_events[0].event.input).toBe("test version one");
+        expect(second.meta_events[1].event.input).toBe("test version two");
+        await db.close();
+    });
 });

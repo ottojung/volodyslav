@@ -40,16 +40,10 @@ const computor = async (inputs, oldValue, _bindings) => {
             : result;
     }
 
-    const serializedById = new Map();
-    for (const metaEvent of serializedCurrentMetaEvents) {
-        serializedById.set(metaEvent.event.id.identifier, metaEvent.event);
-    }
-
-    const serializedResult = result.map(metaEvent => {
-            const persistedEvent = serializedById.get(metaEvent.event.id.identifier) ??
-                eventToPersistedEvent(metaEvent.event);
-            return { action: metaEvent.action, event: persistedEvent };
-        });
+    const serializedResult = result.map(metaEvent => ({
+        action: metaEvent.action,
+        event: eventToPersistedEvent(metaEvent.event),
+    }));
 
     return {
         type: "meta_events",

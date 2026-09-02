@@ -1,4 +1,7 @@
-const { getRootDatabase } = require('../src/generators/incremental_graph/database');
+const {
+    getRootDatabase,
+    nodeIdentifierFromString,
+} = require('../src/generators/incremental_graph/database');
 const { getMockedRootCapabilities } = require('./spies');
 const { stubEnvironment, stubLogger } = require('./stubs');
 const eventId = require('../src/event/id');
@@ -28,17 +31,21 @@ describe('journal-1 storage format', () => {
         const first = { type: 'example', x: 1 };
         const second = { type: 'example', x: 2 };
         const third = { type: 'example', x: 3 };
+        const fourth = { type: 'example', x: 4 };
+        const typedIdentifier = nodeIdentifierFromString('1-abcdefghijklmnop');
         await db._rawPut('!x!!values!first', first);
         await db._rawPutAll([{ key: '!x!!values!second', value: second }]);
         await db._rawPutAllToHostname('host', [
             { sublevelName: 'values', subkey: 'third', value: third },
         ]);
+        await db.schemaStorageForReplica('x').values.put(typedIdentifier, fourth);
 
         const physical = new Map();
         for await (const [key, value] of db.db.iterator()) physical.set(String(key), value);
         expect(physical.get('!x!!values!first')).toEqual(first);
         expect(physical.get('!x!!values!second')).toEqual(second);
         expect(physical.get('!_h_host!!values!third')).toEqual(third);
+        expect(physical.get(`!x!!values!${typedIdentifier}`)).toEqual(fourth);
         await db.close();
     });
 
