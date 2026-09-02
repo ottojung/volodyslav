@@ -20,6 +20,7 @@ const transcription = require('./transcription');
 const eventTranscription = require('./event_transcription');
 const entryDescription = require('./entry_description');
 const diarySummary = require('./diary_most_important_info_summary');
+const persistedEvent = require('./persisted_event');
 
 const eventAudiosList = require('./event_audios_list');
 
@@ -42,4 +43,5 @@ module.exports = {
     entryDescription,
     eventAudiosList,
     diarySummary,
+    persistedEvent,
 };

@@ -9,7 +9,7 @@ causalMaxima(S) = { E in S | no F in S has causallyBefore(E,F) }
 concurrentWinner(S) = greatest member of causalMaxima(S) by (time,author)
 ```
 
-The second operation is used only after causal domination is removed. Its sequence fields are not compared. Supported synchronized clocks exclude a causally later semantic event with an earlier occurrence time.
+The second operation is used only after causal domination is removed. Its sequence fields are not compared. The persisted semantic clock discipline prevents a causally later semantic event from receiving an earlier occurrence time.
 
 For each NodeKey K, the reset presence projection is defined completely as follows.
 

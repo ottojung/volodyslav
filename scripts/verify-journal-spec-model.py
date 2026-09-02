@@ -142,6 +142,7 @@ class Replica:
     causal_summary: dict[str, int] = field(default_factory=dict)
     journal_coverage: dict[str, int] = field(default_factory=dict)
     local_counter: int = 0
+    semantic_clock: int = MIN_UNIX_TIMESTAMP
 
 
 class IteratorBusyError(Exception):
@@ -275,7 +276,7 @@ def receive(receiver: Replica, source: Replica) -> bool:
     before = (dict(receiver.journal), dict(receiver.journal_coverage),
               dict(receiver.causal_summary),
               {key: dict(value) for key, value in receiver.reset_anchor_cuts.items()},
-              receiver.local_counter)
+              receiver.local_counter, receiver.semantic_clock)
     for event_id, event in source.journal.items():
         if event_id in receiver.journal:
             assert receiver.journal[event_id] == event
@@ -287,9 +288,14 @@ def receive(receiver: Replica, source: Replica) -> bool:
             receiver.reset_anchor_cuts.get(key, {}), source_cut)
     receiver.causal_summary = join_prefixes(
         receiver.causal_summary, observed_source(source))
+    receiver.semantic_clock = max(
+        receiver.semantic_clock,
+        source.semantic_clock,
+        *(event.time for event in source.journal.values()),
+    )
     after = (receiver.journal, receiver.journal_coverage,
              receiver.causal_summary, receiver.reset_anchor_cuts,
-             receiver.local_counter)
+             receiver.local_counter, receiver.semantic_clock)
     return before != after
 
 
@@ -309,7 +315,46 @@ def migrate_replica(source: Replica) -> Replica:
                            for key, cut in source.reset_anchor_cuts.items()},
         causal_summary=dict(source.causal_summary),
         journal_coverage=dict(source.journal_coverage),
-        local_counter=source.local_counter)
+        local_counter=source.local_counter,
+        semantic_clock=max(
+            source.semantic_clock,
+            *(event.time for event in source.journal.values()),
+        ))
+
+
+def author_semantic_transaction(
+        replica: Replica, wall_clock_sample: int, node: NodeKey,
+        kinds: tuple[str, ...]) -> tuple[Event, ...]:
+    """Atomically author semantic entries at one persisted maximum timestamp."""
+    assert MIN_UNIX_TIMESTAMP <= wall_clock_sample <= MAX_UNIX_TIMESTAMP
+    transaction_time = max(replica.semantic_clock, wall_clock_sample)
+    context = dict(replica.causal_summary)
+    entries: list[Event] = []
+    for kind in kinds:
+        replica.local_counter += 1
+        entry = event(
+            replica.author, replica.local_counter, node, kind,
+            time=transaction_time, causal_context=context)
+        replica.journal[entry.id] = entry
+        entries.append(entry)
+    replica.journal_coverage[replica.author] = replica.local_counter
+    replica.causal_summary = join_prefixes(
+        replica.causal_summary,
+        {replica.author: replica.local_counter})
+    replica.semantic_clock = transaction_time
+    return tuple(entries)
+
+
+def controlled_reset_transaction_time(
+        receiver: Replica, source: Replica, wall_clock_sample: int) -> int:
+    """Observe source semantic time before choosing a reset transaction time."""
+    source_maximum = max(
+        source.semantic_clock,
+        *(entry.time for entry in source.journal.values()),
+    )
+    receiver.semantic_clock = max(
+        receiver.semantic_clock, wall_clock_sample, source_maximum)
+    return receiver.semantic_clock
 
 
 def controlled_reset_absorption(
@@ -865,7 +910,8 @@ def verify_reset_and_migration_preserve_effective_cuts() -> None:
         "M", journal={event.id: event for event in compact_source.events},
         reset_anchor_cuts={(node, null_anchor): {"A": 1, "B": 10}},
         causal_summary={"A": 1, "C": 1}, journal_coverage={"A": 1, "C": 1},
-        local_counter=0)
+        local_counter=0,
+        semantic_clock=max(event.time for event in compact_source.events))
     target_replica = migrate_replica(source_replica)
     assert target_replica == source_replica
     assert presence_selection(
@@ -1292,7 +1338,7 @@ def verify_values_freshness_notifications() -> None:
 def verify_consumable_journal_iterator() -> None:
     foo, bar = ("foo", ()), ("bar", ())
     author = "aaaaaaaaaaaaaaaa"
-    receiver_author = "bbbbbbbbbbbbbbbb"
+    receiver_author = "bbbbbbbbb"
     replica = Replica(author)
     for entry in (event(author, 1, foo, "edit"),
                   event(author, 2, bar, "edit"),
@@ -1470,6 +1516,201 @@ def verify_causal_laws() -> None:
     assert causally_before(a, b) and causally_before(b, c) and causally_before(a, c)
 
 
+def verify_persisted_semantic_clock() -> None:
+    node = ("semantic-clock", ())
+    local = Replica("aaaaaaaaaaaaaaaa")
+    first, = author_semantic_transaction(local, 100, node, ("edit",))
+    rolled_back, = author_semantic_transaction(local, 20, node, ("edit",))
+    assert (first.time, rolled_back.time, local.semantic_clock) == (100, 100, 100), (
+        "wall-clock-rollback", first, rolled_back, local)
+
+    # A transaction is the timestamp boundary, not an event-identity boundary.
+    atomic = author_semantic_transaction(local, 90, node, ("edit", "invalidate"))
+    assert atomic[0].time == atomic[1].time == 100
+    assert atomic[0].id != atomic[1].id
+
+    future = Replica("bbbbbbbbb", semantic_clock=500)
+    future_entry, = author_semantic_transaction(future, 400, node, ("edit",))
+    receiver = Replica("ccccccccc")
+    receive(receiver, future)
+    assert receiver.semantic_clock == future_entry.time == 500
+    after_receive, = author_semantic_transaction(receiver, -100, node, ("edit",))
+    assert after_receive.time == 500, ("receive-then-author", receiver, future)
+
+    restarted = Replica(
+        receiver.author,
+        journal=dict(receiver.journal),
+        causal_summary=dict(receiver.causal_summary),
+        journal_coverage=dict(receiver.journal_coverage),
+        local_counter=receiver.local_counter,
+        semantic_clock=receiver.semantic_clock)
+    after_restart, = author_semantic_transaction(restarted, 0, node, ("edit",))
+    assert after_restart.time == 500
+    migrated = migrate_replica(restarted)
+    assert migrated.semantic_clock == 500
+
+    # Clock initialization derives the maximum from persisted semantic events.
+    clockless_shape = Replica(
+        "ddddddddd", journal={future_entry.id: future_entry},
+        semantic_clock=MIN_UNIX_TIMESTAMP)
+    assert migrate_replica(clockless_shape).semantic_clock == 500
+
+    reset_receiver = Replica("rrrrrrrrr", semantic_clock=10)
+    reset_time = controlled_reset_transaction_time(
+        reset_receiver, future, wall_clock_sample=5)
+    assert reset_time == reset_receiver.semantic_clock == 500
+
+    # Equal time is neither identity nor happened-before. Concurrent selection
+    # uses author only after causal maxima have been established.
+    concurrent_low = event("aaaaaaaaaaaaaaaa", 1, node, "edit", time=700)
+    concurrent_high = event("zzzzzzzzzzzzzzzz", 1, node, "edit", time=700)
+    assert not causally_before(concurrent_low, concurrent_high)
+    assert not causally_before(concurrent_high, concurrent_low)
+    assert concurrent_winner(causal_maxima(
+        (concurrent_low, concurrent_high))) == concurrent_high
+
+    causal_later = event(
+        "aaaaaaaaaaaaaaaa", 2, node, "edit", time=700,
+        causal_context={"aaaaaaaaaaaaaaaa": 1, "zzzzzzzzzzzzzzzz": 1})
+    assert causally_before(concurrent_high, causal_later)
+    assert concurrent_winner(causal_maxima(
+        (concurrent_high, causal_later))) == causal_later
+
+    foreign_large = replace(concurrent_high, sequence=10_000)
+    assert concurrent_winner(causal_maxima(
+        (concurrent_low, foreign_large))).author == "zzzzzzzzzzzzzzzz"
+
+
+def verify_generated_supported_histories() -> None:
+    """Explore states reached by valid authoring operations and synchronization."""
+    node = ("generated", ())
+    authors = ("aaaaaaaaaaaaaaaa", "bbbbbbbbb", "ccccccccc", "rrrrrrrrr")
+    generation = event(authors[0], 1, node, "generation", time=1)
+    edit = event(authors[0], 2, node, "edit", time=2,
+                 causal_context={authors[0]: 1}, generation=generation.id)
+    invalidate = event(authors[1], 1, node, "invalidate", time=3,
+                       causal_context={authors[0]: 2}, generation=generation.id,
+                       applies_to=edit.id, mode="hard")
+    validate = event(authors[2], 1, node, "validate", time=4,
+                     causal_context={authors[0]: 2, authors[1]: 1},
+                     generation=generation.id, value_origin=edit.id,
+                     clears_through={authors[1]: 1})
+    reset = event(
+        authors[3], 1, node, "validate", time=5,
+        causal_context={authors[0]: 2, authors[1]: 1, authors[2]: 1},
+        generation=generation.id, value_origin=edit.id,
+        reset_lineage=lineage(
+            {authors[0]: 2, authors[1]: 1, authors[2]: 1},
+            (("sssssssss", 1), ("sssssssss", 2))))
+    delete = event(authors[0], 3, node, "delete", time=6,
+                   causal_context={authors[0]: 2})
+    operations = (generation, edit, invalidate, validate, reset, delete)
+    prerequisites = {
+        generation.id: frozenset(),
+        edit.id: frozenset({generation.id}),
+        invalidate.id: frozenset({generation.id, edit.id}),
+        validate.id: frozenset({generation.id, edit.id, invalidate.id}),
+        reset.id: frozenset({generation.id, edit.id, invalidate.id, validate.id}),
+        delete.id: frozenset({generation.id, edit.id}),
+    }
+
+    states_by_ids: dict[frozenset[EntryId], JournalState] = {
+        frozenset(): JournalState(frozenset())
+    }
+    pending = [frozenset()]
+    while pending:
+        ids = pending.pop(0)
+        for authored in operations:
+            if authored.id in ids or not prerequisites[authored.id].issubset(ids):
+                continue
+            next_ids = ids | {authored.id}
+            if next_ids not in states_by_ids:
+                next_events = frozenset(
+                    candidate for candidate in operations if candidate.id in next_ids)
+                states_by_ids[next_ids] = JournalState(next_events)
+                pending.append(next_ids)
+    states = list(states_by_ids.values())
+    assert len(states) > 6
+
+    def projection(state: JournalState) -> tuple[
+            EntryId | None, str | None, frozenset[EntryId]]:
+        selected = presence_selection(state, node)
+        selected_freshness = None
+        if selected is not None and selected.kind == "generation":
+            origins = value_events(state.events, node, selected.id)
+            winner = concurrent_winner(causal_maxima(origins))
+            if winner is not None:
+                selected_freshness = freshness(
+                    state.events, node, selected.id, winner.id)
+        return (None if selected is None else selected.id, selected_freshness,
+                frozenset(item.id for item in notification_maxima(state.events)))
+
+    for state in states:
+        reduced = compact(state)
+        assert compact(reduced) == reduced, ("compact-idempotence", state)
+        assert projection(state) == projection(reduced), ("projection", state)
+        archived_full = controlled_reset_archive(JournalState(frozenset()), state)
+        archived_reduced = controlled_reset_archive(
+            JournalState(frozenset()), reduced)
+        assert archived_full == archived_reduced, ("reset-archive", state)
+
+        coverage = observed_events_prefix(state.events)
+        full_replica = Replica(authors[0],
+                               journal={entry.id: entry for entry in state.events},
+                               journal_coverage=coverage)
+        compact_replica = Replica(
+            authors[0], journal={entry.id: entry for entry in reduced.events},
+            journal_coverage=coverage,
+            reset_anchor_cuts={(summary.node, summary.anchor):
+                               dict(summary.absorbs_through)
+                               for summary in reduced.anchor_cuts})
+        full_iterator = make_iterator(full_replica)
+        reduced_iterator = make_iterator(compact_replica)
+        observed_full = full_iterator.iterate(lambda _entry: True)
+        observed_reduced = reduced_iterator.iterate(lambda _entry: True)
+        assert {(entry.id, entry.public_action) for entry in observed_full} == {
+            (entry.id, entry.public_action) for entry in observed_reduced}
+        assert full_iterator.progress == reduced_iterator.progress == coverage
+
+        for future in states:
+            assert compact(compact(state) | future) == compact(state | future), (
+                "future-union", state, future)
+
+    for left in states:
+        assert compact(left | left) == compact(left), ("merge-idempotence", left)
+        for right in states:
+            assert compact(left | right) == compact(right | left), (
+                "merge-commutativity", left, right)
+
+            left_replica = Replica(authors[0],
+                                   journal={entry.id: entry for entry in left.events},
+                                   journal_coverage=observed_events_prefix(left.events))
+            right_replica = Replica(authors[1],
+                                    journal={entry.id: entry for entry in right.events},
+                                    journal_coverage=observed_events_prefix(right.events))
+            receive(left_replica, right_replica)
+            receive(right_replica, left_replica)
+            assert replica_journal_state(left_replica) == replica_journal_state(right_replica), (
+                "receive-convergence", left, right)
+
+    # Every three-way partition exercises compaction after intermediate merge,
+    # rather than merely checking associativity of raw frozenset union.
+    for first in states:
+        for second in states:
+            for third in states:
+                assert compact(compact(first | second) | third) == compact(
+                    first | compact(second | third)), (
+                        "compacted-merge-associativity", first, second, third)
+
+    # Foreign sequence magnitude is deliberately varied while time and author
+    # stay fixed: neither causal maxima nor conflict selection may change.
+    low = event(authors[0], 1, node, "edit", time=7)
+    foreign_low = event(authors[1], 1, node, "edit", time=7)
+    foreign_high = event(authors[1], 10_000, node, "edit", time=7)
+    assert concurrent_winner(causal_maxima((low, foreign_low))).author == authors[1]
+    assert concurrent_winner(causal_maxima((low, foreign_high))).author == authors[1]
+
+
 def main() -> None:
     verify_pure_receive_then_author()
     verify_receive_anchor_cut_summaries()
@@ -1489,6 +1730,8 @@ def main() -> None:
     verify_consumable_journal_iterator()
     verify_compaction_future_union()
     verify_causal_laws()
+    verify_persisted_semantic_clock()
+    verify_generated_supported_histories()
     print("journal causal-context model: all bounded checks passed")
 
 

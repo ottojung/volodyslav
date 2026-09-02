@@ -35,8 +35,9 @@ require a special `rendered/_meta/` scan path for this feature.
 
 ## Generation
 
-The fingerprint is generated with `random.basicString(capabilities)` using
-the project's seeded PRNG. It is generated exactly once:
+The fingerprint is generated with
+`random.basicString(capabilities, DATABASE_FINGERPRINT_LENGTH)` using the
+project's seeded PRNG. It is generated exactly once:
 
 1. **Fresh first boot**: No `r/global/fingerprint` exists and no `r/`
    snapshot data is available. A new fingerprint is generated.
@@ -72,8 +73,8 @@ onto a new concurrently-writing host" transition.
 A `DatabaseFingerprint` is exactly 16 lowercase ASCII letters. Every compliant
 implementation MUST generate, persist, import, and validate the one canonical
 full-string representation `/^[a-z]{16}$/`; fresh creation uses
-`random.basicString(capabilities)` at its fixed default length of 16. The length
-is not configurable.
+`random.basicString(capabilities, DATABASE_FINGERPRINT_LENGTH)`. The fingerprint
+length is not configurable through the database API.
 
 Every fingerprint loaded from active replica metadata, replica-switch target
 metadata, a rendered snapshot used for restore/reset, or the standalone

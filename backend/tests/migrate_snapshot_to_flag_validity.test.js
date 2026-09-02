@@ -31,7 +31,7 @@ function makeSnapshot({ parentFreshness = "up-to-date", counter = 1, includeCoun
         ["a", nodeKey("all_events")],
         ["b", nodeKey("events_count")],
     ]);
-    writeJson(path.join(r, "global", "fingerprint"), "testfingerprinta");
+    writeJson(path.join(r, "global", "fingerprint"), "testfingerprintx");
     writeJson(path.join(r, "global", "last_node_index"), lastNodeIndex);
     writeJson(path.join(r, "global", "version"), "0.0.0-dev");
     writeJson(path.join(r, "values", "a"), { type: "all_events", events: [] });

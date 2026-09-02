@@ -48,17 +48,17 @@ function getTestCapabilities() {
  * @returns {import('../src/generators/incremental_graph/database/types').NodeIdentifier}
  */
 function makeTestId(i) {
-    return nodeIdentifierFromString(`${i.toString(36)}-abcdefghi`);
+    return nodeIdentifierFromString(`${i.toString(36)}-abcdefghijklmnop`);
 }
 
 // Named constants for the most commonly used test node identifiers.
-const NODE_A = makeTestId(0);  // '1-abcdefghi'
-const NODE_B = makeTestId(1);  // '2-abcdefghi'
-const NODE_C = makeTestId(2);  // '3-abcdefghi'
+const NODE_A = makeTestId(0);  // '1-abcdefghijklmnop'
+const NODE_B = makeTestId(1);  // '2-abcdefghijklmnop'
+const NODE_C = makeTestId(2);  // '3-abcdefghijklmnop'
 const NODE_D = makeTestId(3);  // 'ddddddddd'
 const NODE_E = makeTestId(4);  // 'eeeeeeeee'  (used as external/unlisted node)
 const NODE_M = makeTestId(12); // 'mmmmmmmmm'
-const NODE_Z = makeTestId(25); // 'z-abcdefghi'
+const NODE_Z = makeTestId(25); // 'z-abcdefghijklmnop'
 
 const LINEAR_CHAIN_SCHEME = {
     format: 1,

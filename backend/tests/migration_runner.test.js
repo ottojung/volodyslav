@@ -160,7 +160,7 @@ function makeRootDatabaseMock({ prevVersion, currentVersion, xStorage, yStorage 
             setGlobalVersionCalledWith = v;
         },
         async _rawSync() {},
-        getFingerprint() { return 'testmigrfinprtaa'; },
+        getFingerprint() { return 'migrprint'; },
         getVersion() { return this.version; },
         getLastNodeIndex() { return this._computed.lastNodeIndex; },
         advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
@@ -520,7 +520,7 @@ describe("runMigration", () => {
         await xStorage.global.put("version", "1.0.0");
         await xStorage.global.put(IDENTIFIERS_KEY, []);
         await xStorage.global.put(LAST_NODE_INDEX_KEY, 0);
-        await xStorage.global.put("fingerprint", "testfingerprinta");
+        await xStorage.global.put("fingerprint", "testfingerprintx");
         await xStorage.global.put(GRAPH_SCHEME_KEY, JSON.stringify({ format: 1, nodes: [{ head: "A", arity: 0, inputTemplates: [] }] }));
 
         const mock = makeRootDatabaseMock({ prevVersion: "1.0.0", currentVersion: "2.0.0", xStorage, yStorage });
@@ -999,7 +999,7 @@ describe("runMigration", () => {
                 },
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
-                getFingerprint() { return 'testmigrfinprtaa'; },
+                getFingerprint() { return 'migrprint'; },
                 getVersion() { return this.version; },
                 getLastNodeIndex() { return this._computed.lastNodeIndex; },
                 advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
@@ -1136,7 +1136,7 @@ describe("runMigration", () => {
                 async setCurrentReplicaPointer(name) { callOrder.push(`setCurrentReplicaPointer:${name}`); },
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
-                getFingerprint() { return 'testmigrfinprtaa'; },
+                getFingerprint() { return 'migrprint'; },
                 getVersion() { return this.version; },
                 getLastNodeIndex() { return this._computed.lastNodeIndex; },
                 advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
@@ -1185,7 +1185,7 @@ describe("runMigration", () => {
                 async setCurrentReplicaPointer(name) { callOrder.push(`setCurrentReplicaPointer:${name}`); },
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
-                getFingerprint() { return 'testmigrfinprtaa'; },
+                getFingerprint() { return 'migrprint'; },
                 getVersion() { return this.version; },
                 getLastNodeIndex() { return this._computed.lastNodeIndex; },
                 advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
@@ -1628,7 +1628,7 @@ describe("x-namespace state preserved on migration failure", () => {
             async setCurrentReplicaPointer() { throw swapError; },
             async setGlobalVersion() {},
             async _rawSync() {},
-            getFingerprint() { return 'testmigrfinprtaa'; },
+            getFingerprint() { return 'migrprint'; },
             getVersion() { return this.version; },
             getLastNodeIndex() { return this._computed.lastNodeIndex; },
             advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },
@@ -2102,7 +2102,7 @@ describe("infrastructure failures", () => {
                 async setCurrentReplicaPointer(name) { callOrder.push(`setCurrentReplicaPointer:${name}`); },
                 async setGlobalVersion(_v) {},
                 async _rawSync() {},
-                getFingerprint() { return 'testmigrfinprtaa'; },
+                getFingerprint() { return 'migrprint'; },
                 getLastNodeIndex() { return 0; },
                 advanceLastNodeIndex(_value) {},
             };
@@ -2139,7 +2139,7 @@ describe("infrastructure failures", () => {
             async setCurrentReplicaPointer() {},
             async setGlobalVersion() {},
             async _rawSync() {},
-            getFingerprint() { return 'testmigrfinprtaa'; },
+            getFingerprint() { return 'migrprint'; },
             getVersion() { return this.version; },
             getLastNodeIndex() { return this._computed.lastNodeIndex; },
             advanceLastNodeIndex(value) { this._computed.lastNodeIndex = Math.max(this._computed.lastNodeIndex, value); },

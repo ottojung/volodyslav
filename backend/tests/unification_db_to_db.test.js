@@ -18,12 +18,12 @@ const {
 const { nodeIdentifierFromString } = require('../src/generators/incremental_graph/database');
 
 // Stable current-format NodeIdentifiers for the test fingerprint used as test node keys.
-const NODE_FOO = nodeIdentifierFromString('1-abcdefghi');
-const NODE_BAR = nodeIdentifierFromString('2-abcdefghi');
-const NODE_BAZ = nodeIdentifierFromString('3-abcdefghi');
-const NODE_K   = nodeIdentifierFromString('4-abcdefghi');
-const NODE_N   = nodeIdentifierFromString('5-abcdefghi');
-const NODE_S   = nodeIdentifierFromString('6-abcdefghi');
+const NODE_FOO = nodeIdentifierFromString('1-abcdefghijklmnop');
+const NODE_BAR = nodeIdentifierFromString('2-abcdefghijklmnop');
+const NODE_BAZ = nodeIdentifierFromString('3-abcdefghijklmnop');
+const NODE_K   = nodeIdentifierFromString('4-abcdefghijklmnop');
+const NODE_N   = nodeIdentifierFromString('5-abcdefghijklmnop');
+const NODE_S   = nodeIdentifierFromString('6-abcdefghijklmnop');
 
 // ---------------------------------------------------------------------------
 // makeInMemorySchemaStorage tests

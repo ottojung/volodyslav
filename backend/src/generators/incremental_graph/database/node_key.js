@@ -21,6 +21,7 @@ const {
     stringToNodeName,
     nodeKeyStringToString,
 } = require("./types");
+const { findInvalidPersistenceSafeValue } = require("./persistence_safe_value");
 
 /** @typedef {import('../types').ConstValue} ConstValue */
 /** @typedef {import('../types').NodeKeyString} NodeKeyString */
@@ -51,24 +52,13 @@ function isInvalidConstValueError(object) {
  * @returns {void}
  */
 function validateConstValue(value, path) {
-    if (typeof value === "string" || typeof value === "boolean") return;
-    if (typeof value === "number") {
-        if (Number.isFinite(value)) return;
+    if (value === null) {
         throw new InvalidConstValueError(path);
     }
-    if (Array.isArray(value)) {
-        for (let index = 0; index < value.length; index += 1) {
-            validateConstValue(value[index], `${path}[${index}]`);
-        }
-        return;
+    const invalid = findInvalidPersistenceSafeValue(value, path);
+    if (invalid !== undefined) {
+        throw new InvalidConstValueError(invalid.path);
     }
-    if (value !== null && typeof value === "object") {
-        for (const [key, nestedValue] of Object.entries(value)) {
-            validateConstValue(nestedValue, `${path}.${key}`);
-        }
-        return;
-    }
-    throw new InvalidConstValueError(path);
 }
 
 /**
@@ -202,8 +192,8 @@ function compareConstValue(a, b) {
     // Both are objects (non-array, non-null).
     if (a !== null && typeof a === "object" && !Array.isArray(a) &&
         b !== null && typeof b === "object" && !Array.isArray(b)) {
-        const sortedEntriesA = Object.entries(a).sort(([k1], [k2]) => k1 < k2 ? -1 : k1 > k2 ? 1 : 0);
-        const sortedEntriesB = Object.entries(b).sort(([k1], [k2]) => k1 < k2 ? -1 : k1 > k2 ? 1 : 0);
+        const sortedEntriesA = Object.entries(a);
+        const sortedEntriesB = Object.entries(b);
         const minLen = Math.min(sortedEntriesA.length, sortedEntriesB.length);
         for (let i = 0; i < minLen; i++) {
             const entryA = sortedEntriesA[i];
