@@ -63,7 +63,7 @@ class InMemoryDatabase {
         this._identifierLookup = makeEmptyIdentifierLookup();
         this._identifierCounter = 0;
         this._pendingAllocations = new Map();
-        this._computed = { lastNodeIndex: 0, fingerprint: 'testfpflagval' };
+        this._computed = { lastNodeIndex: 0, fingerprint: 'flagprint' };
     }
 
     currentReplicaName() { return 'x'; }
@@ -104,7 +104,7 @@ class InMemoryDatabase {
     }
 
     getFingerprint() {
-        return 'testfpflagval';
+        return 'flagprint';
     }
 
     getVersion() { return this.version; }
@@ -1076,7 +1076,7 @@ describe("Incremental graph validity", () => {
             try {
                 const storage = db.getSchemaStorage();
                 await storage.batch([
-                    storage.values.putOp(nodeIdentifierFromString("1-abcdefghi"), { v: "stored" }),
+                    storage.values.putOp(nodeIdentifierFromString("1-abcdefghijklmnop"), { v: "stored" }),
                 ]);
 
                 expect(await storage.global.get("version")).toBeUndefined();

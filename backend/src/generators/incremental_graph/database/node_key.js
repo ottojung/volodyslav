@@ -21,11 +21,45 @@ const {
     stringToNodeName,
     nodeKeyStringToString,
 } = require("./types");
+const { findInvalidPersistenceSafeValue } = require("./persistence_safe_value");
 
 /** @typedef {import('../types').ConstValue} ConstValue */
 /** @typedef {import('../types').NodeKeyString} NodeKeyString */
 /** @typedef {import('../types').NodeName} NodeName */
 /** @typedef {import('../types').SchemaPattern} SchemaPattern */
+
+class InvalidConstValueError extends Error {
+    /** @param {string} path */
+    constructor(path) {
+        super(`Invalid ConstValue at ${path}: numbers must be finite and nested values must be ConstValue values`);
+        this.name = "InvalidConstValueError";
+        this.path = path;
+    }
+}
+
+/**
+ * @param {unknown} object
+ * @returns {object is InvalidConstValueError}
+ */
+function isInvalidConstValueError(object) {
+    return object instanceof InvalidConstValueError;
+}
+
+/**
+ * Validate the recursive persistence-safe ConstValue contract.
+ * @param {unknown} value
+ * @param {string} path
+ * @returns {void}
+ */
+function validateConstValue(value, path) {
+    if (value === null) {
+        throw new InvalidConstValueError(path);
+    }
+    const invalid = findInvalidPersistenceSafeValue(value, path);
+    if (invalid !== undefined) {
+        throw new InvalidConstValueError(invalid.path);
+    }
+}
 
 /**
  * A node key object for concrete nodes.
@@ -41,6 +75,9 @@ const {
  * @returns {NodeKeyString}
  */
 function serializeNodeKey(key) {
+    for (let index = 0; index < key.args.length; index += 1) {
+        validateConstValue(key.args[index], `args[${index}]`);
+    }
     const headStr = nodeNameToString(key.head);
     const serialized = JSON.stringify({ head: headStr, args: key.args });
     return stringToNodeKeyString(serialized);
@@ -155,8 +192,8 @@ function compareConstValue(a, b) {
     // Both are objects (non-array, non-null).
     if (a !== null && typeof a === "object" && !Array.isArray(a) &&
         b !== null && typeof b === "object" && !Array.isArray(b)) {
-        const sortedEntriesA = Object.entries(a).sort(([k1], [k2]) => k1 < k2 ? -1 : k1 > k2 ? 1 : 0);
-        const sortedEntriesB = Object.entries(b).sort(([k1], [k2]) => k1 < k2 ? -1 : k1 > k2 ? 1 : 0);
+        const sortedEntriesA = Object.entries(a);
+        const sortedEntriesB = Object.entries(b);
         const minLen = Math.min(sortedEntriesA.length, sortedEntriesB.length);
         for (let i = 0; i < minLen; i++) {
             const entryA = sortedEntriesA[i];
@@ -232,4 +269,5 @@ module.exports = {
     stringToNodeName,
     stringToNodeKeyString,
     nodeKeyStringToString,
+    isInvalidConstValueError,
 };

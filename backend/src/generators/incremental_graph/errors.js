@@ -288,11 +288,12 @@ class InvalidComputorReturnValue extends Error {
     /**
      * @param {NodeIdentifier | import('./types').NodeKeyString} nodeIdentity
      * @param {unknown} value
+     * @param {string} reason
      */
-    constructor(nodeIdentity, value) {
+    constructor(nodeIdentity, value, reason) {
         super(
             `Computor for node '${nodeIdentity}' returned an invalid value: ${value}. ` +
-                `Computors must return a valid ComputedValue or Unchanged, not null or undefined.`
+                `Computors must return a persistence-safe ComputedValue or Unchanged: ${reason}.`
         );
         this.name = "InvalidComputorReturnValueError";
         this.nodeKey = nodeIdentity;
@@ -304,10 +305,11 @@ class InvalidComputorReturnValue extends Error {
  * Constructs an InvalidComputorReturnValue error.
  * @param {NodeIdentifier | import('./types').NodeKeyString} nodeIdentity
  * @param {unknown} value
+ * @param {string} reason
  * @returns {InvalidComputorReturnValue}
  */
-function makeInvalidComputorReturnValueError(nodeIdentity, value) {
-    return new InvalidComputorReturnValue(nodeIdentity, value);
+function makeInvalidComputorReturnValueError(nodeIdentity, value, reason) {
+    return new InvalidComputorReturnValue(nodeIdentity, value, reason);
 }
 
 /**

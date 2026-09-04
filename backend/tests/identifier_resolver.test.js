@@ -35,7 +35,7 @@ function makeRootDatabase() {
             return counter;
         },
         getFingerprint() {
-            return 'testresfinger';
+            return 'testresfingeraaa';
         },
         getVersion() { return this.version; },
         getLastNodeIndex() { return this._computed.lastNodeIndex; },
@@ -59,7 +59,7 @@ function makeRootDatabase() {
                 pendingAllocations.delete(keyString);
             }
         },
-        _computed: { lastNodeIndex: 0, fingerprint: 'testresfinger' },
+        _computed: { lastNodeIndex: 0, fingerprint: 'testresfingeraaa' },
     };
 }
 
@@ -88,7 +88,7 @@ describe("Transaction-based identifier operations", () => {
     });
 
     test("lookupNodeIdentifier finds existing mapping", () => {
-        const existingIdentifier = nodeIdentifierFromString("1-abcdefghi");
+        const existingIdentifier = nodeIdentifierFromString("1-abcdefghijklmnop");
         const existingKey = stringToNodeKeyString('{"head":"existing","args":[]}');
         const tx = makeTransaction([[existingIdentifier, existingKey]]);
         const found = lookupNodeIdentifier(tx, existingKey);
@@ -96,7 +96,7 @@ describe("Transaction-based identifier operations", () => {
     });
 
     test("getOrAllocateNodeIdentifier returns existing identifier without allocating", () => {
-        const existingIdentifier = nodeIdentifierFromString("1-abcdefghi");
+        const existingIdentifier = nodeIdentifierFromString("1-abcdefghijklmnop");
         const existingKey = stringToNodeKeyString('{"head":"existing","args":[]}');
         const tx = makeTransaction([[existingIdentifier, existingKey]]);
         const db = makeRootDatabase();
@@ -129,7 +129,7 @@ describe("Transaction-based identifier operations", () => {
     });
 
     test("requireNodeKey retrieves the key for an existing identifier", () => {
-        const id = nodeIdentifierFromString("1-abcdefghi");
+        const id = nodeIdentifierFromString("1-abcdefghijklmnop");
         const key = stringToNodeKeyString('{"head":"existing","args":[]}');
         const tx = makeTransaction([[id, key]]);
         
@@ -138,7 +138,7 @@ describe("Transaction-based identifier operations", () => {
 
     test("requireNodeKey throws for an unknown identifier", () => {
         const tx = makeTransaction([]);
-        const id = nodeIdentifierFromString("2-abcdefghi");
+        const id = nodeIdentifierFromString("2-abcdefghijklmnop");
         expect(() => requireNodeKey(tx, id)).toThrow();
     });
 
@@ -177,7 +177,7 @@ describe("Transaction-based identifier operations", () => {
     });
 
     test("allocations include pre-existing base lookup mappings", () => {
-        const baseId = nodeIdentifierFromString("3-abcdefghi");
+        const baseId = nodeIdentifierFromString("3-abcdefghijklmnop");
         const baseKey = stringToNodeKeyString('{"head":"base","args":[]}');
         const tx = makeTransaction([[baseId, baseKey]]);
         const db = makeRootDatabase();

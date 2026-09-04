@@ -28,11 +28,13 @@ function toDefinedText(text) {
  */
 function computeEntryDescription(event) {
     if (getType(event) !== "diary") {
-        return { type: "entry_description", description: undefined };
+        return { type: "entry_description" };
     }
 
     const description = toDefinedText(getDescription(event));
-    return { type: "entry_description", description };
+    return description === undefined
+        ? { type: "entry_description" }
+        : { type: "entry_description", description };
 }
 
 module.exports = {

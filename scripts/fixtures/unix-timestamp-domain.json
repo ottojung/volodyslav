@@ -1,0 +1,9 @@
+[
+  { "description": "zero", "value": "0", "valid": true },
+  { "description": "pre-epoch timestamp", "value": "-1", "valid": true },
+  { "description": "ordinary modern timestamp", "value": "1735689600000", "valid": true },
+  { "description": "minimum exact timestamp", "value": "-8640000000000000", "valid": true },
+  { "description": "maximum exact timestamp", "value": "8640000000000000", "valid": true },
+  { "description": "below exact timestamp domain", "value": "-8640000000000001", "valid": false },
+  { "description": "above exact timestamp domain", "value": "8640000000000001", "valid": false }
+]

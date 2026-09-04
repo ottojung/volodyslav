@@ -4,12 +4,20 @@
 
 The database fingerprint is the local allocation fingerprint of the live
 database. It serves as the namespace suffix in node identifiers
-(`<base36-index>-<fingerprint>`), making them globally unique across hosts
-even when the same local index values are allocated.
+(`<base36-index>-<fingerprint>`), providing a probabilistically distinct
+allocation namespace across independently created hosts even when the same
+local index values are allocated.
 
-Each host obtains a distinct fingerprint through a supported lifecycle
-transition (fresh creation). The fingerprint is stored in replica-global
-metadata and is generated once during first database initialization. It never
+The canonical type name for this existing value is `DatabaseFingerprint`.
+Journal entries use the authoring host's `DatabaseFingerprint` directly; there
+is no journal-specific identity or second storage location.
+
+Fresh creation probabilistically chooses a fingerprint for each host. Hosts may,
+with low probability, choose the same fingerprint; the protocol does not make
+any uniqueness guarantee at creation time. A collision between two
+independently valid fresh hosts is not by itself corruption. The fingerprint is stored
+in replica-global metadata and is generated once during first database
+initialization. It never
 changes during the lifetime of a live database.
 
 ## Storage location
@@ -27,8 +35,9 @@ require a special `rendered/_meta/` scan path for this feature.
 
 ## Generation
 
-The fingerprint is generated with `random.basicString(capabilities)` using
-the project's seeded PRNG. It is generated exactly once:
+The fingerprint is generated with
+`random.basicString(capabilities, DATABASE_FINGERPRINT_LENGTH)` using the
+project's seeded PRNG. It is generated exactly once:
 
 1. **Fresh first boot**: No `r/global/fingerprint` exists and no `r/`
    snapshot data is available. A new fingerprint is generated.
@@ -52,23 +61,28 @@ the project's seeded PRNG. It is generated exactly once:
 Taking a rendered snapshot from one host and using it to bootstrap a second,
 concurrently-writing host is outside the supported lifecycle model (see
 `database-lifecycle.md` §10). If performed anyway, the two hosts would share
-a fingerprint and could allocate colliding identifiers. Sync merge would
-detect this as an `IdentifierLookupConflictError` (the same identifier
-mapped to different semantic keys) and fail cleanly for the affected host
-without corrupting either side.
+a fingerprint and could allocate colliding identifiers.
 
-New hosts obtain a distinct fingerprint through the fresh-creation path
+New hosts obtain a probabilistically chosen fingerprint through the
+fresh-creation path
 (`database-lifecycle.md` §4.3). There is no supported "clone this database
 onto a new concurrently-writing host" transition.
 
 ## Format
 
-The fingerprint is a lowercase ASCII string of at least 9 characters and is
-runtime validated against the full-string pattern `/^[a-z]{9,}$/`. Any
-persisted fingerprint loaded from active replica metadata, replica-switch
-target metadata, a rendered snapshot used for restore/reset, or the standalone
-snapshot migration path must satisfy this pattern. Missing or malformed values
-fail hard instead of being silently accepted or replaced.
+A `DatabaseFingerprint` is exactly 16 lowercase ASCII letters. Every compliant
+implementation MUST generate, persist, import, and validate the one canonical
+full-string representation `/^[a-z]{16}$/`; fresh creation uses
+`random.basicString(capabilities, DATABASE_FINGERPRINT_LENGTH)`. The fingerprint
+length is not configurable through the database API.
+
+Every fingerprint loaded from active replica metadata, replica-switch target
+metadata, a rendered snapshot used for restore/reset, or the standalone
+snapshot migration path MUST satisfy this representation. A missing, shorter,
+longer, uppercase, non-ASCII, digit-containing, or otherwise malformed value is
+invalid persistent state and MUST be rejected rather than accepted, replaced,
+or normalized. An implementation with unbounded fingerprint representations is
+non-compliant.
 
 ## Lifecycle
 
@@ -98,7 +112,7 @@ remote hosts during sync/reset. However:
 
 - **Normal sync merge**: A host's staged snapshot may contain a different
   fingerprint. The local active replica keeps its own fingerprint; the
-  remote host fingerprint is not adopted. Merge does not modify the local
+  remote database fingerprint is not adopted. Merge does not modify the local
   fingerprint.
 
 - **Reset/import into existing live DB**: The snapshot may contain a remote
@@ -111,6 +125,23 @@ remote hosts during sync/reset. However:
   This is the supported path for a host recovering its own prior synchronized
   state. Cross-host snapshot cloning is unsupported (see Generation above).
 
-Through the supported lifecycle transitions, each independently-created host
-obtains a distinct fingerprint. This is what makes node identifiers globally
-unique across hosts even when the same local index values are allocated.
+`DatabaseFingerprint` is a probabilistically chosen durable writer/allocation
+identifier. Expected distinctness gives node identifiers probabilistically
+distinct namespaces across independently created hosts. An unlucky collision
+may alias independently created histories; no uniqueness guarantee is made at
+creation time, and the collision does not by itself make either standalone
+database corrupt.
+
+The journal and synchronization model assumes that each
+`DatabaseFingerprint` in the interpreted author-coordinate universe denotes
+one durable writer history. A collision between independent writer histories
+can alias
+`JournalEntryId`, `journalCoverage`, causal-prefix coordinates, and
+iterator progress and issuance-coverage coordinates, and `NodeIdentifier` allocation namespaces. When that
+premise is violated, the normal uniqueness, portability, causal, and
+convergence guarantees do not apply across the aliased histories. The protocol
+does not promise to detect or repair such a collision.
+
+## Journal authorship identity
+
+The durable fingerprint is the author coordinate of every locally authored `JournalEntryId` and every local coverage coordinate. It does not impose cross-author order. Supported restart, self-restoration, and migration preserve the fingerprint with journal, coverage, and allocator; rollback under the same identity is unsupported. Controlled reset retains the receiver fingerprint and does not import source journal or coverage.

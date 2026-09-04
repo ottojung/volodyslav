@@ -12,11 +12,34 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-02 (SchemaPattern):** An expression string that may contain variables, e.g., `"full_event(e)"` or `"all_events"`. Used only in schema definitions to denote families of nodes and for variable mapping.
 
-**TERM-03 (SimpleValue):** A value type defined recursively as: `number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them (see DEF-EQUAL-01). Excludes `undefined`, `null`, functions, and symbols.
+**TERM-03 (SimpleValue):** A value type defined recursively as: `null | number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them (see DEF-EQUAL-01). Excludes `undefined`, functions, symbols, and BigInt.
 
-**TERM-04 (ConstValue):** A subtype of `SimpleValue`.
+**TERM-04 (ConstValue):** The binding-valid subset of `ComputedValue` that
+excludes `null`: boolean, finite JavaScript Number, string, dense array of
+`ConstValue`, or plain string-keyed JSON record of `ConstValue`. It uses the
+same ordinary JSON representation and round-trip invariant as `ComputedValue`;
+there is no separate ConstValue serialization algorithm.
 
-**TERM-05 (ComputedValue):** A subtype of `SimpleValue`.
+**TERM-05 (ComputedValue):** The recursively JSON-round-trippable semantic value
+domain: `null`, boolean, finite JavaScript Number, string, dense array of
+`ComputedValue`, or plain string-keyed JSON record of `ComputedValue`. It
+excludes `undefined`, `NaN`, positive and negative infinity, functions, symbols,
+BigInt, sparse arrays or `undefined` array entries, cycles, JSON-transforming
+objects (including accessors and serialization hooks), non-JSON semantic
+objects, and every nested occurrence of those values.
+`ConstValue` is the binding-valid subset excluding `null`. For every valid
+`ComputedValue` `v`, ordinary JSON persistence MUST preserve semantic equality:
+`isEqual(v, JSON.parse(JSON.stringify(v))) === true`. This is an invariant of
+the admitted domain, not a normalization or replacement procedure. The graph
+stores a `ComputedValue`; ordinary JSON is only its persistence encoding.
+Computor results are validated before graph-state publication. Database open,
+synchronization, reset import, and migration validate every cached value before
+the containing replica becomes supported active state. `null` is a valid cached
+value; `undefined` alone represents absence from the value sublevel.
+The Level backend reserves a top-level `null` as “no stored value”, so its
+physical value record is a one-field presence envelope. That envelope is not a
+semantic `ComputedValue`: typed storage and rendered snapshots expose the raw
+value, including raw JSON `null`, and validation applies to that raw value.
 
 **TERM-06 (BindingEnvironment):** A positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. Bindings are matched to argument positions by position, not by name.
 
@@ -26,9 +49,12 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-08 (NodeKey):** A string key used for storage, derived from `(nodeName, bindings)`.
 
-**TERM-09 (NodeValue):** Computed value at a node (always a `ComputedValue`). The term `NodeValue` is an alias for `ComputedValue` in the context of stored node values.
 
 **TERM-10 (Freshness):** Conceptual state: `"up-to-date" | "potentially-outdated"`.
+
+**TERM-10a (Materialized node):** A node whose identifier exists in
+`identifiers_keys_map`, `values`, `freshness`, and `timestamps`. A materialized
+node's freshness is `"up-to-date"` or `"potentially-outdated"`.
 
 **REQ-MAT-CLOSURE:** Materialized nodes form a dependency-closed set. For every materialized node N, every concrete input of N is materialized. Consequently, materializing N materializes its complete transitive dependency cone first, and removing any materialization requires removing all of its materialized transitive dependents.
 
@@ -106,7 +132,7 @@ The schema implicitly defines infinitely many dependency edges—one set for eac
 The public API requires both the `nodeName` (functor) and bindings to address a specific node:
 
 * `pull(nodeName, bindings)` — Evaluates the node instance identified by `NodeName` and `BindingEnvironment`
-* `invalidate(nodeName, bindings)` — Marks the node instance as potentially-outdated, triggering recomputation on next pull
+* `invalidate(nodeName, bindings)` — Marks a materialized node as potentially-outdated, triggering recomputation on next pull
 
 **For arity-0 nodes** (nodes with no arguments like `all_events`):
 * `pull("all_events", [])` and `pull("all_events")` are equivalent
@@ -203,6 +229,8 @@ For schema parsing and pattern matching, expressions are normalized using these 
 
 ```typescript
 function isEqual(a: SimpleValue, b: SimpleValue): boolean {
+  if (a === null || b === null) return a === b;
+
   if (typeof a === 'number' && typeof b === 'number') {
     if (isNaN(a) && isNaN(b)) {
       return true; // NaN is equal to NaN
@@ -383,7 +411,7 @@ await graph.pull("full_event", [{id: "123"}]);
 1. Its observable behavior matches the baseline semantics (properties PROP-01, PROP-02, PROP-03, PROP-04)
 2. It satisfies all additional normative requirements not captured by PROP-01..04
 
-### 2.1 pull(nodeName, bindings) → NodeValue
+### 2.1 pull(nodeName, bindings) → ComputedValue
 
 **Signature:** `pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue>`
 
@@ -469,6 +497,11 @@ function makeIncrementalGraph(
 
 ### 3.2 IncrementalGraph Interface
 
+`PossibleChange` is the plain readonly notification payload and `JournalIterator`
+is the mutable, cloneable consumer described by
+`incremental-graph-journal-api.md`. Iterator progress is filter-independent and
+is not carried by notifications.
+
 ```typescript
 interface IncrementalGraph {
   // Mutation and computation
@@ -478,6 +511,12 @@ interface IncrementalGraph {
   // Timestamp API (read-only)
   getCreationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
   getModificationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
+
+  // Journal API
+  journal: {
+    makeIterator(): JournalIterator;
+    iteratorFromString(state: string): Promise<JournalIterator>;
+  };
 
   // Inspection API (read-only)
   getFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | undefined>;
@@ -511,23 +550,30 @@ interface IncrementalGraph {
 
 **REQ-IFACE-08 (Timestamp Invariants):**
 * `getCreationTime(N, B) <= getModificationTime(N, B)` for any materialized node instance `N@B`.
-* `getCreationTime(N, B)` MUST NOT change once set.
+* During ordinary local graph operations, `getCreationTime(N, B)` MUST NOT
+  change once set. Synchronization may replace it only by copying the selected
+  materialization record's exact existing `createdAt`.
 * `getModificationTime(N, B)` is a version timestamp for the stored semantic value.
 * A **new timestamp record** is created when a semantic value is first stored for a node (including migration `create` and the node's initial computation). `createdAt` and `modifiedAt` are both set to the current time at this point.
-* An existing `modifiedAt` **advances** only when a computor produces a changed value that replaces the previous stored value. `modifiedAt` MUST NOT advance in any other circumstance.
+* During ordinary local computor execution, an existing `modifiedAt`
+  **advances** only when a computor produces a changed value that replaces the
+  previous stored value. Synchronization can instead replace it with the exact
+  existing `modifiedAt` of the selected source materialization.
 * Synchronization may replace a local node value and timestamp with another replica's existing value-version pair (the `take` decision). This copies the existing timestamp; it does not mint a new one. Synchronization MUST NOT replace a timestamp with the merge execution time or any other manufactured value.
+* Controlled reset is distinct: absent-to-present and unequal present-to-present values set `modifiedAt` to reset transaction time τ; equal surviving values preserve receiver `modifiedAt`; freshness/proof-only reset changes do not modify it. A repeated identical reset is timestamp-silent.
 * `modifiedAt` MUST NOT change when:
   * a node becomes `potentially-outdated` (invalidation);
   * invalidation propagates to dependent nodes;
   * validity flags are added, removed, transported, or rebuilt;
   * a computor returns `Unchanged`;
   * synchronization keeps an existing value (the `keep` decision);
-  * identifier reconciliation occurs;
+  * identifier reconciliation occurs without selection of a different source
+    materialization record;
   * dependency identifiers are relowered;
   * a cached value is deleted because the old value is not valid for the final dependency structure;
   * freshness changes between `up-to-date` and `potentially-outdated`; no freshness record exists for unmaterialized nodes.
 
-* Migration invalidation (`migration.md`) follows the same invariant: invalidation of a cached node does not change `modifiedAt`. Freshness and validity are the mechanisms for representing uncertainty and recomputation requirements in migration, just as they are in runtime operations.
+* Migration invalidation (`migration.md`) follows the same invariant: invalidation does not change `modifiedAt`. Freshness and validity are the mechanisms for representing uncertainty and recomputation requirements in migration, just as they are in runtime operations.
 
 **REQ-IFACE-09 (MissingTimestampError):** Implementations MUST expose `makeMissingTimestampError(nodeKey)` factory and `isMissingTimestamp(value)` type guard. `MissingTimestampError` MUST have a stable `.name` property of `"MissingTimestampError"` and a `nodeKey: string` field identifying the node for which timestamps are missing.
 
@@ -578,6 +624,8 @@ type Computor = (
 ) => Promise<ComputedValue | Unchanged>;
 ```
 
+**Normative API boundary:** Computor invocation deliberately receives no journal iterator or computation position. No raw journal entry identity, `journalGet`, context object, or hidden graph handle is provided.
+
 **Note on Return Type:** Computors MAY return `Unchanged` as an optimization sentinel. However, `Unchanged` is NOT part of the semantic `Outcomes` set (see §1.1). When a computor returns `Unchanged`, it is semantically equivalent to returning the current stored value (which must be a `ComputedValue`). The `pull()` operation always returns `Promise<ComputedValue>` — the `Unchanged` sentinel is handled internally and never exposed to callers.
 
 **REQ-COMP-01A (Conditional Determinism):** If `NodeDef.isDeterministic` is `true`, the computor MUST be treated as deterministic with respect to `(nodeName, bindings, inputs, oldValue)`. Formally, `Outcomes(nodeName, bindings, inputs, oldValue)` (per DEF-OUTCOMES-01) MUST always be a singleton set.
@@ -607,8 +655,107 @@ type Computor = (
 | `SchemaArityConflictError` | `nodeName: string, arities: Array<number>` | Same functor with different arities in schema (schema validation) |
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 | `MissingTimestampError` | `nodeKey: string` | `getCreationTime`/`getModificationTime` called for a node with no recorded timestamps (public API) |
+| `InvalidJournalIteratorStateError` | none | iterator restoration receives malformed or noncanonical durable state |
+| `InsufficientIteratorCoverageError` | none | receiver coverage does not dominate recorded issuance coverage |
+| `JournalIteratorBusyError` | none | an `iterate()` call overlaps another call on the same iterator |
 
 **REQ-ERR-01 (Error Type Guards):** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value: unknown): value is InvalidExpressionError`).
+
+---
+
+### 3.6 Journal API
+
+The graph database owns value bytes and identifiers. The precise journal projects
+supported current NodeKey presence/provenance/freshness authority, while the
+bounded visible iterator is conservative history and never a complete graph-state
+source. `graph.journal.makeIterator()` creates a before-all consumer;
+`iterator.iterate({ pattern })` returns an eager `Array<PossibleChange>` and
+consumes its complete captured coverage range; `clone()` creates an independent
+consumer. `iteratorToString()` and `graph.journal.iteratorFromString()` provide
+the canonical durable codec and coverage-safe restoration. Full semantics are in
+`docs/specs/incremental-graph-journal-api.md`.
+
+Journal notification may have false positives and collapse repeated occurrences
+of one exact action. A returned action does not assert current graph state.
+
+The action meanings are closed: `add` is only absent-to-materialized; `edit` is
+only a normative `ComputedValue` inequality while materialized; `delete` is only
+materialized-to-absent; `invalidate` is an exact initial or later soft/hard negative freshness assertion; and `validate` positively establishes or re-establishes a generation as fresh, including initial freshness.
+Every absent-to-present materialization authors one `GenerationJournalEntry` exposed as `add` plus exactly one initial validate/invalidate assertion. A materialized-to-materialized unequal value change authors a generation-scoped `EditJournalEntry`, not a new generation. If that same operation genuinely changes freshness, it independently authors the corresponding precise validate/invalidate event; an equal value authors neither generation nor edit. Delete has no positive-generation freshness assertion.
+
+The journal's no-false-negatives contract covers exactly:
+
+1. materialization presence;
+2. `ComputedValue`;
+3. freshness sublevel.
+
+For possible-change iteration, a graph change means a precise committed transition in
+one of those dimensions. Other persisted or public graph metadata may change
+without a precise journal event. Where permitted by the authoritative graph
+operation, this includes `NodeIdentifier`, `createdAt`, `modifiedAt`, validity
+relations, dependency or validity evidence, storage representation, and other
+metadata outside the three journal-observable dimensions. These fields are not
+all derived from the observable dimensions or incapable of independent change.
+
+During ordinary local computor execution, `modifiedAt` changes only when the
+computor changes the stored value. Synchronization may nevertheless select a
+remote materialization whose value is equal to the receiver's current value but
+whose existing `modifiedAt` and `createdAt` differ. Copying those source
+timestamps is metadata replacement, not a local value edit, and emits no edit
+notification.
+
+`NodeIdentifier` is storage identity, not semantic `NodeKey` identity.
+Synchronization may reconcile the same semantic `NodeKey` to a different
+selected `NodeIdentifier` without a delete/add journal transition.
+
+The required metadata-only synchronization trace is:
+
+```text
+local K:
+    id         = n-local
+    value      = A
+    createdAt  = 100
+    modifiedAt = 1000
+    freshness  = up-to-date
+
+remote K:
+    id         = n-remote
+    value      = A
+    createdAt  = 200
+    modifiedAt = 2000
+    freshness  = up-to-date
+
+remote wins by modifiedAt
+
+final receiving state:
+    id               n-local -> n-remote
+    createdAt        100 -> 200
+    modifiedAt       1000 -> 2000
+    value            A -> A
+    freshness        up-to-date -> up-to-date
+    materialization  present -> present
+
+journal result:
+    no action
+```
+
+`edit` MUST NOT be emitted because `ComputedValue` did not change.
+`delete`/`add` MUST NOT be emitted because materialization did not change. No
+freshness action is emitted because freshness did not change. Extending the
+observable surface requires a separate explicit contract change rather than
+broadening an existing action.
+
+The journal type system, emission rules, synchronization model, migration interaction and durable iterator-state rules are specified in:
+
+```text
+docs/specs/incremental-graph-journal-types.md
+docs/specs/incremental-graph-journal-api.md
+docs/specs/incremental-graph-journal-emission.md
+docs/specs/incremental-graph-journal-sync.md
+docs/specs/incremental-graph-journal-migrations.md
+docs/specs/incremental-graph-journal-compaction.md
+docs/specs/incremental-graph-node-filter.md
+```
 
 ---
 
@@ -630,12 +777,14 @@ Formally: For any sequence of operations `Op₁, Op₂, ..., Opₙ` where each `
 **REQ-PERSIST-02:** Implementations MAY use any persistence strategy (storing values, freshness markers, dependency graphs, etc.) as long as REQ-PERSIST-01 is satisfied. The specific mechanism is implementation-defined.
 
 **REQ-PERSIST-SYNC-REF-01 (Synchronization):** Synchronization of persisted
-graph state across host branches is specified in a separate document:
+graph state across hosts is specified in a separate document:
 [Specification for Incremental Graph Synchronization](incremental-graph-synchronization.md).
 
 ### 4.2 Invariants
 
-**INV-01 (Outdated Downstream):** If node instance `N@B` is `potentially-outdated`, all transitive dependents of `N@B` that have been previously materialized (pulled or invalidated) are also `potentially-outdated`.
+**INV-01 (Outdated Downstream):** If node instance `N@B` is
+`potentially-outdated`, every materialized transitive dependent of `N@B` is
+also `potentially-outdated`.
 
 **INV-02 (Up-to-Date Upstream):** If node instance `N@B` is `up-to-date`, all transitive dependencies of `N@B` are also `up-to-date`.
 
@@ -672,7 +821,7 @@ Formally: For any concurrent execution with operations `{Op₁, Op₂, ..., Op�
 
 ### 5.1 Locking Model
 
-The implementation uses a two-level locking scheme based on *mode mutexes*. A mode mutex allows multiple callers in the **same mode** to proceed concurrently, while callers in **different modes** are mutually exclusive.
+The implementation uses graph phase exclusion, additional scoped lock domains, and a separate shared/exclusive garden domain. Graph phase exclusion is based on *mode mutexes*: a mode mutex allows multiple callers in the **same mode** to proceed concurrently, while callers in **different modes** are mutually exclusive. Additional domains provide per-node telescope, per-replica darkroom, and shared/exclusive garden semantics.
 
 Three modes are defined:
 
@@ -682,19 +831,28 @@ Three modes are defined:
 | `nighttime` | Recomputation operations. Multiple `nighttime`-mode callers may execute concurrently at the graph level (but are serialized per-node). |
 | `holiday` | Lifecycle operations (database opens, schema migrations). Blocks all other modes. |
 
-Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to prevent two concurrent pulls from recomputing the same node simultaneously.
+All methods that select or use the active replica first acquire shared
+`enterGarden` access and retain it for their complete use of that replica.
+`closeGarden` is exclusive: it blocks new entrants, waits for existing entrants
+to finish, and protects active-pointer replacement and retirement of the old
+replica. Additionally, `pull()` acquires a **per-node mutex** inside the mode
+mutex to prevent two concurrent pulls from recomputing the same node
+simultaneously. The complete primitive, cutover, and acquisition-order protocol
+is normative in `incremental-graph-locking-design.md`.
 
 ### 5.2 Locking Properties per Method
 
 | Method | Lock mode | Can run concurrently with |
 |--------|-----------|--------------------------|
-| `pull()` | `nighttime` (+ per-node mutex) | Other `pull()` calls on different nodes; **NOT** with `daytime`-mode methods |
-| `invalidate()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `getFreshness()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `getValue()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `listMaterializedNodes()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `getCreationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
-| `getModificationTime()` | `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` |
+| `pull()` | `enterGarden` → `nighttime` (+ per-node mutex) | Other `pull()` calls on different nodes; **NOT** with `daytime`-mode methods or `closeGarden` |
+| `invalidate()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
+| `getFreshness()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
+| `getValue()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
+| `listMaterializedNodes()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
+| `getCreationTime()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
+| `getModificationTime()` | `enterGarden` → `daytime` | Other `daytime`-mode methods; **NOT** with `pull()` or `closeGarden` |
+| `JournalIterator.iterate()` | `enterGarden` | Daytime and nighttime methods; holds shared access through complete fixed-snapshot consumption; never allocates or updates journal state or acquires dome/darkroom; **NOT** with `closeGarden` |
+| `graph.journal.iteratorFromString()` | `enterGarden` | Daytime and nighttime methods; holds shared access through canonical validation and the stable coverage read; **NOT** with `closeGarden` |
 | `getSchemas()` | none (in-memory read) | Everything |
 | `getSchemaByHead()` | none (in-memory read) | Everything |
 | `getDbVersion()` | none (in-memory read) | Everything |
@@ -704,7 +862,7 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 | Category | Methods |
 |----------|---------|
 | **Read-write** (modify graph state) | `pull()`, `invalidate()` |
-| **Read-only** (observe graph state) | `getFreshness()`, `getValue()`, `listMaterializedNodes()`, `getCreationTime()`, `getModificationTime()`, `getSchemas()`, `getSchemaByHead()`, `getDbVersion()` |
+| **Read-only** (observe graph state) | `JournalIterator.iterate()`, `graph.journal.iteratorFromString()`, `getFreshness()`, `getValue()`, `listMaterializedNodes()`, `getCreationTime()`, `getModificationTime()`, `getSchemas()`, `getSchemaByHead()`, `getDbVersion()` |
 
 **REQ-CONCUR-03 (Read-only Safety):** All read-only methods MUST NOT modify any stored graph state (values, freshness, timestamps, materialization records).
 
@@ -714,17 +872,38 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 
 ### Computors and graph access
 
-Computors MAY invoke the `pull` method, or any other methods of the `IncrementalGraph` interface.
-Nodes `pull`ed in this way are **not** schema-derived dependencies of the calling computor's node.
-The implementation MUST NOT treat them as inputs for freshness propagation or validity
-indexing. This means:
+The supported computor execution model consists of an invocation whose
+graph-visible dependencies are exactly the schema-declared inputs supplied by
+`IncrementalGraph`, together with `oldValue` and the other values explicitly
+defined by the computor API. The public `IncrementalGraph` interface is not part
+of the computor execution environment, and the computor receives no hidden
+graph handle.
 
-- freshness updates during `invalidate()` are not propagated through dynamically-pulled nodes,
-- dynamically-pulled nodes do not appear in `inputEdges(N)` or `valid`,
-- validity-proof restoration does not consider dynamically-pulled nodes.
+**REQ-COMP-NOREENTER-01 (No re-entrant graph calls):** A computor MUST NOT invoke
+any method of the `IncrementalGraph` public interface from within its execution.
+Its semantic dependency universe is exactly its schema-declared inputs.
 
-Dynamically-pulled nodes are not part of the flag-based validity algorithm. They are ad-hoc queries
-performed during a computor's execution and do not affect the structural dependency graph.
+Calling a public graph method from a computor is undefined behavior. An
+implementation is not required to detect, reject, serialize, or make the call
+safe. Once such a call occurs, this specification provides no safety, liveness,
+freshness, atomicity, or deadlock guarantee for the affected execution.
+
+Internal schema-derived dependency traversal is part of `IncrementalGraph`
+execution rather than a graph call by the computor. The implementation resolves
+each declared dependency through internal recursive `pullNode` calls before
+invoking the computor and supplies the resulting values as inputs. Those calls
+are fully specified and inherit the outer public `pull()` call's active-replica,
+garden, and nighttime context; they do not re-enter the garden or reacquire dome
+mode.
+
+#### Rationale
+
+The schema represents dependency identity. Freshness propagation, validity
+proofs, invalidation propagation, synchronization proof transport, locking, and
+dependency-stability reasoning all operate over those declared dependencies.
+Graph queries made by a computor would introduce dependencies outside that
+semantic graph. Keeping public graph access outside the computor environment
+therefore aligns computation and every proof about it around one schema-defined
+dependency graph.
 
 ---
-

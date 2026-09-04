@@ -74,14 +74,15 @@ HTTP concrete-node routes remain `head + args` based to preserve existing API be
 
 ## NodeIdentifier requirements
 
-A `NodeIdentifier` is a deterministic, globally-namespaced identifier with the
-following properties:
+A `NodeIdentifier` is a deterministic identifier in a probabilistically
+distinct allocation namespace with the following properties:
 
-- globally and forever unique
+- unique within an interpreted writer universe only under the premise that each
+  fingerprint denotes one durable writer history
 - stable for the lifetime of that materialized node in storage
 - round-trippable as a nominal type
 - suitable for direct use as persisted key content and as a filesystem path segment
-- matches `/^[0-9a-z]+-[a-z]{9,}$/` (full-string match)
+- matches `/^[0-9a-z]+-[a-z]{16}$/` (full-string match)
 
 ### Format
 
@@ -90,7 +91,8 @@ following properties:
 ```
 
 - The index prefix is a base36 integer (characters `0-9a-z`), no padding or alignment.
-- The fingerprint is a lowercase ASCII string of at least 9 characters (`[a-z]{9,}`).
+- The `DatabaseFingerprint` is exactly 16 lowercase ASCII letters
+  (`[a-z]{16}`).
 - The separator is a single hyphen `-`.
 
 ### Character set
@@ -107,7 +109,7 @@ or any other punctuation besides the single separator hyphen.
 
 ### Format is specification-only
 
-The format regex `/^[0-9a-z]+-[a-z]{9,}$/` is a specification invariant only.
+The format regex `/^[0-9a-z]+-[a-z]{16}$/` is a specification invariant only.
 Runtime code does not validate the documented format at internal conversion
 boundaries. Every identifier in the system originates from `makeNodeIdentifier()`,
 which assembles it from components that are valid by construction (a fingerprint
@@ -118,16 +120,22 @@ internal boundaries would be redundant.
 
 ### Example values
 
-- `1-abcdefghi`
-- `2-abcdefghi`
-- `z-abcdefghi`
-- `10-abcdefghi`
+- `1-abcdefghijklmnop`
+- `2-abcdefghijklmnop`
+- `z-abcdefghijklmnop`
+- `10-abcdefghijklmnop`
 
 ### Allocation
 
 Identifiers are allocated as `${nextIndex.toString(36)}-${fingerprint}` where
 `nextIndex` is a monotonic counter starting at `1` and `fingerprint` is the
 machine-local database fingerprint (see `docs/specs/incremental-graph-fingerprint.md`).
+The fingerprint supplies a probabilistically distinct allocation namespace;
+independently created hosts can choose the same value, and creation makes no
+global uniqueness guarantee. If independent writers collide, their
+`NodeIdentifier` namespaces may alias and identifier-uniqueness and normal
+merge guarantees do not apply across the aliased histories. The protocol does
+not promise to detect or repair the collision.
 
 Gaps in the index sequence are acceptable (caused by failed or interleaved
 transactions). The `last_node_index` watermark tracks the largest committed index.

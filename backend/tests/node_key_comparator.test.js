@@ -128,7 +128,7 @@ describe("compareConstValue – same-type ordering", () => {
         expect(compareConstValue({ a: 1, b: 2 }, { a: 1, b: 2 })).toBe(0);
     });
 
-    test("objects: key-order insensitive (same content = equal)", () => {
+    test("objects: insertion order is part of identity", () => {
         // Objects with same keys/values but different insertion order
         const a = {};
         a["z"] = 1;
@@ -136,7 +136,8 @@ describe("compareConstValue – same-type ordering", () => {
         const b = {};
         b["a"] = 2;
         b["z"] = 1;
-        expect(compareConstValue(a, b)).toBe(0);
+        expect(compareConstValue(a, b)).not.toBe(0);
+        expect(compareConstValue(b, a)).toBe(-compareConstValue(a, b));
     });
 
     test("objects: compare sorted key lists lexicographically", () => {
@@ -228,6 +229,56 @@ describe("compareConstValue – mathematical properties", () => {
 // compareNodeKey
 // ---------------------------------------------------------------------------
 describe("compareNodeKey", () => {
+    test("comparator equality agrees with serialized identity for nested values", () => {
+        const values = [
+            { a: [1, { b: true }] },
+            { a: [1, { b: false }] },
+            { first: 1, second: 2 },
+            { second: 2, first: 1 },
+        ];
+        for (const left of values) {
+            for (const right of values) {
+                const leftKey = nodeKey("f", [left]);
+                const rightKey = nodeKey("f", [right]);
+                expect(compareNodeKey(leftKey, rightKey) === 0).toBe(
+                    serializeNodeKey(leftKey) === serializeNodeKey(rightKey)
+                );
+            }
+        }
+    });
+
+    test("ConstValue persistence boundary rejects non-plain JSON semantics", () => {
+        class Instance {}
+        const cyclic = {};
+        cyclic.self = cyclic;
+        const sparse = [];
+        sparse.length = 1;
+        const nonIndexNumericProperty = [];
+        Object.defineProperty(nonIndexNumericProperty, "4294967295", {
+            value: 1,
+            enumerable: true,
+        });
+        const accessor = {};
+        Object.defineProperty(accessor, "value", { enumerable: true, get: () => 1 });
+        const invalid = [
+            null, Object.create(Date.prototype), new Instance(), Object.create(null),
+            { toJSON() { return "changed"; } }, accessor, sparse,
+            nonIndexNumericProperty, [undefined],
+            cyclic, 1n, () => 1, Symbol("x"), Number.NaN, Infinity,
+            { nested: [1, { invalid: Object.create(Date.prototype) }] },
+        ];
+        for (const value of invalid) {
+            expect(() => serializeNodeKey(nodeKey("f", [value]))).toThrow(/Invalid ConstValue/);
+        }
+    });
+
+    test("every representative accepted ConstValue round-trips semantically", () => {
+        const values = [false, true, -1.5, 0, "", "text", [], [1, { a: "x" }], {}, { b: 2, a: [false] }];
+        for (const value of values) {
+            const serialized = serializeNodeKey(nodeKey("f", [value]));
+            expect(JSON.parse(String(serialized)).args[0]).toEqual(value);
+        }
+    });
     test("compare by head lexicographically", () => {
         expect(compareNodeKey(nodeKey("a"), nodeKey("b"))).toBeLessThan(0);
         expect(compareNodeKey(nodeKey("b"), nodeKey("a"))).toBeGreaterThan(0);
@@ -307,11 +358,10 @@ describe("compareNodeKeyStringByNodeKey", () => {
     });
 
     test("nodes with mixed arg types are sorted lexicographically", () => {
-        const withNull = nks("f", [null]);
         const withBool = nks("f", [false]);
         const withNum = nks("f", [1]);
         const withStr = nks("f", ["hello"]);
-        const sorted = [withStr, withNum, withBool, withNull].sort(compareNodeKeyStringByNodeKey);
-        expect(sorted).toEqual([withStr, withNum, withBool, withNull]);
+        const sorted = [withStr, withNum, withBool].sort(compareNodeKeyStringByNodeKey);
+        expect(sorted).toEqual([withStr, withNum, withBool]);
     });
 });

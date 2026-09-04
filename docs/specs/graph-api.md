@@ -131,8 +131,7 @@ timestamps. **Does not trigger recomputation.**
 
 `createdAt` and `modifiedAt` are ISO 8601 timestamp strings recording when the
 node instance was first computed and when its value last changed, respectively.
-Both fields are `null` for nodes that were materialized before timestamp
-recording was introduced.
+Every materialized node has both timestamp fields, and neither field is null.
 
 Values are not included in this listing.  Node values can be large (e.g.
 `all_events` contains the full event log) and fetching them in bulk would be

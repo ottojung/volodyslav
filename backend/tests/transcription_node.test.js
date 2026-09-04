@@ -162,7 +162,7 @@ describe("event_transcription(e, a) node", () => {
         expect(result).toMatchObject({
             type: "event_transcription",
             event: expect.objectContaining({
-                id: expect.any(Object),
+                id: { identifier: "1" },
             }),
             transcription: expect.objectContaining({
                 text: "This is a mocked transcription result for automated testing purposes",

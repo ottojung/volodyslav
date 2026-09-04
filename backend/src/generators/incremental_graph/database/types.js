@@ -242,11 +242,24 @@ function versionToString(Version) {
  */
 
 /**
- * @typedef {import('../../individual/meta_events').MetaEvent} MetaEvent
+ * @typedef {object} PersistedEvent
+ * @property {{identifier: string}} id
+ * @property {string | {_luxonDateTime: string}} date
+ * @property {string} original
+ * @property {string} input
+ * @property {import('../../../creator').Creator} creator
  */
 
 /**
- * @typedef {import('../../individual/event_context/compute').EventContextEntry} ContextEntry
+ * @typedef {object} PersistedMetaEvent
+ * @property {'add' | 'delete' | 'edit'} action
+ * @property {PersistedEvent} event
+ */
+
+/**
+ * @typedef {object} PersistedContextEntry
+ * @property {string} eventId
+ * @property {Array<PersistedEvent>} context
  */
 
 /**
@@ -264,13 +277,13 @@ function versionToString(Version) {
 /**
  * @typedef {object} MetaEventsEntry
  * @property {'meta_events'} type - The type of the entry
- * @property {Array<MetaEvent>} meta_events - Array of meta events
+ * @property {Array<PersistedMetaEvent>} meta_events - Array of meta events
  */
 
 /**
  * @typedef {object} EventContextDatabaseEntry
  * @property {'event_context'} type - The type of the entry
- * @property {Array<ContextEntry>} contexts - Array of event contexts
+ * @property {Array<PersistedContextEntry>} contexts - Array of event contexts
  */
 
 /**
@@ -316,7 +329,7 @@ function versionToString(Version) {
  * Combined event and transcription for a specific audio file associated with an event.
  * @typedef {object} EventTranscriptionEntry
  * @property {'event_transcription'} type - The type of the entry
- * @property {Event} event - The associated event
+ * @property {PersistedEvent} event - The associated event
  * @property {TranscriptionResult} transcription - The AI transcription
  */
 
@@ -378,7 +391,7 @@ function versionToString(Version) {
  * Returns undefined for the description when the event is not a diary entry or has no description.
  * @typedef {object} EntryDescriptionEntry
  * @property {'entry_description'} type - The type of the entry
- * @property {string | undefined} description - The typed description text, or undefined if none
+ * @property {string} [description] - The typed description text, omitted if none
  */
 
 /**

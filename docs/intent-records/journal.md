@@ -484,3 +484,66 @@ See:
 
 - `docs/specs/incremental-graph-locking-design.md`
 - `docs/specs/incremental-graph-synchronization.md`
+
+---
+
+$id-mtgkqoxjrf
+date: 2026/09/04
+source: @ottojung
+kind: requirement
+
+Database migrations may directly transform an existing materialized node from one `ComputedValue` to a different `ComputedValue`.
+
+Migration validity must not require the target value to be `isEqual` to the source value. If the migration API distinguishes representation-only rewrites from semantic replacements, that distinction must be explicit in the migration operation rather than inferred by comparing source and target values with `isEqual`.
+
+See:
+
+- `docs/specs/migration.md`
+- `docs/specs/incremental-graph-journal-migrations.md`
+
+---
+
+$id-zwrvcwxnzt
+date: 2026/09/04
+source: @ottojung
+kind: accepted-tradeoff
+
+Synchronization of derived cached values may use proof/coherence eligibility before applying ordinary causal/concurrent precedence among the eligible candidates.
+
+A newer unsupported derived cache does not need to displace an older coherent cache merely because its semantic occurrence time is later.
+
+See:
+
+- `docs/specs/incremental-graph-synchronization.md`
+
+---
+
+$id-uxcyhttrfj
+date: 2026/09/04
+source: @ottojung
+kind: accepted-tradeoff
+
+Synchronization may author new receiver-local semantic journal events when combining already-observed authority requires a genuinely new semantic decision, such as a destructive barrier or proof-loss hardening.
+
+Merely importing or copying already represented semantic state must not author a new value occurrence. Synchronization-authored authority must participate in the normal causal model so that the decision remains meaningful under later delivery and repeated synchronization.
+
+See:
+
+- `docs/specs/incremental-graph-synchronization.md`
+- `docs/specs/incremental-graph-journal-sync.md`
+
+---
+
+$id-csmhmuefpr
+date: 2026/09/04
+source: @ottojung
+kind: accepted-tradeoff
+
+Freshness may use replicated authority distinct from generic happened-before knowledge when that distinction is needed to preserve validation and recomputation semantics.
+
+In particular, dedicated validation-clearing evidence and the distinction between soft and hard invalidation are acceptable even though they make the journal freshness protocol more complex than ordinary causal observation alone.
+
+See:
+
+- `docs/specs/incremental-graph-journal-types.md`
+- `docs/specs/incremental-graph-synchronization.md`
