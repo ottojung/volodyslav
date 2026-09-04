@@ -17,7 +17,7 @@ See:
 ---
 
 $id-nzyczdgxmr
-date: 2026/08/31
+date: 2026/08/29
 source: @ottojung
 kind: requirement
 
@@ -52,8 +52,33 @@ See:
 
 ---
 
+$id-koupxsoowk
+date: 2026/08/29
+source: @ottojung
+kind: requirement
+
+The journal's per-author coordinate structures have distinct meanings and must not substitute for one another.
+
+In particular:
+
+- `journalCoverage` proves complete possession/accounting of journal prefixes;
+- causal context and `causalSummary` record happened-before knowledge;
+- `clearsThrough` records validation-clearing authority;
+- `absorbsThrough` records reset absorption authority;
+- iterator progress records consumer progress;
+- iterator issuance coverage records the possession frontier that made durable progress safe to issue.
+
+A coordinate appearing in one of these structures is not automatically evidence for another.
+
+See:
+
+- `docs/specs/incremental-graph-journal-types.md`
+- `docs/specs/incremental-graph-journal-api.md`
+
+---
+
 $id-vkoyfuczni
-date: 2026/09/01
+date: 2026/08/29
 source: @ottojung
 kind: requirement
 
@@ -91,7 +116,7 @@ See:
 ---
 
 $id-pvtfqtaxgz
-date: 2026/09/01
+date: 2026/08/29
 source: @ottojung
 kind: requirement
 
@@ -106,6 +131,40 @@ See:
 - `docs/specs/incremental-graph-journal-types.md`
 - `docs/specs/incremental-graph-journal-sync.md`
 - `docs/specs/incremental-graph-journal-compaction.md`
+
+---
+
+$id-pllxgquzdx
+date: 2026/08/29
+source: @ottojung
+kind: requirement
+
+Controlled reset does not import the source journal or the source `journalCoverage` into the receiver.
+
+The receiver keeps its own durable writer identity and allocator history. Source causal knowledge may be observed, source semantic state may be represented, and source history may be intentionally absorbed without turning the source journal prefix into receiver-owned journal coverage.
+
+Later source events above an absorbed per-author prefix remain live when they are eventually observed.
+
+See:
+
+- `docs/specs/incremental-graph-journal-types.md`
+- `docs/specs/incremental-graph-journal-sync.md`
+
+---
+
+$id-sfgtzgliiz
+date: 2026/08/29
+source: @ottojung
+kind: accepted-tradeoff
+
+A reset may persist future-relevant causal or reset-anchor archive information without authoring a public journal event when no semantic graph occurrence happened.
+
+Once the complete required semantic state, causal knowledge, and reset-anchor information are already represented, repeating the same reset should be silent.
+
+See:
+
+- `docs/specs/incremental-graph-journal-emission.md`
+- `docs/specs/incremental-graph-journal-sync.md`
 
 ---
 
@@ -183,6 +242,22 @@ See:
 
 ---
 
+$id-ycienzeneo
+date: 2026/08/26
+source: @ottojung
+kind: requirement
+
+Every materialized IncrementalGraph node has defined creation and modification timestamps.
+
+A materialized node is not allowed to use nullable or missing timestamp state as a compatibility fallback. Persistent state that claims a node is materialized must contain the timestamp record required by the graph invariant.
+
+See:
+
+- `docs/specs/incremental-graph.md`
+- `docs/specs/database-lifecycle.md`
+
+---
+
 $id-cfwcrkvmqb
 date: 2026/07/03
 source: @ottojung
@@ -210,6 +285,22 @@ An `invalidate` entry alone is not sufficient evidence for the existence or valu
 See:
 
 - `docs/specs/incremental-graph-journal-compaction.md`
+
+---
+
+$id-drdgjkrhhw
+date: 2026/08/08
+source: @ottojung
+kind: requirement
+
+Copying an already represented canonical semantic value during synchronization or reset does not by itself create a new semantic `add` or `edit` revision.
+
+Journal revision identity represents semantic occurrences, not transport or delivery. A receiver may persist genuinely new local authority required by synchronization, but mere transfer of an existing canonical value must not manufacture a new value occurrence.
+
+See:
+
+- `docs/specs/incremental-graph-journal-sync.md`
+- `docs/specs/incremental-graph-synchronization.md`
 
 ---
 
