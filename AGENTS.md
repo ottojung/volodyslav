@@ -634,6 +634,248 @@ Important:
 - type checker configs must not be changed unless explicitly asked to by the user.
 - static analysis rules must not be ignored or disabled.
 
+## Intent Records
+
+Architectural and design work must distinguish **what @ottojung actually wants** from decisions, interpretations, compromises, and mechanisms introduced by agents.
+
+Durable user intent must be recorded under:
+
+```text
+docs/intent-records/*.md
+```
+
+Intent Records are the authoritative provenance for requirements, preferences, accepted tradeoffs, rejected concerns, constraints, and other architecturally relevant wishes expressed by @ottojung.
+
+Specifications describe the system we are trying to build. Implementations describe what currently exists. Intent Records describe **what is actually desired and why**.
+
+Agents must not silently convert their own architectural conclusions into user intent.
+
+### Intent IDs
+
+Every independently referenceable intent receives a stable identifier:
+
+```text
+$id-<random lowercase letters>
+```
+
+For example:
+
+```text
+$id-nxywgbnet
+```
+
+The ID is permanent. It remains the same if the intent is later clarified, superseded, withdrawn, weakened, or discovered to conflict with another intent.
+
+### Record format
+
+Each intent begins with:
+
+```text
+$id-nxywgbnet
+date: 2026/09/02
+source: @ottojung
+kind: requirement
+
+The journal should satisfy the future-union theorem.
+```
+
+Supported `kind` values include, as appropriate:
+
+```text
+requirement
+preference
+constraint
+accepted-tradeoff
+rejected-concern
+```
+
+Additional kinds may be introduced when they express a materially different form of intent.
+
+The wording must preserve the strength of the original statement. Do not turn:
+
+* "this is fine" into a requirement;
+* "I prefer X" into "X must";
+* acceptance of a tradeoff into a positive requirement for that tradeoff;
+* rejection of one concern into a broader architectural claim.
+
+### Records must be substantive
+
+An Intent Record must contain enough context to make the intent independently understandable.
+
+Do not write only:
+
+```text
+The journal should satisfy the future-union theorem.
+```
+
+unless the same record clearly defines the theorem or links to a stable specification that defines it.
+
+A real record should explain or reference:
+
+* the relevant concepts;
+* the intended behavior;
+* important scope or assumptions;
+* definitions needed to interpret the statement;
+* existing specifications, issues, proofs, or examples that give the intent precise meaning.
+
+For example, an intent concerning the future-union theorem should reference or define the relevant merge, compaction, and equivalence operations and the exact theorem being requested.
+
+The purpose is that a future worker unfamiliar with the conversation can determine what @ottojung meant without reconstructing the original chat.
+
+### Grouping
+
+Related intents should be grouped into reasonably scoped files, for example:
+
+```text
+docs/intent-records/journal.md
+docs/intent-records/reset.md
+docs/intent-records/synchronization.md
+docs/intent-records/iterator.md
+docs/intent-records/storage.md
+docs/intent-records/locking.md
+```
+
+The stable reference is the `$id-...`, not the filename or heading.
+
+Moving an intent between files must not change its ID.
+
+### Record intent, not agent conclusions
+
+An agent-derived consequence is not an Intent Record merely because it seems necessary to satisfy one.
+
+For example, suppose @ottojung wants:
+
+```text
+$id-examplea
+...
+The journal must satisfy future-union equivalence.
+```
+
+and the current design appears to require retaining historical reset-anchor cuts to achieve that.
+
+Do **not** invent:
+
+```text
+@ottojung requires resetAnchorCuts to be retained forever.
+```
+
+unless @ottojung actually stated that.
+
+Instead distinguish the two:
+
+```text
+User intent:
+$id-examplea
+
+Derived design conclusion:
+Under the current reset model, retaining exact historical anchor-cut
+information appears necessary to satisfy $id-examplea.
+```
+
+This distinction is essential. Agents are expected to challenge their own derived conclusions and search for alternative designs that satisfy the same intent.
+
+### Changes to intent
+
+Intent may change.
+
+Do not delete old Intent Records when this happens. Preserve the historical statement and mark its current relationship to later intent.
+
+Examples:
+
+```text
+status: superseded-by $id-abcdefghij
+```
+
+```text
+status: withdrawn
+```
+
+```text
+status: clarified-by $id-abcdefghij
+```
+
+```text
+status: in-tension-with $id-abcdefghij
+```
+
+If an intent is still active, `status` may be omitted or written as:
+
+```text
+status: active
+```
+
+A later clarification should normally receive its own ID when it is independently meaningful. The older record should then reference it.
+
+### Conflicts and incompatibilities
+
+When an agent discovers that two or more active intents may be incompatible, it must make the conflict explicit rather than silently choosing one.
+
+Refer to each intent by ID.
+
+For example:
+
+```text
+There is a conflict between:
+
+- $id-iqmnxjhtyd: compacted journal state should be bounded by O(nr²);
+- $id-nxywgbnet: compaction must satisfy the future-union theorem;
+- $id-examplec: arbitrary historical reset anchors must remain semantically
+  distinguishable under delayed union.
+
+Under the current model these cannot all hold simultaneously because preserving
+exact delayed-union behavior requires state indexed by historical anchor
+identity, producing an additional term not bounded by n and r.
+
+Possible resolutions:
+1. weaken $id-iqmnxjhtyd;
+2. weaken one of the reset semantics;
+3. find a different representation or theorem that satisfies all of them.
+```
+
+Do not resolve such a conflict by quietly dropping an intent.
+
+If work must continue before @ottojung resolves it, choose the smallest reversible provisional design and clearly mark it as an agent-derived choice.
+
+### Traceability
+
+Specifications, implementation plans, issues, proofs, and architectural explanations should cite relevant Intent IDs when the connection is non-obvious or important.
+
+This is particularly important when:
+
+* a complicated mechanism exists because of several interacting intents;
+* a design deliberately accepts an unusual tradeoff;
+* an apparently simpler design would violate a recorded intent;
+* a proof or impossibility result depends on several intents;
+* an agent proposes changing an established design.
+
+The desired chain is:
+
+```text
+Intent Record
+    ↓
+derived requirements / reasoning
+    ↓
+specification or design
+    ↓
+implementation
+    ↓
+tests / verification
+```
+
+An agent should always be able to answer:
+
+1. Which parts of this design are explicitly wanted by @ottojung?
+2. Which parts are consequences inferred from those intents?
+3. Which parts are merely implementation choices?
+4. Are any active intents in tension?
+5. Would a simpler design satisfy the same intents?
+
+### Recording new user intent
+
+When @ottojung expresses a durable architecturally relevant requirement, preference, accepted tradeoff, rejected concern, or constraint during work on the repository, the worker must add or update the appropriate file under `docs/intent-records/`.
+
+Do this as part of the same work rather than leaving the decision only in chat, an issue discussion, or an agent's memory.
+
 ## Notifications
 
 If `command -v my-notify` exits with status `0`, then call `my-notify "Volodyslav is ready for review"` when you're done with all the work to notify the user of it.
