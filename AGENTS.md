@@ -634,6 +634,79 @@ Important:
 - type checker configs must not be changed unless explicitly asked to by the user.
 - static analysis rules must not be ignored or disabled.
 
+## Intent Records
+
+Intent Records under `docs/intent-records/*.md` describe the **current desired properties of the codebase**. They are not a history of earlier wishes, discarded designs, or superseded requirements. Git history carries that history.
+
+When intent changes, update or remove the affected record so the documents state only the current intent. Do not preserve withdrawn or superseded intents in the live Intent Records, and do not add status fields whose purpose is to narrate old intent.
+
+Intent Records distinguish user intent from design choices and consequences derived by agents. Agents must not silently turn their own conclusions into user intent.
+
+### Format
+
+Every independently referenceable current intent has a stable ID:
+
+```text
+$id-<random lowercase letters>
+```
+
+Each record begins with:
+
+```text
+$id-nxywgbnet
+date: 2026/09/02
+source: @ottojung
+kind: requirement
+
+The journal should satisfy the future-union theorem.
+```
+
+Use the date on which the current form of the intent was directly established or confirmed. Keep an ID stable while it continues to identify the same intent; if the intent is withdrawn, remove the record.
+
+Useful `kind` values include:
+
+```text
+requirement
+preference
+constraint
+accepted-tradeoff
+rejected-concern
+```
+
+Preserve the strength of the user's statement. Acceptance of a tradeoff is not a requirement that the tradeoff exist.
+
+### Substance
+
+A record must contain enough context to understand the intent without reconstructing a conversation. Define or reference the relevant concepts, invariants, theorem, specification, or examples. For example, a future-union requirement must define the law or reference the specification that defines it.
+
+Related intents should be grouped into scoped files such as:
+
+```text
+docs/intent-records/journal.md
+docs/intent-records/storage.md
+docs/intent-records/locking.md
+```
+
+The `$id-...` is the stable reference, not the filename or heading.
+
+### Intent versus derived design
+
+An agent-derived consequence is not user intent. If current intent requires property X and the current design appears to require mechanism Y to achieve X, record X as intent and describe Y as a derived design conclusion unless @ottojung directly expressed Y as intent.
+
+Agents should continue to search for simpler designs that satisfy the same intents.
+
+### Conflicts
+
+If current Intent Records appear incompatible, do not silently choose one. Identify the conflicting records by `$id-...`, explain why they conflict, and state the available resolutions. Conflict analysis belongs in the work that discovers the conflict; the Intent Records themselves continue to state the current intents.
+
+### Provenance
+
+Repository workers MUST NOT create or modify `source: @ottojung` Intent Records based on their task prompt or other repository artifacts.
+
+Workers may treat `docs/intent-records/*.md` as authoritative user intent. A requirement present only in a worker prompt may be followed for that task, but it must not be recorded as @ottojung's durable intent.
+
+New or changed `source: @ottojung` Intent Records must come from a trusted direct user interaction where authorship is known independently of prompt text.
+
 ## Notifications
 
 If `command -v my-notify` exits with status `0`, then call `my-notify "Volodyslav is ready for review"` when you're done with all the work to notify the user of it.

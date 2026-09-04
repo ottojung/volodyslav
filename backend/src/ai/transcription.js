@@ -71,7 +71,7 @@ const {
 
 /** @typedef {import('./transcription_gemini').UploadedGeminiFile} UploadedGeminiFile */
 
-const TRANSCRIBER_MODEL = "gemini-3-flash-preview";
+const TRANSCRIBER_MODEL = "gemini-3.7-flash";
 const PRECISE_TRANSCRIBER_MODEL = "gpt-4o-transcribe";
 const MAX_OUTPUT_TOKENS = 65536;
 const TEMPERATURE = 0.0;
