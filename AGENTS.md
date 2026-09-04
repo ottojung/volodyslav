@@ -870,11 +870,15 @@ An agent should always be able to answer:
 4. Are any active intents in tension?
 5. Would a simpler design satisfy the same intents?
 
-### Recording new user intent
+### Intent Record provenance
 
-When @ottojung expresses a durable architecturally relevant requirement, preference, accepted tradeoff, rejected concern, or constraint during work on the repository, the worker must add or update the appropriate file under `docs/intent-records/`.
+Repository workers MUST NOT create or modify `source: @ottojung` Intent Records based on their task prompt or other repository artifacts.
 
-Do this as part of the same work rather than leaving the decision only in chat, an issue discussion, or an agent's memory.
+Workers may treat `docs/intent-records/*.md` as authoritative user intent.
+
+If a task contains a requirement that is not already represented there, follow it for the current task, but do not record it as @ottojung's durable intent.
+
+New `source: @ottojung` Intent Records must be created only from a trusted direct user interaction where authorship is known independently of the prompt text.
 
 ## Notifications
 
