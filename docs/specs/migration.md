@@ -53,7 +53,7 @@ All methods are `async`.
 |--------|-------------|
 | `get(nodeIdentifier)` | Return the previous-version value. |
 | `keep(nodeIdentifier)` | Preserve the cached semantic value, freshness, and timestamps in the new version. Validity proofs follow the proof-retention and hardening rules below. |
-| `override(nodeIdentifier, value)` | Change an existing cached value to the arbitrary persistence-safe `ComputedValue` returned by `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`). No equality test is an admission condition. Freshness is retained, `modifiedAt` advances, incoming proofs are removed, and proof-supported dependents are recursively invalidated. |
+| `override(nodeIdentifier, value, targetState)` | Rewrite an existing semantic value into the persistence-safe representation returned by `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`). The migration author certifies semantic equivalence; `isEqual` is not consulted. `targetState` is exactly `"up-to-date"`, `"stale-soft"`, or `"stale-hard"`. The semantic occurrence timestamp is preserved and no decision is propagated to dependents. |
 | `invalidate(nodeIdentifier)` | Preserve the cached value while marking the node for recomputation. |
 | `delete(nodeIdentifier)` | Remove the node from the new version entirely. |
 | `create(nodeKeyString, value, cacheState)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `cacheState` is exactly one of the closed variants below. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
@@ -95,6 +95,25 @@ cached semantic value is unchanged.
 A stale-soft envelope is invalid for a zero-input node, so every zero-input
 stale create is necessarily stale-hard. A stale-hard create asserts
 must-recompute state and carries no reusable incoming proof.
+
+An override target state is a closed assertion about the rewritten node in the
+target schema:
+
+* `"up-to-date"` establishes the complete incoming validity relation for the
+  node's actual target-schema inputs. Every input must be materialized and
+  up-to-date.
+* `"stale-soft"` marks the node potentially outdated while establishing the
+  complete reusable incoming proof for its actual target-schema inputs. It is
+  invalid for a zero-input node.
+* `"stale-hard"` marks the node potentially outdated and establishes no
+  incoming proof, so recomputation is required.
+
+These assertions rebuild incoming validity from the target graph scheme rather
+than copying edge positions from the source scheme. Consequently an override
+can adapt a node from `A -> B` to `C -> B`: the obsolete `A ⇝ B` edge is
+removed and an up-to-date or stale-soft target establishes `C ⇝ B`. Missing
+target inputs, stale inputs required by an up-to-date target, and impossible
+zero-input stale-soft targets produce `InvalidMigrationDecisionError`.
 
 Missing or unknown variants, extra fields, a proof on a variant that does not
 accept one, a missing or duplicate proof input key, an extra input key, an
@@ -165,12 +184,17 @@ after migration:
 
 **Migration-time propagated invalidation** is different: the migration callback explicitly calls `invalidate()` on a node, and the propagation runs in memory with full provenance. In that case outgoing proofs survive and freshness-only propagation preserves validity edges.
 
-`override` performs the direct present X → present Y transition. It accepts any
-persistence-safe target value and does not require the target to be `isEqual` to
-the source. It retains the node's freshness, removes incoming proofs, advances
-`modifiedAt`, and recursively marks proof-supported dependents stale.
-`invalidate()` remains distinct: it preserves the cached value and requires a
-later pull to recompute it.
+`override` is a representation transformation of an existing semantic value.
+The migration author certifies that the produced value represents the same
+semantic occurrence even when its JSON or schema representation differs and
+`isEqual` would return false. Migration neither invokes `isEqual` for admission
+nor classifies author intent from the produced representation. Override authors
+no `add`, `edit`, validation, or invalidation journal action; preserves the
+semantic occurrence's `createdAt` and `modifiedAt`; and does not create or
+propagate decisions for dependents. Its explicit target state alone determines
+freshness and incoming proof construction in the target graph. Existing
+outgoing proof survives when it is still a target structural edge because the
+input's semantic occurrence is unchanged.
 
 `invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 
@@ -273,8 +297,9 @@ The migration transition table governs journal changes. Every new generation
 includes exactly one later same-author initial freshness assertion. Local
 authoring takes the next local sequence, carries source authority relevant to
 the decision in `causalContext`, and advances only local coverage/counter.
-`keep` and invalidation preserve the cached value and `modifiedAt`. An `override`
-that changes the semantic value authors an edit and advances `modifiedAt`. Graph, journal, reset-anchor cut summaries,
+`keep`, invalidation, and `override` preserve `modifiedAt`; override changes only
+the persisted representation and its explicitly selected graph cache state.
+Graph, journal, reset-anchor cut summaries,
 counter, coverage, causal summary, and durable fingerprint commit
 atomically. Migration never seeds graph authority from iterator notifications. Detailed rules are in
 `docs/specs/incremental-graph-journal-migrations.md`.

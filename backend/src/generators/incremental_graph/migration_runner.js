@@ -171,6 +171,9 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
                 if (decision.kind === "create") return decision.freshness;
+                if (decision.kind === "override") {
+                    return decision.targetState === "up-to-date" ? "up-to-date" : "potentially-outdated";
+                }
                 if (decision.kind === "invalidate") return "potentially-outdated";
                 return await prevStorage.freshness.get(key);
             },
@@ -201,11 +204,7 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
                     const nowIso = datetime.now().toISOString();
                     return { createdAt: nowIso, modifiedAt: nowIso };
                 }
-                if (decision.kind === "override") {
-                    if (existing === undefined) return undefined;
-                    return { createdAt: existing.createdAt, modifiedAt: datetime.now().toISOString() };
-                }
-                if (decision.kind === "invalidate" || decision.kind === "keep") {
+                if (decision.kind === "invalidate" || decision.kind === "override" || decision.kind === "keep") {
                     return existing;
                 }
                 return existing;

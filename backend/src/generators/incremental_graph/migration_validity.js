@@ -108,6 +108,7 @@ async function finalFreshness(prevStorage, decisions, nodeIdentifier) {
     const decision = decisions.get(nodeIdentifier);
     if (decision === undefined || decision.kind === "delete") return undefined;
     if (decision.kind === "create") return decision.freshness;
+    if (decision.kind === "override") return decision.targetState === "up-to-date" ? "up-to-date" : "potentially-outdated";
     if (decision.kind === "invalidate") return "potentially-outdated";
     return await prevStorage.freshness.get(nodeIdentifier);
 }
@@ -128,7 +129,7 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
     const materialized = materializedDecisionStrings(decisions);
 
     for (const [nodeIdentifier, decision] of decisions) {
-        if (decision.kind === "delete" || decision.kind === "override" || (decision.kind === "invalidate" && decision.provenance === "explicit")) continue;
+        if (decision.kind === "delete" || (decision.kind === "invalidate" && decision.provenance === "explicit")) continue;
         if (!await isFinalCached(prevStorage, decisions, nodeIdentifier)) continue;
 
         const finalEdges = deriveInputEdges(newScheme, finalLookup, nodeIdentifier);
@@ -153,6 +154,26 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
             continue;
         }
 
+        if (decision.kind === "override") {
+            if (decision.targetState === "stale-hard") continue;
+            if (decision.targetState === "stale-soft" && finalEdges.length === 0) {
+                throw makeInvalidMigrationDecisionError(`Cannot override ${nodeIdentifierToString(nodeIdentifier)} as stale-soft without structural inputs`);
+            }
+            for (const input of finalEdges) {
+                if (!await isFinalCached(prevStorage, decisions, input)) {
+                    throw makeInvalidMigrationDecisionError(`Cannot override ${nodeIdentifierToString(nodeIdentifier)} as ${decision.targetState}: input ${nodeIdentifierToString(input)} is not cached`);
+                }
+                if (decision.targetState === "up-to-date") {
+                    const inputFreshness = await finalFreshness(prevStorage, decisions, input);
+                    if (inputFreshness !== "up-to-date") {
+                        throw makeInvalidMigrationDecisionError(`Cannot override ${nodeIdentifierToString(nodeIdentifier)} as up-to-date: input ${nodeIdentifierToString(input)} is ${inputFreshness ?? "not materialized"}`);
+                    }
+                }
+                addToValidSet(validSets, input, nodeIdentifier);
+            }
+            continue;
+        }
+
         // Preserve old outgoing proofs when the input's stored semantic value
         // survives — this applies to keep and propagated
         // invalidations (invalidation changes freshness, not value).
@@ -167,7 +188,7 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
         if (decision.kind === "keep" && nodeFreshness === "potentially-outdated") continue;
 
         /** @param {import('./migration_storage').Decision | undefined} d @returns {boolean} */
-        const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create" && d.kind !== "override";
+        const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create";
         const oldEdges = deriveInputEdges(oldScheme, oldLookup, nodeIdentifier);
         for (const input of finalEdges) {
             const inputDecision = decisions.get(input);

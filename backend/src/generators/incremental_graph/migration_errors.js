@@ -47,10 +47,9 @@ function isDecisionConflict(object) {
 /**
  * Thrown when override() is called more than once on the same node.
  *
- * Each node may receive at most one migration-authored value change. Duplicate
- * override calls are ambiguous about which value
- * should be applied, so they are rejected. Use keep() instead for nodes that
- * need no further change after the first override.
+ * Each node may receive at most one representation transformation. Duplicate
+ * override calls are ambiguous about which representation and target cache
+ * state should be applied, so they are rejected.
  */
 class OverrideConflict extends Error {
     /**
@@ -222,7 +221,7 @@ class CreateExistingNode extends Error {
     constructor(nodeKey) {
         super(
             `Cannot create node ${nodeKey}: it already exists in the previous version. ` +
-                `Use override() to change its value instead.`
+                `Use override() to transform its persisted representation instead.`
         );
         this.name = "CreateExistingNodeError";
         this.nodeKey = nodeKey;

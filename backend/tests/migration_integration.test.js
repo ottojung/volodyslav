@@ -43,7 +43,7 @@ describe("migration integration", () => {
         );
     });
 
-    test("semantic override persists and invalidates a dependent", async () => {
+    test("representation override persists without invalidating a dependent", async () => {
         const caps = getTestCapabilities();
         let db;
         try {
@@ -61,19 +61,128 @@ describe("migration integration", () => {
             await source.global.put("version", "1");
 
             await runMigration(caps, db, nodeDefs, async (storage) => {
-                await storage.override(aId, async () => ({ v: 40 }));
+                await storage.override(aId, async () => ({ v: 40 }), "up-to-date");
+                await storage.keep(bId);
             });
 
             expect(await db.getSchemaStorage().values.get(aId)).toEqual({ v: 40 });
             expect(await db.getSchemaStorage().freshness.get(aId)).toBe("up-to-date");
-            expect(await db.getSchemaStorage().freshness.get(bId)).toBe("potentially-outdated");
-            expect(await db.getSchemaStorage().valid.get(aId) ?? []).not.toContain(bId);
+            expect(await db.getSchemaStorage().freshness.get(bId)).toBe("up-to-date");
+            expect(await db.getSchemaStorage().valid.get(aId) ?? []).toContain(bId);
             await db.close();
             db = await getRootDatabase(caps);
             expect(await db.getSchemaStorage().values.get(aId)).toEqual({ v: 40 });
             const restarted = await createIncrementalGraph(caps, db, nodeDefs);
-            expect(await restarted.pull("B")).toEqual({ v: 41 });
-            expect(dependentCalls).toBe(2);
+            expect(await restarted.pull("B")).toEqual({ v: 2 });
+            expect(dependentCalls).toBe(1);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test("up-to-date derived override rebuilds validity for changed dependencies", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const oldDefs = [
+                { output: "A", inputs: [], computor: async () => ({ v: "a" }), isDeterministic: true, hasSideEffects: false },
+                { output: "C", inputs: [], computor: async () => ({ v: "c" }), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async () => ({ representation: "old" }), isDeterministic: true, hasSideEffects: false },
+            ];
+            const newDefs = [oldDefs[0], oldDefs[1], {
+                output: "B", inputs: ["C"], computor: async () => ({ representation: "new" }), isDeterministic: true, hasSideEffects: false,
+            }];
+            const graph = await createIncrementalGraph(caps, db, oldDefs);
+            await graph.pull("B");
+            await graph.pull("C");
+            const lookup = db.getActiveIdentifierLookup();
+            const aId = lookup.keyToId.get('{"head":"A","args":[]}');
+            const bId = lookup.keyToId.get('{"head":"B","args":[]}');
+            const cId = lookup.keyToId.get('{"head":"C","args":[]}');
+            await db.getSchemaStorage().global.put("version", "1");
+
+            await runMigration(caps, db, newDefs, async (storage) => {
+                await storage.keep(aId);
+                await storage.keep(cId);
+                await storage.override(bId, async () => ({ representation: "new" }), "up-to-date");
+            });
+
+            const migrated = db.getSchemaStorage();
+            expect(await migrated.freshness.get(bId)).toBe("up-to-date");
+            expect(await migrated.valid.get(aId) ?? []).not.toContain(bId);
+            expect(await migrated.valid.get(cId) ?? []).toContain(bId);
+            expect(await migrated.values.get(bId)).toEqual({ representation: "new" });
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test("stale-soft override keeps reusable proof without propagating staleness", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => ({ v: 1 }), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async () => ({ v: 2 }), isDeterministic: true, hasSideEffects: false },
+                { output: "C", inputs: ["B"], computor: async () => ({ v: 3 }), isDeterministic: true, hasSideEffects: false },
+            ];
+            const graph = await createIncrementalGraph(caps, db, nodeDefs);
+            await graph.pull("C");
+            const lookup = db.getActiveIdentifierLookup();
+            const aId = lookup.keyToId.get('{"head":"A","args":[]}');
+            const bId = lookup.keyToId.get('{"head":"B","args":[]}');
+            const cId = lookup.keyToId.get('{"head":"C","args":[]}');
+            await db.getSchemaStorage().global.put("version", "1");
+
+            await runMigration(caps, db, nodeDefs, async (storage) => {
+                await storage.keep(aId);
+                await storage.override(bId, async () => ({ v: "encoded-two" }), "stale-soft");
+                await storage.override(cId, async () => ({ v: 3 }), "stale-soft");
+            });
+
+            const migrated = db.getSchemaStorage();
+            expect(await migrated.freshness.get(bId)).toBe("potentially-outdated");
+            expect(await migrated.freshness.get(cId)).toBe("potentially-outdated");
+            expect(await migrated.valid.get(aId) ?? []).toContain(bId);
+            expect(await migrated.valid.get(bId) ?? []).toContain(cId);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
+    test("dependency chain overrides remain clean in reverse callback order", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => ({ encoding: "a1" }), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async () => ({ encoding: "b1" }), isDeterministic: true, hasSideEffects: false },
+                { output: "C", inputs: ["B"], computor: async () => ({ encoding: "c1" }), isDeterministic: true, hasSideEffects: false },
+            ];
+            const graph = await createIncrementalGraph(caps, db, nodeDefs);
+            await graph.pull("C");
+            const lookup = db.getActiveIdentifierLookup();
+            const aId = lookup.keyToId.get('{"head":"A","args":[]}');
+            const bId = lookup.keyToId.get('{"head":"B","args":[]}');
+            const cId = lookup.keyToId.get('{"head":"C","args":[]}');
+            await db.getSchemaStorage().global.put("version", "1");
+
+            await runMigration(caps, db, nodeDefs, async (storage) => {
+                await storage.override(cId, async () => ({ encoding: "c2" }), "up-to-date");
+                await storage.override(bId, async () => ({ encoding: "b2" }), "up-to-date");
+                await storage.override(aId, async () => ({ encoding: "a2" }), "up-to-date");
+            });
+
+            const migrated = db.getSchemaStorage();
+            expect(await migrated.values.get(aId)).toEqual({ encoding: "a2" });
+            expect(await migrated.values.get(bId)).toEqual({ encoding: "b2" });
+            expect(await migrated.values.get(cId)).toEqual({ encoding: "c2" });
+            expect(await migrated.valid.get(aId) ?? []).toContain(bId);
+            expect(await migrated.valid.get(bId) ?? []).toContain(cId);
+            expect(await migrated.freshness.get(cId)).toBe("up-to-date");
         } finally {
             if (db) await db.close();
         }

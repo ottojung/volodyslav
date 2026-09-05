@@ -35,6 +35,7 @@ const {
 
 /** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
 /** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
+/** @typedef {import('./migration_decisions').OverrideTargetState} OverrideTargetState */
 /** @typedef {import('./migration_decisions').InvalidateDecision} InvalidateDecision */
 /** @typedef {import('./migration_decisions').DeleteDecision} DeleteDecision */
 /** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
@@ -167,22 +168,25 @@ class MigrationStorageClass {
     }
 
     /**
-     * Assign an OVERRIDE decision that changes a materialized node to an
-     * arbitrary persistence-safe value. The node retains its freshness, but
-     * its modified timestamp advances and proof-supported dependents are
-     * invalidated because their proofs refer to the previous value.
+     * Assign an OVERRIDE decision that rewrites the persisted representation
+     * of a semantic value. The target state explicitly asserts whether the
+     * rewritten value is clean, stale with reusable input proof, or stale and
+     * required to recompute.
      *
      * @param {NodeIdentifier} nodeKey
      * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
+     * @param {OverrideTargetState} targetState
      * @returns {Promise<void>}
      */
-    async override(nodeKey, value) {
+    async override(nodeKey, value, targetState) {
+        if (targetState !== "up-to-date" && targetState !== "stale-soft" && targetState !== "stale-hard") {
+            throw makeInvalidMigrationDecisionError(`Cannot override node ${nodeKey}: target state must be "up-to-date", "stale-soft", or "stale-hard"`);
+        }
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
         const identifiersKeysIndex = this._getIdentifiersKeysIndex();
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
-        await assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex, this.oldGraphScheme, this.newGraphScheme);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "override") {
@@ -190,16 +194,7 @@ class MigrationStorageClass {
             }
             throw makeDecisionConflictError(nodeKey, existing.kind, "override");
         }
-        this.decisions.set(nodeKey, { kind: "override", value });
-        await propagateInvalidate({
-            nodeKey,
-            visited: new Set(),
-            prevStorage: this.prevStorage,
-            materializedNodes: this.materializedNodes,
-            decisions: this.decisions,
-            newHeadIndex: this.newHeadIndex,
-            getIdentifiersKeysIndex: () => this._identifiersKeysIndex,
-        });
+        this.decisions.set(nodeKey, { kind: "override", value, targetState });
     }
 
     /**
