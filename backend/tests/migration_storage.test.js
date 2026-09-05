@@ -310,19 +310,14 @@ describe("MigrationStorage", () => {
             expect(isDecisionConflict(err)).toBe(true);
         });
 
-        // override() is a semantic-preserving representation rewrite: it changes
-        // the stored shape but must preserve the semantic value as seen by
-        // dependents. Because the value is unchanged, override does not propagate
-        // invalidation. If a migration changes the meaning/value of a node, it
-        // must use invalidate() instead. Missing invalidation in override() is
-        // correct by design, not a bug.
-        test("keep(D) then override(A) does not propagate invalidation", async () => {
+        test("keep(D) then override(A) conflicts with propagated invalidation", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
             await ms.keep(nk("D"));
-            await expect(ms.override(nk("A"), () => Promise.resolve(DUMMY_VALUE))).resolves.toBeUndefined();
+            const error = await ms.override(nk("A"), () => Promise.resolve(DUMMY_VALUE)).catch((caught) => caught);
+            expect(isDecisionConflict(error)).toBe(true);
         });
     });
 
@@ -421,31 +416,30 @@ describe("MigrationStorage", () => {
     });
 
     // -----------------------------------------------------------------------
-    // Section 4: OVERRIDE preserves graph state
+    // Section 4: OVERRIDE propagation
     // -----------------------------------------------------------------------
-    describe("Section 4: OVERRIDE preserves graph state", () => {
-        test("override(A) does not invalidate B and D", async () => {
+    describe("Section 4: OVERRIDE propagation", () => {
+        test("override(A) invalidates B and D", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
             await ms.override(nk("A"), () => Promise.resolve(DUMMY_VALUE_2));
-            await ms.keep(nk("B"));
             await ms.keep(nk("C"));
-            await ms.keep(nk("D"));
             const decisions = await ms.finalize();
 
-            expect(decisions.get(nk("B"))?.kind).toBe("keep");
-            expect(decisions.get(nk("D"))?.kind).toBe("keep");
+            expect(decisions.get(nk("B"))?.kind).toBe("invalidate");
+            expect(decisions.get(nk("D"))?.kind).toBe("invalidate");
         });
 
-        test("keep(D) then override(A) is allowed because override does not propagate", async () => {
+        test("keep(D) then override(A) conflicts with propagated invalidation", async () => {
             const storage = makeInMemorySchemaStorage();
             const headIndex = makeHeadIndex(["A", "B", "C", "D"]);
             const ms = await setupStandardGraph(storage, headIndex);
 
             await ms.keep(nk("D"));
-            await expect(ms.override(nk("A"), () => Promise.resolve(DUMMY_VALUE_2))).resolves.toBeUndefined();
+            const error = await ms.override(nk("A"), () => Promise.resolve(DUMMY_VALUE_2)).catch((caught) => caught);
+            expect(isDecisionConflict(error)).toBe(true);
         });
     });
 

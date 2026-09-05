@@ -43,7 +43,7 @@ describe("migration integration", () => {
         );
     });
 
-    test("semantic replacement persists and invalidates a dependent", async () => {
+    test("semantic override persists and invalidates a dependent", async () => {
         const caps = getTestCapabilities();
         let db;
         try {
@@ -61,7 +61,7 @@ describe("migration integration", () => {
             await source.global.put("version", "1");
 
             await runMigration(caps, db, nodeDefs, async (storage) => {
-                await storage.replace(aId, async () => ({ v: 40 }));
+                await storage.override(aId, async () => ({ v: 40 }));
             });
 
             expect(await db.getSchemaStorage().values.get(aId)).toEqual({ v: 40 });
@@ -79,7 +79,7 @@ describe("migration integration", () => {
         }
     });
 
-    test("stale keep/override region A→B→C loses both proofs, both recompute with oldValue", async () => {
+    test("stale keep region A→B→C loses both proofs, both recompute with oldValue", async () => {
         const caps = getTestCapabilities();
         let db;
         try {

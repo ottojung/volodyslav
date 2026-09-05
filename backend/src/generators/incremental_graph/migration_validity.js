@@ -128,7 +128,7 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
     const materialized = materializedDecisionStrings(decisions);
 
     for (const [nodeIdentifier, decision] of decisions) {
-        if (decision.kind === "delete" || decision.kind === "replace" || (decision.kind === "invalidate" && decision.provenance === "explicit")) continue;
+        if (decision.kind === "delete" || decision.kind === "override" || (decision.kind === "invalidate" && decision.provenance === "explicit")) continue;
         if (!await isFinalCached(prevStorage, decisions, nodeIdentifier)) continue;
 
         const finalEdges = deriveInputEdges(newScheme, finalLookup, nodeIdentifier);
@@ -154,21 +154,20 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
         }
 
         // Preserve old outgoing proofs when the input's stored semantic value
-        // survives — this applies to keep, override, and propagated
+        // survives — this applies to keep and propagated
         // invalidations (invalidation changes freshness, not value).
         // Delete nodes have no surviving value; create nodes have no old proof.
         // Explicit invalidation is excluded above.
         //
-        // A preexisting stale node carried through keep or override loses its
+        // A preexisting stale node carried through keep loses its
         // incoming proofs: persisted storage does not encode whether its
         // staleness was explicit or propagated, so we conservatively treat it
         // as a direct invalidation root.
         const nodeFreshness = await finalFreshness(prevStorage, decisions, nodeIdentifier);
-        const isKeepOrOverride = decision.kind === "keep" || decision.kind === "override";
-        if (isKeepOrOverride && nodeFreshness === "potentially-outdated") continue;
+        if (decision.kind === "keep" && nodeFreshness === "potentially-outdated") continue;
 
         /** @param {import('./migration_storage').Decision | undefined} d @returns {boolean} */
-        const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create" && d.kind !== "replace";
+        const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create" && d.kind !== "override";
         const oldEdges = deriveInputEdges(oldScheme, oldLookup, nodeIdentifier);
         for (const input of finalEdges) {
             const inputDecision = decisions.get(input);

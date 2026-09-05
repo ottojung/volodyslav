@@ -47,8 +47,8 @@ function isDecisionConflict(object) {
 /**
  * Thrown when override() is called more than once on the same node.
  *
- * Each node may receive at most one semantic-preserving representation rewrite
- * during migration. Duplicate override calls are ambiguous about which rewrite
+ * Each node may receive at most one migration-authored value change. Duplicate
+ * override calls are ambiguous about which value
  * should be applied, so they are rejected. Use keep() instead for nodes that
  * need no further change after the first override.
  */

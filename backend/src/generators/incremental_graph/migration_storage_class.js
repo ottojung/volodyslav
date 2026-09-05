@@ -35,7 +35,6 @@ const {
 
 /** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
 /** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
-/** @typedef {import('./migration_decisions').ReplaceDecision} ReplaceDecision */
 /** @typedef {import('./migration_decisions').InvalidateDecision} InvalidateDecision */
 /** @typedef {import('./migration_decisions').DeleteDecision} DeleteDecision */
 /** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
@@ -168,21 +167,10 @@ class MigrationStorageClass {
     }
 
     /**
-     * Assign an OVERRIDE decision to a node that rewrites its stored
-     * representation while preserving the semantic value.
-     *
-     * `override()` is a **semantic-preserving representation rewrite**:
-     * - It may change the on-disk storage shape (e.g. after a database version
-     *   change that alters the serialization format).
-     * - It MUST preserve the semantic value as seen by dependents — the
-     *   represented value is meaningfully the same as before.
-     * - Because the value is semantically unchanged, override() does NOT
-     *   propagate invalidation. Dependents that were valid against the old
-     *   representation remain valid against the new one.
-     *
-     * If the migration changes the meaning or value of a node (not just its
-     * storage representation), the migration must use `replace()` instead. That explicit semantic operation
-     * invalidates proof-supported dependents.
+     * Assign an OVERRIDE decision that changes a materialized node to an
+     * arbitrary persistence-safe value. The node retains its freshness, but
+     * its modified timestamp advances and proof-supported dependents are
+     * invalidated because their proofs refer to the previous value.
      *
      * @param {NodeIdentifier} nodeKey
      * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
@@ -203,29 +191,6 @@ class MigrationStorageClass {
             throw makeDecisionConflictError(nodeKey, existing.kind, "override");
         }
         this.decisions.set(nodeKey, { kind: "override", value });
-    }
-
-    /**
-     * Replace a materialized node with an arbitrary persistence-safe semantic
-     * value. The node retains its freshness, but its modified timestamp is
-     * advanced and all proof-supported dependents are invalidated because
-     * their proofs refer to the value that was replaced.
-     * @param {NodeIdentifier} nodeKey
-     * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
-     * @returns {Promise<void>}
-     */
-    async replace(nodeKey, value) {
-        if (!this.materializedNodes.has(nodeKey)) {
-            throw makeGetMissingNodeError(nodeKey);
-        }
-        const identifiersKeysIndex = this._getIdentifiersKeysIndex();
-        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
-        await assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex, this.oldGraphScheme, this.newGraphScheme);
-        const existing = this.decisions.get(nodeKey);
-        if (existing !== undefined) {
-            throw makeDecisionConflictError(nodeKey, existing.kind, "replace");
-        }
-        this.decisions.set(nodeKey, { kind: "replace", value });
         await propagateInvalidate({
             nodeKey,
             visited: new Set(),

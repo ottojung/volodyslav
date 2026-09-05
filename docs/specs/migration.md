@@ -17,7 +17,7 @@ This document describes the **migration system** for upgrading incremental-graph
 When the application version changes, any computed values stored in the previous version's namespace may become stale or structurally incompatible with the new schema.  The migration system provides a strict, fail-fast API—`MigrationStorage`—that lets migration authors:
 
 * **read** source-version values,
-* **decide** what happens to each source materialized node (keep, override, replace, invalidate, or delete),
+* **decide** what happens to each source materialized node (keep, override, invalidate, or delete),
 * **traverse** the previous version's dependency graph.
 
 A failed migration never activates the target replica.  Failures before unification leave the target replica untouched.  Failures after unification may leave the inactive replica written, but the active replica remains unchanged.
@@ -53,8 +53,7 @@ All methods are `async`.
 |--------|-------------|
 | `get(nodeIdentifier)` | Return the previous-version value. |
 | `keep(nodeIdentifier)` | Preserve the cached semantic value, freshness, and timestamps in the new version. Validity proofs follow the proof-retention and hardening rules below. |
-| `override(nodeIdentifier, value)` | Rewrite the representation of an existing cached value with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`). The migration author explicitly declares the result representation-only; runtime equality is not used to infer or admit that intent. Freshness and timestamps are preserved, while validity proofs follow the same proof-retention and hardening rules as `keep`. |
-| `replace(nodeIdentifier, value)` | Replace an existing cached value with an arbitrary persistence-safe `ComputedValue`. No equality test is an admission condition. Freshness is retained, `modifiedAt` advances, incoming proofs are removed, and proof-supported dependents are recursively invalidated. |
+| `override(nodeIdentifier, value)` | Change an existing cached value to the arbitrary persistence-safe `ComputedValue` returned by `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`). No equality test is an admission condition. Freshness is retained, `modifiedAt` advances, incoming proofs are removed, and proof-supported dependents are recursively invalidated. |
 | `invalidate(nodeIdentifier)` | Preserve the cached value while marking the node for recomputation. |
 | `delete(nodeIdentifier)` | Remove the node from the new version entirely. |
 | `create(nodeKeyString, value, cacheState)` | Create a new cached node (not in the previous version) in the new schema with the result of `value(nodeIdentifier)` (a `NodeIdentifier => Promise<ComputedValue>`) as its initial value. `cacheState` is exactly one of the closed variants below. `nodeKeyString` is a `NodeKeyString` — the semantic key by which the node will be identified in the new schema. A fresh `NodeIdentifier` is allocated automatically. |
@@ -82,7 +81,7 @@ Finalization builds the planned target `NodeKeyString` to `NodeIdentifier`
 lookup from every surviving source node and every `create` decision, then resolves
 each required proof key through that lookup. Each key MUST resolve to a target
 materialization, and that materialization's final value (after applying its
-`keep`, `override`, `replace`, `invalidate`, or `create` decision) MUST be `isEqual` to the
+`keep`, `override`, `invalidate`, or `create` decision) MUST be `isEqual` to the
 value supplied in the proof entry. An `invalidate` decision preserves that final
 cached value while removing the input materialization's own incoming proofs; its
 outgoing proof to the created node remains valid. Only after all of these checks
@@ -119,7 +118,7 @@ the target replica.
 
 ### Idempotency
 
-Calling the same decision twice (except for `override`, `replace`, and `create`) is allowed and has no effect.
+Calling the same decision twice (except for `override` and `create`) is allowed and has no effect.
 
 ### Conflict detection
 
@@ -130,20 +129,20 @@ Calling the same decision twice (except for `override`, `replace`, and `create`)
 
 ### Schema compatibility
 
-`keep`, `override`, `replace`, `invalidate`, and `create` check that the node's functor and arity exist in the new schema.  Incompatible nodes must be explicitly `delete`d.  Violation throws `SchemaCompatibilityError`.
+`keep`, `override`, `invalidate`, and `create` check that the node's functor and arity exist in the new schema.  Incompatible nodes must be explicitly `delete`d.  Violation throws `SchemaCompatibilityError`.
 
 ### Operation semantics
 
-`keep` preserves the value, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. When a stale node carried through `keep` has incoming proofs before migration and migration drops them, the `proofs present before → proofs absent after` transition newly establishes hard invalidation. Migration MUST atomically author a normal generation-scoped hard invalidate unless a barrier authored or installed by that exact migration decision already represents it. The event takes the next local sequence and its `causalContext` covers the supported source authority used to decide hardening. The same rule applies to `override`.
+`keep` preserves the value, freshness, timestamps, and — for up-to-date nodes — compatible incoming validity. When a stale node carried through `keep` has incoming proofs before migration and migration drops them, the `proofs present before → proofs absent after` transition newly establishes hard invalidation. Migration MUST atomically author a normal generation-scoped hard invalidate unless a barrier authored or installed by that exact migration decision already represents it. The event takes the next local sequence and its `causalContext` covers the supported source authority used to decide hardening.
 
-Within a stale `keep`/`override` region whose nodes still have incoming proofs,
+Within a stale `keep` region whose nodes still have incoming proofs,
 those proofs may disappear. A stale B whose dependent C is also stale can lose
 both `A⇝B` and `B⇝C` during migration, and both newly hardened nodes must
 recompute.
 
 Already-settled hard invalidation is different. If a stale node's incoming
 proofs are already absent and an outstanding retained invalidate already
-represents the obligation, a `keep` or `override` that makes no new proof-
+represents the obligation, a `keep` that makes no new proof-
 removal or hardening decision carries that state silently. It authors no new
 invalidate, allocates no new local index, and advances no journal clock for this
 reason. Repeated passive migrations do not manufacture barriers merely because
@@ -166,17 +165,12 @@ after migration:
 
 **Migration-time propagated invalidation** is different: the migration callback explicitly calls `invalidate()` on a node, and the propagation runs in memory with full provenance. In that case outgoing proofs survive and freshness-only propagation preserves validity edges.
 
-`override` is a **semantic-preserving representation rewrite**. It changes the stored representation (e.g. on-disk format) while preserving the semantic value as seen by dependents. Because the value is semantically unchanged, `override()` does not propagate invalidation. It preserves freshness and timestamps; validity proofs follow the same proof-retention and hardening rules as `keep`. In particular, a stale node carried through `override` loses its incoming proofs.
-
-`replace()` performs the direct present X → present Y transition. It accepts any
-persistence-safe target value and never infers author intent by comparing X and
-Y. The explicit operation is semantic even when the two supplied values happen
-to compare equal. It retains the node's freshness, removes incoming proof,
-advances `modifiedAt`, and recursively marks proof-supported dependents stale.
+`override` performs the direct present X → present Y transition. It accepts any
+persistence-safe target value and does not require the target to be `isEqual` to
+the source. It retains the node's freshness, removes incoming proofs, advances
+`modifiedAt`, and recursively marks proof-supported dependents stale.
 `invalidate()` remains distinct: it preserves the cached value and requires a
 later pull to recompute it.
-
-The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
 
 `invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 
@@ -203,13 +197,13 @@ respectively.
 
 #### INVALIDATE → propagate INVALIDATE downstream
 
-When a node is invalidated, all its dependents are automatically marked `INVALIDATE` (recursively), unless they are already `DELETE`d.  If a dependent already has a `KEEP`, `OVERRIDE`, or `REPLACE` decision, `DecisionConflictError` is thrown immediately.
+When a node is invalidated, all its dependents are automatically marked `INVALIDATE` (recursively), unless they are already `DELETE`d.  If a dependent already has a `KEEP` or `OVERRIDE` decision, `DecisionConflictError` is thrown immediately.
 
 #### DELETE → propagate DELETE downstream (deferred, dependency-closed)
 
 DELETE propagation runs at finalization (after the callback returns), via a BFS over dependents. One deleted input is sufficient to delete an undecided dependent, and that deletion propagates through every transitive materialized dependent.
 
-This preserves the materialization invariant that every materialized node has all of its concrete inputs materialized. If a dependent already has an explicit `KEEP`, `OVERRIDE`, `REPLACE`, or `INVALIDATE` decision, `DecisionConflictError` is thrown.
+This preserves the materialization invariant that every materialized node has all of its concrete inputs materialized. If a dependent already has an explicit `KEEP`, `OVERRIDE`, or `INVALIDATE` decision, `DecisionConflictError` is thrown.
 
 ---
 
@@ -221,7 +215,7 @@ This preserves the materialization invariant that every materialized node has al
 | `OverrideConflictError` | `override()` called more than once on the same node. |
 | `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
-| `SchemaCompatibilityError` | `keep`/`override`/`replace`/`invalidate`/`create` on a node absent from the new schema. |
+| `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
 | `InvalidMigrationDecisionError` | A produced value is not persistence-safe, or a `create` cache-state/proof is malformed, incomplete, duplicate, extra, unresolved, or inconsistent with its final target inputs. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
@@ -279,8 +273,8 @@ The migration transition table governs journal changes. Every new generation
 includes exactly one later same-author initial freshness assertion. Local
 authoring takes the next local sequence, carries source authority relevant to
 the decision in `causalContext`, and advances only local coverage/counter.
-Representation-only changes remain silent; `keep`, invalidation, and semantic-preserving `override` preserve the
-cached value and `modifiedAt`. Graph, journal, reset-anchor cut summaries,
+`keep` and invalidation preserve the cached value and `modifiedAt`. An `override`
+that changes the semantic value authors an edit and advances `modifiedAt`. Graph, journal, reset-anchor cut summaries,
 counter, coverage, causal summary, and durable fingerprint commit
 atomically. Migration never seeds graph authority from iterator notifications. Detailed rules are in
 `docs/specs/incremental-graph-journal-migrations.md`.
