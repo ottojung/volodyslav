@@ -128,7 +128,7 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
     const materialized = materializedDecisionStrings(decisions);
 
     for (const [nodeIdentifier, decision] of decisions) {
-        if (decision.kind === "delete" || (decision.kind === "invalidate" && decision.provenance === "explicit")) continue;
+        if (decision.kind === "delete" || decision.kind === "replace" || (decision.kind === "invalidate" && decision.provenance === "explicit")) continue;
         if (!await isFinalCached(prevStorage, decisions, nodeIdentifier)) continue;
 
         const finalEdges = deriveInputEdges(newScheme, finalLookup, nodeIdentifier);
@@ -168,7 +168,7 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
         if (isKeepOrOverride && nodeFreshness === "potentially-outdated") continue;
 
         /** @param {import('./migration_storage').Decision | undefined} d @returns {boolean} */
-        const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create";
+        const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create" && d.kind !== "replace";
         const oldEdges = deriveInputEdges(oldScheme, oldLookup, nodeIdentifier);
         for (const input of finalEdges) {
             const inputDecision = decisions.get(input);

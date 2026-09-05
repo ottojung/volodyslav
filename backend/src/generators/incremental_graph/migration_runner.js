@@ -116,7 +116,7 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
      * @returns {Promise<ComputedValue | undefined>}
      */
     async function readFinalValue(key, decision) {
-        if (decision.kind === "create" || decision.kind === "override") {
+        if (decision.kind === "create" || decision.kind === "override" || decision.kind === "replace") {
             const keyString = String(key);
             let valuePromise = producedValues.get(keyString);
             if (valuePromise === undefined) {
@@ -201,6 +201,10 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
                     const nowIso = datetime.now().toISOString();
                     return { createdAt: nowIso, modifiedAt: nowIso };
                 }
+                if (decision.kind === "replace") {
+                    if (existing === undefined) return undefined;
+                    return { createdAt: existing.createdAt, modifiedAt: datetime.now().toISOString() };
+                }
                 if (decision.kind === "invalidate" || decision.kind === "override" || decision.kind === "keep") {
                     return existing;
                 }
@@ -241,7 +245,7 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
  * Run a database migration.
  *
  * The callback receives a MigrationStorage instance and must assign exactly one
- * decision (keep / override / invalidate / delete) to every node materialized in
+ * decision (keep / override / replace / invalidate / delete) to every node materialized in
  * the previous application version.  Propagation rules and completeness are
  * enforced automatically; any violation throws before the new version is written.
  *

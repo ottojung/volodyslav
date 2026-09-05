@@ -35,6 +35,7 @@ const {
 
 /** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
 /** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
+/** @typedef {import('./migration_decisions').ReplaceDecision} ReplaceDecision */
 /** @typedef {import('./migration_decisions').InvalidateDecision} InvalidateDecision */
 /** @typedef {import('./migration_decisions').DeleteDecision} DeleteDecision */
 /** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
@@ -180,9 +181,8 @@ class MigrationStorageClass {
      *   representation remain valid against the new one.
      *
      * If the migration changes the meaning or value of a node (not just its
-     * storage representation), the migration must use `invalidate()` instead
-     * of `override()`. This triggers downstream recomputation so dependents
-     * observe the changed value.
+     * storage representation), the migration must use `replace()` instead. That explicit semantic operation
+     * invalidates proof-supported dependents.
      *
      * @param {NodeIdentifier} nodeKey
      * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
@@ -203,6 +203,38 @@ class MigrationStorageClass {
             throw makeDecisionConflictError(nodeKey, existing.kind, "override");
         }
         this.decisions.set(nodeKey, { kind: "override", value });
+    }
+
+    /**
+     * Replace a materialized node with an arbitrary persistence-safe semantic
+     * value. The node retains its freshness, but its modified timestamp is
+     * advanced and all proof-supported dependents are invalidated because
+     * their proofs refer to the value that was replaced.
+     * @param {NodeIdentifier} nodeKey
+     * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
+     * @returns {Promise<void>}
+     */
+    async replace(nodeKey, value) {
+        if (!this.materializedNodes.has(nodeKey)) {
+            throw makeGetMissingNodeError(nodeKey);
+        }
+        const identifiersKeysIndex = this._getIdentifiersKeysIndex();
+        await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
+        await assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex, this.oldGraphScheme, this.newGraphScheme);
+        const existing = this.decisions.get(nodeKey);
+        if (existing !== undefined) {
+            throw makeDecisionConflictError(nodeKey, existing.kind, "replace");
+        }
+        this.decisions.set(nodeKey, { kind: "replace", value });
+        await propagateInvalidate({
+            nodeKey,
+            visited: new Set(),
+            prevStorage: this.prevStorage,
+            materializedNodes: this.materializedNodes,
+            decisions: this.decisions,
+            newHeadIndex: this.newHeadIndex,
+            getIdentifiersKeysIndex: () => this._identifiersKeysIndex,
+        });
     }
 
     /**

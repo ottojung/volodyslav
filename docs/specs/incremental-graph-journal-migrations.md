@@ -1,8 +1,7 @@
 # IncrementalGraph journal migration
 
 Migration uses the one journal and atomic semantic classification. Migration
-never directly changes the semantic value of an already-materialized node;
-the `MigrationStorage` API has no present-unequal transition. Its reachable
+may directly change the semantic value of an already-materialized node. Its reachable
 transitions and journal effects are:
 
 | Previous | Target/decision | Journal effect |
@@ -10,6 +9,7 @@ transitions and journal effects are:
 | absent | present via `create` | generation (`add`) plus exactly one initial `validate`, soft `invalidate`, or hard `invalidate` |
 | present | absent via `delete` | `delete` |
 | present | same semantic value via `override` | no value event; representation-only rewrite |
+| present | arbitrary semantic value via `replace` | `edit` in the existing generation; downstream proof-supported dependents become stale |
 | present | same value via `keep` | no value event |
 | present | same cached value via explicit or proof-hardening `invalidate` | only the appropriate soft or hard `invalidate` |
 
@@ -22,7 +22,7 @@ Up-to-date, stale-soft, and stale-hard create author the table's initial
 For stale-soft derived create, the semantic-key proof identity and finalization
 contract is defined by [the `MigrationStorage` API](migration.md#migrationstorage-api).
 Finalization installs the complete incoming validity proof only after that
-contract succeeds. A proof input resolved through `keep`, `override`,
+contract succeeds. A proof input resolved through `keep`, `override`, `replace`,
 `invalidate`, or `create` is compared with the surviving materialization's
 final cached value. Explicit invalidation removes that input's incoming proofs
 but preserves its cached semantic value and outgoing proof to the created
@@ -31,7 +31,13 @@ stale create cannot satisfy the nonempty reusable-proof contract and must use
 stale-hard. An invalid or incomplete cache-state/proof envelope throws
 `InvalidMigrationDecisionError` before journal or graph mutation.
 
-`override()` requires `isEqual` semantic equality and is value-journal-silent.
+`override()` is an explicitly representation-only, value-journal-silent operation.
+`replace()` does not apply `isEqual` as an admission test. It authors an `edit`
+whose value authority is the migration's next local journal coordinate. The
+replacement retains the node's freshness, drops its incoming proofs, advances
+`modifiedAt`, and invalidates proof-supported downstream dependents. The edit,
+freshness changes, validity changes, timestamp, journal counters, and journal
+entry are published in the same replica cutover.
 `invalidate()` preserves the cached value; it changes only freshness and the
 recomputation obligation and therefore never authors `add` or `edit`.
 

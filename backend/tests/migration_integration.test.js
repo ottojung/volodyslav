@@ -43,6 +43,42 @@ describe("migration integration", () => {
         );
     });
 
+    test("semantic replacement persists and invalidates a dependent", async () => {
+        const caps = getTestCapabilities();
+        let db;
+        try {
+            db = await getRootDatabase(caps);
+            let dependentCalls = 0;
+            const nodeDefs = [
+                { output: "A", inputs: [], computor: async () => ({ v: 1 }), isDeterministic: true, hasSideEffects: false },
+                { output: "B", inputs: ["A"], computor: async ([a]) => { dependentCalls++; return { v: a.v + 1 }; }, isDeterministic: true, hasSideEffects: false },
+            ];
+            const graph = await createIncrementalGraph(caps, db, nodeDefs);
+            expect(await graph.pull("B")).toEqual({ v: 2 });
+            const source = db.getSchemaStorage();
+            const aId = db.getActiveIdentifierLookup().keyToId.get('{"head":"A","args":[]}');
+            const bId = db.getActiveIdentifierLookup().keyToId.get('{"head":"B","args":[]}');
+            await source.global.put("version", "1");
+
+            await runMigration(caps, db, nodeDefs, async (storage) => {
+                await storage.replace(aId, async () => ({ v: 40 }));
+            });
+
+            expect(await db.getSchemaStorage().values.get(aId)).toEqual({ v: 40 });
+            expect(await db.getSchemaStorage().freshness.get(aId)).toBe("up-to-date");
+            expect(await db.getSchemaStorage().freshness.get(bId)).toBe("potentially-outdated");
+            expect(await db.getSchemaStorage().valid.get(aId) ?? []).not.toContain(bId);
+            await db.close();
+            db = await getRootDatabase(caps);
+            expect(await db.getSchemaStorage().values.get(aId)).toEqual({ v: 40 });
+            const restarted = await createIncrementalGraph(caps, db, nodeDefs);
+            expect(await restarted.pull("B")).toEqual({ v: 41 });
+            expect(dependentCalls).toBe(2);
+        } finally {
+            if (db) await db.close();
+        }
+    });
+
     test("stale keep/override region A→B→C loses both proofs, both recompute with oldValue", async () => {
         const caps = getTestCapabilities();
         let db;

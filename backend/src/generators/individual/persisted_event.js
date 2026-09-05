@@ -3,18 +3,25 @@ const { deserialize } = require('../../event');
 /** @typedef {import('../../event').Event} Event */
 
 /**
- * Produce the plain JSON record that ordinary persistence historically wrote
- * for an Event instance. In particular, the event identifier remains the
- * record `{ identifier }` rather than becoming a string.
+ * Encode the stable Event representation used inside persisted ComputedValues.
  * @param {Event} event
  * @returns {import('../incremental_graph/database/types').PersistedEvent}
  */
 function eventToPersistedEvent(event) {
-    return JSON.parse(JSON.stringify(event));
+    const date = typeof event.date === 'string'
+        ? event.date
+        : { _luxonDateTime: event.date.toISOString() };
+    return {
+        id: { identifier: event.id.identifier },
+        date,
+        original: event.original,
+        input: event.input,
+        creator: event.creator,
+    };
 }
 
 /**
- * Reconstruct an Event from its historical persisted JSON record.
+ * Decode the stable persisted Event representation into a domain Event.
  * @param {import('../incremental_graph/database/types').PersistedEvent} event
  * @returns {Event}
  */

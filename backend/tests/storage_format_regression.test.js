@@ -7,6 +7,7 @@ const { stubEnvironment, stubLogger } = require('./stubs');
 const eventId = require('../src/event/id');
 const { persistedEvent } = require('../src/generators/individual');
 const { computeEntryDescription } = require('../src/generators/individual/entry_description/compute');
+const { fromISOString } = require('../src/datetime');
 
 function capabilities() {
     const result = getMockedRootCapabilities();
@@ -64,6 +65,19 @@ describe('journal-1 storage format', () => {
         expect(JSON.stringify(actualContext)).toBe(JSON.stringify(expectedContext));
         expect(JSON.stringify(actualTranscription)).toBe(JSON.stringify(expectedTranscription));
         expect(persisted.id).toEqual({ identifier: 'event-1' });
+    });
+
+    test('Event persistence has an exact stable date and identifier representation', () => {
+        const richEvent = {
+            ...event(),
+            date: fromISOString('2024-01-02T03:04:05.000Z'),
+            creator: { name: 'test', uuid: 'u', version: 'v', hostname: 'h' },
+        };
+
+        const persisted = persistedEvent.eventToPersistedEvent(richEvent);
+
+        expect(JSON.stringify(persisted)).toBe('{"id":{"identifier":"event-1"},"date":{"_luxonDateTime":"2024-01-02T03:04:05.000Z"},"original":"test example","input":"test example","creator":{"name":"test","uuid":"u","version":"v","hostname":"h"}}');
+        expect(persistedEvent.persistedEventToEvent(persisted)).toEqual(richEvent);
     });
 
     test('missing entry descriptions retain the omitted-property JSON shape', () => {
