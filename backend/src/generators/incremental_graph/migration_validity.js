@@ -108,6 +108,7 @@ async function finalFreshness(prevStorage, decisions, nodeIdentifier) {
     const decision = decisions.get(nodeIdentifier);
     if (decision === undefined || decision.kind === "delete") return undefined;
     if (decision.kind === "create") return decision.freshness;
+    if (decision.kind === "override") return decision.targetState === "up-to-date" ? "up-to-date" : "potentially-outdated";
     if (decision.kind === "invalidate") return "potentially-outdated";
     return await prevStorage.freshness.get(nodeIdentifier);
 }
@@ -153,19 +154,38 @@ async function buildDesiredValid(prevStorage, decisions, oldScheme, newScheme, o
             continue;
         }
 
+        if (decision.kind === "override") {
+            if (decision.targetState === "stale-hard") continue;
+            if (decision.targetState === "stale-soft" && finalEdges.length === 0) {
+                throw makeInvalidMigrationDecisionError(`Cannot override ${nodeIdentifierToString(nodeIdentifier)} as stale-soft without structural inputs`);
+            }
+            for (const input of finalEdges) {
+                if (!await isFinalCached(prevStorage, decisions, input)) {
+                    throw makeInvalidMigrationDecisionError(`Cannot override ${nodeIdentifierToString(nodeIdentifier)} as ${decision.targetState}: input ${nodeIdentifierToString(input)} is not cached`);
+                }
+                if (decision.targetState === "up-to-date") {
+                    const inputFreshness = await finalFreshness(prevStorage, decisions, input);
+                    if (inputFreshness !== "up-to-date") {
+                        throw makeInvalidMigrationDecisionError(`Cannot override ${nodeIdentifierToString(nodeIdentifier)} as up-to-date: input ${nodeIdentifierToString(input)} is ${inputFreshness ?? "not materialized"}`);
+                    }
+                }
+                addToValidSet(validSets, input, nodeIdentifier);
+            }
+            continue;
+        }
+
         // Preserve old outgoing proofs when the input's stored semantic value
-        // survives — this applies to keep, override, and propagated
+        // survives — this applies to keep and propagated
         // invalidations (invalidation changes freshness, not value).
         // Delete nodes have no surviving value; create nodes have no old proof.
         // Explicit invalidation is excluded above.
         //
-        // A preexisting stale node carried through keep or override loses its
+        // A preexisting stale node carried through keep loses its
         // incoming proofs: persisted storage does not encode whether its
         // staleness was explicit or propagated, so we conservatively treat it
         // as a direct invalidation root.
         const nodeFreshness = await finalFreshness(prevStorage, decisions, nodeIdentifier);
-        const isKeepOrOverride = decision.kind === "keep" || decision.kind === "override";
-        if (isKeepOrOverride && nodeFreshness === "potentially-outdated") continue;
+        if (decision.kind === "keep" && nodeFreshness === "potentially-outdated") continue;
 
         /** @param {import('./migration_storage').Decision | undefined} d @returns {boolean} */
         const preservesValue = (d) => d !== undefined && d.kind !== "delete" && d.kind !== "create";

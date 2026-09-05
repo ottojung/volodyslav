@@ -35,6 +35,7 @@ const {
 
 /** @typedef {import('./migration_decisions').KeepDecision} KeepDecision */
 /** @typedef {import('./migration_decisions').OverrideDecision} OverrideDecision */
+/** @typedef {import('./migration_decisions').OverrideTargetState} OverrideTargetState */
 /** @typedef {import('./migration_decisions').InvalidateDecision} InvalidateDecision */
 /** @typedef {import('./migration_decisions').DeleteDecision} DeleteDecision */
 /** @typedef {import('./migration_decisions').CreatedFreshness} CreatedFreshness */
@@ -167,34 +168,25 @@ class MigrationStorageClass {
     }
 
     /**
-     * Assign an OVERRIDE decision to a node that rewrites its stored
-     * representation while preserving the semantic value.
-     *
-     * `override()` is a **semantic-preserving representation rewrite**:
-     * - It may change the on-disk storage shape (e.g. after a database version
-     *   change that alters the serialization format).
-     * - It MUST preserve the semantic value as seen by dependents — the
-     *   represented value is meaningfully the same as before.
-     * - Because the value is semantically unchanged, override() does NOT
-     *   propagate invalidation. Dependents that were valid against the old
-     *   representation remain valid against the new one.
-     *
-     * If the migration changes the meaning or value of a node (not just its
-     * storage representation), the migration must use `invalidate()` instead
-     * of `override()`. This triggers downstream recomputation so dependents
-     * observe the changed value.
+     * Assign an OVERRIDE decision that rewrites the persisted representation
+     * of a semantic value. The target state explicitly asserts whether the
+     * rewritten value is clean, stale with reusable input proof, or stale and
+     * required to recompute.
      *
      * @param {NodeIdentifier} nodeKey
      * @param {(nodeKey: NodeIdentifier) => Promise<ComputedValue>} value
+     * @param {OverrideTargetState} targetState
      * @returns {Promise<void>}
      */
-    async override(nodeKey, value) {
+    async override(nodeKey, value, targetState) {
+        if (targetState !== "up-to-date" && targetState !== "stale-soft" && targetState !== "stale-hard") {
+            throw makeInvalidMigrationDecisionError(`Cannot override node ${nodeKey}: target state must be "up-to-date", "stale-soft", or "stale-hard"`);
+        }
         if (!this.materializedNodes.has(nodeKey)) {
             throw makeGetMissingNodeError(nodeKey);
         }
         const identifiersKeysIndex = this._getIdentifiersKeysIndex();
         await checkSchemaCompatibility(nodeKey, this.newHeadIndex, identifiersKeysIndex, this.decisions);
-        await assertKeepInputPositionsCompatible(nodeKey, identifiersKeysIndex, this.oldGraphScheme, this.newGraphScheme);
         const existing = this.decisions.get(nodeKey);
         if (existing !== undefined) {
             if (existing.kind === "override") {
@@ -202,7 +194,7 @@ class MigrationStorageClass {
             }
             throw makeDecisionConflictError(nodeKey, existing.kind, "override");
         }
-        this.decisions.set(nodeKey, { kind: "override", value });
+        this.decisions.set(nodeKey, { kind: "override", value, targetState });
     }
 
     /**

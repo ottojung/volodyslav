@@ -171,6 +171,9 @@ function makeLazyMigrationSource(prevStorage, oldLookup, decisions, desiredValid
                 const decision = decisions.get(key);
                 if (!decision || decision.kind === "delete") return undefined;
                 if (decision.kind === "create") return decision.freshness;
+                if (decision.kind === "override") {
+                    return decision.targetState === "up-to-date" ? "up-to-date" : "potentially-outdated";
+                }
                 if (decision.kind === "invalidate") return "potentially-outdated";
                 return await prevStorage.freshness.get(key);
             },
