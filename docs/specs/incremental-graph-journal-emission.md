@@ -22,6 +22,14 @@ migration(...)
 
 The operation record uses `localOperationCounter`, not the semantic `localJournalCounter`. It therefore has no semantic authority and does not affect causal ordering or conflict selection.
 
+When an operation record is persisted, its tagged arguments MUST identify the recorded invocation according to `incremental-graph-journal-types.md`:
+
+- `pull` and `invalidate` record their `subject` NodeKey;
+- `synchronize` records the source database and, for a Journal 2 source, the exact source incarnation/snapshot head consumed by the operation;
+- `reset` records the chosen source database and, when available, the exact Journal 2 source incarnation/snapshot head;
+- `migration` records the stable `MigrationId` of the migration being run;
+- implementation-specific `other` operations use a bounded stable `OperationTag` rather than arbitrary payload data.
+
 Every low-level semantic event directly produced by that operation may carry:
 
 ```text
@@ -30,7 +38,7 @@ operation: OperationId
 
 The conceptual compiled expansion of an operation is the set/list of low-level historical events carrying that operation ID. The operation record itself MUST NOT store an array of those events, because one operation may affect O(N) nodes and every journal LevelDB value must remain individually bounded.
 
-Nested pulls/operations may receive distinct operation IDs. No parent operation is required to contain an unbounded list of nested operation IDs.
+Nested pulls/operations may receive distinct operation IDs. When the direct caller's `OperationId` is safely known, the child operation record may store it as `parent`. No parent operation is required to contain an unbounded list of nested operation IDs, and Journal 2 does not require a complete transitive call tree.
 
 If an operation produces no journal-relevant semantic event, an implementation may omit its `OperationRecord`; Journal 2 does not require no-op calls to produce history solely for tracing.
 
@@ -169,7 +177,7 @@ Examples include:
 
 The event carries bounded references/summary metadata but creates no new `ValueId`, certificate authority, invalidation authority, or tombstone authority. The adopted foreign identities remain unchanged.
 
-All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`; that grouping is historical only and is not imported by peers.
+All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`. When that operation record is persisted, its `source` identifies the same fixed source snapshot used by the synchronization protocol, including Journal 2 incarnation/head coordinates when available. That grouping is historical only and is not imported by peers.
 
 If source information is already represented and the graph projection is unchanged, repeating synchronization is silent and need not persist an operation record.
 
@@ -199,7 +207,9 @@ This is the only permitted way for synchronization to solve an unsafe cache when
 
 A controlled reset or migration may allocate one local high-level operation record and attach that operation ID to the O(N) low-level reset/bootstrap semantic events it produces.
 
-The operation record remains O(1) in graph size. It MUST NOT enumerate all affected NodeKeys or all compiled semantic events in one LevelDB value.
+A reset operation record identifies its chosen source using `OperationSourceRef`. A migration operation record identifies the migration with a stable bounded `MigrationId`.
+
+The operation record remains individually bounded in graph size. It MUST NOT enumerate all affected NodeKeys or all compiled semantic events in one LevelDB value.
 
 ## Summary folding
 
