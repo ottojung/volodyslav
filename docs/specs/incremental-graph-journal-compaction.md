@@ -9,10 +9,10 @@ Compaction is required to preserve:
 - future full synchronization behavior;
 - future incremental synchronization behavior for valid cursors;
 - current legacy graph projection;
-- journal event allocation safety;
+- semantic journal event allocation safety;
 - the iterator semantic-effect contract.
 
-It does not preserve forensic replay or payload history.
+It does not preserve forensic replay, payload history, or high-level operation grouping for history whose raw semantic events have themselves been compacted away.
 
 ## Compacted representation
 
@@ -22,9 +22,11 @@ Canonical compaction retains:
 2. one `NodeJournalSummary` per represented semantic node;
 3. one current changed-node marker per represented semantic node;
 4. stored source cursors, one bounded record per known source;
-5. at most a bounded implementation-defined raw event tail, which canonical size analysis may take to be empty.
+5. at most a bounded implementation-defined raw history tail consisting of small operation records and low-level semantic events, which canonical size analysis may take to be empty.
 
-Historical raw events whose effects are represented by these records may be deleted.
+Historical raw semantic events whose effects are represented by these records may be deleted. Operation records and operation references which only group deleted raw semantic events may be deleted with them.
+
+Compaction does not synthesize a giant high-level `compiled` list. If an un-compacted low-level event retains an `operation` reference, the corresponding small operation record must remain available in the same retained history tail or the grouping reference must be removed as part of the same compaction rewrite.
 
 ## Node-summary canonicalization
 
@@ -39,6 +41,8 @@ For each NodeKey K, fold all represented historical/adopted authority according 
 - retain the latest local changed-node sequence.
 
 Lower semantic heads, certificates for losing values, lower certificates for the current value, and value-specific invalidations for permanently losing values are not future candidates under Journal 2 semantics and may be discarded.
+
+High-level operation IDs/records never participate in this fold.
 
 ## Why one certificate is sufficient
 
@@ -80,6 +84,8 @@ For the current value, repeated invalidates by one author collapse to one greate
 
 Raw event contexts can be discarded when no retained semantic reference needs their exact context. The exact context of the current `ValueRef` and current certificate remains embedded in their retained refs.
 
+`localOperationCounter` is retained only as local high-level-history allocation state. It has no causal or authority meaning.
+
 ## Changed-node index compaction
 
 The incremental change index contains one live marker per represented node:
@@ -88,7 +94,7 @@ The incremental change index contains one live marker per represented node:
 (lastLocalChange(K), K)
 ```
 
-When K changes at a later local sequence q, compaction/live authoring removes its old marker and inserts `(q,K)`.
+When K changes at a later local semantic sequence q, compaction/live authoring removes its old marker and inserts `(q,K)`.
 
 This coalesces arbitrarily many changes to K while preserving the property:
 
@@ -106,19 +112,24 @@ Canonical compaction does not change:
 
 - writer fingerprint;
 - journal incarnation;
-- local sequence coordinates;
+- semantic local sequence coordinates;
 - node `lastLocalChange` coordinates;
-- source cursor coordinates.
+- receiver-local stored source cursor coordinates.
 
-Therefore a cursor valid before compaction remains valid afterward.
+Therefore a cursor whose source relationship was valid before compaction remains valid afterward.
 
-Controlled reset is different: it increments the journal incarnation and deliberately invalidates old cursors.
+Controlled reset is different in two ways:
+
+- resetting a source changes that source's journal incarnation, invalidating cursors about it;
+- resetting a receiver explicitly deletes that receiver's stored cursors about all other sources, because the receiver no longer satisfies their incorporated-state invariant.
 
 ## Iterator semantic-effect theorem
 
 Let P be a valid cursor and S a fixed committed source snapshot head in the same incarnation.
 
-Let `History(P,S]` be the original un-compacted local events in that interval, and let `Delta(P,S]` be the compacted iterator output defined by the API specification: the current node summary for every node whose current changed-node marker is in `(P,S]`.
+Let `History(P,S]` be the original un-compacted local low-level semantic events in that interval, and let `Delta(P,S]` be the compacted iterator output defined by the API specification: the current node summary for every node whose current changed-node marker is in `(P,S]`.
+
+High-level operation records are intentionally irrelevant to this theorem because they carry no synchronization semantics.
 
 For any supported consumer state which correctly incorporated the source through P:
 
@@ -136,7 +147,7 @@ must produce observationally equivalent journal-derived synchronization state th
 
 Reason: for each node, all source changes after P are folded into its current summary; if the node changed at least once after P, its latest marker remains greater than P. If it did not change after P, the consumer already incorporated its source summary through P. Cross-node global causal metadata is transferred from the header independently of the changed-node iterator.
 
-After successful consumption, the iterator advances through S even when some or all historical events were removed and the returned delta is empty.
+After successful consumption, the iterator advances through S even when some or all historical semantic events were removed and the returned delta is empty.
 
 ## Future synchronization theorem
 
@@ -146,7 +157,7 @@ For any supported state A, canonical compaction `C(A)`, and any future supported
 observe(run(A,T)) == observe(run(C(A),T))
 ```
 
-where `observe` includes the converged legacy graph and Journal 2 semantics promised by the intent records.
+where `observe` includes the converged legacy graph and Journal 2 semantics promised by the intent records, but excludes optional high-level operation grouping for raw history removed by compaction.
 
 Sketch:
 
@@ -155,11 +166,12 @@ Sketch:
 - the only certificate ever considered is preserved exactly;
 - current value/event contexts used by safety tests are preserved exactly;
 - losing state cannot become winning without a genuinely new greater authority;
-- causal allocation safety is preserved by the retained header summary/counter;
+- causal allocation safety is preserved by the retained header semantic summary/counter;
 - changed-node markers preserve every valid cursor's semantic suffix;
-- no future operation requires an old payload because the journal never promises one.
+- no future operation requires an old payload because the journal never promises one;
+- operation records/IDs do not participate in any of the above semantic rules.
 
-Thus old raw history is observationally redundant.
+Thus old raw history is observationally redundant for synchronization.
 
 ## Size bound
 
@@ -167,12 +179,12 @@ Use the intent-record variables:
 
 - N = represented semantic nodes;
 - R = represented durable authors;
-- H >= 2 = upper bound on represented event/counter magnitudes;
+- H >= 2 = upper bound on represented semantic event/counter magnitudes and local operation-counter magnitudes;
 - serialized NodeKey size is bounded;
 - maximum direct in-degree is bounded;
 - author IDs and fixed tags have bounded size.
 
-One sequence coordinate costs `O(log H)` bits.
+One sequence/counter coordinate costs `O(log H)` bits.
 
 One `CausalPrefix` costs:
 
@@ -186,7 +198,9 @@ A `NodeJournalSummary` contains only a constant number of causal/frontier vector
 size(NodeJournalSummary) = O(R log H) bits
 ```
 
-There are O(N) node summaries and O(N) changed-node markers. Markers cost only `O(log H)` bits plus bounded NodeKey storage. The header costs `O(R log H)`. Source cursors contribute at most `O(R log H)` when there is at most one stored cursor per durable source identity.
+There are O(N) node summaries and O(N) changed-node markers. Markers cost only `O(log H)` bits plus bounded NodeKey storage. The header costs `O(R log H)` including the additional scalar `localOperationCounter`. Source cursors contribute at most `O(R log H)` when there is at most one stored cursor per durable source identity.
+
+A canonical compacted journal may take its raw history tail to be empty. Any implementation which retains a bounded raw tail retains only individually bounded operation/event records; that optional bounded tail does not change the asymptotic compacted-state bound.
 
 Therefore:
 
@@ -194,22 +208,24 @@ Therefore:
 size(compacted journal) = O(N R log H) bits
 ```
 
-No term depends linearly on historical event count, number of synchronizations, number of resets, or database age except through `log H`.
+No term depends linearly on historical semantic-event count, high-level operation count, number of synchronizations, number of resets, or database age except through `log H`.
 
 ## Per-LevelDB-value bound
 
-No persisted journal value may contain a collection proportional to N, total dependency edges, or historical event count.
+No persisted journal value may contain a collection proportional to N, total dependency edges, or historical event/operation count.
 
-The largest allowed values are bounded node summaries/events/header vectors:
+The largest allowed values are bounded node summaries/semantic events/header vectors:
 
 ```text
 O(R log H) bits
 ```
 
-Graph-wide indexes are represented as many small LevelDB records rather than one giant map value.
+An `OperationRecord` is smaller: bounded primitive fields plus at most a bounded NodeKey, and never an expansion array.
+
+Graph-wide indexes and high-level-operation expansions are represented as many small LevelDB records rather than one giant map/list value.
 
 ## Compaction publication
 
 Compaction may rewrite only the new journal sublevel. It must not change the representation or semantic contents of existing graph sublevels.
 
-When compaction requires inactive-replica construction/cutover under the database lifecycle, the cutover must preserve atomic graph+journal consistency and must not expose a compacted journal paired with a different legacy graph snapshot.
+When compaction requires inactive-replica construction/cutover under the database lifecycle, the cutover must preserve atomic graph/journal consistency and must not expose a compacted journal paired with a different legacy graph snapshot.
