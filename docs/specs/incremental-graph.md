@@ -14,32 +14,28 @@ This document provides a formal specification for the incremental graph's operat
 
 **TERM-03 (SimpleValue):** A value type defined recursively as: `null | number | string | boolean | Array<SimpleValue> | Record<string, SimpleValue>`. Two `SimpleValue` objects are equal iff `isEqual` returns `true` for them (see DEF-EQUAL-01). Excludes `undefined`, functions, symbols, and BigInt.
 
-**TERM-04 (ConstValue):** The binding-valid subset of `ComputedValue` that
-excludes `null`: boolean, finite JavaScript Number, string, dense array of
+**TERM-04 (ConstValue):** The recursively persistence-safe value domain used by
+bindings: boolean, finite JavaScript Number, string, dense array of
 `ConstValue`, or plain string-keyed JSON record of `ConstValue`. It uses the
 same ordinary JSON representation and round-trip invariant as `ComputedValue`;
 there is no separate ConstValue serialization algorithm.
 
-**TERM-05 (ComputedValue):** The recursively JSON-round-trippable semantic value
-domain: `null`, boolean, finite JavaScript Number, string, dense array of
-`ComputedValue`, or plain string-keyed JSON record of `ComputedValue`. It
-excludes `undefined`, `NaN`, positive and negative infinity, functions, symbols,
-BigInt, sparse arrays or `undefined` array entries, cycles, JSON-transforming
-objects (including accessors and serialization hooks), non-JSON semantic
-objects, and every nested occurrence of those values.
-`ConstValue` is the binding-valid subset excluding `null`. For every valid
+**TERM-05 (ComputedValue):** The application-defined tagged union in
+`database/types.js`. Every member must be persistence-safe: it excludes a
+top-level `null` or `undefined`, `NaN`, positive and negative infinity,
+functions, symbols, BigInt, sparse arrays or `undefined` array entries, cycles,
+JSON-transforming objects (including accessors and serialization hooks), and
+non-JSON semantic objects at every nested position. For every valid
 `ComputedValue` `v`, ordinary JSON persistence MUST preserve semantic equality:
 `isEqual(v, JSON.parse(JSON.stringify(v))) === true`. This is an invariant of
 the admitted domain, not a normalization or replacement procedure. The graph
 stores a `ComputedValue`; ordinary JSON is only its persistence encoding.
 Computor results are validated before graph-state publication. Database open,
 synchronization, reset import, and migration validate every cached value before
-the containing replica becomes supported active state. `null` is a valid cached
-value; `undefined` alone represents absence from the value sublevel.
-The Level backend reserves a top-level `null` as “no stored value”, so its
-physical value record is a one-field presence envelope. That envelope is not a
-semantic `ComputedValue`: typed storage and rendered snapshots expose the raw
-value, including raw JSON `null`, and validation applies to that raw value.
+the containing replica becomes supported active state. `undefined` represents
+absence from the value sublevel. LevelDB stores each `ComputedValue` directly,
+without an envelope; typed reads and rendered snapshots therefore expose the
+exact application representation.
 
 **TERM-06 (BindingEnvironment):** A positional array of concrete values: `Array<ConstValue>`. Used to instantiate a specific node from a family. Bindings are matched to argument positions by position, not by name.
 

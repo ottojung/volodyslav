@@ -7,7 +7,8 @@
 
 /**
  * @typedef {{ kind: 'keep' }} KeepDecision
- * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue> }} OverrideDecision
+ * @typedef {'up-to-date' | 'stale-soft' | 'stale-hard'} OverrideTargetState
+ * @typedef {{ kind: 'override', value: (nodeKey: NodeIdentifier) => Promise<ComputedValue>, targetState: OverrideTargetState }} OverrideDecision
  * @typedef {{ kind: 'invalidate', provenance: 'explicit' | 'propagated' }} InvalidateDecision
  * @typedef {{ kind: 'delete' }} DeleteDecision
  * @typedef {"up-to-date" | "potentially-outdated"} CreatedFreshness

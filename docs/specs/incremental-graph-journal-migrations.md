@@ -1,15 +1,14 @@
 # IncrementalGraph journal migration
 
 Migration uses the one journal and atomic semantic classification. Migration
-never directly changes the semantic value of an already-materialized node;
-the `MigrationStorage` API has no present-unequal transition. Its reachable
+may directly change the semantic value of an already-materialized node. Its reachable
 transitions and journal effects are:
 
 | Previous | Target/decision | Journal effect |
 |---|---|---|
 | absent | present via `create` | generation (`add`) plus exactly one initial `validate`, soft `invalidate`, or hard `invalidate` |
 | present | absent via `delete` | `delete` |
-| present | same semantic value via `override` | no value event; representation-only rewrite |
+| present | equivalent persistence representation via `override` | no journal event; the existing semantic occurrence and provenance survive |
 | present | same value via `keep` | no value event |
 | present | same cached value via explicit or proof-hardening `invalidate` | only the appropriate soft or hard `invalidate` |
 
@@ -31,7 +30,15 @@ stale create cannot satisfy the nonempty reusable-proof contract and must use
 stale-hard. An invalid or incomplete cache-state/proof envelope throws
 `InvalidMigrationDecisionError` before journal or graph mutation.
 
-`override()` requires `isEqual` semantic equality and is value-journal-silent.
+`override()` does not apply `isEqual` to verify, infer, or classify semantic
+equivalence. The migration author supplies that assertion. Override rewrites the
+cached representation while retaining the existing value origin, generation,
+provenance, timestamps, causal context, reset correspondence, reset-anchor cuts,
+coverage, counters, and iterator-visible history. It authors no journal action.
+Its explicit target state rebuilds only the graph freshness and incoming proof
+required by the target schema; still-structural outgoing proofs remain valid.
+The representation, selected graph cache state, target validity relation, and
+unchanged journal state are published in the same replica cutover.
 `invalidate()` preserves the cached value; it changes only freshness and the
 recomputation obligation and therefore never authors `add` or `edit`.
 
@@ -47,7 +54,11 @@ these summaries remain absorption metadata and do not enter causal context or
 causal summary. Migration validates canonical addresses, generation references,
 timestamp domains, causal contexts, reset-anchor cut summaries, and graph/proof
 consistency before atomic graph/journal/resetAnchorCuts/coverage/counter/
-causalSummary/fingerprint cutover.
+causalSummary/fingerprint cutover. Journal records and proof edges contain
+identifiers and semantic occurrence coordinates rather than cached values, so
+override requires no representation-dependent journal rewrite. Exact
+database-version compatibility ensures synchronization occurs only after both
+replicas apply their deterministic representation migration.
 
 ## Iterator-state preservation
 
