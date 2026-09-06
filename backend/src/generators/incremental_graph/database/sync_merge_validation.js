@@ -2,6 +2,7 @@ const { nodeIdentifierToString } = require('./types');
 const { nodeIdentifierFromString, compareNodeIdentifier } = require('./node_identifier');
 const { GRAPH_SCHEME_KEY, parseGraphScheme, deriveInputEdges, GraphSchemeError } = require('./graph_scheme');
 const { fromISOString } = require('../../../datetime');
+const { findInvalidPersistenceSafeValue } = require('./persistence_safe_value');
 
 /** @typedef {import('./identifier_lookup').IdentifierLookup} IdentifierLookup */
 /** @typedef {import('./root_database').SchemaStorage} SchemaStorage */
@@ -97,6 +98,18 @@ async function assertValidReplicaMaterializationState(storage, lookup, context) 
         const identifier = nodeIdentifierFromString(identifierString);
         if (!cachedIdentifiers.has(identifierString)) {
             throw new ReplicaStateInvariantError(context, 'has no cached value', identifierString);
+        }
+        const computedValue = await storage.values.get(identifier);
+        const invalidComputedValue = findInvalidPersistenceSafeValue(
+            computedValue,
+            `values[${identifierString}]`
+        );
+        if (computedValue === undefined || invalidComputedValue !== undefined) {
+            throw new ReplicaStateInvariantError(
+                context,
+                `has invalid ComputedValue (${invalidComputedValue?.message ?? "undefined is not a ComputedValue"})`,
+                identifierString
+            );
         }
         const freshness = await storage.freshness.get(identifier);
         if (freshness === undefined) {

@@ -14,7 +14,11 @@ The schema is fixed for the lifetime of one `IncrementalGraph` instance. A node'
 list is determined by the node definition, its bindings, and the compilation/instantiation logic.
 
 The computor does **not** discover dependencies at runtime. It receives already-pulled input values.
-It does not receive a dependency-registration API, and it does not return a dependency list.
+It does not receive a dependency-registration API, graph handle, or internal traversal capability,
+and it does not return a dependency list. A supported computor satisfies
+`REQ-COMP-NOREENTER-01` and makes no call to the public `IncrementalGraph` interface. Internal
+schema-derived pulls that obtain its input values are graph implementation operations rather than
+computor operations.
 
 Only successful `pull` / recompute operations may write `values[N]`. There is no direct value
 replacement operation in this algorithm.
@@ -424,26 +428,23 @@ transactions are active. In these contexts, raw full-array writes to `valid[D]` 
 
 ### Sync merge
 
-After applying precise merge decisions, the merge flow:
+After presence and value selection, the merge flow processes nodes in schema topological order:
 
-1. Transports compatible `valid` entries from both source sides where provenance, value identity,
-   and structural compatibility justify preserving the exact proof.
-2. Identifies **direct invalidation roots**: nodes whose decision is `invalidate`, same-coordinate
-   freshness staleness, host-only invalidation, or any up-to-date node whose required incoming proof could
-   not be transported. All incoming proofs are removed from each direct root.
-3. Propagates stale freshness from each direct root through the transported validity frontier
-   without removing traversed validity edges. Descendants reached through propagated staleness
-   retain all incoming and outgoing proofs.
-4. Removes entries for deleted or discarded identifiers.
-5. Entries whose dependent no longer exists or whose derived input edges no longer contain the
-   dependency are removed.
+1. Derive each source candidate's coherent, extensional support from its existing `valid` flags. A proof is transportable only when structure matches, the source contains every required proof edge, every source input value is `isEqual` to the final selected input value, and the source output is `isEqual` to the final retained output. Select the value origin before evaluating journal freshness.
+2. Evaluate `hardInvalidateFrontier` and `invalidateFrontier` for that selected origin. An uncovered hard frontier makes the node hard-stale and permits no incoming proofs. An uncovered soft-only frontier makes the node stale-soft and retains a complete coherent proof for cache-only revalidation.
+3. When synchronization itself must remove a reusable proof and no uncovered applicable hard barrier represents that fact, author exactly one new value-specific hard invalidate. An imported uncovered hard barrier is sufficient and is never echoed.
+4. Propagate stale state in topological order. A derived node is fresh only when its own journal authority is fresh, its coherent proof is retained, and all distinct direct inputs are fresh. A stale input with an otherwise coherent proof produces stale-soft and one value-specific soft invalidate unless applicable authority already represents it. Without a coherent proof, apply the hardening or deletion rules.
+5. Remove proof entries for deleted/discarded identifiers and for dependencies that are no longer structural inputs. Never mint or union proof edges.
 
 ### Migration
 
 Migration rebuilds `valid` from the final migrated graph state:
 
-- `create` nodes marked `up-to-date` receive incoming valid flags for their current derived inputs because the migration callback supplies an up-to-date value.
-- `create` nodes marked `potentially-outdated` receive no incoming valid flags.
+- `create` nodes with `{ state: "up-to-date" }` receive incoming valid flags for their current derived inputs because the migration callback supplies an up-to-date value; their initial journal assertion is `validate`.
+- Derived `create` nodes with `{ state: "stale-soft", proof: { inputs } }` receive the complete incoming valid-flag set after satisfying [the `MigrationStorage` semantic-key proof identity and finalization contract](migration.md#migrationstorage-api); their initial journal assertion is soft `invalidate`.
+- Proof inputs may resolve to surviving materializations decided by `keep`, `override`, `invalidate`, or `create`; each supplied value must be `isEqual` to the final cached value. An explicit `invalidate` removes that input's incoming proofs while preserving its cached semantic value and its outgoing proof to the created node.
+- `create` nodes with `{ state: "stale-hard" }` receive no incoming valid flags and their initial journal assertion is hard `invalidate`. Zero-input stale creates necessarily use this variant.
+- Missing, incomplete, structurally mismatched, or non-`isEqual` create proof envelopes throw `InvalidMigrationDecisionError` before target mutation.
 - `override` and `keep` nodes preserve incoming valid flags when previous proof, schema compatibility, value identity, and freshness rules justify preserving that exact proof.
 - **Explicit `invalidate`** nodes receive no incoming valid flags. Outgoing proofs from the explicitly invalidated node to its dependents survive when structurally and semantically transportable.
 - **Propagated `invalidate`** nodes preserve all historical incoming and outgoing proofs subject to normal structural compatibility and endpoint survival. Propagated invalidation changes freshness only.
@@ -529,51 +530,29 @@ Document this explicitly because it prevents a future reader from treating `vali
 
 **Proof sketch:**
 
-The merge validity algorithm (`rebuildMergedValidity`) does **not** mint proofs. It
-only transports preexisting proofs from either source side when provenance
-supports it, and it classifies nodes without a full proof set as direct roots.
+The merge validity algorithm does **not** mint proofs. It derives transient
+support from a source's preexisting flags and extensional semantic value equality, selects the value origin, and then evaluates the two applicable journal frontiers for that origin.
 
-1. **Exact source-side proof transport**: A validity edge
-   `valid[sourceD].has(sourceN)` is transported from a source side `S` only
-   when both source identifiers resolve to semantic keys with surviving final
-   identifiers in `finalIdentifierForKey`, and `valueOrigin(finalD)` records
-   `{ kind: "source", side: S, sourceId: sourceD }` while
-   `valueOrigin(finalN)` records `{ kind: "source", side: S, sourceId: sourceN }`.
-   The final storage identifiers may differ from the source identifiers because
-   of identifier reconciliation. No cross-side mixing: a target-origin
-   dependency and a host-origin dependent never exchange a transported proof.
+A node with an uncovered member of `hardInvalidateFrontier(N,G)` is hard-stale and receives no incoming proofs. An uncovered soft-only member of `invalidateFrontier(N,G)` instead makes the node stale-soft while complete coherent proofs remain cache-revalidatable. Journal invalidate mode distinguishes these cases; an older validation cannot cross either frontier.
 
-2. **Structural-edge survival**: A transported proof that passes the two-sided
-   provenance check is preserved only if `D` is still a structural input of `N`
+1. **Extensional proof transport**: Candidate N from S has support only when every distinct direct input D has `S.valid[D].has(N)`, structure/bindings match, every source input is `isEqual` to its final value, and the source output is `isEqual` to the retained final output. Equality permits transport but never mints an absent proof. Exact provenance identity is unnecessary under the extensional computor contract.
+
+2. **Structural-edge survival**: A transported proof that passes the extensional semantic check is preserved only if `D` is still a structural input of `N`
    in the merged graph. Removed or relowered inputs do not carry proofs.
 
-3. **Incoming-proof revocation for direct roots**: Every node in the merge plan
-   whose decision is `invalidate`, same-coordinate freshness staleness, host-only
-   invalidation, or any up-to-date node whose required transported proof could
-   not be found has all incoming proofs removed from its inputs' `valid` sets.
-   These are the direct invalidation roots.
+3. **Selected-origin frontier classification**: An uncovered hard frontier makes the selected value hard-stale and removes all incoming proofs. When only soft authority is uncovered, the value is stale-soft and retains its complete coherent incoming proof. If reconciliation must remove a reusable proof without an uncovered hard barrier, it authors one hard invalidate to represent the new must-recompute fact; imported hard authority is not echoed.
 
-4. **Missing-proof nodes become direct roots**: A single topological traversal
-   processes nodes from inputs to dependents. If an up-to-date node lacks a
-   required transported proof in any of its inputs' `valid` sets, it is
-   classified as a direct root: its freshness becomes `potentially-outdated`,
-   and all incoming validity proofs are removed. No proof is manufactured.
+4. **Freshness propagation**: A single topological traversal processes nodes from inputs to dependents. Stale input state propagates as stale-soft while a complete coherent proof remains, without removing transported validity edges. If the proof cannot remain coherent, the node follows hardening or deletion rules instead.
 
-5. **Freshness-only propagation to descendants**: When a direct root is made
-   stale, its freshness propagates through the transported validity frontier
-   without removing validity edges. Descendants reached through propagation
-   retain all incoming and outgoing proofs.
-
-6. **Final validation of remaining clean nodes**: After the traversal, any node
+5. **Final validation of remaining clean nodes**: After the traversal, any node
    that is still `up-to-date` has all required transported proofs (otherwise it
-   would have been reclassified as a direct root), all its inputs are also
+   would have been classified stale), all its inputs are also
    `up-to-date`, and no stale descendant is accidentally promoted to clean by
    proof reconstruction.
 
-7. **No proof minting**: The algorithm never creates a validity edge that was
-   not already present in at least one source side and successfully transported.
-   The only validity edges in the final state are those that survived the
-   two-sided provenance check.
+6. **No proof minting**: The algorithm never creates a validity edge absent
+   from the source snapshot whose coherent candidate supplied the proof. The
+   final edges are exactly those surviving structural and extensional-value checks.
 
 Final validation (`assertValidFinalMergeState`) checks unknown identifiers,
 compatibility with derived input edges, and required incoming validity for all

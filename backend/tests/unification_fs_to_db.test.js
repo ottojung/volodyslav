@@ -76,6 +76,52 @@ const X_VALUES_REL = path.join('values', 'nodecache');
 // ---------------------------------------------------------------------------
 
 describe('makeFsToDbAdapter', () => {
+    test.each([
+        ['1e400', Infinity],
+        ['{"x":1e400}', { x: Infinity }],
+    ])('rejects lossy rendered ComputedValue %s before persistence', async (content, parsedValue) => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const inputDir = path.join(tmpDir, 'x-input');
+        fs.mkdirSync(path.join(inputDir, 'values'), { recursive: true });
+        fs.writeFileSync(path.join(inputDir, X_VALUES_REL), content);
+
+        expect(JSON.parse(content)).toEqual(parsedValue);
+        const db = await getRootDatabase(capabilities);
+        try {
+            await expect(
+                unifyStores(makeFsToDbAdapter(capabilities, db, inputDir, 'x'))
+            ).rejects.toMatchObject({
+                name: 'UnificationReadError',
+                cause: {
+                    name: 'InvalidPersistenceSafeValueError',
+                    reason: 'numbers must be finite',
+                },
+            });
+            const entries = await collectRawEntries(db);
+            expect(entries.has(X_VALUES_KEY)).toBe(false);
+        } finally {
+            await db.close();
+        }
+    });
+
+    test.each([
+        ['12.5', 12.5],
+    ])('imports persistence-safe rendered ComputedValue %s', async (content, expected) => {
+        const { capabilities, tmpDir } = makeTestCapabilities();
+        const inputDir = path.join(tmpDir, 'x-input');
+        fs.mkdirSync(path.join(inputDir, 'values'), { recursive: true });
+        fs.writeFileSync(path.join(inputDir, X_VALUES_REL), content);
+
+        const db = await getRootDatabase(capabilities);
+        try {
+            await unifyStores(makeFsToDbAdapter(capabilities, db, inputDir, 'x'));
+            const entries = await collectRawEntries(db);
+            expect(entries.get(X_VALUES_KEY)).toEqual(expected);
+        } finally {
+            await db.close();
+        }
+    });
+
     test('writes snapshot files not yet in the database', async () => {
         const { capabilities, tmpDir } = makeTestCapabilities();
         const inputDir = path.join(tmpDir, 'x-input');

@@ -26,7 +26,11 @@
  */
 
 const path = require('path');
-const { keyToRelativePath, relativePathToKey, serializeValue } = require('../encoding');
+const {
+    keyToRelativePath,
+    relativePathToKey,
+    serializeValue,
+} = require('../encoding');
 
 /** @typedef {import('../root_database').RootDatabase} RootDatabase */
 /** @typedef {import('../../../../filesystem/creator').FileCreator} FileCreator */

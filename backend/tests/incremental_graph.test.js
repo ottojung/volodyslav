@@ -53,6 +53,27 @@ describe("generators/incremental_graph", () => {
     });
 
     describe("pull()", () => {
+        test("rejects a ComputedValue with JSON-transforming behavior", async () => {
+            const capabilities = getTestCapabilities();
+            const db = await getRootDatabase(capabilities);
+            const graph = await createIncrementalGraph(capabilities, db, [{
+                output: "lossy",
+                inputs: [],
+                computor: () => ({
+                    type: "all_events",
+                    events: [],
+                    toJSON() { return "changed"; },
+                }),
+                isDeterministic: true,
+                hasSideEffects: false,
+            }]);
+
+            await expect(graph.pull("lossy")).rejects.toThrow(
+                /persistence-safe ComputedValue/
+            );
+            await db.close();
+        });
+
         test("lazily evaluates only necessary nodes", async () => {
             const capabilities = getTestCapabilities();
             const db = await getRootDatabase(capabilities);

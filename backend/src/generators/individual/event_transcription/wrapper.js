@@ -1,4 +1,3 @@
-const { deserialize } = require("../../../event");
 const { computeEventTranscription } = require("./compute");
 
 /**
@@ -27,7 +26,7 @@ const makeComputor = (capabilities) => async (inputs, _oldValue, bindings) => {
     }
     return computeEventTranscription(
         capabilities,
-        deserialize(eventEntry.value),
+        eventEntry.value,
         transcriptionEntry.value,
         audioPath,
     );

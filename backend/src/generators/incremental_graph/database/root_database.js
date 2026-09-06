@@ -8,6 +8,11 @@
 const { getVersion } = require('../../../version');
 const random = require('../../../random');
 const { makeTypedDatabase } = require('./typed_database');
+const { makeComputedValueDatabase } = require('./computed_value_database');
+const {
+    databaseValueToRenderedValue,
+    renderedValueToDatabaseValue,
+} = require('./encoding');
 const {
     stringToVersion,
     unsafeStringToNodeIdentifier,
@@ -24,7 +29,10 @@ const {
     nodeKeyToIdFromLookup,
 } = require('./identifier_lookup');
 const { makeNodeIdentifier, nodeIdentifierToString } = require('./node_identifier');
-const { requireValidFingerprint } = require('./fingerprint');
+const {
+    DATABASE_FINGERPRINT_LENGTH,
+    requireValidFingerprint,
+} = require('./fingerprint');
 
 const {
     hostnameSchemaStorage: hostnameSchemaStorageHelper,
@@ -130,14 +138,14 @@ function assertNeverReplicaName(name) {
 
 /**
  * Database for storing node output values.
- * Key: persisted node identifier (e.g., "1-abcdefghi")
+ * Key: persisted node identifier (e.g., "1-abcdefghijklmnop")
  * Value: the computed value (object with type field)
- * @typedef {GenericDatabase<ComputedValue, NodeIdentifier>} ValuesDatabase
+ * @typedef {import('./computed_value_database').ComputedValueDatabase} ValuesDatabase
  */
 
 /**
  * Database for storing node freshness state.
- * Key: persisted node identifier (e.g., "1-abcdefghi")
+ * Key: persisted node identifier (e.g., "1-abcdefghijklmnop")
  * Value: freshness state ('up-to-date' | 'potentially-outdated')
  * @typedef {GenericDatabase<Freshness, NodeIdentifier>} FreshnessDatabase
  */
@@ -218,7 +226,7 @@ async function loadIdentifierLookupFromGlobal(globalSublevel, context) {
  * @returns {SchemaStorage}
  */
 function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
-    /** @type {SimpleSublevel<ComputedValue, NodeIdentifier>} */
+    /** @type {SimpleSublevel<import('./computed_value_database').StoredComputedValue, NodeIdentifier>} */
     const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
@@ -253,7 +261,7 @@ function buildSchemaStorage(namespaceSublevel, globalSublevel, version) {
 
     return {
         batch,
-        values: makeTypedDatabase(valuesSublevel),
+        values: makeComputedValueDatabase(valuesSublevel),
         freshness: makeTypedDatabase(freshnessSublevel),
         valid: makeTypedDatabase(validSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
@@ -567,7 +575,13 @@ class RootDatabaseClass {
     async writeEmptyIdentifierLookup() {
         await this._computed.globalSublevel.put(IDENTIFIERS_KEY, []);
         await this._computed.globalSublevel.put(LAST_NODE_INDEX_KEY, 0);
-        const fingerprint = random.basicString({ seed: this._seed });
+        const fingerprint = requireValidFingerprint(
+            random.basicString(
+                { seed: this._seed },
+                DATABASE_FINGERPRINT_LENGTH
+            ),
+            'fresh replica fingerprint generation'
+        );
         await this._computed.globalSublevel.put('fingerprint', fingerprint);
         this._computed.fingerprint = fingerprint;
     }
@@ -680,7 +694,13 @@ class RootDatabaseClass {
                 await globalSublevel.put(IDENTIFIERS_KEY, []);
                 await globalSublevel.put(LAST_NODE_INDEX_KEY, 0);
                 if (!fingerprint) {
-                    fingerprint = random.basicString({ seed: this._seed });
+                    fingerprint = requireValidFingerprint(
+                        random.basicString(
+                            { seed: this._seed },
+                            DATABASE_FINGERPRINT_LENGTH
+                        ),
+                        'fresh replica-switch target fingerprint generation'
+                    );
                 }
                 await globalSublevel.put('fingerprint', fingerprint);
             } else {
@@ -883,7 +903,8 @@ class RootDatabaseClass {
         /** @type {SchemaSublevelType} */
         const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
         for await (const [key, value] of sublevel.iterator()) {
-            yield [`!${sublevelName}!` + key, value];
+            const rawKey = `!${sublevelName}!` + key;
+            yield [rawKey, databaseValueToRenderedValue(rawKey, value)];
         }
     }
 
@@ -915,7 +936,13 @@ class RootDatabaseClass {
     async _rawGetInSublevel(sublevelName, innerKey) {
         /** @type {SchemaSublevelType} */
         const sublevel = this.db.sublevel(sublevelName, { valueEncoding: 'json' });
-        return await sublevel.get(unsafeStringToNodeIdentifier(innerKey));
+        const storedValue = await sublevel.get(unsafeStringToNodeIdentifier(innerKey));
+        return storedValue === undefined
+            ? undefined
+            : databaseValueToRenderedValue(
+                `!${sublevelName}!${innerKey}`,
+                storedValue
+            );
     }
 
     /**
@@ -926,7 +953,8 @@ class RootDatabaseClass {
      */
     async *_rawEntries() {
         for await (const [key, value] of this.db.iterator()) {
-            yield [String(key), value];
+            const rawKey = String(key);
+            yield [rawKey, databaseValueToRenderedValue(rawKey, value)];
         }
     }
 
@@ -956,7 +984,11 @@ class RootDatabaseClass {
         // AbstractPutOptions property and satisfies the weak-type check without
         // changing runtime behaviour.
         const opts = { sync: false, keyEncoding: undefined };
-        await this.db.put(unsafeStringToNodeIdentifier(key), value, opts);
+        await this.db.put(
+            unsafeStringToNodeIdentifier(key),
+            renderedValueToDatabaseValue(key, value),
+            opts
+        );
     }
 
     /**
@@ -1019,7 +1051,7 @@ class RootDatabaseClass {
             return {
                 type: 'put',
                 key: unsafeStringToNodeIdentifier(entry.key),
-                value: entry.value,
+                value: renderedValueToDatabaseValue(entry.key, entry.value),
             };
         }
 

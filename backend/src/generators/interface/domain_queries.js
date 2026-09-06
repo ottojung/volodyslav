@@ -13,6 +13,8 @@
  * @property {() => IncrementalGraph} _requireInitializedGraph
  */
 
+const { persistedEvent } = require('../individual');
+
 const { isEventNotFoundError } = require('../individual').event;
 const { deserialize } = require('../../event');
 const { SORTED_EVENTS_CACHE_SIZE } = require('./constants');
@@ -96,7 +98,7 @@ async function internalGetEventBasicContext(interfaceInstance, event) {
         return [event];
     }
 
-    return contextEntry.context;
+    return contextEntry.context.map(persistedEvent.persistedEventToEvent);
 }
 
 /**

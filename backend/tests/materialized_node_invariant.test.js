@@ -262,6 +262,24 @@ describe("materialized node invariant", () => {
         expect(String(caught?.message)).toContain("has no cached value");
     });
 
+    test("value storage rejects a JSON-transforming cached value before persistence", async () => {
+        const nodeDefs = [{
+            output: "lossy",
+            inputs: [],
+            computor: async () => ({ type: "test", value: 7 }),
+            isDeterministic: true,
+            hasSideEffects: false,
+        }];
+        await buildGraph(nodeDefs);
+        await graph.pull("lossy");
+        const identifier = db.getActiveIdentifierLookup().keyToId.values().next().value;
+        await expect(db.getSchemaStorage().values.put(identifier, {
+                type: "test",
+                value: 7,
+                toJSON() { return "changed"; },
+            })).rejects.toThrow(/Invalid persistence-safe value/);
+    });
+
 
     test("invalidate reads no cached value or timestamps for an existing node", async () => {
         await buildGraph([

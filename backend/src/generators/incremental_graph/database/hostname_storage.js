@@ -11,8 +11,10 @@
  */
 
 const { makeTypedDatabase } = require('./typed_database');
+const { makeComputedValueDatabase } = require('./computed_value_database');
 const { unsafeStringToNodeIdentifier, stringToVersion } = require('./types');
 const { RAW_BATCH_CHUNK_SIZE } = require('./constants');
+const { renderedValueToDatabaseValue } = require('./encoding');
 
 /**
  * Thrown when a hostname string is invalid for use as a staging namespace key.
@@ -90,7 +92,7 @@ function validateHostname(hostname) {
  * @returns {SchemaStorage}
  */
 function buildBareSchemaStorage(namespaceSublevel) {
-    /** @type {SimpleSublevel<ComputedValue, NodeIdentifier>} */
+    /** @type {SimpleSublevel<import('./computed_value_database').StoredComputedValue, NodeIdentifier>} */
     const valuesSublevel = namespaceSublevel.sublevel('values', { valueEncoding: 'json' });
     /** @type {SimpleSublevel<Freshness, NodeIdentifier>} */
     const freshnessSublevel = namespaceSublevel.sublevel('freshness', { valueEncoding: 'json' });
@@ -110,7 +112,7 @@ function buildBareSchemaStorage(namespaceSublevel) {
 
     return {
         batch,
-        values: makeTypedDatabase(valuesSublevel),
+        values: makeComputedValueDatabase(valuesSublevel),
         freshness: makeTypedDatabase(freshnessSublevel),
         valid: makeTypedDatabase(validSublevel),
         timestamps: makeTypedDatabase(timestampsSublevel),
@@ -225,12 +227,11 @@ async function rawPutAllToHostname(db, hostname, entries) {
      * @returns {{ type: 'put', key: DatabaseKey, value: * }}
      */
     function makePutOp(entry) {
+        const rawKey = hostnameRawKey(hostname, entry.sublevelName, entry.subkey);
         return {
             type: 'put',
-            key: unsafeStringToNodeIdentifier(
-                hostnameRawKey(hostname, entry.sublevelName, entry.subkey)
-            ),
-            value: entry.value,
+            key: unsafeStringToNodeIdentifier(rawKey),
+            value: renderedValueToDatabaseValue(rawKey, entry.value),
         };
     }
 
