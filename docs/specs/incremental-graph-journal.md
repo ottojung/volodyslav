@@ -40,7 +40,7 @@ The journal never stores a `ComputedValue` payload or a copy of one. A current p
 
 ## Local journals
 
-Every writable database has one durable journal writer identity, normally its `DatabaseFingerprint`. Journal events authored by that database have writer-local history and a monotonically increasing sequence.
+Every writable database has one durable journal writer identity, normally its `DatabaseFingerprint`. Journal semantic events authored by that database have writer-local history and a monotonically increasing semantic event sequence.
 
 Normal synchronization does not import source event history into the receiver journal. It may adopt foreign semantic references and bounded foreign metadata into receiver summaries. If this changes receiver state, the receiver records a local adoption event so its own change stream reflects the transition. The adoption event is not a new value occurrence and does not replace the adopted foreign semantic authority.
 
@@ -52,13 +52,39 @@ source journal history != receiver journal history
 
 while their graph projections may converge.
 
+## High-level operations and low-level semantic events
+
+Journal 2 records synchronization authority with low-level semantic events such as value, validate, invalidate, delete, and adopt.
+
+It also permits the local historical journal to preserve the identity of the high-level operation which produced those events. A high-level operation gets a small local `OperationRecord`; low-level events produced by it carry that operation ID.
+
+Conceptually this permits viewing history as:
+
+```text
+graph.pull K {
+    compiled: [
+        value(...),
+        validate(...),
+        invalidate(...)
+    ]
+}
+```
+
+without storing the `compiled` array as one large LevelDB value. The expansion is represented by the list of small low-level events that point to the operation ID.
+
+Operation IDs use a separate local counter and do not participate in semantic authority, causal context, conflict selection, synchronization, or projection. Therefore preserving high-level operation identity cannot change graph semantics merely by changing event-number allocation.
+
+Compaction may discard old operation grouping together with the raw events it described once only the bounded synchronization meaning remains relevant.
+
 ## Two layers inside the journal sublevel
 
 The journal sublevel contains two conceptual layers.
 
 ### Historical layer
 
-The historical layer contains locally authored events in journal order. Before compaction this is the direct event history of supported graph operations and synchronization transitions.
+The historical layer contains locally authored high-level operation records and low-level semantic events in journal history. Before compaction this is the direct history of supported graph operations and synchronization transitions.
+
+Operation records group semantic events but do not replace them as synchronization authority.
 
 ### Compacted synchronization layer
 
@@ -68,7 +94,7 @@ Compaction folds old history into bounded records:
 header
 node summary per represented NodeKey
 one current changed-node marker per represented NodeKey
-optional un-compacted event tail
+optional bounded un-compacted history tail
 stored source cursors
 ```
 
@@ -86,6 +112,8 @@ A present journal value occurrence must correspond to exactly one materialized s
 
 A transaction which changes legacy graph state and corresponding journal state publishes both atomically. A transaction may also change synchronization-only journal metadata without changing legacy graph state, but such metadata must never describe a graph transition which was not durably published.
 
+High-level operation records and low-level semantic events belonging to one committed graph transition must obey the same publication boundary.
+
 ### J2-INV-3: no payload duplication
 
 Journal keys and values contain no `ComputedValue` payload. Historical payloads are not reconstructible from the journal after the corresponding legacy value has been replaced or deleted.
@@ -101,6 +129,8 @@ A successful local computation which changes the semantic value creates a new `V
 Semantic value/delete authorities and validation certificates have a deterministic total order specified in the types specification. Event allocation guarantees that an event authored after genuinely observing another event has greater authority than the observed event.
 
 This total order is a conflict-resolution device. It does not mean that a larger cross-writer sequence number proves happened-before; causal tests use explicit causal context.
+
+High-level operation IDs are excluded from this authority order.
 
 ### J2-INV-6: bounded current meaning
 
@@ -123,6 +153,8 @@ Correctness guarantees apply to states produced by supported Journal 2 authoring
 The normative semantic synchronization operation is full synchronization. It scans the complete current journal/graph semantic domain and does not require cursors.
 
 The journal change index and cursor API are an optimization. For a valid cursor, incremental synchronization must be observationally equivalent to the full operation from the same source and receiver states.
+
+A receiver reset explicitly clears stored source cursors because replacing receiver state destroys the invariant those cursors certify. Incremental synchronization also acquires any required source payload/timestamp records from the same fixed source snapshot as the metadata delta.
 
 ## Transport independence
 
