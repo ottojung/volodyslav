@@ -6,6 +6,8 @@ This specification defines migration from a pre-Journal-2 database representatio
 
 Migration adds only the new journal sublevel and advances the database version according to the normal exact-version lifecycle.
 
+The migration implementation has one stable bounded `MigrationId` supplied by the database migration/lifecycle registry. If this migration persists a high-level `OperationRecord(kind="migration")`, that record MUST contain this `MigrationId`; the operation envelope must not collapse all migrations into an indistinguishable generic `migration` kind.
+
 ## Preconditions
 
 The source database must satisfy the current legacy IncrementalGraph invariants:
@@ -40,7 +42,7 @@ header.causalSummary = {}
 
 If the lifecycle already has a compatible durable monotone counter which must be preserved, the implementation may start the corresponding allocation above it; bootstrap semantic events still follow the Journal 2 semantic event-allocation rule.
 
-The migration may allocate one local high-level `OperationRecord(kind="bootstrap" | "migration")` and attach its `OperationId` to bootstrap semantic events. Operation grouping is local history only and does not affect the semantic allocation described below.
+The migration may allocate one local high-level operation record and attach its `OperationId` to bootstrap semantic events. A `kind="migration"` record carries the stable migration `MigrationId`; a `kind="bootstrap"` record may also carry that migration ID when the bootstrap is specifically the expansion of this migration. Operation grouping is local history only and does not affect the semantic allocation described below.
 
 ## Pass 1: assign current value occurrences
 
