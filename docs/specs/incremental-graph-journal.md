@@ -58,7 +58,7 @@ Journal 2 records synchronization authority with low-level semantic events such 
 
 It also permits the local historical journal to preserve the identity of the high-level operation which produced those events. A high-level operation gets a small local `OperationRecord`; low-level events produced by it carry that operation ID.
 
-Conceptually this permits viewing history as:
+Conceptually this permits viewing the **direct expansion** of one operation as:
 
 ```text
 graph.pull K {
@@ -70,7 +70,9 @@ graph.pull K {
 }
 ```
 
-without storing the `compiled` array as one large LevelDB value. The expansion is represented by the list of small low-level events that point to the operation ID.
+Here `compiled` means the low-level events directly produced under that operation ID. If `pull(K)` recursively invokes another pull, that nested pull may have its own operation ID and its events need not appear in the parent operation's expansion. Journal 2 therefore does not promise one transitive envelope containing every recursively caused event.
+
+The `compiled` array above is only a conceptual view: it is not stored as one large LevelDB value. The expansion is represented by the list of small low-level events that point to the operation ID.
 
 Operation IDs use a separate local counter and do not participate in semantic authority, causal context, conflict selection, synchronization, or projection. Therefore preserving high-level operation identity cannot change graph semantics merely by changing event-number allocation.
 
