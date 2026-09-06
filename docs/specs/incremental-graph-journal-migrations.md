@@ -34,10 +34,13 @@ Initialize:
 header.writer = existing DatabaseFingerprint
 header.incarnation = 1
 header.localJournalCounter = 0
+header.localOperationCounter = 0
 header.causalSummary = {}
 ```
 
-If the lifecycle already has a compatible durable monotone counter which must be preserved, the implementation may start allocation above it; bootstrap still follows the Journal 2 event-allocation rule.
+If the lifecycle already has a compatible durable monotone counter which must be preserved, the implementation may start the corresponding allocation above it; bootstrap semantic events still follow the Journal 2 semantic event-allocation rule.
+
+The migration may allocate one local high-level `OperationRecord(kind="bootstrap" | "migration")` and attach its `OperationId` to bootstrap semantic events. Operation grouping is local history only and does not affect the semantic allocation described below.
 
 ## Pass 1: assign current value occurrences
 
@@ -101,9 +104,9 @@ The bootstrap historical events may be canonically compacted immediately into:
 - header;
 - one node summary per materialized node;
 - one changed-node marker per represented node;
-- no required historical raw event prefix.
+- no required historical raw event/operation prefix.
 
-The conceptual bootstrap history remains the explanation of how the Journal 2 baseline was established even if its raw events are removed by compaction.
+The conceptual bootstrap history remains the explanation of how the Journal 2 baseline was established even if its raw semantic events and operation grouping are removed by compaction.
 
 ## Initial changed-node markers
 
@@ -117,7 +120,7 @@ It must first migrate or be reset/bootstrap-restored through the supported lifec
 
 ## Size
 
-Bootstrap creates O(N) local events, each `O(R log H)` under the intent assumptions, and canonical compaction leaves O(N) bounded summaries/markers.
+Bootstrap creates O(N) local semantic events plus at most O(1) high-level operation records, each individually within the Journal 2 per-value bound, and canonical compaction leaves O(N) bounded summaries/markers.
 
 Therefore the migrated compacted journal satisfies:
 
