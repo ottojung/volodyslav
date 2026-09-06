@@ -14,7 +14,11 @@ OperationId              = {
     incarnation: JournalIncarnation,
     sequence: LocalOperationSequence
 }
+MigrationId              = bounded stable migration tag
+OperationTag             = bounded stable operation tag
 ```
+
+`MigrationId` and `OperationTag` are fixed/bounded serialized primitive identifiers. They are not arbitrary user payload strings.
 
 Missing coordinates in a `CausalPrefix` mean zero.
 
@@ -205,24 +209,67 @@ The three invalidation vectors and the contexts inside the current value/certifi
 
 Journal 2 preserves a lightweight distinction between a high-level local operation and the low-level semantic events produced by that operation.
 
-```text
-OperationKind =
-    | "pull"
-    | "invalidate"
-    | "synchronize"
-    | "reset"
-    | "migration"
-    | "bootstrap"
-    | "other"
+A source-bearing operation uses:
 
-OperationRecord = {
-    id: OperationId,
-    kind: OperationKind,
-    subject?: NodeKey
+```text
+OperationSourceRef = {
+    writer: JournalAuthor,
+
+    // Present together when the source is a Journal 2 snapshot.
+    incarnation?: JournalIncarnation,
+    through?: JournalSequence | 0
 }
 ```
 
+When Journal 2 metadata is available for the source snapshot, both `incarnation` and `through` MUST be recorded and identify the exact stable source snapshot consumed by the operation. For a supported lifecycle source without Journal 2 metadata, both fields are omitted and `writer` still identifies the source database.
+
+Operation records are a tagged union:
+
+```text
+OperationRecordBase = {
+    id: OperationId,
+
+    // Optional direct high-level caller. This is historical structure only.
+    parent?: OperationId
+}
+
+OperationRecord =
+    | OperationRecordBase & {
+        kind: "pull",
+        subject: NodeKey
+      }
+    | OperationRecordBase & {
+        kind: "invalidate",
+        subject: NodeKey
+      }
+    | OperationRecordBase & {
+        kind: "synchronize",
+        source: OperationSourceRef
+      }
+    | OperationRecordBase & {
+        kind: "reset",
+        source: OperationSourceRef
+      }
+    | OperationRecordBase & {
+        kind: "migration",
+        migration: MigrationId
+      }
+    | OperationRecordBase & {
+        kind: "bootstrap",
+        migration?: MigrationId
+      }
+    | OperationRecordBase & {
+        kind: "other",
+        tag: OperationTag,
+        subject?: NodeKey
+      }
+```
+
 An operation record is local historical/debugging structure. It is **not** synchronization authority, has no `CausalPrefix`, and is never imported as semantic state.
+
+The tagged fields identify the high-level invocation itself rather than only its operation kind. In particular, synchronization/reset records identify their source, and migration records identify the migration being run.
+
+`parent`, when present, names the direct high-level caller known to the implementation. It does not imply semantic happened-before, does not affect event authority, and does not require the parent record to enumerate children. Parent recording is optional because independently committing nested operations need not share one publication transaction; Journal 2 does not require a complete transitive call tree.
 
 A high-level operation may compile into arbitrarily many low-level semantic events. The operation record MUST NOT contain an array of all compiled events because that could make one LevelDB value proportional to graph size. Instead each low-level event produced directly by the operation carries the same optional `operation: OperationId` reference. The conceptual expansion is recovered from the event list by grouping those small records.
 
