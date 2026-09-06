@@ -1,0 +1,171 @@
+# Journal
+
+$id-jtwocnvgrg
+date: 2026/09/06
+source: @ottojung
+kind: requirement
+
+Synchronization must converge.
+
+For any finite set of supported replicas, once graph-changing operations stop, fair repeated synchronization must eventually bring all replicas to observably equivalent IncrementalGraph states. Once this state has been reached, further synchronization without intervening graph changes must be a semantic no-op.
+
+This requirement does not prescribe associativity, commutativity, idempotence, CRDTs, or any particular convergence mechanism.
+
+---
+
+$id-jtwolegacy
+date: 2026/09/06
+source: @ottojung
+kind: constraint
+
+The representation of every existing IncrementalGraph sublevel is frozen.
+
+The stored formats, keys, values, and meanings of existing sublevels such as `values`, `freshness`, `valid`, `timestamps`, and identifier metadata must not be extended with journal, version, provenance, causal, cursor, or synchronization metadata.
+
+The journal is a new sublevel. Any metadata required by the new synchronization design must be stored there rather than changing an existing sublevel's representation.
+
+---
+
+$id-jtwohistory
+date: 2026/09/06
+source: @ottojung
+kind: requirement
+
+The journal is a historical event list.
+
+Conceptually, journal entries record historical IncrementalGraph events in journal order. Compaction is a required storage optimization and may remove historical entries whose future-relevant meaning is represented by retained journal information, but the conceptual journal remains a history of events rather than a current-state table.
+
+---
+
+$id-jtwolocalj
+date: 2026/09/06
+source: @ottojung
+kind: requirement
+
+A journal is local to one database.
+
+Synchronization does not require the receiver to adopt the source journal as its own history or to make the receiver journal converge byte-for-byte with the source journal. Graph changes caused by synchronization are represented in the receiver's own journal according to the receiver's normal journal rules.
+
+---
+
+$id-jtwosizebd
+date: 2026/09/06
+source: @ottojung
+kind: requirement
+
+The compacted journal must have a bounded serialized bit size.
+
+Let:
+
+- `N` be the number of represented concrete semantic nodes;
+- `R` be the number of durable journal-author identities represented by synchronization-relevant journal metadata;
+- `H >= 2` be an upper bound on every journal sequence/counter magnitude that must remain represented;
+- the maximum serialized `NodeKey` size be bounded independently of `N`, `R`, and `H`;
+- the maximum direct in-degree of every represented node be bounded independently of `N`, `R`, and `H`;
+- durable author identifiers and other fixed primitive tags have bounded serialized size.
+
+Under these assumptions, the total serialized size of the compacted journal must be
+
+```text
+O(N R log H) bits.
+```
+
+The bound must be independent of the total number of historical graph operations, journal events, synchronizations, and database age except through the `log H` coordinate-width term.
+
+---
+
+$id-jtwosmallv
+date: 2026/09/06
+source: @ottojung
+kind: requirement
+
+The journal must be stored as a collection of individually small LevelDB values rather than as a global object whose value grows with the graph or journal history.
+
+Under the bounded-`NodeKey`, bounded-in-degree, and bounded-primitive assumptions of `$id-jtwosizebd`, every individual LevelDB value belonging to the journal sublevel must have serialized size
+
+```text
+O(R log H) bits.
+```
+
+No individual journal LevelDB value may have size proportional to `N`, to the total number of graph dependency edges, or to the total number of historical journal events. Journal indexes, summaries, and other auxiliary journal data are subject to the same requirement; a graph-wide lookup/map/list must be decomposed into individually bounded records.
+
+---
+
+$id-jtwonopayl
+date: 2026/09/06
+source: @ottojung
+kind: constraint
+
+The journal must not store `ComputedValue` payloads or copies of values from the existing `values` sublevel.
+
+Journal entries may identify or describe value occurrences using bounded journal metadata, but the journal is not secondary storage for semantic node values.
+
+---
+
+$id-jtwoatomic
+date: 2026/09/06
+source: @ottojung
+kind: requirement
+
+Graph state and the journal information describing that state must be published atomically.
+
+Whenever one supported operation changes existing IncrementalGraph sublevels and requires a corresponding journal change, those changes must become durable as one atomic publication. A supported persisted state must not expose the graph side of such a transition without its corresponding journal side, or the journal side without its corresponding graph side.
+
+---
+
+$id-jtwoequalx
+date: 2026/09/06
+source: @ottojung
+kind: constraint
+
+Ordinary synchronization must not compare `ComputedValue` payloads, or use value equality, to infer value identity, origin, provenance, causal history, validation history, freshness, validity, or conflict precedence.
+
+Controlled reset may compare a source value with the corresponding receiver value solely in order to avoid replacing a value already known to be equal. That equality does not by itself establish any additional provenance or history fact.
+
+---
+
+$id-jtwofull1st
+date: 2026/09/06
+source: @ottojung
+kind: requirement
+
+Convergent full synchronization comes before incremental synchronization.
+
+The synchronization design must first provide a correct convergent full synchronization operation that does not depend on journal cursors or changed-node discovery for correctness. Incremental synchronization is a later optimization.
+
+For source and receiver states for which an incremental synchronization cursor is valid, incremental synchronization must produce an observably equivalent final IncrementalGraph state to full synchronization of those same states.
+
+---
+
+$id-jtwoiterfx
+date: 2026/09/06
+source: @ottojung
+kind: requirement
+
+Journal iteration after compaction preserves the semantic effect of the consumed journal range rather than requiring event-for-event reproduction of entries removed by compaction.
+
+For any valid iterator progress state `P` and fixed journal snapshot ending at `S`, consuming the retained iterator output for `(P,S]` from any supported consumer state that correctly represents the journal through `P` must produce the same journal-derived observable result as consuming the corresponding uncompacted historical events through `S`.
+
+The iterator consumes the complete snapshot range through `S` even when compaction has removed redundant events and therefore returns fewer retained entries than originally occurred in that range.
+
+---
+
+$id-jtwocompfx
+date: 2026/09/06
+source: @ottojung
+kind: requirement
+
+Journal compaction must preserve future synchronization behavior.
+
+Replacing a supported journal by its compacted representation must not change the observably converged IncrementalGraph result of any later supported sequence of graph operations and synchronizations, including synchronization with replicas that have not participated since before the compaction.
+
+---
+
+$id-jtwotransp
+date: 2026/09/06
+source: @ottojung
+kind: requirement
+
+The IncrementalGraph journal is transport-independent.
+
+Journal identity, event semantics, synchronization, compaction, and cursor semantics must not depend on Git hashes, commits, branches, ancestry, repository revisions, or other transport-specific identifiers. Transport mechanisms may carry journal or graph state, but they do not participate in journal semantics.
