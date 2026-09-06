@@ -42,7 +42,18 @@ Every locally authored semantic journal event uses the allocation rule in `incre
 next = 1 + max(localJournalCounter, causalSummary[*])
 ```
 
-The event receives the current causal summary as immutable context. Events in one transaction are allocated in deterministic NodeKey/kind order after the operation's semantic result is known.
+The event receives the current causal summary as immutable context.
+
+When one atomic transaction authors multiple semantic events, their allocation order must be a deterministic topological order extending every semantic happened-before constraint established by the transition being recorded. In particular:
+
+- a `ValueEvent` precedes every `ValidateEvent` which names that new `ValueId`;
+- an invalidating/value-changing transition precedes any propagated `InvalidateEvent` whose stale transition it causes;
+- reset/bootstrap `ValueEvent`s for input nodes precede certificates whose basis refers to those new input `ValueId`s;
+- a synchronization normalization event which makes a dependent non-materializable precedes a dependent destructive event authored because of that fact.
+
+Events not ordered by such semantic dependencies are tie-broken deterministically by `NodeKey` and event kind (and by another fixed deterministic field if needed). A purely lexical `NodeKey`/kind ordering must never reverse a required semantic dependency merely to obtain deterministic IDs.
+
+Because later same-author events have larger local sequences and observe earlier same-transaction events, this allocation order is part of the causal meaning of the resulting contexts, not merely a serialization convenience.
 
 Imported semantic authorities are joined into `causalSummary` before any synchronization-authored semantic event is allocated.
 
