@@ -56,7 +56,19 @@ while their graph projections may converge.
 
 Journal 2 records synchronization authority with low-level semantic events such as value, validate, invalidate, delete, and adopt.
 
-It also permits the local historical journal to preserve the identity of the high-level operation which produced those events. A high-level operation gets a small local `OperationRecord`; low-level events produced by it carry that operation ID.
+It also permits the local historical journal to preserve the identity of the high-level operation which produced those events. A high-level operation gets a small local tagged `OperationRecord`; low-level events produced by it carry that operation ID.
+
+The operation record includes the bounded arguments needed to identify the invocation itself. For example:
+
+```text
+pull(K)                 -> subject = K
+invalidate(K)           -> subject = K
+synchronize(S@I:Q)      -> source writer/incarnation/snapshot head
+reset(S@I:Q)            -> chosen source writer/incarnation/snapshot head
+migration(M)            -> stable MigrationId M
+```
+
+When a lifecycle source has no Journal 2 metadata, reset can still record its durable database identity while omitting Journal 2 incarnation/head fields.
 
 Conceptually this permits viewing the **direct expansion** of one operation as:
 
@@ -71,6 +83,8 @@ graph.pull K {
 ```
 
 Here `compiled` means the low-level events directly produced under that operation ID. If `pull(K)` recursively invokes another pull, that nested pull may have its own operation ID and its events need not appear in the parent operation's expansion. Journal 2 therefore does not promise one transitive envelope containing every recursively caused event.
+
+A child operation may optionally record `parent: OperationId` for its direct high-level caller. This is only a bounded historical edge; parents never enumerate child lists, and the parent relation has no synchronization or causal authority.
 
 The `compiled` array above is only a conceptual view: it is not stored as one large LevelDB value. The expansion is represented by the list of small low-level events that point to the operation ID.
 
