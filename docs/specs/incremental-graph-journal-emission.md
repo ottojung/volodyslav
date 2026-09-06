@@ -6,9 +6,37 @@ This specification maps supported IncrementalGraph transitions to local Journal 
 
 All graph and journal writes described as one transition are committed atomically.
 
-## Event allocation
+## High-level operation records
 
-Every locally authored journal event uses the allocation rule in `incremental-graph-journal-types.md`:
+A supported public/lifecycle operation may allocate one small local `OperationRecord` before or as part of committing the low-level semantic events directly produced by that operation.
+
+Examples include:
+
+```text
+pull(K)
+invalidate(K)
+synchronize(source)
+reset(source)
+migration(...)
+```
+
+The operation record uses `localOperationCounter`, not the semantic `localJournalCounter`. It therefore has no semantic authority and does not affect causal ordering or conflict selection.
+
+Every low-level semantic event directly produced by that operation may carry:
+
+```text
+operation: OperationId
+```
+
+The conceptual compiled expansion of an operation is the set/list of low-level historical events carrying that operation ID. The operation record itself MUST NOT store an array of those events, because one operation may affect O(N) nodes and every journal LevelDB value must remain individually bounded.
+
+Nested pulls/operations may receive distinct operation IDs. No parent operation is required to contain an unbounded list of nested operation IDs.
+
+If an operation produces no journal-relevant semantic event, an implementation may omit its `OperationRecord`; Journal 2 does not require no-op calls to produce history solely for tracing.
+
+## Semantic event allocation
+
+Every locally authored semantic journal event uses the allocation rule in `incremental-graph-journal-types.md`:
 
 ```text
 next = 1 + max(localJournalCounter, causalSummary[*])
@@ -17,6 +45,8 @@ next = 1 + max(localJournalCounter, causalSummary[*])
 The event receives the current causal summary as immutable context. Events in one transaction are allocated in deterministic NodeKey/kind order after the operation's semantic result is known.
 
 Imported semantic authorities are joined into `causalSummary` before any synchronization-authored semantic event is allocated.
+
+Allocating or writing an `OperationRecord` does not advance `localJournalCounter` or `causalSummary`.
 
 ## Value-changing computation
 
@@ -30,6 +60,8 @@ When a successful computor returns a semantic value different from the currently
 6. set `C.basis[i] = currentValueId(inputEdges(K)[i])` for every direct input;
 7. project K fresh and restore its incoming validity edges;
 8. perform ordinary outgoing invalidation propagation caused by the value change.
+
+The directly authored `ValueEvent`, `ValidateEvent`, and propagated low-level events carry the current high-level operation ID when one was allocated for the pull.
 
 Every dependent whose legacy freshness actually changes from fresh to stale due to propagation receives a value-scoped soft `InvalidateEvent` naming that dependent's current `ValueId`.
 
@@ -56,11 +88,11 @@ When a stale derived node has complete current incoming validity and revalidates
 - mark the node fresh in the legacy graph;
 - preserve its outgoing validity frontier according to the existing graph algorithm.
 
-This validation is a real journal event even though the payload did not change.
+This validation is a real low-level semantic journal event even though the payload did not change.
 
 ## Fresh fast path
 
-A pull which returns an already-fresh cached node without changing any graph or journal-derived fact authors no event.
+A pull which returns an already-fresh cached node without changing any graph or journal-derived fact authors no semantic event. It need not persist an operation record.
 
 ## Explicit invalidation
 
@@ -91,6 +123,8 @@ InvalidateEvent {
     reason: "propagated"
 }
 ```
+
+These directly produced low-level invalidation events share the high-level invalidate operation ID when one is allocated.
 
 A dependent already stale does not receive another soft invalidation merely because the traversal reaches it again without changing its graph state.
 
@@ -124,7 +158,9 @@ Examples include:
 
 The event carries bounded references/summary metadata but creates no new `ValueId`, certificate authority, invalidation authority, or tombstone authority. The adopted foreign identities remain unchanged.
 
-If source information is already represented and the graph projection is unchanged, repeating synchronization is silent.
+All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`; that grouping is historical only and is not imported by peers.
+
+If source information is already represented and the graph projection is unchanged, repeating synchronization is silent and need not persist an operation record.
 
 ## Synchronization-authored soft invalidation
 
@@ -148,9 +184,15 @@ The delete is causally after every source/local authority observed by that synch
 
 This is the only permitted way for synchronization to solve an unsafe cache when the payload cannot remain in the legacy graph: the journal never hides or stores the payload.
 
+## Reset and migration grouping
+
+A controlled reset or migration may allocate one local high-level operation record and attach that operation ID to the O(N) low-level reset/bootstrap semantic events it produces.
+
+The operation record remains O(1) in graph size. It MUST NOT enumerate all affected NodeKeys or all compiled semantic events in one LevelDB value.
+
 ## Summary folding
 
-Every event updates the node's compacted semantic summary in the same transaction. The fold rules are:
+Every semantic event updates the node's compacted semantic summary in the same transaction. The fold rules are:
 
 - value/delete events replace the state head when their authority is greater;
 - a value event resets value-specific certificate/invalidation state for the new `ValueId`;
@@ -158,27 +200,30 @@ Every event updates the node's compacted semantic summary in the same transactio
 - node invalidates advance `nodeInvalidateFrontier` by author coordinate;
 - current-value invalidates advance the corresponding value-specific frontier;
 - adopt joins the bounded foreign semantic state described in the sync specification;
-- every local node-summary change sets `lastLocalChange` to the local event sequence and moves that node's change-index marker atomically.
+- every local node-summary change sets `lastLocalChange` to the local semantic event sequence and moves that node's change-index marker atomically.
 
-Raw historical events may later be removed by canonical compaction.
+The event's optional `operation` reference is ignored by semantic folding.
+
+Raw historical semantic events and operation grouping may later be removed by canonical compaction.
 
 ## Causal-summary observation without echo
 
-Receiving a source `causalSummary` is genuine observation, but growth of receiver `causalSummary` alone does not author a new journal event.
+Receiving a source `causalSummary` is genuine observation, but growth of receiver `causalSummary` alone does not author a new semantic journal event.
 
 This rule is required to avoid infinite acknowledgement chains in which A observing B creates A:event, B observing that event creates B:event, and so on despite no semantic or node-summary change.
 
-A later real local event naturally includes the accumulated causal summary in its context.
+A later real local semantic event naturally includes the accumulated causal summary in its context.
 
 ## Atomicity
 
 For any operation which changes both old graph sublevels and journal state, the durable batch includes:
 
 - all legacy graph writes/deletes;
-- raw newly authored journal events;
+- any high-level operation record/local operation-counter update being persisted for the transition;
+- raw newly authored semantic journal events;
 - updated node summaries;
 - moved changed-node markers;
-- header counter/causal metadata;
+- header semantic counter/causal metadata;
 - any identifier-map changes required by the legacy graph.
 
 No reader may observe only one side of this publication.
