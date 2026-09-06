@@ -28,6 +28,8 @@ Historical raw semantic events whose effects are represented by these records ma
 
 Compaction does not synthesize a giant high-level `compiled` list. If an un-compacted low-level event retains an `operation` reference, the corresponding small operation record must remain available in the same retained history tail or the grouping reference must be removed as part of the same compaction rewrite.
 
+A retained operation record may have an optional `parent` reference. If compaction discards that parent operation record, it may clear the retained child's `parent` field rather than retaining an unbounded ancestry solely for historical grouping. Parent links have no semantic role.
+
 ## Node-summary canonicalization
 
 For each NodeKey K, fold all represented historical/adopted authority according to the same rules used by live authoring and full synchronization:
@@ -182,7 +184,7 @@ Use the intent-record variables:
 - H >= 2 = upper bound on represented semantic event/counter magnitudes and local operation-counter magnitudes;
 - serialized NodeKey size is bounded;
 - maximum direct in-degree is bounded;
-- author IDs and fixed tags have bounded size.
+- author IDs, `MigrationId`, `OperationTag`, and other fixed tags have bounded size.
 
 One sequence/counter coordinate costs `O(log H)` bits.
 
@@ -220,7 +222,13 @@ The largest allowed values are bounded node summaries/semantic events/header vec
 O(R log H) bits
 ```
 
-An `OperationRecord` is smaller: bounded primitive fields plus at most a bounded NodeKey, and never an expansion array.
+An `OperationRecord` contains only a constant number of bounded primitive fields/NodeKeys plus at most a constant number of sequence-bearing references such as `OperationId`, source incarnation/head, and optional parent. Therefore:
+
+```text
+size(OperationRecord) = O(log H) bits
+```
+
+under the bounded-key/author/tag assumptions, and in particular it satisfies the required `O(R log H)` per-LevelDB-value bound.
 
 Graph-wide indexes and high-level-operation expansions are represented as many small LevelDB records rather than one giant map/list value.
 
