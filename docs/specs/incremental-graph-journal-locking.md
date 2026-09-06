@@ -10,34 +10,48 @@ The exact sleeper key names may evolve; the required serialization/atomicity pro
 
 The existing per-replica commit/darkroom serialization is the publication boundary for Journal 2.
 
-A transaction which authors journal events must finalize, under the same per-replica commit serialization, all of:
+A transaction which authors journal history must finalize, under the same per-replica commit serialization, all applicable pieces of:
 
 - legacy graph writes/deletes;
-- event-ID allocation state;
-- raw journal events;
+- semantic event-ID allocation state;
+- high-level operation-ID allocation state;
+- high-level operation records;
+- raw low-level semantic journal events;
 - node summaries;
 - changed-node marker movement;
 - header causal/counter metadata;
 - identifier lookup/allocation writes.
 
-No event ID may become durable without the graph/journal transition it names, and no named graph transition may commit without the corresponding event/summary update.
+No semantic event ID may become durable without the graph/journal transition it names, and no named graph transition may commit without the corresponding event/summary update.
 
-## Journal event allocator
+When a high-level operation record is persisted for a transition, its `localOperationCounter` update, the operation record, and all directly linked low-level events committed by that transition are part of the same publication boundary.
 
-Allocation of local event sequences is serialized per writable replica.
+## Journal allocators
 
-Two transactions may execute their expensive pull/computor work concurrently where the existing graph locking design permits, but their final event IDs are chosen/published in the serialized finalization phase from the then-current:
+Allocation of local semantic event sequences and local operation sequences is serialized per writable replica during publication.
+
+Two transactions may execute their expensive pull/computor work concurrently where the existing graph locking design permits, but their final IDs are chosen/published in the serialized finalization phase.
+
+Semantic event allocation uses the then-current:
 
 ```text
 localJournalCounter
 causalSummary
 ```
 
-The committing transaction allocates above every coordinate it is required to have observed.
+and allocates above every semantic coordinate it is required to have observed.
 
-A transaction which fails before publication exposes no durable event ID. Reuse of an uncommitted tentative number is permitted because no supported observer could have seen it.
+High-level operation allocation uses the separate:
 
-A committed event coordinate is never reused.
+```text
+localOperationCounter
+```
+
+and does not modify `causalSummary` or semantic event authority.
+
+A transaction which fails before publication exposes no durable semantic event ID or operation ID. Reuse of an uncommitted tentative number is permitted because no supported observer could have seen it.
+
+Committed semantic event coordinates and committed operation coordinates are never reused within their respective identity domains.
 
 ## Reconciliation at commit
 
@@ -57,7 +71,9 @@ A synchronization operation may join remote `causalSummary` into local journal m
 
 This metadata write must still be serialized/durable with any semantic synchronization transition that relies on that observation before authoring a new local event.
 
-If synchronization authors a soft invalidation or tombstone in response to source authority, the source causal coordinates are joined before sequence allocation, ensuring the new event is causally after and has greater total authority than the observed source facts.
+If synchronization authors a soft invalidation or tombstone in response to source authority, the source causal coordinates are joined before semantic sequence allocation, ensuring the new event is causally after and has greater total authority than the observed source facts.
+
+High-level operation records do not participate in this causal observation.
 
 ## Full synchronization and lifecycle exclusion
 
@@ -125,6 +141,6 @@ It may execute while building an inactive replica under an already-exclusive lif
 - it folds one fixed committed journal state;
 - it cannot race a publication into a half-compacted representation;
 - its final active state has the identical legacy graph projection;
-- cursor coordinates/incarnation are unchanged.
+- cursor coordinates/incarnation are unchanged for cursors not invalidated by lifecycle replacement.
 
 Compaction never requires holding all journal entries in RAM simultaneously; it must be streamable over LevelDB records and must respect the per-record `O(R log H)` bound.
