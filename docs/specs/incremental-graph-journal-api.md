@@ -26,13 +26,19 @@ cursor.incarnation == source.header.incarnation
 cursor.through <= source.header.localJournalCounter
 ```
 
-A cursor also carries the application-level invariant that the consumer has correctly incorporated this source's synchronization-relevant state through `through`. A caller must not fabricate a larger cursor.
+A cursor also carries the receiver-local application invariant that the receiver currently represents the source synchronization-relevant state through `through`. A caller must not fabricate a larger cursor.
+
+The field checks above are necessary but not sufficient if the receiver has undergone a lifecycle replacement which destroyed that incorporated-state invariant.
 
 ## Reset invalidation
 
-Controlled reset increments the source journal incarnation. Every cursor issued for an older incarnation is invalid and must cause incremental synchronization to fall back to full synchronization.
+There are two distinct reset cases.
 
-Canonical compaction does not change the incarnation and therefore does not invalidate cursors.
+If the **source** resets, its `journalIncarnation` changes and old cursors about that source fail the ordinary cursor field check.
+
+If the **receiver** resets, its stored cursors for other sources still contain those sources' unchanged incarnations. Therefore receiver reset MUST delete all receiver-local stored source cursors atomically. A deleted cursor cannot be used for incremental synchronization; the next synchronization with that source falls back to full synchronization and establishes a fresh cursor after success.
+
+Canonical compaction does not change either source incarnation or the receiver's incorporated-state invariant and therefore does not invalidate valid cursors.
 
 ## Stable snapshot iteration
 
@@ -69,6 +75,8 @@ JournalDelta = {
 ```
 
 `lastLocalChange` is local index metadata and need not be copied inside `summary` because the enclosing delta establishes the source range.
+
+`JournalDelta` is metadata-only. It does not contain `ComputedValue` payloads or timestamp/value records from legacy sublevels.
 
 ## One result per changed node
 
@@ -132,17 +140,40 @@ journal/cursors/<sourceFingerprint> -> JournalCursor
 
 A stored cursor is receiver-local optimization state. It is never merged as semantic graph authority and is never copied into another host's journal as that host's progress.
 
+Controlled receiver reset deletes all such records.
+
+## Incremental synchronization snapshot contract
+
+Incremental synchronization cannot be implemented by calling metadata-only `iterate(cursor)`, releasing its source snapshot, and later reopening the source database to fetch payloads.
+
+A returned changed summary may select a present `ValueId` which the receiver does not materialize. The payload/timestamp record for that exact `ValueId` must come from the **same fixed source snapshot** from which the summary was read. Otherwise the source could replace/delete the value between metadata iteration and payload fetch, yielding a payload from a different semantic state.
+
+Therefore the incremental synchronization operation itself owns one fixed source snapshot for the complete source-read phase. While that snapshot is held it must:
+
+1. read the source header and changed-node summaries for the cursor range;
+2. determine which returned present heads may need source payload/timestamp records;
+3. copy or stage every required exact legacy value/timestamp record from that same snapshot;
+4. only then release the source snapshot.
+
+The copied/staged payloads are transient synchronization data, not journal records. They may be streamed directly into an inactive target replica rather than accumulated in RAM. The journal no-payload constraint and per-LevelDB journal-value size bound do not apply to these ordinary legacy value transfers.
+
+No LevelDB snapshot or mutable source-replica handle may escape to an external/slow iterator consumer.
+
 ## Incremental synchronization
 
 For a valid stored cursor P for source S:
 
-1. take a fixed source snapshot;
-2. obtain `JournalDelta(P)`;
-3. join the returned causal header;
-4. semantically merge only the returned node summaries into the receiver's already represented source knowledge;
-5. run the same topological normalization rules that full synchronization would run for affected nodes and their dependent closure;
-6. atomically publish receiver changes;
-7. only then advance the stored source cursor to `delta.through`.
+1. take one fixed committed source snapshot;
+2. read the metadata delta for P from that snapshot;
+3. from the same snapshot, copy/stage every legacy payload/timestamp record required by changed present heads that the receiver cannot otherwise materialize under the full-sync rules;
+4. join the returned causal header;
+5. semantically merge only the returned node summaries into the receiver's already represented source knowledge;
+6. run the same topological normalization rules that full synchronization would run for affected nodes and their dependent closure;
+7. materialize selected present heads using only records obtained from the fixed source snapshot or an already-matching receiver `ValueId`;
+8. atomically publish receiver graph+journal changes;
+9. only then advance the stored source cursor to `delta.through`.
+
+The source snapshot may be released after step 3 once all source data needed for the operation has been copied/staged safely.
 
 The receiver may need to inspect local dependents outside the returned source changed-node set because one changed input can alter downstream normalization/freshness.
 
@@ -152,13 +183,15 @@ The source cursor P certifies that every source node summary with `lastLocalChan
 
 For a source node unchanged after P, its source semantic authority/frontiers/certificate have not grown. Receiver-local state may have grown, but Journal 2's head/frontier/certificate orders are monotone, so re-reading that unchanged older source summary in a full sync cannot introduce information that the receiver did not already incorporate at P.
 
-Therefore processing exactly the changed source summaries after P, followed by the same normalization closure, yields an observably equivalent result to a full synchronization from the same starting receiver/source snapshots.
+For a changed present node, incremental synchronization reads both the current semantic summary and any required payload/timestamp record from the same source snapshot. Therefore it materializes the same selected source occurrence that full synchronization would inspect from that snapshot.
+
+Consequently processing exactly the changed source summaries after P, acquiring their required payloads from the same source snapshot, and applying the same normalization closure yields an observably equivalent result to a full synchronization from the same starting receiver/source snapshots.
 
 This is the required correctness condition for enabling the optimization.
 
 ## Invalid cursor behavior
 
-If source identity/incarnation does not match, progress is malformed, required cursor state is unavailable, or any validation fails, incremental synchronization must not guess. It falls back to full synchronization and, after success, stores a fresh cursor for the source's current incarnation/head.
+If source identity/incarnation does not match, the receiver-local cursor record is absent (including after reset), progress is malformed, required cursor state is unavailable, or any validation fails, incremental synchronization must not guess. It falls back to full synchronization and, after success, stores a fresh cursor for the source's current incarnation/head.
 
 ## No computor API dependency
 
