@@ -37,6 +37,17 @@ Conceptually, journal entries record historical IncrementalGraph events in journ
 
 ---
 
+$id-jtwonoaudit
+date: 2026/09/07
+source: @ottojung
+kind: constraint
+
+The journal is not a durable audit-history or indefinite forensic-replay facility.
+
+Canonical compaction may permanently discard raw low-level historical events, high-level operation records, grouping/parent relationships, and other historical detail once the future synchronization and iterator meaning required by Journal 2 is represented by retained bounded journal state. Journal 2 does not promise that old operations or their exact raw event expansions remain inspectable forever.
+
+---
+
 $id-jtwolocalj
 date: 2026/09/06
 source: @ottojung
@@ -99,6 +110,17 @@ kind: constraint
 The journal must not store `ComputedValue` payloads or copies of values from the existing `values` sublevel.
 
 Journal entries may identify or describe value occurrences using bounded journal metadata, but the journal is not secondary storage for semantic node values.
+
+---
+
+$id-jtwosafecache
+date: 2026/09/07
+source: @ottojung
+kind: requirement
+
+Synchronization must prefer `oldValue` safety over retaining a cached materialization.
+
+If the merged journal/graph state cannot establish that a selected cached value remains permissible to expose to its computor as `oldValue`, synchronization must not retain that materialization merely to preserve cache reuse. It may remove the cached node and any dependent cached materializations that cannot remain dependency-closed, while retaining sufficient negative journal authority to prevent rejected older cache occurrences from being resurrected by later synchronization. A later genuine recomputation may create a new value occurrence and materialize the node again.
 
 ---
 
