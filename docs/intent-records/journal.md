@@ -13,6 +13,19 @@ This requirement does not prescribe associativity, commutativity, idempotence, C
 
 ---
 
+$id-jtwoauthord
+date: 2026/09/07
+source: @ottojung
+kind: requirement
+
+Journal 2 conflict authority must extend exact happened-before while keeping writer-local sequence numbers local to their writer.
+
+A semantic event which is genuinely causally after another semantic event must have greater conflict authority. For concurrent value occurrences, authority should normally prefer the occurrence with the later legacy `modifiedAt` value, after adjustment required to preserve causal monotonicity. If the resulting authority times tie, durable writer fingerprint is the cross-writer tie-breaker; a writer-local journal sequence is compared only after the writer fingerprints are equal.
+
+Journal sequence numbers from different writers must not be numerically compared to decide conflict precedence. Journal 2 may use a hybrid logical clock or an equivalent bounded total-order timestamp which is seeded by `modifiedAt` for value events and advanced as necessary so happened-before always implies increasing authority. This is a deterministic conflict policy, not a guarantee of true wall-clock recency under clock skew.
+
+---
+
 $id-jtwolegacy
 date: 2026/09/06
 source: @ottojung
@@ -72,7 +85,7 @@ Let:
 - `T` be the number of currently absent/tombstoned semantic keys whose negative authority remains represented so older values cannot incorrectly resurrect;
 - `N = L + T` be the complete represented semantic-node/key domain;
 - `R` be the number of durable journal-author identities represented by synchronization-relevant journal metadata;
-- `H >= 2` be an upper bound on every journal sequence/counter magnitude that must remain represented;
+- `H >= 2` be an upper bound on every represented journal sequence/counter magnitude and every numeric hybrid-authority-clock component;
 - the maximum serialized `NodeKey` size be bounded independently of `N`, `R`, and `H`;
 - the maximum direct in-degree of every represented node be bounded independently of `N`, `R`, and `H`;
 - durable author identifiers and other fixed primitive tags have bounded serialized size.
