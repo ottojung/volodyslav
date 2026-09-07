@@ -222,13 +222,13 @@ The largest allowed values are bounded node summaries/semantic events/header vec
 O(R log H) bits
 ```
 
-An `OperationRecord` contains only a constant number of bounded primitive fields/NodeKeys plus at most a constant number of sequence-bearing references such as `OperationId`, source incarnation/head, and optional parent. Therefore:
+A source-bearing `OperationRecord` may now contain one source `CausalPrefix` in addition to a constant number of bounded primitive fields/NodeKeys and sequence-bearing references such as `OperationId`, source incarnation/head, and optional parent. Therefore:
 
 ```text
-size(OperationRecord) = O(log H) bits
+size(OperationRecord) = O(R log H) bits
 ```
 
-under the bounded-key/author/tag assumptions, and in particular it satisfies the required `O(R log H)` per-LevelDB-value bound.
+in the worst case, still exactly within the required per-LevelDB-value bound. Non-source operation records remain smaller.
 
 Graph-wide indexes and high-level-operation expansions are represented as many small LevelDB records rather than one giant map/list value.
 
