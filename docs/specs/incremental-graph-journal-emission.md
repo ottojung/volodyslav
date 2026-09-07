@@ -25,8 +25,8 @@ The operation record uses `localOperationCounter`, not the semantic `localJourna
 When an operation record is persisted, its tagged arguments MUST identify the recorded invocation according to `incremental-graph-journal-types.md`:
 
 - `pull` and `invalidate` record their `subject` NodeKey;
-- `synchronize` records the source database and, for a Journal 2 source, the exact source incarnation/snapshot head consumed by the operation;
-- `reset` records the chosen source database and, when available, the exact Journal 2 source incarnation/snapshot head;
+- `synchronize` records the source database and, for a Journal 2 source, the source incarnation, local semantic head, and causal summary from the exact stable source snapshot consumed by the operation;
+- `reset` records the chosen source database and, when available, the same complete Journal 2 source-position metadata;
 - `migration` records the stable `MigrationId` of the migration being run;
 - implementation-specific `other` operations use a bounded stable `OperationTag` rather than arbitrary payload data.
 
@@ -177,7 +177,7 @@ Examples include:
 
 The event carries bounded references/summary metadata but creates no new `ValueId`, certificate authority, invalidation authority, or tombstone authority. The adopted foreign identities remain unchanged.
 
-All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`. When that operation record is persisted, its `source` identifies the same fixed source snapshot used by the synchronization protocol, including Journal 2 incarnation/head coordinates when available. That grouping is historical only and is not imported by peers.
+All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`. When that operation record is persisted, its `source` identifies the same fixed source snapshot used by the synchronization protocol, including Journal 2 incarnation, local head, and causal summary when available. That grouping is historical only and is not imported by peers.
 
 If source information is already represented and the graph projection is unchanged, repeating synchronization is silent and need not persist an operation record.
 
@@ -202,6 +202,8 @@ DeleteEvent {
 The delete is causally after every source/local authority observed by that synchronization transaction and therefore has greater total authority than those observed candidates.
 
 This is the only permitted way for synchronization to solve an unsafe cache when the payload cannot remain in the legacy graph: the journal never hides or stores the payload.
+
+The removal may cascade to cached dependents which can no longer remain materialized because the legacy graph is dependency-closed. This is cache destruction, not a promise that the semantic node can never exist again: a later successful pull may recompute the node and author a new greater value occurrence.
 
 ## Reset and migration grouping
 
