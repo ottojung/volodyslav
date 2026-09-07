@@ -19,8 +19,8 @@ It does not preserve forensic replay, payload history, or high-level operation g
 Canonical compaction retains:
 
 1. one `JournalHeader`;
-2. one `NodeJournalSummary` per represented semantic node;
-3. one current changed-node marker per represented semantic node;
+2. one `NodeJournalSummary` per represented semantic node/key, including retained absent/tombstoned keys;
+3. one current changed-node marker per represented semantic node/key;
 4. stored source cursors, one bounded record per known source;
 5. at most a bounded implementation-defined raw history tail consisting of small operation records and low-level semantic events, which canonical size analysis may take to be empty.
 
@@ -90,7 +90,7 @@ Raw event contexts can be discarded when no retained semantic reference needs th
 
 ## Changed-node index compaction
 
-The incremental change index contains one live marker per represented node:
+The incremental change index contains one live marker per represented node/key:
 
 ```text
 (lastLocalChange(K), K)
@@ -161,6 +161,8 @@ observe(run(A,T)) == observe(run(C(A),T))
 
 where `observe` includes the converged legacy graph and Journal 2 semantics promised by the intent records, but excludes optional high-level operation grouping for raw history removed by compaction.
 
+The quantification over T includes arbitrarily delayed synchronization with a state which has not participated for an arbitrarily long time. The theorem does not assume that every known or potentially relevant remote host eventually returns.
+
 Sketch:
 
 - current semantic heads are preserved exactly;
@@ -175,13 +177,23 @@ Sketch:
 
 Thus old raw history is observationally redundant for synchronization.
 
+## Liveness-independent worst case
+
+Canonical compaction must satisfy `$id-jtwoparticip` and `$id-jtwoworstspace`.
+
+In particular, the required correctness proof and space bound may not rely on eventually receiving an acknowledgement from every host which could later present old state. A host may return only after an arbitrarily long delay, may first be encountered only after an arbitrarily long delay, or may never return at all.
+
+Therefore host-liveness/acknowledgement-based reclamation cannot be used to justify the mandatory compacted-state bound. Such reclamation may exist as an optional optimization, but the canonical worst-case representation must remain correct and within its stated parameters without it.
+
 ## Size bound
 
 Use the intent-record variables:
 
-- N = represented semantic nodes;
-- R = represented durable authors;
-- H >= 2 = upper bound on represented semantic event/counter magnitudes and local operation-counter magnitudes;
+- `L` = currently present/materialized represented semantic nodes;
+- `T` = retained absent/tombstoned semantic keys whose negative authority remains synchronization-relevant;
+- `N = L + T` = complete represented semantic key domain;
+- `R` = represented durable authors;
+- `H >= 2` = upper bound on represented semantic event/counter magnitudes and local operation-counter magnitudes;
 - serialized NodeKey size is bounded;
 - maximum direct in-degree is bounded;
 - author IDs, `MigrationId`, `OperationTag`, and other fixed tags have bounded size.
@@ -200,17 +212,20 @@ A `NodeJournalSummary` contains only a constant number of causal/frontier vector
 size(NodeJournalSummary) = O(R log H) bits
 ```
 
-There are O(N) node summaries and O(N) changed-node markers. Markers cost only `O(log H)` bits plus bounded NodeKey storage. The header costs `O(R log H)` including the additional scalar `localOperationCounter`. Source cursors contribute at most `O(R log H)` when there is at most one stored cursor per durable source identity.
+There are O(L + T) node summaries and O(L + T) changed-node markers. Markers cost only `O(log H)` bits plus bounded NodeKey storage. The header costs `O(R log H)` including the additional scalar `localOperationCounter`. Source cursors contribute at most `O(R log H)` when there is at most one stored cursor per durable source identity.
 
 A canonical compacted journal may take its raw history tail to be empty. Any implementation which retains a bounded raw tail retains only individually bounded operation/event records; that optional bounded tail does not change the asymptotic compacted-state bound.
 
 Therefore:
 
 ```text
-size(compacted journal) = O(N R log H) bits
+size(compacted journal) = O((L + T) R log H) bits
+                        = O(N R log H) bits.
 ```
 
-No term depends linearly on historical semantic-event count, high-level operation count, number of synchronizations, number of resets, or database age except through `log H`.
+The bound is independent of the number of historical semantic events, validations, invalidations, synchronizations, resets, and repeated changes **for a fixed retained represented key/author domain**, except through `log H`.
+
+It is deliberately not stated as independent of historical unique-key churn: T may increase when new keys are created and later require retained tombstones/negative authority. This is part of the pessimistic worst-case accounting rather than hidden history dependence.
 
 ## Per-LevelDB-value bound
 
@@ -222,7 +237,7 @@ The largest allowed values are bounded node summaries/semantic events/header vec
 O(R log H) bits
 ```
 
-A source-bearing `OperationRecord` may now contain one source `CausalPrefix` in addition to a constant number of bounded primitive fields/NodeKeys and sequence-bearing references such as `OperationId`, source incarnation/head, and optional parent. Therefore:
+A source-bearing `OperationRecord` may contain one source `CausalPrefix` in addition to a constant number of bounded primitive fields/NodeKeys and sequence-bearing references such as `OperationId`, source incarnation/head, and optional parent. Therefore:
 
 ```text
 size(OperationRecord) = O(R log H) bits
