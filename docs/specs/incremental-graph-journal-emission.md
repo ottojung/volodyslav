@@ -25,7 +25,7 @@ The operation record uses `localOperationCounter`, not the semantic `localJourna
 When an operation record is persisted, its tagged arguments MUST identify the recorded invocation according to `incremental-graph-journal-types.md`:
 
 - `pull` and `invalidate` record their `subject` NodeKey;
-- `synchronize` records the source database and, for a Journal 2 source, the source incarnation, local semantic head, and causal summary from the exact stable source snapshot consumed by the operation;
+- `synchronize` records the source database and, for a Journal 2 source, the source incarnation, local semantic head, causal summary, and authority-clock high-water mark from the exact stable source snapshot consumed by the operation;
 - `reset` records the chosen source database and, when available, the same complete Journal 2 source-position metadata;
 - `migration` records the stable `MigrationId` of the migration being run;
 - implementation-specific `other` operations use a bounded stable `OperationTag` rather than arbitrary payload data.
@@ -44,13 +44,33 @@ If an operation produces no journal-relevant semantic event, an implementation m
 
 ## Semantic event allocation
 
-Every locally authored semantic journal event uses the allocation rule in `incremental-graph-journal-types.md`:
+Every locally authored semantic journal event uses the writer-local identity, causal-context, and HLC authority rules in `incremental-graph-journal-types.md`.
+
+The next event ID is:
 
 ```text
-next = 1 + max(localJournalCounter, causalSummary[*])
+nextSequence = localJournalCounter + 1
+id = { author: localFingerprint, sequence: nextSequence }
+context = causalSummary before publication
 ```
 
-The event receives the current causal summary as immutable context.
+Remote causal coordinates never inflate `nextSequence`.
+
+Before allocating an event which is causally required to observe imported/source facts, the transaction joins both:
+
+```text
+causalSummary
+authorityClock
+```
+
+from the relevant source header/EventRefs. The newly authored event then advances `authorityClock` once and receives that new `AuthorityTime`.
+
+The physical seed for that HLC step is:
+
+- the exact new value record's legacy `modifiedAt` for a `ValueEvent`;
+- the operation/publication wall-clock time for validate, invalidate, delete, and adopt events.
+
+For a value-changing computation, the new legacy timestamp is therefore determined before/finalized together with allocation of its `ValueEvent`, so the event's physical HLC seed and the committed value occurrence's `modifiedAt` correspond to the same semantic transition.
 
 When one atomic transaction authors multiple semantic events, their allocation order must be a deterministic topological order extending every semantic happened-before constraint established by the transition being recorded. In particular:
 
@@ -61,24 +81,23 @@ When one atomic transaction authors multiple semantic events, their allocation o
 
 Events not ordered by such semantic dependencies are tie-broken deterministically by `NodeKey` and event kind (and by another fixed deterministic field if needed). A purely lexical `NodeKey`/kind ordering must never reverse a required semantic dependency merely to obtain deterministic IDs.
 
-Because later same-author events have larger local sequences and observe earlier same-transaction events, this allocation order is part of the causal meaning of the resulting contexts, not merely a serialization convenience.
+Because later same-author events have larger local sequences, include earlier same-transaction events in their contexts, and advance the HLC again, this allocation order is part of both exact causal meaning and authority monotonicity rather than merely a serialization convenience.
 
-Imported semantic authorities are joined into `causalSummary` before any synchronization-authored semantic event is allocated.
-
-Allocating or writing an `OperationRecord` does not advance `localJournalCounter` or `causalSummary`.
+Allocating or writing an `OperationRecord` does not advance `localJournalCounter`, `causalSummary`, or `authorityClock`.
 
 ## Value-changing computation
 
 When a successful computor returns a semantic value different from the currently stored value, or materializes a previously absent node:
 
-1. author `ValueEvent V` for the node;
-2. `V.id` becomes the new `ValueId` and present head authority;
-3. write the new payload only to the unchanged legacy `values` sublevel;
-4. preserve/update timestamps according to the existing IncrementalGraph rules;
-5. author `ValidateEvent C` for `V.id`;
-6. set `C.basis[i] = currentValueId(inputEdges(K)[i])` for every direct input;
-7. project K fresh and restore its incoming validity edges;
-8. perform ordinary outgoing invalidation propagation caused by the value change.
+1. determine the new legacy value/timestamp record using the existing IncrementalGraph timestamp rules;
+2. author `ValueEvent V`, seeding its HLC physical component from that record's `modifiedAt`;
+3. `V.id` becomes the new `ValueId` and `V` becomes the present-head authority reference;
+4. write the new payload only to the unchanged legacy `values` sublevel;
+5. preserve/update timestamps according to the existing IncrementalGraph rules;
+6. author `ValidateEvent C` for `V.id`;
+7. set `C.basis[i] = currentValueId(inputEdges(K)[i])` for every direct input;
+8. project K fresh and restore its incoming validity edges;
+9. perform ordinary outgoing invalidation propagation caused by the value change.
 
 The directly authored `ValueEvent`, `ValidateEvent`, and propagated low-level events carry the current high-level operation ID when one was allocated for the pull.
 
@@ -90,19 +109,19 @@ The new value event itself explains loss of incoming validity edges in dependent
 
 When the computor is invoked and returns `Unchanged`:
 
-- preserve the current `ValueId`;
-- author a new `ValidateEvent` for that `ValueId`;
+- preserve the current `ValueId` and its original `ValueRef.authorityTime`;
+- author a new `ValidateEvent` for that `ValueId` using the current operation time as its HLC physical seed;
 - record the exact current direct-input `ValueId`s in its basis;
 - its context clears every applicable invalidation which the operation observed;
 - project the resulting legacy freshness/validity state normally.
 
-No `ValueEvent` is authored.
+No `ValueEvent` is authored and the legacy value's `modifiedAt` does not change.
 
 ## Cache revalidation
 
 When a stale derived node has complete current incoming validity and revalidates without invoking its computor:
 
-- preserve the current `ValueId`;
+- preserve the current `ValueId` and original value authority;
 - author a new `ValidateEvent` with the current direct-input `ValueId` basis;
 - mark the node fresh in the legacy graph;
 - preserve its outgoing validity frontier according to the existing graph algorithm.
@@ -125,7 +144,7 @@ InvalidateEvent {
 }
 ```
 
-The event advances `nodeInvalidateFrontier[K][localAuthor]`.
+The event advances `nodeInvalidateFrontier[K][localAuthor]` at its writer-local event sequence.
 
 The legacy transition remains the existing one:
 
@@ -155,13 +174,13 @@ The initial full-sync design should prefer deletion for a cache whose `oldValue`
 
 ## Deletion
 
-A semantic deletion authors `DeleteEvent D`; `D` becomes the absent head authority for the node.
+A semantic deletion authors `DeleteEvent D`; `D` becomes the absent-head authority reference for the node.
 
 Publication removes the node's legacy materialization and validity entries while preserving the compacted node summary/tombstone in the new journal sublevel.
 
 The journal stores no deleted payload.
 
-A later present semantic occurrence must have greater state authority to defeat the tombstone.
+A later present semantic occurrence must have greater EventRef authority to defeat the tombstone.
 
 ## Synchronization adoption
 
@@ -175,9 +194,9 @@ Examples include:
 - joining previously unseen foreign invalidation frontier coordinates;
 - projecting a resulting freshness/validity change caused by those adopted facts.
 
-The event carries bounded references/summary metadata but creates no new `ValueId`, certificate authority, invalidation authority, or tombstone authority. The adopted foreign identities remain unchanged.
+The event carries bounded references/summary metadata but creates no new `ValueId`, certificate authority, invalidation authority, or tombstone authority. The adopted foreign identities and their immutable authority times remain unchanged.
 
-All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`. When that operation record is persisted, its `source` identifies the same fixed source snapshot used by the synchronization protocol, including Journal 2 incarnation, local head, and causal summary when available. That grouping is historical only and is not imported by peers.
+All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`. When that operation record is persisted, its `source` identifies the same fixed source snapshot used by the synchronization protocol, including Journal 2 incarnation, local head, causal summary, and authority-clock high-water mark when available. That grouping is historical only and is not imported by peers.
 
 If source information is already represented and the graph projection is unchanged, repeating synchronization is silent and need not persist an operation record.
 
@@ -199,7 +218,7 @@ DeleteEvent {
 }
 ```
 
-The delete is causally after every source/local authority observed by that synchronization transaction and therefore has greater total authority than those observed candidates.
+Before authoring the delete, synchronization has joined the causal contexts and authority-clock high-water marks of every source/local authority it relied on. The resulting delete is therefore both causally after those observed facts and greater than them in the HLC authority order.
 
 This is the only permitted way for synchronization to solve an unsafe cache when the payload cannot remain in the legacy graph: the journal never hides or stores the payload.
 
@@ -217,10 +236,10 @@ The operation record remains individually bounded in graph size. It MUST NOT enu
 
 Every semantic event updates the node's compacted semantic summary in the same transaction. The fold rules are:
 
-- value/delete events replace the state head when their authority is greater;
+- value/delete events replace the state head when their EventRef authority is greater;
 - a value event resets value-specific certificate/invalidation state for the new `ValueId`;
-- validate retains only the greatest certificate for the current `ValueId`;
-- node invalidates advance `nodeInvalidateFrontier` by author coordinate;
+- validate retains only the greatest certificate for the current `ValueId` by certificate EventRef authority;
+- node invalidates advance `nodeInvalidateFrontier` by writer-local author coordinate;
 - current-value invalidates advance the corresponding value-specific frontier;
 - adopt joins the bounded foreign semantic state described in the sync specification;
 - every local node-summary change sets `lastLocalChange` to the local semantic event sequence and moves that node's change-index marker atomically.
@@ -229,13 +248,13 @@ The event's optional `operation` reference is ignored by semantic folding.
 
 Raw historical semantic events and operation grouping may later be removed by canonical compaction.
 
-## Causal-summary observation without echo
+## Causal/authority observation without echo
 
-Receiving a source `causalSummary` is genuine observation, but growth of receiver `causalSummary` alone does not author a new semantic journal event.
+Receiving a source `causalSummary` and `authorityClock` is genuine observation, but growth of those receiver header high-water marks alone does not author a new semantic journal event.
 
 This rule is required to avoid infinite acknowledgement chains in which A observing B creates A:event, B observing that event creates B:event, and so on despite no semantic or node-summary change.
 
-A later real local semantic event naturally includes the accumulated causal summary in its context.
+A later real local semantic event naturally includes the accumulated causal summary in its context and advances from the accumulated authority-clock high-water mark.
 
 ## Atomicity
 
@@ -246,7 +265,7 @@ For any operation which changes both old graph sublevels and journal state, the 
 - raw newly authored semantic journal events;
 - updated node summaries;
 - moved changed-node markers;
-- header semantic counter/causal metadata;
+- header local sequence, causal-summary, and authority-clock metadata;
 - any identifier-map changes required by the legacy graph.
 
 No reader may observe only one side of this publication.
