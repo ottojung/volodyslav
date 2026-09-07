@@ -17,7 +17,7 @@ The graph's ordinary pull/invalidate semantics remain defined by `incremental-gr
 
 Synchronization operates on persisted IncrementalGraph replicas. It may copy or remove cached values, rebuild physical identifiers/validity records, and write Journal 2 metadata. It must never invoke computors.
 
-Normal synchronization must converge under the Journal 2 convergence specification. Reset-to-hostname is a separate controlled replacement operation.
+Normal synchronization must converge under the Journal 2 convergence specification. Reset-to-hostname is a separate controlled replacement operation. Same-host first-boot restoration is a separate recovery transition even if it reuses snapshot-staging/cutover machinery.
 
 Synchronization is transport-independent semantically. Git is currently one mechanism used to obtain stable hostname snapshots; Git identity/ancestry does not participate in graph conflict resolution.
 
@@ -34,13 +34,15 @@ For normal synchronization of one source host:
 
 A pre-Journal-2 and Journal-2 database are not directly semantically merged. Exact version compatibility is required.
 
-## Semantic identity
+## Semantic identity and authority
 
 Synchronization operates over semantic `NodeKey`.
 
 `NodeIdentifier` is physical storage identity only. Different replicas may use different identifiers for the same semantic node. Physical identifier selection is performed after Journal 2 semantic planning and does not determine the winner.
 
 `ComputedValue` equality does not determine semantic value identity in normal synchronization. Value occurrence identity comes only from Journal 2 `ValueId`.
+
+Conflict authority is the immutable Journal 2 EventRef HLC order. Writer-local journal sequence magnitudes are not compared across hosts. For concurrent value occurrences the HLC is seeded by the value occurrence's legacy `modifiedAt`, with causal advancement as required by Journal 2.
 
 ## Normal synchronization pipeline
 
@@ -52,7 +54,7 @@ A normal synchronization cycle follows this lifecycle:
 4. stage one stable source hostname snapshot;
 5. validate exact database/schema compatibility and persisted invariants;
 6. construct an inactive target from the local receiver snapshot;
-7. run Journal 2 full semantic synchronization `receiver <- source`;
+7. run Journal 2 full semantic synchronization `receiver <- source`, joining source causal and HLC authority high-water metadata;
 8. project/rebuild unchanged legacy graph sublevels from the resulting semantic plan;
 9. validate final graph/journal consistency;
 10. durably flush the target and atomically cut it over as active;
@@ -86,9 +88,11 @@ Incremental synchronization may later replace the complete source scan with the 
 
 It is valid only when the receiver has a stored cursor proving that it incorporated that source through the cursor coordinate in the same source journal incarnation.
 
+The cursor coordinate is source-writer-local. Remote sequence magnitudes never advance it.
+
 If the cursor is invalid or unavailable, run full synchronization.
 
-For valid cursors, the incremental result must be observably equivalent to running full synchronization from the same starting snapshots.
+For valid cursors, the incremental result must be observably equivalent to running full synchronization from the same starting snapshots, including transfer of current source `causalSummary` and `authorityClock` even when no changed-node marker is returned.
 
 ## Semantic merge versus physical application
 
@@ -128,6 +132,8 @@ Normal synchronization which adopts a foreign `ValueId` copies the complete sele
 
 It does not construct a hybrid record, compare payloads for identity, or stamp merge execution time as the semantic value modification time.
 
+The value occurrence's immutable Journal 2 HLC authority was seeded from its origin `modifiedAt` and is copied as part of the ValueRef metadata; synchronization does not recompute it from local time.
+
 ## Failure atomicity
 
 A failed source merge must not expose a partially applied graph/journal target as active.
@@ -138,25 +144,53 @@ A failure after a completed active cutover follows the existing lifecycle's expl
 
 ## Reset-to-hostname
 
-Reset-to-hostname does not call the normal semantic merge.
+Reset-to-hostname on an already-established local database does not call the normal semantic merge.
 
 It:
 
 1. selects one validated source snapshot;
 2. constructs the reset target legacy graph under the lifecycle's exclusive replacement protocol;
 3. optionally uses `ComputedValue` equality only to avoid rewriting already-equal receiver payload bytes;
-4. increments the local Journal 2 incarnation;
-5. bootstraps a new local journal explanation of the resulting graph as specified by `incremental-graph-journal-reset.md`;
-6. validates projection equality;
-7. atomically cuts over.
+4. joins the source Journal 2 causal/HLC high-water state where available;
+5. increments the local Journal 2 incarnation;
+6. bootstraps a new local journal explanation of the resulting graph as specified by `incremental-graph-journal-reset.md`;
+7. validates projection equality;
+8. atomically cuts over.
 
-Source journal history/cursors are not installed as receiver history.
+Source journal history/cursors are not installed as receiver history. Receiver-local stored source cursors are deleted because semantic reset destroys their incorporated-state invariant.
+
+## Same-host first-boot restoration
+
+If local live state is absent and Volodyslav recovers this hostname's own authoritative previously published synchronized snapshot, the Journal 2 semantic transition is **restoration**, not reset-to-hostname.
+
+The staging/import/cutover implementation may reuse reset machinery physically, but it must preserve the saved same-writer Journal 2 state exactly, including:
+
+```text
+writer
+journalIncarnation
+localJournalCounter
+localOperationCounter
+causalSummary
+authorityClock
+node summaries/EventRefs
+changed-node markers
+stored source cursors
+legacy graph/value/timestamp state
+```
+
+It does not mint reset events, increment the incarnation, or delete restored source cursors merely because the local working copy had to be recreated.
+
+After installation, the database is reopened through the normal migration gate. If migration is required, migration begins from the restored writer state and follows the Journal 2 migration rules.
+
+Arbitrary rollback to an older same-writer checkpoint is not restoration. A supported restoration must not restore a writer-local counter/HLC state behind later same-writer events which may already exist in supported external state; see the restoration no-reuse invariant in `incremental-graph-journal-reset.md`.
 
 ## Transport rules
 
 Transport snapshots must preserve the bytes of the legacy graph and Journal 2 sublevel being staged. They need not preserve source filesystem paths or Git ancestry as semantic facts.
 
 A stable staged snapshot is interpreted solely by its persisted IncrementalGraph database version, schema, graph records, and Journal 2 state.
+
+Transport identity does not replace Journal 2 writer identity or authority semantics. For same-host restoration, the lifecycle separately validates that the snapshot is the authoritative saved state for the same logical writer history.
 
 ## Correctness target
 
