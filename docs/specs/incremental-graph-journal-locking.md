@@ -14,32 +14,52 @@ A transaction which authors journal history must finalize, under the same per-re
 
 - legacy graph writes/deletes;
 - semantic event-ID allocation state;
+- semantic HLC authority-clock allocation state;
 - high-level operation-ID allocation state;
 - high-level operation records;
 - raw low-level semantic journal events;
 - node summaries;
 - changed-node marker movement;
-- header causal/counter metadata;
+- header causal/counter/authority metadata;
 - identifier lookup/allocation writes.
 
-No semantic event ID may become durable without the graph/journal transition it names, and no named graph transition may commit without the corresponding event/summary update.
+No semantic event ID/authority may become durable without the graph/journal transition it names, and no named graph transition may commit without the corresponding event/summary update.
 
 When a high-level operation record is persisted for a transition, its `localOperationCounter` update, the operation record, and all directly linked low-level events committed by that transition are part of the same publication boundary.
 
 ## Journal allocators
 
-Allocation of local semantic event sequences and local operation sequences is serialized per writable replica during publication.
+Allocation of local semantic event sequences, local HLC authority times, and local operation sequences is serialized per writable replica during publication.
 
-Two transactions may execute their expensive pull/computor work concurrently where the existing graph locking design permits, but their final IDs are chosen/published in the serialized finalization phase.
+Two transactions may execute their expensive pull/computor work concurrently where the existing graph locking design permits, but their final event IDs and HLC authority times are chosen/published in the serialized finalization phase.
 
-Semantic event allocation uses the then-current:
+Semantic event identity allocation uses only the then-current writer-local:
 
 ```text
 localJournalCounter
+```
+
+and allocates:
+
+```text
+nextSequence = localJournalCounter + 1
+```
+
+Remote causal coordinates do not inflate the local sequence.
+
+The event's immutable causal context is the then-current:
+
+```text
 causalSummary
 ```
 
-and allocates above every semantic coordinate it is required to have observed.
+The event's total conflict authority advances from the then-current:
+
+```text
+authorityClock
+```
+
+using the physical seed required by the types/emission specifications. The transaction must first join every causal/authority fact it is required to have observed.
 
 High-level operation allocation uses the separate:
 
@@ -47,11 +67,11 @@ High-level operation allocation uses the separate:
 localOperationCounter
 ```
 
-and does not modify `causalSummary` or semantic event authority.
+and does not modify `causalSummary`, `authorityClock`, or semantic event authority.
 
-A transaction which fails before publication exposes no durable semantic event ID or operation ID. Reuse of an uncommitted tentative number is permitted because no supported observer could have seen it.
+A transaction which fails before publication exposes no durable semantic event ID, authority time, or operation ID. Reuse of an uncommitted tentative local sequence/operation number is permitted because no supported observer could have seen it; an uncommitted tentative HLC step likewise has no semantic existence.
 
-Committed semantic event coordinates and committed operation coordinates are never reused within their respective identity domains.
+Committed semantic event coordinates and committed operation coordinates are never reused within their respective writer-local identity domains. `authorityClock` never moves backward across supported committed states.
 
 ## Reconciliation at commit
 
@@ -65,15 +85,24 @@ In particular, a `ValidateEvent` may publish only if:
 
 If current committed state invalidates the proposed result, use the same retry/failure policy required by the existing graph transaction model; do not publish a fictitious certificate.
 
-## Causal-summary observation
+Any event IDs or authority times proposed before this reconciliation are tentative. Final writer-local sequence, context, and HLC authority must be allocated/reconciled against the current committed header in the serialized publication phase.
 
-A synchronization operation may join remote `causalSummary` into local journal metadata without allocating an event.
+## Causal/authority observation
 
-This metadata write must still be serialized/durable with any semantic synchronization transition that relies on that observation before authoring a new local event.
+A synchronization operation may join remote `causalSummary` and `authorityClock` into local journal metadata without allocating an event.
 
-If synchronization authors a soft invalidation or tombstone in response to source authority, the source causal coordinates are joined before semantic sequence allocation, ensuring the new event is causally after and has greater total authority than the observed source facts.
+These metadata writes must still be serialized/durable with any semantic synchronization transition that relies on those observations before authoring a new local event.
 
-High-level operation records do not participate in this causal observation.
+If synchronization authors a soft invalidation or tombstone in response to source authority:
+
+1. the source causal coordinates are joined into `causalSummary`;
+2. the source HLC high-water mark and directly inspected EventRef authority times are joined into `authorityClock`;
+3. the new local event allocates its next writer-local sequence;
+4. the new local event advances the HLC once.
+
+Therefore the new event is causally after the observed source facts and greater than them in total authority, without comparing or copying remote sequence magnitudes into the local sequence counter.
+
+High-level operation records do not participate in this causal/authority observation except that source-bearing records may store the observed source header as historical invocation metadata.
 
 ## Full synchronization and lifecycle exclusion
 
@@ -89,7 +118,7 @@ Migration and controlled reset run under the existing holiday/exclusive lifecycl
 
 Their multi-node bootstrap event allocation may be performed while building an inactive replica, but the complete resulting graph+journal state becomes visible only at the final supported cutover.
 
-Reset changes `journalIncarnation` atomically with installation of its rebuilt summaries/change index.
+Reset changes `journalIncarnation` atomically with installation of its rebuilt summaries/change index and its resulting causal/authority header state.
 
 Controlled reset also atomically deletes every receiver-local stored source cursor (`journal/cursors/*`). This deletion belongs to the same reset publication boundary as the replacement graph/journal baseline. A reset state with old receiver-local source cursors still present is not a supported committed state.
 
@@ -101,7 +130,7 @@ A conforming metadata iterator may:
 
 1. acquire whatever replica-lifetime protection is required to keep the active replica alive;
 2. take a LevelDB snapshot;
-3. read header, changed-node markers, and node summaries completely from that same snapshot;
+3. read header, including `causalSummary` and `authorityClock`, changed-node markers, and node summaries completely from that same snapshot;
 4. materialize the metadata-only `JournalDelta` into ordinary memory;
 5. release the database snapshot/lifetime protection before returning the result.
 
@@ -115,7 +144,7 @@ Incremental synchronization has a stronger source-read requirement than the gene
 
 For one incremental `R <- S`, synchronization must own one fixed committed source snapshot while it reads:
 
-- the source header;
+- the source header, including causal and HLC authority high-water metadata;
 - changed-node markers;
 - changed node summaries;
 - every source legacy value/timestamp record required to materialize a selected present `ValueId`.
@@ -141,6 +170,6 @@ It may execute while building an inactive replica under an already-exclusive lif
 - it folds one fixed committed journal state;
 - it cannot race a publication into a half-compacted representation;
 - its final active state has the identical legacy graph projection;
-- cursor coordinates/incarnation are unchanged for cursors not invalidated by lifecycle replacement.
+- writer-local sequence coordinates, causal summary, HLC authority high-water state, and cursor coordinates/incarnation are unchanged for cursors not invalidated by lifecycle replacement.
 
 Compaction never requires holding all journal entries in RAM simultaneously; it must be streamable over LevelDB records and must respect the per-record `O(R log H)` bound.
