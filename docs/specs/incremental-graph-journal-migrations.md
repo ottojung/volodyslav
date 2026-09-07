@@ -20,6 +20,8 @@ The source database must satisfy the current legacy IncrementalGraph invariants:
 
 Corrupt legacy state is rejected rather than assigned invented journal meaning.
 
+Every legacy `modifiedAt` used to seed a bootstrap value authority time must be parseable by the canonical timestamp conversion required by Journal 2. Malformed persisted timestamps are rejected rather than assigned invented authority.
+
 ## Frozen existing sublevels
 
 The migration must not rewrite a value merely to add Journal 2 metadata.
@@ -38,11 +40,18 @@ header.incarnation = 1
 header.localJournalCounter = 0
 header.localOperationCounter = 0
 header.causalSummary = {}
+header.authorityClock = { physical: 0, logical: 0 }
 ```
 
-If the lifecycle already has a compatible durable monotone counter which must be preserved, the implementation may start the corresponding allocation above it; bootstrap semantic events still follow the Journal 2 semantic event-allocation rule.
+Journal event sequences allocated by this migration are strictly writer-local:
 
-The migration may allocate one local high-level operation record and attach its `OperationId` to bootstrap semantic events. A `kind="migration"` record carries the stable migration `MigrationId`; a `kind="bootstrap"` record may also carry that migration ID when the bootstrap is specifically the expansion of this migration. Operation grouping is local history only and does not affect the semantic allocation described below.
+```text
+nextSequence = localJournalCounter + 1
+```
+
+They are not based on any cross-writer maximum.
+
+The migration may allocate one local high-level operation record and attach its `OperationId` to bootstrap semantic events. A `kind="migration"` record carries the stable migration `MigrationId`; a `kind="bootstrap"` record may also carry that migration ID when the bootstrap is specifically the expansion of this migration. Operation grouping is local history only and does not affect semantic allocation.
 
 ## Pass 1: assign current value occurrences
 
@@ -50,16 +59,19 @@ Enumerate every materialized semantic NodeKey in deterministic canonical NodeKey
 
 For each K:
 
-1. author `ValueEvent(reason="bootstrap")`;
-2. assign its event ID as K's initial Journal 2 `ValueId`;
-3. do not rewrite K's legacy payload or timestamps;
-4. set the present semantic head to that ValueRef.
+1. read K's unchanged legacy value/timestamp record;
+2. author `ValueEvent(reason="bootstrap")`, seeding its HLC physical component from K's existing `modifiedAt`;
+3. assign its event ID as K's initial Journal 2 `ValueId`;
+4. do not rewrite K's legacy payload or timestamps;
+5. set the present semantic head to that ValueRef.
 
-All current ValueIds are therefore known before certificate bases are constructed.
+Because all bootstrap events are authored by one local journal in deterministic order, each successive event also advances from the previous HLC high-water mark as required by the ordinary event-allocation rule. The HLC may therefore be later than an individual legacy `modifiedAt` when necessary to preserve same-writer happened-before.
+
+All current ValueIds are known before certificate bases are constructed.
 
 ## Pass 2: encode incoming validity
 
-For every materialized K, create one `ValidateEvent(reason="bootstrap")`.
+For every materialized K, create one `ValidateEvent(reason="bootstrap")` using the migration/publication wall-clock time as its physical HLC seed.
 
 Let `inputEdges(K) = [D0, D1, ...]`. Set:
 
@@ -103,7 +115,7 @@ If the projection does not match, migration fails before publication.
 
 The bootstrap historical events may be canonically compacted immediately into:
 
-- header;
+- header, including the final local sequence, causal summary, and HLC authority high-water mark;
 - one node summary per materialized node;
 - one changed-node marker per represented node;
 - no required historical raw event/operation prefix.
@@ -122,15 +134,17 @@ It must first migrate or be reset/bootstrap-restored through the supported lifec
 
 ## Size
 
-Bootstrap creates O(N) local semantic events plus at most O(1) high-level operation records, each individually within the Journal 2 per-value bound, and canonical compaction leaves O(N) bounded summaries/markers.
+Let L be the number of materialized nodes in the legacy state being migrated. The initial migration baseline has no historical Journal-2 tombstone domain, so its bootstrap work is O(L) semantic events plus at most O(1) high-level operation records.
 
-Therefore the migrated compacted journal satisfies:
+Each event is individually within the Journal 2 per-value bound, and canonical compaction leaves O(L) bounded summaries/markers plus one bounded header.
+
+Therefore the migrated compacted journal satisfies the general bound:
 
 ```text
-O(N R log H) bits
+O((L + T) R log H) bits
 ```
 
-with individual journal LevelDB values bounded by:
+with `T = 0` at this initial bootstrap unless the supported migration explicitly creates retained absent-key authority, and with individual journal LevelDB values bounded by:
 
 ```text
 O(R log H) bits.
