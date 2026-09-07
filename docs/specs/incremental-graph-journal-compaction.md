@@ -9,7 +9,7 @@ Compaction is required to preserve:
 - future full synchronization behavior;
 - future incremental synchronization behavior for valid cursors;
 - current legacy graph projection;
-- semantic journal event allocation safety;
+- semantic journal event identity/causal/authority allocation safety;
 - the iterator semantic-effect contract.
 
 It does not preserve forensic replay, payload history, or high-level operation grouping for history whose raw semantic events have themselves been compacted away.
@@ -18,7 +18,7 @@ It does not preserve forensic replay, payload history, or high-level operation g
 
 Canonical compaction retains:
 
-1. one `JournalHeader`;
+1. one `JournalHeader`, including local counters, `causalSummary`, and `authorityClock`;
 2. one `NodeJournalSummary` per represented semantic node/key, including retained absent/tombstoned keys;
 3. one current changed-node marker per represented semantic node/key;
 4. stored source cursors, one bounded record per known source;
@@ -34,12 +34,12 @@ A retained operation record may have an optional `parent` reference. If compacti
 
 For each NodeKey K, fold all represented historical/adopted authority according to the same rules used by live authoring and full synchronization:
 
-- retain the greatest semantic head authority;
+- retain the greatest semantic head authority by `authorityCompare` over its `EventRef`;
 - retain the componentwise maximum node-wide invalidation frontier;
 - if the head is present with V, retain only metadata scoped to V;
 - retain componentwise maximum current-value invalidate and hard-invalidate frontiers;
-- retain only the greatest certificate naming V;
-- retain the exact immutable context of the current `ValueRef` and certificate event;
+- retain only the greatest certificate naming V by certificate EventRef authority;
+- retain the exact immutable context and `authorityTime` of the current `ValueRef` and certificate event;
 - retain the latest local changed-node sequence.
 
 Lower semantic heads, certificates for losing values, lower certificates for the current value, and value-specific invalidations for permanently losing values are not future candidates under Journal 2 semantics and may be discarded.
@@ -48,7 +48,7 @@ High-level operation IDs/records never participate in this fold.
 
 ## Why one certificate is sufficient
 
-Projection and synchronization define the canonical certificate for a current ValueId to be the greatest certificate event before compaction is considered.
+Projection and synchronization define the canonical certificate for a current ValueId to be the greatest certificate EventRef before compaction is considered.
 
 Therefore lower certificates have no semantic role in an uncompacted journal. Removing them cannot turn a later merge from one valid certificate choice into another; that alternative choice never existed in Journal 2 semantics.
 
@@ -56,23 +56,23 @@ This design avoids an `O(R)` certificate antichain whose own causal vectors woul
 
 ## Why losing values need no payload/history
 
-Semantic head authority is totally ordered. Once a node summary retains head H, a lower competing head can never become the selected head merely because some third state is observed later.
+Semantic head authority is totally ordered by immutable EventRef authority. Once a node summary retains head H, a lower competing head can never become the selected head merely because some third state is observed later.
 
 A genuinely later value is a new authority and can defeat H directly. It does not need the discarded losing value to remain stored.
 
-If synchronization determines that the current winning payload is unsafe to retain, it authors a tombstone greater than the observed winning authority before deleting the payload. Hence the journal never needs hidden payload storage to prevent an older value from resurrecting.
+If synchronization determines that the current winning payload is unsafe to retain, it authors a tombstone after joining the observed candidate causal/authority high-water state. The tombstone is therefore greater than the observed winning authority before the payload is deleted. Hence the journal never needs hidden payload storage to prevent an older value from resurrecting.
 
 ## Invalidation compaction
 
 ### Node-wide invalidations
 
-Node-scoped explicit invalidation can affect a future current value whose validation did not observe it. Therefore compaction retains the greatest represented node-invalidating sequence for every represented author:
+Node-scoped explicit invalidation can affect a future current value whose validation did not observe it. Therefore compaction retains the greatest represented writer-local invalidating sequence for every represented author:
 
 ```text
 nodeInvalidateFrontier[A]
 ```
 
-These coordinates remain even after current values change or the node becomes absent.
+These are vector-clock coordinates, not cross-writer conflict-precedence numbers. They remain even after current values change or the node becomes absent.
 
 ### Value-scoped invalidations
 
@@ -80,11 +80,15 @@ Value-specific invalidations can affect only their named ValueId. Once that Valu
 
 For the current value, repeated invalidates by one author collapse to one greatest all-mode coordinate and one greatest hard coordinate.
 
-## Causal-summary compaction
+## Causal/authority header compaction
 
-`causalSummary` is already a componentwise maximum. Compaction retains it exactly.
+`causalSummary` is already a componentwise maximum and is retained exactly.
 
-Raw event contexts can be discarded when no retained semantic reference needs their exact context. The exact context of the current `ValueRef` and current certificate remains embedded in their retained refs.
+`authorityClock` is the scalar HLC high-water mark of all authored/observed semantic authorities and is also retained exactly. This is required so a future local event can advance beyond an authority time whose raw event has been compacted away.
+
+Raw event contexts/authority times can be discarded when no retained semantic reference needs their exact immutable metadata. The exact context and authority time of the current `ValueRef` and current certificate remain embedded in those retained refs.
+
+`localJournalCounter` is retained as the writer-local event identity/change-index coordinate. It is not inflated by remote causal coordinates.
 
 `localOperationCounter` is retained only as local high-level-history allocation state. It has no causal or authority meaning.
 
@@ -106,7 +110,7 @@ lastLocalChange(K) > P
 
 iff K changed after a consumer which correctly incorporated this source through cursor P.
 
-No historical marker list is required.
+Both q and P are coordinates in this source writer's local sequence. No historical marker list is required.
 
 ## Cursor preservation
 
@@ -114,8 +118,10 @@ Canonical compaction does not change:
 
 - writer fingerprint;
 - journal incarnation;
-- semantic local sequence coordinates;
+- writer-local semantic sequence coordinates;
 - node `lastLocalChange` coordinates;
+- causal summary coordinates;
+- authority-clock high-water mark;
 - receiver-local stored source cursor coordinates.
 
 Therefore a cursor whose source relationship was valid before compaction remains valid afterward.
@@ -129,7 +135,7 @@ Controlled reset is different in two ways:
 
 Let P be a valid cursor and S a fixed committed source snapshot head in the same incarnation.
 
-Let `History(P,S]` be the original un-compacted local low-level semantic events in that interval, and let `Delta(P,S]` be the compacted iterator output defined by the API specification: the current node summary for every node whose current changed-node marker is in `(P,S]`.
+Let `History(P,S]` be the original un-compacted local low-level semantic events in that interval, and let `Delta(P,S]` be the compacted iterator output defined by the API specification: the current node summary for every node whose current changed-node marker is in `(P,S]`, together with the source's current causal/authority header high-water state.
 
 High-level operation records are intentionally irrelevant to this theorem because they carry no synchronization semantics.
 
@@ -147,9 +153,9 @@ apply(Delta(P,S])
 
 must produce observationally equivalent journal-derived synchronization state through S.
 
-Reason: for each node, all source changes after P are folded into its current summary; if the node changed at least once after P, its latest marker remains greater than P. If it did not change after P, the consumer already incorporated its source summary through P. Cross-node global causal metadata is transferred from the header independently of the changed-node iterator.
+Reason: for each node, all source changes after P are folded into its current summary; if the node changed at least once after P, its latest marker remains greater than P. If it did not change after P, the consumer already incorporated its source summary through P. Cross-node causal and HLC high-water metadata are transferred from the header independently of the changed-node iterator.
 
-After successful consumption, the iterator advances through S even when some or all historical semantic events were removed and the returned delta is empty.
+After successful consumption, the iterator advances through S even when some or all historical semantic events were removed and the returned changed-node list is empty.
 
 ## Future synchronization theorem
 
@@ -165,12 +171,14 @@ The quantification over T includes arbitrarily delayed synchronization with a st
 
 Sketch:
 
-- current semantic heads are preserved exactly;
+- current semantic heads and their immutable EventRef authority are preserved exactly;
 - current invalidation frontiers are preserved exactly;
-- the only certificate ever considered is preserved exactly;
+- the only certificate ever considered, including its context/authority, is preserved exactly;
 - current value/event contexts used by safety tests are preserved exactly;
 - losing state cannot become winning without a genuinely new greater authority;
-- causal allocation safety is preserved by the retained header semantic summary/counter;
+- future local event identity safety is preserved by `localJournalCounter`;
+- exact causal allocation safety is preserved by `causalSummary`;
+- future total-authority allocation safety is preserved by `authorityClock` even when high-authority raw events were compacted away;
 - changed-node markers preserve every valid cursor's semantic suffix;
 - no future operation requires an old payload because the journal never promises one;
 - operation records/IDs do not participate in any of the above semantic rules.
@@ -193,12 +201,12 @@ Use the intent-record variables:
 - `T` = retained absent/tombstoned semantic keys whose negative authority remains synchronization-relevant;
 - `N = L + T` = complete represented semantic key domain;
 - `R` = represented durable authors;
-- `H >= 2` = upper bound on represented semantic event/counter magnitudes and local operation-counter magnitudes;
+- `H >= 2` = upper bound on represented writer-local event/operation counters and numeric HLC physical/logical components;
 - serialized NodeKey size is bounded;
 - maximum direct in-degree is bounded;
 - author IDs, `MigrationId`, `OperationTag`, and other fixed tags have bounded size.
 
-One sequence/counter coordinate costs `O(log H)` bits.
+One sequence/counter/HLC scalar coordinate costs `O(log H)` bits.
 
 One `CausalPrefix` costs:
 
@@ -206,13 +214,15 @@ One `CausalPrefix` costs:
 O(R log H) bits
 ```
 
-A `NodeJournalSummary` contains only a constant number of causal/frontier vectors plus a bounded number of input ValueIds, so:
+A retained `AuthorityTime` costs `O(log H)` bits because it contains a constant number of H-bounded scalar coordinates.
+
+A `NodeJournalSummary` contains only a constant number of causal/frontier vectors plus a bounded number of input ValueIds and constant-many authority timestamps, so:
 
 ```text
 size(NodeJournalSummary) = O(R log H) bits
 ```
 
-There are O(L + T) node summaries and O(L + T) changed-node markers. Markers cost only `O(log H)` bits plus bounded NodeKey storage. The header costs `O(R log H)` including the additional scalar `localOperationCounter`. Source cursors contribute at most `O(R log H)` when there is at most one stored cursor per durable source identity.
+There are O(L + T) node summaries and O(L + T) changed-node markers. Markers cost only `O(log H)` bits plus bounded NodeKey storage. The header costs `O(R log H)` including `causalSummary`, `authorityClock`, and scalar local counters. Source cursors contribute at most `O(R log H)` when there is at most one stored cursor per durable source identity.
 
 A canonical compacted journal may take its raw history tail to be empty. Any implementation which retains a bounded raw tail retains only individually bounded operation/event records; that optional bounded tail does not change the asymptotic compacted-state bound.
 
@@ -237,7 +247,7 @@ The largest allowed values are bounded node summaries/semantic events/header vec
 O(R log H) bits
 ```
 
-A source-bearing `OperationRecord` may contain one source `CausalPrefix` in addition to a constant number of bounded primitive fields/NodeKeys and sequence-bearing references such as `OperationId`, source incarnation/head, and optional parent. Therefore:
+A source-bearing `OperationRecord` may contain one source `CausalPrefix`, one `AuthorityTime`, and a constant number of bounded primitive fields/NodeKeys and sequence-bearing references such as `OperationId`, source incarnation/head, and optional parent. Therefore:
 
 ```text
 size(OperationRecord) = O(R log H) bits
