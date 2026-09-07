@@ -2,17 +2,21 @@
 
 ## Purpose
 
-This specification defines controlled reset-to-snapshot behavior for Journal 2.
+This specification defines controlled reset-to-snapshot behavior for Journal 2 and distinguishes it from same-host restoration.
 
-Reset is not ordinary synchronization. It intentionally replaces the receiver's graph state with a chosen source snapshot and starts a new local journal incarnation.
+Reset is not ordinary synchronization. It intentionally replaces an already-established receiver's graph state with a chosen source snapshot and starts a new local journal incarnation.
 
 Journal 2 reset does not import the source journal as receiver history and does not retain Journal 1-style historical reset anchors.
+
+A same-host first-boot recovery of this database's own previously published synchronized state is a different lifecycle transition; see **Same-host restoration** below.
 
 ## Preconditions
 
 Reset operates under the lifecycle's exclusive replacement boundary on stable receiver and source snapshots with compatible schema/database versions.
 
 The source snapshot must itself satisfy the Journal 2/legacy graph consistency invariants when Journal 2 is present.
+
+The receiver already has an established local Journal 2 writer identity/state. If no local database exists and the system is recovering this same host's own saved state, use restoration semantics instead of semantic reset.
 
 ## Resulting legacy graph
 
@@ -28,7 +32,7 @@ isEqual(receiverValue, sourceValue)
 
 for the corresponding semantic node. This is the one Journal 2 synchronization/lifecycle operation allowed to use `ComputedValue` equality for this purpose.
 
-Equality merely permits leaving already-equal payload bytes in place. It does not prove shared ValueId, provenance, causal history, validation history, or journal identity.
+Equality merely permits leaving already-equal payload bytes in place. It does not prove shared ValueId, provenance, causal history, validation history, journal identity, or authority time.
 
 ## New journal incarnation
 
@@ -42,11 +46,20 @@ before issuing new cursors.
 
 The local writer fingerprint remains the database's durable writer identity unless the broader database lifecycle explicitly creates a new database identity.
 
-`localJournalCounter` remains monotone across reset; it is not reset to zero.
+`localJournalCounter` remains monotone across reset and is writer-local; it is not reset to zero and is not raised to remote sequence magnitudes.
 
-Before reset-authored events are allocated, the receiver observes the chosen source's current journal causal knowledge and semantic refs where available, so every reset baseline event is causally after the semantic history which reset actually observed.
+Before reset-authored events are allocated, the receiver observes the chosen source's current Journal 2 causal and authority high-water knowledge where available:
 
-The receiver may retain its accumulated `causalSummary`; reset does not require historical per-node reset anchors.
+```text
+causalSummary := componentwiseMax(causalSummary, source.causalSummary)
+authorityClock := maxAuthorityTime(authorityClock, source.authorityClock)
+```
+
+and joins directly inspected source EventRefs as required.
+
+Every reset baseline event is therefore causally after the semantic history which reset actually observed and advances from an HLC high-water mark at least as great as every observed authority time.
+
+The receiver may retain its accumulated `causalSummary` and `authorityClock`; reset does not require historical per-node reset anchors.
 
 ## Receiver-side cursor invalidation
 
@@ -82,10 +95,11 @@ where represented keys include both present heads and tombstoned/absent heads in
 
 For every materialized target semantic node K:
 
-1. author a new local `ValueEvent(reason="reset")`;
-2. that new event ID becomes K's new `ValueId`, even if equal payload bytes were reused without rewriting;
-3. later author a local `ValidateEvent(reason="reset")` whose basis encodes the resulting legacy incoming validity relation as described below;
-4. if the resulting target node is stale, author a local value-scoped soft invalidation after the validation so the projection remains stale.
+1. retain/construct the target legacy value/timestamp record according to reset semantics;
+2. author a new local `ValueEvent(reason="reset")`, seeding its HLC physical component from that target record's unchanged/copied `modifiedAt`;
+3. that new event ID becomes K's new `ValueId`, even if equal payload bytes were reused without rewriting;
+4. later author a local `ValidateEvent(reason="reset")` whose basis encodes the resulting legacy incoming validity relation as described below;
+5. if the resulting target node is stale, author a local value-scoped soft invalidation after the validation so the projection remains stale.
 
 For every K in `ResetKeys` which is absent from the resulting target legacy graph, author a local `DeleteEvent(reason="reset")`.
 
@@ -120,7 +134,7 @@ The new incarnation's per-node value-specific invalidation state is rebuilt from
 
 Old node-wide/value-specific journal invalidation frontiers are not required to survive as reset-anchor archives. Reset's newly authored values/certificates/tombstones are a new local baseline.
 
-The global causal summary may still remember old author coordinates for causal observation/allocation; those coordinates are not reset semantic authority for individual nodes.
+The global causal summary and HLC authority high-water mark may still remember old/remote history for future causal/authority-safe allocation; those header coordinates are not reset semantic authority for individual nodes.
 
 ## Reset laws and theorems
 
@@ -136,7 +150,7 @@ where R is the pre-reset receiver, S is the chosen stable reset source, and `res
 
 Let `project(X)` be the legacy IncrementalGraph projection of supported Journal 2 state X.
 
-Let `resetContext(B)` denote the causal knowledge observed before the reset baseline events of B are authored.
+Let `resetContext(B)` denote the causal knowledge observed before the reset baseline events of B are authored, and let `resetAuthorityHighWater(B)` denote the HLC high-water mark after joining the reset-observed authority state and before the first reset baseline event is advanced.
 
 For an event reference E:
 
@@ -179,7 +193,9 @@ Therefore reset is a semantic rebaseline, not a journal-identity copy.
 
 ### R3. Observed-history domination law
 
-Every reset-authored head/certificate/invalidation used to establish the new baseline must be causally after the reset-relevant semantic authority which the reset operation actually observed and must compare later whenever the Journal 2 authority relation is required to extend happened-before.
+Every reset-authored head/certificate/invalidation used to establish the new baseline must be causally after the reset-relevant semantic authority which the reset operation actually observed.
+
+Its HLC authority is allocated after joining `resetAuthorityHighWater(B)`, so every reset-authored baseline event compares later than the observed authority it is intended to supersede.
 
 Consequently, a pre-reset/source authority already covered by the reset cannot later defeat the reset baseline merely by being redelivered from another replica.
 
@@ -215,7 +231,7 @@ If U later presents a semantic authority E for which:
 !coveredByReset(E, B)
 ```
 
-then E may be concurrent with the reset baseline. Ordinary Journal 2 synchronization/conflict rules apply, and it is permitted that:
+then E may be concurrent with the reset baseline. Ordinary Journal 2 synchronization/conflict rules apply, including HLC authority resolution for competing concurrent heads/certificates, and it is permitted that:
 
 ```text
 observe(Sync(B <- U)) != observe(B)
@@ -238,7 +254,7 @@ However reset is not semantically idempotent as journal state:
 Reset(Reset(R,S), S) != Reset(R,S)
 ```
 
-because a repeated reset advances the local incarnation and may author a fresh baseline with new local event/value identities.
+because a repeated reset advances the local incarnation and may author a fresh baseline with new local event/value identities and later HLC authority.
 
 No Journal 2 convergence rule depends on semantic reset idempotence.
 
@@ -246,7 +262,7 @@ No Journal 2 convergence rule depends on semantic reset idempotence.
 
 After canonical compaction, the retained Journal 2 state need not contain one reset marker, anchor, or baseline record per historical reset.
 
-Repeated resets may replace/subsume prior reset-specific raw history so the compacted-state size depends on the currently represented key/author/counter domain, not linearly on the number of resets performed.
+Repeated resets may replace/subsume prior reset-specific raw history so the compacted-state size depends on the currently represented key/author/counter/authority-clock domain, not linearly on the number of resets performed.
 
 This law does **not** imply that absent keys can always be forgotten: tombstoned keys whose negative authority remains synchronization-relevant still contribute to the retained absent-key term T.
 
@@ -278,7 +294,7 @@ But it does not generally satisfy R3/R4. A pre-reset receiver authority which ou
 
 ### B. Current Journal 2 rebaseline reset
 
-The current design satisfies R1-R4 and R7 with only per-key bounded current reset meaning and ordinary causal metadata.
+The current design satisfies R1-R4 and R7 with only per-key bounded current reset meaning and ordinary causal/HLC header metadata.
 
 Its costs are:
 
@@ -300,7 +316,7 @@ ResetBarrier dominates E when E is encountered later
 
 This would strengthen R5 into universal pre-reset absorption.
 
-Such a guarantee cannot be obtained from the current per-event causal context alone, because an unseen event is by definition not below the reset's observed causal cut. It requires additional globally interpretable reset-era/epoch semantics, including rules for:
+Such a guarantee cannot be obtained from the current per-event causal context/HLC alone, because an unseen event is by definition not below the reset's observed causal cut. It requires additional globally interpretable reset-era/epoch semantics, including rules for:
 
 - distinguishing pre-barrier from post-barrier events from hosts which were offline during reset;
 - ordering or reconciling concurrent independent resets;
@@ -309,6 +325,37 @@ Such a guarantee cannot be obtained from the current per-event causal context al
 - incorporating the barrier into every future synchronization/authority decision which may encounter old state.
 
 A global barrier may be useful if universal reset absorption becomes a product requirement, but it is a materially stronger distributed-state model than Journal 2's current local rebaseline reset.
+
+## Same-host restoration
+
+First-boot recovery of this host's own previously published synchronized database state is not `Reset(R,S)` under R1-R8, even if the lifecycle reuses the same snapshot-staging/cutover machinery.
+
+A supported same-host restoration reinstalls the saved Journal 2 state as the continuation of the **same writer history**. It preserves, subject to validation:
+
+```text
+writer
+journalIncarnation
+localJournalCounter
+localOperationCounter
+causalSummary
+authorityClock
+node summaries and immutable EventRefs
+changed-node markers
+receiver-local source cursors
+legacy graph/value/timestamp records
+```
+
+It does not mint `reason="reset"` ValueIds, does not increment the incarnation merely because the process/installation was recreated, and does not delete valid restored source cursors merely because restoration occurred.
+
+This is safe because the restored cursor/application invariants and writer-local allocation state are part of the exact previously published same-host state being resumed. On the next synchronization, an individual remote source which has reset in the meantime will invalidate its restored cursor by ordinary source-incarnation comparison.
+
+### Restoration no-reuse invariant
+
+A supported restoration MUST NOT resume from a stale writer state if a later event from the same `(writer, journalIncarnation)` could already exist in supported external state while being absent from the restored snapshot. Otherwise the restored writer could reuse a committed `JournalEventId` or move its HLC high-water mark backward.
+
+Therefore arbitrary rollback to an older checkpoint/snapshot of the same writer is outside the supported restoration transition. The supported first-boot path restores the host's authoritative previously published synchronized state; it is recovery, not time travel.
+
+If a product requirement later needs rollback to an older same-writer checkpoint while later same-writer events may survive elsewhere, that must use a new lifecycle transition which prevents ID reuse—for example by creating a new writer identity/incarnation and explicitly specifying how old state is reconciled. It must not masquerade as ordinary restoration.
 
 ## Why reset stays within the bound
 
@@ -324,7 +371,7 @@ Reset creates only a constant number of events/summary components per represente
 - one certificate for a present value;
 - at most one initial stale assertion;
 - bounded input ValueId basis;
-- ordinary bounded causal/frontier metadata.
+- ordinary bounded causal/frontier metadata and constant-many HLC authority scalars.
 
 Receiver-local source cursors are deleted rather than accumulated across resets.
 
@@ -354,12 +401,14 @@ No correctness argument in this reset design assumes that such a delayed replica
 
 ## Cursor behavior
 
-Two distinct cursor effects apply:
+For semantic reset, two distinct cursor effects apply:
 
 1. cursors held by other replicas about this receiver become invalid because this receiver's `journalIncarnation` changed;
 2. cursors stored by this receiver about other sources are explicitly deleted because reset destroyed their incorporated-state invariant.
 
 The reset process rebuilds one changed-node marker per represented node in the new incarnation. A subsequent incremental relationship with any source is established only after a successful full synchronization under the reset receiver state.
+
+Same-host restoration is different: it restores the saved incarnation/cursors unchanged, subject to the restoration invariants above.
 
 ## Repeating reset
 
