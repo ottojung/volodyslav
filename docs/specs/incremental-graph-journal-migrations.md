@@ -45,13 +45,7 @@ header.causalSummary = {}
 header.authorityClock = { physical: 0, logical: 0 }
 ```
 
-Journal event sequences allocated by this migration are strictly writer-local:
-
-```text
-nextSequence = localJournalCounter + 1
-```
-
-They are not based on any cross-writer maximum.
+Bootstrap semantic events use the canonical local semantic-event allocator from `incremental-graph-journal-types.md`; this migration does not define a separate allocation rule. The initially empty causal summary contains no remote coordinates, and later bootstrap events advance the same writer-local state through that canonical allocator.
 
 The migration may allocate one local high-level operation record and attach its `OperationId` to bootstrap semantic events. A `kind="migration"` record carries the stable migration `MigrationId`; a `kind="bootstrap"` record may also carry that migration ID when the bootstrap is specifically the expansion of this migration. Operation grouping is local history only and does not affect semantic allocation.
 

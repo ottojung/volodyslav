@@ -44,28 +44,11 @@ If an operation produces no journal-relevant semantic event, an implementation m
 
 ## Semantic event allocation
 
-Every locally authored semantic journal event uses the writer-local identity, causal-context, and HLC authority rules in `incremental-graph-journal-types.md`.
+Every locally authored semantic journal event uses the canonical writer-local identity, causal-context, and HLC authority allocator defined in `incremental-graph-journal-types.md`. This specification does not redefine that allocator.
 
-The next event ID is:
+Publication must allocate against the current serialized Journal 2 header after joining every causal/authority fact the operation is required to have observed. Remote causal coordinates remain remote coordinates and never inflate the writer-local event sequence.
 
-```text
-nextSequence = localJournalCounter + 1
-id = { author: localFingerprint, sequence: nextSequence }
-context = causalSummary before publication
-```
-
-Remote causal coordinates never inflate `nextSequence`.
-
-Before allocating an event which is causally required to observe imported/source facts, the transaction joins both:
-
-```text
-causalSummary
-authorityClock
-```
-
-from the relevant source header/EventRefs. The newly authored event then advances `authorityClock` once and receives that new `AuthorityTime`.
-
-The physical seed for that HLC step is:
+The physical seed supplied to the canonical HLC allocator is:
 
 - the exact new value record's legacy `modifiedAt` for a `ValueEvent`;
 - the operation/publication wall-clock time for validate, invalidate, delete, and adopt events.

@@ -33,41 +33,9 @@ Allocation of local semantic event sequences, local HLC authority times, and loc
 
 Two transactions may execute their expensive pull/computor work concurrently where the existing graph locking design permits, but their final event IDs and HLC authority times are chosen/published in the serialized finalization phase.
 
-Semantic event identity allocation uses only the then-current writer-local:
+The finalizer invokes the canonical semantic-event allocator defined in `incremental-graph-journal-types.md` against the then-current committed header after joining every causal/authority fact the transition is required to observe. This locking specification does not define a second allocation formula. In particular, remote causal coordinates never become writer-local sequence coordinates.
 
-```text
-localJournalCounter
-```
-
-and allocates:
-
-```text
-nextSequence = localJournalCounter + 1
-```
-
-Remote causal coordinates do not inflate the local sequence.
-
-The event's immutable causal context is the then-current:
-
-```text
-causalSummary
-```
-
-The event's total conflict authority advances from the then-current:
-
-```text
-authorityClock
-```
-
-using the physical seed required by the types/emission specifications. The transaction must first join every causal/authority fact it is required to have observed.
-
-High-level operation allocation uses the separate:
-
-```text
-localOperationCounter
-```
-
-and does not modify `causalSummary`, `authorityClock`, or semantic event authority.
+High-level operation allocation uses the separate monotone `localOperationCounter` defined by the types specification and does not modify `causalSummary`, `authorityClock`, or semantic event authority.
 
 A transaction which fails before publication exposes no durable semantic event ID, authority time, or operation ID. Reuse of an uncommitted tentative local sequence/operation number is permitted because no supported observer could have seen it; an uncommitted tentative HLC step likewise has no semantic existence.
 
@@ -97,8 +65,7 @@ If synchronization authors a soft invalidation or tombstone in response to sourc
 
 1. the source causal coordinates are joined into `causalSummary`;
 2. the source HLC high-water mark and directly inspected EventRef authority times are joined into `authorityClock`;
-3. the new local event allocates its next writer-local sequence;
-4. the new local event advances the HLC once.
+3. the new local event is allocated by the canonical semantic-event allocator.
 
 Therefore the new event is causally after the observed source facts and greater than them in total authority, without comparing or copying remote sequence magnitudes into the local sequence counter.
 
