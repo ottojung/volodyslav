@@ -18,6 +18,8 @@ JournalCursor = {
 }
 ```
 
+`through` is explicitly the source writer's local journal sequence coordinate. Remote writers' sequence magnitudes do not affect it.
+
 A cursor is valid for a source snapshot only when:
 
 ```text
@@ -67,6 +69,7 @@ JournalDelta = {
     from: cursor.through,
     through: S,
     causalSummary: source.header.causalSummary,
+    authorityClock: source.header.authorityClock,
     changes: Array<{
         node: NodeKey,
         summary: NodeJournalSemanticPart
@@ -98,17 +101,19 @@ only after it has successfully incorporated the returned delta according to the 
 
 The iterator object itself does not mutate remote source state.
 
-## Causal header transfer
+## Causal and authority header transfer
 
-`causalSummary` is transferred in every delta/full-sync handshake independently of node change markers.
+`causalSummary` and `authorityClock` are transferred in every delta/full-sync handshake independently of node change markers.
 
-This prevents global causal knowledge from requiring a graph-wide change marker and avoids event-echo protocols. Receiver growth of causal summary alone does not create a local event.
+Both may grow on a source merely because it observed another replica, without the source authoring a node-semantic event and therefore without advancing `localJournalCounter` or moving a changed-node marker.
+
+Transferring these header high-water marks separately prevents global causal/authority knowledge from requiring a graph-wide change marker and avoids event-echo protocols. Receiver growth of these header fields alone does not create a local semantic event.
 
 ## Compaction-aware semantics
 
 The API intentionally does not promise event-for-event replay.
 
-For a consumer which correctly incorporated the source through P, applying the returned current summaries for all markers after P must have the same journal-derived synchronization effect as consuming the un-compacted historical source events through S.
+For a consumer which correctly incorporated the source through P, applying the returned current summaries for all markers after P together with the current source causal/authority header must have the same journal-derived synchronization effect as consuming the un-compacted historical source events through S.
 
 This equivalence is specified/proved in `incremental-graph-journal-compaction.md`.
 
@@ -128,7 +133,7 @@ When K changes at local sequence q:
 3. update `NodeJournalSummary.lastLocalChange = q`;
 4. commit those writes atomically with the event/graph transition.
 
-The exact key encoding is implementation-defined provided range iteration is ordered by sequence and every LevelDB value obeys the `O(R log H)` bit bound.
+The exact key encoding is implementation-defined provided range iteration is ordered by the source's local sequence and every LevelDB value obeys the `O(R log H)` bit bound.
 
 ## Stored source cursors
 
@@ -150,7 +155,7 @@ A returned changed summary may select a present `ValueId` which the receiver doe
 
 Therefore the incremental synchronization operation itself owns one fixed source snapshot for the complete source-read phase. While that snapshot is held it must:
 
-1. read the source header and changed-node summaries for the cursor range;
+1. read the source header, including `causalSummary` and `authorityClock`, and changed-node summaries for the cursor range;
 2. determine which returned present heads may need source payload/timestamp records;
 3. copy or stage every required exact legacy value/timestamp record from that same snapshot;
 4. only then release the source snapshot.
@@ -166,11 +171,11 @@ For a valid stored cursor P for source S:
 1. take one fixed committed source snapshot;
 2. read the metadata delta for P from that snapshot;
 3. from the same snapshot, copy/stage every legacy payload/timestamp record required by changed present heads that the receiver cannot otherwise materialize under the full-sync rules;
-4. join the returned causal header;
+4. join the returned `causalSummary` and `authorityClock` header high-water marks;
 5. semantically merge only the returned node summaries into the receiver's already represented source knowledge;
 6. run the same topological normalization rules that full synchronization would run for affected nodes and their dependent closure;
 7. materialize selected present heads using only records obtained from the fixed source snapshot or an already-matching receiver `ValueId`;
-8. atomically publish receiver graph+journal changes;
+8. atomically publish receiver graph+journal changes and any joined header high-water metadata;
 9. only then advance the stored source cursor to `delta.through`.
 
 The source snapshot may be released after step 3 once all source data needed for the operation has been copied/staged safely.
@@ -183,9 +188,11 @@ The source cursor P certifies that every source node summary with `lastLocalChan
 
 For a source node unchanged after P, its source semantic authority/frontiers/certificate have not grown. Receiver-local state may have grown, but Journal 2's head/frontier/certificate orders are monotone, so re-reading that unchanged older source summary in a full sync cannot introduce information that the receiver did not already incorporate at P.
 
+Source-global causal or HLC high-water knowledge may nevertheless have grown without changing any node. Because every incremental delta transfers the current `causalSummary` and `authorityClock`, incremental synchronization observes the same source-global allocation knowledge that full synchronization would observe from the same source snapshot.
+
 For a changed present node, incremental synchronization reads both the current semantic summary and any required payload/timestamp record from the same source snapshot. Therefore it materializes the same selected source occurrence that full synchronization would inspect from that snapshot.
 
-Consequently processing exactly the changed source summaries after P, acquiring their required payloads from the same source snapshot, and applying the same normalization closure yields an observably equivalent result to a full synchronization from the same starting receiver/source snapshots.
+Consequently processing exactly the changed source summaries after P, joining the current source causal/authority header, acquiring required payloads from the same source snapshot, and applying the same normalization closure yields an observably equivalent result to a full synchronization from the same starting receiver/source snapshots.
 
 This is the required correctness condition for enabling the optimization.
 
