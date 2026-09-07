@@ -44,7 +44,7 @@ The local writer fingerprint remains the database's durable writer identity unle
 
 `localJournalCounter` remains monotone across reset; it is not reset to zero.
 
-Before reset-authored events are allocated, the receiver observes the chosen source's current journal causal knowledge and semantic refs where available, so newly authored reset authority receives sequences above every observed coordinate.
+Before reset-authored events are allocated, the receiver observes the chosen source's current journal causal knowledge and semantic refs where available, so every reset baseline event is causally after the semantic history which reset actually observed.
 
 The receiver may retain its accumulated `causalSummary`; reset does not require historical per-node reset anchors.
 
@@ -120,13 +120,205 @@ The new incarnation's per-node value-specific invalidation state is rebuilt from
 
 Old node-wide/value-specific journal invalidation frontiers are not required to survive as reset-anchor archives. Reset's newly authored values/certificates/tombstones are a new local baseline.
 
-The global causal summary may still remember old author coordinates for event-allocation/causal observation; those coordinates are not reset semantic authority for individual nodes.
+The global causal summary may still remember old author coordinates for causal observation/allocation; those coordinates are not reset semantic authority for individual nodes.
+
+## Reset laws and theorems
+
+The following properties define the semantic contract of Journal 2 reset. They are normative obligations, not implementation sketches.
+
+Let:
+
+```text
+B = Reset(R, S)
+```
+
+where R is the pre-reset receiver, S is the chosen stable reset source, and `resetTarget(R,S)` is the legacy graph state constructed by the controlled reset lifecycle after applying the documented host-local preservation rules.
+
+Let `project(X)` be the legacy IncrementalGraph projection of supported Journal 2 state X.
+
+Let `resetContext(B)` denote the causal knowledge observed before the reset baseline events of B are authored.
+
+For an event reference E:
+
+```text
+coveredByReset(E, B)
+```
+
+means E is causally covered by `resetContext(B)` according to the Journal 2 happened-before/context relation.
+
+For a supported state U, define:
+
+```text
+CoveredState(U, B)
+```
+
+to mean:
+
+1. every semantic NodeKey represented by U is in B's `ResetKeys`; and
+2. every synchronization-relevant semantic event reference/frontier coordinate contributed by U is covered by the reset baseline context.
+
+### R1. Projection replacement law
+
+Reset installs exactly the chosen target graph:
+
+```text
+project(Reset(R,S)) = resetTarget(R,S)
+```
+
+modulo physical storage identities and host-local metadata which the lifecycle explicitly preserves without semantic graph effect.
+
+This is the primary user-visible meaning of reset.
+
+### R2. Fresh-baseline identity law
+
+For every K materialized in `resetTarget(R,S)`, B contains a newly authored local reset `ValueId` for K rather than reusing S's source `ValueId` merely because the payload came from S.
+
+For every K in `ResetKeys` absent from `resetTarget(R,S)`, B contains a newly authored local reset tombstone.
+
+Therefore reset is a semantic rebaseline, not a journal-identity copy.
+
+### R3. Observed-history domination law
+
+Every reset-authored head/certificate/invalidation used to establish the new baseline must be causally after the reset-relevant semantic authority which the reset operation actually observed and must compare later whenever the Journal 2 authority relation is required to extend happened-before.
+
+Consequently, a pre-reset/source authority already covered by the reset cannot later defeat the reset baseline merely by being redelivered from another replica.
+
+This is the anti-resurrection guarantee which motivates reauthoring the target state instead of simply copying S's old semantic identities.
+
+### R4. Covered-state absorption theorem
+
+For any supported U such that:
+
+```text
+CoveredState(U, B)
+```
+
+and U contains no genuinely post-reset semantic event, normal synchronization of U into B is a semantic no-op:
+
+```text
+observe(Sync(B <- U)) = observe(B)
+```
+
+where `observe` includes the legacy graph projection and synchronization-relevant Journal 2 semantics.
+
+Intuition: every fact U can contribute is already on the causally old side of the reset cut, and B rebuilt a head/certificate/tombstone baseline for every represented key in that domain.
+
+This theorem is stronger than merely saying that old values do not win: covered old invalidations/certificates also cannot re-stale or otherwise perturb the reset projection after being redelivered.
+
+### R5. Unseen-concurrency non-guarantee
+
+Journal 2 reset does **not** guarantee universal absorption of arbitrary state which was not causally covered by the reset.
+
+If U later presents a semantic authority E for which:
+
+```text
+!coveredByReset(E, B)
+```
+
+then E may be concurrent with the reset baseline. Ordinary Journal 2 synchronization/conflict rules apply, and it is permitted that:
+
+```text
+observe(Sync(B <- U)) != observe(B)
+```
+
+This is not reset failure. It is the deliberate boundary between the current bounded/local reset contract and a stronger global reset-barrier contract.
+
+### R6. Projection idempotence, semantic non-idempotence
+
+If S is unchanged and the controlled reset target is therefore the same, repeating reset preserves the same user-visible graph projection:
+
+```text
+project(Reset(Reset(R,S), S))
+    = resetTarget(R,S)
+```
+
+However reset is not semantically idempotent as journal state:
+
+```text
+Reset(Reset(R,S), S) != Reset(R,S)
+```
+
+because a repeated reset advances the local incarnation and may author a fresh baseline with new local event/value identities.
+
+No Journal 2 convergence rule depends on semantic reset idempotence.
+
+### R7. No per-reset-history accumulation law
+
+After canonical compaction, the retained Journal 2 state need not contain one reset marker, anchor, or baseline record per historical reset.
+
+Repeated resets may replace/subsume prior reset-specific raw history so the compacted-state size depends on the currently represented key/author/counter domain, not linearly on the number of resets performed.
+
+This law does **not** imply that absent keys can always be forgotten: tombstoned keys whose negative authority remains synchronization-relevant still contribute to the retained absent-key term T.
+
+### R8. Post-reset convergence theorem
+
+A completed reset produces an ordinary supported Journal 2 state. Therefore, after graph-changing operations (including further resets) stop, the ordinary Journal 2 convergence theorem applies to the participating connected replicas under its stated fairness assumptions.
+
+Reset does not require a separate convergence mechanism after publication.
+
+## Alternative reset contracts and their trade-offs
+
+The current design is the **rebaseline reset** defined above. Two nearby alternatives illustrate what its guarantees buy.
+
+### A. Source-identity copy reset
+
+A weaker reset could install S's exact semantic heads/ValueIds instead of minting a local baseline:
+
+```text
+head(ResetCopy(R,S), K) = head(S,K)
+```
+
+Advantages:
+
+- source semantic identity is preserved;
+- repeating reset to unchanged S can be closer to semantic idempotence;
+- fewer reset-authored value identities are created.
+
+But it does not generally satisfy R3/R4. A pre-reset receiver authority which outranks S but was intentionally discarded by reset can later return through another replica and win again. To recover observed-history absorption, this design would need some additional reset barrier/negative authority, at which point it is no longer a simple source-identity copy.
+
+### B. Current Journal 2 rebaseline reset
+
+The current design satisfies R1-R4 and R7 with only per-key bounded current reset meaning and ordinary causal metadata.
+
+Its costs are:
+
+- source ValueIds are not preserved across reset;
+- reset is semantically non-idempotent as in R6;
+- it deliberately does not provide universal absorption of unseen concurrent state (R5).
+
+This is the current Journal 2 choice.
+
+### C. Global-barrier / epoch reset
+
+A stronger reset contract could require:
+
+```text
+for every pre-reset semantic authority E,
+even if the resetting replicas had never observed E,
+ResetBarrier dominates E when E is encountered later
+```
+
+This would strengthen R5 into universal pre-reset absorption.
+
+Such a guarantee cannot be obtained from the current per-event causal context alone, because an unseen event is by definition not below the reset's observed causal cut. It requires additional globally interpretable reset-era/epoch semantics, including rules for:
+
+- distinguishing pre-barrier from post-barrier events from hosts which were offline during reset;
+- ordering or reconciling concurrent independent resets;
+- deciding what absence means for keys never enumerated by the reset;
+- retaining enough barrier metadata for arbitrarily delayed first/returning hosts;
+- incorporating the barrier into every future synchronization/authority decision which may encounter old state.
+
+A global barrier may be useful if universal reset absorption becomes a product requirement, but it is a materially stronger distributed-state model than Journal 2's current local rebaseline reset.
 
 ## Why reset stays within the bound
 
-Let N be the size of `ResetKeys` after including every resulting materialized node. This includes source-only tombstoned keys which remain absent after reset.
+Let:
 
-Reset creates only a constant number of events/summary components per represented node:
+- `L` be the number of materialized/present keys in the reset baseline;
+- `T` be the number of absent/tombstoned keys retained by the reset baseline;
+- `N = L + T`.
+
+Reset creates only a constant number of events/summary components per represented key:
 
 - one value or tombstone authority;
 - one certificate for a present value;
@@ -136,31 +328,29 @@ Reset creates only a constant number of events/summary components per represente
 
 Receiver-local source cursors are deleted rather than accumulated across resets.
 
-After canonical compaction this is still:
+After canonical compaction this is:
 
 ```text
-O(N R log H) bits
+O((L + T) R log H) bits
 ```
 
 and each individual journal LevelDB value is:
 
 ```text
-O(R log H) bits
+O(R log H) bits.
 ```
 
-No term depends on the number of prior resets or the number of historical reset anchors because prior reset-specific per-node history is subsumed by the new incarnation baseline.
+No term depends linearly on the number of prior resets or historical reset anchors because prior reset-specific per-node history is subsumed by the current incarnation baseline. The retained absent-key term T may nevertheless reflect historical unique-key churn when anti-resurrection authority for those keys remains required.
 
 ## Delayed old replicas
 
-A replica which has not participated since before reset may later present old semantic authorities.
+A replica which has not participated since before reset may later present old semantic authorities after an arbitrarily long delay.
 
-For authorities represented by either reset input and therefore observed before the reset baseline was authored, reset-authored local heads have greater sequences because allocation occurs above observed causal coordinates. They therefore cannot displace the reset baseline.
+If those authorities are covered by the reset baseline, R3/R4 apply: redelivery cannot undo the reset.
 
-This includes absent authority represented only by a source tombstone: reset creates a new local tombstone for that key.
+A genuinely unseen remote authority may be concurrent with the reset and is resolved by ordinary Journal 2 synchronization rules when eventually observed, as stated by R5. Journal 2 does not promise Journal 1's exact absorption of arbitrary unseen reset-anchor history.
 
-A genuinely unseen remote authority may be concurrent with the reset and is resolved by ordinary Journal 2 synchronization rules when eventually observed. Journal 2 does not promise Journal 1's exact absorption of arbitrary unseen reset-anchor history.
-
-This behavior is compatible with the current Journal 2 intent records and is what permits the bounded reset representation.
+No correctness argument in this reset design assumes that such a delayed replica eventually returns at all; this follows the liveness-independent intent `$id-jtwoparticip`.
 
 ## Cursor behavior
 
@@ -173,6 +363,6 @@ The reset process rebuilds one changed-node marker per represented node in the n
 
 ## Repeating reset
 
-Repeating reset to an equivalent source snapshot is still a new controlled reset operation and therefore may create a new incarnation and new local baseline authority.
+Repeating reset to an equivalent source snapshot is a new controlled reset operation and therefore may create a new incarnation and new local baseline authority.
 
-No convergence rule relies on reset being idempotent. Normal synchronization after reset remains convergent because the reset baseline is ordinary bounded Journal 2 semantic authority.
+Its user-visible projection is idempotent for an unchanged reset target, but its Journal 2 semantic identity is intentionally not; see R6.
