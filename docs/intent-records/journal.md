@@ -64,11 +64,13 @@ date: 2026/09/06
 source: @ottojung
 kind: requirement
 
-The compacted journal must have a bounded serialized bit size.
+The compacted journal must have a bounded serialized bit size with retained absence represented honestly in the bound.
 
 Let:
 
-- `N` be the number of represented concrete semantic nodes;
+- `L` be the number of currently present/materialized concrete semantic nodes represented by the journal;
+- `T` be the number of currently absent/tombstoned semantic keys whose negative authority remains represented so older values cannot incorrectly resurrect;
+- `N = L + T` be the complete represented semantic-node/key domain;
 - `R` be the number of durable journal-author identities represented by synchronization-relevant journal metadata;
 - `H >= 2` be an upper bound on every journal sequence/counter magnitude that must remain represented;
 - the maximum serialized `NodeKey` size be bounded independently of `N`, `R`, and `H`;
@@ -78,10 +80,35 @@ Let:
 Under these assumptions, the total serialized size of the compacted journal must be
 
 ```text
-O(N R log H) bits.
+O((L + T) R log H) bits
+= O(N R log H) bits.
 ```
 
-The bound must be independent of the total number of historical graph operations, journal events, synchronizations, and database age except through the `log H` coordinate-width term.
+`T` is allowed to grow with the number of distinct semantic keys whose absence must remain synchronization-relevant. The bound therefore does not claim independence from historical *unique-key churn*. It must, however, be independent of the number of historical operations, validations, invalidations, synchronizations, resets, and repeated changes on a fixed represented key domain except through the retained parameters above and the `log H` coordinate-width term.
+
+---
+
+$id-jtwoparticip
+date: 2026/09/07
+source: @ottojung
+kind: requirement
+
+Journal 2 correctness and mandatory compaction guarantees must not assume eventual participation, acknowledgement, or return of any particular remote host.
+
+A supported remote host or remote state may be absent for an arbitrarily long finite interval after previously participating; may never return after participating; or may first be encountered only after an arbitrarily long delay. Correctness and required retained synchronization authority must remain valid in all of these cases.
+
+In particular, canonical correctness may not depend on eventually learning that every potentially relevant host has incorporated a deletion, reset, compaction point, or other journal fact. Host-acknowledgement or liveness-based reclamation may exist only as an optional optimization and may not be required for the base Journal 2 guarantees.
+
+---
+
+$id-jtwoworstspace
+date: 2026/09/07
+source: @ottojung
+kind: requirement
+
+The stated Journal 2 storage bound is a worst-case bound over supported histories and host-participation schedules, not an expected, average-case, or eventual-after-reclamation bound.
+
+For every supported committed state, canonical compaction must satisfy the stated bound as a function of that state's retained `L`, `T`, `R`, and `H` without assuming any favorable future synchronization or host return. An optimization that only reduces typical retained state, or only becomes effective after some remote host acknowledges progress, does not improve or justify the mandatory worst-case bound.
 
 ---
 
