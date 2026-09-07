@@ -8,6 +8,14 @@ JournalSequence          = positive arbitrary-precision integer
 JournalIncarnation       = positive arbitrary-precision integer
 JournalEventId           = { author: JournalAuthor, sequence: JournalSequence }
 CausalPrefix             = Map<JournalAuthor, JournalSequence>
+
+AuthorityPhysicalTime    = non-negative integer epoch milliseconds
+AuthorityLogicalTime     = non-negative arbitrary-precision integer
+AuthorityTime            = {
+    physical: AuthorityPhysicalTime,
+    logical: AuthorityLogicalTime
+}
+
 LocalOperationSequence   = positive arbitrary-precision integer
 OperationId              = {
     author: JournalAuthor,
@@ -24,7 +32,7 @@ Missing coordinates in a `CausalPrefix` mean zero.
 
 A journal cursor is meaningful only inside one `(sourceFingerprint, incarnation)` pair.
 
-## Lamport-compatible allocation
+## Local sequence, causal context, and authority clock
 
 Every writable database persists:
 
@@ -32,44 +40,97 @@ Every writable database persists:
 localJournalCounter   : JournalSequence | 0
 localOperationCounter : LocalOperationSequence | 0
 causalSummary         : CausalPrefix
+authorityClock        : AuthorityTime
 journalIncarnation    : JournalIncarnation
 ```
 
-Before authoring a local **semantic journal event**, allocate:
+The three event-ordering mechanisms have deliberately separate jobs:
+
+- `JournalEventId.sequence` is a writer-local identity/order coordinate;
+- `CausalPrefix` records exact happened-before knowledge across writers;
+- `AuthorityTime` is a hybrid logical-clock coordinate used for deterministic conflict precedence.
+
+A journal sequence from one writer is never numerically compared with a journal sequence from another writer for conflict authority.
+
+### Observation
+
+When a database observes a source Journal 2 header, it joins:
 
 ```text
-nextSequence = 1 + max(
-    localJournalCounter,
-    every coordinate in causalSummary
-)
+causalSummary := componentwiseMax(causalSummary, source.causalSummary)
+authorityClock := maxAuthorityTime(authorityClock, source.authorityClock)
 ```
 
-and use:
+If it directly observes a semantic `EventRef` not already covered by that header, it also joins the event/context into `causalSummary` and joins the event's `authorityTime` into `authorityClock`.
+
+Observation alone need not author a semantic event. The retained `authorityClock` is a high-water mark, not itself semantic graph authority.
+
+### Local semantic event allocation
+
+Before authoring a local semantic journal event, allocate only the next writer-local sequence:
 
 ```text
+nextSequence = localJournalCounter + 1
 id = { author: localFingerprint, sequence: nextSequence }
 context = causalSummary before publication
 ```
 
-After publication, `localJournalCounter = nextSequence` and `causalSummary[localFingerprint] >= nextSequence`.
+There is deliberately no `max(causalSummary[*])` term in `nextSequence`. Remote coordinates remain remote coordinates.
 
-Multiple semantic events in one atomic transaction receive increasing local sequences in a deterministic order and each later event observes the earlier event.
+Every event also receives an `authorityTime`. Let `seedPhysical` be:
 
-High-level operation IDs use the separate `localOperationCounter`. Allocating an operation ID does **not** change `localJournalCounter`, `causalSummary`, semantic event authority, or happened-before. This separation is required so operation grouping cannot affect synchronization outcomes.
+- for a `ValueEvent`, the exact legacy value occurrence's `modifiedAt`, canonically converted to epoch milliseconds;
+- for other locally authored semantic events, the operation/publication wall-clock time supplied by the existing datetime capability.
 
-This allocation rule gives two distinct relations for semantic events.
-
-### Total authority order
+Advance the persisted HLC from its current high-water mark:
 
 ```text
-authorityCompare(A,B):
-    compare A.sequence and B.sequence numerically;
-    on equality compare A.author lexicographically
+p = max(seedPhysical, authorityClock.physical)
+
+if p > authorityClock.physical:
+    nextAuthorityTime = { physical: p, logical: 0 }
+else:
+    nextAuthorityTime = {
+        physical: p,
+        logical: authorityClock.logical + 1
+    }
 ```
 
-This is a total order used only for deterministic conflict selection.
+The event receives `authorityTime = nextAuthorityTime`.
 
-### Happened-before
+After publication:
+
+```text
+localJournalCounter = nextSequence
+causalSummary[localFingerprint] = nextSequence
+authorityClock = nextAuthorityTime
+```
+
+Multiple semantic events in one atomic transaction receive increasing local sequences in the deterministic semantic topological order specified by the emission specification. Each later event observes the earlier event and advances the HLC again.
+
+This is a hybrid logical clock in the sense relevant to Journal 2: ordinary concurrent value conflicts are normally ordered by their legacy modification times, while causal observation can push authority time forward so the authority order never contradicts happened-before.
+
+Clock skew can therefore influence concurrent conflict selection. Journal 2 assumes non-adversarial persisted timestamps under the database lifecycle and does not claim that authority order is perfect physical-time recency.
+
+High-level operation IDs use the separate `localOperationCounter`. Allocating an operation ID does **not** change `localJournalCounter`, `causalSummary`, `authorityClock`, semantic event authority, or happened-before. This separation is required so operation grouping cannot affect synchronization outcomes.
+
+## Event references
+
+Every semantic authority reference is:
+
+```text
+EventRef = {
+    id: JournalEventId,
+    context: CausalPrefix,
+    authorityTime: AuthorityTime
+}
+```
+
+The context and authority time are immutable semantic metadata of the original event. Copying a reference through synchronization never changes them.
+
+Two supported copies of the same `JournalEventId` must carry exactly the same immutable `context` and `authorityTime`; disagreement is corrupt/unsupported state.
+
+## Exact happened-before
 
 For distinct event references `E` and `F`:
 
@@ -80,20 +141,32 @@ happenedBefore(E,F) iff
         : E.id.sequence <= F.context[E.id.author]
 ```
 
-A larger sequence on another author does not by itself prove happened-before.
+Cross-writer sequence magnitudes are used here only as coordinates inside the corresponding writer's vector-clock dimension. A larger sequence from another author does not by itself prove happened-before.
 
-Because a newly authored semantic event allocates above every observed coordinate, `happenedBefore(E,F)` implies `authorityCompare(E.id,F.id) < 0` for supported events.
+## Total authority order
 
-## Event references
+Semantic conflict selection uses a total order over `EventRef`s:
 
 ```text
-EventRef = {
-    id: JournalEventId,
-    context: CausalPrefix
-}
+authorityCompare(E,F):
+    compare E.authorityTime.physical and F.authorityTime.physical numerically;
+    on equality compare E.authorityTime.logical and F.authorityTime.logical numerically;
+    on equality compare E.id.author and F.id.author lexicographically;
+    on equality compare E.id.sequence and F.id.sequence numerically
 ```
 
-The context is immutable semantic metadata of the original event. Copying a reference through synchronization never changes it.
+The final sequence comparison occurs only after writer fingerprints are equal, so it is strictly writer-local.
+
+Because every local event joins all authority times it causally observes before advancing its HLC:
+
+```text
+happenedBefore(E,F)
+    => authorityCompare(E,F) < 0
+```
+
+for all supported semantic events.
+
+Thus exact causal knowledge has priority semantically: the HLC is constructed so the simple total comparator already extends happened-before. Concurrent events fall back to their causality-adjusted physical time, then writer fingerprint, then writer-local sequence.
 
 ## Value identity
 
@@ -106,7 +179,7 @@ A locally authored semantic value occurrence uses the ID of its `value` event as
 
 The value payload is not part of `ValueRef` and is never journaled.
 
-For supported state, one `ValueId` denotes one exact semantic value occurrence. Every replica currently materializing that `ValueId` must therefore hold the value/timestamp record copied from that occurrence or a reset/migration record which locally created that same ID. Ordinary synchronization need not compare payloads to verify this invariant.
+For supported state, one `ValueId` denotes one exact semantic value occurrence. Every replica currently materializing that `ValueId` must therefore hold the value/timestamp record copied from that occurrence or a reset/migration record which locally created that same ID, and must preserve the same immutable `ValueRef.context` and `ValueRef.authorityTime`. Ordinary synchronization need not compare payloads to verify this invariant.
 
 ## Certificate basis
 
@@ -136,7 +209,7 @@ ValidationCertificate = {
 
 The certificate's own causal context is the clearing evidence for invalidations it genuinely observed. Separate `clearsThrough` metadata is unnecessary in Journal 2.
 
-For a fixed current value, only the greatest certificate by `authorityCompare(certificate.event.id, ...)` is semantically active. Lower certificates remain historical until compaction but are not consulted by projection or synchronization.
+For a fixed current value, only the greatest certificate by `authorityCompare(certificate.event, ...)` is semantically active. Lower certificates remain historical until compaction but are not consulted by projection or synchronization.
 
 ## Invalidation scopes
 
@@ -178,9 +251,9 @@ AbsentHead = {
 SemanticHead = PresentHead | AbsentHead
 ```
 
-The head authority is `value.id` for present state and `tombstone.id` for absent state.
+The head authority reference is `value` for present state and `tombstone` for absent state.
 
-When two heads compete, the one with greater authority wins. A normal synchronization adoption preserves the winning foreign head exactly; the local adoption event does not become the new head.
+When two heads compete, compare those `EventRef`s with `authorityCompare`; the greater authority wins. A normal synchronization adoption preserves the winning foreign head exactly; the local adoption event does not become the new head.
 
 ## Per-node compacted summary
 
@@ -203,7 +276,7 @@ NodeJournalSummary = {
 
 The `certificate`, when present, must name the current `head.value.id`.
 
-The three invalidation vectors and the contexts inside the current value/certificate dominate the summary size. Under bounded NodeKey and in-degree assumptions, one summary is `O(R log H)` bits.
+The three invalidation vectors and the contexts inside the current value/certificate dominate the summary size. `authorityTime` contributes only a constant number of `O(log H)` scalar coordinates per retained reference. Under bounded NodeKey and in-degree assumptions, one summary is `O(R log H)` bits.
 
 ## High-level operation records
 
@@ -218,13 +291,14 @@ OperationSourceRef = {
     // Present together when the source is a Journal 2 snapshot.
     incarnation?: JournalIncarnation,
     through?: JournalSequence | 0,
-    causalSummary?: CausalPrefix
+    causalSummary?: CausalPrefix,
+    authorityClock?: AuthorityTime
 }
 ```
 
-When Journal 2 metadata is available for the source snapshot, `incarnation`, `through`, and `causalSummary` MUST all be recorded. Together they identify the synchronization-relevant journal state of the exact stable source snapshot consumed by the operation: `through` identifies the source's local semantic head, while `causalSummary` also captures source causal knowledge which may grow without advancing that local head. This is not a byte-level snapshot hash and intentionally ignores compaction/history-layout differences which have no synchronization meaning.
+When Journal 2 metadata is available for the source snapshot, `incarnation`, `through`, `causalSummary`, and `authorityClock` MUST all be recorded. Together they identify the synchronization-relevant journal state of the exact stable source snapshot consumed by the operation: `through` identifies the source's local semantic head, while `causalSummary` and `authorityClock` capture causal/authority knowledge which may grow without advancing that local head. This is not a byte-level snapshot hash and intentionally ignores compaction/history-layout differences which have no synchronization meaning.
 
-For a supported lifecycle source without Journal 2 metadata, all three Journal 2 fields are omitted and `writer` still identifies the source database.
+For a supported lifecycle source without Journal 2 metadata, all four Journal 2 fields are omitted and `writer` still identifies the source database.
 
 Operation records are a tagged union:
 
@@ -268,7 +342,7 @@ OperationRecord =
       }
 ```
 
-An operation record is local historical/debugging structure. It is **not** synchronization authority, has no causal authority of its own, and is never imported as semantic state. A source-bearing operation record may nevertheless store the source `causalSummary` as bounded historical invocation metadata.
+An operation record is local historical/debugging structure. It is **not** synchronization authority, has no causal authority of its own, and is never imported as semantic state. A source-bearing operation record may nevertheless store source causal/authority high-water metadata as bounded historical invocation metadata.
 
 The tagged fields identify the high-level invocation itself rather than only its operation kind. In particular, synchronization/reset records identify their source synchronization-relevant snapshot state, and migration records identify the migration being run.
 
@@ -288,6 +362,7 @@ All raw low-level semantic events have this base:
 JournalEventBase = {
     id: JournalEventId,
     context: CausalPrefix,
+    authorityTime: AuthorityTime,
     node: NodeKey,
     operation?: OperationId
 }
@@ -342,9 +417,12 @@ JournalHeader = {
     incarnation: JournalIncarnation,
     localJournalCounter: JournalSequence | 0,
     localOperationCounter: LocalOperationSequence | 0,
-    causalSummary: CausalPrefix
+    causalSummary: CausalPrefix,
+    authorityClock: AuthorityTime
 }
 ```
+
+`authorityClock` is the greatest HLC authority time authored or observed by this database. It can advance when source causal/authority knowledge is observed even when no local semantic event is authored.
 
 The compacted change index has exactly one live marker per represented node:
 
@@ -367,7 +445,7 @@ JournalCursor = {
 }
 ```
 
-A cursor is valid only for the same **source** writer and source incarnation. Canonical compaction does not invalidate a cursor.
+A cursor is valid only for the same **source** writer and source incarnation. `through` is explicitly that source writer's local journal coordinate. Canonical compaction does not invalidate a cursor.
 
 If that source performs controlled reset, its changed source incarnation invalidates cursors about it by field comparison.
 
@@ -375,4 +453,4 @@ If the receiver performs controlled reset, its stored cursors about other source
 
 ## Storage-domain restrictions
 
-Journal records contain only bounded primitive tags, NodeKeys, IDs/counters, causal vectors, bounded input-version arrays, and small operation-grouping records/references. They contain no `ComputedValue`, no copy of `values[id]`, and no graph-wide collection proportional to `N` or event history in one LevelDB value.
+Journal records contain only bounded primitive tags, NodeKeys, IDs/counters, authority-clock scalars, causal vectors, bounded input-version arrays, and small operation-grouping records/references. They contain no `ComputedValue`, no copy of `values[id]`, and no graph-wide collection proportional to N or event history in one LevelDB value.
