@@ -19,6 +19,8 @@ Journal 2 adds one new IncrementalGraph sublevel, `journal`. It does not change 
 
 The conceptual journal is a local ordered history of events. The persisted journal may be compacted into bounded per-node summaries and indexes which preserve the future synchronization and iterator semantics specified below.
 
+The journal is not a durable audit log. Canonical compaction may permanently discard old raw events and high-level operation-grouping detail once their required future synchronization/iterator meaning has been retained in bounded journal state.
+
 ## Design boundary
 
 The existing graph representation remains the operational representation:
@@ -63,12 +65,14 @@ The operation record includes the bounded arguments needed to identify the invoc
 ```text
 pull(K)                 -> subject = K
 invalidate(K)           -> subject = K
-synchronize(S@I:Q)      -> source writer/incarnation/snapshot head
-reset(S@I:Q)            -> chosen source writer/incarnation/snapshot head
+synchronize(S@I:Q,C)    -> source writer/incarnation/local head/causal summary
+reset(S@I:Q,C)          -> chosen source writer/incarnation/local head/causal summary
 migration(M)            -> stable MigrationId M
 ```
 
-When a lifecycle source has no Journal 2 metadata, reset can still record its durable database identity while omitting Journal 2 incarnation/head fields.
+For Journal 2 sources, `Q` alone is not enough to identify the synchronization-relevant source state because its causal summary `C` may grow without authoring a new local semantic event. Source-bearing operation records therefore retain both the local head and the source causal summary from the fixed snapshot they consumed.
+
+When a lifecycle source has no Journal 2 metadata, reset can still record its durable database identity while omitting Journal 2 position fields.
 
 Conceptually this permits viewing the **direct expansion** of one operation as:
 
@@ -171,6 +175,8 @@ The normative semantic synchronization operation is full synchronization. It sca
 The journal change index and cursor API are an optimization. For a valid cursor, incremental synchronization must be observationally equivalent to the full operation from the same source and receiver states.
 
 A receiver reset explicitly clears stored source cursors because replacing receiver state destroys the invariant those cursors certify. Incremental synchronization also acquires any required source payload/timestamp records from the same fixed source snapshot as the metadata delta.
+
+If synchronization cannot establish that a selected cached materialization is safe to expose later as `oldValue`, it may discard that cache and any dependent caches that cannot remain dependency-closed, while preserving negative authority against resurrection of the rejected occurrence. Cache retention is subordinate to `oldValue` safety.
 
 ## Transport independence
 
