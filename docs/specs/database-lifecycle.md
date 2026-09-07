@@ -34,12 +34,12 @@ At the lifecycle level, a database is in one of these states:
 
 The supported transitions are:
 
-1. **Bootstrap**: absent local state becomes a local database through a Volodyslav-controlled restore or fresh creation path.
+1. **Bootstrap/restoration**: absent local state becomes a local database through same-host restoration or fresh creation.
 2. **Open**: existing local state is opened and its required lifecycle metadata is interpreted.
 3. **Ordinary evolution**: application operations transactionally update the current database while preserving graph and persistence invariants.
 4. **Migration**: a usable older database is transformed to the current application version and committed by a controlled cutover.
 5. **Synchronization**: a stable local database is checkpointed and exchanged with compatible host states, then reopened through the migration gate.
-6. **Controlled reset**: a synchronization path selects a host snapshot as the new logical state and commits it through the database abstraction.
+6. **Controlled reset**: an already-established local database intentionally selects a compatible host snapshot as its new logical state and commits a fresh local semantic baseline through the database abstraction.
 
 A successful startup ends in the **Current** state before the database-backed application interface is exposed as initialized. Failure to satisfy a transition's preconditions aborts that transition; Volodyslav MUST NOT silently reinterpret an incompatible or unsupported state as a fresh database.
 
@@ -78,7 +78,9 @@ The synchronization repository is part of creation even when the resulting datab
 
 When local live state is absent, Volodyslav first asks whether the synchronization repository contains state previously published for the current hostname.
 
-If it does, startup uses the controlled reset-to-host path to restore that snapshot into a newly opened local database. The imported state is committed through the database's normal cutover mechanism, then the database is reopened and passed through the migration gate. Thus a host can recover its own synchronized state and then migrate it to the running version.
+If it does, startup performs **same-host restoration** of that authoritative snapshot into local live state. The physical implementation may reuse snapshot staging and inactive-target cutover machinery also used by controlled reset, but restoration is not a semantic reset: it resumes this host's saved logical history rather than replacing an existing logical database with a newly authored reset baseline.
+
+The restored state is committed through the database's normal cutover mechanism, then reopened and passed through the migration gate. Therefore the saved state may be older than the running application when a supported migration can bring it forward. A saved pre-Journal-2 state may likewise be restored as legacy state and then migrated before Journal 2 synchronization or semantic reset becomes available.
 
 Any failure to query, obtain, parse, or install that state is fatal to bootstrap. Volodyslav does not silently fall back to an empty database after discovering that the host is supposed to have synchronized state.
 
@@ -189,7 +191,7 @@ Normal synchronization performs these lifecycle steps:
 8. Remove the host's staging state.
 9. Reopen the application database and run the migration gate before exposing it again.
 
-The merge resolves state according to graph timestamps and dependency semantics, not textual repository merge rules. Locally newer state is retained, remotely newer compatible state may be taken, and affected derived state may be invalidated so that it is recomputed from the merged dependencies. A successful merge preserves graph coherence and does not make a partially constructed target active.
+The merge resolves state according to the synchronization specification selected by the current database version, not textual repository merge rules. A successful merge preserves graph coherence and does not make a partially constructed target active.
 
 ### 7.3 Per-host failure behavior
 
@@ -201,11 +203,13 @@ After an initiated synchronization, Volodyslav attempts to reopen the local data
 
 ### 7.4 Controlled reset
 
-A reset-to-host synchronization selects a host snapshot and installs it through a non-active target state followed by cutover. It is used during restoration and may also be invoked through a Volodyslav-controlled synchronization path.
+Controlled reset is a replacement transition for an **already-established** local logical database. It is distinct from absent-local-state same-host restoration in §4.2.
 
-Reset is intentionally different from normal merge: it selects the snapshot as the logical source rather than combining it node by node with the current state. The selected snapshot must still be structurally importable and must pass required database identity checks. When reset is applied to an already-existing local database, implementation-defined host-local state that must remain local is preserved by the reset path. When reset is used during absent-local-state bootstrap, there is no previous local database identity to preserve; the selected synchronized host snapshot is installed according to the bootstrap protocol.
+A reset selects one source snapshot as the new logical graph state rather than combining it node by node with the receiver. The selected snapshot must satisfy the compatibility requirements of the reset semantics associated with the current database version. Under Journal 2, semantic reset requires a valid compatible Journal 2 source snapshot; a journal-less, pre-Journal-2, or version-incompatible source is not a supported reset source.
 
-After reset, the database is reopened through the migration gate. A reset snapshot may therefore be older than the running application if the supported migration can bring it forward. This does not weaken the normal synchronization rule that peer-to-peer merging requires matching versions before merge.
+The reset is installed through a non-active target state followed by cutover. Host-local state which the lifecycle requires to remain local is preserved according to the reset specification, and the reset establishes whatever fresh local semantic baseline that database version requires.
+
+After reset, the database is reopened through the migration gate as a normal lifecycle safety boundary, but semantic reset itself is not a cross-version migration mechanism. Recovering an older same-host saved snapshot and then migrating it is restoration under §4.2, not controlled reset.
 
 ## 8. Version compatibility
 
@@ -326,7 +330,7 @@ Implementations and future changes MUST preserve the following lifecycle propert
 6. Migration and synchronization MUST construct replacement state away from the selected active state and cut over only after their state-building preconditions succeed.
 7. Maintenance transitions MUST be exclusive with ordinary graph activity.
 8. Per-host synchronization failures MAY coexist with successful merges from other hosts, but the aggregate result MUST report the failures.
-9. Reopening after synchronization or reset MUST pass through the migration gate before database-backed services resume.
+9. Reopening after synchronization, controlled reset, or restoration MUST pass through the migration gate before database-backed services resume.
 10. Tests and diagnostics SHOULD distinguish incompatibility, failed preconditions, corruption, and unsupported manipulation rather than using those terms interchangeably.
 11. New recovery, import, or restore behavior MUST be implemented as a Volodyslav-controlled lifecycle transition. Documentation alone MUST NOT redefine raw file manipulation as supported.
 12. Storage refactors MAY change physical artifacts without changing this specification, provided these lifecycle preconditions, transitions, and postconditions remain true.

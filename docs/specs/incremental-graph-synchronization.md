@@ -32,7 +32,7 @@ For normal synchronization of one source host:
 - source staging metadata and identifier lookups are parseable and bijective;
 - corrupt identifier reuse or malformed NodeKeys are rejected.
 
-A pre-Journal-2 and Journal-2 database are not directly semantically merged. Exact version compatibility is required.
+A pre-Journal-2 and Journal-2 database are not directly semantically merged. Exact version compatibility and valid Journal 2 state are required.
 
 ## Semantic identity and authority
 
@@ -84,7 +84,7 @@ No cursor/change index is required for full-sync correctness.
 
 ## Incremental sync
 
-Incremental synchronization may later replace the complete source scan with the cursor/change-index protocol from `incremental-graph-journal-api.md`.
+Incremental synchronization may replace the complete source scan with the cursor/change-index protocol from `incremental-graph-journal-api.md`.
 
 It is valid only when the receiver has a stored cursor proving that it incorporated that source through the cursor coordinate in the same source journal incarnation.
 
@@ -92,7 +92,9 @@ The cursor coordinate is source-writer-local. Remote sequence magnitudes never a
 
 If the cursor is invalid or unavailable, run full synchronization.
 
-For valid cursors, the incremental result must be observably equivalent to running full synchronization from the same starting snapshots, including transfer of current source `causalSummary` and `authorityClock` even when no changed-node marker is returned.
+For a valid cursor, synchronization owns one fixed committed source snapshot and consumes the private `possibleMaybeChanges(sourceSnapshot, cursor)` async iterator while that snapshot is alive. The iterator is internal synchronization/journal infrastructure, not part of the public IncrementalGraph/computor API, and it yields bounded changed-node summaries lazily rather than materializing the complete range in RAM.
+
+The incremental result must be observably equivalent to running full synchronization from the same starting snapshots, including transfer of current source `causalSummary` and `authorityClock` even when the async stream yields no changed node.
 
 ## Semantic merge versus physical application
 
@@ -146,13 +148,15 @@ A failure after a completed active cutover follows the existing lifecycle's expl
 
 Reset-to-hostname on an already-established local database does not call the normal semantic merge.
 
-It:
+The selected source MUST be a validated compatible Journal 2 snapshot. A journal-less or pre-Journal-2 snapshot is not a supported semantic reset source.
 
-1. selects one validated source snapshot;
+Reset:
+
+1. selects one validated compatible Journal 2 source snapshot;
 2. constructs the reset target legacy graph under the lifecycle's exclusive replacement protocol;
 3. optionally uses `ComputedValue` equality only to avoid rewriting already-equal receiver payload bytes;
-4. joins the source Journal 2 causal/HLC high-water state where available;
-5. increments the local Journal 2 incarnation;
+4. joins the source Journal 2 causal/HLC high-water state;
+5. increments the local Journal 2 incarnation while keeping local semantic/operation counters monotone;
 6. bootstraps a new local journal explanation of the resulting graph as specified by `incremental-graph-journal-reset.md`;
 7. validates projection equality;
 8. atomically cuts over.
@@ -161,9 +165,9 @@ Source journal history/cursors are not installed as receiver history. Receiver-l
 
 ## Same-host first-boot restoration
 
-If local live state is absent and Volodyslav recovers this hostname's own authoritative previously published synchronized snapshot, the Journal 2 semantic transition is **restoration**, not reset-to-hostname.
+If local live state is absent and Volodyslav recovers this hostname's own authoritative previously published synchronized snapshot, the semantic transition is **restoration**, not reset-to-hostname.
 
-The staging/import/cutover implementation may reuse reset machinery physically, but it must preserve the saved same-writer Journal 2 state exactly, including:
+If the saved state already contains Journal 2, the staging/import/cutover implementation may reuse reset machinery physically, but it must preserve the saved same-writer Journal 2 state exactly, including:
 
 ```text
 writer
@@ -180,17 +184,17 @@ legacy graph/value/timestamp state
 
 It does not mint reset events, increment the incarnation, or delete restored source cursors merely because the local working copy had to be recreated.
 
-After installation, the database is reopened through the normal migration gate. If migration is required, migration begins from the restored writer state and follows the Journal 2 migration rules.
+If the authoritative same-host saved state predates Journal 2, restoration may install that legacy state as lifecycle recovery. The normal migration gate must then establish Journal 2 before the state participates in Journal 2 synchronization or semantic reset.
 
-Arbitrary rollback to an older same-writer checkpoint is not restoration. A supported restoration must not restore a writer-local counter/HLC state behind later same-writer events which may already exist in supported external state; see the restoration no-reuse invariant in `incremental-graph-journal-reset.md`.
+Arbitrary rollback to an older same-writer Journal 2 checkpoint is not restoration. A supported Journal 2 restoration must not restore a writer-local counter/HLC state behind later same-writer events which may already exist in supported external state; see the restoration no-reuse invariant in `incremental-graph-journal-reset.md`.
 
 ## Transport rules
 
-Transport snapshots must preserve the bytes of the legacy graph and Journal 2 sublevel being staged. They need not preserve source filesystem paths or Git ancestry as semantic facts.
+Transport snapshots must preserve the bytes of the legacy graph and Journal 2 sublevel being staged when Journal 2 is present. They need not preserve source filesystem paths or Git ancestry as semantic facts.
 
-A stable staged snapshot is interpreted solely by its persisted IncrementalGraph database version, schema, graph records, and Journal 2 state.
+A stable staged Journal 2 snapshot is interpreted solely by its persisted IncrementalGraph database version, schema, graph records, and Journal 2 state.
 
-Transport identity does not replace Journal 2 writer identity or authority semantics. For same-host restoration, the lifecycle separately validates that the snapshot is the authoritative saved state for the same logical writer history.
+Transport identity does not replace Journal 2 writer identity or authority semantics. For same-host restoration, the lifecycle separately validates that the snapshot is the authoritative saved state for the same logical host history.
 
 ## Correctness target
 
