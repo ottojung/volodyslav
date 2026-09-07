@@ -122,7 +122,7 @@ basis[i] = "unknown"
     otherwise
 ```
 
-For a target fresh node, the existing graph invariant guarantees that every required incoming validity edge exists, so the basis contains the current ValueId for every direct input.
+For a target fresh node, the existing graph invariant guarantees every required incoming validity edge exists, so the basis contains the current ValueId for every direct input.
 
 For a target stale node, partial or absent validity is represented exactly by current IDs and `"unknown"` sentinels. A following soft invalidation keeps the node stale even when all basis entries happen to match.
 
@@ -166,10 +166,14 @@ For a supported state U, define:
 CoveredState(U, B)
 ```
 
-to mean:
+to mean all of:
 
-1. every semantic NodeKey represented by U is in B's `ResetKeys`; and
-2. every synchronization-relevant semantic event reference/frontier coordinate contributed by U is covered by the reset baseline context.
+1. every semantic NodeKey represented by U is in B's `ResetKeys`;
+2. every synchronization-relevant semantic event reference/frontier coordinate contributed by U is covered by the reset baseline context;
+3. U's header causal summary is componentwise covered by `resetContext(B)`; and
+4. `U.authorityClock <= resetAuthorityHighWater(B)` in the AuthorityTime order.
+
+The header conditions are essential: synchronization-relevant source knowledge can grow without changing any node or authoring a local semantic event. A state is not fully absorbed by the reset merely because its per-node summaries are old if its header would still advance B's future causal or authority allocation state.
 
 ### R1. Projection replacement law
 
@@ -215,11 +219,11 @@ and U contains no genuinely post-reset semantic event, normal synchronization of
 observe(Sync(B <- U)) = observe(B)
 ```
 
-where `observe` includes the legacy graph projection and synchronization-relevant Journal 2 semantics.
+where `observe` includes the legacy graph projection, synchronization-relevant Journal 2 node semantics, and the causal/authority header high-water state which affects future event allocation.
 
-Intuition: every fact U can contribute is already on the causally old side of the reset cut, and B rebuilt a head/certificate/tombstone baseline for every represented key in that domain.
+Intuition: every fact U can contribute is already on the causally old side of the reset cut, B rebuilt a head/certificate/tombstone baseline for every represented key in that domain, and U cannot advance B's already-post-reset header high-water state.
 
-This theorem is stronger than merely saying that old values do not win: covered old invalidations/certificates also cannot re-stale or otherwise perturb the reset projection after being redelivered.
+This theorem is stronger than merely saying that old values do not win: covered old invalidations/certificates cannot re-stale the reset projection, and covered header-only knowledge cannot alter future allocation behavior when redelivered.
 
 ### R5. Unseen-concurrency non-guarantee
 
@@ -236,6 +240,8 @@ then E may be concurrent with the reset baseline. Ordinary Journal 2 synchroniza
 ```text
 observe(Sync(B <- U)) != observe(B)
 ```
+
+Likewise, a state whose node facts are covered but whose causal/authority header exceeds the reset cut is not `CoveredState(U,B)` and may advance B's header even if its graph projection contributes no winning node fact.
 
 This is not reset failure. It is the deliberate boundary between the current bounded/local reset contract and a stronger global reset-barrier contract.
 
