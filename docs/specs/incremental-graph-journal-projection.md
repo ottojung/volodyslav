@@ -14,6 +14,8 @@ If `S[K].head.kind == "absent"`, K must be unmaterialized in the legacy graph.
 
 If `S[K].head.kind == "present"`, K must be materialized and the legacy value/timestamp record must be the record associated with `S[K].head.value.id` under the supported lifecycle.
 
+The current `ValueRef` carries immutable origin `context` and `authorityTime`; those are journal metadata for the exact value occurrence and are not reconstructed from the current receiver's wall clock.
+
 Journal 2 never derives payload bytes from metadata.
 
 ## Frontier coverage
@@ -107,7 +109,7 @@ This is what keeps the projection equal to the existing flag-based algorithm rat
 
 ## Certificate replacement
 
-For one current `ValueId`, projection consults only the greatest represented certificate by certificate event authority.
+For one current `ValueId`, projection consults only the greatest represented certificate by `authorityCompare(certificate.event, ...)`.
 
 This rule applies before compaction as well as after it. Compaction therefore loses no semantic option by deleting lower certificates.
 
@@ -139,15 +141,17 @@ The physical `NodeIdentifier` used in a final legacy replica may be retained loc
 
 The final `identifiers_keys_map`, `values`, `freshness`, `timestamps`, and `valid` records must continue to satisfy all existing storage invariants.
 
-## Timestamp records
+## Timestamp records and value authority
 
 A normal synchronization which adopts a foreign `ValueId` copies the complete selected value record, including the source timestamps associated with that value occurrence. It does not combine value bytes from one occurrence with timestamps from another and does not use synchronization execution time as a replacement value timestamp.
 
-Replicas which already represent the same `ValueId` are required by the supported-state invariant to carry the same semantic value/timestamp record for that occurrence.
+The origin value event's HLC physical seed was the occurrence's `modifiedAt`, but its persisted `authorityTime` may be later because HLC monotonicity must extend happened-before. Projection does not recompute or normalize that authority from the timestamp after the event has been authored.
+
+Replicas which already represent the same `ValueId` are required by the supported-state invariant to carry the same semantic value/timestamp record and the same immutable `ValueRef.context`/`authorityTime` for that occurrence.
 
 ## Consistency validation
 
-Opening, staging, migration, synchronization, and compaction may validate that:
+Opening, staging, migration, synchronization, restoration, reset, and compaction may validate that:
 
 - every present journal summary has a legacy materialization;
 - every absent journal summary is absent from legacy materialized storage;
@@ -155,6 +159,8 @@ Opening, staging, migration, synchronization, and compaction may validate that:
 - every legacy validity edge equals `edgeValid`;
 - every materialized dependency is materialized;
 - current certificates name the current value and have the exact schema-derived basis arity;
-- journal references are well-formed and bounded by represented causal knowledge.
+- all copies of one `JournalEventId` agree on immutable context/authority time;
+- journal references are well-formed and bounded by represented causal/authority knowledge;
+- no retained EventRef has an authority time greater than the local header `authorityClock` high-water mark.
 
 Unsupported inconsistencies are errors. Synchronization must not repair them by payload equality or by inventing provenance.
