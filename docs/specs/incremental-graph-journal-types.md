@@ -44,6 +44,8 @@ authorityClock        : AuthorityTime
 journalIncarnation    : JournalIncarnation
 ```
 
+Both local counters are monotone for the lifetime of a supported writer identity, including across controlled reset. `OperationId.incarnation` records the journal incarnation in which an operation occurred; operation-sequence uniqueness does not depend on restarting the counter in a new incarnation.
+
 The three event-ordering mechanisms have deliberately separate jobs:
 
 - `JournalEventId.sequence` is a writer-local identity/order coordinate;
@@ -287,18 +289,14 @@ A source-bearing operation uses:
 ```text
 OperationSourceRef = {
     writer: JournalAuthor,
-
-    // Present together when the source is a Journal 2 snapshot.
-    incarnation?: JournalIncarnation,
-    through?: JournalSequence | 0,
-    causalSummary?: CausalPrefix,
-    authorityClock?: AuthorityTime
+    incarnation: JournalIncarnation,
+    through: JournalSequence | 0,
+    causalSummary: CausalPrefix,
+    authorityClock: AuthorityTime
 }
 ```
 
-When Journal 2 metadata is available for the source snapshot, `incarnation`, `through`, `causalSummary`, and `authorityClock` MUST all be recorded. Together they identify the synchronization-relevant journal state of the exact stable source snapshot consumed by the operation: `through` identifies the source's local semantic head, while `causalSummary` and `authorityClock` capture causal/authority knowledge which may grow without advancing that local head. This is not a byte-level snapshot hash and intentionally ignores compaction/history-layout differences which have no synchronization meaning.
-
-For a supported lifecycle source without Journal 2 metadata, all four Journal 2 fields are omitted and `writer` still identifies the source database.
+Journal 2 source-bearing operations require a valid Journal 2 source snapshot. The five fields above identify the synchronization-relevant journal state of the exact stable source snapshot consumed by the operation: `through` identifies the source's local semantic head, while `causalSummary` and `authorityClock` capture causal/authority knowledge which may grow without advancing that local head. This is not a byte-level snapshot hash and intentionally ignores compaction/history-layout differences which have no synchronization meaning.
 
 Operation records are a tagged union:
 

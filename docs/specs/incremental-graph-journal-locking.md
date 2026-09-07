@@ -71,7 +71,7 @@ and does not modify `causalSummary`, `authorityClock`, or semantic event authori
 
 A transaction which fails before publication exposes no durable semantic event ID, authority time, or operation ID. Reuse of an uncommitted tentative local sequence/operation number is permitted because no supported observer could have seen it; an uncommitted tentative HLC step likewise has no semantic existence.
 
-Committed semantic event coordinates and committed operation coordinates are never reused within their respective writer-local identity domains. `authorityClock` never moves backward across supported committed states.
+Committed semantic event coordinates and committed operation coordinates are never reused by the writer. `localOperationCounter` is monotone across controlled reset even though `OperationId` also records the journal incarnation in which the operation occurred. `authorityClock` never moves backward across supported committed states.
 
 ## Reconciliation at commit
 
@@ -122,38 +122,31 @@ Reset changes `journalIncarnation` atomically with installation of its rebuilt s
 
 Controlled reset also atomically deletes every receiver-local stored source cursor (`journal/cursors/*`). This deletion belongs to the same reset publication boundary as the replacement graph/journal baseline. A reset state with old receiver-local source cursors still present is not a supported committed state.
 
-## Metadata iterator snapshots
+## Private possible-maybe-changes iterator
 
-The generic metadata-only journal delta iterator does not require daytime/nighttime graph semantics, but it must read one fixed committed replica snapshot.
+`possibleMaybeChanges(sourceSnapshot, cursor)` is a private database/journal API. It is not exposed through the public `IncrementalGraph` object and is not available to computors.
 
-A conforming metadata iterator may:
+The API does not independently acquire a long-lived graph/lifecycle lock. Its internal caller supplies a fixed committed source snapshot whose lifetime is already protected by the surrounding synchronization/lifecycle operation.
 
-1. acquire whatever replica-lifetime protection is required to keep the active replica alive;
-2. take a LevelDB snapshot;
-3. read header, including `causalSummary` and `authorityClock`, changed-node markers, and node summaries completely from that same snapshot;
-4. materialize the metadata-only `JournalDelta` into ordinary memory;
-5. release the database snapshot/lifetime protection before returning the result.
+While that snapshot remains alive, the iterator lazily range-scans changed-node markers and reads the corresponding current node summaries from the same snapshot. It yields one bounded change record at a time and MUST NOT materialize the complete changed-node range in RAM.
 
-No database snapshot or mutable active-replica reference may escape to a slow external iterator consumer.
+The iterator must remain inside the synchronization/journal module boundary. It may not escape to an arbitrary external consumer which could retain it across unrelated graph operations or outlive the caller-owned snapshot.
 
-The returned `JournalDelta` contains only bounded journal records; callers may inspect it after the database snapshot is released.
+If iteration completes, fails, or is abandoned, the caller must finish/close the iterator before releasing the source snapshot.
 
 ## Incremental synchronization source snapshot
 
-Incremental synchronization has a stronger source-read requirement than the generic metadata iterator because selected present heads may require `ComputedValue` and timestamp records from legacy sublevels.
-
-For one incremental `R <- S`, synchronization must own one fixed committed source snapshot while it reads:
+For one incremental `R <- S`, synchronization owns one fixed committed source snapshot while it consumes `possibleMaybeChanges` and reads:
 
 - the source header, including causal and HLC authority high-water metadata;
-- changed-node markers;
-- changed node summaries;
+- changed-node markers and current changed-node summaries;
 - every source legacy value/timestamp record required to materialize a selected present `ValueId`.
 
-It is invalid to obtain a detached `JournalDelta`, release its source snapshot, reopen the live source database, and then fetch a payload by NodeKey or current identifier. The reopened source may have advanced to another `ValueId` or deleted the node.
+It is invalid to consume change metadata from one snapshot, release that snapshot, reopen the live source database, and then fetch a payload by NodeKey or current identifier. The reopened source may have advanced to another `ValueId` or deleted the node.
 
-The synchronization procedure may release its source snapshot only after every required payload/timestamp record has been copied or safely staged. It may stream such records directly into an inactive target replica so no requirement exists to hold all payloads in RAM simultaneously.
+The synchronization procedure may release its source snapshot only after the private async iterator is finished and every required payload/timestamp record has been copied or safely staged. Payload records may be streamed directly into an inactive target replica so no requirement exists to hold all payloads in RAM simultaneously.
 
-The source snapshot remains internal to the synchronization procedure and still must not escape to an external iterator consumer.
+The source snapshot remains internal to the synchronization procedure and is never exposed through a public iterator API.
 
 ## Lock ordering
 

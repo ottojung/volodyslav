@@ -2,23 +2,21 @@
 
 ## Scope
 
-Journal 2 initially exposes iteration for synchronization infrastructure. Ordinary computors do not receive journal iterators and do not depend on journal progress for semantic correctness.
+Journal 2 exposes one private database/journal change-discovery API for synchronization infrastructure:
 
-The full synchronization operation remains the normative correctness oracle. This API only discovers which source node summaries may have changed since a receiver last incorporated that source.
+```text
+possibleMaybeChanges(sourceSnapshot, cursor)
+```
+
+It is not a method of the public `IncrementalGraph` interface and is not available to ordinary computors. The implementation should keep it behind the database/journal module boundary so only synchronization and closely related internal journal code can import it.
+
+The full synchronization operation remains the normative correctness oracle. This private API only discovers which source node summaries may have changed since a receiver last incorporated that source.
 
 ## Cursor identity
 
-A durable cursor is:
+`JournalCursor` is defined canonically in `incremental-graph-journal-types.md`.
 
-```text
-JournalCursor = {
-    source: DatabaseFingerprint,
-    incarnation: JournalIncarnation,
-    through: JournalSequence | 0
-}
-```
-
-`through` is explicitly the source writer's local journal sequence coordinate. Remote writers' sequence magnitudes do not affect it.
+Its `through` field is explicitly the source writer's local journal sequence coordinate. Remote writers' sequence magnitudes do not affect it.
 
 A cursor is valid for a source snapshot only when:
 
@@ -42,54 +40,64 @@ If the **receiver** resets, its stored cursors for other sources still contain t
 
 Canonical compaction does not change either source incarnation or the receiver's incorporated-state invariant and therefore does not invalidate valid cursors.
 
-## Stable snapshot iteration
+## Private snapshot-scoped iterator
 
-`iterate(cursor)` operates on one fixed committed source snapshot.
+`possibleMaybeChanges(sourceSnapshot, cursor)` operates only on one fixed committed source snapshot supplied and owned by its internal caller.
 
 Let:
 
 ```text
-S = snapshot.header.localJournalCounter
+S = sourceSnapshot.header.localJournalCounter
 ```
 
-The operation reads the ordered changed-node marker index for markers satisfying:
+The result exposes bounded range metadata plus an asynchronous stream:
 
 ```text
-cursor.through < marker.sequence <= S
-```
-
-For each marker, it returns the current `NodeJournalSummary` for that NodeKey from the same snapshot.
-
-The result is conceptually:
-
-```text
-JournalDelta = {
-    source: source.header.writer,
-    incarnation: source.header.incarnation,
+PossibleMaybeChanges = {
+    source: sourceSnapshot.header.writer,
+    incarnation: sourceSnapshot.header.incarnation,
     from: cursor.through,
     through: S,
-    causalSummary: source.header.causalSummary,
-    authorityClock: source.header.authorityClock,
-    changes: Array<{
+    causalSummary: sourceSnapshot.header.causalSummary,
+    authorityClock: sourceSnapshot.header.authorityClock,
+    changes: AsyncIterable<{
         node: NodeKey,
         summary: NodeJournalSemanticPart
     }>
 }
 ```
 
-`lastLocalChange` is local index metadata and need not be copied inside `summary` because the enclosing delta establishes the source range.
+The `changes` iterator range-scans changed-node markers satisfying:
 
-`JournalDelta` is metadata-only. It does not contain `ComputedValue` payloads or timestamp/value records from legacy sublevels.
+```text
+cursor.through < marker.sequence <= S
+```
+
+and lazily reads the current `NodeJournalSummary` for each marker's NodeKey from the same `sourceSnapshot` before yielding that one bounded change record.
+
+`lastLocalChange` is local index metadata and need not be copied inside `summary` because the enclosing range metadata establishes the source interval.
+
+The iterator is metadata-only. It does not yield `ComputedValue` payloads or timestamp/value records from legacy sublevels.
+
+The iterator MUST NOT materialize the complete changed-node range as one array or other graph-sized in-memory collection. Aside from implementation/runtime iterator buffers and downstream synchronization state required for other reasons, the change-discovery layer need retain only a constant number of bounded journal records at a time.
+
+## Snapshot lifetime and privacy
+
+The caller that owns `sourceSnapshot` must keep it alive while `changes` is being consumed. The iterator must not escape to public graph code, computors, plugins, or unrelated callers which could retain it across arbitrary graph operations.
+
+Synchronization is the primary consumer and already owns the stable source snapshot required for exact payload acquisition. The private API therefore does not acquire a separate long-lived graph lock or independently control active-replica lifetime; it reads only through the caller-provided stable snapshot.
+
+If iteration completes, fails, or is abandoned, the caller must finish/close the iterator and then release the snapshot according to the synchronization/lifecycle ownership rules. No mutable live-replica handle is exposed through the iterator.
 
 ## One result per changed node
 
-The compacted index contains only the latest marker for each represented node. Therefore `changes` contains a node at most once per iteration call even if that node changed arbitrarily many times after the cursor.
+The compacted index contains only the latest marker for each represented node. Therefore the stream yields a node at most once per call even if that node changed arbitrarily many times after the cursor.
 
-The returned summary is the node's complete current synchronization-relevant semantic state at snapshot S, not a replay of each historical event.
+The yielded summary is the node's complete current synchronization-relevant semantic state at snapshot S, not a replay of each historical event.
 
 ## Empty ranges and consumption
 
-A successful iteration consumes the complete snapshot range through S, even if `changes` is empty.
+A successful `possibleMaybeChanges` call describes the complete snapshot range through S even if the `changes` stream yields nothing.
 
 The caller may persist/advance its source cursor to:
 
@@ -97,13 +105,13 @@ The caller may persist/advance its source cursor to:
 { source, incarnation, through: S }
 ```
 
-only after it has successfully incorporated the returned delta according to the synchronization protocol.
+only after it has fully consumed the stream and successfully incorporated its range metadata and yielded changes according to the synchronization protocol.
 
-The iterator object itself does not mutate remote source state.
+The iterator itself does not mutate remote source state.
 
 ## Causal and authority header transfer
 
-`causalSummary` and `authorityClock` are transferred in every delta/full-sync handshake independently of node change markers.
+`causalSummary` and `authorityClock` are transferred in every incremental/full-sync handshake independently of node change markers.
 
 Both may grow on a source merely because it observed another replica, without the source authoring a node-semantic event and therefore without advancing `localJournalCounter` or moving a changed-node marker.
 
@@ -111,9 +119,9 @@ Transferring these header high-water marks separately prevents global causal/aut
 
 ## Compaction-aware semantics
 
-The API intentionally does not promise event-for-event replay.
+The private iterator intentionally does not promise event-for-event replay.
 
-For a consumer which correctly incorporated the source through P, applying the returned current summaries for all markers after P together with the current source causal/authority header must have the same journal-derived synchronization effect as consuming the un-compacted historical source events through S.
+For a consumer which correctly incorporated the source through P, consuming the current summaries yielded for all markers after P together with the current source causal/authority header must have the same journal-derived synchronization effect as consuming the uncompacted historical source events through S.
 
 This equivalence is specified/proved in `incremental-graph-journal-compaction.md`.
 
@@ -149,38 +157,35 @@ Controlled receiver reset deletes all such records.
 
 ## Incremental synchronization snapshot contract
 
-Incremental synchronization cannot be implemented by calling metadata-only `iterate(cursor)`, releasing its source snapshot, and later reopening the source database to fetch payloads.
+Incremental synchronization owns one fixed committed source snapshot for the complete source-read phase. It passes that same snapshot to `possibleMaybeChanges` and consumes the returned async stream while the snapshot remains alive.
 
-A returned changed summary may select a present `ValueId` which the receiver does not materialize. The payload/timestamp record for that exact `ValueId` must come from the **same fixed source snapshot** from which the summary was read. Otherwise the source could replace/delete the value between metadata iteration and payload fetch, yielding a payload from a different semantic state.
+A yielded changed summary may select a present `ValueId` which the receiver does not materialize. The payload/timestamp record for that exact `ValueId` must come from the **same fixed source snapshot** from which the summary was read. Otherwise the source could replace/delete the value between metadata iteration and payload fetch, yielding a payload from a different semantic state.
 
-Therefore the incremental synchronization operation itself owns one fixed source snapshot for the complete source-read phase. While that snapshot is held it must:
+While the snapshot is held, incremental synchronization must:
 
-1. read the source header, including `causalSummary` and `authorityClock`, and changed-node summaries for the cursor range;
-2. determine which returned present heads may need source payload/timestamp records;
-3. copy or stage every required exact legacy value/timestamp record from that same snapshot;
-4. only then release the source snapshot.
+1. read the source header and initialize `possibleMaybeChanges` for the cursor range;
+2. consume each changed-node summary lazily;
+3. for each yielded present head that may need source materialization, copy or stage the required exact legacy value/timestamp record from that same snapshot;
+4. finish the iterator;
+5. only then release the source snapshot after all source data needed for the operation has been copied/staged safely.
 
 The copied/staged payloads are transient synchronization data, not journal records. They may be streamed directly into an inactive target replica rather than accumulated in RAM. The journal no-payload constraint and per-LevelDB journal-value size bound do not apply to these ordinary legacy value transfers.
-
-No LevelDB snapshot or mutable source-replica handle may escape to an external/slow iterator consumer.
 
 ## Incremental synchronization
 
 For a valid stored cursor P for source S:
 
 1. take one fixed committed source snapshot;
-2. read the metadata delta for P from that snapshot;
-3. from the same snapshot, copy/stage every legacy payload/timestamp record required by changed present heads that the receiver cannot otherwise materialize under the full-sync rules;
-4. join the returned `causalSummary` and `authorityClock` header high-water marks;
-5. semantically merge only the returned node summaries into the receiver's already represented source knowledge;
+2. initialize `possibleMaybeChanges` for P on that snapshot;
+3. consume its `changes` async stream, and from the same snapshot copy/stage every legacy payload/timestamp record required by yielded present heads that the receiver cannot otherwise materialize under the full-sync rules;
+4. incorporate the returned `causalSummary` and `authorityClock` header high-water marks;
+5. semantically merge the yielded node summaries into the receiver's already represented source knowledge;
 6. run the same topological normalization rules that full synchronization would run for affected nodes and their dependent closure;
 7. materialize selected present heads using only records obtained from the fixed source snapshot or an already-matching receiver `ValueId`;
 8. atomically publish receiver graph+journal changes and any joined header high-water metadata;
-9. only then advance the stored source cursor to `delta.through`.
+9. only then advance the stored source cursor to the returned `through` coordinate.
 
-The source snapshot may be released after step 3 once all source data needed for the operation has been copied/staged safely.
-
-The receiver may need to inspect local dependents outside the returned source changed-node set because one changed input can alter downstream normalization/freshness.
+The receiver may need to inspect local dependents outside the yielded source changed-node set because one changed input can alter downstream normalization/freshness. Any graph-sized scratch state required for normalization must be streamable/spillable to bounded-record storage rather than forcing the journal iterator to materialize all source changes in RAM.
 
 ## Full-sync equivalence invariant
 
@@ -188,11 +193,11 @@ The source cursor P certifies that every source node summary with `lastLocalChan
 
 For a source node unchanged after P, its source semantic authority/frontiers/certificate have not grown. Receiver-local state may have grown, but Journal 2's head/frontier/certificate orders are monotone, so re-reading that unchanged older source summary in a full sync cannot introduce information that the receiver did not already incorporate at P.
 
-Source-global causal or HLC high-water knowledge may nevertheless have grown without changing any node. Because every incremental delta transfers the current `causalSummary` and `authorityClock`, incremental synchronization observes the same source-global allocation knowledge that full synchronization would observe from the same source snapshot.
+Source-global causal or HLC high-water knowledge may nevertheless have grown without changing any node. Because every incremental range transfers the current `causalSummary` and `authorityClock`, incremental synchronization observes the same source-global allocation knowledge that full synchronization would observe from the same source snapshot.
 
 For a changed present node, incremental synchronization reads both the current semantic summary and any required payload/timestamp record from the same source snapshot. Therefore it materializes the same selected source occurrence that full synchronization would inspect from that snapshot.
 
-Consequently processing exactly the changed source summaries after P, joining the current source causal/authority header, acquiring required payloads from the same source snapshot, and applying the same normalization closure yields an observably equivalent result to a full synchronization from the same starting receiver/source snapshots.
+Consequently processing exactly the yielded changed source summaries after P, joining the current source causal/authority header, acquiring required payloads from the same source snapshot, and applying the same normalization closure yields an observably equivalent result to a full synchronization from the same starting receiver/source snapshots.
 
 This is the required correctness condition for enabling the optimization.
 
@@ -202,4 +207,4 @@ If source identity/incarnation does not match, the receiver-local cursor record 
 
 ## No computor API dependency
 
-No Journal 2 correctness rule requires a computor to read or persist a cursor. `pull()` correctness remains defined entirely by the legacy graph plus Journal 2's internally maintained sidecar consistency.
+`possibleMaybeChanges` is private synchronization infrastructure. No computor or public IncrementalGraph operation may obtain its iterator, read a journal cursor, or depend on journal progress for semantic correctness. `pull()` correctness remains defined entirely by the legacy graph plus Journal 2's internally maintained sidecar consistency.

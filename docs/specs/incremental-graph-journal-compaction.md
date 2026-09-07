@@ -90,7 +90,7 @@ Raw event contexts/authority times can be discarded when no retained semantic re
 
 `localJournalCounter` is retained as the writer-local event identity/change-index coordinate. It is not inflated by remote causal coordinates.
 
-`localOperationCounter` is retained only as local high-level-history allocation state. It has no causal or authority meaning.
+`localOperationCounter` is retained only as local high-level-history allocation state. It has no causal or authority meaning and remains monotone across controlled reset.
 
 ## Changed-node index compaction
 
@@ -135,7 +135,7 @@ Controlled reset is different in two ways:
 
 Let P be a valid cursor and S a fixed committed source snapshot head in the same incarnation.
 
-Let `History(P,S]` be the original un-compacted local low-level semantic events in that interval, and let `Delta(P,S]` be the compacted iterator output defined by the API specification: the current node summary for every node whose current changed-node marker is in `(P,S]`, together with the source's current causal/authority header high-water state.
+Let `History(P,S]` be the original un-compacted local low-level semantic events in that interval. Let `PossibleMaybeChanges(P,S]` mean the bounded range metadata plus the sequence of current node summaries yielded by the private async iterator for every node whose current changed-node marker is in `(P,S]`.
 
 High-level operation records are intentionally irrelevant to this theorem because they carry no synchronization semantics.
 
@@ -148,14 +148,16 @@ apply(History(P,S])
 and
 
 ```text
-apply(Delta(P,S])
+apply(PossibleMaybeChanges(P,S])
 ```
 
 must produce observationally equivalent journal-derived synchronization state through S.
 
 Reason: for each node, all source changes after P are folded into its current summary; if the node changed at least once after P, its latest marker remains greater than P. If it did not change after P, the consumer already incorporated its source summary through P. Cross-node causal and HLC high-water metadata are transferred from the header independently of the changed-node iterator.
 
-After successful consumption, the iterator advances through S even when some or all historical semantic events were removed and the returned changed-node list is empty.
+After successful consumption, the iterator advances through S even when some or all historical semantic events were removed and the async stream yields no changed node.
+
+The theorem concerns the sequence of yielded bounded records, not materialization of that sequence as one collection. Canonical compaction and `possibleMaybeChanges` must remain streamable as required by `$id-jtwostream`.
 
 ## Future synchronization theorem
 

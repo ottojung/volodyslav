@@ -126,19 +126,22 @@ A selected present cache must be safe to expose under the existing computor `old
 
 If K has zero or one distinct direct semantic input, Journal 2 permits the selected present cache to remain as `oldValue` provided all other graph invariants hold.
 
-If K has two or more distinct direct inputs, let C be its canonical certificate. The cache is serially admissible only if C exists and, for every final direct input D, at least one condition holds:
+If K has two or more distinct direct inputs, let C be its canonical certificate. The cache is serially admissible only if C exists and, for every index `i` of `inputEdges(K)`, at least one condition holds:
 
 ```text
-C.basis[D] == currentValueId(D)
+C.basis[i] == currentValueId(inputEdges(K)[i])
 ```
 
 or
 
 ```text
-happenedBefore(C.event, currentValueEvent(D))
+happenedBefore(
+    C.event,
+    currentValueEvent(inputEdges(K)[i])
+)
 ```
 
-The second condition uses the immutable causal context of D's original `ValueRef`; synchronization/adoption delivery order does not create happened-before for this test.
+The second condition uses the immutable causal context of the input's original `ValueRef`; synchronization/adoption delivery order does not create happened-before for this test.
 
 Intuition: every mismatching current input must be a genuine semantic successor of the cache's last validation, not merely a concurrently delivered branch. Otherwise selecting K as `oldValue` can expose which branch happened to win the synchronization order.
 

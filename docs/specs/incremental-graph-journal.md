@@ -84,7 +84,7 @@ migration(M)              -> stable MigrationId M
 
 For Journal 2 sources, `Q` alone is not enough to identify the synchronization-relevant source state because its causal summary `C` and authority high-water `H` may grow without authoring a new local semantic event. Source-bearing operation records therefore retain all of those bounded source-header fields from the fixed snapshot they consumed.
 
-When a lifecycle source has no Journal 2 metadata, reset can still record its durable database identity while omitting Journal 2 position fields.
+Journal 2 synchronization and semantic reset require valid compatible Journal 2 source state, so source-bearing operation records always carry the complete Journal 2 source reference defined by the types specification.
 
 Conceptually this permits viewing the **direct expansion** of one operation as:
 
@@ -104,7 +104,7 @@ A child operation may optionally record `parent: OperationId` for its direct hig
 
 The `compiled` array above is only a conceptual view: it is not stored as one large LevelDB value. The expansion is represented by the list of small low-level events that point to the operation ID.
 
-Operation IDs use a separate local counter and do not participate in semantic authority, causal context, conflict selection, synchronization, or projection. Therefore preserving high-level operation identity cannot change graph semantics merely by changing event-number allocation.
+Operation IDs use a separate local counter and do not participate in semantic authority, causal context, conflict selection, synchronization, or projection. The operation counter remains monotone across reset; the `incarnation` field records the journal incarnation in which the operation occurred.
 
 Compaction may discard old operation grouping together with the raw events it described once only the bounded synchronization meaning remains relevant.
 
@@ -205,17 +205,21 @@ The proof is in `incremental-graph-journal-compaction.md`.
 
 Correctness guarantees apply to states produced by supported Journal 2 authoring, synchronization, migration, reset, same-host restoration, and canonical compaction. Corrupt, forged, rolled-back, partially installed, or identity-colliding states are outside the semantic model and must be rejected where practical rather than assigned invented meaning.
 
-A same-host first-boot restoration resumes the exact previously published Journal 2 writer state, including writer-local counters, incarnation, causal summary, authority-clock high-water mark, node summaries, and valid saved cursors. It does **not** mint a reset baseline merely because local live files were absent. Arbitrary rollback to an older same-writer snapshot which could reuse already-published event IDs or move the authority clock backward is unsupported.
+A same-host first-boot restoration of saved Journal 2 state resumes the exact previously published writer state, including writer-local counters, incarnation, causal summary, authority-clock high-water mark, node summaries, and valid saved cursors. It does **not** mint a reset baseline merely because local live files were absent. A same-host saved state which predates Journal 2 may instead be restored as legacy state and then migrated through the normal migration gate before Journal 2 synchronization/reset is available.
 
-Controlled reset is different: it intentionally replaces an already-established logical database, increments the local journal incarnation, deletes receiver-local source cursors, and mints a fresh reset baseline as specified by `incremental-graph-journal-reset.md`.
+Arbitrary rollback to an older same-writer snapshot which could reuse already-published event IDs or move the authority clock backward is unsupported.
+
+Controlled semantic reset is different: it requires a valid compatible Journal 2 source, intentionally replaces an already-established logical database, increments the local journal incarnation, deletes receiver-local source cursors, and mints a fresh reset baseline as specified by `incremental-graph-journal-reset.md`.
 
 ## Full sync before incremental sync
 
 The normative semantic synchronization operation is full synchronization. It scans the complete current journal/graph semantic domain and does not require cursors.
 
-The journal change index and cursor API are an optimization. For a valid cursor, incremental synchronization must be observationally equivalent to the full operation from the same source and receiver states.
+The journal change index and cursor machinery are an optimization. Incremental source discovery uses the private `possibleMaybeChanges(sourceSnapshot, cursor)` asynchronous iterator; it is not part of the public IncrementalGraph/computor API and does not materialize the complete changed-node range in RAM.
 
-A receiver reset explicitly clears stored source cursors because replacing receiver state destroys the invariant those cursors certify. Incremental synchronization also acquires any required source payload/timestamp records from the same fixed source snapshot as the metadata delta and transfers both source causal and HLC authority header high-water state.
+For a valid cursor, incremental synchronization must be observationally equivalent to the full operation from the same source and receiver states.
+
+A receiver reset explicitly clears stored source cursors because replacing receiver state destroys the invariant those cursors certify. Incremental synchronization acquires required source payload/timestamp records while consuming `possibleMaybeChanges` from the same fixed caller-owned source snapshot and transfers both source causal and HLC authority header high-water state.
 
 If synchronization cannot establish that a selected cached materialization is safe to expose later as `oldValue`, it may discard that cache and any dependent caches that cannot remain dependency-closed, while preserving negative authority against resurrection of the rejected occurrence. Cache retention is subordinate to `oldValue` safety.
 

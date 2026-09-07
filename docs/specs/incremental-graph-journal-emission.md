@@ -25,8 +25,8 @@ The operation record uses `localOperationCounter`, not the semantic `localJourna
 When an operation record is persisted, its tagged arguments MUST identify the recorded invocation according to `incremental-graph-journal-types.md`:
 
 - `pull` and `invalidate` record their `subject` NodeKey;
-- `synchronize` records the source database and, for a Journal 2 source, the source incarnation, local semantic head, causal summary, and authority-clock high-water mark from the exact stable source snapshot consumed by the operation;
-- `reset` records the chosen source database and, when available, the same complete Journal 2 source-position metadata;
+- `synchronize` records the source database plus its Journal 2 incarnation, local semantic head, causal summary, and authority-clock high-water mark from the exact stable source snapshot consumed by the operation;
+- `reset` records the chosen valid compatible Journal 2 source with the same complete source-position metadata;
 - `migration` records the stable `MigrationId` of the migration being run;
 - implementation-specific `other` operations use a bounded stable `OperationTag` rather than arbitrary payload data.
 
@@ -79,7 +79,7 @@ When one atomic transaction authors multiple semantic events, their allocation o
 - reset/bootstrap `ValueEvent`s for input nodes precede certificates whose basis refers to those new input `ValueId`s;
 - a synchronization normalization event which makes a dependent non-materializable precedes a dependent destructive event authored because of that fact.
 
-Events not ordered by such semantic dependencies are tie-broken deterministically by `NodeKey` and event kind (and by another fixed deterministic field if needed). A purely lexical `NodeKey`/kind ordering must never reverse a required semantic dependency merely to obtain deterministic IDs.
+Events not ordered by such semantic dependencies are tie-broken according to the deterministic ordering required by the operation-specific specification. Ordinary local operations use canonical `NodeKey`/event-kind tie-breakers; migration/reset value-baseline allocation uses the timestamp-first order specified by their lifecycle documents. No deterministic tie-break may reverse a required semantic dependency merely to obtain stable IDs.
 
 Because later same-author events have larger local sequences, include earlier same-transaction events in their contexts, and advance the HLC again, this allocation order is part of both exact causal meaning and authority monotonicity rather than merely a serialization convenience.
 
@@ -196,7 +196,7 @@ Examples include:
 
 The event carries bounded references/summary metadata but creates no new `ValueId`, certificate authority, invalidation authority, or tombstone authority. The adopted foreign identities and their immutable authority times remain unchanged.
 
-All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`. When that operation record is persisted, its `source` identifies the same fixed source snapshot used by the synchronization protocol, including Journal 2 incarnation, local head, causal summary, and authority-clock high-water mark when available. That grouping is historical only and is not imported by peers.
+All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`. When that operation record is persisted, its `source` identifies the same fixed Journal 2 source snapshot used by the synchronization protocol, including incarnation, local head, causal summary, and authority-clock high-water mark. That grouping is historical only and is not imported by peers.
 
 If source information is already represented and the graph projection is unchanged, repeating synchronization is silent and need not persist an operation record.
 

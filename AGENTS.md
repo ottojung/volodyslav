@@ -543,11 +543,15 @@ The client (frontend) is assumed to be **non-adversarial** — it is the same de
 
 ## Don't speak of the dead
 
-Comments, JSDoc, tests, and documentation must describe the codebase as it exists.
+Comments, JSDoc, tests, and documentation on release-ready branches must describe the codebase as it exists.
+
+An explicitly work-in-progress integration branch may temporarily contain normative specifications for a living implementation that is still being developed on that same branch. The specification may lead the implementation during integration, but the branch must become documentation/implementation-consistent before it is treated as release-ready or promoted into a release-ready branch. This exception is only for the current in-progress design; it does not permit discarded designs, superseded implementations, process narration, or unrelated future ideas in source documentation. See `$id-wipdocslead`.
+
+Comments, JSDoc, and tests should still describe or exercise the implementation present on the branch unless they are themselves intentionally part of the active implementation work.
 
 Do not bring the conversation, prompt, development process, previous implementation, or discarded design into the source tree. The reader should not need to know what the agent was asked, what the agent changed, what used to be here, or why the new version is “better”. That belongs in the issue, pull request, commit message, or changelog.
 
-Only the current codebase exists. Everything outside it is a postapocalyptic no-man's land: old code, abandoned plans, prompt context, temporary reasoning, and implementation attempts. Nothing living can survive there. Do not smuggle it back into the repository.
+Only the current codebase and the explicitly living design of an in-progress integration branch exist. Everything else is a postapocalyptic no-man's land: old code, abandoned plans, prompt context, temporary reasoning, and implementation attempts. Nothing living can survive there. Do not smuggle it back into the repository.
 
 Bad:
 

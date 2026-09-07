@@ -8,6 +8,8 @@ Migration adds only the new journal sublevel and advances the database version a
 
 The migration implementation has one stable bounded `MigrationId` supplied by the database migration/lifecycle registry. If this migration persists a high-level `OperationRecord(kind="migration")`, that record MUST contain this `MigrationId`; the operation envelope must not collapse all migrations into an indistinguishable generic `migration` kind.
 
+`DeleteEvent(reason="migration")` is reserved for Journal-2-aware migrations which remove already represented semantic nodes under the general database migration lifecycle. The initial pre-Journal-2 bootstrap defined here does not need to author such a delete because it begins with no Journal 2 tombstone domain.
+
 ## Preconditions
 
 The source database must satisfy the current legacy IncrementalGraph invariants:
@@ -55,7 +57,7 @@ The migration may allocate one local high-level operation record and attach its 
 
 ## Pass 1: assign current value occurrences
 
-Enumerate every materialized semantic NodeKey in deterministic canonical NodeKey order.
+Enumerate every materialized semantic NodeKey in ascending order of its legacy `modifiedAt`, with canonical NodeKey order as the deterministic tie-breaker.
 
 For each K:
 
@@ -65,7 +67,7 @@ For each K:
 4. do not rewrite K's legacy payload or timestamps;
 5. set the present semantic head to that ValueRef.
 
-Because all bootstrap events are authored by one local journal in deterministic order, each successive event also advances from the previous HLC high-water mark as required by the ordinary event-allocation rule. The HLC may therefore be later than an individual legacy `modifiedAt` when necessary to preserve same-writer happened-before.
+This ordering keeps the one-writer bootstrap HLC monotone without allowing an unrelated node with a later `modifiedAt` to inflate the authority time of a node whose own legacy modification happened earlier. Equal legacy modification times are ordered deterministically by NodeKey and separated by the HLC logical coordinate.
 
 All current ValueIds are known before certificate bases are constructed.
 
@@ -128,9 +130,9 @@ Every represented node receives a current marker in the initial incarnation. The
 
 ## Synchronization compatibility
 
-Journal 2 synchronization requires exact compatible database versions. A pre-Journal-2 replica is not incrementally or semantically synchronized directly with a Journal 2 replica.
+Journal 2 synchronization requires exact compatible database versions and valid Journal 2 metadata on both sides. A pre-Journal-2 replica is not incrementally or semantically synchronized directly with a Journal 2 replica and is not a valid Journal 2 reset source.
 
-It must first migrate or be reset/bootstrap-restored through the supported lifecycle.
+It must first migrate to Journal 2. Same-host restoration may restore an older pre-Journal-2 saved database as lifecycle recovery, but the migration gate must establish Journal 2 before that state participates in Journal 2 synchronization or semantic reset.
 
 ## Size
 

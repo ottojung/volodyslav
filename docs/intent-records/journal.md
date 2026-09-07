@@ -142,6 +142,19 @@ No individual journal LevelDB value may have size proportional to `N`, to the to
 
 ---
 
+$id-jtwostream
+date: 2026/09/07
+source: @ottojung
+kind: requirement
+
+Journal 2 incremental change discovery and source processing must be streamable without retaining a graph-sized collection of journal summaries or payloads in RAM.
+
+The internal `possibleMaybeChanges` facility must expose changed-node summaries as a private asynchronous iterator over a caller-owned stable source snapshot rather than as an `Array` containing the complete changed-node range. The change-discovery layer must retain only a constant number of individually bounded journal records at a time, apart from bounded implementation/runtime iterator buffers.
+
+This iterator is private synchronization/journal infrastructure. It must not be exposed through the public IncrementalGraph API or made available to ordinary computors. Synchronization may use bounded-record scratch storage when graph-wide normalization state is required, but the journal iterator itself must not force O(N) journal metadata or payloads into RAM.
+
+---
+
 $id-jtwonopayl
 date: 2026/09/06
 source: @ottojung
@@ -183,6 +196,17 @@ kind: constraint
 Ordinary synchronization must not compare `ComputedValue` payloads, or use value equality, to infer value identity, origin, provenance, causal history, validation history, freshness, validity, or conflict precedence.
 
 Controlled reset may compare a source value with the corresponding receiver value solely in order to avoid replacing a value already known to be equal. That equality does not by itself establish any additional provenance or history fact.
+
+---
+
+$id-jtworesetj
+date: 2026/09/07
+source: @ottojung
+kind: requirement
+
+Journal 2 semantic reset requires a valid compatible Journal 2 source snapshot.
+
+A journal-less or pre-Journal-2 snapshot must not be accepted as the source of a Journal 2 semantic reset. Same-host restoration is a distinct lifecycle operation: it may recover an older saved database state, after which the normal migration gate must establish Journal 2 before that state participates in Journal 2 synchronization or semantic reset.
 
 ---
 
