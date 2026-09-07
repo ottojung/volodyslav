@@ -217,11 +217,14 @@ OperationSourceRef = {
 
     // Present together when the source is a Journal 2 snapshot.
     incarnation?: JournalIncarnation,
-    through?: JournalSequence | 0
+    through?: JournalSequence | 0,
+    causalSummary?: CausalPrefix
 }
 ```
 
-When Journal 2 metadata is available for the source snapshot, both `incarnation` and `through` MUST be recorded and identify the exact stable source snapshot consumed by the operation. For a supported lifecycle source without Journal 2 metadata, both fields are omitted and `writer` still identifies the source database.
+When Journal 2 metadata is available for the source snapshot, `incarnation`, `through`, and `causalSummary` MUST all be recorded. Together they identify the synchronization-relevant journal state of the exact stable source snapshot consumed by the operation: `through` identifies the source's local semantic head, while `causalSummary` also captures source causal knowledge which may grow without advancing that local head. This is not a byte-level snapshot hash and intentionally ignores compaction/history-layout differences which have no synchronization meaning.
+
+For a supported lifecycle source without Journal 2 metadata, all three Journal 2 fields are omitted and `writer` still identifies the source database.
 
 Operation records are a tagged union:
 
@@ -265,9 +268,9 @@ OperationRecord =
       }
 ```
 
-An operation record is local historical/debugging structure. It is **not** synchronization authority, has no `CausalPrefix`, and is never imported as semantic state.
+An operation record is local historical/debugging structure. It is **not** synchronization authority, has no causal authority of its own, and is never imported as semantic state. A source-bearing operation record may nevertheless store the source `causalSummary` as bounded historical invocation metadata.
 
-The tagged fields identify the high-level invocation itself rather than only its operation kind. In particular, synchronization/reset records identify their source, and migration records identify the migration being run.
+The tagged fields identify the high-level invocation itself rather than only its operation kind. In particular, synchronization/reset records identify their source synchronization-relevant snapshot state, and migration records identify the migration being run.
 
 `parent`, when present, names the direct high-level caller known to the implementation. It does not imply semantic happened-before, does not affect event authority, and does not require the parent record to enumerate children. Parent recording is optional because independently committing nested operations need not share one publication transaction; Journal 2 does not require a complete transitive call tree.
 
