@@ -59,7 +59,7 @@ authorityClock := maxAuthorityTime(authorityClock, source.authorityClock)
 
 and joins directly inspected source EventRefs as required.
 
-Every reset baseline event is therefore causally after the semantic history which reset actually observed and advances from an HLC high-water mark at least as great as every observed authority time.
+These causal and authority observations are coupled and MUST preserve J2-INV-7 in the same publication. Every reset baseline event is therefore causally after the semantic history which reset actually observed and advances from an HLC high-water mark at least as great as every observed authority time.
 
 The receiver may retain its accumulated `causalSummary` and `authorityClock`; reset does not require historical per-node reset anchors.
 
@@ -358,7 +358,7 @@ If those authorities are covered by the reset baseline, R3/R4 apply: redelivery 
 
 A genuinely unseen remote authority may be concurrent with the reset and is resolved by ordinary Journal 2 synchronization rules when eventually observed, as stated by R5. Reset does not absorb arbitrary unseen authority which is outside its observed causal cut.
 
-No correctness argument in this reset design assumes that such a delayed replica eventually returns at all; this follows the liveness-independent intent `$id-jtwoparticip`.
+No correctness argument in this reset design assumes that such a delayed replica eventually returns at all; this follows the liveness-independent intent `$id-4719065396881648`.
 
 ## Cursor behavior
 
