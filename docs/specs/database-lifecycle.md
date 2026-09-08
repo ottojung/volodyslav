@@ -82,6 +82,10 @@ If it does, startup performs **same-host restoration** of that authoritative sna
 
 The restored state is committed through the database's normal cutover mechanism, then reopened and passed through the migration gate. Therefore the saved state may be older than the running application when a supported migration can bring it forward. A saved pre-Journal-2 state may likewise be restored as legacy state and then migrated before Journal 2 synchronization or semantic reset becomes available.
 
+For Journal 2 identity safety, the supported lifecycle has a **publication-before-propagation invariant**: Journal 2 state authored by a host cannot become synchronization input to another host through normal synchronization unless the authoring host's own current state has first been rendered/checkpointed and synchronized to that host's authoritative repository branch. Therefore, if the authoritative same-host snapshot selected for restoration is still pre-Journal-2, no Journal 2 event from that writer exists in supported external state. This is what makes migration of that restored legacy snapshot safe to bootstrap under the existing durable writer identity.
+
+If that ordering has been bypassed, or external state contains same-writer Journal 2 events not represented by the authoritative same-host snapshot, the state is outside the supported restoration lifecycle. Restoration/migration MUST fail rather than bootstrap Journal 2 under a writer identity whose event IDs may already have been published.
+
 Any failure to query, obtain, parse, or install that state is fatal to bootstrap. Volodyslav does not silently fall back to an empty database after discovering that the host is supposed to have synchronized state.
 
 ### 4.3 Creating a new host state
@@ -334,6 +338,7 @@ Implementations and future changes MUST preserve the following lifecycle propert
 10. Tests and diagnostics SHOULD distinguish incompatibility, failed preconditions, corruption, and unsupported manipulation rather than using those terms interchangeably.
 11. New recovery, import, or restore behavior MUST be implemented as a Volodyslav-controlled lifecycle transition. Documentation alone MUST NOT redefine raw file manipulation as supported.
 12. Storage refactors MAY change physical artifacts without changing this specification, provided these lifecycle preconditions, transitions, and postconditions remain true.
+13. Normal synchronization MUST preserve the publication-before-propagation invariant: a host's current Journal 2 state is published to its own authoritative synchronization branch before any peer state is consumed in a synchronization cycle which could propagate that Journal 2 state.
 
 ## 15. Known boundaries
 
