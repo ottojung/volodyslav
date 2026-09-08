@@ -521,7 +521,7 @@ Do not limit or filter the output of `npx jest`.
 
 Must follow this workflow when making changes to the source code:
 
-1. **Setup**: `npm install` (install all dependencies)
+1. **Setup**: `npm install` (install dependencies in root and all workspaces)
 2. **Understand**: Read relevant code and tests to understand the context
 3. **Implement**: Make changes following the capabilities pattern and JSDoc conventions
 4. **Test**: Run `npx jest path/to/specific/test.js` for focused testing
@@ -543,9 +543,14 @@ The client (frontend) is assumed to be **non-adversarial** — it is the same de
 
 ## Don't speak of the dead
 
-Comments, JSDoc, tests, and documentation on branches which are not explicitly work-in-progress integration branches must describe the codebase as it exists.
+Comments, JSDoc, tests, and documentation on branches which are not explicitly work-in-progress branches must describe the codebase as it exists.
 
-For this rule, a branch is an explicitly work-in-progress integration branch if and only if its branch name matches `next-waterfall-*`. Such a branch may temporarily contain normative specifications for a living implementation that is still being developed on that same branch. The specification may lead the implementation during integration, but documentation and implementation must become consistent before the branch is promoted into any branch outside `next-waterfall-*`. Every other branch receives no specification-leading exception and must satisfy the release-ready documentation-consistency rule. See `$id-wipdocslead`.
+For this rule, the explicitly work-in-progress branches are:
+
+- every branch whose name matches `next-waterfall-*`;
+- the `journal-2` branch while it contains the living Journal 2 specification work intended for a `next-waterfall-*` integration branch.
+
+Such a branch may temporarily contain normative specifications for a living implementation that is still being developed as part of the same work. The specification may lead the implementation during development, but documentation and implementation must become consistent before the work is promoted into any branch not designated above. Every other branch receives no specification-leading exception and must satisfy the release-ready documentation-consistency rule. See `$id-wipdocslead`.
 
 Comments, JSDoc, and tests should still describe or exercise the implementation present on the branch unless they are themselves intentionally part of the active implementation work.
 
