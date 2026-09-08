@@ -72,7 +72,6 @@ If the selected head is present with ValueId V:
 
 - consider value-specific metadata only from summaries whose current head is V;
 - join their value invalidate frontiers componentwise;
-- join their value hard-invalidate frontiers componentwise;
 - choose the greatest certificate event among certificates naming V by `authorityCompare(certificate.event, ...)`;
 - all copies of the same `ValueRef` must carry the same immutable origin context and authority time.
 
@@ -114,15 +113,15 @@ For a candidate which remains present, derive incoming validity and freshness us
 
 ### Persistent stale propagation
 
-If K's canonical certificate exactly names all final input ValueIds and covers all K invalidation frontiers, but K becomes stale solely because a final direct input is stale, synchronization must ensure K has an uncovered value-scoped soft invalidation.
+If K's canonical certificate exactly names all final input ValueIds and covers all K invalidation frontiers, but K becomes stale solely because a final direct input is stale, synchronization must ensure K has an uncovered value-scoped invalidation.
 
-If neither input already carries such authority for K, the receiver authors one local soft invalidation. This prevents K from becoming automatically fresh merely because that input later revalidates unchanged; K must still perform its own normal cache-revalidation.
+If neither input already carries such authority for K, the receiver authors one local value-scoped invalidation. This prevents K from becoming automatically fresh merely because that input later revalidates unchanged; K must still perform its own normal cache-revalidation.
 
 The authored invalidation advances from the synchronization transaction's joined causal summary and authority-clock high-water mark.
 
 ### `oldValue` retention
 
-A present cache which survives dependency-closure normalization remains a valid cached value of the same semantic node and MAY be retained even when its final direct inputs come from different synchronization histories.
+A present cache which survives dependency-closure normalization remains a valid cached value of the same semantic node and MAY be retained even when its final direct inputs come from different synchronization histories. This is the supported-state safety argument that discharges `$id-8254606583674715`; synchronization is not allowed to retain a cache by weakening the ordinary `oldValue` contract.
 
 This follows directly from the existing IncrementalGraph pull contract. For a stale materialized node, the ordinary runtime:
 
@@ -156,7 +155,7 @@ No computor is invoked by synchronization.
 
 For every node whose candidate metadata is simply adopted, preserve the foreign semantic IDs, immutable EventRefs, frontiers, and certificate and record a receiver-local `AdoptEvent` only when receiver synchronization-relevant state actually changes.
 
-For every normalization-created soft invalidation or structural tombstone, use the newly authored receiver EventRef authority.
+For every normalization-created value-scoped invalidation or structural tombstone, use the newly authored receiver EventRef authority.
 
 After those events are folded, the final legacy graph is exactly the journal projection.
 
@@ -219,14 +218,14 @@ Pure candidate joining uses deterministic total EventRef maxima/componentwise fr
 
 Synchronization may create only two forms of new negative semantic authority during normalization:
 
-1. soft invalidations required to preserve a newly merged stale transition;
+1. value-scoped invalidations required to preserve a newly merged stale transition;
 2. destructive tombstones required by dependency closure when a selected present cache has a finally absent direct input, including cascading dependents.
 
 Both are authored after joining all causal/authority high-water facts observed by the synchronization transaction. Consequently they are causally after and greater in authority than the facts which caused them. They introduce no new value or validation candidate.
 
 Mixed cache/input provenance creates no additional negative authority. Basis mismatches simply project the retained cache stale, exactly as ordinary dependency value changes do in the local graph algorithm.
 
-A particular already-observed positive state/certificate cannot force the same receiver to author an endless sequence of negative reactions: after the first required soft invalidation or structural tombstone, its resulting frontier/tombstone is represented, and redelivery is a no-op.
+A particular already-observed positive state/certificate cannot force the same receiver to author an endless sequence of negative reactions: after the first required value-scoped invalidation or structural tombstone, its resulting frontier/tombstone is represented, and redelivery is a no-op.
 
 A genuinely unseen concurrent positive authority may later force another finite normalization. Under quiescence there are finitely many such positive authorities. Each normalization may propagate along only the finite dependency DAG.
 
