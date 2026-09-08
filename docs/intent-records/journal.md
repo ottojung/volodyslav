@@ -247,6 +247,17 @@ Replacing a supported journal by its compacted representation must not change th
 
 ---
 
+$id-jtwomigcurs
+date: 2026/09/07
+source: @ottojung
+kind: requirement
+
+A migration whose input already contains Journal 2 must invalidate all receiver-local incremental synchronization progress by atomically deleting every stored source cursor with the migrated state.
+
+After such a migration, the next synchronization with each source must use full synchronization; a successful full synchronization may establish a fresh cursor under the migrated state. Journal 2 does not require an optimization for proving individual pre-migration cursors safe to preserve.
+
+---
+
 $id-jtwotransp
 date: 2026/09/06
 source: @ottojung
