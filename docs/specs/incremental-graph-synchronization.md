@@ -112,11 +112,13 @@ Only afterward is the plan lowered to physical storage:
 
 The representation of every existing sublevel remains unchanged.
 
-## No hidden values
+## Cache retention and no hidden values
 
-If semantic normalization determines that a cached value cannot safely remain available as `oldValue`, synchronization must remove its legacy materialization and author/preserve sufficient tombstone authority to prevent lower old values from resurrecting.
+A selected present cached value remains an ordinary cache of the same semantic node even when synchronization changes one or more of its final inputs. Input/certificate mismatch is represented by stale freshness and missing validity proofs; it does not require moving the payload elsewhere or deleting it merely to protect the `oldValue` contract.
 
-It must not copy that payload into the journal or another synchronization-only store.
+The normal stale-node pull path may later invoke the computor with the final input values and this retained cache as `oldValue`. The computor's existing `Unchanged` rule determines whether the value can be reused under those inputs.
+
+Synchronization removes a cached materialization only when another rule makes it structurally impossible to keep, such as dependency closure when a required direct input is finally absent. If a cache is removed, its payload is not copied into the journal or another synchronization-only hidden store; the required tombstone authority remains in Journal 2 instead.
 
 ## Freshness and validity
 
