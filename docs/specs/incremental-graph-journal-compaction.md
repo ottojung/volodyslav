@@ -86,6 +86,8 @@ For the current value, repeated invalidates by one author collapse to one greate
 
 `authorityClock` is the scalar HLC high-water mark of all authored/observed semantic authorities and is also retained exactly. This is required so a future local event can advance beyond an authority time whose raw event has been compacted away.
 
+The two fields are retained as the same coupled high-water summary required by J2-INV-7. Compaction may not lower or independently rewrite either field in a way that would make a causal coordinate cease to be covered by the authority high-water mark simply because the corresponding raw event was discarded.
+
 Raw event contexts/authority times can be discarded when no retained semantic reference needs their exact immutable metadata. The exact context and authority time of the current `ValueRef` and current certificate remain embedded in those retained refs.
 
 `localJournalCounter` is retained as the writer-local event identity/change-index coordinate. It is not inflated by remote causal coordinates.
@@ -160,7 +162,7 @@ Reason: for each node, all source changes after P are folded into its current su
 
 After successful consumption, the iterator advances through S even when some or all historical semantic events were removed and the async stream yields no changed node.
 
-The theorem concerns the sequence of yielded bounded records, not materialization of that sequence as one collection. Canonical compaction and `possibleMaybeChanges` must remain streamable as required by `$id-jtwostream`.
+The theorem concerns the sequence of yielded bounded records, not materialization of that sequence as one collection. Canonical compaction and `possibleMaybeChanges` must remain streamable as required by `$id-4924739474925738`.
 
 ## Future synchronization theorem
 
@@ -194,7 +196,7 @@ Thus old raw history is observationally redundant for synchronization.
 
 ## Liveness-independent worst case
 
-Canonical compaction must satisfy `$id-jtwoparticip` and `$id-jtwoworstspace`.
+Canonical compaction must satisfy `$id-4719065396881648` and `$id-1762448645994697`.
 
 In particular, the required correctness proof and space bound may not rely on eventually receiving an acknowledgement from every host which could later present old state. A host may return only after an arbitrarily long delay, may first be encountered only after an arbitrarily long delay, or may never return at all.
 
