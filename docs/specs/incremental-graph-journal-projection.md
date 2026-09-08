@@ -119,7 +119,14 @@ A newer certificate may be less reusable after a later merge than an older certi
 
 Every locally reachable present legacy materialization is assumed safe for the local `oldValue` semantics of the existing graph algorithm.
 
-Synchronization can combine histories which destroy that guarantee. Before publishing a merged present cache, the synchronization normalization rules in `incremental-graph-journal-sync.md` must prove that the selected cached value remains admissible. If they cannot, synchronization creates a tombstone and removes the materialization instead of retaining hidden payload bytes.
+Synchronization can combine histories which require that safety to be re-established for the final configuration. `incremental-graph-journal-sync.md` permits two proofs:
+
+- an exact final cache plus all final direct-input `ValueId`s already coexist in either stable synchronization input snapshot, so the configuration inherits that snapshot's supported local `oldValue` safety; or
+- the final mixed configuration is causally serializable so the cache certificate can be placed before every mismatching final input occurrence in a linear extension of happened-before.
+
+A concurrent input occurrence is therefore not inherently unsafe: if it is not causally before the certificate, it may be serialized as a later input change which leaves an ordinary stale cache. Conversely, when neither a direct snapshot nor such a causal serialization witnesses safety, synchronization creates a tombstone and removes the materialization instead of retaining hidden payload bytes.
+
+The `"unknown"` bootstrap basis sentinel records lack of historical validity provenance, not lack of local cache safety. An unchanged migrated cache/input configuration may therefore be retained by the direct-snapshot witness without inventing a historical basis.
 
 The projection itself does not manufacture a replacement value or recover a payload from journal metadata.
 
@@ -161,6 +168,9 @@ Opening, staging, migration, synchronization, restoration, reset, and compaction
 - current certificates name the current value and have the exact schema-derived basis arity;
 - all copies of one `JournalEventId` agree on immutable context/authority time;
 - journal references are well-formed and bounded by represented causal/authority knowledge;
-- no retained EventRef has an authority time greater than the local header `authorityClock` high-water mark.
+- no retained EventRef has an authority time greater than the local header `authorityClock` high-water mark; and
+- locally witnessed header/event facts are consistent with J2-INV-7: whenever a retained event is covered by `causalSummary`, its authority time is not greater than `authorityClock`.
+
+J2-INV-7 also covers events whose raw EventRefs were removed by compaction. Supported readers may rely on that transition-maintained invariant; consistency validation is not required to reconstruct compacted-away history solely to prove the header pairing again.
 
 Unsupported inconsistencies are errors. Synchronization must not repair them by payload equality or by inventing provenance.
