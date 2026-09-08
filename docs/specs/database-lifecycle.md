@@ -82,11 +82,11 @@ If it does, startup performs **same-host restoration** of that authoritative sna
 
 The restored state is committed through the database's normal cutover mechanism, then reopened and passed through the migration gate. Therefore the saved state may be older than the running application when a supported migration can bring it forward. A saved pre-Journal-2 state may likewise be restored as legacy state and then migrated before Journal 2 synchronization or semantic reset becomes available.
 
-For Journal 2 identity safety, the supported lifecycle has a **publication-before-propagation invariant**: Journal 2 state authored by a host cannot become synchronization input to another host through normal synchronization unless the authoring host's own current state has first been rendered/checkpointed and synchronized to that host's authoritative repository branch. Therefore, if the authoritative same-host snapshot selected for restoration is still pre-Journal-2, no Journal 2 event from that writer exists in supported external state. This is what makes migration of that restored legacy snapshot safe to bootstrap under the existing durable writer identity.
+For Journal 2 identity safety, the supported lifecycle has a **publication-before-propagation invariant**: Journal 2 state authored by a host MUST NOT become synchronization input to another host through any supported transport path unless the authoring host's own authoritative synchronization branch has first been advanced to include that state. Under the current transport lifecycle this is achieved by rendering/checkpointing and synchronizing the local host's branch before peer state is processed in a cycle which could propagate the local state. Therefore, if the authoritative same-host snapshot selected for restoration is still pre-Journal-2, no Journal 2 event from that writer exists in supported external state. This is what makes migration of that restored legacy snapshot safe to bootstrap under the existing durable writer identity.
 
-If that ordering has been bypassed, or external state contains same-writer Journal 2 events not represented by the authoritative same-host snapshot, the state is outside the supported restoration lifecycle. Restoration/migration MUST fail rather than bootstrap Journal 2 under a writer identity whose event IDs may already have been published.
+This guarantee is part of the definition of supported Volodyslav-produced state; restoration is not required to prove it by global discovery. In particular, Volodyslav MUST NOT scan, contact, or wait for every possible peer branch merely to establish that no unsupported same-writer Journal 2 state exists elsewhere. A supported pre-Journal-2 authoritative snapshot is sufficient to rely on the publication-before-propagation invariant. If locally available evidence actually demonstrates that the invariant was bypassed or that incompatible same-writer Journal 2 events exist outside the authoritative snapshot, the state is outside the supported restoration lifecycle and restoration/migration MUST reject it rather than bootstrap Journal 2 under a writer identity whose event IDs may already have been published. The lifecycle does not require detection of unsupported external manipulation which is not locally observable.
 
-Any failure to query, obtain, parse, or install that state is fatal to bootstrap. Volodyslav does not silently fall back to an empty database after discovering that the host is supposed to have synchronized state.
+Any failure to query, obtain, parse, or install the authoritative same-host state which the restoration path actually requires is fatal to bootstrap. Volodyslav does not silently fall back to an empty database after discovering that the host is supposed to have synchronized state.
 
 ### 4.3 Creating a new host state
 
@@ -298,6 +298,8 @@ Volodyslav validates at lifecycle boundaries where validation establishes a guar
 
 Within those boundaries, Volodyslav may trust persistent state produced by supported Volodyslav transitions. It is not required to revalidate every internal consequence on every read or to defend against arbitrary storage tampering.
 
+In particular, a transition whose correctness relies on a supported-lifecycle invariant may rely on that invariant without discovering every external state which could hypothetically violate it. Validation is local to the state and evidence the transition actually has available unless another specification explicitly requires communication. Unsupported remote states do not create an obligation to search the universe for them.
+
 Validation remains appropriate when it provides:
 
 - a compatibility decision;
@@ -338,7 +340,7 @@ Implementations and future changes MUST preserve the following lifecycle propert
 10. Tests and diagnostics SHOULD distinguish incompatibility, failed preconditions, corruption, and unsupported manipulation rather than using those terms interchangeably.
 11. New recovery, import, or restore behavior MUST be implemented as a Volodyslav-controlled lifecycle transition. Documentation alone MUST NOT redefine raw file manipulation as supported.
 12. Storage refactors MAY change physical artifacts without changing this specification, provided these lifecycle preconditions, transitions, and postconditions remain true.
-13. Normal synchronization MUST preserve the publication-before-propagation invariant: a host's current Journal 2 state is published to its own authoritative synchronization branch before any peer state is consumed in a synchronization cycle which could propagate that Journal 2 state.
+13. Normal synchronization MUST preserve publication-before-propagation: a host's Journal 2 state MUST NOT be obtainable by another host as synchronization input through any supported transport path unless that state has first been published to the author's own authoritative synchronization branch.
 
 ## 15. Known boundaries
 
