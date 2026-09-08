@@ -27,7 +27,7 @@ Example from the codebase:
  * @property {FileCreator} creator - A file creator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {FileChecker} checker - A file checker instance.
- * @property {Environment} environment - A environment instance.
+ * @property {Environment} environment - An environment instance.
  * @property {Logger} logger - A logger instance.
  */
 
