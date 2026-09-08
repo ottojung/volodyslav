@@ -10,6 +10,8 @@ The migration implementation has one stable bounded `MigrationId` supplied by th
 
 `DeleteEvent(reason="migration")` is reserved for Journal-2-aware migrations which remove already represented semantic nodes under the general database migration lifecycle. The initial pre-Journal-2 bootstrap defined here does not need to author such a delete because it begins with no Journal 2 tombstone domain.
 
+This document fully specifies the initial pre-Journal-2-to-Journal-2 bootstrap. A later migration whose input already contains valid Journal 2 state must separately specify whatever per-node Journal 2 transformations are required by that migration. Journal 2 nevertheless imposes one migration-wide rule on every such later migration: receiver-local stored source cursors are not preserved across the migration.
+
 ## Preconditions
 
 The source database must satisfy the current legacy IncrementalGraph invariants:
@@ -23,6 +25,24 @@ The source database must satisfy the current legacy IncrementalGraph invariants:
 Corrupt legacy state is rejected rather than assigned invented journal meaning.
 
 Every legacy `modifiedAt` used to seed a bootstrap value authority time must be parseable by the canonical timestamp conversion required by Journal 2. Malformed persisted timestamps are rejected rather than assigned invented authority.
+
+## Journal-2-aware migration cursor invalidation
+
+A migration whose input already contains Journal 2 MUST atomically delete every receiver-local stored source cursor, for example every record under:
+
+```text
+journal/cursors/*
+```
+
+The deletion is required even when the migration does not obviously change a particular source's nodes.
+
+A source cursor certifies more than a source sequence coordinate: it also relies on the receiver-local invariant that the current receiver state already incorporates that source's synchronization-relevant state through the cursor. A database/schema migration may change the graph schema, dependency interpretation, materialized state, certificates, invalidation meaning, or other Journal 2 state on which that invariant depended. Journal 2 therefore does not assume that the pre-migration cursor remains valid under the post-migration interpretation.
+
+The base Journal 2 design intentionally provides no migration optimization for proving individual cursors safe to preserve. After a Journal-2-aware migration, the next synchronization with each source falls back to full synchronization. A successful full synchronization may then establish a fresh cursor under the migrated state.
+
+This rule preserves the required equivalence between incremental synchronization and the normative full-sync result without requiring every migration to prove a cross-version cursor theorem.
+
+The initial pre-Journal-2 bootstrap has no valid Journal 2 source cursors to preserve, so this rule adds no extra bootstrap work there.
 
 ## Frozen existing sublevels
 
@@ -129,6 +149,8 @@ Every represented node receives a current marker in the initial incarnation. The
 Journal 2 synchronization requires exact compatible database versions and valid Journal 2 metadata on both sides. A pre-Journal-2 replica is not incrementally or semantically synchronized directly with a Journal 2 replica and is not a valid Journal 2 reset source.
 
 It must first migrate to Journal 2. Same-host restoration may restore an older pre-Journal-2 saved database as lifecycle recovery, but the migration gate must establish Journal 2 before that state participates in Journal 2 synchronization or semantic reset.
+
+A later migration from one Journal-2-aware database version to another deletes receiver-local source cursors as specified above. Exact version compatibility still applies after migration; once compatible migrated peers synchronize again, their first post-migration synchronization relationship is re-established by full synchronization rather than by a pre-migration cursor.
 
 ## Size
 
