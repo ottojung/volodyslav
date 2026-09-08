@@ -35,10 +35,9 @@ For a present node K with current value V and canonical certificate C:
 ```text
 proofNotHardInvalidated(K,C) iff
     covers(C.event.context, S[K].nodeInvalidateFrontier)
-    and covers(C.event.context, S[K].valueHardInvalidateFrontier)
 ```
 
-Node-scoped invalidations are hard by definition.
+Node-scoped invalidations are hard by definition. Value-scoped invalidations are freshness-only assertions for one current cached value and do not independently break incoming validity proof.
 
 ## Incoming validity edge
 
@@ -103,7 +102,7 @@ Suppose D -> K, D is explicitly invalidated, K's value remains unchanged, and K 
 
 The runtime marks K stale even if D later revalidates unchanged. K remains stale until K itself is pulled and cache-revalidated.
 
-Therefore a freshness-only invalidation of K cannot be represented solely by recursively inspecting whether D is currently stale. The journal authors a value-scoped soft invalidation for K when the legacy runtime propagates that stale transition. The certificate does not cover that later invalidation until K itself validates again.
+Therefore a freshness-only invalidation of K cannot be represented solely by recursively inspecting whether D is currently stale. The journal authors a value-scoped invalidation for K when the legacy runtime propagates that stale transition. The certificate does not cover that later invalidation until K itself validates again.
 
 This is what keeps the projection equal to the existing flag-based algorithm rather than making freshness automatically recover when an input becomes fresh.
 
@@ -117,7 +116,7 @@ A newer certificate may be less reusable after a later merge than an older certi
 
 ## Present cache and `oldValue`
 
-Every supported present legacy materialization is already a legitimate cached value of its semantic node.
+Every supported present legacy materialization is already a legitimate cached value of its semantic node. This is the supported-state fact which discharges the `oldValue`-safety requirement `$id-8254606583674715`; Journal 2 does not weaken the ordinary computor contract in order to retain caches.
 
 The ordinary IncrementalGraph algorithm may keep that cached value while dependencies change arbitrarily. When the node is later pulled and its incoming cache proofs do not all hold, the computor receives the current input values together with the currently stored cache as `oldValue`.
 
