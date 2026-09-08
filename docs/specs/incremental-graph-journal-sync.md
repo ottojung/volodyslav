@@ -124,9 +124,7 @@ The authored invalidation advances from the synchronization transaction's joined
 
 A selected present cache must be safe to expose under the existing computor `oldValue` contract.
 
-If K has zero or one distinct direct semantic input, Journal 2 permits the selected present cache to remain as `oldValue` provided all other graph invariants hold.
-
-If K has two or more distinct direct inputs, let C be its canonical certificate. The cache is serially admissible only if C exists and, for every index `i` of `inputEdges(K)`, at least one condition holds:
+Let C be K's canonical certificate. The cache is serially admissible only if C exists and, for every index `i` of `inputEdges(K)`, at least one condition holds:
 
 ```text
 C.basis[i] == currentValueId(inputEdges(K)[i])
