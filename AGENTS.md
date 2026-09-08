@@ -24,12 +24,19 @@ Example from the codebase:
 /**
  * @typedef {object} Capabilities
  * @property {Command} git - A command instance for Git operations.
- * @property {FileCreator} creator - A file creator.
- * @property {FileDeleter} deleter - A file deleter.
- * @property {FileChecker} checker - A file checker.
- * @property {Environment} environment - Environment access.
- * @property {Logger} logger - Logging.
+ * @property {FileCreator} creator - A file creator instance.
+ * @property {FileDeleter} deleter - A file deleter instance.
+ * @property {FileChecker} checker - A file checker instance.
+ * @property {Environment} environment - An environment instance.
+ * @property {Logger} logger - A logger instance.
  */
+
+// ✅ Correct: Use capabilities
+await capabilities.checker.fileExists(indexFile);
+
+// ❌ Wrong: Direct system API
+const fs = require('fs');
+fs.existsSync(indexFile);
 ```
 
 ## JSDoc Typing
@@ -137,17 +144,20 @@ Define and throw errors as close to their source as possible:
 ```javascript
 // ✅ Correct: Error defined in same module where it's used
 class WorkingRepositoryError extends Error {
-    constructor(message) {
+    constructor(message, repositoryPath) {
         super(message);
-        this.name = "WorkingRepositoryError";
+        this.repositoryPath = repositoryPath;
     }
 }
 
-async function synchronize(capabilities) {
+function synchronize(capabilities) {
     try {
-        await capabilities.git(/* ... */);
-    } catch (error) {
-        throw new WorkingRepositoryError(`Synchronization failed: ${error}`);
+        // ... git operations
+    } catch (err) {
+        throw new WorkingRepositoryError(
+            `Failed to synchronize repository: ${err}`,
+            repository
+        );
     }
 }
 ```
@@ -483,7 +493,7 @@ function isExistingFile(object) {
 
 // ❌ Wrong: Using typeof or other checks
 function isPathLike(object) {
-    return typeof input === "object" && input !== null && "path" in input;
+    return typeof object === 'object' && object !== null && 'path' in object;
 }
 ```
 
