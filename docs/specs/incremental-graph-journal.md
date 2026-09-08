@@ -211,6 +211,8 @@ Arbitrary rollback to an older same-writer snapshot which could reuse already-pu
 
 Controlled semantic reset is different: it requires a valid compatible Journal 2 source, intentionally replaces an already-established logical database, increments the local journal incarnation, deletes receiver-local source cursors, and mints a fresh reset baseline as specified by `incremental-graph-journal-reset.md`.
 
+A migration whose input already contains Journal 2 also deletes all receiver-local stored source cursors atomically with the migrated state. Journal 2 does not assume that a migration preserves the receiver-side incorporated-state invariant certified by those cursors. The migration itself must separately specify whatever per-node Journal 2 transformations its schema/database change requires.
+
 ## Full sync before incremental sync
 
 The normative semantic synchronization operation is full synchronization. It scans the complete current journal/graph semantic domain and does not require cursors.
@@ -219,7 +221,7 @@ The journal change index and cursor machinery are an optimization. Incremental s
 
 For a valid cursor, incremental synchronization must be observationally equivalent to the full operation from the same source and receiver states.
 
-A receiver reset explicitly clears stored source cursors because replacing receiver state destroys the invariant those cursors certify. Incremental synchronization acquires required source payload/timestamp records while consuming `possibleMaybeChanges` from the same fixed caller-owned source snapshot and transfers both source causal and HLC authority header high-water state.
+Receiver reset and migration from an already-Journal-2 state explicitly clear stored source cursors when they invalidate the receiver-side invariant those cursors certify. The next synchronization with each source falls back to full synchronization and may establish a fresh cursor after success. Incremental synchronization otherwise acquires required source payload/timestamp records while consuming `possibleMaybeChanges` from the same fixed caller-owned source snapshot and transfers both source causal and HLC authority header high-water state.
 
 If synchronization cannot establish that a selected cached materialization is safe to expose later as `oldValue`, it may discard that cache and any dependent caches that cannot remain dependency-closed, while preserving negative authority against resurrection of the rejected occurrence. Cache retention is subordinate to `oldValue` safety.
 
