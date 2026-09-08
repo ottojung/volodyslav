@@ -165,20 +165,15 @@ Incremental synchronization owns one fixed committed source snapshot for the com
 
 A yielded changed summary may select a present `ValueId` which the receiver does not materialize. The payload/timestamp record for that exact `ValueId` must come from the **same fixed source snapshot** from which the summary was read. Otherwise the source could replace/delete the value between metadata iteration and payload fetch, yielding a payload from a different semantic state.
 
-Full synchronization's `oldValue` admissibility rule may also need to know whether an affected final cache plus all of its final direct inputs already coexist in the fixed source snapshot. A direct source-snapshot witness is not required to be part of the change iterator record itself. While the same source snapshot remains alive, synchronization MAY lazily read the current bounded `NodeJournalSummary` for K and its bounded set of direct inputs by NodeKey solely to evaluate that witness, including summaries whose change markers were not yielded after the cursor. Such witness reads do not widen the semantic change range and do not advance the cursor independently.
-
-This bounded fan-in lookup is not a fallback graph-wide source scan: it is performed only for affected normalization nodes whose direct source witness is needed. The `possibleMaybeChanges` iterator remains a change-discovery stream and still does not materialize an O(N) collection.
-
 While the snapshot is held, incremental synchronization must:
 
 1. read the source header and initialize `possibleMaybeChanges` for the cursor range;
 2. consume each changed-node summary lazily;
 3. for each yielded present head that may need source materialization, copy or stage the required exact legacy value/timestamp record from that same snapshot;
-4. while normalizing affected nodes, perform any bounded direct-input summary reads required to evaluate a source `oldValue` witness and copy/stage any additional source records whose exact identity the full-sync rule requires;
-5. finish the iterator and all source-witness reads;
-6. only then release the source snapshot after all source data needed for the operation has been copied/staged safely.
+4. finish the iterator;
+5. only then release the source snapshot after all source data needed for the operation has been copied/staged safely.
 
-The copied/staged payloads and bounded witness records are transient synchronization data, not journal records. They may be streamed directly into an inactive target replica rather than accumulated in RAM. The journal no-payload constraint and per-LevelDB journal-value size bound do not apply to these ordinary legacy value transfers.
+The copied/staged payloads are transient synchronization data, not journal records. They may be streamed directly into an inactive target replica rather than accumulated in RAM. The journal no-payload constraint and per-LevelDB journal-value size bound do not apply to these ordinary legacy value transfers.
 
 ## Incremental synchronization
 
@@ -189,7 +184,7 @@ For a valid stored cursor P for source S:
 3. consume its `changes` async stream, and from the same snapshot copy/stage every legacy payload/timestamp record required by yielded present heads that the receiver cannot otherwise materialize under the full-sync rules;
 4. incorporate the returned `causalSummary` and `authorityClock` header high-water marks as one coupled observation;
 5. semantically merge the yielded node summaries into the receiver's already represented source knowledge;
-6. run the same topological normalization rules that full synchronization would run for affected nodes and their dependent closure, performing bounded same-snapshot source-summary reads when the full-sync direct `oldValue` witness requires them;
+6. run the same topological normalization rules that full synchronization would run for affected nodes and their dependent closure;
 7. materialize selected present heads using only records obtained from the fixed source snapshot or an already-matching receiver `ValueId`;
 8. atomically publish receiver graph+journal changes and any joined header high-water metadata;
 9. only then advance the stored source cursor to the returned `through` coordinate.
@@ -206,9 +201,9 @@ Source-global causal or HLC high-water knowledge may nevertheless have grown wit
 
 For a changed present node, incremental synchronization reads both the current semantic summary and any required payload/timestamp record from the same source snapshot. Therefore it materializes the same selected source occurrence that full synchronization would inspect from that snapshot.
 
-If full synchronization would preserve an affected cache because the exact final cache/input configuration is directly witnessed by the source snapshot, incremental synchronization can evaluate the same fact through bounded direct NodeKey reads from that identical fixed source snapshot even when one of those source summaries was unchanged after P and therefore absent from the change stream. The direct-witness optimization therefore does not create a full-vs-incremental semantic discrepancy.
+Full synchronization does not require additional source reads merely to establish `oldValue` provenance: any selected present cache whose dependency closure survives is retainable as the node's cached `oldValue`, while certificate/input mismatches affect freshness and validity only. Therefore incremental synchronization does not need an extra witness scan beyond the changed summaries and exact payloads required by the ordinary merge.
 
-Consequently processing exactly the yielded changed source summaries after P, joining the current source causal/authority header, acquiring required payloads and bounded witness summaries from the same source snapshot, and applying the same normalization closure yields an observably equivalent result to a full synchronization from the same starting receiver/source snapshots.
+Consequently processing exactly the yielded changed source summaries after P, joining the current source causal/authority header, acquiring required payloads from the same source snapshot, and applying the same normalization closure yields an observably equivalent result to a full synchronization from the same starting receiver/source snapshots.
 
 This is the required correctness condition for enabling the optimization.
 
