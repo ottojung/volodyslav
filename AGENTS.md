@@ -547,10 +547,7 @@ Comments, JSDoc, and tests must describe or exercise the implementation that act
 
 Documentation must likewise describe the codebase as it exists, except that normative specification documents on explicitly work-in-progress branches may describe the living implementation design that is still being developed on that branch.
 
-For this rule, the explicitly work-in-progress branches are:
-
-- every branch whose name matches `next-waterfall-*`;
-- the `journal-2` branch while it contains the living Journal 2 specification work intended for a `next-waterfall-*` integration branch.
+For this rule, the explicitly work-in-progress branches are every branch whose name matches `next-waterfall-*` and those that target them instead of the default branch.
 
 On such a branch, normative specification documents may temporarily lead the implementation during active development, but documentation and implementation must become consistent before the work is promoted into any branch not designated above. Every other document and every branch without this designation receives no specification-leading exception. See `$id-8266025568617874`.
 
