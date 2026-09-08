@@ -28,15 +28,19 @@ cursor.through <= source.header.localJournalCounter
 
 A cursor also carries the receiver-local application invariant that the receiver currently represents the source synchronization-relevant state through `through`. A caller must not fabricate a larger cursor.
 
-The field checks above are necessary but not sufficient if the receiver has undergone a lifecycle replacement which destroyed that incorporated-state invariant.
+The field checks above are necessary but not sufficient if the receiver has undergone a lifecycle transition which destroyed that incorporated-state invariant.
 
-## Reset invalidation
+## Lifecycle invalidation
 
 There are two distinct reset cases.
 
 If the **source** resets, its `journalIncarnation` changes and old cursors about that source fail the ordinary cursor field check.
 
 If the **receiver** resets, its stored cursors for other sources still contain those sources' unchanged incarnations. Therefore receiver reset MUST delete all receiver-local stored source cursors atomically. A deleted cursor cannot be used for incremental synchronization; the next synchronization with that source falls back to full synchronization and establishes a fresh cursor after success.
+
+A migration whose input already contains Journal 2 likewise MUST delete all receiver-local stored source cursors atomically with the migrated state. Migration may change schema or Journal 2 interpretation in ways that invalidate the receiver-side claim that source state through the old cursor is still incorporated. Journal 2 deliberately does not attempt to prove individual cursors safe across migration. The next synchronization with each source therefore falls back to full synchronization and may establish a fresh cursor after success.
+
+The initial pre-Journal-2 bootstrap has no valid Journal 2 cursors to invalidate.
 
 Canonical compaction does not change either source incarnation or the receiver's incorporated-state invariant and therefore does not invalidate valid cursors.
 
@@ -153,7 +157,7 @@ journal/cursors/<sourceFingerprint> -> JournalCursor
 
 A stored cursor is receiver-local optimization state. It is never merged as semantic graph authority and is never copied into another host's journal as that host's progress.
 
-Controlled receiver reset deletes all such records.
+Controlled receiver reset and every migration whose input already contains Journal 2 delete all such records. The first synchronization with a source after either transition is full synchronization and may establish a new cursor after success.
 
 ## Incremental synchronization snapshot contract
 
@@ -203,7 +207,7 @@ This is the required correctness condition for enabling the optimization.
 
 ## Invalid cursor behavior
 
-If source identity/incarnation does not match, the receiver-local cursor record is absent (including after reset), progress is malformed, required cursor state is unavailable, or any validation fails, incremental synchronization must not guess. It falls back to full synchronization and, after success, stores a fresh cursor for the source's current incarnation/head.
+If source identity/incarnation does not match, the receiver-local cursor record is absent (including after reset or Journal-2-aware migration), progress is malformed, required cursor state is unavailable, or any validation fails, incremental synchronization must not guess. It falls back to full synchronization and, after success, stores a fresh cursor for the source's current incarnation/head.
 
 ## No computor API dependency
 
