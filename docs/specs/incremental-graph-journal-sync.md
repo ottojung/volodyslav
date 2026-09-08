@@ -35,7 +35,7 @@ R.authorityClock := maxAuthorityTime(
 
 and includes every source semantic event reference/context/authority time actually inspected if it is not already covered by the source header.
 
-This observation allocates no event by itself. It does not change `R.localJournalCounter`; remote source sequences remain coordinates in their own writer dimensions.
+The causal and authority joins are one coupled observation: they must preserve J2-INV-7 from `incremental-graph-journal.md` in the same publication. This observation allocates no event by itself. It does not change `R.localJournalCounter`; remote source sequences remain coordinates in their own writer dimensions.
 
 ## Semantic merge domain
 
@@ -122,28 +122,56 @@ The authored invalidation advances from the synchronization transaction's joined
 
 ### `oldValue` admissibility
 
-A selected present cache must be safe to expose under the existing computor `oldValue` contract.
+A selected present cache must be safe to expose under the existing computor `oldValue` contract. Synchronization may establish that safety in either of two ways.
 
-Let C be K's canonical certificate. The cache is serially admissible only if C exists and, for every index `i` of `inputEdges(K)`, at least one condition holds:
+#### Direct snapshot witness
 
-```text
-C.basis[i] == currentValueId(inputEdges(K)[i])
-```
+First, the exact final cache/input configuration is admissible if either stable synchronization input snapshot already contains it as one locally supported materialized configuration.
 
-or
+For input snapshot `X` in `{R,S}`, define:
 
 ```text
-happenedBefore(
-    C.event,
-    currentValueEvent(inputEdges(K)[i])
-)
+directOldValueWitness(X,K) iff
+    X.currentValueId(K) == finalCurrentValueId(K)
+    and for every Di in inputEdges(K):
+        X.currentValueId(Di) == finalCurrentValueId(Di)
 ```
 
-The second condition uses the immutable causal context of the input's original `ValueRef`; synchronization/adoption delivery order does not create happened-before for this test.
+If `directOldValueWitness(R,K)` or `directOldValueWitness(S,K)` holds, K is admissible. Every supported input snapshot already guarantees that its materialized cache is locally safe to supply as `oldValue`; synchronization is not required to reconstruct historical validation provenance merely to preserve that exact already-supported configuration.
 
-Intuition: every mismatching current input must be a genuine semantic successor of the cache's last validation, not merely a concurrently delivered branch. Otherwise selecting K as `oldValue` can expose which branch happened to win the synchronization order.
+This direct witness is especially important for a pre-Journal-2 bootstrap certificate containing `"unknown"` basis entries. `"unknown"` means that legacy storage could not identify a historical validity basis; it does not mean that the legacy cache itself was unsafe to use as `oldValue` in the graph state that was migrated.
 
-If this admissibility test fails, the receiver authors a local `sync-discard` tombstone and removes K from the legacy graph. It never stores K's payload in the journal.
+#### Causal serializability witness
+
+If neither input snapshot directly witnesses the exact final configuration, let C be K's canonical certificate. C must exist.
+
+For every index `i` of `inputEdges(K)`, let `V` be the final current input ValueRef. That input position is serially admissible when either:
+
+```text
+C.basis[i] == V.id
+```
+
+or:
+
+```text
+!happenedBefore(V, C.event)
+```
+
+The second condition deliberately includes both cases where `C.event` happened before V and where C and V are concurrent. For every mismatching final input which is not causally before C, add the hypothetical ordering edge:
+
+```text
+C.event -> V
+```
+
+Because no such V already happens before C, adding all of these edges creates no causal cycle. Therefore the existing partial order has a linear extension in which the cache is established first and every mismatching final input changes afterward. In that serialization, K is exactly an ordinary stale cache: a later pull may invoke its computor with the final inputs and K's previous value as `oldValue`.
+
+Concurrency is therefore not by itself a reason to destroy a cache. For example, if A validates K against input occurrence V1 while B independently replaces that input with concurrent occurrence V2, a merge selecting V2 may retain K stale: the history can be serialized as validation of K followed by the V2 change.
+
+By contrast, if a final mismatching input V genuinely happened before C, and neither input snapshot already witnesses the final cache+input configuration, synchronization has no supported serial explanation in which V is a later input change after this cache state. Retaining the cache would combine histories in a way not justified by either a real input snapshot or a causal linearization.
+
+The immutable causal context of the input's original `ValueRef` and of C is used for these tests; synchronization/adoption delivery order does not manufacture happened-before.
+
+If neither the direct snapshot witness nor the causal serializability witness succeeds, the receiver authors a local `sync-discard` tombstone and removes K from the legacy graph. It never stores K's payload in the journal.
 
 ### Cascading normalization
 
@@ -222,6 +250,8 @@ Synchronization may create only two new kinds of semantic authority:
 2. destructive tombstones for an unsafe/non-materializable cache.
 
 Both are negative authority and are authored after joining all causal/authority high-water facts observed by the synchronization transaction. Consequently they are causally after and greater in authority than the facts which caused them. They introduce no new value or validation candidate.
+
+The oldValue admissibility test depends only on the two fixed input snapshots, immutable EventRef causality, and the deterministic final candidate configuration. A cache preserved because of concurrency is not converted into new positive authority; it simply remains stale under projection. A later genuine recomputation, if requested outside synchronization, follows the ordinary graph rules.
 
 A particular already-observed positive state/certificate cannot force the same receiver to author an endless sequence of negative reactions: after the first reaction its resulting frontier/tombstone is represented, and redelivery is a no-op.
 
