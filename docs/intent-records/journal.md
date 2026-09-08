@@ -188,7 +188,11 @@ kind: requirement
 
 Synchronization must prefer `oldValue` safety over retaining a cached materialization.
 
-If the merged journal/graph state cannot establish that a selected cached value remains permissible to expose to its computor as `oldValue`, synchronization must not retain that materialization merely to preserve cache reuse. It may remove the cached node and any dependent cached materializations that cannot remain dependency-closed, while retaining sufficient negative journal authority to prevent rejected older cache occurrences from being resurrected by later synchronization. A later genuine recomputation may create a new value occurrence and materialize the node again.
+A cache may be retained only when the supported IncrementalGraph contract establishes that it remains permissible to expose that materialization to its computor as `oldValue`. Journal 2 must not invent a weaker synchronization-only meaning of `oldValue` merely to preserve cache reuse.
+
+For supported persisted IncrementalGraph state, a present materialization is already a legitimate cache of that semantic node. The ordinary graph contract permits that cache to remain while dependencies change and supplies it as `oldValue` when a later pull cannot cache-revalidate. Therefore input/certificate mismatch, concurrency, mixed replica provenance, multiple inputs, or unavailable historical basis provenance do not by themselves make a supported present cache unsafe as `oldValue`; those facts are expressed through stale freshness and missing validity edges.
+
+Synchronization removes a retained cache when an independent structural rule makes the materialization impossible to keep, such as dependency closure when a required direct input is finally absent. If synchronization removes a cache, it must retain sufficient negative journal authority to prevent rejected older cache occurrences from being resurrected incorrectly. A later genuine recomputation may create a new value occurrence and materialize the node again.
 
 ---
 
