@@ -33,11 +33,11 @@ Missing coordinates are zero.
 For a present node K with current value V and canonical certificate C:
 
 ```text
-proofNotHardInvalidated(K,C) iff
+proofCoversNodeInvalidation(K,C) iff
     covers(C.event.context, S[K].nodeInvalidateFrontier)
 ```
 
-Node-scoped invalidations are hard by definition. Value-scoped invalidations are freshness-only assertions for one current cached value and do not independently break incoming validity proof.
+Node-scoped invalidations break incoming validity proof until covered by a later certificate. Value-scoped invalidations are freshness-only assertions for one current cached value and do not independently break incoming validity proof.
 
 ## Incoming validity edge
 
@@ -51,7 +51,7 @@ edgeValid(Di,K) iff
     and Di is present
     and S[K].certificate exists
     and S[K].certificate.value == currentValueId(K)
-    and proofNotHardInvalidated(K,S[K].certificate)
+    and proofCoversNodeInvalidation(K,S[K].certificate)
     and S[K].certificate.basis[i] == currentValueId(Di)
 ```
 
@@ -76,7 +76,7 @@ fresh(K) iff
     K is present
     and S[K].certificate exists
     and S[K].certificate.value == currentValueId(K)
-    and proofNotHardInvalidated(K,S[K].certificate)
+    and proofCoversNodeInvalidation(K,S[K].certificate)
     and covers(
         S[K].certificate.event.context,
         S[K].valueInvalidateFrontier
