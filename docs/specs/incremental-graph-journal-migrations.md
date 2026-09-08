@@ -65,7 +65,9 @@ header.causalSummary = {}
 header.authorityClock = { physical: 0, logical: 0 }
 ```
 
-When this bootstrap follows same-host restoration of a pre-Journal-2 snapshot, reuse of the existing `DatabaseFingerprint` is supported only under the publication-before-propagation lifecycle invariant in `database-lifecycle.md`: no Journal 2 event from that writer may already exist in supported external state unless this host's own authoritative published snapshot had first advanced to Journal 2. If that invariant has been bypassed or cannot be relied upon, bootstrapping Journal 2 from sequence 1 under the existing fingerprint is unsupported and MUST fail rather than risk reusing a `JournalEventId`.
+When this bootstrap follows same-host restoration of a pre-Journal-2 snapshot, reuse of the existing `DatabaseFingerprint` is supported under the publication-before-propagation lifecycle invariant in `database-lifecycle.md`: no Journal 2 event from that writer can exist in supported external state unless this host's own authoritative published snapshot had first advanced to Journal 2.
+
+This is a supported-state invariant, not a global discovery protocol. If the authoritative same-host snapshot is pre-Journal-2, migration MAY rely on the lifecycle invariant and MUST NOT scan, contact, or wait for every possible peer merely to prove the absence of unsupported same-writer Journal 2 events. If locally available evidence actually demonstrates that the invariant was bypassed—for example, a state being processed already contains incompatible same-writer Journal 2 evidence not represented by the authoritative snapshot—then the state is outside the supported lifecycle and bootstrap under that writer identity MUST be rejected. Journal 2 does not require detecting every unsupported external manipulation which is not locally observable.
 
 Bootstrap semantic events use the canonical local semantic-event allocator from `incremental-graph-journal-types.md`; this migration does not define a separate allocation rule. The initially empty causal summary contains no remote coordinates, and later bootstrap events advance the same writer-local state through that canonical allocator.
 
@@ -89,7 +91,7 @@ All current ValueIds are known before certificate bases are constructed.
 
 ## Pass 2: encode incoming validity
 
-For every materialized K, create one `ValidateEvent(reason="bootstrap")` using the migration/publication wall-clock time as its physical HLC seed.
+Enumerate every materialized K in canonical NodeKey order. For each K, create one `ValidateEvent(reason="bootstrap")` using the migration/publication wall-clock time as its physical HLC seed.
 
 Let `inputEdges(K) = [D0, D1, ...]`. Set:
 
@@ -106,9 +108,11 @@ For a fresh node, the legacy invariant guarantees every basis entry is the curre
 
 For a stale node, partial validity is preserved exactly.
 
+The bootstrap certificate does not claim that an `"unknown"` basis entry was historically validated against the migration-time input. Nevertheless, the migrated legacy materialization itself is a supported local cache and therefore is known to be safe to expose as `oldValue` in that migration-time graph state. Synchronization's oldValue-admissibility rules may use an unchanged input-snapshot configuration as that direct safety witness without converting `"unknown"` into invented historical provenance.
+
 ## Pass 3: encode stale state
 
-For every legacy node whose freshness is `potentially-outdated`, author one value-scoped soft invalidation after its bootstrap certificate.
+Enumerate legacy nodes whose freshness is `potentially-outdated` in canonical NodeKey order. For each such node, author one value-scoped soft invalidation after its bootstrap certificate.
 
 This is necessary even when the node currently has complete incoming validity: the existing flag algorithm deliberately keeps such a node stale until it is itself pulled/cache-revalidated.
 
