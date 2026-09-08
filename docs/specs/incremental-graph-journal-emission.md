@@ -153,7 +153,7 @@ A dependent already stale does not receive another soft invalidation merely beca
 
 Journal 2 permits a synchronization or controlled lifecycle operation to retain one present cache while intentionally breaking all of its incoming proof. Such a transition authors a value-scoped hard invalidation.
 
-The initial full-sync design should prefer deletion for a cache whose `oldValue` admissibility cannot be proved; value-scoped hard invalidation is reserved for cases where retaining the payload is separately proven safe.
+Ordinary full synchronization does not require a value-scoped hard invalidation merely because selected input `ValueId`s differ from the cache certificate basis. Those mismatches already remove the corresponding projected validity edges and make the cache stale where appropriate. Value-scoped hard invalidation is reserved for lifecycle transitions which intentionally assert a stronger proof break.
 
 ## Deletion
 
@@ -191,9 +191,9 @@ If K would otherwise become fresh again automatically when that input later reva
 
 The soft invalidation is authored only when no already represented uncovered invalidation supplies that stale authority.
 
-## Synchronization-authored discard
+## Synchronization-authored structural discard
 
-If full synchronization selects a present cached value which cannot safely remain available as `oldValue` under the merged history, the receiver authors:
+If full synchronization selects a present cached node but a required direct input is finally absent, dependency closure forbids retaining that materialization. The receiver authors:
 
 ```text
 DeleteEvent {
@@ -203,9 +203,9 @@ DeleteEvent {
 
 Before authoring the delete, synchronization has joined the causal contexts and authority-clock high-water marks of every source/local authority it relied on. The resulting delete is therefore both causally after those observed facts and greater than them in the HLC authority order.
 
-This is the only permitted way for synchronization to solve an unsafe cache when the payload cannot remain in the legacy graph: the journal never hides or stores the payload.
+The removal may cascade to cached dependents which can no longer remain materialized because the legacy graph is dependency-closed. This is structural cache destruction, not a promise that the semantic node can never exist again: a later successful pull may rematerialize the required inputs, recompute the node, and author a new greater value occurrence.
 
-The removal may cascade to cached dependents which can no longer remain materialized because the legacy graph is dependency-closed. This is cache destruction, not a promise that the semantic node can never exist again: a later successful pull may recompute the node and author a new greater value occurrence.
+Synchronization does not use `sync-discard` merely because a retained cache's final inputs have mixed provenance or no longer match its certificate basis. Such a cache remains available as ordinary stale `oldValue` according to the existing graph algorithm.
 
 ## Reset and migration grouping
 
