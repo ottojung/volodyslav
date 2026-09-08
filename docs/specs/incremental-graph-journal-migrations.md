@@ -108,7 +108,7 @@ For a fresh node, the legacy invariant guarantees every basis entry is the curre
 
 For a stale node, partial validity is preserved exactly.
 
-The bootstrap certificate does not claim that an `"unknown"` basis entry was historically validated against the migration-time input. Nevertheless, the migrated legacy materialization itself is a supported local cache and therefore is known to be safe to expose as `oldValue` in that migration-time graph state. Synchronization's oldValue-admissibility rules may use an unchanged input-snapshot configuration as that direct safety witness without converting `"unknown"` into invented historical provenance.
+The bootstrap certificate does not claim that an `"unknown"` basis entry was historically validated against the migration-time input. `"unknown"` records unavailable historical validity provenance only. It does not make the migrated cached value unsafe to retain or to supply later as `oldValue`: the existing IncrementalGraph algorithm permits a stale cached value to remain while dependencies change, and passes that cache to the computor when revalidation cannot prove reuse.
 
 ## Pass 3: encode stale state
 
