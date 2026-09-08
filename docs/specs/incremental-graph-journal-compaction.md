@@ -60,7 +60,9 @@ Semantic head authority is totally ordered by immutable EventRef authority. Once
 
 A genuinely later value is a new authority and can defeat H directly. It does not need the discarded losing value to remain stored.
 
-If synchronization determines that the current winning payload is unsafe to retain, it authors a tombstone after joining the observed candidate causal/authority high-water state. The tombstone is therefore greater than the observed winning authority before the payload is deleted. Hence the journal never needs hidden payload storage to prevent an older value from resurrecting.
+If synchronization determines that the current winning present head cannot remain materialized because dependency closure fails, it authors a tombstone after joining the observed candidate causal/authority high-water state. The tombstone is therefore greater than the observed winning authority before the payload is deleted. Hence the journal never needs hidden payload storage to prevent an older value from resurrecting after structural removal.
+
+Mixed cache/input provenance does not require deletion: a surviving present cache remains ordinary stale `oldValue` when its final inputs no longer match its certificate basis.
 
 ## Invalidation compaction
 
@@ -183,7 +185,7 @@ Sketch:
 - current semantic heads and their immutable EventRef authority are preserved exactly;
 - current invalidation frontiers are preserved exactly;
 - the only certificate ever considered, including its context/authority, is preserved exactly;
-- current value/event contexts used by safety tests are preserved exactly;
+- current value and certificate EventRef contexts required by projection and future causal reasoning are preserved exactly;
 - losing state cannot become winning without a genuinely new greater authority;
 - future local event identity safety is preserved by `localJournalCounter`;
 - exact causal allocation safety is preserved by `causalSummary`;
