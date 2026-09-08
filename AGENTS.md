@@ -27,7 +27,7 @@ Example from the codebase:
  * @property {FileCreator} creator - A file creator instance.
  * @property {FileDeleter} deleter - A file deleter instance.
  * @property {FileChecker} checker - A file checker instance.
- * @property {Environment} environment - An environment instance.
+ * @property {Environment} environment - A environment instance.
  * @property {Logger} logger - A logger instance.
  */
 
@@ -521,7 +521,7 @@ Do not limit or filter the output of `npx jest`.
 
 Must follow this workflow when making changes to the source code:
 
-1. **Setup**: `npm install` (install dependencies in root and all workspaces)
+1. **Setup**: `npm install` (install all dependencies)
 2. **Understand**: Read relevant code and tests to understand the context
 3. **Implement**: Make changes following the capabilities pattern and JSDoc conventions
 4. **Test**: Run `npx jest path/to/specific/test.js` for focused testing
