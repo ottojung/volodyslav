@@ -24,19 +24,12 @@ Example from the codebase:
 /**
  * @typedef {object} Capabilities
  * @property {Command} git - A command instance for Git operations.
- * @property {FileCreator} creator - A file creator instance.
- * @property {FileDeleter} deleter - A file deleter instance.
- * @property {FileChecker} checker - A file checker instance.
- * @property {Environment} environment - An environment instance.
- * @property {Logger} logger - A logger instance.
+ * @property {FileCreator} creator - A file creator.
+ * @property {FileDeleter} deleter - A file deleter.
+ * @property {FileChecker} checker - A file checker.
+ * @property {Environment} environment - Environment access.
+ * @property {Logger} logger - Logging.
  */
-
-// ✅ Correct: Use capabilities
-await capabilities.checker.fileExists(indexFile);
-
-// ❌ Wrong: Direct system API
-const fs = require('fs');
-fs.existsSync(indexFile);
 ```
 
 ## JSDoc Typing
@@ -144,20 +137,17 @@ Define and throw errors as close to their source as possible:
 ```javascript
 // ✅ Correct: Error defined in same module where it's used
 class WorkingRepositoryError extends Error {
-    constructor(message, repositoryPath) {
+    constructor(message) {
         super(message);
-        this.repositoryPath = repositoryPath;
+        this.name = "WorkingRepositoryError";
     }
 }
 
-function synchronize(capabilities) {
+async function synchronize(capabilities) {
     try {
-        // ... git operations
-    } catch (err) {
-        throw new WorkingRepositoryError(
-            `Failed to synchronize repository: ${err}`,
-            repository
-        );
+        await capabilities.git(/* ... */);
+    } catch (error) {
+        throw new WorkingRepositoryError(`Synchronization failed: ${error}`);
     }
 }
 ```
@@ -493,7 +483,7 @@ function isExistingFile(object) {
 
 // ❌ Wrong: Using typeof or other checks
 function isPathLike(object) {
-    return typeof object === 'object' && object !== null && 'path' in object;
+    return typeof input === "object" && input !== null && "path" in input;
 }
 ```
 
@@ -543,16 +533,16 @@ The client (frontend) is assumed to be **non-adversarial** — it is the same de
 
 ## Don't speak of the dead
 
-Comments, JSDoc, tests, and documentation on branches which are not explicitly work-in-progress branches must describe the codebase as it exists.
+Comments, JSDoc, and tests must describe or exercise the implementation that actually exists on the branch. The work-in-progress specification exception below does not relax this rule.
+
+Documentation must likewise describe the codebase as it exists, except that normative specification documents on explicitly work-in-progress branches may describe the living implementation design that is still being developed on that branch.
 
 For this rule, the explicitly work-in-progress branches are:
 
 - every branch whose name matches `next-waterfall-*`;
 - the `journal-2` branch while it contains the living Journal 2 specification work intended for a `next-waterfall-*` integration branch.
 
-Such a branch may temporarily contain normative specifications for a living implementation that is still being developed as part of the same work. The specification may lead the implementation during development, but documentation and implementation must become consistent before the work is promoted into any branch not designated above. Every other branch receives no specification-leading exception and must satisfy the release-ready documentation-consistency rule. See `$id-wipdocslead`.
-
-Comments, JSDoc, and tests should still describe or exercise the implementation present on the branch unless they are themselves intentionally part of the active implementation work.
+On such a branch, normative specification documents may temporarily lead the implementation during active development, but documentation and implementation must become consistent before the work is promoted into any branch not designated above. Every other document and every branch without this designation receives no specification-leading exception. See `$id-8266025568617874`.
 
 Do not bring the conversation, prompt, development process, previous implementation, or discarded design into the source tree. The reader should not need to know what the agent was asked, what the agent changed, what used to be here, or why the new version is “better”. That belongs in the issue, pull request, commit message, or changelog.
 
@@ -653,16 +643,21 @@ Intent Records distinguish user intent from design choices and consequences deri
 
 ### Format
 
-Every independently referenceable current intent has a stable ID:
+Every independently referenceable current intent has a stable opaque numeric ID:
 
 ```text
-$id-<random lowercase letters>
+$id-<16 random decimal digits>
 ```
+
+Generate the 16 digits randomly. Do not choose digits that encode a mnemonic, date, sequence, category, counter, or other meaning. Before creating the record, check the current Intent Records and regenerate on collision.
+
+Every record also has a concise human-readable `title:`. The title is the readable name or shortcut for the intent; the numeric ID is its canonical stable identity and cross-reference.
 
 Each record begins with:
 
 ```text
-$id-nxywgbnet
+$id-4827319056123456
+title: Future-union theorem
 date: 2026/09/02
 source: @ottojung
 kind: requirement
@@ -670,7 +665,7 @@ kind: requirement
 The journal should satisfy the future-union theorem.
 ```
 
-Use the date on which the current form of the intent was directly established or confirmed. Keep an ID stable while it continues to identify the same intent; if the intent is withdrawn, remove the record.
+Use the date on which the current form of the intent was directly established or confirmed. Keep an ID stable while it continues to identify the same intent; if the intent is withdrawn, remove the record. The title may be improved without changing the ID while the record still denotes the same intent.
 
 Useful `kind` values include:
 
@@ -696,7 +691,7 @@ docs/intent-records/storage.md
 docs/intent-records/locking.md
 ```
 
-The `$id-...` is the stable reference, not the filename or heading.
+The `title:` is the human-readable shortcut. The `$id-...` is the canonical stable reference, not the filename or heading. See `$id-3741067944204779`.
 
 ### Intent versus derived design
 
