@@ -126,10 +126,13 @@ Canonical compaction does not change:
 
 Therefore a cursor whose source relationship was valid before compaction remains valid afterward.
 
-Controlled reset is different in two ways:
+Lifecycle transitions which intentionally invalidate cursor assumptions are different:
 
 - resetting a source changes that source's journal incarnation, invalidating cursors about it;
-- resetting a receiver explicitly deletes that receiver's stored cursors about all other sources, because the receiver no longer satisfies their incorporated-state invariant.
+- resetting a receiver explicitly deletes that receiver's stored cursors about all other sources, because the receiver no longer satisfies their incorporated-state invariant;
+- migrating a receiver whose input already contains Journal 2 explicitly deletes that receiver's stored cursors about all sources, because the post-migration state does not assume the pre-migration incorporated-state invariant remains valid.
+
+The initial pre-Journal-2 bootstrap has no valid Journal 2 cursors to invalidate.
 
 ## Iterator semantic-effect theorem
 
@@ -161,7 +164,7 @@ The theorem concerns the sequence of yielded bounded records, not materializatio
 
 ## Future synchronization theorem
 
-For any supported state A, canonical compaction `C(A)`, and any future supported sequence T consisting of local graph operations, resets, and full/incremental synchronizations:
+For any supported state A, canonical compaction `C(A)`, and any future supported sequence T consisting of local graph operations, migrations, resets, and full/incremental synchronizations:
 
 ```text
 observe(run(A,T)) == observe(run(C(A),T))
@@ -170,6 +173,8 @@ observe(run(A,T)) == observe(run(C(A),T))
 where `observe` includes the converged legacy graph and Journal 2 semantics promised by the intent records, but excludes optional high-level operation grouping for raw history removed by compaction.
 
 The quantification over T includes arbitrarily delayed synchronization with a state which has not participated for an arbitrarily long time. The theorem does not assume that every known or potentially relevant remote host eventually returns.
+
+A Journal-2-aware migration in T follows the migration specification, including atomic deletion of receiver-local source cursors. Thus compaction cannot cause a stale pre-migration cursor to survive a migration in one execution but not the other.
 
 Sketch:
 
@@ -181,7 +186,7 @@ Sketch:
 - future local event identity safety is preserved by `localJournalCounter`;
 - exact causal allocation safety is preserved by `causalSummary`;
 - future total-authority allocation safety is preserved by `authorityClock` even when high-authority raw events were compacted away;
-- changed-node markers preserve every valid cursor's semantic suffix;
+- changed-node markers preserve every valid cursor's semantic suffix until a lifecycle transition intentionally deletes those cursors;
 - no future operation requires an old payload because the journal never promises one;
 - operation records/IDs do not participate in any of the above semantic rules.
 
