@@ -663,7 +663,7 @@ Every record also has a concise human-readable `title:`. The title is the readab
 Each record begins with:
 
 ```text
-$id-4827319056123456
+$id-9257192991864974
 title: Future-union theorem
 date: 2026/09/02
 source: @ottojung
