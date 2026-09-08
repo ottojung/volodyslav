@@ -219,23 +219,19 @@ For a fixed current value, only the greatest certificate by `authorityCompare(ce
 InvalidateScope =
     | { kind: "node" }
     | { kind: "value", value: ValueId }
-
-InvalidateMode = "soft" | "hard"
 ```
 
-- node-scoped invalidation is always hard and represents explicit invalidation independent of the selected current value;
-- value-scoped soft invalidation marks one cached value stale while preserving its incoming proof where still compatible;
-- value-scoped hard invalidation also breaks that value's incoming proof.
+- node-scoped invalidation represents explicit invalidation independent of the selected current value and breaks incoming proof until covered by a later certificate;
+- value-scoped invalidation marks one cached value stale while preserving its incoming proof where still compatible.
 
 Compacted summaries store invalidation frontiers instead of individual old invalidates:
 
 ```text
-nodeInvalidateFrontier      : CausalPrefix
-valueInvalidateFrontier     : CausalPrefix
-valueHardInvalidateFrontier : CausalPrefix
+nodeInvalidateFrontier  : CausalPrefix
+valueInvalidateFrontier : CausalPrefix
 ```
 
-The value-specific frontiers exist only for the currently selected present `ValueId`. They are discarded when that value can no longer become current.
+The value-specific frontier exists only for the currently selected present `ValueId`. It is discarded when that value can no longer become current.
 
 ## Semantic state head
 
@@ -269,7 +265,6 @@ NodeJournalSummary = {
     // Present only when head.kind == "present".
     certificate?: ValidationCertificate,
     valueInvalidateFrontier?: CausalPrefix,
-    valueHardInvalidateFrontier?: CausalPrefix,
 
     // Local change-index coordinate, never imported as semantic authority.
     lastLocalChange: JournalSequence
@@ -278,7 +273,7 @@ NodeJournalSummary = {
 
 The `certificate`, when present, must name the current `head.value.id`.
 
-The three invalidation vectors and the contexts inside the current value/certificate dominate the summary size. `authorityTime` contributes only a constant number of `O(log H)` scalar coordinates per retained reference. Under bounded NodeKey and in-degree assumptions, one summary is `O(R log H)` bits.
+The two invalidation vectors and the contexts inside the current value/certificate dominate the summary size. `authorityTime` contributes only a constant number of `O(log H)` scalar coordinates per retained reference. Under bounded NodeKey and in-degree assumptions, one summary is `O(R log H)` bits.
 
 ## High-level operation records
 
@@ -389,7 +384,6 @@ ValidateEvent = JournalEventBase & {
 InvalidateEvent = JournalEventBase & {
     kind: "invalidate",
     scope: InvalidateScope,
-    mode: InvalidateMode,
     reason: "explicit" | "propagated" | "sync"
 }
 
