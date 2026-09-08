@@ -543,11 +543,20 @@ The client (frontend) is assumed to be **non-adversarial** — it is the same de
 
 ## Don't speak of the dead
 
-Comments, JSDoc, tests, and documentation must describe the codebase as it exists.
+Comments, JSDoc, and tests must describe or exercise the implementation that actually exists on the branch. The work-in-progress specification exception below does not relax this rule.
+
+Documentation must likewise describe the codebase as it exists, except that normative specification documents on explicitly work-in-progress branches may describe the living implementation design that is still being developed on that branch.
+
+For this rule, the explicitly work-in-progress branches are:
+
+- every branch whose name matches `next-waterfall-*`;
+- the `journal-2` branch while it contains the living Journal 2 specification work intended for a `next-waterfall-*` integration branch.
+
+On such a branch, normative specification documents may temporarily lead the implementation during active development, but documentation and implementation must become consistent before the work is promoted into any branch not designated above. Every other document and every branch without this designation receives no specification-leading exception. See `$id-8266025568617874`.
 
 Do not bring the conversation, prompt, development process, previous implementation, or discarded design into the source tree. The reader should not need to know what the agent was asked, what the agent changed, what used to be here, or why the new version is “better”. That belongs in the issue, pull request, commit message, or changelog.
 
-Only the current codebase exists. Everything outside it is a postapocalyptic no-man's land: old code, abandoned plans, prompt context, temporary reasoning, and implementation attempts. Nothing living can survive there. Do not smuggle it back into the repository.
+Only the current codebase and the explicitly living design of an in-progress integration branch exist. Everything else is a postapocalyptic no-man's land: old code, abandoned plans, prompt context, temporary reasoning, and implementation attempts. Nothing living can survive there. Do not smuggle it back into the repository.
 
 Bad:
 
@@ -644,16 +653,21 @@ Intent Records distinguish user intent from design choices and consequences deri
 
 ### Format
 
-Every independently referenceable current intent has a stable ID:
+Every independently referenceable current intent has a stable opaque numeric ID:
 
 ```text
-$id-<random lowercase letters>
+$id-<16 random decimal digits>
 ```
+
+Generate the 16 digits randomly. Do not choose digits that encode a mnemonic, date, sequence, category, counter, or other meaning. Before creating the record, check the current Intent Records and regenerate on collision.
+
+Every record also has a concise human-readable `title:`. The title is the readable name or shortcut for the intent; the numeric ID is its canonical stable identity and cross-reference.
 
 Each record begins with:
 
 ```text
-$id-nxywgbnet
+$id-4827319056123456
+title: Future-union theorem
 date: 2026/09/02
 source: @ottojung
 kind: requirement
@@ -661,7 +675,7 @@ kind: requirement
 The journal should satisfy the future-union theorem.
 ```
 
-Use the date on which the current form of the intent was directly established or confirmed. Keep an ID stable while it continues to identify the same intent; if the intent is withdrawn, remove the record.
+Use the date on which the current form of the intent was directly established or confirmed. Keep an ID stable while it continues to identify the same intent; if the intent is withdrawn, remove the record. The title may be improved without changing the ID while the record still denotes the same intent.
 
 Useful `kind` values include:
 
@@ -687,7 +701,7 @@ docs/intent-records/storage.md
 docs/intent-records/locking.md
 ```
 
-The `$id-...` is the stable reference, not the filename or heading.
+The `title:` is the human-readable shortcut. The `$id-...` is the canonical stable reference, not the filename or heading. See `$id-3741067944204779`.
 
 ### Intent versus derived design
 
