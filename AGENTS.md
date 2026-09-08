@@ -543,9 +543,9 @@ The client (frontend) is assumed to be **non-adversarial** — it is the same de
 
 ## Don't speak of the dead
 
-Comments, JSDoc, tests, and documentation on release-ready branches must describe the codebase as it exists.
+Comments, JSDoc, tests, and documentation on branches which are not explicitly work-in-progress integration branches must describe the codebase as it exists.
 
-An explicitly work-in-progress integration branch may temporarily contain normative specifications for a living implementation that is still being developed on that same branch. The specification may lead the implementation during integration, but the branch must become documentation/implementation-consistent before it is treated as release-ready or promoted into a release-ready branch. This exception is only for the current in-progress design; it does not permit discarded designs, superseded implementations, process narration, or unrelated future ideas in source documentation. See `$id-wipdocslead`.
+For this rule, a branch is an explicitly work-in-progress integration branch if and only if its branch name matches `next-waterfall-*`. Such a branch may temporarily contain normative specifications for a living implementation that is still being developed on that same branch. The specification may lead the implementation during integration, but documentation and implementation must become consistent before the branch is promoted into any branch outside `next-waterfall-*`. Every other branch receives no specification-leading exception and must satisfy the release-ready documentation-consistency rule. See `$id-wipdocslead`.
 
 Comments, JSDoc, and tests should still describe or exercise the implementation present on the branch unless they are themselves intentionally part of the active implementation work.
 
