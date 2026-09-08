@@ -106,7 +106,7 @@ This timestamp-first value-event order avoids allowing an unrelated later-modifi
 After all target present nodes have their reset ValueIds, author the validation/invalidation baseline in deterministic semantic topological order:
 
 4. author a local `ValidateEvent(reason="reset")` whose basis encodes the resulting legacy incoming validity relation as described below;
-5. if the resulting target node is stale, author a local value-scoped soft invalidation after the validation so the projection remains stale.
+5. if the resulting target node is stale, author a local value-scoped invalidation after the validation so the projection remains stale.
 
 For every K in `ResetKeys` which is absent from the resulting target legacy graph, author a local `DeleteEvent(reason="reset")` in deterministic canonical NodeKey order.
 
@@ -131,7 +131,7 @@ basis[i] = "unknown"
 
 For a target fresh node, the existing graph invariant guarantees every required incoming validity edge exists, so the basis contains the current ValueId for every direct input.
 
-For a target stale node, partial or absent validity is represented exactly by current IDs and `"unknown"` sentinels. A following soft invalidation keeps the node stale even when all basis entries happen to match.
+For a target stale node, partial or absent validity is represented exactly by current IDs and `"unknown"` sentinels. A following value-scoped invalidation keeps the node stale even when all basis entries happen to match.
 
 No source historical certificate is imported.
 
