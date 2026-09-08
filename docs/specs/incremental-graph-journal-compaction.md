@@ -37,7 +37,7 @@ For each NodeKey K, fold all represented historical/adopted authority according 
 - retain the greatest semantic head authority by `authorityCompare` over its `EventRef`;
 - retain the componentwise maximum node-wide invalidation frontier;
 - if the head is present with V, retain only metadata scoped to V;
-- retain componentwise maximum current-value invalidate and hard-invalidate frontiers;
+- retain the componentwise maximum current-value invalidate frontier;
 - retain only the greatest certificate naming V by certificate EventRef authority;
 - retain the exact immutable context and `authorityTime` of the current `ValueRef` and certificate event;
 - retain the latest local changed-node sequence.
@@ -78,9 +78,9 @@ These are vector-clock coordinates, not cross-writer conflict-precedence numbers
 
 ### Value-scoped invalidations
 
-Value-specific invalidations can affect only their named ValueId. Once that ValueId is not the current semantic head and cannot become current again under total head authority, its value-specific frontiers may be discarded.
+Value-specific invalidations can affect only their named ValueId. Once that ValueId is not the current semantic head and cannot become current again under total head authority, its value-specific frontier may be discarded.
 
-For the current value, repeated invalidates by one author collapse to one greatest all-mode coordinate and one greatest hard coordinate.
+For the current value, repeated invalidates by one author collapse to one greatest writer-local coordinate in `valueInvalidateFrontier`.
 
 ## Causal/authority header compaction
 
