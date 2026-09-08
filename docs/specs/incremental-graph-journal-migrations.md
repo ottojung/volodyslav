@@ -45,6 +45,8 @@ header.causalSummary = {}
 header.authorityClock = { physical: 0, logical: 0 }
 ```
 
+When this bootstrap follows same-host restoration of a pre-Journal-2 snapshot, reuse of the existing `DatabaseFingerprint` is supported only under the publication-before-propagation lifecycle invariant in `database-lifecycle.md`: no Journal 2 event from that writer may already exist in supported external state unless this host's own authoritative published snapshot had first advanced to Journal 2. If that invariant has been bypassed or cannot be relied upon, bootstrapping Journal 2 from sequence 1 under the existing fingerprint is unsupported and MUST fail rather than risk reusing a `JournalEventId`.
+
 Bootstrap semantic events use the canonical local semantic-event allocator from `incremental-graph-journal-types.md`; this migration does not define a separate allocation rule. The initially empty causal summary contains no remote coordinates, and later bootstrap events advance the same writer-local state through that canonical allocator.
 
 The migration may allocate one local high-level operation record and attach its `OperationId` to bootstrap semantic events. A `kind="migration"` record carries the stable migration `MigrationId`; a `kind="bootstrap"` record may also carry that migration ID when the bootstrap is specifically the expansion of this migration. Operation grouping is local history only and does not affect semantic allocation.
