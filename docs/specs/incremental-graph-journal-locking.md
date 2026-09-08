@@ -89,6 +89,10 @@ Reset changes `journalIncarnation` atomically with installation of its rebuilt s
 
 Controlled reset also atomically deletes every receiver-local stored source cursor (`journal/cursors/*`). This deletion belongs to the same reset publication boundary as the replacement graph/journal baseline. A reset state with old receiver-local source cursors still present is not a supported committed state.
 
+A migration whose input already contains Journal 2 likewise atomically deletes every receiver-local stored source cursor as part of the migration publication. Cursor deletion must become visible in the same cutover as the migrated graph/journal state. A migrated Journal 2 state paired with pre-migration receiver-local source cursors is not a supported committed state. The next synchronization with each source is therefore full synchronization and may establish a fresh cursor after success.
+
+The initial pre-Journal-2 bootstrap has no valid Journal 2 source cursors to delete.
+
 ## Private possible-maybe-changes iterator
 
 `possibleMaybeChanges(sourceSnapshot, cursor)` is a private database/journal API. It is not exposed through the public `IncrementalGraph` object and is not available to computors.
