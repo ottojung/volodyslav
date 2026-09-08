@@ -188,7 +188,7 @@ T = retained absent/tombstoned represented keys
 N = L + T
 ```
 
-After canonical compaction, each represented semantic key has only a constant number of future-relevant journal records, each of serialized size `O(R log H)` bits under the assumptions in `$id-jtwosizebd`.
+After canonical compaction, each represented semantic key has only a constant number of future-relevant journal records, each of serialized size `O(R log H)` bits under the assumptions in `$id-6193879998109578`.
 
 Consequently the complete compacted journal has serialized size:
 
@@ -200,6 +200,21 @@ O((L + T) R log H) bits
 `T` may grow with historical unique-key churn. The bound is a pessimistic worst-case bound and does not rely on remote-host acknowledgements or eventual return.
 
 The proof is in `incremental-graph-journal-compaction.md`.
+
+### J2-INV-7: causal/authority header coherence
+
+The causal and authority header high-water marks are one coupled summary of observed semantic history. For every supported semantic event `E` authored by writer `A`:
+
+```text
+E.id.sequence <= header.causalSummary[A]
+    => E.authorityTime <= header.authorityClock
+```
+
+where the right-hand comparison is the canonical `AuthorityTime` order. This invariant quantifies over semantic events already compacted away as well as retained EventRefs; raw history is not required in order for a supported reader to rely on the header.
+
+Every supported transition which advances `causalSummary` MUST, in the same atomic publication, advance `authorityClock` enough to cover the authority time of every newly represented observed event. Synchronization/source observation, direct EventRef observation, local event allocation, reset, migration from existing Journal 2, same-host restoration, and compaction must preserve this coupling. A transition must never publish a causal coordinate whose corresponding observed authority high-water has been forgotten.
+
+This invariant is maintained by supported transition construction. Validation may reject locally witnessed violations, but is not required to reconstruct compacted-away events merely to re-prove it.
 
 ## Supported lifecycle
 
@@ -223,7 +238,7 @@ For a valid cursor, incremental synchronization must be observationally equivale
 
 Receiver reset and migration from an already-Journal-2 state explicitly clear stored source cursors when they invalidate the receiver-side invariant those cursors certify. The next synchronization with each source falls back to full synchronization and may establish a fresh cursor after success. Incremental synchronization otherwise acquires required source payload/timestamp records while consuming `possibleMaybeChanges` from the same fixed caller-owned source snapshot and transfers both source causal and HLC authority header high-water state.
 
-If synchronization cannot establish that a selected cached materialization is safe to expose later as `oldValue`, it may discard that cache and any dependent caches that cannot remain dependency-closed, while preserving negative authority against resurrection of the rejected occurrence. Cache retention is subordinate to `oldValue` safety.
+If synchronization cannot establish that a selected cached materialization is safe to expose later as `oldValue`, it may discard that cache and any dependent caches that cannot remain dependency-closed, while preserving negative authority against resurrection of the rejected occurrence. Cache retention is subordinate to `oldValue` safety. Safety may be established either by inheriting an already-supported cache/input configuration from one synchronization input snapshot or by the serial-admissibility proof in `incremental-graph-journal-sync.md`; mere concurrency is not by itself a reason to discard a cache.
 
 ## Transport independence
 
