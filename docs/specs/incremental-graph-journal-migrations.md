@@ -112,7 +112,7 @@ The bootstrap certificate does not claim that an `"unknown"` basis entry was his
 
 ## Pass 3: encode stale state
 
-Enumerate legacy nodes whose freshness is `potentially-outdated` in canonical NodeKey order. For each such node, author one value-scoped soft invalidation after its bootstrap certificate.
+Enumerate legacy nodes whose freshness is `potentially-outdated` in canonical NodeKey order. For each such node, author one value-scoped invalidation after its bootstrap certificate.
 
 This is necessary even when the node currently has complete incoming validity: the existing flag algorithm deliberately keeps such a node stale until it is itself pulled/cache-revalidated.
 
