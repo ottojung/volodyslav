@@ -98,7 +98,7 @@ This rule is part of synchronization semantics before compaction; compaction doe
 
 ## Topological normalization
 
-The pure candidate join can describe a cache that cannot safely exist in the final legacy graph. Normalize candidates in schema topological order from inputs to dependents.
+The pure candidate join can describe graph state that cannot exist in the final legacy graph. Normalize candidates in schema topological order from inputs to dependents.
 
 ### Missing input
 
@@ -120,62 +120,35 @@ If neither input already carries such authority for K, the receiver authors one 
 
 The authored invalidation advances from the synchronization transaction's joined causal summary and authority-clock high-water mark.
 
-### `oldValue` admissibility
+### `oldValue` retention
 
-A selected present cache must be safe to expose under the existing computor `oldValue` contract. Synchronization may establish that safety in either of two ways.
+A present cache which survives dependency-closure normalization remains a valid cached value of the same semantic node and MAY be retained even when its final direct inputs come from different synchronization histories.
 
-#### Direct snapshot witness
+This follows directly from the existing IncrementalGraph pull contract. For a stale materialized node, the ordinary runtime:
 
-First, the exact final cache/input configuration is admissible if either stable synchronization input snapshot already contains it as one locally supported materialized configuration.
+1. pulls the node's current inputs;
+2. checks whether the existing incoming validity proofs permit cache-only revalidation; and
+3. if they do not, invokes the computor with those current input values and the node's currently stored cached value as `oldValue`.
 
-For input snapshot `X` in `{R,S}`, define:
+That contract does not require `oldValue` to have been computed or validated against the current input values. Arbitrary dependency changes may occur while a node remains cached and stale; the cached value is still the value supplied as `oldValue` on the next recomputation.
 
-```text
-directOldValueWitness(X,K) iff
-    X.currentValueId(K) == finalCurrentValueId(K)
-    and for every Di in inputEdges(K):
-        X.currentValueId(Di) == finalCurrentValueId(Di)
-```
+Journal 2 therefore does not impose a stronger synchronization-only provenance rule. A final input `ValueId` which differs from the selected cache certificate basis removes the corresponding incoming validity proof and makes the cache stale through normal projection. It does not make the cached payload itself illegal as `oldValue`.
 
-If `directOldValueWitness(R,K)` or `directOldValueWitness(S,K)` holds, K is admissible. Every supported input snapshot already guarantees that its materialized cache is locally safe to supply as `oldValue`; synchronization is not required to reconstruct historical validation provenance merely to preserve that exact already-supported configuration.
+The computor's existing `Unchanged` contract remains the semantic guard: if invoked with the final inputs and retained cached value, it may return `Unchanged` only when preserving that value is semantically admissible for those current inputs. Otherwise it must produce a semantic value in `Outcomes(..., oldValue)` normally.
 
-This direct witness is especially important for a pre-Journal-2 bootstrap certificate containing `"unknown"` basis entries. `"unknown"` means that legacy storage could not identify a historical validity basis; it does not mean that the legacy cache itself was unsafe to use as `oldValue` in the graph state that was migrated.
+Consequently synchronization MUST NOT delete a present cache merely because:
 
-#### Causal serializability witness
+- one or more final input `ValueId`s differ from its certificate basis;
+- the cache and final inputs originated on different replicas;
+- those value occurrences are concurrent;
+- the node has multiple direct inputs; or
+- a bootstrap/reset certificate contains `"unknown"` basis entries.
 
-If neither input snapshot directly witnesses the exact final configuration, let C be K's canonical certificate. C must exist.
-
-For every index `i` of `inputEdges(K)`, let `V` be the final current input ValueRef. That input position is serially admissible when either:
-
-```text
-C.basis[i] == V.id
-```
-
-or:
-
-```text
-!happenedBefore(V, C.event)
-```
-
-The second condition deliberately includes both cases where `C.event` happened before V and where C and V are concurrent. For every mismatching final input which is not causally before C, add the hypothetical ordering edge:
-
-```text
-C.event -> V
-```
-
-Because no such V already happens before C, adding all of these edges creates no causal cycle. Therefore the existing partial order has a linear extension in which the cache is established first and every mismatching final input changes afterward. In that serialization, K is exactly an ordinary stale cache: a later pull may invoke its computor with the final inputs and K's previous value as `oldValue`.
-
-Concurrency is therefore not by itself a reason to destroy a cache. For example, if A validates K against input occurrence V1 while B independently replaces that input with concurrent occurrence V2, a merge selecting V2 may retain K stale: the history can be serialized as validation of K followed by the V2 change.
-
-By contrast, if a final mismatching input V genuinely happened before C, and neither input snapshot already witnesses the final cache+input configuration, synchronization has no supported serial explanation in which V is a later input change after this cache state. Retaining the cache would combine histories in a way not justified by either a real input snapshot or a causal linearization.
-
-The immutable causal context of the input's original `ValueRef` and of C is used for these tests; synchronization/adoption delivery order does not manufacture happened-before.
-
-If neither the direct snapshot witness nor the causal serializability witness succeeds, the receiver authors a local `sync-discard` tombstone and removes K from the legacy graph. It never stores K's payload in the journal.
+Those situations affect freshness and validity, not whether the stored value may be supplied as `oldValue`. A synchronization-authored `sync-discard` tombstone is required only when structural normalization makes the cache non-materializable, such as when a required direct input is finally absent.
 
 ### Cascading normalization
 
-A newly authored tombstone may make dependents non-materializable. Continue topologically until every final present node has all inputs present and passes the admissibility rule.
+A newly authored tombstone for a non-materializable node may make dependents non-materializable. Continue topologically until every final present node has all inputs present.
 
 No computor is invoked by synchronization.
 
@@ -183,7 +156,7 @@ No computor is invoked by synchronization.
 
 For every node whose candidate metadata is simply adopted, preserve the foreign semantic IDs, immutable EventRefs, frontiers, and certificate and record a receiver-local `AdoptEvent` only when receiver synchronization-relevant state actually changes.
 
-For every normalization-created soft invalidation or tombstone, use the newly authored receiver EventRef authority.
+For every normalization-created soft invalidation or structural tombstone, use the newly authored receiver EventRef authority.
 
 After those events are folded, the final legacy graph is exactly the journal projection.
 
@@ -244,18 +217,18 @@ Assume:
 
 Pure candidate joining uses deterministic total EventRef maxima/componentwise frontier maxima and therefore repeated delivery of already represented positive authority cannot change the candidate again.
 
-Synchronization may create only two new kinds of semantic authority:
+Synchronization may create only two forms of new negative semantic authority during normalization:
 
 1. soft invalidations required to preserve a newly merged stale transition;
-2. destructive tombstones for an unsafe/non-materializable cache.
+2. destructive tombstones required by dependency closure when a selected present cache has a finally absent direct input, including cascading dependents.
 
-Both are negative authority and are authored after joining all causal/authority high-water facts observed by the synchronization transaction. Consequently they are causally after and greater in authority than the facts which caused them. They introduce no new value or validation candidate.
+Both are authored after joining all causal/authority high-water facts observed by the synchronization transaction. Consequently they are causally after and greater in authority than the facts which caused them. They introduce no new value or validation candidate.
 
-The oldValue admissibility test depends only on the two fixed input snapshots, immutable EventRef causality, and the deterministic final candidate configuration. A cache preserved because of concurrency is not converted into new positive authority; it simply remains stale under projection. A later genuine recomputation, if requested outside synchronization, follows the ordinary graph rules.
+Mixed cache/input provenance creates no additional negative authority. Basis mismatches simply project the retained cache stale, exactly as ordinary dependency value changes do in the local graph algorithm.
 
-A particular already-observed positive state/certificate cannot force the same receiver to author an endless sequence of negative reactions: after the first reaction its resulting frontier/tombstone is represented, and redelivery is a no-op.
+A particular already-observed positive state/certificate cannot force the same receiver to author an endless sequence of negative reactions: after the first required soft invalidation or structural tombstone, its resulting frontier/tombstone is represented, and redelivery is a no-op.
 
-A genuinely unseen concurrent positive authority may later force another finite negative normalization. Under quiescence there are finitely many such positive authorities. Each normalization may propagate along only the finite dependency DAG.
+A genuinely unseen concurrent positive authority may later force another finite normalization. Under quiescence there are finitely many such positive authorities. Each normalization may propagate along only the finite dependency DAG.
 
 Therefore synchronization-authored negative events eventually stop. After that point, fair synchronization only adopts deterministic maxima/frontiers/certificates, so every connected replica reaches the same semantic summaries and the same legacy graph projection. Further synchronization is a semantic no-op.
 
