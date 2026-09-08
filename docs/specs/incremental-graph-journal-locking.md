@@ -61,7 +61,7 @@ A synchronization operation may join remote `causalSummary` and `authorityClock`
 
 These metadata writes must still be serialized/durable with any semantic synchronization transition that relies on those observations before authoring a new local event.
 
-If synchronization authors a soft invalidation or tombstone in response to source authority:
+If synchronization authors a value-scoped invalidation or tombstone in response to source authority:
 
 1. the source causal coordinates are joined into `causalSummary`;
 2. the source HLC high-water mark and directly inspected EventRef authority times are joined into `authorityClock`;
