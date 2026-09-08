@@ -115,20 +115,19 @@ This rule applies before compaction as well as after it. Compaction therefore lo
 
 A newer certificate may be less reusable after a later merge than an older certificate would have been. That is an intentional conservative property of Journal 2; lower historical certificates are not alternative merge candidates.
 
-## Present cache admissibility
+## Present cache and `oldValue`
 
-Every locally reachable present legacy materialization is assumed safe for the local `oldValue` semantics of the existing graph algorithm.
+Every supported present legacy materialization is already a legitimate cached value of its semantic node.
 
-Synchronization can combine histories which require that safety to be re-established for the final configuration. `incremental-graph-journal-sync.md` permits two proofs:
+The ordinary IncrementalGraph algorithm may keep that cached value while dependencies change arbitrarily. When the node is later pulled and its incoming cache proofs do not all hold, the computor receives the current input values together with the currently stored cache as `oldValue`.
 
-- an exact final cache plus all final direct-input `ValueId`s already coexist in either stable synchronization input snapshot, so the configuration inherits that snapshot's supported local `oldValue` safety; or
-- the final mixed configuration is causally serializable so the cache certificate can be placed before every mismatching final input occurrence in a linear extension of happened-before.
+Therefore Journal 2 synchronization does not need an additional provenance or serial-history proof merely because the final input `ValueId`s differ from the cache certificate basis or originated on other replicas. Such differences are represented by missing incoming validity edges and stale freshness. They do not make the cached payload itself illegal to retain.
 
-A concurrent input occurrence is therefore not inherently unsafe: if it is not causally before the certificate, it may be serialized as a later input change which leaves an ordinary stale cache. Conversely, when neither a direct snapshot nor such a causal serialization witnesses safety, synchronization creates a tombstone and removes the materialization instead of retaining hidden payload bytes.
+The computor's existing `Unchanged` rule remains authoritative: after invocation with the final inputs and retained `oldValue`, it may preserve the cached value only when doing so is semantically admissible for those current inputs.
 
-The `"unknown"` bootstrap basis sentinel records lack of historical validity provenance, not lack of local cache safety. An unchanged migrated cache/input configuration may therefore be retained by the direct-snapshot witness without inventing a historical basis.
+The `"unknown"` bootstrap/reset basis sentinel likewise means only that historical validity provenance is unavailable. It does not mean that the materialized cache cannot be supplied as `oldValue`.
 
-The projection itself does not manufacture a replacement value or recover a payload from journal metadata.
+A present cache is removed by synchronization only when some independent structural rule makes materialization impossible, principally dependency closure when a required direct input is finally absent.
 
 ## Dependency closure
 
