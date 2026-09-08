@@ -84,7 +84,7 @@ When a successful computor returns a semantic value different from the currently
 
 The directly authored `ValueEvent`, `ValidateEvent`, and propagated low-level events carry the current high-level operation ID when one was allocated for the pull.
 
-Every dependent whose legacy freshness actually changes from fresh to stale due to propagation receives a value-scoped soft `InvalidateEvent` naming that dependent's current `ValueId`.
+Every dependent whose legacy freshness actually changes from fresh to stale due to propagation receives a value-scoped `InvalidateEvent` naming that dependent's current `ValueId`.
 
 The new value event itself explains loss of incoming validity edges in dependents whose certificate basis still names the old input `ValueId`; no separate dependent event is required merely because a `valid` edge disappears while the dependent was already stale.
 
@@ -122,7 +122,6 @@ A public explicit invalidation of materialized node K authors:
 ```text
 InvalidateEvent {
     scope: { kind: "node" },
-    mode: "hard",
     reason: "explicit"
 }
 ```
@@ -135,25 +134,18 @@ The legacy transition remains the existing one:
 - K's incoming validity edges are removed;
 - stale propagation walks the existing outgoing validity frontier.
 
-Each dependent whose freshness changes from fresh to stale receives one value-scoped soft invalidation:
+Each dependent whose freshness changes from fresh to stale receives one value-scoped invalidation:
 
 ```text
 InvalidateEvent {
     scope: { kind: "value", value: currentValueId(dependent) },
-    mode: "soft",
     reason: "propagated"
 }
 ```
 
 These directly produced low-level invalidation events share the high-level invalidate operation ID when one is allocated.
 
-A dependent already stale does not receive another soft invalidation merely because the traversal reaches it again without changing its graph state.
-
-## Value-scoped hard invalidation
-
-Journal 2 permits a synchronization or controlled lifecycle operation to retain one present cache while intentionally breaking all of its incoming proof. Such a transition authors a value-scoped hard invalidation.
-
-Ordinary full synchronization does not require a value-scoped hard invalidation merely because selected input `ValueId`s differ from the cache certificate basis. Those mismatches already remove the corresponding projected validity edges and make the cache stale where appropriate. Value-scoped hard invalidation is reserved for lifecycle transitions which intentionally assert a stronger proof break.
+A dependent already stale does not receive another invalidation merely because the traversal reaches it again without changing its graph state.
 
 ## Deletion
 
@@ -183,13 +175,13 @@ All low-level events directly produced by one synchronization operation may shar
 
 If source information is already represented and the graph projection is unchanged, repeating synchronization is silent and need not persist an operation record.
 
-## Synchronization-authored soft invalidation
+## Synchronization-authored stale invalidation
 
 A merged graph can create one special case not already represented by either side: a node's certificate basis still exactly matches all final input `ValueId`s, but one of those final inputs becomes stale due to information from the other replica.
 
-If K would otherwise become fresh again automatically when that input later revalidates unchanged, synchronization must author one value-scoped soft invalidation for K. This records the same persistent stale transition that the ordinary local invalidation propagation algorithm would have recorded.
+If K would otherwise become fresh again automatically when that input later revalidates unchanged, synchronization must author one value-scoped invalidation for K. This records the same persistent stale transition that the ordinary local invalidation propagation algorithm would have recorded.
 
-The soft invalidation is authored only when no already represented uncovered invalidation supplies that stale authority.
+The invalidation is authored only when no already represented uncovered value-scoped invalidation supplies that stale authority.
 
 ## Synchronization-authored structural discard
 
@@ -205,7 +197,7 @@ Before authoring the delete, synchronization has joined the causal contexts and 
 
 The removal may cascade to cached dependents which can no longer remain materialized because the legacy graph is dependency-closed. This is structural cache destruction, not a promise that the semantic node can never exist again: a later successful pull may rematerialize the required inputs, recompute the node, and author a new greater value occurrence.
 
-Synchronization does not use `sync-discard` merely because a retained cache's final inputs have mixed provenance or no longer match its certificate basis. Such a cache remains available as ordinary stale `oldValue` according to the existing graph algorithm.
+Synchronization does not use `sync-discard` merely because a retained cache's final inputs have mixed provenance or no longer match its certificate basis. Such a cache remains available as ordinary stale `oldValue` according to the existing graph algorithm and `$id-8254606583674715`.
 
 ## Reset and migration grouping
 
@@ -223,7 +215,7 @@ Every semantic event updates the node's compacted semantic summary in the same t
 - a value event resets value-specific certificate/invalidation state for the new `ValueId`;
 - validate retains only the greatest certificate for the current `ValueId` by certificate EventRef authority;
 - node invalidates advance `nodeInvalidateFrontier` by writer-local author coordinate;
-- current-value invalidates advance the corresponding value-specific frontier;
+- current-value invalidates advance `valueInvalidateFrontier`;
 - adopt joins the bounded foreign semantic state described in the sync specification;
 - every local node-summary change sets `lastLocalChange` to the local semantic event sequence and moves that node's change-index marker atomically.
 
