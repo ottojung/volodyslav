@@ -144,7 +144,9 @@ If the projection does not match, migration fails before publication.
 
 ## Initial compaction
 
-The bootstrap historical events may be canonically compacted immediately into:
+The bootstrap passes themselves publish the synchronization-relevant Journal 2 baseline directly: the final header, one node summary per materialized node, and one current changed-node marker per represented node are already maintained by the same event-publication rules used elsewhere. An immediate canonical compaction therefore does not construct or rewrite those records; it may only remove the now-redundant bootstrap raw semantic events and high-level operation grouping.
+
+After such immediate compaction, the retained journal contains:
 
 - header, including the final local sequence, causal summary, and HLC authority high-water mark;
 - one node summary per materialized node;
@@ -169,7 +171,7 @@ A later migration from one Journal-2-aware database version to another deletes r
 
 Let L be the number of materialized nodes in the legacy state being migrated. The initial migration baseline has no historical Journal-2 tombstone domain, so its bootstrap work is O(L) semantic events plus at most O(1) high-level operation records.
 
-Each event is individually within the Journal 2 per-value bound, and canonical compaction leaves O(L) bounded summaries/markers plus one bounded header.
+Each event is individually within the Journal 2 per-value bound, and after canonical compaction O(L) bounded summaries/markers plus one bounded header remain.
 
 Therefore the migrated compacted journal satisfies the general bound:
 
