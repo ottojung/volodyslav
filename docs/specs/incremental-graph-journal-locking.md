@@ -127,13 +127,22 @@ No journal allocator/finalization path may acquire a telescope lock after acquir
 
 ## Compaction
 
-Canonical journal compaction is a persistence transformation, not ordinary graph activity.
+Canonical journal compaction is standalone historical housekeeping against the active database. It is not a database lifecycle transition, does not acquire `holiday`/exclusive lifecycle mode, and does not construct an inactive replica.
 
-It may execute while building an inactive replica under an already-exclusive lifecycle operation, or under another protocol which guarantees that:
+Live authoring and synchronization already maintain the synchronization-relevant Journal 2 state on every publication. Compaction therefore MUST NOT rewrite `JournalHeader`, node summaries, changed-node markers, stored source cursors, or legacy graph state. Its writes are confined to the historical layer: deleting redundant raw semantic events and operation records, plus clearing historical-only `operation` or `parent` references when required to avoid dangling references.
 
-- it folds one fixed committed journal state;
-- it cannot race a publication into a half-compacted representation;
-- its final active state has the identical legacy graph projection;
-- writer-local sequence coordinates, causal summary, HLC authority high-water state, and cursor coordinates/incarnation are unchanged for cursors not invalidated by lifecycle replacement.
+Compaction runs as a sequence of implementation-bounded batches. Each batch:
+
+1. selects only records which were already committed and historical at that batch's read cutoff;
+2. treats an operation as historical only when no future supported publication can attach a new low-level event or child-operation reference to that `OperationId`;
+3. acquires the same per-replica commit serialization used by ordinary publication;
+4. atomically applies that batch's historical deletes/reference cleanup; and
+5. releases commit serialization before selecting/committing the next batch.
+
+A batch never deletes a referenced operation record while a retained historical event or child operation still points to it. Reference cleanup may itself be split across bounded batches; the referenced record remains until all retained references have either been removed with their records or cleared by an earlier committed batch. Thus no committed batch exposes a dangling historical grouping reference.
+
+Because batch candidates are fixed before their commit and local semantic/operation IDs are never reused, ordinary authoring may continue between compaction batches without allowing compaction to delete a newly authored record. Compaction can delay an ordinary `pull()` or `invalidate()` only while one bounded compaction batch holds the ordinary commit serialization.
+
+A failure after one or more batches have committed leaves those already-committed prune steps in place. Every committed intermediate state is a supported journal state with identical graph/synchronization semantics, so a later compaction attempt may simply continue from the remaining historical records.
 
 Compaction never requires holding all journal entries in RAM simultaneously; it must be streamable over LevelDB records and must respect the per-record `O(R log H)` bound.
