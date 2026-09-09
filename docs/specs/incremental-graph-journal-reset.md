@@ -59,7 +59,7 @@ authorityClock := maxAuthorityTime(authorityClock, source.authorityClock)
 
 and joins directly inspected source EventRefs as required.
 
-These causal and authority observations are coupled and MUST preserve J2-INV-7 in the same publication. Every reset baseline event is therefore causally after the semantic history which reset actually observed and advances from an HLC high-water mark at least as great as every observed authority time.
+These causal and authority observations are coupled and MUST preserve J2-INV-7 and J2-INV-9 in the same publication. Every reset baseline event is therefore causally after the semantic history which reset actually observed and advances from an HLC high-water mark at least as great as every retained head/certificate authority represented by either reset input.
 
 The receiver may retain its accumulated `causalSummary` and `authorityClock`; reset does not require historical per-node reset anchors.
 
@@ -106,13 +106,13 @@ resetNodeInvalidateFrontier[K] = componentwiseMax(
 
 where a missing summary contributes the zero/empty frontier. This retained frontier is synchronization-relevant semantic summary state, not imported raw source history and not a newly authored invalidation event. It remains attached to K whether the reset target makes K present or absent.
 
-First enumerate every materialized target semantic node in ascending order of the target legacy value's `modifiedAt`, with canonical NodeKey order as the deterministic tie-breaker. For every such K:
+First enumerate every materialized target semantic node in canonical NodeKey order. For every such K:
 
 1. retain/construct the target legacy value/timestamp record according to reset semantics;
-2. author a new local `ValueEvent(reason="reset")`, seeding its HLC physical component from that target record's unchanged/copied `modifiedAt`;
+2. author a new local `ValueEvent(reason="reset")`, using the ordinary ValueEvent HLC seed from that target record's unchanged/copied `modifiedAt`;
 3. that new event ID becomes K's new `ValueId`, even if equal payload bytes were reused without rewriting.
 
-This timestamp-first value-event order avoids allowing an unrelated later-modified target node to inflate the HLC authority of an earlier-modified target value merely because of enumeration order. The reset transaction still begins above the causal/authority high-water mark it observed, so a reset value may legitimately have an authority time later than its raw `modifiedAt` when required by the reset cut.
+The `modifiedAt` seed does not determine reset enumeration or distinguish reset value authorities. Each target value/timestamp record comes from a value occurrence represented by the pre-reset receiver or reset source; that occurrence's authority time is at least its own `modifiedAt`, and J2-INV-9 places that authority beneath the corresponding input header. Reset joins both input authority clocks before authoring the baseline, so the joined `authorityClock.physical` already dominates every target `modifiedAt`. The ordinary HLC allocator therefore keeps reset value events on that joined physical high-water coordinate and advances their logical coordinate in canonical NodeKey order. Reset authority is deliberately above the observed cut without assigning additional conflict meaning to target timestamp order.
 
 After all target present nodes have their reset ValueIds, author the validation/invalidation baseline in deterministic semantic topological order:
 
