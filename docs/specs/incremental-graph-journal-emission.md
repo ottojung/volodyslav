@@ -62,7 +62,7 @@ When one atomic transaction authors multiple semantic events, their allocation o
 - reset/bootstrap `ValueEvent`s for input nodes precede certificates whose basis refers to those new input `ValueId`s;
 - a synchronization normalization event which makes a dependent non-materializable precedes a dependent destructive event authored because of that fact.
 
-Events not ordered by such semantic dependencies are tie-broken according to the deterministic ordering required by the operation-specific specification. Ordinary local operations use canonical `NodeKey`/event-kind tie-breakers; migration/reset value-baseline allocation uses the timestamp-first order specified by their lifecycle documents. No deterministic tie-break may reverse a required semantic dependency merely to obtain stable IDs.
+Events not ordered by such semantic dependencies are tie-broken according to the deterministic ordering required by the operation-specific specification. Ordinary local operations use canonical `NodeKey`/event-kind tie-breakers; the initial bootstrap migration uses the timestamp-first value order specified by its migration document, while reset baseline values use canonical NodeKey order. No deterministic tie-break may reverse a required semantic dependency merely to obtain stable IDs.
 
 Because later same-author events have larger local sequences, include earlier same-transaction events in their contexts, and advance the HLC again, this allocation order is part of both exact causal meaning and authority monotonicity rather than merely a serialization convenience.
 
