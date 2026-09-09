@@ -216,6 +216,21 @@ Every supported transition which advances `causalSummary` MUST, in the same atom
 
 This invariant is maintained by supported transition construction. Validation may reject locally witnessed violations, but is not required to reconstruct compacted-away events merely to re-prove it.
 
+### J2-INV-8: frontier coordinates are causally represented
+
+For every supported node summary `S[K]`, every author `A`, and both retained invalidation frontiers:
+
+```text
+S[K].nodeInvalidateFrontier[A]  <= header.causalSummary[A]
+S[K].valueInvalidateFrontier[A] <= header.causalSummary[A]
+```
+
+Missing coordinates are zero. If a value-scoped frontier is absent because K is absent or has no retained current-value frontier, it contributes only zero coordinates.
+
+A frontier coordinate is a claim that this database represents the corresponding invalidating event of author `A`. Every supported transition which folds a foreign frontier coordinate into a node summary MUST join the corresponding causal-summary coordinate in the same atomic publication. Local authoring, synchronization adoption, reset, migration from existing Journal 2, same-host restoration, and compaction must preserve this invariant.
+
+Together with J2-INV-7, this guarantees that every retained frontier coordinate is both causally represented by the header and covered by its authority high-water knowledge, so `covers(C.event.context, F)` is meaningful for any retained frontier `F`.
+
 ## Supported lifecycle
 
 Correctness guarantees apply to states produced by supported Journal 2 authoring, synchronization, migration, reset, same-host restoration, and canonical compaction. Corrupt, forged, rolled-back, partially installed, or identity-colliding states are outside the semantic model and must be rejected where practical rather than assigned invented meaning.
