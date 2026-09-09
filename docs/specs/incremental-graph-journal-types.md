@@ -67,6 +67,8 @@ If it directly observes a semantic `EventRef` not already covered by that header
 
 Observation alone need not author a semantic event. The retained `authorityClock` is a high-water mark, not itself semantic graph authority.
 
+Journal 2 deliberately defines no `MaxAuthoritySkew` or equivalent comparison with the observer's local wall clock. A far-future persisted timestamp or already-supported observed authority may raise `authorityClock` far ahead of local time; such skew may distort later concurrent conflict preference but is not by itself an unsupported-state condition. See `$id-8532915736687645`.
+
 ### Local semantic event allocation
 
 Before authoring a local semantic journal event, allocate only the next writer-local sequence:
@@ -79,7 +81,7 @@ context = causalSummary before publication
 
 There is deliberately no `max(causalSummary[*])` term in `nextSequence`. Remote coordinates remain remote coordinates.
 
-Every event also receives an `authorityTime`. Let `seedPhysical` be:
+Except for the initial-bootstrap value rule below, every event also receives an `authorityTime` by advancing the persisted HLC. Let `seedPhysical` be:
 
 - for a `ValueEvent`, the exact legacy value occurrence's `modifiedAt`, canonically converted to epoch milliseconds;
 - for other locally authored semantic events, the operation/publication wall-clock time supplied by the existing datetime capability.
@@ -100,7 +102,7 @@ else:
 
 The event receives `authorityTime = nextAuthorityTime`.
 
-After publication:
+After ordinary event publication:
 
 ```text
 localJournalCounter = nextSequence
@@ -108,11 +110,34 @@ causalSummary[localFingerprint] = nextSequence
 authorityClock = nextAuthorityTime
 ```
 
-Multiple semantic events in one atomic transaction receive increasing local sequences in the deterministic semantic topological order specified by the emission specification. Each later event observes the earlier event and advances the HLC again.
+#### Initial bootstrap value authority
+
+A `ValueEvent(reason="bootstrap")` authored by the initial pre-Journal-2 migration uses a deterministic authority time derived only from that value occurrence:
+
+```text
+nextAuthorityTime = {
+    physical: canonical(modifiedAt),
+    logical: 0
+}
+```
+
+The event still receives the ordinary next writer-local sequence and causal context. Publication updates:
+
+```text
+localJournalCounter = nextSequence
+causalSummary[localFingerprint] = nextSequence
+authorityClock = maxAuthorityTime(authorityClock, nextAuthorityTime)
+```
+
+The bootstrap migration enumerates values by ascending `(modifiedAt, NodeKey)`, so bootstrap value authority never decreases in that writer's allocation order. Two bootstrap value events from the same writer MAY nevertheless have exactly the same `AuthorityTime` when their `modifiedAt` values tie. Their `EventRef`s are still strictly ordered because `authorityCompare` falls through to the equal author and then the increasing writer-local sequence. Therefore J2-INV-5 still holds, while J2-INV-7 needs only `event.authorityTime <= header.authorityClock` and also remains satisfied.
+
+This exception prevents an unrelated bootstrap-only key from changing the authority time assigned to a shared value occurrence merely by appearing earlier in the local enumeration. It applies only to the initial bootstrap value pass. Reset and ordinary local authoring continue to use the general causality-adjusted HLC advance rule.
+
+Multiple semantic events in one atomic transaction receive increasing local sequences in the deterministic semantic topological order specified by the emission specification. Ordinary later semantic events advance the HLC again; equal-time initial bootstrap value events may instead share an `AuthorityTime` while their complete EventRef authority still increases by writer-local sequence.
 
 This is a hybrid logical clock in the sense relevant to Journal 2: ordinary concurrent value conflicts are normally ordered by their legacy modification times, while causal observation can push authority time forward so the authority order never contradicts happened-before.
 
-Clock skew can therefore influence concurrent conflict selection. Journal 2 assumes non-adversarial persisted timestamps under the database lifecycle and does not claim that authority order is perfect physical-time recency.
+Clock skew can therefore influence concurrent conflict selection. Journal 2 assumes non-adversarial persisted timestamps under the database lifecycle and does not claim that authority order is perfect physical-time recency. In particular, a sufficiently far-ahead timestamp or observed authority high-water mark can cause later events to derive authority primarily from the HLC high-water state rather than from their own `modifiedAt`; Journal 2 intentionally does not reject supported state solely for this condition.
 
 High-level operation IDs use the separate `localOperationCounter`. Allocating an operation ID does **not** change `localJournalCounter`, `causalSummary`, `authorityClock`, semantic event authority, or happened-before. This separation is required so operation grouping cannot affect synchronization outcomes.
 
@@ -159,7 +184,7 @@ authorityCompare(E,F):
 
 The final sequence comparison occurs only after writer fingerprints are equal, so it is strictly writer-local.
 
-Because every local event joins all authority times it causally observes before advancing its HLC:
+Because every local event joins all authority times it causally observes before advancing its HLC, except that equal-time initial-bootstrap events remain ordered by their same-writer sequence:
 
 ```text
 happenedBefore(E,F)
@@ -168,7 +193,7 @@ happenedBefore(E,F)
 
 for all supported semantic events.
 
-Thus exact causal knowledge has priority semantically: the HLC is constructed so the simple total comparator already extends happened-before. Concurrent events fall back to their causality-adjusted physical time, then writer fingerprint, then writer-local sequence.
+Thus exact causal knowledge has priority semantically: the HLC plus the remaining EventRef tie-breakers are constructed so the total comparator extends happened-before. Concurrent events fall back to their causality-adjusted physical time, then writer fingerprint, then writer-local sequence.
 
 ## Value identity
 
@@ -366,7 +391,7 @@ Kinds:
 ```text
 ValueEvent = JournalEventBase & {
     kind: "value",
-    reason: "compute" | "bootstrap" | "reset"
+    reason: "compute" | "bootstrap" | "reset" | "migration"
 }
 
 DeleteEvent = JournalEventBase & {
@@ -378,7 +403,7 @@ ValidateEvent = JournalEventBase & {
     kind: "validate",
     value: ValueId,
     basis: Array<BasisEntry>,
-    reason: "compute" | "unchanged" | "cache-revalidate" | "bootstrap" | "reset"
+    reason: "compute" | "unchanged" | "cache-revalidate" | "bootstrap" | "reset" | "migration"
 }
 
 InvalidateEvent = JournalEventBase & {
