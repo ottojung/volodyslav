@@ -24,7 +24,7 @@ Volodyslav's concrete operational policy is separate from Journal 2 semantics: i
 
 ## Compacted representation
 
-Canonical compaction retains:
+A canonically compacted state retains:
 
 1. one `JournalHeader`, including local counters, `causalSummary`, and `authorityClock`;
 2. one `NodeJournalSummary` per represented semantic node/key, including retained absent/tombstoned keys;
@@ -39,6 +39,8 @@ Historical raw semantic events whose effects are represented by these records ma
 Compaction does not synthesize a giant high-level `compiled` list. If an un-compacted low-level event retains an `operation` reference, the corresponding small operation record must remain available in the same retained history tail unless that grouping reference is cleared by a committed compaction batch before the operation record is deleted.
 
 A retained operation record may have an optional `parent` reference. If compaction discards that parent operation record, it may first clear the retained child's `parent` field rather than retaining an unbounded ancestry solely for historical grouping. Parent links have no semantic role.
+
+The publication-time grouping-reference rule in `incremental-graph-journal-locking.md` ensures that, once an operation record has been pruned, no later supported publication can create a new `operation` or `parent` reference to that missing record.
 
 ## Node-summary canonicalization
 
@@ -290,8 +292,10 @@ The per-LevelDB-value bound applies equally before and after compaction. Unbound
 
 Compaction modifies only the historical part of the new journal sublevel and must not change the representation or semantic contents of existing graph sublevels, `JournalHeader`, node summaries, changed-node markers, or stored source cursors.
 
-Compaction is not a seventh database lifecycle transition and does not require inactive-replica construction or lifecycle cutover. It runs against the active database as a sequence of implementation-bounded batches under the ordinary per-replica commit serialization specified in `incremental-graph-journal-locking.md`.
+Compaction is not a seventh database lifecycle transition and does not require inactive-replica construction or lifecycle cutover. Each batch runs against the current active database in IncrementalGraph `daytime` mode and under the ordinary per-replica commit serialization specified in `incremental-graph-journal-locking.md`.
 
-Each batch chooses a fixed set of already-committed historical records/reference cleanups, commits only those historical changes atomically, and then releases commit serialization before the next batch. A referenced historical operation record remains present until all retained references to it have first been removed or cleared by committed batches, so no intermediate state contains a dangling historical grouping reference.
+For each implementation-bounded batch, `daytime` mode and commit serialization are acquired before candidate selection and held through the atomic historical prune/reference-cleanup commit. Candidates are selected only from records already committed and historical in that same current active replica. The batch then releases both before the next batch is selected. The publication-time grouping-reference check prevents a later supported writer from naming an operation record after that record has been pruned.
+
+No candidate set is carried across a lifecycle cutover or database close. If the active replica is replaced or closed between batches, the remaining compaction work is abandoned and a later attempt re-selects from the then-current active replica. A referenced historical operation record remains present until every retained reference to it has first been removed or cleared by committed batches, so no intermediate state contains a dangling historical grouping reference.
 
 Because compaction does not rewrite semantic summaries, markers, headers, cursors, or legacy graph state, it cannot publish a journal summary paired with incompatible graph state. A failure may leave earlier prune batches committed; those intermediate states are semantically equivalent supported states, and a later compaction attempt may continue from the remaining history.
