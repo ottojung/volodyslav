@@ -26,6 +26,8 @@ A semantic event which is genuinely causally after another semantic event must h
 
 Journal sequence numbers from different writers must not be numerically compared to decide conflict precedence. Journal 2 may use a hybrid logical clock or an equivalent bounded total-order timestamp which is seeded by `modifiedAt` for value events and advanced as necessary so happened-before always implies increasing authority. This is a deterministic conflict policy, not a guarantee of true wall-clock recency under clock skew.
 
+Journal 2 does not need a maximum-clock-skew rejection rule. A badly skewed local clock, persisted `modifiedAt`, or previously observed authority high-water mark may distort or temporarily eliminate the normal `modifiedAt` preference for later concurrent conflicts. That is an accepted limitation rather than a reason to reject otherwise supported state merely by comparing its physical authority coordinate with the observer's local wall clock.
+
 ---
 
 $id-7267992945144356
@@ -105,6 +107,34 @@ O((L + T) R log H) bits
 ```
 
 `T` is allowed to grow with the number of distinct semantic keys whose absence must remain synchronization-relevant. The bound therefore does not claim independence from historical *unique-key churn*. It must, however, be independent of the number of historical operations, validations, invalidations, synchronizations, resets, and repeated changes on a fixed represented key domain except through the retained parameters above and the `log H` coordinate-width term.
+
+---
+
+$id-8247698182975014
+title: Uncompacted journal may be unbounded
+date: 2026/09/09
+source: @ottojung
+kind: accepted-tradeoff
+
+Journal 2 does not require any storage-size bound for the uncompacted raw historical layer.
+
+The compacted representation must satisfy the stated bounded-size guarantees, but between compactions the raw historical event/operation layer may grow without a fixed bound. This is acceptable even if an unusually busy interval produces a very large journal before the next compaction.
+
+From the Journal 2 semantic perspective, the timing of compaction is intentionally nondeterministic. Correctness must not depend on a particular compaction point or cadence; compaction may happen from time to time whenever the surrounding application chooses to invoke it.
+
+---
+
+$id-2399748558090155
+title: Hourly Journal 2 compaction
+date: 2026/09/09
+source: @ottojung
+kind: requirement
+
+Volodyslav must attempt Journal 2 canonical compaction as part of its existing hourly periodic job.
+
+The operational schedule is once per execution of the hourly job. Missed hourly runs do not create a requirement to replay one compaction per missed hour; the scheduler's ordinary no-make-up behavior applies.
+
+This hourly application policy does not make compaction timing part of Journal 2 semantics and does not create a size guarantee for the uncompacted journal between successful compactions.
 
 ---
 
