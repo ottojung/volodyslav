@@ -51,12 +51,12 @@ Database startup follows this sequence:
 
 1. **Validate operating context.** Required environment configuration is read before normal database use. This includes a working location, synchronization repository, and a valid local hostname. Required external capabilities, including Git, must be available.
 2. **Determine whether local live state exists.** Existence is a bootstrap decision only. Existing state is opened; it is not overwritten by a remote snapshot merely because startup is occurring.
-3. **Bootstrap when absent.** Volodyslav selects one of the controlled creation paths described in [Database creation](#4-database-creation).
+3. **Bootstrap when absent.** Volodyslav selects one of the controlled creation paths described in [Database creation](#4-database-creation). Fresh creation records the running database version and any version-required initial state before normal synchronization is attempted.
 4. **Open the local database.** The database implementation opens the durable state and establishes the active logical state. Required structural metadata must be valid enough to identify and load that state.
-5. **Run the migration gate.** A fresh database is marked with the running database version. A database already at that version proceeds unchanged. A database at a different version must complete migration.
+5. **Run the migration gate.** A database freshly created by this startup already records the running version and proceeds unchanged. An existing database already at that version likewise proceeds unchanged. A database at a different version must complete migration.
 6. **Construct and expose the incremental graph.** The database-backed graph interface becomes initialized only after opening and migration have succeeded.
 
-Startup does **not** perform an ordinary synchronization when local live state already exists. Synchronization is a separate controlled operation. This distinction prevents routine startup from unexpectedly replacing or merging local state and makes migration the only version-changing startup transition.
+Startup does **not** perform an ordinary synchronization when local live state already exists. Synchronization is a separate controlled operation. This distinction prevents routine startup from unexpectedly replacing or merging local state and makes migration the only version-changing startup transition for an existing database.
 
 Initialization is exclusive with database maintenance operations. Concurrent ordinary reads or writes must not observe a partially bootstrapped, migrating, resetting, or synchronizing database.
 
@@ -90,11 +90,9 @@ Any failure to query, obtain, parse, or install the authoritative same-host stat
 
 ### 4.3 Creating a new host state
 
-If the current hostname has no synchronized branch, startup initializes the local synchronization working state and runs normal synchronization from an empty local database. This establishes the host's synchronization history and then considers other host branches under the ordinary synchronization rules.
+If the current hostname has no synchronized branch, startup creates a fresh empty local database. Fresh initialization MUST atomically establish the running database version and all version-required initial metadata before the database is marked current or used by normal synchronization.
 
-The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
-
-When the running database version includes Journal 2, fresh creation MUST establish a valid empty Journal 2 state before that database is marked current, becomes writable, or is used as synchronization input. Fresh initialization establishes the database's durable `DatabaseFingerprint` and atomically persists:
+When the running database version includes Journal 2, that same fresh-initialization publication establishes the database's durable `DatabaseFingerprint` and persists:
 
 ```text
 header.writer = DatabaseFingerprint
@@ -105,9 +103,13 @@ header.causalSummary = {}
 header.authorityClock = { physical: 0, logical: 0 }
 ```
 
-The fresh Journal 2 state contains no node summaries, changed-node markers, stored source cursors, raw semantic events, or high-level operation records. This is part of fresh database creation, not a data migration. Failure to establish this state aborts creation rather than exposing a journal-less database as current.
+The fresh Journal 2 state contains no node summaries, changed-node markers, stored source cursors, raw semantic events, or high-level operation records. This is fresh database creation, not a data migration. Failure to establish the running version or any required initial state aborts creation rather than exposing an unversioned or journal-less database as current.
 
-This fallback is not a general-purpose import from an arbitrary host. Other host states are accepted only through normal synchronization, including its exact version-compatibility requirement. In particular, an unversioned fresh database is not implicitly treated as compatible with a versioned remote host.
+Only after fresh initialization has made the empty database current does startup initialize the local synchronization working state and run normal synchronization. The new host can then consider other host branches under the ordinary exact-version and Journal 2 compatibility rules.
+
+The empty current database is a legitimate initial synchronization state. A later migration gate simply observes that its recorded version already equals the running version and performs no migration.
+
+This fallback is not a general-purpose import from an arbitrary host. Other host states are accepted only through normal synchronization, including its exact version-compatibility requirement. Fresh creation never treats an unversioned local state as compatible with a versioned remote host because the running version is established before synchronization begins.
 
 ### 4.4 Creation postconditions
 
@@ -116,7 +118,7 @@ After successful creation and startup:
 - a local live database exists and is openable;
 - its active logical state is structurally loadable;
 - it records the database version expected by the running application;
-- when that version includes Journal 2, its valid Journal 2 writer/header state has been established before the database became current or writable;
+- when that version includes Journal 2, its valid Journal 2 writer/header state has been established before the database became current, writable, or synchronization input;
 - its synchronization identity and history were established by Volodyslav; and
 - the graph interface is initialized from that state.
 
@@ -145,9 +147,11 @@ Migration is the supported transition between database versions. It is part of s
 
 The running application supplies the target database version and current graph schema. After opening the active state:
 
-- if no version is recorded, the database is treated as fresh, any version-required fresh initialization such as Journal 2 is completed, and only then is the database marked current;
+- if no version is recorded on an existing state presented to the migration gate, the database is treated as fresh only when the lifecycle can still establish the running version and all version-required fresh metadata before any current use; otherwise the state is unsupported;
 - if the stored version equals the running version, migration is a no-op; and
 - if the versions differ, migration is required before the graph interface can be initialized.
+
+Fresh creation under §4.3 establishes the running version before its first normal synchronization, so its later migration gate follows the second case rather than using synchronization to infer compatibility for an unversioned state.
 
 Version inequality requests migration; it does not by itself prove that migration can succeed. The migration procedure must still establish all migration preconditions.
 
@@ -355,6 +359,7 @@ Implementations and future changes MUST preserve the following lifecycle propert
 11. New recovery, import, or restore behavior MUST be implemented as a Volodyslav-controlled lifecycle transition. Documentation alone MUST NOT redefine raw file manipulation as supported.
 12. Storage refactors MAY change physical artifacts without changing this specification, provided these lifecycle preconditions, transitions, and postconditions remain true.
 13. Normal synchronization MUST preserve publication-before-propagation: a host's Journal 2 state MUST NOT be obtainable by another host as synchronization input through any supported transport path unless that state has first been published to the author's own authoritative synchronization branch.
+14. Fresh creation MUST establish the running database version and all version-required initial metadata before the fresh database participates in normal synchronization.
 
 ## 15. Known boundaries
 
