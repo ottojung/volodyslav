@@ -237,6 +237,21 @@ A frontier coordinate is a claim that this database represents the corresponding
 
 Together with J2-INV-7, this guarantees that every retained frontier coordinate is both causally represented by the header and covered by its authority high-water knowledge, so `covers(C.event.context, F)` is meaningful for any retained frontier `F`.
 
+### J2-INV-9: retained references are causally represented
+
+For every supported node summary `S[K]`, let `H` be its head authority reference (`S[K].head.value` when present or `S[K].head.tombstone` when absent). Let `C` be `S[K].certificate.event` when a certificate is present. Every such retained `EventRef E` satisfies:
+
+```text
+E.id.sequence <= header.causalSummary[E.id.author]
+E.authorityTime <= header.authorityClock
+```
+
+where the second comparison is the canonical `AuthorityTime` order.
+
+Every supported transition which installs or adopts a retained head or certificate reference MUST join that reference's writer coordinate and authority time into the header in the same atomic publication. Local authoring, synchronization adoption, reset, migration from existing Journal 2, same-host restoration, and compaction preserve this invariant.
+
+Together with J2-INV-7, this makes the header a sufficient high-water summary of every retained semantic authority represented by the database. A consumer which joins a valid source header therefore observes at least the causal coordinate and authority time of every head/certificate reference retained in that source's node summaries.
+
 ## Supported lifecycle
 
 Correctness guarantees apply to states produced by supported Journal 2 authoring, synchronization, migration, reset, same-host restoration, and canonical compaction. Corrupt, forged, rolled-back, partially installed, or identity-colliding states are outside the semantic model and must be rejected where practical rather than assigned invented meaning.
