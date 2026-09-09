@@ -52,7 +52,7 @@ CausalPrefix                           // exact happened-before
 AuthorityTime                          // HLC conflict precedence
 ```
 
-A local event gets `localSequence + 1` regardless of remote sequence magnitudes. Exact causal observation is represented by the vector context. Deterministic conflict authority is represented by a hybrid logical clock which extends happened-before and is seeded from legacy `modifiedAt` for value occurrences.
+A local event gets `localSequence + 1` regardless of remote sequence magnitudes. Exact causal observation is represented by the vector context. Deterministic conflict authority is represented by a hybrid logical clock which extends happened-before together with the EventRef tie-breakers and is seeded from legacy `modifiedAt` for value occurrences.
 
 For concurrent authorities, the total order compares causality-adjusted authority time, then writer fingerprint, then writer-local sequence. The final sequence comparison therefore occurs only within one writer.
 
@@ -118,6 +118,8 @@ The historical layer contains locally authored high-level operation records and 
 
 Operation records group semantic events but do not replace them as synchronization authority.
 
+The total size of this uncompacted historical layer is intentionally not bounded. Raw history may accumulate between nondeterministically timed compactions; only individual journal records remain subject to the per-LevelDB-value bound. See `$id-8247698182975014` and `incremental-graph-journal-compaction.md`.
+
 ### Compacted synchronization layer
 
 Compaction folds old history into bounded records:
@@ -131,9 +133,11 @@ header {
 }
 node summary per represented NodeKey
 one current changed-node marker per represented NodeKey
-optional bounded un-compacted history tail
+optional bounded raw-history tail retained by the compacted result
 stored source cursors
 ```
+
+The optional bounded tail above describes what a completed compaction chooses to retain; it is not a bound on raw history accumulated before the next compaction.
 
 These records are journal information, not changes to the legacy graph representation. A compacted node summary is the future-relevant meaning of the historical events for that node; it is not a `ComputedValue` store.
 
@@ -172,7 +176,7 @@ happenedBefore(E,F)
     => authorityCompare(E,F) < 0
 ```
 
-The HLC order is a conflict-resolution device. Exact causal tests still use explicit vector context; HLC comparison is not used to infer happened-before.
+The HLC coordinate is a conflict-resolution component. Exact causal tests still use explicit vector context; HLC comparison is not used to infer happened-before. Initial-bootstrap value events with equal legacy `modifiedAt` may share the same HLC `AuthorityTime`; same-writer sequence still makes their complete EventRef authority strictly ordered.
 
 Writer-local journal sequences from different authors are not compared for conflict precedence. Writer fingerprint is the cross-host deterministic tie-break after HLC authority time.
 
@@ -198,6 +202,8 @@ O((L + T) R log H) bits
 ```
 
 `T` may grow with historical unique-key churn. The bound is a pessimistic worst-case bound and does not rely on remote-host acknowledgements or eventual return.
+
+This invariant is deliberately a bound on the canonical **compacted result**, not on every uncompacted committed journal. The raw historical layer may be arbitrarily larger between compactions as accepted by `$id-8247698182975014`.
 
 The proof is in `incremental-graph-journal-compaction.md`.
 
