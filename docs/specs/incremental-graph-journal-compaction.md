@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Journal 2 is conceptually a local ordered history, but retaining every historical event forever is not required. Canonical compaction replaces history whose future-relevant meaning is already summarized by bounded journal records.
+Journal 2 is conceptually a local ordered history, but retaining every historical event forever is not required. Canonical compaction removes history whose future-relevant meaning is already summarized by bounded journal records.
 
 Compaction is required to preserve:
 
@@ -20,7 +20,7 @@ Journal 2 semantics do not assign a deterministic time, event count, or lifecycl
 
 There is intentionally **no storage-size bound on the uncompacted raw historical layer**. Between compactions, raw semantic events and operation records may accumulate without a fixed bound. The size guarantees in this specification apply to the result of canonical compaction, not to every supported committed journal state before compaction. See `$id-8247698182975014`.
 
-Volodyslav's concrete operational policy is separate from Journal 2 semantics: its existing hourly periodic job attempts canonical compaction once per hourly-job execution, as specified in `periodic-jobs.md` and required by `$id-2399748558090155`. Scheduler downtime, retries, or other timing effects therefore change when compaction actually happens without changing journal meaning.
+Volodyslav's concrete operational policy is separate from Journal 2 semantics: its existing hourly periodic job attempts canonical compaction once per hourly-job execution, as specified in `periodic-jobs.md` and required by `$id-2399748558090155`. Scheduler downtime or other timing effects therefore change when compaction actually happens without changing journal meaning.
 
 ## Compacted representation
 
@@ -34,15 +34,17 @@ Canonical compaction retains:
 
 The optional bound in item 5 constrains only the raw tail deliberately retained **after a compaction has completed**. It does not impose a bound on the amount of raw history that may have accumulated immediately before that compaction.
 
-Historical raw semantic events whose effects are represented by these records may be deleted. Operation records and operation references which only group deleted raw semantic events may be deleted with them.
+Historical raw semantic events whose effects are represented by these records may be deleted. Operation records which only group deleted raw semantic events may be deleted with them, and historical-only grouping references may be cleared when necessary to avoid dangling references.
 
-Compaction does not synthesize a giant high-level `compiled` list. If an un-compacted low-level event retains an `operation` reference, the corresponding small operation record must remain available in the same retained history tail or the grouping reference must be removed as part of the same compaction rewrite.
+Compaction does not synthesize a giant high-level `compiled` list. If an un-compacted low-level event retains an `operation` reference, the corresponding small operation record must remain available in the same retained history tail unless that grouping reference is cleared by a committed compaction batch before the operation record is deleted.
 
-A retained operation record may have an optional `parent` reference. If compaction discards that parent operation record, it may clear the retained child's `parent` field rather than retaining an unbounded ancestry solely for historical grouping. Parent links have no semantic role.
+A retained operation record may have an optional `parent` reference. If compaction discards that parent operation record, it may first clear the retained child's `parent` field rather than retaining an unbounded ancestry solely for historical grouping. Parent links have no semantic role.
 
 ## Node-summary canonicalization
 
-For each NodeKey K, fold all represented historical/adopted authority according to the same rules used by live authoring and full synchronization:
+This section defines the canonical content of the retained node summary. Live authoring and synchronization already maintain this content on every publication; compaction does not recompute or rewrite node summaries.
+
+For each NodeKey K, the retained canonical summary represents all historical/adopted authority according to these rules:
 
 - retain the greatest semantic head authority by `authorityCompare` over its `EventRef`;
 - retain the componentwise maximum node-wide invalidation frontier;
@@ -54,9 +56,9 @@ For each NodeKey K, fold all represented historical/adopted authority according 
 
 Canonical compaction MUST NOT stop representing an already represented semantic key merely to reduce the represented-key domain. In particular, a tombstoned/absent key keeps its `NodeJournalSummary` and current changed-node marker. Removing such a key is a distinct reclamation optimization, not canonical compaction, and is permitted only when a separate correctness argument proves that no negative authority required against any supported delayed replica can be lost. Host liveness alone cannot supply that proof under `$id-4719065396881648`.
 
-Lower semantic heads, certificates for losing values, lower certificates for the current value, and value-specific invalidations for permanently losing values are not future candidates under Journal 2 semantics and may be discarded.
+Lower semantic heads, certificates for losing values, lower certificates for the current value, and value-specific invalidations for permanently losing values are not future candidates under Journal 2 semantics and need not remain as raw history after compaction.
 
-High-level operation IDs/records never participate in this fold.
+High-level operation IDs/records never participate in this canonical summary.
 
 ## Why one certificate is sufficient
 
@@ -80,7 +82,7 @@ Mixed cache/input provenance does not require deletion: a surviving present cach
 
 ### Node-wide invalidations
 
-Node-scoped explicit invalidation can affect a future current value whose validation did not observe it. Therefore compaction retains the greatest represented writer-local invalidating sequence for every represented author:
+Node-scoped explicit invalidation can affect a future current value whose validation did not observe it. Therefore the canonical summary retains the greatest represented writer-local invalidating sequence for every represented author:
 
 ```text
 nodeInvalidateFrontier[A]
@@ -90,7 +92,7 @@ These are vector-clock coordinates, not cross-writer conflict-precedence numbers
 
 ### Value-scoped invalidations
 
-Value-specific invalidations can affect only their named ValueId. Once that ValueId is not the current semantic head and cannot become current again under total head authority, its value-specific frontier may be discarded.
+Value-specific invalidations can affect only their named ValueId. Once that ValueId is not the current semantic head and cannot become current again under total head authority, its value-specific frontier need not remain as raw history.
 
 For the current value, repeated invalidates by one author collapse to one greatest writer-local coordinate in `valueInvalidateFrontier`.
 
@@ -100,7 +102,7 @@ For the current value, repeated invalidates by one author collapse to one greate
 
 `authorityClock` is the scalar HLC high-water mark of all authored/observed semantic authorities and is also retained exactly. This is required so a future local event can advance beyond an authority time whose raw event has been compacted away.
 
-The two fields are retained as the same coupled high-water summary required by J2-INV-7. Compaction may not lower or independently rewrite either field in a way that would make a causal coordinate cease to be covered by the authority high-water mark simply because the corresponding raw event was discarded.
+The two fields remain the same coupled high-water summary required by J2-INV-7. Compaction does not lower or independently rewrite either field merely because corresponding raw events are discarded.
 
 Raw event contexts/authority times can be discarded when no retained semantic reference needs their exact immutable metadata. The exact context and authority time of the current `ValueRef` and current certificate remain embedded in those retained refs.
 
@@ -116,7 +118,7 @@ The incremental change index contains one live marker per represented node/key:
 (lastLocalChange(K), K)
 ```
 
-When K changes at a later local semantic sequence q, compaction/live authoring removes its old marker and inserts `(q,K)`.
+When K changes at a later local semantic sequence q, live authoring removes its old marker and inserts `(q,K)` atomically with the summary change. Compaction leaves that current marker unchanged.
 
 This coalesces arbitrarily many changes to K while preserving the property:
 
@@ -286,6 +288,10 @@ The per-LevelDB-value bound applies equally before and after compaction. Unbound
 
 ## Compaction publication
 
-Compaction rewrites only the new journal sublevel and must not change the representation or semantic contents of existing graph sublevels.
+Compaction modifies only the historical part of the new journal sublevel and must not change the representation or semantic contents of existing graph sublevels, `JournalHeader`, node summaries, changed-node markers, or stored source cursors.
 
-Compaction is a journal maintenance operation, not a seventh database lifecycle transition. Its exact invocation time is nondeterministic at the Journal 2 semantic level. Each compaction operates on a coherent committed journal/graph snapshot and publishes its rewritten journal state atomically so no reader can observe a compacted journal summary paired with incompatible legacy graph state.
+Compaction is not a seventh database lifecycle transition and does not require inactive-replica construction or lifecycle cutover. It runs against the active database as a sequence of implementation-bounded batches under the ordinary per-replica commit serialization specified in `incremental-graph-journal-locking.md`.
+
+Each batch chooses a fixed set of already-committed historical records/reference cleanups, commits only those historical changes atomically, and then releases commit serialization before the next batch. A referenced historical operation record remains present until all retained references to it have first been removed or cleared by committed batches, so no intermediate state contains a dangling historical grouping reference.
+
+Because compaction does not rewrite semantic summaries, markers, headers, cursors, or legacy graph state, it cannot publish a journal summary paired with incompatible graph state. A failure may leave earlier prune batches committed; those intermediate states are semantically equivalent supported states, and a later compaction attempt may continue from the remaining history.
