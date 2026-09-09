@@ -127,7 +127,7 @@ No journal allocator/finalization path may acquire a telescope lock after acquir
 
 ## Compaction
 
-Canonical journal compaction is standalone historical housekeeping against the active database. It is not a database lifecycle transition, does not acquire `holiday`/exclusive lifecycle mode, and does not construct an inactive replica.
+Canonical journal compaction is standalone historical housekeeping against the active database. It is not a database lifecycle transition, is therefore not a `database-lifecycle.md` §14 maintenance transition requiring exclusivity, does not acquire `holiday`/exclusive lifecycle mode, and does not construct an inactive replica.
 
 Live authoring and synchronization already maintain the synchronization-relevant Journal 2 state on every publication. Compaction therefore MUST NOT rewrite `JournalHeader`, node summaries, changed-node markers, stored source cursors, or legacy graph state. Its writes are confined to the historical layer: deleting redundant raw semantic events and operation records, plus clearing historical-only `operation` or `parent` references when required to avoid dangling references.
 
