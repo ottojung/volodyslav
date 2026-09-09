@@ -26,7 +26,19 @@ A semantic event which is genuinely causally after another semantic event must h
 
 Journal sequence numbers from different writers must not be numerically compared to decide conflict precedence. Journal 2 may use a hybrid logical clock or an equivalent bounded total-order timestamp which is seeded by `modifiedAt` for value events and advanced as necessary so happened-before always implies increasing authority. This is a deterministic conflict policy, not a guarantee of true wall-clock recency under clock skew.
 
-Journal 2 does not need a maximum-clock-skew rejection rule. A badly skewed local clock, persisted `modifiedAt`, or previously observed authority high-water mark may distort or temporarily eliminate the normal `modifiedAt` preference for later concurrent conflicts. That is an accepted limitation rather than a reason to reject otherwise supported state merely by comparing its physical authority coordinate with the observer's local wall clock.
+---
+
+$id-3817813711344897
+title: No clock-skew rejection requirement
+date: 2026/09/09
+source: @ottojung
+kind: accepted-tradeoff
+
+Journal 2 does not need a maximum-clock-skew rejection rule.
+
+A badly skewed local clock, persisted `modifiedAt`, or previously observed authority high-water mark may distort or temporarily eliminate the normal `modifiedAt` preference for later concurrent conflicts. That is accepted rather than adding a rule which tries to decide whether a remote or persisted authority coordinate is implausibly far from the observer's own wall clock.
+
+Otherwise supported state must not be rejected solely because its physical authority coordinate is far ahead of the observer's local time.
 
 ---
 
