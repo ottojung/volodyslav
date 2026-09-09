@@ -106,7 +106,7 @@ The `compiled` array above is only a conceptual view: it is not stored as one la
 
 Operation IDs use a separate local counter and do not participate in semantic authority, causal context, conflict selection, synchronization, or projection. The operation counter remains monotone across reset; the `incarnation` field records the journal incarnation in which the operation occurred.
 
-Compaction may discard old operation grouping together with the raw events it described once only the bounded synchronization meaning remains relevant.
+Compaction may discard old operation records independently of the raw events which reference them. If a retained `operation` or `parent` reference names a discarded record, that grouping edge is unavailable to historical readers without making the journal state unsupported.
 
 ## Two layers inside the journal sublevel
 
@@ -239,14 +239,14 @@ Together with J2-INV-7, this guarantees that every retained frontier coordinate 
 
 ### J2-INV-9: retained references are causally represented
 
-For every supported node summary `S[K]`, let `H` be its head authority reference (`S[K].head.value` when present or `S[K].head.tombstone` when absent). Let `C` be `S[K].certificate.event` when a certificate is present. Every such retained `EventRef E` satisfies:
+Every retained head authority reference (`S[K].head.value` when present, `S[K].head.tombstone` when absent) and, when a certificate is present, `S[K].certificate.event`, satisfies:
 
 ```text
 E.id.sequence <= header.causalSummary[E.id.author]
 E.authorityTime <= header.authorityClock
 ```
 
-where the second comparison is the canonical `AuthorityTime` order.
+where `E` denotes the retained reference being quantified and the second comparison is the canonical `AuthorityTime` order.
 
 Every supported transition which installs or adopts a retained head or certificate reference MUST join that reference's writer coordinate and authority time into the header in the same atomic publication. Local authoring, synchronization adoption, reset, migration from existing Journal 2, same-host restoration, and compaction preserve this invariant.
 
