@@ -95,6 +95,17 @@ ResetKeys =
 
 where represented keys include both present heads and tombstoned/absent heads in compacted Journal 2 summaries.
 
+For every K in `ResetKeys`, first retain the node-scoped invalidation knowledge already observed by reset:
+
+```text
+resetNodeInvalidateFrontier[K] = componentwiseMax(
+    preResetReceiver.nodeInvalidateFrontier[K],
+    resetSource.nodeInvalidateFrontier[K]
+)
+```
+
+where a missing summary contributes the zero/empty frontier. This retained frontier is synchronization-relevant semantic summary state, not imported raw source history and not a newly authored invalidation event. It remains attached to K whether the reset target makes K present or absent.
+
 First enumerate every materialized target semantic node in ascending order of the target legacy value's `modifiedAt`, with canonical NodeKey order as the deterministic tie-breaker. For every such K:
 
 1. retain/construct the target legacy value/timestamp record according to reset semantics;
@@ -137,11 +148,17 @@ No source historical certificate is imported.
 
 ## Reset invalidation baseline
 
-The new incarnation's per-node value-specific invalidation state is rebuilt from the resulting target graph rather than carrying arbitrary old value-specific frontier history.
+Node-scoped and value-scoped invalidation state deliberately behave differently across reset.
 
-Old node-wide/value-specific journal invalidation frontiers are not required to survive as reset-anchor archives. Reset's newly authored values/certificates/tombstones are a new local baseline.
+`nodeInvalidateFrontier` is independent of the selected `ValueId` and remains future-relevant across value replacement. For every K in `ResetKeys`, the reset summary therefore retains exactly `resetNodeInvalidateFrontier[K]`, the componentwise maximum of the pre-reset receiver and reset-source node frontiers. This applies to both present and absent reset results.
 
-The global causal summary and HLC authority high-water mark may still remember old/remote history for future causal/authority-safe allocation; those header coordinates are not reset semantic authority for individual nodes.
+The reset baseline events are authored only after the receiver has observed the causal/header state which covers those retained node-frontier coordinates. Therefore a reset certificate for a present node has a context covering the retained node frontier. Preserving the frontier does not by itself make the reset target stale or alter the target legacy validity relation.
+
+Retaining that frontier is nevertheless necessary for future synchronization. A later competing value/certificate which did not observe an old explicit node invalidation must still be constrained by that invalidation, and redelivery of an already-covered pre-reset/source summary must not mutate the reset node summary merely by reintroducing a forgotten frontier coordinate.
+
+Old **value-scoped** invalidation frontiers are different: they belong to old `ValueId`s, while reset gives every present target node a fresh reset `ValueId`. Those old value-specific frontiers are discarded. A stale reset target instead receives the new value-scoped invalidation authored in the reset baseline for its new reset `ValueId`.
+
+The global causal summary and HLC authority high-water mark may still remember old/remote history for future causal/authority-safe allocation; those header coordinates complement, rather than replace, the retained per-node node-invalidation frontier.
 
 ## Reset laws and theorems
 
@@ -204,13 +221,13 @@ Therefore reset is a semantic rebaseline, not a journal-identity copy.
 
 ### R3. Observed-history domination law
 
-Every reset-authored head/certificate/invalidation used to establish the new baseline must be causally after the reset-relevant semantic authority which the reset operation actually observed.
+Every reset-authored head/certificate/invalidation used to establish the new baseline must be causally after the reset-relevant semantic authority which the reset operation actually observed. Reset also retains the componentwise maximum observed `nodeInvalidateFrontier` for every `ResetKey`, because that node-scoped authority remains future-relevant independently of the newly authored reset `ValueId` or tombstone.
 
-Its HLC authority is allocated after joining `resetAuthorityHighWater(B)`, so every reset-authored baseline event compares later than the observed authority it is intended to supersede.
+Its HLC authority is allocated after joining `resetAuthorityHighWater(B)`, so every reset-authored baseline event compares later than the observed authority it is intended to supersede. Present-node reset certificates therefore cover the retained node invalidation frontier.
 
-Consequently, a pre-reset/source authority already covered by the reset cannot later defeat the reset baseline merely by being redelivered from another replica.
+Consequently, a pre-reset/source authority already covered by the reset cannot later defeat or newly mutate the reset baseline merely by being redelivered from another replica.
 
-This is the anti-resurrection guarantee which motivates reauthoring the target state instead of simply copying S's old semantic identities.
+This is the anti-resurrection and absorption guarantee which motivates reauthoring the target state while retaining future-relevant node-scoped invalidation authority instead of simply copying S's old semantic identities.
 
 ### R4. Covered-state absorption theorem
 
@@ -228,9 +245,9 @@ observe(Sync(B <- U)) = observe(B)
 
 where `observe` includes the legacy graph projection, synchronization-relevant Journal 2 node semantics, and the causal/authority header high-water state which affects future event allocation.
 
-Intuition: every fact U can contribute is already on the causally old side of the reset cut, B rebuilt a head/certificate/tombstone baseline for every represented key in that domain, and U cannot advance B's already-post-reset header high-water state.
+Intuition: every fact U can contribute is already on the causally old side of the reset cut; B retained the observed node-scoped invalidation frontier and rebuilt a head/certificate/tombstone baseline for every represented key in that domain; and U cannot advance B's already-post-reset header high-water state. In particular, redelivering a covered node frontier is idempotent rather than a new `AdoptEvent`-worthy summary change.
 
-This theorem is stronger than merely saying that old values do not win: covered old invalidations/certificates cannot re-stale the reset projection, and covered header-only knowledge cannot alter future allocation behavior when redelivered.
+This theorem is stronger than merely saying that old values do not win: covered old invalidations/certificates cannot re-stale the reset projection, covered node-frontier coordinates cannot newly reappear, and covered header-only knowledge cannot alter future allocation behavior when redelivered.
 
 ### R5. Unseen-concurrency non-guarantee
 
@@ -275,7 +292,7 @@ No Journal 2 convergence rule depends on semantic reset idempotence.
 
 After canonical compaction, the retained Journal 2 state need not contain one reset marker, anchor, or baseline record per historical reset.
 
-Repeated resets may replace/subsume prior reset-specific raw history so the compacted-state size depends on the currently represented key/author/counter/authority-clock domain, not linearly on the number of resets performed.
+Repeated resets may replace/subsume prior reset-specific raw history. The retained node-scoped invalidation state is still only one componentwise-max `nodeInvalidateFrontier` per represented key, not one record per reset or per old invalidation event. The compacted-state size therefore depends on the currently represented key/author/counter/authority-clock domain, not linearly on the number of resets performed.
 
 This law does **not** imply that absent keys can always be forgotten: tombstoned keys whose negative authority remains synchronization-relevant still contribute to the retained absent-key term T.
 
@@ -326,13 +343,16 @@ Let:
 - `T` be the number of absent/tombstoned keys retained by the reset baseline;
 - `N = L + T`.
 
-Reset creates only a constant number of events/summary components per represented key:
+Reset creates or retains only a constant number of event/summary components per represented key:
 
 - one value or tombstone authority;
+- one componentwise-max node-scoped invalidation frontier;
 - one certificate for a present value;
-- at most one initial stale assertion;
+- at most one initial value-scoped stale assertion;
 - bounded input ValueId basis;
-- ordinary bounded causal/frontier metadata and constant-many HLC authority scalars.
+- ordinary bounded causal metadata and constant-many HLC authority scalars.
+
+The retained node frontier is one `CausalPrefix`, hence `O(R log H)` bits per represented key, exactly the same asymptotic per-summary cost already assumed by Journal 2.
 
 Receiver-local source cursors are deleted rather than accumulated across resets.
 
@@ -348,13 +368,13 @@ and each individual journal LevelDB value is:
 O(R log H) bits.
 ```
 
-No term depends linearly on the number of prior resets or historical reset anchors because prior reset-specific per-node history is subsumed by the current incarnation baseline. The retained absent-key term T may nevertheless reflect historical unique-key churn when anti-resurrection authority for those keys remains required.
+No term depends linearly on the number of prior resets or historical reset anchors because prior reset-specific per-node history is subsumed by the current incarnation baseline and the componentwise-max node frontier. The retained absent-key term T may nevertheless reflect historical unique-key churn when anti-resurrection authority for those keys remains required.
 
 ## Delayed old replicas
 
 A replica which has not participated since before reset may later present old semantic authorities after an arbitrarily long delay.
 
-If those authorities are covered by the reset baseline, R3/R4 apply: redelivery cannot undo the reset.
+If those authorities are covered by the reset baseline, R3/R4 apply: redelivery cannot undo or semantically extend the reset state merely by restoring already-observed node-frontier coordinates.
 
 A genuinely unseen remote authority may be concurrent with the reset and is resolved by ordinary Journal 2 synchronization rules when eventually observed, as stated by R5. Reset does not absorb arbitrary unseen authority which is outside its observed causal cut.
 
