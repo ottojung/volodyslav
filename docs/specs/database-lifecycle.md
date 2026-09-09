@@ -94,6 +94,19 @@ If the current hostname has no synchronized branch, startup initializes the loca
 
 The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
 
+When the running database version includes Journal 2, fresh creation MUST establish a valid empty Journal 2 state before that database is marked current, becomes writable, or is used as synchronization input. Fresh initialization establishes the database's durable `DatabaseFingerprint` and atomically persists:
+
+```text
+header.writer = DatabaseFingerprint
+header.incarnation = 1
+header.localJournalCounter = 0
+header.localOperationCounter = 0
+header.causalSummary = {}
+header.authorityClock = { physical: 0, logical: 0 }
+```
+
+The fresh Journal 2 state contains no node summaries, changed-node markers, stored source cursors, raw semantic events, or high-level operation records. This is part of fresh database creation, not a data migration. Failure to establish this state aborts creation rather than exposing a journal-less database as current.
+
 This fallback is not a general-purpose import from an arbitrary host. Other host states are accepted only through normal synchronization, including its exact version-compatibility requirement. In particular, an unversioned fresh database is not implicitly treated as compatible with a versioned remote host.
 
 ### 4.4 Creation postconditions
@@ -103,6 +116,7 @@ After successful creation and startup:
 - a local live database exists and is openable;
 - its active logical state is structurally loadable;
 - it records the database version expected by the running application;
+- when that version includes Journal 2, its valid Journal 2 writer/header state has been established before the database became current or writable;
 - its synchronization identity and history were established by Volodyslav; and
 - the graph interface is initialized from that state.
 
@@ -131,7 +145,7 @@ Migration is the supported transition between database versions. It is part of s
 
 The running application supplies the target database version and current graph schema. After opening the active state:
 
-- if no version is recorded, the database is treated as fresh and is marked current;
+- if no version is recorded, the database is treated as fresh, any version-required fresh initialization such as Journal 2 is completed, and only then is the database marked current;
 - if the stored version equals the running version, migration is a no-op; and
 - if the versions differ, migration is required before the graph interface can be initialized.
 
