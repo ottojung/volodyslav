@@ -27,6 +27,8 @@ No semantic event ID/authority may become durable without the graph/journal tran
 
 When a high-level operation record is persisted for a transition, its `localOperationCounter` update, the operation record, and all directly linked low-level events committed by that transition are part of the same publication boundary.
 
+Historical grouping references are best-effort and must never become dangling. Before committing a low-level event with `operation: P` or a child `OperationRecord` with `parent: P`, finalization MUST verify under this same per-replica commit serialization that operation record `P` is still present in the resulting transaction state (either already committed or being created by the same transaction). If it is not present, the optional `operation`/`parent` field is omitted. These fields are historical-only and have no effect on folding, authority, projection, synchronization, compaction correctness, or causality, so omission changes no Journal 2 semantics.
+
 ## Journal allocators
 
 Allocation of local semantic event sequences, local HLC authority times, and local operation sequences is serialized per writable replica during publication.
@@ -129,19 +131,23 @@ No journal allocator/finalization path may acquire a telescope lock after acquir
 
 Canonical journal compaction is standalone historical housekeeping against the active database. It is not a database lifecycle transition, is therefore not a `database-lifecycle.md` §14 maintenance transition requiring exclusivity, does not acquire `holiday`/exclusive lifecycle mode, and does not construct an inactive replica.
 
+Each compaction batch runs in the existing IncrementalGraph `daytime` mode. Because `holiday` blocks every other graph mode, migration/reset/lifecycle cutover cannot overlap a compaction batch. Because `pull()` runs in `nighttime`, a pull cannot overlap a compaction batch either. Other `daytime` operations such as `invalidate()` may execute concurrently at the graph-mode level, with their durable writes still serialized by the per-replica commit boundary below.
+
 Live authoring and synchronization already maintain the synchronization-relevant Journal 2 state on every publication. Compaction therefore MUST NOT rewrite `JournalHeader`, node summaries, changed-node markers, stored source cursors, or legacy graph state. Its writes are confined to the historical layer: deleting redundant raw semantic events and operation records, plus clearing historical-only `operation` or `parent` references when required to avoid dangling references.
 
 Compaction runs as a sequence of implementation-bounded batches. Each batch:
 
-1. selects only records which were already committed and historical at that batch's read cutoff;
-2. treats an operation as historical only when no future supported publication can attach a new low-level event or child-operation reference to that `OperationId`;
-3. acquires the same per-replica commit serialization used by ordinary publication;
-4. atomically applies that batch's historical deletes/reference cleanup; and
-5. releases commit serialization before selecting/committing the next batch.
+1. acquires `daytime` mode for the current active replica;
+2. acquires the same per-replica commit serialization used by ordinary publication;
+3. while both are held, selects an implementation-bounded set of records/reference cleanups which are already committed and historical in that current active replica;
+4. atomically applies only that batch's historical deletes/reference cleanup; and
+5. releases the commit serialization and `daytime` mode before beginning the next batch.
 
-A batch never deletes a referenced operation record while a retained historical event or child operation still points to it. Reference cleanup may itself be split across bounded batches; the referenced record remains until all retained references have either been removed with their records or cleared by an earlier committed batch. Thus no committed batch exposes a dangling historical grouping reference.
+A batch never deletes a referenced operation record while a retained historical event or child operation still points to it. Reference cleanup may itself be split across bounded batches; the referenced record remains until all retained references have either been removed with their records or cleared by an earlier committed batch. The publication-time reference-integrity rule above prevents a later writer from creating a new reference to an operation record after compaction has pruned it.
 
-Because batch candidates are fixed before their commit and local semantic/operation IDs are never reused, ordinary authoring may continue between compaction batches without allowing compaction to delete a newly authored record. Compaction can delay an ordinary `pull()` or `invalidate()` only while one bounded compaction batch holds the ordinary commit serialization.
+Candidate sets never survive release of `daytime` mode. If the database is closed or a lifecycle transition replaces the active replica between batches, compaction abandons the remaining work; a later attempt re-selects candidates from the then-current active replica. Already committed prune batches remain valid, so abandonment requires no rollback.
+
+The amount of selection and deletion work in one batch is implementation-bounded. A `pull()` can therefore be delayed by at most one bounded compaction batch before compaction releases `daytime`; a concurrent `invalidate()` is blocked only when it contends for the serialized commit boundary.
 
 A failure after one or more batches have committed leaves those already-committed prune steps in place. Every committed intermediate state is a supported journal state with identical graph/synchronization semantics, so a later compaction attempt may simply continue from the remaining historical records.
 
