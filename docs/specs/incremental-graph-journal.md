@@ -17,7 +17,7 @@ This specification is the entry point for Journal 2. It is normative together wi
 
 Journal 2 adds one new IncrementalGraph sublevel, `journal`. It does not change the representation of any existing sublevel.
 
-The conceptual journal is a local ordered history of events. The persisted journal may be compacted into bounded per-node summaries and indexes which preserve the future synchronization and iterator semantics specified below.
+The conceptual journal is a local ordered history of events. The persisted journal continuously maintains bounded per-node summaries and indexes alongside raw historical records; canonical compaction may later prune raw history whose future synchronization and iterator meaning is already represented by those maintained records.
 
 The journal is not a durable audit log. Canonical compaction may permanently discard old raw events and high-level operation-grouping detail once their required future synchronization/iterator meaning has been retained in bounded journal state.
 
@@ -122,7 +122,7 @@ The total size of this uncompacted historical layer is intentionally not bounded
 
 ### Compacted synchronization layer
 
-Compaction folds old history into bounded records:
+Live authoring and synchronization maintain the bounded synchronization layer on every publication. Canonical compaction does not build or rewrite this layer; it removes raw historical records whose future-relevant meaning these maintained records already carry. The layer contains:
 
 ```text
 header {
