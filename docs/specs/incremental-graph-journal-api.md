@@ -199,6 +199,8 @@ For a source node unchanged after P, its source semantic authority/frontiers/cer
 
 Source-global causal or HLC high-water knowledge may nevertheless have grown without changing any node. Because every incremental range transfers the current `causalSummary` and `authorityClock`, incremental synchronization observes the same source-global allocation knowledge that full synchronization would observe from the same source snapshot.
 
+By J2-INV-9, that source header also dominates every retained head and certificate EventRef in the summaries yielded from the same snapshot. Joining the source header therefore gives incremental synchronization at least the causal/authority knowledge that full synchronization would obtain by directly inspecting those retained references.
+
 For a changed present node, incremental synchronization reads both the current semantic summary and any required payload/timestamp record from the same source snapshot. Therefore it materializes the same selected source occurrence that full synchronization would inspect from that snapshot.
 
 Full synchronization does not require additional source reads merely to establish `oldValue` provenance: any selected present cache whose dependency closure survives is retainable as the node's cached `oldValue`, while certificate/input mismatches affect freshness and validity only. Therefore incremental synchronization does not need an extra witness scan beyond the changed summaries and exact payloads required by the ordinary merge.
