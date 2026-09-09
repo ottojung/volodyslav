@@ -67,7 +67,7 @@ If it directly observes a semantic `EventRef` not already covered by that header
 
 Observation alone need not author a semantic event. The retained `authorityClock` is a high-water mark, not itself semantic graph authority.
 
-Journal 2 deliberately defines no `MaxAuthoritySkew` or equivalent comparison with the observer's local wall clock. A far-future persisted timestamp or already-supported observed authority may raise `authorityClock` far ahead of local time; such skew may distort later concurrent conflict preference but is not by itself an unsupported-state condition. See `$id-8532915736687645`.
+Journal 2 deliberately defines no `MaxAuthoritySkew` or equivalent comparison with the observer's local wall clock. A far-future persisted timestamp or already-supported observed authority may raise `authorityClock` far ahead of local time; such skew may distort later concurrent conflict preference but is not by itself an unsupported-state condition. See `$id-3817813711344897`.
 
 ### Local semantic event allocation
 
