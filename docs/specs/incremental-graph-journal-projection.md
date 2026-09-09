@@ -166,6 +166,7 @@ Opening, staging, migration, synchronization, restoration, reset, and compaction
 - current certificates name the current value and have the exact schema-derived basis arity;
 - all copies of one `JournalEventId` agree on immutable context/authority time;
 - journal references are well-formed and bounded by represented causal/authority knowledge;
+- every node-summary invalidation frontier coordinate is bounded by the corresponding header `causalSummary` coordinate as required by J2-INV-8;
 - no retained EventRef has an authority time greater than the local header `authorityClock` high-water mark; and
 - locally witnessed header/event facts are consistent with J2-INV-7: whenever a retained event is covered by `causalSummary`, its authority time is not greater than `authorityClock`.
 
