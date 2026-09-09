@@ -350,10 +350,6 @@ OperationRecord =
         migration: MigrationId
       }
     | OperationRecordBase & {
-        kind: "bootstrap",
-        migration?: MigrationId
-      }
-    | OperationRecordBase & {
         kind: "other",
         tag: OperationTag,
         subject?: NodeKey
@@ -366,11 +362,11 @@ The tagged fields identify the high-level invocation itself rather than only its
 
 `parent`, when present, names the direct high-level caller known to the implementation. It does not imply semantic happened-before, does not affect event authority, and does not require the parent record to enumerate children. Parent recording is optional because independently committing nested operations need not share one publication transaction; Journal 2 does not require a complete transitive call tree.
 
-A high-level operation may compile into arbitrarily many low-level semantic events. The operation record MUST NOT contain an array of all compiled events because that could make one LevelDB value proportional to graph size. Instead each low-level event produced directly by the operation carries the same optional `operation: OperationId` reference. The conceptual expansion is recovered from the event list by grouping those small records.
+A high-level operation may compile into arbitrarily many low-level semantic events. The operation record MUST NOT contain an array of all compiled events because that could make one LevelDB value proportional to graph size. Instead each low-level event produced directly by the operation carries the same optional `operation: OperationId` reference. The conceptual expansion is recovered from the event list by grouping those small records while the referenced operation record remains available.
 
 Nested operations may have distinct operation IDs. The specification does not require one parent operation record to enumerate all recursively nested operation IDs.
 
-Compaction may discard old operation records and their corresponding raw-event grouping information together once the raw historical events they describe are compacted away. Operation grouping has no role in the compacted synchronization meaning.
+Compaction may discard old operation records independently of retained raw events. If a retained `operation` or `parent` reference names a record already discarded by compaction, that grouping edge is simply unavailable to historical readers. Operation grouping has no role in the compacted synchronization meaning.
 
 ## Historical semantic events
 
