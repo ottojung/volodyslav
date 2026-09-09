@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Journal 2 is conceptually a local ordered history, but retaining every historical event forever is not permitted. Canonical compaction replaces history whose future-relevant meaning is already summarized by bounded journal records.
+Journal 2 is conceptually a local ordered history, but retaining every historical event forever is not required. Canonical compaction replaces history whose future-relevant meaning is already summarized by bounded journal records.
 
 Compaction is required to preserve:
 
@@ -14,6 +14,14 @@ Compaction is required to preserve:
 
 It does not preserve forensic replay, payload history, or high-level operation grouping for history whose raw semantic events have themselves been compacted away.
 
+## Scheduling and uncompacted history
+
+Journal 2 semantics do not assign a deterministic time, event count, or lifecycle transition at which compaction occurs. Canonical compaction may be invoked from time to time at implementation-chosen moments, and every correctness theorem in this document must hold regardless of the exact compaction points chosen.
+
+There is intentionally **no storage-size bound on the uncompacted raw historical layer**. Between compactions, raw semantic events and operation records may accumulate without a fixed bound. The size guarantees in this specification apply to the result of canonical compaction, not to every supported committed journal state before compaction. See `$id-8247698182975014`.
+
+Volodyslav's concrete operational policy is separate from Journal 2 semantics: its existing hourly periodic job attempts canonical compaction once per hourly-job execution, as specified in `periodic-jobs.md` and required by `$id-2399748558090155`. Scheduler downtime, retries, or other timing effects therefore change when compaction actually happens without changing journal meaning.
+
 ## Compacted representation
 
 Canonical compaction retains:
@@ -22,7 +30,9 @@ Canonical compaction retains:
 2. one `NodeJournalSummary` per represented semantic node/key, including retained absent/tombstoned keys;
 3. one current changed-node marker per represented semantic node/key;
 4. stored source cursors, one bounded record per known source;
-5. at most a bounded implementation-defined raw history tail consisting of small operation records and low-level semantic events, which canonical size analysis may take to be empty.
+5. optionally, a bounded implementation-defined raw history tail consisting of small operation records and low-level semantic events; canonical size analysis may take this tail to be empty.
+
+The optional bound in item 5 constrains only the raw tail deliberately retained **after a compaction has completed**. It does not impose a bound on the amount of raw history that may have accumulated immediately before that compaction.
 
 Historical raw semantic events whose effects are represented by these records may be deleted. Operation records and operation references which only group deleted raw semantic events may be deleted with them.
 
@@ -41,6 +51,8 @@ For each NodeKey K, fold all represented historical/adopted authority according 
 - retain only the greatest certificate naming V by certificate EventRef authority;
 - retain the exact immutable context and `authorityTime` of the current `ValueRef` and certificate event;
 - retain the latest local changed-node sequence.
+
+Canonical compaction MUST NOT stop representing an already represented semantic key merely to reduce the represented-key domain. In particular, a tombstoned/absent key keeps its `NodeJournalSummary` and current changed-node marker. Removing such a key is a distinct reclamation optimization, not canonical compaction, and is permitted only when a separate correctness argument proves that no negative authority required against any supported delayed replica can be lost. Host liveness alone cannot supply that proof under `$id-4719065396881648`.
 
 Lower semantic heads, certificates for losing values, lower certificates for the current value, and value-specific invalidations for permanently losing values are not future candidates under Journal 2 semantics and may be discarded.
 
@@ -200,11 +212,13 @@ Thus old raw history is observationally redundant for synchronization.
 
 Canonical compaction must satisfy `$id-4719065396881648` and `$id-1762448645994697`.
 
-In particular, the required correctness proof and space bound may not rely on eventually receiving an acknowledgement from every host which could later present old state. A host may return only after an arbitrarily long delay, may first be encountered only after an arbitrarily long delay, or may never return at all.
+In particular, the required correctness proof and compacted-size bound may not rely on eventually receiving an acknowledgement from every host which could later present old state. A host may return only after an arbitrarily long delay, may first be encountered only after an arbitrarily long delay, or may never return at all.
 
-Therefore host-liveness/acknowledgement-based reclamation cannot be used to justify the mandatory compacted-state bound. Such reclamation may exist as an optional optimization, but the canonical worst-case representation must remain correct and within its stated parameters without it.
+Therefore host-liveness/acknowledgement-based reclamation cannot be used to justify the mandatory compacted-state bound or to remove tombstoned negative authority required by the canonical representation. Such reclamation may exist as an optional optimization only when it has an independent proof that no supported reachable state can require the reclaimed authority; the canonical worst-case representation must remain correct and within its stated parameters without it.
 
 ## Size bound
+
+This section bounds the **result of canonical compaction**. It deliberately does not bound an arbitrary uncompacted committed journal; `$id-8247698182975014` explicitly accepts unbounded raw historical growth between compactions.
 
 Use the intent-record variables:
 
@@ -235,7 +249,7 @@ size(NodeJournalSummary) = O(R log H) bits
 
 There are O(L + T) node summaries and O(L + T) changed-node markers. Markers cost only `O(log H)` bits plus bounded NodeKey storage. The header costs `O(R log H)` including `causalSummary`, `authorityClock`, and scalar local counters. Source cursors contribute at most `O(R log H)` when there is at most one stored cursor per durable source identity.
 
-A canonical compacted journal may take its raw history tail to be empty. Any implementation which retains a bounded raw tail retains only individually bounded operation/event records; that optional bounded tail does not change the asymptotic compacted-state bound.
+A canonical compacted journal may take its raw history tail to be empty. Any implementation which retains a bounded raw tail in the compacted result retains only individually bounded operation/event records; that optional bounded tail does not change the asymptotic compacted-state bound.
 
 Therefore:
 
@@ -268,8 +282,10 @@ in the worst case, still exactly within the required per-LevelDB-value bound. No
 
 Graph-wide indexes and high-level-operation expansions are represented as many small LevelDB records rather than one giant map/list value.
 
+The per-LevelDB-value bound applies equally before and after compaction. Unbounded uncompacted journal size is permitted only through an unbounded **number** of individually bounded records, never through one unbounded record.
+
 ## Compaction publication
 
-Compaction may rewrite only the new journal sublevel. It must not change the representation or semantic contents of existing graph sublevels.
+Compaction rewrites only the new journal sublevel and must not change the representation or semantic contents of existing graph sublevels.
 
-When compaction requires inactive-replica construction/cutover under the database lifecycle, the cutover must preserve atomic graph/journal consistency and must not expose a compacted journal paired with a different legacy graph snapshot.
+Compaction is a journal maintenance operation, not a seventh database lifecycle transition. Its exact invocation time is nondeterministic at the Journal 2 semantic level. Each compaction operates on a coherent committed journal/graph snapshot and publishes its rewritten journal state atomically so no reader can observe a compacted journal summary paired with incompatible legacy graph state.
