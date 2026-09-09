@@ -71,7 +71,7 @@ This is a supported-state invariant, not a global discovery protocol. If the aut
 
 Bootstrap semantic events use the canonical local semantic-event allocator from `incremental-graph-journal-types.md`, including its special initial-bootstrap value-authority rule. The initially empty causal summary contains no remote coordinates. Writer-local sequences and causal contexts still advance in normal bootstrap event order; only equal-`modifiedAt` bootstrap value occurrences are permitted to share an `AuthorityTime`.
 
-The migration may allocate one local high-level operation record and attach its `OperationId` to bootstrap semantic events. A `kind="migration"` record carries the stable migration `MigrationId`; a `kind="bootstrap"` record may also carry that migration ID when the bootstrap is specifically the expansion of this migration. Operation grouping is local history only and does not affect semantic allocation.
+If the initial bootstrap persists a high-level operation record, it uses `kind="migration"` and carries this migration's stable `MigrationId`. The semantic events it expands retain `reason="bootstrap"`; operation grouping is local history only and does not affect semantic allocation.
 
 ## Pass 1: assign current value occurrences
 
