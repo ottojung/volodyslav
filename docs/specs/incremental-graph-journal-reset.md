@@ -193,11 +193,14 @@ CoveredState(U, B)
 to mean all of:
 
 1. every semantic NodeKey represented by U is in B's `ResetKeys`;
-2. every synchronization-relevant semantic event reference/frontier coordinate contributed by U is covered by the reset baseline context;
-3. U's header causal summary is componentwise covered by `resetContext(B)`; and
-4. `U.authorityClock <= resetAuthorityHighWater(B)` in the AuthorityTime order.
+2. every synchronization-relevant semantic event reference and value-scoped frontier coordinate contributed by U is covered by `resetContext(B)`;
+3. for every represented NodeKey K, `B.nodeInvalidateFrontier[K]` componentwise dominates `U.nodeInvalidateFrontier[K]`;
+4. U's header causal summary is componentwise covered by `resetContext(B)`; and
+5. `U.authorityClock <= resetAuthorityHighWater(B)` in the AuthorityTime order.
 
-The header conditions are essential: synchronization-relevant source knowledge can grow without changing any node or authoring a local semantic event. A state is not fully absorbed by the reset merely because its per-node summaries are old if its header would still advance B's future causal or authority allocation state.
+The distinction in condition 3 is essential. A causal header can prove that an old node invalidation occurred without encoding the NodeKey to which its frontier belongs. Because node-scoped invalidation remains synchronization-relevant summary state across value changes, causal coverage alone is not enough to prove that redelivery of that frontier is a semantic no-op. Reset explicitly retains the node frontiers it observed from R and S; `CoveredState` requires any other U's node frontier to already be dominated by that retained per-node state.
+
+The header conditions are also essential: synchronization-relevant source knowledge can grow without changing any node or authoring a local semantic event. A state is not fully absorbed by the reset merely because its per-node semantic events are old if its header would still advance B's future causal or authority allocation state.
 
 ### R1. Projection replacement law
 
@@ -225,7 +228,7 @@ Every reset-authored head/certificate/invalidation used to establish the new bas
 
 Its HLC authority is allocated after joining `resetAuthorityHighWater(B)`, so every reset-authored baseline event compares later than the observed authority it is intended to supersede. Present-node reset certificates therefore cover the retained node invalidation frontier.
 
-Consequently, a pre-reset/source authority already covered by the reset cannot later defeat or newly mutate the reset baseline merely by being redelivered from another replica.
+Consequently, a pre-reset/source authority already represented by the reset cannot later defeat or newly mutate the reset baseline merely by being redelivered from another replica.
 
 This is the anti-resurrection and absorption guarantee which motivates reauthoring the target state while retaining future-relevant node-scoped invalidation authority instead of simply copying S's old semantic identities.
 
@@ -245,13 +248,13 @@ observe(Sync(B <- U)) = observe(B)
 
 where `observe` includes the legacy graph projection, synchronization-relevant Journal 2 node semantics, and the causal/authority header high-water state which affects future event allocation.
 
-Intuition: every fact U can contribute is already on the causally old side of the reset cut; B retained the observed node-scoped invalidation frontier and rebuilt a head/certificate/tombstone baseline for every represented key in that domain; and U cannot advance B's already-post-reset header high-water state. In particular, redelivering a covered node frontier is idempotent rather than a new `AdoptEvent`-worthy summary change.
+Intuition: every fact U can contribute is already on the causally old side of the reset cut or, for node-scoped invalidation, is already present in B's retained per-node frontier; B rebuilt a head/certificate/tombstone baseline for every represented key in that domain; and U cannot advance B's already-post-reset header high-water state. In particular, redelivering a dominated node frontier is idempotent rather than a new `AdoptEvent`-worthy summary change.
 
-This theorem is stronger than merely saying that old values do not win: covered old invalidations/certificates cannot re-stale the reset projection, covered node-frontier coordinates cannot newly reappear, and covered header-only knowledge cannot alter future allocation behavior when redelivered.
+This theorem is stronger than merely saying that old values do not win: covered old invalidations/certificates cannot re-stale the reset projection, represented node-frontier coordinates cannot newly reappear, and covered header-only knowledge cannot alter future allocation behavior when redelivered.
 
 ### R5. Unseen-concurrency non-guarantee
 
-Journal 2 reset does **not** guarantee universal absorption of arbitrary state which was not causally covered by the reset.
+Journal 2 reset does **not** guarantee universal absorption of arbitrary state which was not represented by the reset cut.
 
 If U later presents a semantic authority E for which:
 
@@ -265,9 +268,9 @@ then E may be concurrent with the reset baseline. Ordinary Journal 2 synchroniza
 observe(Sync(B <- U)) != observe(B)
 ```
 
-Likewise, a state whose node facts are covered but whose causal/authority header exceeds the reset cut is not `CoveredState(U,B)` and may advance B's header even if its graph projection contributes no winning node fact.
+Likewise, a state whose ordinary semantic facts are causally covered but whose per-node `nodeInvalidateFrontier` is not dominated by B is not `CoveredState(U,B)`: synchronizing it may extend B's node summary even when B's reset certificate already causally covers that invalidation and the legacy graph projection therefore remains unchanged. A state whose node facts are absorbed but whose causal/authority header exceeds the reset cut is also not `CoveredState(U,B)` and may advance B's header.
 
-This is the specified boundary of reset: it dominates the synchronization-relevant history it observed, not arbitrary unseen concurrent authority.
+This is the specified boundary of reset: it dominates the synchronization-relevant history and per-node frontier state it represented, not arbitrary unseen concurrent authority or per-node facts known only indirectly through a causal header.
 
 ### R6. Projection idempotence, semantic non-idempotence
 
@@ -374,9 +377,9 @@ No term depends linearly on the number of prior resets or historical reset ancho
 
 A replica which has not participated since before reset may later present old semantic authorities after an arbitrarily long delay.
 
-If those authorities are covered by the reset baseline, R3/R4 apply: redelivery cannot undo or semantically extend the reset state merely by restoring already-observed node-frontier coordinates.
+If those authorities and per-node frontier coordinates satisfy `CoveredState`, R3/R4 apply: redelivery cannot undo or semantically extend the reset state merely by restoring already-represented node-frontier coordinates.
 
-A genuinely unseen remote authority may be concurrent with the reset and is resolved by ordinary Journal 2 synchronization rules when eventually observed, as stated by R5. Reset does not absorb arbitrary unseen authority which is outside its observed causal cut.
+A genuinely unseen remote authority or a previously unrepresented node-frontier coordinate is resolved by ordinary Journal 2 synchronization rules when eventually observed, as stated by R5. Reset does not absorb state outside its represented reset cut.
 
 No correctness argument in this reset design assumes that such a delayed replica eventually returns at all; this follows the liveness-independent intent `$id-4719065396881648`.
 
