@@ -115,7 +115,7 @@ The `modifiedAt` seed does not determine reset enumeration or distinguish reset 
 After all target present nodes have their reset ValueIds, author the validation/invalidation baseline in deterministic semantic topological order:
 
 4. author a local `ValidateEvent(reason="reset")` whose basis encodes the resulting legacy incoming validity relation as described below;
-5. if the resulting target node is stale, author a local value-scoped invalidation after the validation so the projection remains stale.
+5. if the resulting target node is stale, author a local value-scoped `InvalidateEvent(reason="reset")` after the validation so the projection remains stale.
 
 For every K in `ResetKeys` which is absent from the resulting target legacy graph, author a local `DeleteEvent(reason="reset")` in deterministic canonical NodeKey order.
 
@@ -140,7 +140,7 @@ basis[i] = "unknown"
 
 For a target fresh node, the existing graph invariant guarantees every required incoming validity edge exists, so the basis contains the current ValueId for every direct input.
 
-For a target stale node, partial or absent validity is represented exactly by current IDs and `"unknown"` sentinels. A following value-scoped invalidation keeps the node stale even when all basis entries happen to match.
+For a target stale node, partial or absent validity is represented exactly by current IDs and `"unknown"` sentinels. A following value-scoped `InvalidateEvent(reason="reset")` keeps the node stale even when all basis entries happen to match.
 
 No source historical certificate is imported.
 
@@ -154,7 +154,7 @@ By J2-INV-8, each retained node-frontier coordinate in the pre-reset receiver is
 
 Retaining that frontier is nevertheless necessary for future synchronization. A later competing value/certificate which did not observe an old explicit node invalidation must still be constrained by that invalidation, and redelivery of an already-covered pre-reset/source summary must not mutate the reset node summary merely by reintroducing a forgotten frontier coordinate.
 
-Old **value-scoped** invalidation frontiers are different: they belong to old `ValueId`s, while reset gives every present target node a fresh reset `ValueId`. Those old value-specific frontiers are discarded. A stale reset target instead receives the new value-scoped invalidation authored in the reset baseline for its new reset `ValueId`.
+Old **value-scoped** invalidation frontiers are different: they belong to old `ValueId`s, while reset gives every present target node a fresh reset `ValueId`. Those old value-specific frontiers are discarded. A stale reset target instead receives the new value-scoped `InvalidateEvent(reason="reset")` authored in the reset baseline for its new reset `ValueId`.
 
 The global causal summary and HLC authority high-water mark may still remember old/remote history for future causal/authority-safe allocation; those header coordinates complement, rather than replace, the retained per-node node-invalidation frontier.
 
