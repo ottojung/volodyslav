@@ -57,8 +57,6 @@ causalSummary := componentwiseMax(causalSummary, source.causalSummary)
 authorityClock := maxAuthorityTime(authorityClock, source.authorityClock)
 ```
 
-and joins directly inspected source EventRefs as required.
-
 These causal and authority observations are coupled and MUST preserve J2-INV-7 and J2-INV-9 in the same publication. Every reset baseline event is therefore causally after the semantic history which reset actually observed and advances from an HLC high-water mark at least as great as every retained head/certificate authority represented by either reset input.
 
 The receiver may retain its accumulated `causalSummary` and `authorityClock`; reset does not require historical per-node reset anchors.
