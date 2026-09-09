@@ -25,8 +25,8 @@ The operation record uses `localOperationCounter`, not the semantic `localJourna
 When an operation record is persisted, its tagged arguments MUST identify the recorded invocation according to `incremental-graph-journal-types.md`:
 
 - `pull` and `invalidate` record their `subject` NodeKey;
-- `synchronize` records the source database plus its Journal 2 incarnation, local semantic head, causal summary, and authority-clock high-water mark from the exact stable source snapshot consumed by the operation;
-- `reset` records the chosen valid compatible Journal 2 source with the same complete source-position metadata;
+- `synchronize` records the source database plus its Journal 2 incarnation, local semantic head, causal summary, and authority-clock high-water mark from the stable source snapshot consumed by the operation;
+- `reset` records the chosen valid compatible Journal 2 source with the same source-position metadata;
 - `migration` records the stable `MigrationId` of the migration being run;
 - implementation-specific `other` operations use a bounded stable `OperationTag` rather than arbitrary payload data.
 
@@ -171,7 +171,7 @@ Examples include:
 
 The event carries bounded references/summary metadata but creates no new `ValueId`, certificate authority, invalidation authority, or tombstone authority. The adopted foreign identities and their immutable authority times remain unchanged.
 
-All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`. When that operation record is persisted, its `source` identifies the same fixed Journal 2 source snapshot used by the synchronization protocol, including incarnation, local head, causal summary, and authority-clock high-water mark. That grouping is historical only and is not imported by peers.
+All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`. When that operation record is persisted, its `source` records the Journal 2 source-position metadata from the same fixed source snapshot used by the synchronization protocol, including incarnation, local head, causal summary, and authority-clock high-water mark. That grouping is historical only and is not imported by peers.
 
 If source information is already represented and the graph projection is unchanged, repeating synchronization is silent and need not persist an operation record.
 
@@ -179,7 +179,16 @@ If source information is already represented and the graph projection is unchang
 
 A merged graph can create one special case not already represented by either side: a node's certificate basis still exactly matches all final input `ValueId`s, but one of those final inputs becomes stale due to information from the other replica.
 
-If K would otherwise become fresh again automatically when that input later revalidates unchanged, synchronization must author one value-scoped invalidation for K. This records the same persistent stale transition that the ordinary local invalidation propagation algorithm would have recorded.
+If K would otherwise become fresh again automatically when that input later revalidates unchanged, synchronization must author:
+
+```text
+InvalidateEvent {
+    scope: { kind: "value", value: currentValueId(K) },
+    reason: "sync"
+}
+```
+
+This records the same persistent stale transition that the ordinary local invalidation propagation algorithm would have recorded.
 
 The invalidation is authored only when no already represented uncovered value-scoped invalidation supplies that stale authority.
 
