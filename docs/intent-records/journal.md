@@ -36,9 +36,9 @@ kind: accepted-tradeoff
 
 Journal 2 does not need a maximum-clock-skew rejection rule.
 
-A badly skewed local clock, persisted `modifiedAt`, or previously observed authority high-water mark may distort or temporarily eliminate the normal `modifiedAt` preference for later concurrent conflicts. That is accepted rather than adding a rule which tries to decide whether a remote or persisted authority coordinate is implausibly far from the observer's own wall clock.
+A badly skewed local clock, persisted `modifiedAt`, or previously observed authority high-water mark may suppress the normal `modifiedAt` preference for later concurrent conflicts. Once absorbed, that high-water mark never decreases and ordinary observation propagates it to peers. The preference returns only after a later physical seed exceeds the absorbed high-water mark; for clock-derived timestamps that can require the wall clock to catch up, which may take arbitrarily long and may effectively last for the remaining lifetime of a database.
 
-Otherwise supported state must not be rejected solely because its physical authority coordinate is far ahead of the observer's local time.
+That persistence is accepted rather than adding a rule which tries to decide whether a remote or persisted authority coordinate is implausibly far from the observer's own wall clock. Otherwise supported state must not be rejected solely because its physical authority coordinate is far ahead of the observer's local time.
 
 ---
 
@@ -145,6 +145,8 @@ kind: requirement
 Volodyslav must attempt Journal 2 canonical compaction as part of its existing hourly periodic job.
 
 The operational schedule is once per execution of the hourly job. Missed hourly runs do not create a requirement to replay one compaction per missed hour; the scheduler's ordinary no-make-up behavior applies.
+
+A failed compaction attempt is best-effort maintenance failure: it must not fail the hourly scheduler task, trigger retry of the other hourly responsibilities, or create a separate make-up compaction obligation. Any compaction batches which committed before the failure remain valid, and a later hourly execution may continue pruning the remaining accumulated history.
 
 This hourly application policy does not make compaction timing part of Journal 2 semantics and does not create a size guarantee for the uncompacted journal between successful compactions.
 
