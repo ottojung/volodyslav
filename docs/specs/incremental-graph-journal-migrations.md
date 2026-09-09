@@ -8,9 +8,9 @@ Migration adds only the new journal sublevel and advances the database version a
 
 The migration implementation has one stable bounded `MigrationId` supplied by the database migration/lifecycle registry. If this migration persists a high-level `OperationRecord(kind="migration")`, that record MUST contain this `MigrationId`; the operation envelope must not collapse all migrations into an indistinguishable generic `migration` kind.
 
-`ValueEvent(reason="migration")`, `ValidateEvent(reason="migration")`, and `DeleteEvent(reason="migration")` are reserved for Journal-2-aware migrations which rematerialize, revalidate, or remove already represented semantic nodes under the general database migration lifecycle. The initial pre-Journal-2 bootstrap defined here uses the distinct `reason="bootstrap"` events because it begins with no prior Journal 2 semantic baseline.
+`ValueEvent(reason="migration")`, `ValidateEvent(reason="migration")`, `DeleteEvent(reason="migration")`, and `InvalidateEvent(reason="migration")` are reserved for Journal-2-aware migrations which create/rematerialize, revalidate, remove, or invalidate already represented semantic nodes under the general database migration lifecycle. The initial pre-Journal-2 bootstrap defined here uses the distinct `reason="bootstrap"` events because it begins with no prior Journal 2 semantic baseline.
 
-This document fully specifies the initial pre-Journal-2-to-Journal-2 bootstrap. A later migration whose input already contains valid Journal 2 state must separately specify whatever per-node Journal 2 transformations are required by that migration. Journal 2 nevertheless imposes one migration-wide rule on every such later migration: receiver-local stored source cursors are not preserved across the migration.
+This document fully specifies the initial pre-Journal-2-to-Journal-2 bootstrap. A later migration whose input already contains valid Journal 2 state must separately specify any migration-specific per-node transformation beyond the generic mapping below. Journal 2 nevertheless imposes migration-wide rules on every such later migration: receiver-local stored source cursors are not preserved across the migration, and every resulting legacy freshness/validity transition must have the corresponding Journal 2 event/summary representation.
 
 ## Preconditions
 
@@ -43,6 +43,29 @@ The base Journal 2 design intentionally provides no migration optimization for p
 This rule preserves the required equivalence between incremental synchronization and the normative full-sync result without requiring every migration to prove a cross-version cursor theorem.
 
 The initial pre-Journal-2 bootstrap has no valid Journal 2 source cursors to preserve, so this rule adds no extra bootstrap work there.
+
+## Journal-2-aware migration event mapping
+
+A migration whose input already contains Journal 2 MUST publish Journal 2 state whose projection exactly matches the migration's resulting legacy value, freshness, and validity state. The migration decision semantics in `migration.md` determine whether an invalidation is node-scoped or value-scoped; the `reason="migration"` tag records that the event was authored by migration and does not replace that scope distinction.
+
+For semantic-value identity:
+
+- `keep` preserves the current `ValueId` and head authority;
+- `override` is a semantic-preserving representation rewrite and therefore also preserves the current `ValueId` and head authority;
+- `invalidate` preserves the current cached value and therefore preserves its `ValueId` and head authority;
+- `create` authors a new `ValueEvent(reason="migration")` for the created value occurrence;
+- `delete` authors a `DeleteEvent(reason="migration")` whose tombstone becomes the final head.
+
+A migration MAY retain an existing current-value certificate only when it is well-formed under the new schema and represents exactly the incoming validity edges retained by the migrated legacy state. Otherwise it authors a `ValidateEvent(reason="migration")` for the current ValueId with a basis that exactly represents those resulting incoming proofs. When migration must represent an absent incoming proof without a historical input ValueId against which that proof last held, the basis uses `"unknown"`.
+
+Migration invalidation maps as follows:
+
+- an explicit callback `invalidate(K)` authors a node-scoped `InvalidateEvent(reason="migration")` for K. It is ordered after any migration certificate whose incoming proof it invalidates. This removes K's incoming validity proofs while leaving its outgoing proofs intact, matching explicit migration invalidation;
+- each automatic downstream invalidation propagated from that explicit decision authors a value-scoped `InvalidateEvent(reason="migration")` for the dependent's current ValueId. It marks that dependent stale without removing its retained validity proofs;
+- a preexisting stale node carried through `keep` or `override` is conservatively treated by `migration.md` as a direct invalidation root because persisted legacy state does not retain its staleness provenance. Its migrated Journal 2 state therefore contains a node-scoped `InvalidateEvent(reason="migration")` not covered by the final certificate, so its incoming proofs are absent;
+- `create(..., "potentially-outdated")` authors its migration value/certificate baseline with no claimed incoming validity proofs and then a value-scoped `InvalidateEvent(reason="migration")` for the newly created ValueId. This keeps the new cache stale, including for zero-input nodes. `create(..., "up-to-date")` requires the ordinary complete current-input basis and no migration invalidation.
+
+Migration-specific transformations may require additional `ValueEvent(reason="migration")`, `ValidateEvent(reason="migration")`, `InvalidateEvent(reason="migration")`, or `DeleteEvent(reason="migration")` events, but they MUST preserve these scope semantics and the graph/journal projection invariant. In particular, a migration MUST NOT use a value-scoped invalidation where the migration contract removes incoming proofs, or a node-scoped invalidation where the contract requires freshness-only propagation with proofs retained.
 
 ## Frozen existing sublevels
 
@@ -121,7 +144,7 @@ The bootstrap certificate does not claim that an `"unknown"` basis entry was his
 
 ## Pass 3: encode stale state
 
-Enumerate legacy nodes whose freshness is `potentially-outdated` in canonical NodeKey order. For each such node, author one value-scoped invalidation after its bootstrap certificate.
+Enumerate legacy nodes whose freshness is `potentially-outdated` in canonical NodeKey order. For each such node, author one value-scoped `InvalidateEvent(reason="bootstrap")` after its bootstrap certificate.
 
 This is necessary even when the node currently has complete incoming validity: the existing flag algorithm deliberately keeps such a node stale until it is itself pulled/cache-revalidated.
 
