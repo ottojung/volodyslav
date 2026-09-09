@@ -63,7 +63,7 @@ causalSummary := componentwiseMax(causalSummary, source.causalSummary)
 authorityClock := maxAuthorityTime(authorityClock, source.authorityClock)
 ```
 
-If it directly observes a semantic `EventRef` not already covered by that header, it also joins the event/context into `causalSummary` and joins the event's `authorityTime` into `authorityClock`.
+By J2-INV-9, every retained head/certificate reference in a supported source summary is already covered by that source header. A retained reference which is not covered indicates unsupported state; the observing transition rejects it rather than repairing the header by joining the reference.
 
 Observation alone need not author a semantic event. The retained `authorityClock` is a high-water mark, not itself semantic graph authority.
 
