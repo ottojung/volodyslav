@@ -66,7 +66,7 @@ These metadata writes must still be serialized/durable with any semantic synchro
 If synchronization authors a value-scoped invalidation or tombstone in response to source authority:
 
 1. the source causal coordinates are joined into `causalSummary`;
-2. the source HLC high-water mark and directly inspected EventRef authority times are joined into `authorityClock`;
+2. the source HLC high-water mark is joined into `authorityClock`;
 3. the new local event is allocated by the canonical semantic-event allocator.
 
 Therefore the new event is causally after the observed source facts and greater than them in total authority, without comparing or copying remote sequence magnitudes into the local sequence counter.
@@ -133,14 +133,14 @@ Canonical journal compaction is standalone historical housekeeping against the a
 
 Each compaction batch runs in the existing IncrementalGraph `daytime` mode. Because `holiday` blocks every other graph mode, migration/reset/lifecycle cutover cannot overlap a compaction batch. Because `pull()` runs in `nighttime`, a pull cannot overlap a compaction batch either. Other `daytime` operations such as `invalidate()` may execute concurrently at the graph-mode level, with their durable writes still serialized by the per-replica commit boundary below.
 
-Live authoring and synchronization already maintain the synchronization-relevant Journal 2 state on every publication. Compaction therefore MUST NOT rewrite `JournalHeader`, node summaries, changed-node markers, stored source cursors, or legacy graph state. Its writes are confined to deleting redundant raw semantic events and operation records from the historical layer.
+Live authoring and synchronization already maintain the synchronization-relevant Journal 2 state on every publication. Compaction therefore MUST NOT rewrite `JournalHeader`, node summaries, changed-node markers, stored source cursors, or legacy graph state. Its writes are confined to the historical layer: deleting redundant raw semantic events and operation records.
 
 Compaction runs as a sequence of implementation-bounded batches. Each batch:
 
 1. acquires `daytime` mode for the current active replica;
 2. acquires the same per-replica commit serialization used by ordinary publication;
-3. while both are held, selects an implementation-bounded set of already committed historical records in that current active replica;
-4. atomically deletes only those selected historical records; and
+3. while both are held, selects an implementation-bounded set of records which are already committed and historical in that current active replica;
+4. atomically applies only that batch's historical deletes; and
 5. releases the commit serialization and `daytime` mode before beginning the next batch.
 
 Candidate sets never survive release of `daytime` mode. If the database is closed or a lifecycle transition replaces the active replica between batches, compaction abandons the remaining work; a later attempt re-selects candidates from the then-current active replica. Already committed prune batches remain valid, so abandonment requires no rollback.
