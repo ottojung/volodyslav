@@ -8,7 +8,7 @@ Migration adds only the new journal sublevel and advances the database version a
 
 The migration implementation has one stable bounded `MigrationId` supplied by the database migration/lifecycle registry. If this migration persists a high-level `OperationRecord(kind="migration")`, that record MUST contain this `MigrationId`; the operation envelope must not collapse all migrations into an indistinguishable generic `migration` kind.
 
-`DeleteEvent(reason="migration")` is reserved for Journal-2-aware migrations which remove already represented semantic nodes under the general database migration lifecycle. The initial pre-Journal-2 bootstrap defined here does not need to author such a delete because it begins with no Journal 2 tombstone domain.
+`ValueEvent(reason="migration")`, `ValidateEvent(reason="migration")`, and `DeleteEvent(reason="migration")` are reserved for Journal-2-aware migrations which rematerialize, revalidate, or remove already represented semantic nodes under the general database migration lifecycle. The initial pre-Journal-2 bootstrap defined here uses the distinct `reason="bootstrap"` events because it begins with no prior Journal 2 semantic baseline.
 
 This document fully specifies the initial pre-Journal-2-to-Journal-2 bootstrap. A later migration whose input already contains valid Journal 2 state must separately specify whatever per-node Journal 2 transformations are required by that migration. Journal 2 nevertheless imposes one migration-wide rule on every such later migration: receiver-local stored source cursors are not preserved across the migration.
 
@@ -69,23 +69,32 @@ When this bootstrap follows same-host restoration of a pre-Journal-2 snapshot, r
 
 This is a supported-state invariant, not a global discovery protocol. If the authoritative same-host snapshot is pre-Journal-2, migration MAY rely on the lifecycle invariant and MUST NOT scan, contact, or wait for every possible peer merely to prove the absence of unsupported same-writer Journal 2 events. If locally available evidence actually demonstrates that the invariant was bypassed—for example, a state being processed already contains incompatible same-writer Journal 2 evidence not represented by the authoritative snapshot—then the state is outside the supported lifecycle and bootstrap under that writer identity MUST be rejected. Journal 2 does not require detecting every unsupported external manipulation which is not locally observable.
 
-Bootstrap semantic events use the canonical local semantic-event allocator from `incremental-graph-journal-types.md`; this migration does not define a separate allocation rule. The initially empty causal summary contains no remote coordinates, and later bootstrap events advance the same writer-local state through that canonical allocator.
+Bootstrap semantic events use the canonical local semantic-event allocator from `incremental-graph-journal-types.md`, including its special initial-bootstrap value-authority rule. The initially empty causal summary contains no remote coordinates. Writer-local sequences and causal contexts still advance in normal bootstrap event order; only equal-`modifiedAt` bootstrap value occurrences are permitted to share an `AuthorityTime`.
 
 The migration may allocate one local high-level operation record and attach its `OperationId` to bootstrap semantic events. A `kind="migration"` record carries the stable migration `MigrationId`; a `kind="bootstrap"` record may also carry that migration ID when the bootstrap is specifically the expansion of this migration. Operation grouping is local history only and does not affect semantic allocation.
 
 ## Pass 1: assign current value occurrences
 
-Enumerate every materialized semantic NodeKey in ascending order of its legacy `modifiedAt`, with canonical NodeKey order as the deterministic tie-breaker.
+Enumerate every materialized semantic NodeKey in ascending order of its legacy `modifiedAt`, with canonical NodeKey order as the deterministic tie-breaker. The ordering determines writer-local sequence allocation; it does not perturb the authority time of another value in the same equal-timestamp group.
 
 For each K:
 
 1. read K's unchanged legacy value/timestamp record;
-2. author `ValueEvent(reason="bootstrap")`, seeding its HLC physical component from K's existing `modifiedAt`;
+2. author `ValueEvent(reason="bootstrap")` with
+   ```text
+   authorityTime = {
+       physical: canonical(K.modifiedAt),
+       logical: 0
+   }
+   ```
+   as specified by the initial-bootstrap allocator;
 3. assign its event ID as K's initial Journal 2 `ValueId`;
 4. do not rewrite K's legacy payload or timestamps;
 5. set the present semantic head to that ValueRef.
 
-This ordering keeps the one-writer bootstrap HLC monotone without allowing an unrelated node with a later `modifiedAt` to inflate the authority time of a node whose own legacy modification happened earlier. Equal legacy modification times are ordered deterministically by NodeKey and separated by the HLC logical coordinate.
+Two independently migrating hosts which contain the same converged legacy value occurrence therefore assign the same `AuthorityTime` to that occurrence regardless of unrelated host-local nodes. When shared occurrences have equal `modifiedAt`, their bootstrap authority times tie across hosts, so the durable writer-fingerprint tie-break selects one writer consistently across the shared equal-time group rather than allowing unrelated local enumeration positions to create different per-node winners. Same-writer bootstrap events remain strictly ordered by writer-local sequence when their authority times tie.
+
+This avoids making a derived shared node stale merely because its bootstrap certificate came from one host while an input with the same legacy timestamp was selected from another host solely due to host-local enumeration differences.
 
 All current ValueIds are known before certificate bases are constructed.
 
