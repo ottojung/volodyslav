@@ -224,7 +224,7 @@ A certificate basis has one entry per `inputEdges(K)`:
 BasisEntry = ValueId | "unknown"
 ```
 
-`"unknown"` is a bounded sentinel used by bootstrap when the legacy graph proves that an incoming validity edge is absent but the historical value occurrence against which it was last valid is unavailable.
+`"unknown"` is a bounded sentinel used by bootstrap, reset, or migration when a supported baseline transition must represent an absent incoming validity proof but the historical value occurrence against which it was last valid is unavailable.
 
 ```text
 ValidationCertificate = {
@@ -316,7 +316,7 @@ OperationSourceRef = {
 }
 ```
 
-Journal 2 source-bearing operations require a valid Journal 2 source snapshot. The five fields above identify the synchronization-relevant journal state of the exact stable source snapshot consumed by the operation: `through` identifies the source's local semantic head, while `causalSummary` and `authorityClock` capture causal/authority knowledge which may grow without advancing that local head. This is not a byte-level snapshot hash and intentionally ignores compaction/history-layout differences which have no synchronization meaning.
+Journal 2 source-bearing operations require a valid Journal 2 source snapshot. The five fields above record the synchronization-relevant Journal 2 header state of the stable source snapshot consumed by the operation: `through` identifies the source's local semantic head, while `causalSummary` and `authorityClock` capture causal/authority knowledge which may grow without advancing that local head. They do not claim byte-exact snapshot identity or encode database/schema version; compatibility is established separately by the operation's lifecycle preconditions.
 
 Operation records are a tagged union:
 
@@ -405,7 +405,7 @@ ValidateEvent = JournalEventBase & {
 InvalidateEvent = JournalEventBase & {
     kind: "invalidate",
     scope: InvalidateScope,
-    reason: "explicit" | "propagated" | "sync"
+    reason: "explicit" | "propagated" | "sync" | "bootstrap" | "reset" | "migration"
 }
 
 AdoptEvent = JournalEventBase & {
@@ -415,6 +415,8 @@ AdoptEvent = JournalEventBase & {
     adopted: NodeJournalSemanticPart
 }
 ```
+
+`InvalidateEvent.reason` records why the event was authored; `scope` determines its projection semantics. Bootstrap/reset stale-baseline invalidations are value-scoped. Journal-2-aware migration may author either node-scoped or value-scoped `reason="migration"` invalidations according to the migration semantics specified in `incremental-graph-journal-migrations.md`.
 
 `NodeJournalSemanticPart` is `NodeJournalSummary` without `node` and `lastLocalChange`.
 
