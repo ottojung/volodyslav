@@ -33,7 +33,7 @@ R.authorityClock := maxAuthorityTime(
 )
 ```
 
-By J2-INV-9, every retained head/certificate EventRef inspected from a supported source summary is already covered by that source header. If a retained reference is not covered, the source violates the supported-state invariant and synchronization must reject it rather than silently repairing the header by joining the uncovered reference.
+By J2-INV-9, every retained head/certificate EventRef inspected from a supported source summary is already covered by that source header. If a retained reference is not covered, the source violates the supported-state invariant and the synchronization operation fails for that source rather than skipping the reference or silently repairing the header by joining the uncovered reference.
 
 The causal and authority joins are one coupled observation: they must preserve J2-INV-7 and J2-INV-9 from `incremental-graph-journal.md` in the same publication. This observation allocates no event by itself. It does not change `R.localJournalCounter`; remote source sequences remain coordinates in their own writer dimensions.
 
