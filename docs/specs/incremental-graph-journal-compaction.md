@@ -34,13 +34,11 @@ A canonically compacted state retains:
 
 The optional bound in item 5 constrains only the raw tail deliberately retained **after a compaction has completed**. It does not impose a bound on the amount of raw history that may have accumulated immediately before that compaction.
 
-Historical raw semantic events whose effects are represented by these records may be deleted. Operation records which only group deleted raw semantic events may be deleted with them, and historical-only grouping references may be cleared when necessary to avoid dangling references.
+Historical raw semantic events whose effects are represented by these records may be deleted. Historical operation records may also be deleted once their grouping value is no longer worth retaining.
 
-Compaction does not synthesize a giant high-level `compiled` list. If an un-compacted low-level event retains an `operation` reference, the corresponding small operation record must remain available in the same retained history tail unless that grouping reference is cleared by a committed compaction batch before the operation record is deleted.
+Compaction does not synthesize a giant high-level `compiled` list.
 
-A retained operation record may have an optional `parent` reference. If compaction discards that parent operation record, it may first clear the retained child's `parent` field rather than retaining an unbounded ancestry solely for historical grouping. Parent links have no semantic role.
-
-The publication-time grouping-reference rule in `incremental-graph-journal-locking.md` ensures that, once an operation record has been pruned, no later supported publication can create a new `operation` or `parent` reference to that missing record.
+`operation` and `parent` are historical-only references with no role in folding, authority, projection, synchronization, compaction correctness, or causality. Compaction may delete an `OperationRecord` while a retained event or child operation still names it. A reader which encounters a reference to a missing operation record treats that historical grouping edge as unavailable; such a dangling historical reference is not unsupported state.
 
 ## Node-summary canonicalization
 
@@ -294,8 +292,8 @@ Compaction modifies only the historical part of the new journal sublevel and mus
 
 Compaction is not a seventh database lifecycle transition and does not require inactive-replica construction or lifecycle cutover. Each batch runs against the current active database in IncrementalGraph `daytime` mode and under the ordinary per-replica commit serialization specified in `incremental-graph-journal-locking.md`.
 
-For each implementation-bounded batch, `daytime` mode and commit serialization are acquired before candidate selection and held through the atomic historical prune/reference-cleanup commit. Candidates are selected only from records already committed and historical in that same current active replica. The batch then releases both before the next batch is selected. The publication-time grouping-reference check prevents a later supported writer from naming an operation record after that record has been pruned.
+For each implementation-bounded batch, `daytime` mode and commit serialization are acquired before candidate selection and held through the atomic historical prune commit. Candidates are selected only from records already committed and historical in that same current active replica. The batch then releases both before the next batch is selected.
 
-No candidate set is carried across a lifecycle cutover or database close. If the active replica is replaced or closed between batches, the remaining compaction work is abandoned and a later attempt re-selects from the then-current active replica. A referenced historical operation record remains present until every retained reference to it has first been removed or cleared by committed batches, so no intermediate state contains a dangling historical grouping reference.
+No candidate set is carried across a lifecycle cutover or database close. If the active replica is replaced or closed between batches, the remaining compaction work is abandoned and a later attempt re-selects from the then-current active replica.
 
 Because compaction does not rewrite semantic summaries, markers, headers, cursors, or legacy graph state, it cannot publish a journal summary paired with incompatible graph state. A failure may leave earlier prune batches committed; those intermediate states are semantically equivalent supported states, and a later compaction attempt may continue from the remaining history.
