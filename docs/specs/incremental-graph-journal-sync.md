@@ -13,13 +13,24 @@ For one directional synchronization `R <- S`:
 - `R` is the receiver's current stable graph+journal state;
 - `S` is one source snapshot;
 - both satisfy Journal 2 graph/journal consistency;
-- both use the same graph schema and database version.
+- both use the same graph schema and database version; and
+- `R.header.writer != S.header.writer`.
+
+Ordinary synchronization does not merge two snapshots which claim the same durable Journal writer identity. Same-writer continuation/recovery uses the same-host restoration rules; controlled reset has its own explicitly bounded same-writer-source rule. A same-writer source presented to ordinary full or incremental synchronization is an incompatible synchronization input rather than another replica.
 
 Full synchronization does not require or consult a journal cursor.
 
 ## Source observation
 
-Before authoring any local semantic event, the receiver joins the source header causal and authority high-water knowledge:
+Before joining the source header, synchronization MUST require:
+
+```text
+S.causalSummary[R.header.writer] <= R.localJournalCounter
+```
+
+If this fails, S demonstrates knowledge of later events from R's own writer identity than R can safely allocate after. Synchronization fails for that source before changing receiver state; it MUST NOT raise `R.localJournalCounter`, import the greater local-writer causal coordinate, or continue with a merge. Such a relationship requires supported same-writer restoration/reconciliation rather than ordinary observation.
+
+After the precondition holds and before authoring any local semantic event, the receiver joins the source header causal and authority high-water knowledge:
 
 ```text
 R.causalSummary := componentwiseMax(
@@ -31,6 +42,12 @@ R.authorityClock := maxAuthorityTime(
     R.authorityClock,
     S.authorityClock
 )
+```
+
+The source's coordinate for `R.header.writer` cannot increase R's own causal coordinate, so this join preserves the writer-coordinate invariant from `incremental-graph-journal-types.md`:
+
+```text
+R.causalSummary[R.header.writer] == R.localJournalCounter
 ```
 
 By J2-INV-9, every retained head/certificate EventRef inspected from a supported source summary is already covered by that source header. If a retained reference is not covered, the source violates the supported-state invariant and the synchronization operation fails for that source rather than skipping the reference or silently repairing the header by joining the uncovered reference.
