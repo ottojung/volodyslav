@@ -59,7 +59,7 @@ for the corresponding semantic node. This is the one Journal 2 synchronization/l
 
 Equality merely permits leaving already-equal payload bytes in place. It does not prove shared ValueId, provenance, causal history, validation history, journal identity, authority time, or creation time.
 
-Every materialized reset target must contain a valid legacy timestamp record satisfying `createdAt <= modifiedAt`. The reset baseline retains that target `createdAt` in the node summary exactly; it does not manufacture a creation time from reset execution time.
+Every materialized reset target must contain a parseable legacy timestamp record satisfying `canonical(createdAt) <= canonical(modifiedAt)`. The reset baseline retains `canonical(createdAt)` as that node's `CreationTime`; it does not manufacture a creation time from reset execution time.
 
 ## New journal incarnation
 
@@ -134,11 +134,11 @@ where a missing summary contributes the zero/empty frontier. This retained front
 First enumerate every materialized target semantic node in canonical NodeKey order. For every such K:
 
 1. retain/construct the target legacy value/timestamp record according to reset semantics;
-2. set the reset node summary's `createdAt` to the canonical `createdAt` of that target timestamp record;
+2. set the reset node summary's `createdAt` to `canonical(target.timestamps[K].createdAt)`;
 3. author a new local `ValueEvent(reason="reset")`, using the ordinary ValueEvent HLC seed from that target record's unchanged/copied `modifiedAt`;
 4. that new event ID becomes K's new `ValueId`, even if equal payload bytes were reused without rewriting.
 
-The new reset `ValueId` identifies the reset-authored value occurrence, not the node's creation time. `createdAt` remains node/materialization metadata and exactly follows the reset target. A later synchronization may merge it only with another summary carrying this same selected reset head; a pre-reset losing head or tombstone cannot contribute its old creation time.
+The new reset `ValueId` identifies the reset-authored value occurrence, not the node's creation time. It also establishes a new selected-head lineage for future creation-time joins: the target's `CreationTime` is carried by that new head, while pre-reset losing heads and tombstones cannot contribute their old creation times. A later synchronization combines creation times only with another summary carrying this same selected reset head, according to `joinCreation` in `incremental-graph-journal-projection.md`.
 
 The `modifiedAt` seed does not determine reset enumeration or distinguish reset value authorities. Each target value/timestamp record comes from a value occurrence represented by the pre-reset receiver or reset source; that occurrence's authority time is at least its own `modifiedAt`, and J2-INV-9 places that authority beneath the corresponding input header. Reset joins both input authority clocks before authoring the baseline, so the joined `authorityClock.physical` already dominates every target `modifiedAt`. The ordinary HLC allocator therefore keeps reset value events on that joined physical high-water coordinate and advances their logical coordinate in canonical NodeKey order. Reset authority is deliberately above the observed cut without assigning additional conflict meaning to target timestamp order.
 
@@ -242,13 +242,13 @@ project(Reset(R,S)) = resetTarget(R,S)
 
 modulo physical storage identities and host-local metadata which the lifecycle explicitly preserves without semantic graph effect.
 
-This includes the target legacy timestamp state: every present K has `B[K].createdAt == resetTarget(R,S)[K].createdAt` and the selected reset occurrence's `modifiedAt`.
+This includes timestamp meaning: for every present K, `B[K].createdAt == canonical(resetTarget(R,S)[K].createdAt)`, and the selected reset occurrence retains its target `modifiedAt`.
 
 This is the primary user-visible meaning of reset.
 
 ### R2. Fresh-baseline identity law
 
-For every K materialized in `resetTarget(R,S)`, B contains a newly authored local reset `ValueId` for K rather than reusing S's source `ValueId` merely because the payload came from S. B also retains that target materialization's `createdAt` in the present node summary; the creation time is not part of the new `ValueId`.
+For every K materialized in `resetTarget(R,S)`, B contains a newly authored local reset `ValueId` for K rather than reusing S's source `ValueId` merely because the payload came from S. B also retains that target materialization's canonical `CreationTime` in the present node summary; the creation time is not part of the new `ValueId`.
 
 For every K in `ResetKeys` absent from `resetTarget(R,S)`, B contains a newly authored local reset tombstone and no retained `createdAt`.
 
@@ -280,9 +280,9 @@ observe(Sync(B <- U)) = observe(B)
 
 where `observe` includes the legacy graph projection, synchronization-relevant Journal 2 node semantics, and the causal/authority header high-water state which affects future event allocation.
 
-Intuition: every fact U can contribute is already on the causally old side of the reset cut or, for node-scoped invalidation, is already present in B's retained per-node frontier; B rebuilt a head/certificate/tombstone baseline for every represented key in that domain; and U cannot advance B's already-post-reset header high-water state. In particular, redelivering a dominated node frontier is idempotent rather than a new `AdoptEvent`-worthy summary change.
+Intuition: every fact U can contribute is already on the causally old side of the reset cut or, for node-scoped invalidation, is already present in B's retained per-node frontier; B rebuilt a head/certificate/tombstone baseline for every represented key in that domain; and U cannot advance B's already-post-reset header high-water state. In particular, redelivering a dominated node frontier is idempotent rather than a new `AdoptEvent`-worthy summary change. Any such U carries only heads on the old side of the reset cut, so it also cannot contribute `CreationTime` to B's newer reset heads under the selected-head creation join.
 
-This theorem is stronger than merely saying that old values do not win: covered old invalidations/certificates cannot re-stale the reset projection, represented node-frontier coordinates cannot newly reappear, and covered header-only knowledge cannot alter future allocation behavior when redelivered.
+This theorem is stronger than merely saying that old values do not win: covered old invalidations/certificates cannot re-stale the reset projection, represented node-frontier coordinates cannot newly reappear, covered creation metadata cannot cross the reset-head boundary, and covered header-only knowledge cannot alter future allocation behavior when redelivered.
 
 ### R5. Unseen-concurrency non-guarantee
 
@@ -350,7 +350,7 @@ localJournalCounter
 localOperationCounter
 causalSummary
 authorityClock
-node summaries and immutable EventRefs, including retained createdAt
+node summaries and immutable EventRefs, including retained CreationTime
 changed-node markers
 derived reverse structural-edge index
 receiver-local source cursors
@@ -387,11 +387,11 @@ Reset creates or retains only a constant number of event/summary components per 
 - one componentwise-max node-scoped invalidation frontier;
 - one certificate for a present value;
 - at most one initial value-scoped stale assertion;
-- one bounded `createdAt` scalar for a present summary;
+- one bounded `CreationTime` for a present summary;
 - bounded input ValueId basis;
 - ordinary bounded causal metadata and constant-many HLC authority scalars.
 
-The retained node frontier is one `CausalPrefix`, hence `O(R log H)` bits per represented key, exactly the same asymptotic per-summary cost already assumed by Journal 2. The retained `createdAt` contributes only another `O(log H)` scalar for a present node.
+The retained node frontier is one `CausalPrefix`, hence `O(R log H)` bits per represented key, exactly the same asymptotic per-summary cost already assumed by Journal 2. The retained `CreationTime` contributes one `O(1)` bounded primitive and does not extend the intent record's `H` parameter.
 
 Receiver-local source cursors are deleted rather than accumulated across resets.
 
