@@ -101,6 +101,8 @@ For a valid cursor, synchronization owns one fixed committed source snapshot and
 
 The incremental result must be observably equivalent to running full synchronization from the same starting snapshots, including transfer of current source `causalSummary` and `authorityClock` even when the async stream yields no changed node.
 
+The desired end-to-end time bound for regular incremental synchronization is intentionally not specified here; work to establish a change-sensitive bound is deferred by `$id-3572255392439745` to GitHub issue #1607.
+
 ## Semantic merge versus physical application
 
 Journal 2 semantic synchronization first chooses/normalizes per-NodeKey semantic state.
@@ -108,7 +110,8 @@ Journal 2 semantic synchronization first chooses/normalizes per-NodeKey semantic
 Only afterward is the plan lowered to physical storage:
 
 - choose/allocate final `NodeIdentifier`s without semantic effect;
-- copy the complete selected payload/timestamp record for adopted present values;
+- copy the selected occurrence's payload and `modifiedAt`;
+- merge node-scoped `createdAt` by minimum across available receiver/source representations of the NodeKey;
 - delete legacy records for final tombstones;
 - write `freshness` from Journal 2 projection;
 - rebuild `valid` exactly from Journal 2 certificate projection;
@@ -137,11 +140,11 @@ Journal 2 metadata explains which value/input occurrences and invalidations just
 
 ## Timestamps
 
-Normal synchronization which adopts a foreign `ValueId` copies the complete selected value/timestamp record from the source carrying that occurrence.
+Normal synchronization which adopts a foreign `ValueId` copies that occurrence's payload and `modifiedAt`. `modifiedAt` belongs to the selected value occurrence and remains the HLC seed associated with that occurrence.
 
-It does not construct a hybrid record, compare payloads for identity, or stamp merge execution time as the semantic value modification time.
+`createdAt` is node-scoped rather than value-occurrence identity. For every final present NodeKey, synchronization retains the minimum creation time represented by the receiver/source inputs which materialize that NodeKey. This rule is independent of which value occurrence wins and never substitutes synchronization execution time.
 
-The value occurrence's immutable Journal 2 HLC authority was seeded from its origin `modifiedAt` and is copied as part of the ValueRef metadata; synchronization does not recompute it from local time.
+The minimum merge is idempotent, commutative, and associative. It therefore converges without additional Journal authority and can only move creation time earlier, never later. The detailed Journal-2 timestamp rule is normative in `incremental-graph-journal-projection.md`.
 
 ## Failure atomicity
 
