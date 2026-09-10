@@ -126,6 +126,12 @@ Bootstrap semantic events use the canonical local semantic-event allocator from 
 
 If the initial bootstrap persists a high-level operation record, it uses `kind="migration"` and carries this migration's stable `MigrationId`. The semantic events it expands retain `reason="bootstrap"`; operation grouping is local history only and does not affect semantic allocation.
 
+### Bootstrap pass ordering is strict
+
+The four bootstrap passes below are one strict global sequence, not per-node phases which may be interleaved. The migration MUST complete Pass 1 for every materialized node before authoring any Pass 2 event, complete Pass 2 before Pass 3, and complete Pass 3 before Pass 4.
+
+This ordering is required by the initial-bootstrap value-authority exception. Pass 1 value events may receive deterministic `AuthorityTime = { physical: canonical(modifiedAt), logical: 0 }`, while the later validate/invalidate events use the ordinary HLC allocator and may advance the authority clock to migration/publication wall time. If one of those later events were interleaved before an as-yet-unallocated bootstrap value, the following deterministic bootstrap authority could move backward relative to an earlier same-writer event and violate J2-INV-5. Completing all bootstrap value allocation first makes the exception safe.
+
 ## Pass 1: assign current value occurrences
 
 Enumerate every materialized semantic NodeKey in ascending order of its legacy `modifiedAt`, with canonical NodeKey order as the deterministic tie-breaker. The ordering determines writer-local sequence allocation; it does not perturb the authority time of another value in the same equal-timestamp group.
