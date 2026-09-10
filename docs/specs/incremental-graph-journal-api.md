@@ -22,7 +22,7 @@ A cursor is valid for a source snapshot only when:
 
 ```text
 cursor.source == source.header.writer
-cursor.incarnation == source.header.incarnation
+cursor.incarnation == source.header.journalIncarnation
 cursor.through <= source.header.localJournalCounter
 ```
 
@@ -59,7 +59,7 @@ The result exposes bounded range metadata plus an asynchronous stream:
 ```text
 PossibleMaybeChanges = {
     source: sourceSnapshot.header.writer,
-    incarnation: sourceSnapshot.header.incarnation,
+    incarnation: sourceSnapshot.header.journalIncarnation,
     from: cursor.through,
     through: S,
     causalSummary: sourceSnapshot.header.causalSummary,
