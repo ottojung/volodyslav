@@ -104,7 +104,7 @@ A child operation may optionally record `parent: OperationId` for its direct hig
 
 The `compiled` array above is only a conceptual view: it is not stored as one large LevelDB value. The expansion is represented by the list of small low-level events that point to the operation ID.
 
-Operation IDs use a separate local counter and do not participate in semantic authority, causal context, conflict selection, synchronization, or projection. The operation counter remains monotone across reset; the `incarnation` field records the journal incarnation in which the operation occurred.
+Operation IDs use a separate local counter and do not participate in semantic authority, causal context, conflict selection, synchronization, or projection. The operation counter remains monotone across reset; `OperationRecord.incarnation` records the journal incarnation in which the operation occurred but is not part of operation identity.
 
 Compaction may discard old operation records independently of the raw events which reference them. If a retained `operation` or `parent` reference names a discarded record, that grouping edge is unavailable to historical readers without making the journal state unsupported.
 
@@ -306,6 +306,23 @@ Receiver reset and migration from an already-Journal-2 state explicitly clear st
 Journal 2 does not impose a synchronization-only provenance restriction on retained `oldValue`. A selected present `ValueId` is already a supported cached value of that semantic node. If its final inputs differ from the certificate basis, projection makes the node stale and removes incompatible validity edges; the ordinary next pull may then invoke the computor with the final inputs and that retained cache as `oldValue`. The computor's normal `Unchanged` contract decides whether the value can be reused for those current inputs. Consequently mixed replica provenance, concurrency, multiple inputs, and `"unknown"` bootstrap bases do not by themselves justify cache deletion.
 
 Structural dependency closure remains separate: if a selected present node has a finally absent required input, synchronization must remove the non-materializable cache and author sufficient tombstone authority as specified by the full-sync normalization rules.
+
+## Rejection conditions
+
+Journal 2 uses the following canonical named rejection conditions so lifecycle incompatibility, failed preconditions, corruption/unsupported state, and unsupported manipulation remain distinguishable as required by `database-lifecycle.md` §14 rule 10. Implementations MUST surface these as distinguishable conditions; when represented as errors, the names below are the canonical error `.name` values.
+
+| Condition | Meaning |
+| --- | --- |
+| `JournalWriterIdentityCollision` | An ordinary synchronization source claims the receiver's durable Journal writer identity but is not a valid same-host restoration or controlled-reset input. Ordinary sync rejects it rather than merging two histories into one writer dimension. This condition MUST be distinguishable from legitimate same-writer restoration/reset paths. |
+| `JournalOwnWriterCoordinateError` | A source claims `causalSummary[receiver.writer] > receiver.localJournalCounter`, demonstrating later same-writer event history than the receiver can safely continue. |
+| `JournalUncoveredReferenceError` | A retained source head/certificate EventRef is not covered by the source header as required by J2-INV-9. |
+| `JournalEventIdentityConflictError` | Two retained/raw claims available to the transition use the same `JournalEventId` but disagree on immutable semantic event identity, including detectable same-`ValueId` payload/`modifiedAt` disagreement. |
+| `JournalTimestampParseError` | A legacy `modifiedAt` required for initial bootstrap cannot be converted by the canonical Journal timestamp conversion. |
+| `JournalProjectionMismatchError` | A constructed migration/reset/synchronization target fails required graph/journal projection or physical-consistency validation before cutover. |
+| `JournalResetSourceError` | A reset source is journal-less, pre-Journal-2, version/schema-incompatible, violates same-writer provenance, or is ahead of the receiver where the reset preconditions forbid that. |
+| `JournalStructuralIndexError` | The required reverse structural-edge index is missing, malformed, or inconsistent with the materialized structural graph. |
+
+These names classify Journal-specific failure conditions; they do not turn unsupported external manipulation into supported state or require exhaustive detection of corruption which is not locally observable. A transition which can directly detect one of these conditions must not silently relabel it as a successful no-op or arbitrary generic merge conflict.
 
 ## Transport independence
 
