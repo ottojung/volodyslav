@@ -55,7 +55,7 @@ For each NodeKey K, the retained canonical summary represents all historical/ado
 - retain the componentwise maximum current-value invalidate frontier;
 - retain only the greatest certificate naming V by certificate EventRef authority;
 - retain the exact immutable context and `authorityTime` of the current `ValueRef` and certificate event;
-- if the head is present, retain the head-scoped merged `createdAt`; if the head is absent, retain no `createdAt`;
+- if the head is present, retain the materialization-lineage `createdAt` carried by that selected head; if the head is absent, retain no `createdAt`;
 - retain the latest local changed-node sequence.
 
 Canonical compaction MUST NOT stop representing an already represented semantic key merely to reduce the represented-key domain. In particular, a tombstoned/absent key keeps its `NodeJournalSummary` and current changed-node marker. Removing such a key is a distinct reclamation optimization, not canonical compaction, and is permitted only when a separate correctness argument proves that no negative authority required against any supported delayed replica can be lost. Host liveness alone cannot supply that proof under `$id-4719065396881648`.
@@ -122,7 +122,7 @@ The incremental change index contains one live marker per represented node/key:
 (lastLocalChange(K), K)
 ```
 
-Whenever K's synchronization-relevant semantic summary changes at a later local semantic sequence q, including a head-scoped `createdAt` change, live authoring removes its old marker and inserts `(q,K)` atomically with that publication. Compaction leaves the current marker unchanged.
+Whenever K's synchronization-relevant semantic summary changes at a later local semantic sequence q, including a retained `createdAt` change, live authoring removes its old marker and inserts `(q,K)` atomically with that publication. Compaction leaves the current marker unchanged.
 
 This coalesces arbitrarily many semantic-summary changes while preserving the implication needed for incremental correctness:
 
@@ -238,7 +238,7 @@ Use the intent-record variables:
 - `H >= 2` = upper bound on represented writer-local event/operation counters and numeric HLC physical/logical components;
 - serialized NodeKey size is bounded;
 - maximum direct in-degree is bounded;
-- author IDs, `MigrationId`, `OperationTag`, and other fixed tags have bounded size.
+- author IDs, `MigrationId`, `OperationTag`, `CreationTime`, and other fixed/bounded primitive tags or scalars have bounded serialized size.
 
 One sequence/counter/HLC scalar coordinate costs `O(log H)` bits.
 
@@ -248,9 +248,9 @@ One `CausalPrefix` costs:
 O(R log H) bits
 ```
 
-A retained `AuthorityTime` or `createdAt` scalar costs `O(log H)` bits.
+A retained `AuthorityTime` costs `O(log H)` bits. A retained `CreationTime` costs `O(1)` bits by its bounded primitive definition and therefore does not extend the intent record's `H` parameter.
 
-A `NodeJournalSummary` contains only a constant number of causal/frontier vectors plus a bounded number of input ValueIds and constant-many authority/creation timestamps, so:
+A `NodeJournalSummary` contains only a constant number of causal/frontier vectors plus a bounded number of input ValueIds and constant-many authority timestamps, plus at most one bounded `CreationTime`, so:
 
 ```text
 size(NodeJournalSummary) = O(R log H) bits
@@ -291,7 +291,7 @@ size(OperationRecord) = O(R log H) bits
 
 in the worst case, still exactly within the required per-LevelDB-value bound. Non-source operation records remain smaller.
 
-Each reverse structural-edge index entry contains only a bounded pair of NodeKeys and bounded marker data, so it is O(1) and therefore within the `O(R log H)` per-value bound.
+Each reverse structural-edge index entry contains only a bounded pair of NodeKeys and bounded marker data, so it is O(1) and therefore within the `O(R log H)` per-value bound. The optional `CreationTime` inside a present node summary is likewise O(1) and therefore does not change that per-value bound.
 
 Graph-wide indexes and high-level-operation expansions are represented as many small LevelDB records rather than one giant map/list value.
 
