@@ -20,10 +20,13 @@ A transaction which authors journal history must finalize, under the same per-re
 - raw low-level semantic journal events;
 - node summaries;
 - changed-node marker movement;
+- derived reverse structural-edge index writes;
 - header causal/counter/authority metadata;
 - identifier lookup/allocation writes.
 
 No semantic event ID/authority may become durable without the graph/journal transition it names, and no named graph transition may commit without the corresponding event/summary update.
+
+The reverse structural-edge index defined in `incremental-graph-journal-api.md` is derived current-graph state rather than semantic authority. Any publication which materializes or deletes a node MUST update the corresponding bounded structural-edge records in the same publication boundary, so a supported committed state never pairs one materialized graph with a reverse index describing another.
 
 When a high-level operation record is persisted for a transition, its `localOperationCounter` update, the operation record, and all directly linked low-level events committed by that transition are part of the same publication boundary.
 
@@ -79,7 +82,7 @@ High-level operation records do not participate in this causal/authority observa
 
 Full synchronization continues to use the existing exclusive synchronization/lifecycle boundary and inactive-replica construction strategy.
 
-The source and local input snapshots used by one semantic merge must be stable. The constructed target must contain a matching legacy graph and Journal 2 state before active cutover.
+The source and local input snapshots used by one semantic merge must be stable. The constructed target must contain a matching legacy graph, Journal 2 semantic state, and exact derived reverse structural-edge index before active cutover.
 
 Normal pull/invalidate activity must not observe a partially constructed synchronization target.
 
@@ -87,7 +90,7 @@ Normal pull/invalidate activity must not observe a partially constructed synchro
 
 Migration and controlled reset run under the existing holiday/exclusive lifecycle mode.
 
-Their multi-node bootstrap event allocation may be performed while building an inactive replica, but the complete resulting graph+journal state becomes visible only at the final supported cutover.
+Their multi-node bootstrap event allocation may be performed while building an inactive replica, but the complete resulting graph+journal state, including the exact derived reverse structural-edge index for the resulting materialized graph, becomes visible only at the final supported cutover.
 
 Reset changes `journalIncarnation` atomically with installation of its rebuilt summaries/change index and its resulting causal/authority header state.
 
@@ -135,7 +138,7 @@ Canonical journal compaction is standalone historical housekeeping against the a
 
 Each compaction batch runs in the existing IncrementalGraph `daytime` mode. Because `holiday` blocks every other graph mode, migration/reset/lifecycle cutover cannot overlap a compaction batch. Because `pull()` runs in `nighttime`, a pull cannot overlap a compaction batch either. Other `daytime` operations such as `invalidate()` may execute concurrently at the graph-mode level, with their durable writes still serialized by the per-replica commit boundary below.
 
-Live authoring and synchronization already maintain the synchronization-relevant Journal 2 state on every publication. Compaction therefore MUST NOT rewrite `JournalHeader`, node summaries, changed-node markers, stored source cursors, or legacy graph state. Its writes are confined to the historical layer: deleting redundant raw semantic events and operation records.
+Live authoring and synchronization already maintain the synchronization-relevant Journal 2 state on every publication. Compaction therefore MUST NOT rewrite `JournalHeader`, node summaries, changed-node markers, the derived reverse structural-edge index, stored source cursors, or legacy graph state. Its writes are confined to the historical layer: deleting redundant raw semantic events and operation records.
 
 Compaction runs as a sequence of implementation-bounded batches. Each batch:
 
