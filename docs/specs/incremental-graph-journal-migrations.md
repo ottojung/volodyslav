@@ -54,12 +54,12 @@ migrationSemanticDomain =
     union createdKeys(migration)
 ```
 
-`representedKeys` includes both present/materialized summaries and retained absent/tombstoned summaries. A key does not cease to be represented merely because it is absent from the legacy materialized-node migration scope.
+`representedKeys` includes both present/materialized summaries and retained absent/tombstoned summaries. `createdKeys(migration)` is the set of semantic NodeKeys newly materialized by `create` or by an explicitly specified migration-specific creation step. A key does not cease to be represented merely because it is absent from the legacy materialized-node migration scope.
 
-The post-migration Journal 2 state MUST preserve every pre-migration synchronization-relevant fact unless the migration publishes a replacement which causally dominates that fact under the ordinary Journal 2 rules. In particular:
+The post-migration Journal 2 state MUST preserve every pre-migration synchronization-relevant fact unless the ordinary scope rules make that fact inapplicable after replacement, or a migration-specific rule explicitly proves equivalent future synchronization behavior. In particular:
 
 - for every previously represented K, the post-migration `nodeInvalidateFrontier[K]` componentwise dominates the pre-migration `nodeInvalidateFrontier[K]`;
-- if K is absent before migration and remains absent afterward, preserve its existing tombstone head and retained node-scoped invalidation frontier exactly unless the migration explicitly authors a later tombstone which supersedes that head;
+- if K is absent before migration and remains absent afterward, preserve its existing tombstone head unless the migration explicitly authors a later tombstone which supersedes that head; its node-scoped invalidation frontier remains componentwise preserved by the preceding rule;
 - when `keep`, `override`, or `invalidate` preserves K's current `ValueId`, preserve that value's existing `valueInvalidateFrontier` componentwise and join any migration-authored current-value invalidations into it;
 - when migration creates a genuinely new `ValueId` for K, the old value-scoped frontier may be discarded because it is scoped only to the replaced value occurrence;
 - a migration-created tombstone still retains the pre-migration node-scoped invalidation frontier for K, because that frontier is independent of the selected head/value occurrence.
