@@ -75,16 +75,16 @@ It also permits the local historical journal to preserve the identity of the hig
 The operation record includes the bounded arguments needed to identify the invocation itself. For example:
 
 ```text
-pull(K)                   -> subject = K
-invalidate(K)             -> subject = K
-synchronize(S@I:Q,C,H)    -> source writer/incarnation/local head/causal summary/HLC high-water
-reset(S@I:Q,C,H)          -> chosen source writer/incarnation/local head/causal summary/HLC high-water
-migration(M)              -> stable MigrationId M
+pull(K)                       -> subject = K
+invalidate(K)                 -> subject = K
+synchronize(V,S@I:Q,C,H)      -> source database version/writer/incarnation/local head/causal summary/HLC high-water
+reset(V,S@I:Q,C,H)            -> chosen source database version/writer/incarnation/local head/causal summary/HLC high-water
+migration(M)                  -> stable MigrationId M
 ```
 
-For Journal 2 sources, `Q` alone is not enough to identify the synchronization-relevant source state because its causal summary `C` and authority high-water `H` may grow without authoring a new local semantic event. Source-bearing operation records therefore retain all of those bounded source-header fields from the fixed snapshot they consumed.
+For Journal 2 sources, `Q` alone is not enough to identify the synchronization-relevant source state because its causal summary `C` and authority high-water `H` may grow without authoring a new local semantic event. The database version `V` is also independent of those Journal coordinates: a Journal-2-aware migration may advance the database version without changing `Q`, `C`, or `H`. Source-bearing operation records therefore retain the exact source database version together with the bounded source-header fields from the fixed snapshot they consumed.
 
-Journal 2 synchronization and semantic reset require valid compatible Journal 2 source state, so source-bearing operation records always carry the complete Journal 2 source reference defined by the types specification.
+Journal 2 synchronization and semantic reset require valid compatible Journal 2 source state under the exact graph schema for that database version, so source-bearing operation records always carry the complete Journal 2 source reference defined by the types specification. No separate schema field is required in the operation record because the lifecycle makes database version the interpretation boundary and rejects a source whose graph schema is incompatible with that version's operation.
 
 Conceptually this permits viewing the **direct expansion** of one operation as:
 
