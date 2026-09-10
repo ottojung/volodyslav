@@ -26,6 +26,6 @@ The existing database fingerprint format and generation behavior must not be cha
 
 In particular, unrelated work such as Journal 2 must not opportunistically strengthen, lengthen, replace, reinterpret, or otherwise migrate `DatabaseFingerprint`. Until #1606 has an assignee, the current fingerprint behavior remains outside the scope of implementation changes.
 
-Assignment of #1606 is the explicit signal that someone has taken ownership of reconsidering the fingerprint entropy/format design. At that point this intent no longer blocks work on the issue itself; the issue should determine the exact new entropy source, representation, validation, and backwards-compatibility plan.
+The use of issue assignment here is deliberate: assignment is the ownership signal for reconsidering the fingerprint entropy/format design, not merely a link to historical discussion. When #1606 is assigned, the repository intent should be superseded or updated before implementation begins so the active tree continues to state the applicable fingerprint constraint without requiring reconstruction of why the work was taken up.
 
 This constraint deliberately permits the status quo to remain indefinitely if nobody takes ownership of #1606.
