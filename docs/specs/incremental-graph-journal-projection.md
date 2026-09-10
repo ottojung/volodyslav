@@ -10,9 +10,9 @@ Journal 2 does not replace `values`, `freshness`, `timestamps`, `valid`, or `ide
 
 For a `NodeKey K`, let `S[K]` be its `NodeJournalSummary`.
 
-If `S[K].head.kind == "absent"`, K must be unmaterialized in the legacy graph.
+If `S[K].head.kind == "absent"`, K must be unmaterialized in the legacy graph and `S[K].createdAt` must be absent.
 
-If `S[K].head.kind == "present"`, K must be materialized and its legacy payload and `modifiedAt` must be those associated with `S[K].head.value.id` under the supported lifecycle. The legacy `createdAt` belongs to the semantic node materialization rather than to that value occurrence and follows the separate synchronization merge rule below.
+If `S[K].head.kind == "present"`, K must be materialized, its legacy payload and `modifiedAt` must be those associated with `S[K].head.value.id` under the supported lifecycle, and its legacy `createdAt` must equal the `createdAt` retained in `S[K]`.
 
 The current `ValueRef` carries immutable origin `context` and `authorityTime`; those are journal metadata for the exact value occurrence and are not reconstructed from the current receiver's wall clock.
 
@@ -150,32 +150,35 @@ The final `identifiers_keys_map`, `values`, `freshness`, `timestamps`, and `vali
 
 ## Timestamp records and value authority
 
-For Journal-2 synchronization, `modifiedAt` belongs to the selected value occurrence while `createdAt` belongs to the semantic node's represented materialization history.
+For Journal 2, `modifiedAt` belongs to the selected value occurrence. `createdAt` is node-scoped metadata retained in `NodeJournalSummary`, but it is scoped to the currently selected present head/materialization rather than surviving arbitrary head replacement.
 
-A normal synchronization which adopts a foreign `ValueId` copies the selected occurrence's payload and `modifiedAt`. It MUST NOT copy the source `createdAt` merely because the source value occurrence wins. Instead, whenever K is present in the resulting merge, synchronization sets:
+For a final present K with selected head H, synchronization computes:
 
 ```text
-createdAt(K) = min(
-    every available receiver/source createdAt for K
+S[K].createdAt = min(
+    createdAt from each input summary whose head == H
 )
 ```
 
-where an input which does not materialize K contributes no creation time. Thus a receiver which did not previously materialize K receives the source's existing `createdAt`; when both sides materialize K, the earlier creation time survives regardless of which `ValueId` wins.
+An input whose head loses selection contributes no creation time, and neither does an input where K is absent. Every supported present input summary carries a `createdAt`, so the selected present head always has at least one contributing creation time. The legacy `createdAt` of every present K MUST equal `S[K].createdAt`.
 
-Minimum is idempotent, commutative, and associative, so repeated synchronization makes `createdAt` converge without giving it Journal event authority. It never advances. The selected occurrence's source representation satisfies `createdAt <= modifiedAt`, and the minimum is no greater than that source creation time, so the merged `createdAt <= selected modifiedAt` invariant is preserved.
+This minimum is idempotent, commutative, and associative after deterministic head selection. For a fixed selected head it may only move earlier as more copies of that head are represented. If a greater head later replaces it, the old head's creation-time metadata is discarded and the newly selected head's retained creation time may be numerically later. An absent/tombstone head carries no creation time, so a later rematerialization does not inherit `createdAt` from the deleted materialization.
 
-This is a Journal-2-specific refinement of the legacy timestamp rule in `incremental-graph.md` REQ-IFACE-08. For databases using Journal 2, creation time remains stable under ordinary local evolution but MAY move earlier when synchronization learns an earlier creation of the same semantic NodeKey; it MUST NOT move later. Synchronization never substitutes its execution time for either timestamp.
+The selected head's own contributing representation satisfies `createdAt <= modifiedAt`. Taking a minimum over copies of that same head cannot increase the creation time, so the resulting legacy timestamp record continues to satisfy `createdAt <= modifiedAt`. Synchronization never substitutes its execution time for either timestamp.
+
+A normal synchronization which adopts a foreign `ValueId` copies the selected occurrence's payload and `modifiedAt`; the final `createdAt` comes from the merged summary rule above rather than from value-occurrence identity. A `createdAt` change is therefore synchronization-relevant `NodeJournalSemanticPart` state and is transferred by both full and incremental synchronization.
 
 The origin value event's HLC physical seed was the occurrence's `modifiedAt`, but its persisted `authorityTime` may be later because HLC monotonicity must extend happened-before. Projection does not recompute or normalize that authority from the timestamp after the event has been authored.
 
-Replicas which already represent the same `ValueId` are required by the supported-state invariant to carry the same semantic payload and `modifiedAt` and the same immutable `ValueRef.context`/`authorityTime` for that occurrence. Their `createdAt` values may differ until synchronization joins them by minimum. Identity-preserving Journal-2-aware migration must preserve the payload/`modifiedAt` invariant through its replica-stability requirement.
+Replicas which already represent the same `ValueId` are required by the supported-state invariant to carry the same semantic payload and `modifiedAt` and the same immutable `ValueRef.context`/`authorityTime` for that occurrence. Their head-scoped `createdAt` values may differ until synchronization joins them by minimum. Identity-preserving Journal-2-aware migration must preserve the payload/`modifiedAt` invariant through its replica-stability requirement.
 
 ## Consistency validation
 
 Opening, staging, restoration, and compaction MAY validate the following. Migration, synchronization, and reset MUST validate all of it before cutting over to a constructed target state; failure aborts the transition and leaves the active replica pointer unchanged:
 
-- every present journal summary has a legacy materialization;
-- every absent journal summary is absent from legacy materialized storage;
+- every present journal summary has a legacy materialization and a retained `createdAt`;
+- every absent journal summary is absent from legacy materialized storage and has no retained `createdAt`;
+- every present node summary's retained `createdAt` equals the legacy `createdAt` record;
 - every fresh legacy node equals the journal-derived freshness;
 - every legacy validity edge equals `edgeValid`;
 - every materialized dependency is materialized;
