@@ -73,7 +73,7 @@ The local writer fingerprint remains the database's durable writer identity unle
 
 `localJournalCounter` remains monotone across the controlled reset transition and is writer-local; it is not reset to zero and is not raised to source sequence magnitudes.
 
-`localOperationCounter` also remains monotone across reset and is not restarted. `OperationId.incarnation` records the journal incarnation in which the operation occurred; uniqueness does not depend on reusing operation sequence numbers in a new incarnation.
+`localOperationCounter` also remains monotone across reset and is not restarted. `OperationRecord.incarnation` records the journal incarnation in which the operation occurred; operation identity remains `{ author, sequence }` and uniqueness does not depend on reusing operation sequence numbers in a new incarnation.
 
 Before reset-authored events are allocated, the receiver observes the chosen source's Journal 2 causal and authority high-water knowledge only after the preconditions above have established that the source's coordinate for the receiver writer cannot exceed the receiver allocator frontier:
 
