@@ -92,6 +92,20 @@ Synchronization does not require the receiver to adopt the source journal as its
 
 ---
 
+$id-5823796411086523
+title: Fixed-width physical clock space
+date: 2026/09/10
+source: @ottojung
+kind: accepted-tradeoff
+
+For Journal 2 asymptotic storage accounting, physical real-time/calendar instants are treated as fixed-width values with `O(1)` serialized size. This includes canonical legacy `createdAt`/`modifiedAt` instants when represented as Journal metadata, `CreationTime`, and the physical component of `AuthorityTime`.
+
+This models the actual finite DateTime/epoch-millisecond representation used by the system. The asymptotic storage model does not let the representable wall-clock horizon grow with journal history. If one instead modeled arbitrarily large absolute years, an additional clock-horizon parameter would be required; Journal 2 intentionally does not do that.
+
+Accordingly, `H` measures history-growing integer coordinates rather than physical time: journal/operation/incarnation counters, vector-clock coordinates, and the HLC logical component. An `AuthorityTime` still costs `O(log H)` bits overall because its logical component is `O(log H)` while its physical component is `O(1)`.
+
+---
+
 $id-6193879998109578
 title: Compacted journal size bound
 date: 2026/09/06
@@ -106,7 +120,7 @@ Let:
 - `T` be the number of currently absent/tombstoned semantic keys whose negative authority remains represented so older values cannot incorrectly resurrect;
 - `N = L + T` be the complete represented semantic-node/key domain;
 - `R` be the number of durable journal-author identities represented by synchronization-relevant journal metadata;
-- `H >= 2` be an upper bound on every represented journal sequence/counter magnitude and every numeric hybrid-authority-clock component;
+- `H >= 2` be an upper bound on every represented history-growing journal sequence/counter magnitude and HLC logical component; physical real-time values are fixed-width `O(1)` under `$id-5823796411086523`;
 - the maximum serialized `NodeKey` size be bounded independently of `N`, `R`, and `H`;
 - the maximum direct in-degree of every represented node be bounded independently of `N`, `R`, and `H`;
 - durable author identifiers and other fixed primitive tags have bounded serialized size.

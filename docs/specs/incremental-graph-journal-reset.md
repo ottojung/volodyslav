@@ -75,7 +75,7 @@ The local writer fingerprint remains the database's durable writer identity unle
 
 `localJournalCounter` remains monotone across the controlled reset transition and is writer-local; it is not reset to zero and is not raised to source sequence magnitudes.
 
-`localOperationCounter` also remains monotone across reset and is not restarted. `OperationRecord.incarnation` records the journal incarnation in which the operation occurred; operation identity remains `{ author, sequence }` and uniqueness does not depend on reusing operation sequence numbers in a new incarnation.
+`localOperationCounter` also remains monotone across reset and is not restarted. `OperationRecord.incarnation` records the journal incarnation in which an operation occurred; operation identity remains `{ author, sequence }` and uniqueness does not depend on reusing operation sequence numbers in a new incarnation.
 
 Before reset-authored events are allocated, the receiver observes the chosen source's Journal 2 causal and authority high-water knowledge only after the preconditions above have established that the source's coordinate for the receiver writer cannot exceed the receiver allocator frontier:
 
@@ -391,7 +391,7 @@ Reset creates or retains only a constant number of event/summary components per 
 - bounded input ValueId basis;
 - ordinary bounded causal metadata and constant-many HLC authority scalars.
 
-The retained node frontier is one `CausalPrefix`, hence `O(R log H)` bits per represented key, exactly the same asymptotic per-summary cost already assumed by Journal 2. The retained `CreationTime` contributes one `O(1)` bounded primitive and does not extend the intent record's `H` parameter.
+The retained node frontier is one `CausalPrefix`, hence `O(R log H)` bits per represented key, exactly the same asymptotic per-summary cost already assumed by Journal 2. The retained `CreationTime` contributes one fixed-width `O(1)` physical-time scalar under `$id-5823796411086523`, within the same per-summary cost. The physical component of each HLC `AuthorityTime` is accounted the same way; its logical component remains `O(log H)`.
 
 Receiver-local source cursors are deleted rather than accumulated across resets.
 

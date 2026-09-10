@@ -201,7 +201,7 @@ After canonical compaction, each represented semantic key has only a constant nu
 
 The derived reverse structural-edge index adds one constant-size record per materialized dependency edge. Because maximum direct in-degree is bounded, the number of those edges is O(L), so the index contributes only O(L) additional serialized bits.
 
-The retained `CreationTime` adds one fixed/bounded `O(1)` primitive for each present node summary. It therefore does not extend the intent record's `H` parameter and does not change the asymptotic bound.
+The retained `CreationTime` adds one fixed-width `O(1)` physical-time scalar for each present node summary under `$id-5823796411086523`. The physical component of every `AuthorityTime` is accounted the same way; its logical component remains `O(log H)`, so authority metadata remains within the existing `O(R log H)` bound.
 
 Consequently the complete compacted journal has serialized size:
 

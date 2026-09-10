@@ -266,7 +266,7 @@ A later migration from one Journal-2-aware database version to another deletes r
 
 Let L be the number of materialized nodes in the legacy state being migrated. The initial migration baseline has no historical Journal-2 tombstone domain, so its bootstrap work is O(L) semantic events plus at most O(1) high-level operation records and O(L) reverse structural-edge records under the bounded direct-in-degree assumption.
 
-Each present node summary additionally retains one bounded `CreationTime`. This is `O(1)` bits per present summary under the existing DateTime domain and does not extend the intent record's `H` parameter or change either the per-value or compacted asymptotic bound.
+Each present node summary additionally retains one `CreationTime`, a fixed-width `O(1)` physical-time scalar under `$id-5823796411086523`. The physical component of each `AuthorityTime` is accounted the same way, while its logical component remains `O(log H)`; neither changes the per-value or compacted asymptotic bound.
 
 Each event/index record is individually within the Journal 2 per-value bound, and after canonical compaction O(L) bounded summaries/markers/reverse-edge records plus one bounded header remain.
 

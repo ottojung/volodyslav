@@ -235,12 +235,12 @@ Use the intent-record variables:
 - `T` = retained absent/tombstoned semantic keys whose negative authority remains synchronization-relevant;
 - `N = L + T` = complete represented semantic key domain;
 - `R` = represented durable authors;
-- `H >= 2` = upper bound on represented writer-local event/operation counters and numeric HLC physical/logical components;
+- `H >= 2` = upper bound on represented history-growing writer-local event/operation/incarnation counters and HLC logical components; physical real-time values are fixed-width `O(1)` under `$id-5823796411086523`;
 - serialized NodeKey size is bounded;
 - maximum direct in-degree is bounded;
-- author IDs, `MigrationId`, `OperationTag`, `CreationTime`, and other fixed/bounded primitive tags or scalars have bounded serialized size.
+- author IDs, `MigrationId`, `OperationTag`, and other fixed/bounded primitive tags have bounded serialized size.
 
-One sequence/counter/HLC scalar coordinate costs `O(log H)` bits.
+One history-growing sequence/counter/HLC-logical coordinate costs `O(log H)` bits. A physical real-time coordinate costs `O(1)` bits under `$id-5823796411086523`.
 
 One `CausalPrefix` costs:
 
@@ -248,9 +248,9 @@ One `CausalPrefix` costs:
 O(R log H) bits
 ```
 
-A retained `AuthorityTime` costs `O(log H)` bits. A retained `CreationTime` costs `O(1)` bits by its bounded primitive definition and therefore does not extend the intent record's `H` parameter.
+A retained `AuthorityTime` costs `O(log H)` bits overall: its physical component is `O(1)` and its logical component is `O(log H)`. A retained `CreationTime` is one fixed-width physical-time scalar and costs `O(1)` bits.
 
-A `NodeJournalSummary` contains only a constant number of causal/frontier vectors plus a bounded number of input ValueIds and constant-many authority timestamps, plus at most one bounded `CreationTime`, so:
+A `NodeJournalSummary` contains only a constant number of causal/frontier vectors plus a bounded number of input ValueIds and constant-many authority timestamps, plus at most one `CreationTime`, so:
 
 ```text
 size(NodeJournalSummary) = O(R log H) bits
@@ -291,7 +291,7 @@ size(OperationRecord) = O(R log H) bits
 
 in the worst case, still exactly within the required per-LevelDB-value bound. Non-source operation records remain smaller.
 
-Each reverse structural-edge index entry contains only a bounded pair of NodeKeys and bounded marker data, so it is O(1) and therefore within the `O(R log H)` per-value bound. The optional `CreationTime` inside a present node summary is likewise O(1) and therefore does not change that per-value bound.
+Each reverse structural-edge index entry contains only a bounded pair of NodeKeys and bounded marker data, so it is O(1) and therefore within the `O(R log H)` per-value bound. The optional `CreationTime` inside a present node summary is likewise one fixed-width `O(1)` physical-time scalar under `$id-5823796411086523`, so it does not change that per-value bound.
 
 Graph-wide indexes and high-level-operation expansions are represented as many small LevelDB records rather than one giant map/list value.
 
