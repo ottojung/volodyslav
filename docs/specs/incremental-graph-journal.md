@@ -42,7 +42,7 @@ The journal never stores a `ComputedValue` payload or a copy of one. A current p
 
 ## Local journals
 
-Every writable database has one durable journal writer identity, normally its `DatabaseFingerprint`. Journal semantic events authored by that database have writer-local history and a monotonically increasing writer-local semantic event sequence along one continuing writer state.
+Every writable database has one durable journal writer identity: its `DatabaseFingerprint`. Journal semantic events authored by that database have writer-local history and a monotonically increasing writer-local semantic event sequence along one continuing writer state.
 
 Journal 2 deliberately does **not** make sequence magnitudes globally comparable. Event identity, exact causality, and conflict authority are separate:
 
