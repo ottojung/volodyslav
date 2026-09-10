@@ -110,6 +110,8 @@ This is what keeps the projection equal to the existing flag-based algorithm rat
 
 For one current `ValueId`, projection consults only the greatest represented certificate by `authorityCompare(certificate.event, ...)`.
 
+If two represented certificates expose the same `certificate.event.id`, they are claims about the same immutable `ValidateEvent` and therefore MUST agree on the event context/authority time, target `value`, and exact `basis`. A detectable disagreement is unsupported state; it is not resolved by choosing either copy.
+
 This rule applies before compaction as well as after it. Compaction therefore loses no semantic option by deleting lower certificates.
 
 A newer certificate may be less reusable after a later merge than an older certificate would have been. That is an intentional conservative property of Journal 2; lower historical certificates are not alternative merge candidates.
@@ -152,7 +154,7 @@ A normal synchronization which adopts a foreign `ValueId` copies the complete se
 
 The origin value event's HLC physical seed was the occurrence's `modifiedAt`, but its persisted `authorityTime` may be later because HLC monotonicity must extend happened-before. Projection does not recompute or normalize that authority from the timestamp after the event has been authored.
 
-Replicas which already represent the same `ValueId` are required by the supported-state invariant to carry the same semantic value/timestamp record and the same immutable `ValueRef.context`/`authorityTime` for that occurrence.
+Replicas which already represent the same `ValueId` are required by the supported-state invariant to carry the same semantic value/timestamp record and the same immutable `ValueRef.context`/`authorityTime` for that occurrence. Identity-preserving Journal-2-aware migration must preserve that invariant through its replica-stability requirement.
 
 ## Consistency validation
 
@@ -164,7 +166,8 @@ Opening, staging, restoration, and compaction MAY validate the following. Migrat
 - every legacy validity edge equals `edgeValid`;
 - every materialized dependency is materialized;
 - current certificates name the current value and have the exact schema-derived basis arity;
-- all copies of one `JournalEventId` agree on immutable context/authority time;
+- all retained/raw structures available to the transition which claim the same `JournalEventId` agree on the immutable semantic event identity defined in `incremental-graph-journal-types.md`, including context/authority time, node, event kind, and all exposed kind-specific semantic body fields; in particular equal certificate event IDs require equal `value` and `basis`;
+- every repeated `ValueId` identifies the same semantic NodeKey and exact value/timestamp record;
 - journal references are well-formed and bounded by represented causal/authority knowledge;
 - every node-summary invalidation frontier coordinate is bounded by the corresponding header `causalSummary` coordinate as required by J2-INV-8;
 - every retained head/certificate EventRef is bounded by the local header causal/authority high-water marks as required by J2-INV-9;
@@ -176,6 +179,6 @@ Opening, staging, restoration, and compaction MAY validate the following. Migrat
 
 The final three checks are deliberately physical-identifier checks. Journal projection is keyed by `NodeKey` and therefore cannot by itself detect an orphaned losing `NodeIdentifier` whose surviving semantic key is otherwise represented correctly.
 
-J2-INV-7 also covers events whose raw EventRefs were removed by compaction. Supported readers may rely on that transition-maintained invariant; consistency validation is not required to reconstruct compacted-away history solely to prove the header pairing again.
+J2-INV-7 also covers events whose raw EventRefs were removed by compaction. Supported readers may rely on that transition-maintained invariant; consistency validation is not required to reconstruct compacted-away history solely to prove the header pairing again. The same principle applies to immutable event bodies removed by compaction: validation rejects conflicts among retained/raw claims it can observe, but does not recreate discarded historical bodies solely to compare them.
 
 Unsupported inconsistencies are errors. Synchronization must not repair them by payload equality, by inventing provenance, or by raising a writer-local allocator counter from foreign/same-writer observation.
