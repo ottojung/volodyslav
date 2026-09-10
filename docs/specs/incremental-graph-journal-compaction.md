@@ -47,7 +47,7 @@ Compaction does not synthesize a giant high-level `compiled` list.
 
 This section defines the canonical content of the retained node summary. Live authoring and synchronization already maintain this content on every publication; compaction does not recompute or rewrite node summaries.
 
-For each NodeKey K, the retained canonical summary represents all historical/adopted authority according to these rules:
+For each NodeKey K, the retained canonical summary represents all historical/adopted authority and synchronization-relevant metadata according to these rules:
 
 - retain the greatest semantic head authority by `authorityCompare` over its `EventRef`;
 - retain the componentwise maximum node-wide invalidation frontier;
@@ -55,11 +55,12 @@ For each NodeKey K, the retained canonical summary represents all historical/ado
 - retain the componentwise maximum current-value invalidate frontier;
 - retain only the greatest certificate naming V by certificate EventRef authority;
 - retain the exact immutable context and `authorityTime` of the current `ValueRef` and certificate event;
+- if the head is present, retain the head-scoped merged `createdAt`; if the head is absent, retain no `createdAt`;
 - retain the latest local changed-node sequence.
 
 Canonical compaction MUST NOT stop representing an already represented semantic key merely to reduce the represented-key domain. In particular, a tombstoned/absent key keeps its `NodeJournalSummary` and current changed-node marker. Removing such a key is a distinct reclamation optimization, not canonical compaction, and is permitted only when a separate correctness argument proves that no negative authority required against any supported delayed replica can be lost. Host liveness alone cannot supply that proof under `$id-4719065396881648`.
 
-Lower semantic heads, certificates for losing values, lower certificates for the current value, and value-specific invalidations for permanently losing values are not future candidates under Journal 2 semantics and need not remain as raw history after compaction.
+Lower semantic heads, certificates for losing values, lower certificates for the current value, and value-specific invalidations for permanently losing values are not future candidates under Journal 2 semantics and need not remain as raw history after compaction. Creation-time metadata belonging only to a losing or absent head is likewise not retained as part of the current summary.
 
 High-level operation IDs/records never participate in this canonical summary.
 
@@ -121,7 +122,7 @@ The incremental change index contains one live marker per represented node/key:
 (lastLocalChange(K), K)
 ```
 
-Whenever K's synchronization-relevant semantic summary changes at a later local semantic sequence q, live authoring removes its old marker and inserts `(q,K)` atomically with that publication. Compaction leaves the current marker unchanged.
+Whenever K's synchronization-relevant semantic summary changes at a later local semantic sequence q, including a head-scoped `createdAt` change, live authoring removes its old marker and inserts `(q,K)` atomically with that publication. Compaction leaves the current marker unchanged.
 
 This coalesces arbitrarily many semantic-summary changes while preserving the implication needed for incremental correctness:
 
@@ -130,7 +131,7 @@ K's synchronization-relevant semantic summary changed after P
     => lastLocalChange(K) > P
 ```
 
-Both q and P are coordinates in this source writer's local sequence. No historical marker list is required. Projection-only freshness/validity changes caused by another node's semantic change do not create a marker for K; the changed input's marker is sufficient for the receiver to revisit the dependent closure.
+Both q and P are coordinates in this source writer's local sequence. No historical marker list is required. Projection-only freshness/validity changes caused by another node's semantic change do not create a marker for K; the changed input's marker is sufficient for the receiver to revisit the dependent closure. A `createdAt` change is different because `createdAt` is retained directly in K's semantic summary and is observable through `getCreationTime()`.
 
 ## Cursor preservation
 
@@ -142,6 +143,7 @@ Canonical compaction does not change:
 - node `lastLocalChange` coordinates;
 - causal summary coordinates;
 - authority-clock high-water mark;
+- retained present-head `createdAt` values;
 - receiver-local stored source cursor coordinates;
 - the derived reverse structural-edge index.
 
@@ -177,7 +179,7 @@ apply(PossibleMaybeChanges(P,S])
 
 must produce observationally equivalent journal-derived synchronization state through S.
 
-Reason: every source semantic-summary change after P is folded into the current summary, and any node whose semantic summary changed after P has a latest marker greater than P. A node with no semantic-summary change after P contributes no new per-node semantic information beyond what the consumer already incorporated through P. Projection-only consequences of a changed input are rediscovered on the receiver by traversing the reverse structural-edge closure from that changed input. Cross-node causal and HLC high-water metadata are transferred from the header independently of the changed-node iterator.
+Reason: every source semantic-summary change after P is folded into the current summary, and any node whose semantic summary changed after P has a latest marker greater than P. This includes a change to retained `createdAt`, so an earlier creation time learned by the source after P is yielded to the consumer rather than hidden behind an unchanged `ValueId`. A node with no semantic-summary change after P contributes no new per-node semantic information beyond what the consumer already incorporated through P. Projection-only consequences of a changed input are rediscovered on the receiver by traversing the reverse structural-edge closure from that changed input. Cross-node causal and HLC high-water metadata are transferred from the header independently of the changed-node iterator.
 
 After successful consumption, the iterator advances through S even when some or all historical semantic events were removed and the async stream yields no changed node.
 
@@ -203,6 +205,7 @@ Sketch:
 - current invalidation frontiers are preserved exactly;
 - the only certificate ever considered, including its context/authority, is preserved exactly;
 - current value and certificate EventRef contexts required by projection and future causal reasoning are preserved exactly;
+- current present-head `createdAt` is preserved exactly;
 - losing state cannot become winning without a genuinely new greater authority;
 - future local event identity safety is preserved by `localJournalCounter`;
 - exact causal allocation safety is preserved by `causalSummary`;
@@ -245,9 +248,9 @@ One `CausalPrefix` costs:
 O(R log H) bits
 ```
 
-A retained `AuthorityTime` costs `O(log H)` bits because it contains a constant number of H-bounded scalar coordinates.
+A retained `AuthorityTime` or `createdAt` scalar costs `O(log H)` bits.
 
-A `NodeJournalSummary` contains only a constant number of causal/frontier vectors plus a bounded number of input ValueIds and constant-many authority timestamps, so:
+A `NodeJournalSummary` contains only a constant number of causal/frontier vectors plus a bounded number of input ValueIds and constant-many authority/creation timestamps, so:
 
 ```text
 size(NodeJournalSummary) = O(R log H) bits
