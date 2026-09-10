@@ -121,15 +121,16 @@ The incremental change index contains one live marker per represented node/key:
 (lastLocalChange(K), K)
 ```
 
-When K changes at a later local semantic sequence q, live authoring removes its old marker and inserts `(q,K)` atomically with the summary change. Compaction leaves that current marker unchanged.
+Whenever K's synchronization-relevant semantic summary changes at a later local semantic sequence q, live authoring removes its old marker and inserts `(q,K)` atomically with that publication. A local synchronization event may also move K's marker when only K's projected legacy state changes while its semantic summary remains unchanged. Compaction leaves the current marker unchanged.
 
-This coalesces arbitrarily many changes to K while preserving the property:
+This coalesces arbitrarily many marker-worthy transitions while preserving the implication needed for incremental correctness:
 
 ```text
-lastLocalChange(K) > P
+K's synchronization-relevant semantic summary changed after P
+    => lastLocalChange(K) > P
 ```
 
-iff K changed after a consumer which correctly incorporated this source through cursor P.
+The converse is not required. A marker may be newer than P because a projected legacy freshness/validity transition was journaled even though K's current semantic summary is unchanged. `possibleMaybeChanges` may therefore over-yield K; folding an already represented unchanged summary is a no-op.
 
 Both q and P are coordinates in this source writer's local sequence. No historical marker list is required.
 
@@ -178,7 +179,7 @@ apply(PossibleMaybeChanges(P,S])
 
 must produce observationally equivalent journal-derived synchronization state through S.
 
-Reason: for each node, all source changes after P are folded into its current summary; if the node changed at least once after P, its latest marker remains greater than P. If it did not change after P, the consumer already incorporated its source summary through P. Cross-node causal and HLC high-water metadata are transferred from the header independently of the changed-node iterator.
+Reason: every source semantic-summary change after P is folded into the current summary, and any node whose semantic summary changed after P has a latest marker greater than P. A marker may also be greater than P for a projection-only local transition, in which case yielding the unchanged current summary is harmless over-yielding. A node with no semantic-summary change after P contributes no new per-node semantic information beyond what the consumer already incorporated through P. Cross-node causal and HLC high-water metadata are transferred from the header independently of the changed-node iterator.
 
 After successful consumption, the iterator advances through S even when some or all historical semantic events were removed and the async stream yields no changed node.
 
