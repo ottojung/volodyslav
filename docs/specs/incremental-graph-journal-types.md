@@ -3,7 +3,7 @@
 ## Primitive identities
 
 ```text
-JournalAuthor            = DatabaseFingerprint
+JournalAuthor            = 32 lowercase hexadecimal characters encoding 128 random bits
 JournalSequence          = positive arbitrary-precision integer
 JournalIncarnation       = positive arbitrary-precision integer
 JournalEventId           = { author: JournalAuthor, sequence: JournalSequence }
@@ -29,11 +29,15 @@ OperationTag             = bounded stable operation tag
 
 `DatabaseVersion`, `MigrationId`, and `OperationTag` are fixed/bounded serialized primitive identifiers. They are not arbitrary user payload strings. `DatabaseVersion` is the exact database-version identity used by the lifecycle compatibility boundary.
 
-A `JournalAuthor` is the durable namespace of exactly one continuing writer history. Two independently continuing writable histories MUST NOT share a `DatabaseFingerprint`: the author is part of every `JournalEventId`, indexes one dimension of every `CausalPrefix`, and is the deterministic cross-writer tie-break in `authorityCompare`. A detected fingerprint collision between distinct writer histories is therefore an unsupported identity collision and MUST be rejected; it cannot be treated merely as a physical `NodeIdentifier` lookup conflict. Fresh writer-identity generation must satisfy the collision-resistance requirement in `incremental-graph-fingerprint.md`.
+`JournalAuthor` is a Journal-2-specific durable semantic writer identity. It is **not** `DatabaseFingerprint`; the latter remains the legacy physical `NodeIdentifier` allocation namespace described in `incremental-graph-fingerprint.md`.
+
+A fresh `JournalAuthor` MUST be generated from 128 bits of independent nondeterministic entropy and encoded canonically as exactly 32 lowercase hexadecimal characters. Expanding a smaller nondeterministic seed through a deterministic PRNG does not satisfy this requirement. Initial migration from pre-Journal-2 state and fresh creation at a Journal-2 database version each generate a new author in this way; later Journal-2-aware migration, controlled reset, and same-host restoration preserve the existing author according to their lifecycle rules.
+
+A `JournalAuthor` is the durable namespace of exactly one continuing writer history. Two independently continuing writable histories MUST NOT share one author: the author is part of every `JournalEventId`, indexes one dimension of every `CausalPrefix`, and is the deterministic cross-writer tie-break in `authorityCompare`. A source which presents the receiver's own author through ordinary synchronization is rejected as a same-writer/incompatible synchronization input rather than merged as an independent writer. Journal 2 does not rely on `DatabaseFingerprint` collision resistance for this property.
 
 Missing coordinates in a `CausalPrefix` mean zero.
 
-A journal cursor is meaningful only inside one `(sourceFingerprint, incarnation)` pair.
+A journal cursor is meaningful only inside one `(sourceAuthor, incarnation)` pair.
 
 ## Local sequence, causal context, and authority clock
 
@@ -52,10 +56,10 @@ Along one continuing writable history, both local counters are monotone, includi
 Every supported writable Journal 2 state satisfies the writer-coordinate invariant:
 
 ```text
-causalSummary[localFingerprint] == localJournalCounter
+causalSummary[localWriter] == localJournalCounter
 ```
 
-where a missing local causal coordinate means zero. The local writer's causal coordinate is therefore owned by its event allocator, not learned from another state.
+where `localWriter = header.writer` and a missing local causal coordinate means zero. The local writer's causal coordinate is therefore owned by its event allocator, not learned from another state.
 
 The three event-ordering mechanisms have deliberately separate jobs:
 
@@ -70,7 +74,7 @@ A journal sequence from one writer is never numerically compared with a journal 
 Before a writable database observes a source Journal 2 header, it MUST require:
 
 ```text
-source.causalSummary[localFingerprint] <= localJournalCounter
+source.causalSummary[localWriter] <= localJournalCounter
 ```
 
 If the source claims a greater coordinate for the observer's own writer identity, the observing operation fails before modifying local state. Such a source demonstrates same-writer history beyond the observer's allocation frontier; generic observation must not repair that condition by copying the greater coordinate into `causalSummary` or `localJournalCounter`. Supported same-host continuation/recovery is handled by the restoration rules, not by importing a later local-writer coordinate through observation.
@@ -82,7 +86,7 @@ causalSummary := componentwiseMax(causalSummary, source.causalSummary)
 authorityClock := maxAuthorityTime(authorityClock, source.authorityClock)
 ```
 
-Because the source's coordinate for `localFingerprint` is no greater than `localJournalCounter`, this join leaves the observer's own causal coordinate unchanged and preserves the writer-coordinate invariant.
+Because the source's coordinate for `localWriter` is no greater than `localJournalCounter`, this join leaves the observer's own causal coordinate unchanged and preserves the writer-coordinate invariant.
 
 By J2-INV-9, every retained head/certificate reference in a supported source summary is already covered by that source header. A retained reference which is not covered indicates unsupported state; the observing transition rejects it rather than repairing the header by joining the reference.
 
@@ -96,7 +100,7 @@ Before authoring a local semantic journal event, allocate only the next writer-l
 
 ```text
 nextSequence = localJournalCounter + 1
-id = { author: localFingerprint, sequence: nextSequence }
+id = { author: localWriter, sequence: nextSequence }
 context = causalSummary before publication
 ```
 
@@ -127,7 +131,7 @@ After ordinary event publication:
 
 ```text
 localJournalCounter = nextSequence
-causalSummary[localFingerprint] = nextSequence
+causalSummary[localWriter] = nextSequence
 authorityClock = nextAuthorityTime
 ```
 
@@ -148,7 +152,7 @@ The event still receives the ordinary next writer-local sequence and causal cont
 
 ```text
 localJournalCounter = nextSequence
-causalSummary[localFingerprint] = nextSequence
+causalSummary[localWriter] = nextSequence
 authorityClock = maxAuthorityTime(authorityClock, nextAuthorityTime)
 ```
 
@@ -205,7 +209,7 @@ authorityCompare(E,F):
     on equality compare E.id.sequence and F.id.sequence numerically
 ```
 
-The final sequence comparison occurs only after writer fingerprints are equal, so it is strictly writer-local.
+The final sequence comparison occurs only after Journal author identities are equal, so it is strictly writer-local.
 
 Because every local event joins all authority times it causally observes before advancing its HLC, except that equal-time initial-bootstrap events remain ordered by their same-writer sequence:
 
@@ -216,7 +220,7 @@ happenedBefore(E,F)
 
 for all supported semantic events.
 
-Thus exact causal knowledge has priority semantically: the HLC plus the remaining EventRef tie-breakers are constructed so the total comparator extends happened-before. Concurrent events fall back to their causality-adjusted physical time, then writer fingerprint, then writer-local sequence.
+Thus exact causal knowledge has priority semantically: the HLC plus the remaining EventRef tie-breakers are constructed so the total comparator extends happened-before. Concurrent events fall back to their causality-adjusted physical time, then `JournalAuthor`, then writer-local sequence.
 
 ## Value identity
 
@@ -465,6 +469,8 @@ JournalHeader = {
 }
 ```
 
+`writer` is the independently generated durable Journal author identity for this continuing writer history. It is not derived from or required to equal the legacy `DatabaseFingerprint`.
+
 `authorityClock` is the greatest HLC authority time authored or observed by this database. It can advance when source causal/authority knowledge is observed even when no local semantic event is authored.
 
 The compacted change index has exactly one live marker per represented node:
@@ -476,7 +482,7 @@ ChangedNodeMarker = {
 }
 ```
 
-The marker sequence equals `NodeJournalSummary.lastLocalChange`. When the node summary changes locally, the old marker is removed and a new marker at the new local semantic-event sequence is inserted atomically.
+The marker sequence equals `NodeJournalSummary.lastLocalChange`. When the node summary changes locally, the old marker is removed and a new marker at the new local semantic-event sequence is inserted atomically. A projection-only local journal transition may likewise advance `lastLocalChange` as specified by the emission specification.
 
 ## Cursor
 
