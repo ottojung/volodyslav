@@ -1,18 +1,18 @@
 # Database fingerprint
 
 $id-9051842763146802
-title: Current database fingerprints are sufficiently collision-resistant
- date: 2026/09/09
+title: Database fingerprints are sufficiently collision-resistant
+date: 2026/09/09
 source: @ottojung
 kind: accepted-tradeoff
 
-For the current supported Volodyslav deployment scale, the existing `DatabaseFingerprint` generation and format are treated as sufficiently random that accidental collisions between independently-created hosts are negligibly unlikely.
+`DatabaseFingerprint` is treated as sufficiently collision-resistant for use wherever the database design requires independently-created hosts to have distinct fingerprints.
 
-Journal 2 may therefore use the existing `DatabaseFingerprint` directly as its durable `JournalAuthor`. Journal 2 does not require stronger entropy, a longer fingerprint, a separate writer identity, migration of existing fingerprints, or stricter fingerprint validation merely to use the fingerprint as a journal-author namespace.
+The design may rely on accidental fingerprint collision being negligibly unlikely. It does not require a stronger entropy source, a longer fingerprint, a separate writer identity, migration of existing fingerprints, or stricter fingerprint validation solely to strengthen collision resistance.
 
-This is an explicit accepted collision-risk tradeoff rather than a proof that collisions are impossible. If distinct continuing writer histories are actually observed with the same fingerprint, the state is unsupported and must be rejected rather than reconciled as one writer history.
+This is an explicit accepted collision-risk tradeoff rather than a proof that collisions are impossible. If distinct continuing histories are actually observed with the same fingerprint, the state is unsupported and must be rejected rather than reconciled as one identity.
 
-GitHub issue [#1606](https://github.com/ottojung/volodyslav/issues/1606), "Increase database fingerprint entropy", records a possible future strengthening of this tradeoff. That issue is not a prerequisite for Journal 2.
+GitHub issue [#1606](https://github.com/ottojung/volodyslav/issues/1606), "Increase database fingerprint entropy", records a possible future change to this tradeoff. The existence of that issue does not weaken this intent.
 
 ---
 
