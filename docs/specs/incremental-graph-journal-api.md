@@ -81,7 +81,7 @@ and lazily reads the current `NodeJournalSummary` for each marker's NodeKey from
 
 `lastLocalChange` is local index metadata and need not be copied inside `summary` because the enclosing range metadata establishes the source interval.
 
-The iterator is journal-metadata-only. For a present summary it includes the retained head-scoped `createdAt` because that is part of `NodeJournalSemanticPart`; it does not yield `ComputedValue` payloads or read legacy timestamp/value records merely to discover changes.
+The iterator is journal-metadata-only. For a present summary it includes the retained materialization-lineage `CreationTime` because `createdAt` is part of `NodeJournalSemanticPart`; it does not yield `ComputedValue` payloads or read legacy timestamp/value records merely to discover changes.
 
 The iterator MUST NOT materialize the complete changed-node range as one array or other graph-sized in-memory collection. Aside from implementation/runtime iterator buffers and downstream synchronization state required for other reasons, the change-discovery layer need retain only a constant number of bounded journal records at a time.
 
@@ -195,12 +195,12 @@ Controlled receiver reset and every migration whose input already contains Journ
 
 Incremental synchronization owns one fixed committed source snapshot for the complete source-read phase. It passes that same snapshot to `possibleMaybeChanges` and consumes the returned async stream while the snapshot remains alive.
 
-A yielded changed summary may select a present `ValueId` which the receiver does not materialize. The payload and `modifiedAt` for that exact `ValueId` must come from the **same fixed source snapshot** from which the summary was read. Otherwise the source could replace/delete the value between metadata iteration and payload fetch, yielding a payload from a different semantic state. The head-scoped `createdAt` does not need a second legacy timestamp lookup because it is carried in the yielded summary itself.
+A yielded changed summary may select a present `ValueId` which the receiver does not materialize. The payload and `modifiedAt` for that exact `ValueId` must come from the **same fixed source snapshot** from which the summary was read. Otherwise the source could replace/delete the value between metadata iteration and payload fetch, yielding a payload from a different semantic state. The retained materialization-lineage `CreationTime` does not need a second legacy timestamp lookup because it is carried in the yielded summary itself.
 
 While the snapshot is held, incremental synchronization must:
 
 1. read the source header and initialize `possibleMaybeChanges` for the cursor range;
-2. consume each changed-node summary lazily;
+2. consume each changed-node summary lazily and stage the bounded summary information required by the target construction;
 3. for each yielded present head that may need source materialization, copy or stage the required exact legacy payload and `modifiedAt` from that same snapshot; retain the summary's `createdAt` independently of whether the receiver already materializes that `ValueId`;
 4. finish the iterator;
 5. only then release the source snapshot after all source data needed for the operation has been copied/staged safely.
@@ -213,11 +213,11 @@ For a valid stored cursor P for source S:
 
 1. take one fixed committed source snapshot;
 2. initialize `possibleMaybeChanges` for P on that snapshot;
-3. consume its `changes` async stream; merge every yielded summary including its head-scoped `createdAt`, and from the same snapshot copy/stage every legacy payload/`modifiedAt` required by yielded present heads that the receiver cannot otherwise materialize under the full-sync rules;
+3. consume its `changes` async stream and, from the same snapshot, copy/stage every legacy payload/`modifiedAt` required by yielded present heads that the receiver cannot otherwise materialize under the full-sync rules; do not yet author receiver-local semantic events from the yielded summaries;
 4. incorporate the returned `causalSummary` and `authorityClock` header high-water marks as one coupled observation;
-5. semantically merge the yielded node summaries into the receiver's already represented source knowledge;
+5. semantically merge the yielded node summaries, including each present summary's retained `CreationTime`, into the receiver's already represented source knowledge; any resulting receiver-local `AdoptEvent` is therefore allocated only after the source observation in step 4;
 6. using the receiver reverse structural-edge index, run the same topological normalization rules that full synchronization would run for the changed nodes and every receiver dependent reached from them;
-7. materialize selected present heads using only payload/`modifiedAt` records obtained from the fixed source snapshot or an already-matching receiver `ValueId`, and write `createdAt` from the merged node summary;
+7. materialize selected present heads using only payload/`modifiedAt` records obtained from the fixed source snapshot or an already-matching receiver `ValueId`, and serialize legacy `createdAt` from the merged summary's exact `CreationTime`;
 8. atomically publish receiver graph+journal changes, reverse structural-edge index updates, and any joined header high-water metadata;
 9. only then advance the stored source cursor to the returned `through` coordinate.
 
@@ -227,15 +227,15 @@ The receiver may need to inspect local dependents outside the yielded source cha
 
 The source cursor P certifies that every source node summary with `lastLocalChange <= P.through` was already incorporated by the receiver at P.
 
-For a source node unchanged after P, its complete `NodeJournalSemanticPart`—including head, frontiers, certificate, and retained present-head `createdAt`—has not changed. Receiver-local state may have grown, but re-reading that unchanged older source summary in a full sync cannot introduce per-node information that the receiver did not already incorporate at P.
+For a source node unchanged after P, its complete `NodeJournalSemanticPart`—including head, frontiers, certificate, and retained present-head `CreationTime`—has not changed. Receiver-local state may have grown, but re-reading that unchanged older source summary in a full sync cannot introduce per-node information that the receiver did not already incorporate at P.
 
-Conversely, if the source learns a different head-scoped `createdAt` for K after P while its head/frontiers/certificate stay unchanged, that still changes K's `NodeJournalSemanticPart`, authors the ordinary local adoption event/marker movement, and causes K to be yielded. Incremental synchronization therefore cannot miss an observable creation-time change which full synchronization from the same snapshots would apply.
+Conversely, if the source learns a different retained `CreationTime` for K while the same present head remains selected after P, that still changes K's `NodeJournalSemanticPart`, authors the ordinary local adoption event/marker movement, and causes K to be yielded. Incremental synchronization therefore cannot miss an observable creation-time change which full synchronization from the same snapshots would apply.
 
 Source-global causal or HLC high-water knowledge may nevertheless have grown without changing any node. Because every incremental range transfers the current `causalSummary` and `authorityClock`, incremental synchronization observes the same source-global allocation knowledge that full synchronization would observe from the same source snapshot.
 
 By J2-INV-9, that source header also dominates every retained head and certificate EventRef in the summaries yielded from the same snapshot. Joining the source header therefore gives incremental synchronization at least the causal/authority knowledge that full synchronization would obtain by directly inspecting those retained references.
 
-For a changed present node, incremental synchronization reads the current semantic summary—including `createdAt`—and any required payload/`modifiedAt` from the same source snapshot. Therefore it materializes the same selected source occurrence and timestamp state that full synchronization would inspect from that snapshot.
+For a changed present node, incremental synchronization reads the current semantic summary—including its retained `CreationTime`—and any required payload/`modifiedAt` from the same source snapshot. Therefore it materializes the same selected source occurrence and timestamp state that full synchronization would inspect from that snapshot.
 
 Full synchronization does not require additional source reads merely to establish `oldValue` provenance: any selected present cache whose dependency closure survives is retainable as the node's cached `oldValue`, while certificate/input mismatches affect freshness and validity only. Therefore incremental synchronization does not need an extra witness scan beyond the changed summaries and exact payloads required by the ordinary merge.
 
