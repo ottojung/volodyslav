@@ -237,7 +237,7 @@ function isEqual(a: SimpleValue, b: SimpleValue): boolean {
 
   for (let i = 0; i < keysA.length; i++) {
     if (keysA[i] !== keysB[i]) return false;
-    if (!isEqual(a[keysA[i]], b[keysB[i]])) return false;
+    if (!isEqual(a[keysA[i]], b[keysA[i]])) return false;
   }
 
   return true;
@@ -312,8 +312,20 @@ When evaluating `enhanced_event(e, p)@[{id: "evt_123"}, {id: "photo_456"}]`:
 **Example:**
 ```javascript
 // Schema: output: "full_event(e)", inputs: ["event_data(e)"]
+
+// Public API uses nodeName only (no variable syntax):
 await graph.pull("full_event", [{id: "123"}]);
+
+// The nodeName "full_event" matches the schema
+// Bindings [{id: "123"}] are positional (length must equal arity)
+// Result addresses the node instance: full_event@[{id: "123"}]
+// - Same positional bindings: [{id: "123"}] at position 0
 ```
+
+**Pattern Instantiation Summary:** When evaluating a node instance `output@B`:
+1. The computor receives the full output binding environment `B` as its third parameter
+2. Each input pattern `input_i` is instantiated by extracting the relevant positional bindings based on variable name mapping
+3. The computor receives the values of all instantiated input nodes in the order they appear in the `inputs` array
 
 ### 1.9 Pattern Matching (Normative)
 
@@ -326,6 +338,8 @@ await graph.pull("full_event", [{id: "123"}]);
 2. If the arities are the same, throw `SchemaOverlapError`.
 
 **REQ-MATCH-02 (Unique Arity):** Each functor MUST have a single, unique arity across all schema outputs.
+
+**Note:** See §1.2.5 for the complete addressing and identity rules, including how schema arity is determined and validated.
 
 ### 1.10 Cycle Detection (Normative)
 
@@ -354,6 +368,8 @@ await graph.pull("full_event", [{id: "123"}]);
 * Treated as contributing to the nondeterministic choice from the outcome set
 * Not guaranteed to execute exactly once, at-least-once, or at-most-once
 * Subject to the recomputation policy: computors are NOT invoked for up-to-date nodes (REQ-PULL-04)
+
+**Implications for Testing:** Tests cannot observe or verify side effects directly. Tests can only assert properties about returned values. The `hasSideEffects` flag is metadata that enables certain optimizations and reasoning, but does not affect the observable behavior from a testing perspective.
 
 ---
 
@@ -385,6 +401,9 @@ pull(nodeName, bindings):
   return r
 ```
 
+**Note:** This pseudocode describes the abstract input-output semantics using nondeterministic choice from outcome sets. It deliberately omits many essential details. The concrete implementation uses the [flag-based inverse validity algorithm](incremental-graph-flag-based-inverse-validity.md) for cache validation, `Unchanged` propagation,
+and incremental recomputation.
+
 **REQ-PULL-01:** `pull` MUST throw `InvalidNodeError` if no schema output has the given nodeName.
 
 **REQ-PULL-02:** `pull` MUST throw `ArityMismatchError` if `bindings` array length does not match the arity defined in the schema for the given nodeName.
@@ -392,6 +411,10 @@ pull(nodeName, bindings):
 **REQ-PULL-03:** `pull` MUST ensure each computor is invoked at most once per top-level call for each unique node instance (property PROP-03).
 
 **REQ-PULL-04 (No spurious recomputation):** If a materialized node instance is `up-to-date` at the time it is encountered during a `pull()`, the implementation MUST return its stored value and MUST NOT invoke its computor. This makes `pull()` use call-by-need semantics and prevents repeated effects/resampling for up-to-date nodes.
+
+**Efficiency Optimization (Implementation-Defined):**
+
+Implementations MAY use any strategy to achieve property PROP-03 (e.g., memoization, freshness checks, in-flight tracking). The specific mechanism is not prescribed.
 
 ### 2.2 invalidate(nodeName, bindings)
 
@@ -401,6 +424,8 @@ pull(nodeName, bindings):
 1. Create `NodeKey` from `nodeName@bindings`
 2. Mark that node instance as `potentially-outdated`
 3. Mark all materialized transitive dependents as `potentially-outdated`
+
+**Important:** `invalidate()` does NOT write a value. Values are provided by computors when nodes are pulled.
 
 **REQ-INV-01:** `invalidate` MUST return a `Promise<void>`.
 
@@ -412,11 +437,14 @@ pull(nodeName, bindings):
 
 ### 2.3 Unchanged Propagation Optimization
 
+**Note:** The rules in this section describe an **optimization mechanism** using the `Unchanged` sentinel. `Unchanged` is not part of the semantic outcome set—it is purely an implementation optimization for avoiding unnecessary storage writes and enabling efficient propagation of unchanged values.
+
 **REQ-UNCH-01:** When a computor returns `Unchanged`:
 1. Node's value MUST NOT be updated (keeps old value)
 2. Node MUST be marked `up-to-date`
 3. The stored value must remain a valid `ComputedValue` (never the sentinel itself)
-4. The implementation MUST add validity flags (`valid[D].add(N)`) for every schema-derived dependency edge `D`, without clearing `valid[N]`.
+4. The implementation MUST add validity flags (`valid[D].add(N)`) for every schema-derived
+   dependency edge `D`, without clearing `valid[N]`.
 
 **REQ-UNCH-02:** An implementation MAY mark dependent D `up-to-date` without recomputing **if and only if** it can prove D's value would be unchanged given current input values.
 
@@ -443,10 +471,15 @@ function makeIncrementalGraph(
 
 ```typescript
 interface IncrementalGraph {
+  // Mutation and computation
   pull(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue>;
   invalidate(nodeName: NodeName, bindings?: BindingEnvironment): Promise<void>;
+
+  // Timestamp API (read-only)
   getCreationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
   getModificationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
+
+  // Inspection API (read-only)
   getFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | undefined>;
   getValue(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue | undefined>;
   listMaterializedNodes(): Promise<Array<[NodeName, BindingEnvironment]>>;
@@ -462,7 +495,13 @@ interface IncrementalGraph {
 
 **REQ-IFACE-03:** For compound-expressions (arity > 0), `bindings` MUST be provided with length matching the expression arity.
 
-**REQ-IFACE-04 (Inspection API):** Implementations MUST provide the inspection interface methods.
+**REQ-IFACE-04 (Inspection API):** Implementations MUST provide the inspection interface methods:
+* `getFreshness(nodeName, bindings?)` — Returns the freshness state of a specific node instance. Returns `undefined` when no materialization exists for that node.
+* `getValue(nodeName, bindings?)` — Returns the currently stored value for a node instance without triggering recomputation, or `undefined` if the node has never been materialized.
+* `listMaterializedNodes()` — Returns an array of tuples `[NodeName, BindingEnvironment]` for all materialized node instances.
+* `getSchemas()` — Returns the list of compiled node schemas registered with this graph.
+* `getSchemaByHead(nodeName)` — Returns the compiled schema for the given node name, or `null` if no such schema exists.
+* `getDbVersion()` — Returns the version string used for storage namespacing.
 
 **REQ-IFACE-05 (Timestamp API):** Implementations MUST record timestamps for each node instance when its value is first set or changed.
 
@@ -472,11 +511,11 @@ interface IncrementalGraph {
 
 **REQ-IFACE-08 (Timestamp Invariants):**
 * `getCreationTime(N, B) <= getModificationTime(N, B)` for any materialized node instance `N@B`.
-* `getCreationTime(N, B)` MUST NOT advance. It may move earlier only when synchronization learns an earlier `createdAt` for the same semantic node instance; synchronization merges `createdAt` by taking the minimum represented creation time for that NodeKey.
+* `getCreationTime(N, B)` MUST NOT change once set.
 * `getModificationTime(N, B)` is a version timestamp for the stored semantic value.
 * A **new timestamp record** is created when a semantic value is first stored for a node (including migration `create` and the node's initial computation). `createdAt` and `modifiedAt` are both set to the current time at this point.
 * An existing `modifiedAt` **advances** only when a computor produces a changed value that replaces the previous stored value. `modifiedAt` MUST NOT advance in any other circumstance.
-* Synchronization which adopts another replica's value occurrence copies that occurrence's existing `modifiedAt` together with its payload, merges `createdAt` by minimum across the receiver and source representations of the NodeKey, and MUST NOT substitute merge execution time or any other manufactured timestamp. The `createdAt` minimum is idempotent, commutative, and associative, and because each input satisfies `createdAt <= modifiedAt`, the merged creation time cannot exceed the selected occurrence's `modifiedAt`.
+* Synchronization may replace a local node value and timestamp with another replica's existing value-version pair (the `take` decision). This copies the existing timestamp; it does not mint a new one. Synchronization MUST NOT replace a timestamp with the merge execution time or any other manufactured value.
 * `modifiedAt` MUST NOT change when:
   * a node becomes `potentially-outdated` (invalidation);
   * invalidation propagates to dependent nodes;
@@ -512,10 +551,14 @@ interface GenericDatabase<TValue> {
 
 **REQ-DB-02:** The type parameter `TValue` is consistently used throughout all method signatures to ensure type safety.
 
+**Note on Storage:** Internal storage organization (including how values, freshness, dependencies, and validity sets are stored) is implementation-defined and not exposed in the public interface. Implementations MAY choose any internal representation for storing values as long as REQ-DB-01 (deep equality preservation) is satisfied.
+
 #### RootDatabase
 
 ```typescript
 interface RootDatabase {
+  // Internal interface - specifics are implementation-defined
+  // Must support schema-namespaced storage and isolation
   listSchemas(): AsyncIterable<string>;
   close(): Promise<void>;
 }
@@ -535,7 +578,9 @@ type Computor = (
 ) => Promise<ComputedValue | Unchanged>;
 ```
 
-**REQ-COMP-01A (Conditional Determinism):** If `NodeDef.isDeterministic` is `true`, the computor MUST be treated as deterministic with respect to `(nodeName, bindings, inputs, oldValue)`.
+**Note on Return Type:** Computors MAY return `Unchanged` as an optimization sentinel. However, `Unchanged` is NOT part of the semantic `Outcomes` set (see §1.1). When a computor returns `Unchanged`, it is semantically equivalent to returning the current stored value (which must be a `ComputedValue`). The `pull()` operation always returns `Promise<ComputedValue>` — the `Unchanged` sentinel is handled internally and never exposed to callers.
+
+**REQ-COMP-01A (Conditional Determinism):** If `NodeDef.isDeterministic` is `true`, the computor MUST be treated as deterministic with respect to `(nodeName, bindings, inputs, oldValue)`. Formally, `Outcomes(nodeName, bindings, inputs, oldValue)` (per DEF-OUTCOMES-01) MUST always be a singleton set.
 
 **REQ-COMP-02A (Conditional Purity):** If `NodeDef.hasSideEffects` is `false`, the computor MUST be treated as one that does not have observable side effects.
 
@@ -543,7 +588,7 @@ type Computor = (
 
 **REQ-COMP-04 (Unchanged API):** Implementations MUST expose `makeUnchanged()` factory and `isUnchanged(value)` type guard.
 
-**REQ-COMP-05 (Binding Parameter):** The `bindings` parameter is a positional array matching the schema output pattern's arguments by position.
+**REQ-COMP-05 (Binding Parameter):** The `bindings` parameter is a positional array matching the schema output pattern's arguments by position. For example, if the output pattern is `full_event(e)`, then `bindings[0]` contains the value for the first argument position, `e`.
 
 ### 3.5 Error Taxonomy
 
@@ -563,7 +608,7 @@ type Computor = (
 | `InvalidUnchangedError` | `nodeKey: string` | Computor returned `Unchanged` when oldValue is `undefined` (internal) |
 | `MissingTimestampError` | `nodeKey: string` | `getCreationTime`/`getModificationTime` called for a node with no recorded timestamps (public API) |
 
-**REQ-ERR-01 (Error Type Guards):** All error types MUST provide type guard functions.
+**REQ-ERR-01 (Error Type Guards):** All error types MUST provide type guard functions (e.g., `isInvalidExpressionError(value: unknown): value is InvalidExpressionError`).
 
 ---
 
@@ -573,25 +618,39 @@ type Computor = (
 
 **REQ-PERSIST-01 (Observable Equivalence):** Given the same `RootDatabase` and schema, the observable behavior of the incremental graph MUST be identical whether or not a shutdown/restart occurred between any two operations.
 
-**REQ-PERSIST-02:** Implementations MAY use any persistence strategy as long as REQ-PERSIST-01 is satisfied.
+Formally: For any sequence of operations `Op₁, Op₂, ..., Opₙ` where each `Opᵢ` is either `pull(nodeName, bindings)` or `invalidate(nodeName, bindings)`, the following two executions MUST produce observably equivalent results:
 
-**REQ-PERSIST-SYNC-REF-01 (Synchronization):** Synchronization of persisted graph state across host branches is specified in [Specification for Incremental Graph Synchronization](incremental-graph-synchronization.md).
+1. **Without restart:** Execute `Op₁, Op₂, ..., Opₙ` consecutively
+2. **With restart:** Execute `Op₁, Op₂, ..., Opₖ`, then shutdown and restart the graph with the same `RootDatabase` and schema, then execute `Opₖ₊₁, ..., Opₙ`
+
+**Observable equivalence** means:
+* All `pull()` calls return equal values (according to `isEqual`)
+* All `invalidate()` calls have the same effect on subsequent operations
+
+**REQ-PERSIST-02:** Implementations MAY use any persistence strategy (storing values, freshness markers, dependency graphs, etc.) as long as REQ-PERSIST-01 is satisfied. The specific mechanism is implementation-defined.
+
+**REQ-PERSIST-SYNC-REF-01 (Synchronization):** Synchronization of persisted
+graph state across host branches is specified in a separate document:
+[Specification for Incremental Graph Synchronization](incremental-graph-synchronization.md).
 
 ### 4.2 Invariants
 
-**INV-01 (Outdated Downstream):** If node instance `N@B` is `potentially-outdated`, all transitive dependents of `N@B` that have been previously materialized are also `potentially-outdated`.
+**INV-01 (Outdated Downstream):** If node instance `N@B` is `potentially-outdated`, all transitive dependents of `N@B` that have been previously materialized (pulled or invalidated) are also `potentially-outdated`.
 
 **INV-02 (Up-to-Date Upstream):** If node instance `N@B` is `up-to-date`, all transitive dependencies of `N@B` are also `up-to-date`.
 
-**INV-03 (Value Admissibility):** If node instance `N@B` is `up-to-date`, then letting `inputs_values` be the stored values of its instantiated input node instances, the stored value `v` of `N@B` must satisfy that there exists some `oldValue` such that `v ∈ Outcomes(N, B, inputs_values, oldValue)`.
+**INV-03 (Value Admissibility):** If node instance `N@B` is `up-to-date`, then letting `inputs_values` be the stored values of its instantiated input node instances, the stored value `v` of `N@B` must satisfy:
+* there exists some `oldValue` such that `v ∈ Outcomes(N, B, inputs_values, oldValue)` (per DEF-OUTCOMES-01).
+
+This invariant uses an existential quantifier over `oldValue` to avoid requiring storage of the previous value. All nodes, including source nodes, satisfy INV-03 the same way: their stored value must be consistent with their computor's `Outcomes(...)` set.
 
 ### 4.3 Correctness Properties
 
 **REQ-CORR-01 (Correctness Requirements):** Implementations MUST satisfy properties PROP-01, PROP-02, PROP-03, and PROP-04.
 
-**PROP-01 (Soundness under nondeterminism):** For any `pull(nodeName, B)` that returns value `v`, `v` is a value permitted by the nondeterministic big-step semantics.
+**PROP-01 (Soundness under nondeterminism):** For any `pull(nodeName, B)` that returns value `v`, `v` is a value permitted by the nondeterministic big-step semantics. That is, there exists a derivation where all computor invocations choose elements from their `Outcomes(...)` sets and the final returned value is `v`.
 
-**PROP-01A (Deterministic specialization, corollary):** If all computors reachable from node instance `N@B` have `isDeterministic=true` and `hasSideEffects=false`, then PROP-01 strengthens to recomputing all values from scratch with the same input values.
+**PROP-01A (Deterministic specialization, corollary):** If all computors reachable from node instance `N@B` have `isDeterministic=true` and `hasSideEffects=false`, then PROP-01 strengthens to: `pull(N, B)` produces the same result as recomputing all values from scratch with the same input values. This recovers the traditional semantic equivalence property for the deterministic and pure subset of computors.
 
 **PROP-02 (Progress):** Every `pull(N, B)` call terminates (assuming computors terminate).
 
@@ -605,9 +664,11 @@ type Computor = (
 
 **REQ-CONCUR-01 (Sequential Consistency):** All `pull()` and `invalidate()` operations MUST behave as if they were executed in some sequential order, even when invoked concurrently.
 
-**REQ-CONCUR-02:** The observable state of the graph MUST be consistent with some sequential execution at all times. No operation may observe partial state from another concurrent operation.
+Formally: For any concurrent execution with operations `{Op₁, Op₂, ..., Opₙ}`, there MUST exist a sequential ordering `Opₚ₍₁₎, Opₚ₍₂₎, ..., Opₚ₍ₙ₎` (where `p` is a permutation) such that the observable results are identical to executing the operations in that sequential order.
 
-**Note:** Implementations MAY use any concurrency control mechanism to achieve these requirements. The specific strategy is implementation-defined.
+**REQ-CONCUR-02:** The observable state of the graph (values, freshness, materialization) MUST be consistent with some sequential execution at all times. No operation may observe partial state from another concurrent operation.
+
+**Note:** Implementations MAY use any concurrency control mechanism to achieve these requirements. The specific strategy (locks, transactions, queuing, etc.) is implementation-defined.
 
 ### 5.1 Locking Model
 
@@ -620,8 +681,6 @@ Three modes are defined:
 | `daytime` | Non-`pull` graph operations (inspection reads plus `invalidate`). Multiple `daytime`-mode callers may execute concurrently. |
 | `nighttime` | Recomputation operations. Multiple `nighttime`-mode callers may execute concurrently at the graph level (but are serialized per-node). |
 | `holiday` | Lifecycle operations (database opens, schema migrations). Blocks all other modes. |
-
-**REQ-CONCUR-05 (Mode acquisition fairness):** Once an acquirer for a different mode is waiting, repeated new acquirers of the currently active mode MUST NOT overtake it indefinitely. At the next mode boundary after the current holders of the active mode drain, the implementation MUST provide a handoff that allows a waiting incompatible-mode acquirer to proceed before admitting another unbounded run of the previous mode. This requirement does not impose FIFO ordering among callers of the same mode; it prevents starvation across mode classes.
 
 Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to prevent two concurrent pulls from recomputing the same node simultaneously.
 
@@ -644,12 +703,12 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 
 | Category | Methods |
 |----------|---------|
-| **Read-write** | `pull()`, `invalidate()` |
-| **Read-only** | `getFreshness()`, `getValue()`, `listMaterializedNodes()`, `getCreationTime()`, `getModificationTime()`, `getSchemas()`, `getSchemaByHead()`, `getDbVersion()` |
+| **Read-write** (modify graph state) | `pull()`, `invalidate()` |
+| **Read-only** (observe graph state) | `getFreshness()`, `getValue()`, `listMaterializedNodes()`, `getCreationTime()`, `getModificationTime()`, `getSchemas()`, `getSchemaByHead()`, `getDbVersion()` |
 
-**REQ-CONCUR-03 (Read-only Safety):** All read-only methods MUST NOT modify any stored graph state.
+**REQ-CONCUR-03 (Read-only Safety):** All read-only methods MUST NOT modify any stored graph state (values, freshness, timestamps, materialization records).
 
-**REQ-CONCUR-04 (Daytime-mode Atomicity):** A `daytime`-mode method MUST NOT observe a partial write from a concurrent `pull()`.
+**REQ-CONCUR-04 (Daytime-mode Atomicity):** A `daytime`-mode method MUST NOT observe a partial write from a concurrent `pull()`. Either the full effect of a `pull()` is visible, or none of it is.
 
 ---
 
@@ -657,4 +716,14 @@ Additionally, `pull()` acquires a **per-node mutex** inside the mode mutex to pr
 
 Computors MAY invoke the `pull` method, or any other methods of the `IncrementalGraph` interface.
 Nodes `pull`ed in this way are **not** schema-derived dependencies of the calling computor's node.
-The implementation MUST NOT treat them as inputs for freshness propagation or validity indexing.
+The implementation MUST NOT treat them as inputs for freshness propagation or validity
+indexing. This means:
+
+- freshness updates during `invalidate()` are not propagated through dynamically-pulled nodes,
+- dynamically-pulled nodes do not appear in `inputEdges(N)` or `valid`,
+- validity-proof restoration does not consider dynamically-pulled nodes.
+
+Dynamically-pulled nodes are not part of the flag-based validity algorithm. They are ad-hoc queries
+performed during a computor's execution and do not affect the structural dependency graph.
+
+---
