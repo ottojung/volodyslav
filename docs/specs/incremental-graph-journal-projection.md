@@ -12,7 +12,7 @@ For a `NodeKey K`, let `S[K]` be its `NodeJournalSummary`.
 
 If `S[K].head.kind == "absent"`, K must be unmaterialized in the legacy graph.
 
-If `S[K].head.kind == "present"`, K must be materialized and the legacy value/timestamp record must be the record associated with `S[K].head.value.id` under the supported lifecycle.
+If `S[K].head.kind == "present"`, K must be materialized and its legacy payload and `modifiedAt` must be those associated with `S[K].head.value.id` under the supported lifecycle. The legacy `createdAt` belongs to the semantic node materialization rather than to that value occurrence and follows the separate synchronization merge rule below.
 
 The current `ValueRef` carries immutable origin `context` and `authorityTime`; those are journal metadata for the exact value occurrence and are not reconstructed from the current receiver's wall clock.
 
@@ -150,11 +150,25 @@ The final `identifiers_keys_map`, `values`, `freshness`, `timestamps`, and `vali
 
 ## Timestamp records and value authority
 
-A normal synchronization which adopts a foreign `ValueId` copies the complete selected value record, including the source timestamps associated with that value occurrence. It does not combine value bytes from one occurrence with timestamps from another and does not use synchronization execution time as a replacement value timestamp.
+For Journal-2 synchronization, `modifiedAt` belongs to the selected value occurrence while `createdAt` belongs to the semantic node's represented materialization history.
+
+A normal synchronization which adopts a foreign `ValueId` copies the selected occurrence's payload and `modifiedAt`. It MUST NOT copy the source `createdAt` merely because the source value occurrence wins. Instead, whenever K is present in the resulting merge, synchronization sets:
+
+```text
+createdAt(K) = min(
+    every available receiver/source createdAt for K
+)
+```
+
+where an input which does not materialize K contributes no creation time. Thus a receiver which did not previously materialize K receives the source's existing `createdAt`; when both sides materialize K, the earlier creation time survives regardless of which `ValueId` wins.
+
+Minimum is idempotent, commutative, and associative, so repeated synchronization makes `createdAt` converge without giving it Journal event authority. It never advances. The selected occurrence's source representation satisfies `createdAt <= modifiedAt`, and the minimum is no greater than that source creation time, so the merged `createdAt <= selected modifiedAt` invariant is preserved.
+
+This is a Journal-2-specific refinement of the legacy timestamp rule in `incremental-graph.md` REQ-IFACE-08. For databases using Journal 2, creation time remains stable under ordinary local evolution but MAY move earlier when synchronization learns an earlier creation of the same semantic NodeKey; it MUST NOT move later. Synchronization never substitutes its execution time for either timestamp.
 
 The origin value event's HLC physical seed was the occurrence's `modifiedAt`, but its persisted `authorityTime` may be later because HLC monotonicity must extend happened-before. Projection does not recompute or normalize that authority from the timestamp after the event has been authored.
 
-Replicas which already represent the same `ValueId` are required by the supported-state invariant to carry the same semantic value/timestamp record and the same immutable `ValueRef.context`/`authorityTime` for that occurrence. Identity-preserving Journal-2-aware migration must preserve that invariant through its replica-stability requirement.
+Replicas which already represent the same `ValueId` are required by the supported-state invariant to carry the same semantic payload and `modifiedAt` and the same immutable `ValueRef.context`/`authorityTime` for that occurrence. Their `createdAt` values may differ until synchronization joins them by minimum. Identity-preserving Journal-2-aware migration must preserve the payload/`modifiedAt` invariant through its replica-stability requirement.
 
 ## Consistency validation
 
@@ -167,7 +181,8 @@ Opening, staging, restoration, and compaction MAY validate the following. Migrat
 - every materialized dependency is materialized;
 - current certificates name the current value and have the exact schema-derived basis arity;
 - all retained/raw structures available to the transition which claim the same `JournalEventId` agree on the immutable semantic event identity defined in `incremental-graph-journal-types.md`, including context/authority time, node, event kind, and all exposed kind-specific semantic body fields; in particular equal certificate event IDs require equal `value` and `basis`;
-- every repeated `ValueId` identifies the same semantic NodeKey and exact value/timestamp record;
+- every repeated `ValueId` identifies the same semantic NodeKey, exact payload, and `modifiedAt`; `createdAt` is deliberately excluded from value-occurrence identity;
+- every present legacy timestamp record satisfies `createdAt <= modifiedAt`;
 - journal references are well-formed and bounded by represented causal/authority knowledge;
 - every node-summary invalidation frontier coordinate is bounded by the corresponding header `causalSummary` coordinate as required by J2-INV-8;
 - every retained head/certificate EventRef is bounded by the local header causal/authority high-water marks as required by J2-INV-9;
