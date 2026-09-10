@@ -25,8 +25,8 @@ The operation record uses `localOperationCounter`, not the semantic `localJourna
 When an operation record is persisted, its tagged arguments MUST identify the recorded invocation according to `incremental-graph-journal-types.md`:
 
 - `pull` and `invalidate` record their `subject` NodeKey;
-- `synchronize` records the source database plus its Journal 2 incarnation, local semantic head, causal summary, and authority-clock high-water mark from the stable source snapshot consumed by the operation;
-- `reset` records the chosen valid compatible Journal 2 source with the same source-position metadata;
+- `synchronize` records the source database version plus its writer, Journal 2 incarnation, local semantic head, causal summary, and authority-clock high-water mark from the stable source snapshot consumed by the operation;
+- `reset` records the chosen valid compatible Journal 2 source with the same database-version and source-position metadata;
 - `migration` records the stable `MigrationId` of the migration being run;
 - implementation-specific `other` operations use a bounded stable `OperationTag` rather than arbitrary payload data.
 
@@ -173,7 +173,7 @@ Examples include:
 
 The event carries bounded references/summary metadata but creates no new `ValueId`, certificate authority, invalidation authority, or tombstone authority. The adopted foreign identities and their immutable authority times remain unchanged.
 
-All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`. When that operation record is persisted, its `source` records the Journal 2 source-position metadata from the same fixed source snapshot used by the synchronization protocol, including incarnation, local head, causal summary, and authority-clock high-water mark. That grouping is historical only and is not imported by peers.
+All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`. When that operation record is persisted, its `source` records the exact database version and Journal 2 source-position metadata from the same fixed source snapshot used by the synchronization protocol, including writer, incarnation, local head, causal summary, and authority-clock high-water mark. That grouping is historical only and is not imported by peers.
 
 If source information is already represented and the graph projection is unchanged, repeating synchronization is silent and need not persist an operation record.
 
@@ -214,7 +214,7 @@ Synchronization does not use `sync-discard` merely because a retained cache's fi
 
 A controlled reset or migration may allocate one local high-level operation record and attach that operation ID to the O(N) low-level reset/bootstrap semantic events it produces.
 
-A reset operation record identifies its chosen source using `OperationSourceRef`. A migration operation record identifies the migration with a stable bounded `MigrationId`.
+A reset operation record identifies its chosen source using `OperationSourceRef`, including that source snapshot's exact database version. A migration operation record identifies the migration with a stable bounded `MigrationId`.
 
 The operation record remains individually bounded in graph size. It MUST NOT enumerate all affected NodeKeys or all compiled semantic events in one LevelDB value.
 
