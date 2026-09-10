@@ -70,6 +70,8 @@ A Journal-2-aware migration also starts from the existing writer/header allocati
 
 The resulting state must preserve J2-INV-7, J2-INV-8, and J2-INV-9. Migration may use a stronger migration-specific subsumption rule only when that migration explicitly proves that the replacement state preserves future synchronization behavior, including synchronization with delayed replicas.
 
+Before cutover, every Journal-2-aware migration also establishes the exact derived reverse structural-edge index required by `incremental-graph-journal-api.md` for its resulting materialized graph. The index is rebuilt or transformed according to the new schema; pre-migration reverse-edge records are not synchronization authority and are not preserved when they disagree with the resulting graph.
+
 ## Journal-2-aware migration event mapping
 
 A migration whose input already contains Journal 2 MUST publish Journal 2 state whose projection exactly matches the migration's resulting legacy value, freshness, and validity state. The migration decision semantics in `migration.md` determine whether an invalidation is node-scoped or value-scoped; the `reason="migration"` tag records that the event was authored by migration and does not replace that scope distinction.
@@ -197,20 +199,23 @@ For a migration whose input already contains Journal 2, projection agreement is 
 
 ## Initial compaction
 
-The bootstrap passes themselves publish the synchronization-relevant Journal 2 baseline directly: the final header, one node summary per materialized node, and one current changed-node marker per represented node are already maintained by the same event-publication rules used elsewhere. An immediate canonical compaction therefore does not construct or rewrite those records; it may only remove the now-redundant bootstrap raw semantic events and high-level operation grouping.
+The bootstrap passes themselves publish the synchronization-relevant Journal 2 baseline directly: the final header, one node summary per materialized node, one current changed-node marker per represented node, and the derived reverse structural-edge index are already maintained by the same publication/cutover rules used elsewhere. An immediate canonical compaction therefore does not construct or rewrite those records; it may only remove the now-redundant bootstrap raw semantic events and high-level operation grouping.
 
 After such immediate compaction, the retained journal contains:
 
 - header, including the final local sequence, causal summary, and HLC authority high-water mark;
 - one node summary per materialized node;
 - one changed-node marker per represented node;
+- one reverse structural-edge record per materialized dependency edge;
 - no required historical raw event/operation prefix.
 
 The conceptual bootstrap history remains the explanation of how the Journal 2 baseline was established even if its raw semantic events and operation grouping are removed by compaction.
 
-## Initial changed-node markers
+## Initial changed-node markers and structural index
 
 Every represented node receives a current marker in the initial incarnation. There is no valid pre-Journal-2 cursor, so the exact bootstrap marker coordinates are used only for future Journal 2 cursors.
+
+The initial bootstrap also constructs the exact reverse structural-edge index from the materialized legacy graph and current schema before cutover. Because the materialized graph is dependency-closed and direct in-degree is bounded, this requires O(L) individually bounded edge records.
 
 ## Synchronization compatibility
 
@@ -222,9 +227,9 @@ A later migration from one Journal-2-aware database version to another deletes r
 
 ## Size
 
-Let L be the number of materialized nodes in the legacy state being migrated. The initial migration baseline has no historical Journal-2 tombstone domain, so its bootstrap work is O(L) semantic events plus at most O(1) high-level operation records.
+Let L be the number of materialized nodes in the legacy state being migrated. The initial migration baseline has no historical Journal-2 tombstone domain, so its bootstrap work is O(L) semantic events plus at most O(1) high-level operation records and O(L) reverse structural-edge records under the bounded direct-in-degree assumption.
 
-Each event is individually within the Journal 2 per-value bound, and after canonical compaction O(L) bounded summaries/markers plus one bounded header remain.
+Each event/index record is individually within the Journal 2 per-value bound, and after canonical compaction O(L) bounded summaries/markers/reverse-edge records plus one bounded header remain.
 
 Therefore the migrated compacted journal satisfies the general bound:
 
