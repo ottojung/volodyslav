@@ -95,13 +95,13 @@ If the selected head is present with ValueId V:
 
 Metadata scoped to losing value occurrences is not a candidate for the selected value.
 
-### Node-scoped creation time
+### Materialization-lineage creation time
 
-`createdAt` is node-scoped rather than value-occurrence identity, but it is retained in the node summary and therefore participates in the ordinary summary merge.
+`createdAt` is not value-occurrence identity or EventRef authority. It is retained as a `CreationTime` in the node summary and participates in synchronization through the canonical `(head, createdAt)` join defined in `incremental-graph-journal-projection.md`.
 
-For a final present K, take the minimum `createdAt` over exactly those input summaries whose head is the selected final head. An input whose head lost head selection contributes no creation time, and neither does an input where K is absent. Because the selected head is deterministic, this merge is deterministic, idempotent, commutative, and associative.
+Accordingly, a strictly greater head wins together with the creation-time metadata carried by that head. Only when both inputs carry the same selected present head are their retained `CreationTime`s combined, by taking the earlier instant. An absent selected head retains no creation time.
 
-Creation time therefore follows the selected materialization/head lineage. It may move earlier when a replica carrying that same selected head materialized K earlier is merged in, and it may move later when the selected head changes to one carried only by a replica whose corresponding materialization began later. It is never set to synchronization execution time. Because an absent/tombstone head retains no `createdAt`, a node rematerialized after deletion does not inherit creation time from the materialization that was deleted.
+This makes creation time follow the selected materialization lineage. It may move earlier when another replica carrying that same selected head has an earlier retained `CreationTime`, and may move later when a greater head replaces the old lineage. It is never set to synchronization execution time. Because an absent/tombstone head retains no `createdAt`, a node rematerialized after deletion does not inherit creation time from the materialization that was deleted.
 
 ### Local-only fields
 
@@ -111,7 +111,7 @@ Creation time therefore follows the selected materialization/head lineage. It ma
 
 A selected present head V must be carried by at least one input snapshot as a current materialized value. The selected payload and that occurrence's `modifiedAt` are copied from such a snapshot when the receiver does not already materialize V.
 
-If both snapshots claim the same V, supported-state invariants guarantee the same semantic payload/`modifiedAt` and immutable `ValueRef` metadata; ordinary synchronization does not compare payloads to establish identity. Their retained `createdAt` values may differ and are merged by minimum because both summaries carry the selected head. A detectable disagreement about V's payload, `modifiedAt`, or immutable event identity means the input is unsupported and synchronization fails rather than choosing one arbitrarily.
+If both snapshots claim the same V, supported-state invariants guarantee the same semantic payload/`modifiedAt` and immutable `ValueRef` metadata; ordinary synchronization does not compare payloads to establish identity. Their retained `CreationTime`s may differ and are joined by the earlier instant because both summaries carry the same selected head. A detectable disagreement about V's payload, `modifiedAt`, or immutable event identity means the input is unsupported and synchronization fails rather than choosing one arbitrarily.
 
 The journal contains no fallback payload.
 
@@ -181,9 +181,9 @@ No computor is invoked by synchronization.
 
 ## Final journal summary
 
-For every node whose candidate metadata is simply adopted, preserve the foreign semantic IDs, immutable EventRefs, frontiers, certificate, and head-scoped `createdAt`; record a receiver-local `AdoptEvent` only when that node's own `NodeJournalSemanticPart` actually changes.
+For every node whose candidate metadata is simply adopted, preserve the foreign semantic IDs, immutable EventRefs, frontiers, certificate, and retained materialization-lineage `CreationTime`; record a receiver-local `AdoptEvent` only when that node's own `NodeJournalSemanticPart` actually changes.
 
-A decrease of `createdAt` for the selected head is therefore an ordinary semantic-part adoption change: it authors an `AdoptEvent`, advances `lastLocalChange`, and moves the changed-node marker even when head/frontier/certificate metadata is otherwise unchanged. This is what makes that observable creation-time update visible to a later incremental synchronization.
+For the same selected present head, learning an earlier `CreationTime` is therefore an ordinary semantic-part adoption change: it authors an `AdoptEvent`, advances `lastLocalChange`, and moves the changed-node marker even when head/frontier/certificate metadata is otherwise unchanged. This is what makes that observable creation-time update visible to a later incremental synchronization.
 
 A dependent whose projected legacy freshness/validity changes only because an input summary changed authors no `AdoptEvent` and does not move its changed-node marker unless its own semantic part also changed or normalization authors another semantic event for it.
 
@@ -200,7 +200,7 @@ The semantic plan is keyed by NodeKey. Physical `NodeIdentifier` selection follo
 - otherwise allocate a valid local identifier;
 - rebuild the final identifier lookup and `valid` relation from the semantic plan;
 - rebuild the derived reverse structural-edge index so it exactly represents every materialized `D -> N` structural edge in the final graph;
-- install the selected payload, the selected occurrence's `modifiedAt`, and the final summary's merged `createdAt`;
+- install the selected payload and selected occurrence's `modifiedAt`, and serialize legacy `createdAt` to represent exactly the final summary's retained `CreationTime`;
 - deleted nodes have no legacy identifier/value/freshness/timestamp/validity records and no reverse-edge records in which they are the dependent.
 
 Physical choices do not participate in semantic conflict precedence. The reverse structural-edge index is likewise derived local acceleration state and carries no synchronization authority.
@@ -222,7 +222,7 @@ Across normal synchronization, these facts only grow in their respective orders:
 - causal summary;
 - authority-clock high-water mark.
 
-For a fixed present head, retained `createdAt` can only move toward the numeric minimum as more copies of that head are represented. When head selection changes, the old head's creation-time metadata is discarded with that losing materialization and the selected head's own head-scoped creation time may be numerically later. An absent head retains no `createdAt`.
+For a fixed present head, retained `CreationTime` can only move earlier as more copies of that head are represented. When head selection changes, the old head's creation-time metadata is discarded with that losing materialization and the selected head's own carried `CreationTime` may be later. An absent head retains no `createdAt`.
 
 ## Why adoption does not cause authority inflation
 
@@ -247,9 +247,9 @@ Assume:
 - fair repeated synchronization among a connected set;
 - supported/correct snapshots.
 
-Pure candidate joining first chooses the deterministic total EventRef head maximum. For that selected head it uses componentwise frontier maxima, the deterministic canonical certificate, and the minimum `createdAt` among copies of that same head. These operations are deterministic, idempotent, commutative, and associative for a fixed input set, so repeated delivery of already represented positive authority/creation-time information cannot change the candidate again.
+Pure candidate joining uses the deterministic per-node join defined by the synchronization rules: total head maximum first, then current-head metadata joins, including the `CreationTime` minimum only for equal selected present heads. The creation-time component is exactly the associative `joinCreation` rule from `incremental-graph-journal-projection.md`. Repeated delivery of already represented positive authority or creation metadata therefore cannot change the candidate again.
 
-A greater head may discard the losing head's `createdAt` and install the selected head's own retained creation-time metadata, which may be numerically later. Head authority itself can only increase, and under quiescence there are only finitely many represented positive heads, so such creation-time resets are finite. Once a final winning head is stable, its creation time only decreases toward the minimum represented among copies of that head and therefore converges.
+A greater head may discard the losing head's `CreationTime` and install the selected head's own retained creation-time metadata, which may be later. Head authority itself can only increase, and under quiescence there are only finitely many represented positive heads, so such lineage replacements are finite. Once a final winning head is stable, its `CreationTime` only decreases toward the earliest represented value among copies of that head and therefore converges.
 
 Synchronization may create only two forms of new negative semantic authority during normalization:
 
@@ -264,7 +264,7 @@ A particular already-observed positive state/certificate cannot force the same r
 
 A genuinely unseen concurrent positive authority may later force another finite normalization. Under quiescence there are finitely many such positive authorities. Each normalization may propagate along only the finite dependency DAG.
 
-Therefore synchronization-authored negative events eventually stop. After that point, fair synchronization only adopts deterministic maxima/frontiers/certificates and head-scoped creation-time minima, so every connected replica reaches the same semantic summaries and the same observable legacy graph state. Further synchronization is a semantic no-op.
+Therefore synchronization-authored negative events eventually stop. After that point, fair synchronization only applies deterministic head/frontier/certificate/creation joins, so every connected replica reaches the same semantic summaries and the same observable legacy graph state. Further synchronization is a semantic no-op.
 
 The HLC authority order is total and extends happened-before, but its writer-local journal sequences are not compared across writers. This change does not weaken the convergence argument; convergence needs one deterministic total authority order, not globally comparable sequence magnitudes.
 
