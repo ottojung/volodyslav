@@ -9,6 +9,7 @@ JournalIncarnation       = positive arbitrary-precision integer
 JournalEventId           = { author: JournalAuthor, sequence: JournalSequence }
 CausalPrefix             = Map<JournalAuthor, JournalSequence>
 
+CreationTime             = bounded canonical epoch-millisecond instant
 AuthorityPhysicalTime    = non-negative integer epoch milliseconds
 AuthorityLogicalTime     = non-negative arbitrary-precision integer
 AuthorityTime            = {
@@ -25,6 +26,8 @@ DatabaseVersion          = bounded exact persisted global/version identity
 MigrationId              = bounded stable migration tag
 OperationTag             = bounded stable operation tag
 ```
+
+`CreationTime` is the exact instant represented by a parseable legacy `createdAt`, canonically reduced to epoch milliseconds. It is a fixed/bounded primitive under the existing DateTime domain, not an HLC coordinate and not semantic event authority. Two legacy timestamp strings which encode the same instant therefore map to the same `CreationTime` even if their textual timezone representation differs.
 
 `DatabaseVersion`, `MigrationId`, and `OperationTag` are fixed/bounded serialized primitive identifiers. They are not arbitrary user payload strings. `DatabaseVersion` is the exact database-version identity used by the lifecycle compatibility boundary.
 
@@ -238,7 +241,7 @@ The value payload is not part of `ValueRef` and is never journaled.
 
 For supported state, one `ValueId` denotes one exact semantic value occurrence at one semantic `NodeKey`. Every replica currently materializing that `ValueId` must therefore hold the same exact payload and `modifiedAt` for that occurrence and preserve the same immutable `ValueRef.context` and `ValueRef.authorityTime`. This includes identity-preserving Journal-2-aware migrations: if a migration keeps a `ValueId`, its migration contract must guarantee replica-stable transformation of that payload and `modifiedAt`. Ordinary synchronization need not compare payloads to verify this invariant.
 
-The legacy `createdAt` field is node-scoped metadata rather than value-occurrence identity. It is not compared, copied, or validated as part of `ValueId`; it is retained in `NodeJournalSummary` and merged by the head-scoped minimum rule in `incremental-graph-journal-sync.md` and `incremental-graph-journal-projection.md`.
+The legacy `createdAt` field is node-scoped metadata rather than value-occurrence identity. It is not compared, copied, or validated as part of `ValueId`; it is retained as `CreationTime` in `NodeJournalSummary` and merged by the materialization-lineage rule in `incremental-graph-journal-sync.md` and `incremental-graph-journal-projection.md`.
 
 ## Certificate basis
 
@@ -322,16 +325,16 @@ NodeJournalSummary = {
     // Present only when head.kind == "present".
     certificate?: ValidationCertificate,
     valueInvalidateFrontier?: CausalPrefix,
-    createdAt?: AuthorityPhysicalTime,
+    createdAt?: CreationTime,
 
     // Local change-index coordinate, never imported as semantic authority.
     lastLocalChange: JournalSequence
 }
 ```
 
-The `certificate`, when present, must name the current `head.value.id`. `createdAt` is present exactly when the head is present and is the earliest represented creation time for the current materialization/head of K, in canonical epoch milliseconds. It is node-scoped rather than value-occurrence identity and carries no Journal event authority. Synchronization merges it only among input summaries carrying the selected head, so a tombstone or replacement head does not inherit creation time from a losing materialization.
+The `certificate`, when present, must name the current `head.value.id`. `createdAt` is present exactly when the head is present. It is the materialization-lineage creation timestamp carried by the current present head: ordinary local value changes and identity-preserving migrations which keep K continuously materialized carry that timestamp forward, deletion clears it, and a later materialization from absence starts a new timestamp. Synchronization chooses the winning head first and combines `createdAt` only between copies of that same selected head. Thus the timestamp is node/materialization metadata inherited by a succession of local heads, not part of `ValueId` and not Journal event authority.
 
-The two invalidation vectors and the contexts inside the current value/certificate dominate the summary size. `authorityTime` and `createdAt` each contribute only a constant number of `O(log H)` scalar coordinates per retained summary/reference. Under bounded NodeKey and in-degree assumptions, one summary is `O(R log H)` bits.
+The two invalidation vectors and the contexts inside the current value/certificate dominate the summary size. `authorityTime` contributes a constant number of `O(log H)` scalar coordinates. `createdAt` contributes one fixed/bounded `CreationTime` primitive, hence `O(1)` serialized bits under the existing DateTime domain. With `R >= 1` and `H >= 2`, this is subsumed by the `O(R log H)` summary bound. Under bounded NodeKey and in-degree assumptions, one summary is therefore `O(R log H)` bits.
 
 ## High-level operation records
 
@@ -509,4 +512,4 @@ If the receiver performs controlled reset, its stored cursors about other source
 
 ## Storage-domain restrictions
 
-Journal records contain only bounded primitive tags, NodeKeys, IDs/counters, authority-clock scalars, causal vectors, bounded input-version arrays, and small operation-grouping records/references. They contain no `ComputedValue`, no copy of `values[id]`, and no graph-wide collection proportional to N or event history in one LevelDB value.
+Journal records contain only bounded primitive tags, NodeKeys, IDs/counters, authority-clock scalars, the bounded `CreationTime` scalar, causal vectors, bounded input-version arrays, and small operation-grouping records/references. They contain no `ComputedValue`, no copy of `values[id]`, and no graph-wide collection proportional to N or event history in one LevelDB value.
