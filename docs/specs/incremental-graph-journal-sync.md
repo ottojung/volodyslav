@@ -91,9 +91,13 @@ If the selected head is present with ValueId V:
 - join their value invalidate frontiers componentwise;
 - choose the greatest certificate event among certificates naming V by `authorityCompare(certificate.event, ...)`;
 - if two candidate certificates have the same `certificate.event.id`, require their immutable event metadata, `value`, and exact `basis` to agree; disagreement is corrupt/unsupported state rather than a tie to resolve;
-- all copies of the same `ValueRef` must carry the same immutable origin context and authority time and, by the ValueId invariant, correspond to the same semantic NodeKey and exact value/timestamp record.
+- all copies of the same `ValueRef` must carry the same immutable origin context and authority time and, by the ValueId invariant, correspond to the same semantic NodeKey, exact payload, and `modifiedAt`.
 
 Metadata scoped to losing value occurrences is not a candidate for the selected value.
+
+### Node-scoped creation time
+
+`createdAt` is not value-specific Journal metadata. For a final present K, merge every available receiver/source legacy creation time for K by minimum. An input where K is absent contributes no creation time. This merge is independent of which `ValueId` wins.
 
 ### Local-only fields
 
@@ -101,9 +105,9 @@ Metadata scoped to losing value occurrences is not a candidate for the selected 
 
 ## Candidate payload source
 
-A selected present head V must be carried by at least one input snapshot as a current materialized value. The selected complete value/timestamp record is copied from such a snapshot when the receiver does not already materialize V.
+A selected present head V must be carried by at least one input snapshot as a current materialized value. The selected payload and that occurrence's `modifiedAt` are copied from such a snapshot when the receiver does not already materialize V.
 
-If both snapshots claim the same V, supported-state invariants guarantee the same semantic payload/timestamps and immutable `ValueRef` metadata; ordinary synchronization does not compare payloads to establish identity. A detectable disagreement means the input is unsupported and synchronization fails rather than choosing one payload arbitrarily.
+If both snapshots claim the same V, supported-state invariants guarantee the same semantic payload/`modifiedAt` and immutable `ValueRef` metadata; ordinary synchronization does not compare payloads to establish identity. Their `createdAt` values may differ and are merged separately by minimum. A detectable disagreement about V's payload, `modifiedAt`, or immutable event identity means the input is unsupported and synchronization fails rather than choosing one arbitrarily.
 
 The journal contains no fallback payload.
 
@@ -173,7 +177,9 @@ No computor is invoked by synchronization.
 
 ## Final journal summary
 
-For every node whose candidate metadata is simply adopted, preserve the foreign semantic IDs, immutable EventRefs, frontiers, and certificate and record a receiver-local `AdoptEvent` only when receiver synchronization-relevant state actually changes.
+For every node whose candidate metadata is simply adopted, preserve the foreign semantic IDs, immutable EventRefs, frontiers, and certificate and record a receiver-local `AdoptEvent` only when that node's own `NodeJournalSemanticPart` actually changes.
+
+A dependent whose projected legacy freshness/validity changes only because an input summary changed authors no `AdoptEvent` and does not move its changed-node marker unless its own semantic part also changed or normalization authors another semantic event for it.
 
 For every normalization-created value-scoped invalidation or structural tombstone, use the newly authored receiver EventRef authority.
 
@@ -188,7 +194,7 @@ The semantic plan is keyed by NodeKey. Physical `NodeIdentifier` selection follo
 - otherwise allocate a valid local identifier;
 - rebuild the final identifier lookup and `valid` relation from the semantic plan;
 - rebuild the derived reverse structural-edge index so it exactly represents every materialized `D -> N` structural edge in the final graph;
-- copy selected payload/timestamps as a complete record;
+- install the selected payload and selected occurrence's `modifiedAt`, while merging `createdAt` by minimum as specified above;
 - deleted nodes have no legacy identifier/value/freshness/timestamp/validity records and no reverse-edge records in which they are the dependent.
 
 Physical choices do not participate in semantic conflict precedence. The reverse structural-edge index is likewise derived local acceleration state and carries no synchronization authority.
@@ -208,9 +214,10 @@ Across normal synchronization, these facts only grow in their respective orders:
 - current-value invalidate frontiers while that value remains head;
 - canonical certificate authority for a fixed current value;
 - causal summary;
-- authority-clock high-water mark.
+- authority-clock high-water mark;
+- represented `createdAt` knowledge under the reverse-time order, equivalently numeric minimum.
 
-Changing to a greater value/tombstone head may discard metadata scoped only to the losing value.
+Changing to a greater value/tombstone head may discard metadata scoped only to the losing value. `createdAt` is node-scoped and therefore does not reset merely because the selected value occurrence changes.
 
 ## Why adoption does not cause authority inflation
 
@@ -235,7 +242,7 @@ Assume:
 - fair repeated synchronization among a connected set;
 - supported/correct snapshots.
 
-Pure candidate joining uses deterministic total EventRef maxima/componentwise frontier maxima and therefore repeated delivery of already represented positive authority cannot change the candidate again.
+Pure candidate joining uses deterministic total EventRef maxima/componentwise frontier maxima and the deterministic `createdAt` minimum, and therefore repeated delivery of already represented positive authority/creation-time information cannot change the candidate again.
 
 Synchronization may create only two forms of new negative semantic authority during normalization:
 
@@ -250,7 +257,7 @@ A particular already-observed positive state/certificate cannot force the same r
 
 A genuinely unseen concurrent positive authority may later force another finite normalization. Under quiescence there are finitely many such positive authorities. Each normalization may propagate along only the finite dependency DAG.
 
-Therefore synchronization-authored negative events eventually stop. After that point, fair synchronization only adopts deterministic maxima/frontiers/certificates, so every connected replica reaches the same semantic summaries and the same legacy graph projection. Further synchronization is a semantic no-op.
+Therefore synchronization-authored negative events eventually stop. After that point, fair synchronization only adopts deterministic maxima/frontiers/certificates and creation-time minima, so every connected replica reaches the same semantic summaries and the same observable legacy graph state. Further synchronization is a semantic no-op.
 
 The HLC authority order is total and extends happened-before, but its writer-local journal sequences are not compared across writers. This change does not weaken the convergence argument; convergence needs one deterministic total authority order, not globally comparable sequence magnitudes.
 
