@@ -29,6 +29,8 @@ OperationTag             = bounded stable operation tag
 
 `DatabaseVersion`, `MigrationId`, and `OperationTag` are fixed/bounded serialized primitive identifiers. They are not arbitrary user payload strings. `DatabaseVersion` is the exact database-version identity used by the lifecycle compatibility boundary.
 
+A `JournalAuthor` is the durable namespace of exactly one continuing writer history. Two independently continuing writable histories MUST NOT share a `DatabaseFingerprint`: the author is part of every `JournalEventId`, indexes one dimension of every `CausalPrefix`, and is the deterministic cross-writer tie-break in `authorityCompare`. A detected fingerprint collision between distinct writer histories is therefore an unsupported identity collision and MUST be rejected; it cannot be treated merely as a physical `NodeIdentifier` lookup conflict. Fresh writer-identity generation must satisfy the collision-resistance requirement in `incremental-graph-fingerprint.md`.
+
 Missing coordinates in a `CausalPrefix` mean zero.
 
 A journal cursor is meaningful only inside one `(sourceFingerprint, incarnation)` pair.
@@ -455,7 +457,7 @@ The optional `operation` field has no effect on folding, authority, projection, 
 ```text
 JournalHeader = {
     writer: JournalAuthor,
-    incarnation: JournalIncarnation,
+    journalIncarnation: JournalIncarnation,
     localJournalCounter: JournalSequence | 0,
     localOperationCounter: LocalOperationSequence | 0,
     causalSummary: CausalPrefix,
@@ -488,7 +490,7 @@ JournalCursor = {
 
 A cursor is valid only for the same **source** writer and source incarnation. `through` is explicitly that source writer's local journal coordinate. Canonical compaction does not invalidate a cursor. Ordinary synchronization establishes cursors only for a source writer distinct from the receiver's own writer; same-writer continuation is restoration/reset territory rather than an incremental synchronization relationship.
 
-If that source performs controlled reset, its changed source incarnation invalidates cursors about it by field comparison.
+If that source performs controlled reset, its changed source journal incarnation invalidates cursors about it by field comparison.
 
 If the receiver performs controlled reset, its stored cursors about other sources are not invalidated by their fields; the reset protocol explicitly deletes those receiver-local cursor records because the receiver no longer satisfies their incorporated-state invariant.
 
