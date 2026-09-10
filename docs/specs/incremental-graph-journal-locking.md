@@ -40,13 +40,15 @@ Allocation of local semantic event sequences, local HLC authority times, and loc
 
 Two transactions may execute their expensive pull/computor work concurrently where the existing graph locking design permits, but their final event IDs and HLC authority times are chosen/published in the serialized finalization phase.
 
-The finalizer invokes the canonical semantic-event allocator defined in `incremental-graph-journal-types.md` against the then-current committed header after joining every causal/authority fact the transition is required to observe. This locking specification does not define a second allocation formula. In particular, remote causal coordinates never become writer-local sequence coordinates.
+The finalizer invokes the canonical semantic-event allocator defined in `incremental-graph-journal-types.md` against the then-current committed header after joining every causal/authority fact the transition is required to observe. The current header MUST satisfy the writer-coordinate invariant `causalSummary[writer] == localJournalCounter` before allocation. This locking specification does not define a second allocation formula. In particular, remote causal coordinates never become writer-local sequence coordinates.
 
 High-level operation allocation uses the separate monotone `localOperationCounter` defined by the types specification and does not modify `causalSummary`, `authorityClock`, or semantic event authority.
 
-A transaction which fails before publication exposes no durable semantic event ID, authority time, or operation ID. Reuse of an uncommitted tentative local sequence/operation number is permitted because no supported observer could have seen it; an uncommitted tentative HLC step likewise has no semantic existence.
+A transaction which fails before its Journal publication boundary exposes no durable semantic event ID, authority time, or operation ID. Reuse of an uncommitted tentative local sequence/operation number is permitted because no supported observer could have seen it; an uncommitted tentative HLC step likewise has no semantic existence.
 
-Committed semantic event coordinates and committed operation coordinates are never reused by the writer. `localOperationCounter` is monotone across controlled reset even though `OperationId` also records the journal incarnation in which the operation occurred. `authorityClock` never moves backward across supported committed states.
+Within a continuing selected writer state, a semantic-event or operation coordinate which became durable at the Journal publication boundary is never reassigned, the local counters do not decrease, and `authorityClock` does not move backward. Same-host restoration is a distinct recovery boundary. It may abandon a newer locally durable tail only when the database lifecycle guarantees that tail never reached the authoritative synchronized snapshot and never became synchronization input or otherwise survived in supported state. After such recovery, a later allocation may numerically reuse a coordinate from the abandoned tail because the abandoned use no longer exists in any supported surviving state.
+
+The global identity rule is therefore: if any supported surviving state can contain a semantic-event coordinate, operation coordinate, incarnation, or authority from a writer, that writer MUST NOT later reuse the same identity for different history or resume allocation below the surviving writer frontier. Restoration must reject an older snapshot whenever locally available evidence shows that such later same-writer state may survive. `localOperationCounter` remains monotone across ordinary evolution and controlled reset even though `OperationId` also records the journal incarnation in which the operation occurred.
 
 ## Reconciliation at commit
 
@@ -64,17 +66,23 @@ Any event IDs or authority times proposed before this reconciliation are tentati
 
 ## Causal/authority observation
 
-A synchronization operation may join remote `causalSummary` and `authorityClock` into local journal metadata without allocating an event.
+A synchronization operation may join remote `causalSummary` and `authorityClock` into local journal metadata without allocating an event, but before that join it MUST require:
+
+```text
+source.causalSummary[localWriter] <= localJournalCounter
+```
+
+as specified by the canonical Observation rule. A source which claims later coordinates from the receiver's own writer identity is not repaired by raising the local counter or causal coordinate; the synchronization operation fails for that source.
 
 These metadata writes must still be serialized/durable with any semantic synchronization transition that relies on those observations before authoring a new local event.
 
 If synchronization authors a value-scoped invalidation or tombstone in response to source authority:
 
-1. the source causal coordinates are joined into `causalSummary`;
+1. the source causal coordinates are joined into `causalSummary` after the own-writer precondition above succeeds;
 2. the source HLC high-water mark is joined into `authorityClock`;
 3. the new local event is allocated by the canonical semantic-event allocator.
 
-Therefore the new event is causally after the observed source facts and greater than them in total authority, without comparing or copying remote sequence magnitudes into the local sequence counter.
+Therefore the new event is causally after the observed source facts and greater than them in total authority, without comparing or copying remote sequence magnitudes into the local sequence counter. The source join cannot move `causalSummary[localWriter]` beyond `localJournalCounter`.
 
 High-level operation records do not participate in this causal/authority observation except that source-bearing records may store the observed source header as historical invocation metadata.
 
