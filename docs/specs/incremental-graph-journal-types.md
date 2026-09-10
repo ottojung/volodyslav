@@ -246,7 +246,7 @@ InvalidateScope =
     | { kind: "value", value: ValueId }
 ```
 
-- node-scoped invalidation represents explicit invalidation independent of the selected current value and breaks incoming proof until covered by a later certificate;
+- node-scoped invalidation is authority independent of the selected current value; it includes ordinary explicit/direct invalidation and conservative bootstrap/migration invalidation roots, and breaks incoming proof until covered by a later certificate;
 - value-scoped invalidation marks one cached value stale while preserving its incoming proof where still compatible.
 
 Compacted summaries store invalidation frontiers instead of individual old invalidates:
