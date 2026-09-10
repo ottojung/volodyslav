@@ -416,7 +416,7 @@ AdoptEvent = JournalEventBase & {
 }
 ```
 
-`InvalidateEvent.reason` records why the event was authored; `scope` determines its projection semantics. Bootstrap/reset stale-baseline invalidations are value-scoped. Journal-2-aware migration may author either node-scoped or value-scoped `reason="migration"` invalidations according to the migration semantics specified in `incremental-graph-journal-migrations.md`.
+`InvalidateEvent.reason` records why the event was authored; `scope` determines its projection semantics. Initial bootstrap uses both scopes for each legacy-stale node: a conservative node-scoped `reason="bootstrap"` invalidation is authored before that node's bootstrap certificate, and a value-scoped `reason="bootstrap"` invalidation is authored after the certificate to preserve stale freshness. Reset stale-baseline invalidations are value-scoped. Journal-2-aware migration may author either node-scoped or value-scoped `reason="migration"` invalidations according to the migration semantics specified in `incremental-graph-journal-migrations.md`.
 
 `NodeJournalSemanticPart` is `NodeJournalSummary` without `node` and `lastLocalChange`.
 
