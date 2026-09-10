@@ -84,7 +84,7 @@ For semantic-value identity:
 - `create` authors a new `ValueEvent(reason="migration")` for the created value occurrence;
 - `delete` authors a `DeleteEvent(reason="migration")` whose tombstone becomes the final head.
 
-Preserving a `ValueId` across migration is a cross-replica assertion, not merely a local optimization. If two supported replicas carry the same pre-migration `ValueId` V and independently apply the same identity-preserving migration into the same target version/schema, every supported result which still names V MUST carry the same exact migrated semantic value/timestamp record. Physical `NodeIdentifier` differences or host-local inputs must not make two copies of V diverge while retaining that identity.
+Preserving a `ValueId` across migration is a cross-replica assertion, not merely a local optimization. If two supported replicas carry the same pre-migration `ValueId` V and independently apply the same identity-preserving migration into the same target version/schema, every supported result which still names V MUST carry the same exact migrated payload and `modifiedAt`. The node-scoped legacy `createdAt` is not part of V and may differ between replicas until ordinary Journal 2 synchronization merges it by minimum. Physical `NodeIdentifier` differences or host-local inputs must not make two copies of V diverge in payload or `modifiedAt` while retaining that identity.
 
 A transformation which cannot satisfy that rule MUST NOT preserve V. If the migration itself installs a replacement value, it must author a new `ValueEvent(reason="migration")` and treat the result as a new semantic value occurrence, including the ordinary stale/invalidation effects on affected dependents. Otherwise the migration must invalidate or delete the old cache so later ordinary recomputation creates the replacement value occurrence. It is invalid to keep V while storing a replica-dependent replacement payload beneath it.
 
@@ -203,6 +203,16 @@ For a fresh node, author no bootstrap value-scoped invalidation.
 Zero-input stale nodes are therefore also represented correctly.
 
 After independently bootstrapped replicas synchronize, every node-scoped bootstrap frontier is joined regardless of which bootstrap `ValueId` wins head selection. A certificate from another bootstrap writer does not cover that frontier unless it actually observed the invalidation, so legacy stale knowledge cannot disappear solely because a different writer's equal-timestamp bootstrap value wins the deterministic head tie-break. A later genuine validation/cache-revalidation may cover the frontier normally.
+
+## Pre-Journal-2 absence boundary
+
+The initial bootstrap represents only materialized legacy NodeKeys. A pre-Journal-2 database has no finite synchronization-relevant absent-key domain and no persisted fact which distinguishes “this semantic key was deleted” from “this semantic key has never been materialized here.” The possible NodeKey universe may also be unbounded.
+
+Therefore the initial bootstrap MUST NOT synthesize tombstones for arbitrary legacy-absent keys. Its absent-key term is `T = 0` unless the migration itself explicitly creates retained absence authority for a known semantic key.
+
+Consequently, if independently migrated legacy hosts disagree only because K is materialized on A and absent on B, B contributes no pre-Journal-2 negative authority for K. Their first Journal 2 synchronization may legitimately materialize A's represented K on B. This is an intentional migration-boundary behavior, not resurrection of a Journal-2 deletion: no pre-Journal-2 tombstone for K ever existed to preserve.
+
+Once Journal 2 is established, ordinary deletions/reset/migrations retain explicit tombstone authority according to the normal anti-resurrection rules; the absence limitation applies only to the initial legacy bootstrap boundary.
 
 ## Projection check
 
