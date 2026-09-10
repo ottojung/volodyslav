@@ -10,7 +10,7 @@ The migration implementation has one stable bounded `MigrationId` supplied by th
 
 `ValueEvent(reason="migration")`, `ValidateEvent(reason="migration")`, `DeleteEvent(reason="migration")`, and `InvalidateEvent(reason="migration")` are reserved for Journal-2-aware migrations which create/rematerialize, revalidate, remove, or invalidate already represented semantic nodes under the general database migration lifecycle. The initial pre-Journal-2 bootstrap defined here uses the distinct `reason="bootstrap"` events because it begins with no prior Journal 2 semantic baseline.
 
-This document fully specifies the initial pre-Journal-2-to-Journal-2 bootstrap. A later migration whose input already contains valid Journal 2 state must separately specify any migration-specific per-node transformation beyond the generic mapping below. Journal 2 nevertheless imposes migration-wide rules on every such later migration: receiver-local stored source cursors are not preserved across the migration, and every resulting legacy freshness/validity transition must have the corresponding Journal 2 event/summary representation.
+This document fully specifies the initial pre-Journal-2-to-Journal-2 bootstrap. A later migration whose input already contains valid Journal 2 state must separately specify any migration-specific per-node transformation beyond the generic mapping below. Journal 2 nevertheless imposes migration-wide rules on every such later migration: receiver-local stored source cursors are not preserved across the migration, synchronization-relevant negative authority is not silently discarded, and every resulting legacy freshness/validity transition must have the corresponding Journal 2 event/summary representation.
 
 ## Preconditions
 
@@ -44,6 +44,32 @@ This rule preserves the required equivalence between incremental synchronization
 
 The initial pre-Journal-2 bootstrap has no valid Journal 2 source cursors to preserve, so this rule adds no extra bootstrap work there.
 
+## Journal-2-aware migration semantic preservation
+
+A migration whose input already contains Journal 2 operates over more synchronization-relevant state than the ordinary legacy migration callback can enumerate. Define:
+
+```text
+migrationSemanticDomain =
+    representedKeys(preMigrationJournal)
+    union createdKeys(migration)
+```
+
+`representedKeys` includes both present/materialized summaries and retained absent/tombstoned summaries. A key does not cease to be represented merely because it is absent from the legacy materialized-node migration scope.
+
+The post-migration Journal 2 state MUST preserve every pre-migration synchronization-relevant fact unless the migration publishes a replacement which causally dominates that fact under the ordinary Journal 2 rules. In particular:
+
+- for every previously represented K, the post-migration `nodeInvalidateFrontier[K]` componentwise dominates the pre-migration `nodeInvalidateFrontier[K]`;
+- if K is absent before migration and remains absent afterward, preserve its existing tombstone head and retained node-scoped invalidation frontier exactly unless the migration explicitly authors a later tombstone which supersedes that head;
+- when `keep`, `override`, or `invalidate` preserves K's current `ValueId`, preserve that value's existing `valueInvalidateFrontier` componentwise and join any migration-authored current-value invalidations into it;
+- when migration creates a genuinely new `ValueId` for K, the old value-scoped frontier may be discarded because it is scoped only to the replaced value occurrence;
+- a migration-created tombstone still retains the pre-migration node-scoped invalidation frontier for K, because that frontier is independent of the selected head/value occurrence.
+
+An existing tombstoned K which is outside the ordinary materialized-node migration scope therefore remains represented automatically. Dropping such a tombstone merely because the legacy projection is already absent is forbidden: the tombstone may still be required to defeat an older value later presented by a delayed replica.
+
+A Journal-2-aware migration also starts from the existing writer/header allocation state. It preserves `writer`, `journalIncarnation`, `localJournalCounter`, `localOperationCounter`, `causalSummary`, and `authorityClock` as the migration baseline and only advances those fields through ordinary migration-authored publications. It MUST NOT reinitialize writer-local counters or lower causal/authority high-water marks.
+
+The resulting state must preserve J2-INV-7, J2-INV-8, and J2-INV-9. Migration may use a stronger migration-specific subsumption rule only when that migration explicitly proves that the replacement state preserves future synchronization behavior, including synchronization with delayed replicas.
+
 ## Journal-2-aware migration event mapping
 
 A migration whose input already contains Journal 2 MUST publish Journal 2 state whose projection exactly matches the migration's resulting legacy value, freshness, and validity state. The migration decision semantics in `migration.md` determine whether an invalidation is node-scoped or value-scoped; the `reason="migration"` tag records that the event was authored by migration and does not replace that scope distinction.
@@ -55,6 +81,8 @@ For semantic-value identity:
 - `invalidate` preserves the current cached value and therefore preserves its `ValueId` and head authority;
 - `create` authors a new `ValueEvent(reason="migration")` for the created value occurrence;
 - `delete` authors a `DeleteEvent(reason="migration")` whose tombstone becomes the final head.
+
+These operations apply inside `migrationSemanticDomain`; they do not authorize discarding synchronization-relevant summaries for represented keys which the ordinary materialized-node callback never visits.
 
 A migration MAY retain an existing current-value certificate only when it is well-formed under the new schema and represents exactly the incoming validity edges retained by the migrated legacy state. Otherwise it authors a `ValidateEvent(reason="migration")` for the current ValueId with a basis that exactly represents those resulting incoming proofs. When migration must represent an absent incoming proof without a historical input ValueId against which that proof last held, the basis uses `"unknown"`.
 
@@ -164,6 +192,8 @@ Before cutover, derive the Journal 2 projection and require exact agreement with
 Payload/timestamp records are not regenerated by projection and must remain the source records.
 
 If the projection does not match, migration fails before publication.
+
+For a migration whose input already contains Journal 2, projection agreement is necessary but not sufficient: the migration must also satisfy the synchronization-authority preservation rules above for every key in `migrationSemanticDomain`.
 
 ## Initial compaction
 
