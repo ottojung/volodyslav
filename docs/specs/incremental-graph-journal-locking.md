@@ -48,7 +48,7 @@ A transaction which fails before its Journal publication boundary exposes no dur
 
 Within a continuing selected writer state, a semantic-event or operation coordinate which became durable at the Journal publication boundary is never reassigned, the local counters do not decrease, and `authorityClock` does not move backward. Same-host restoration is a distinct recovery boundary. It may abandon a newer locally durable tail only when the database lifecycle guarantees that tail never reached the authoritative synchronized snapshot and never became synchronization input or otherwise survived in supported state. After such recovery, a later allocation may numerically reuse a coordinate from the abandoned tail because the abandoned use no longer exists in any supported surviving state.
 
-The global identity rule is therefore: if any supported surviving state can contain a semantic-event coordinate, operation coordinate, incarnation, or authority from a writer, that writer MUST NOT later reuse the same identity for different history or resume allocation below the surviving writer frontier. Restoration must reject an older snapshot whenever locally available evidence shows that such later same-writer state may survive. `localOperationCounter` remains monotone across ordinary evolution and controlled reset even though `OperationId` also records the journal incarnation in which the operation occurred.
+The global identity rule is therefore: if any supported surviving state can contain a semantic-event coordinate, operation coordinate, incarnation, or authority from a writer, that writer MUST NOT later reuse the same identity for different history or resume allocation below the surviving writer frontier. Restoration must reject an older snapshot whenever locally available evidence shows that such later same-writer state may survive. `localOperationCounter` remains monotone across ordinary evolution and controlled reset; `OperationRecord.incarnation` separately records the journal incarnation in which an operation occurred without participating in `OperationId` equality.
 
 ## Reconciliation at commit
 
@@ -86,13 +86,15 @@ Therefore the new event is causally after the observed source facts and greater 
 
 High-level operation records do not participate in this causal/authority observation except that source-bearing records may store the observed source header as historical invocation metadata.
 
-## Full synchronization and lifecycle exclusion
+## Full and incremental synchronization lifecycle exclusion
 
-Full synchronization continues to use the existing exclusive synchronization/lifecycle boundary and inactive-replica construction strategy.
+Full and incremental synchronization use the same existing exclusive synchronization/lifecycle boundary and inactive-replica construction strategy. Incremental synchronization changes source discovery/normalization inputs; it does not weaken the publication or exclusion boundary.
 
 The source and local input snapshots used by one semantic merge must be stable. The constructed target must contain a matching legacy graph, Journal 2 semantic state, and exact derived reverse structural-edge index before active cutover.
 
 Normal pull/invalidate activity must not observe a partially constructed synchronization target.
+
+The end-to-end time-complexity target for valid-cursor incremental synchronization is deliberately deferred by `$id-3572255392439745` to GitHub issue #1607. This locking rule establishes correctness/exclusion only and does not itself require affected-closure-only validation or another asymptotic bound.
 
 ## Reset and migration
 
@@ -146,6 +148,8 @@ Canonical journal compaction is standalone historical housekeeping against the a
 
 Each compaction batch runs in the existing IncrementalGraph `daytime` mode. Because `holiday` blocks every other graph mode, migration/reset/lifecycle cutover cannot overlap a compaction batch. Because `pull()` runs in `nighttime`, a pull cannot overlap a compaction batch either. Other `daytime` operations such as `invalidate()` may execute concurrently at the graph-mode level, with their durable writes still serialized by the per-replica commit boundary below.
 
+For Journal 2 maintenance, the mode scheduler MUST provide cross-mode handoff sufficient to prevent compaction from starving a waiting incompatible mode. Once a `nighttime` or `holiday` acquirer is waiting, new compaction batches MUST NOT repeatedly reacquire `daytime` ahead of it. This is an additional Journal-2 compaction requirement on top of the base mode-mutex semantics; it does not otherwise redefine public graph locking.
+
 Live authoring and synchronization already maintain the synchronization-relevant Journal 2 state on every publication. Compaction therefore MUST NOT rewrite `JournalHeader`, node summaries, changed-node markers, the derived reverse structural-edge index, stored source cursors, or legacy graph state. Its writes are confined to the historical layer: deleting redundant raw semantic events and operation records.
 
 Compaction runs as a sequence of implementation-bounded batches. Each batch:
@@ -156,9 +160,11 @@ Compaction runs as a sequence of implementation-bounded batches. Each batch:
 4. atomically applies only that batch's historical deletes; and
 5. releases the commit serialization and `daytime` mode before beginning the next batch.
 
+Between batches compaction MUST yield. If any `nighttime` or `holiday` acquirer is waiting when a batch releases `daytime`, compaction MUST NOT reacquire `daytime` ahead of that waiting incompatible mode; it retries only after the waiting mode has been given its handoff and completed or otherwise ceased waiting.
+
 Candidate sets never survive release of `daytime` mode. If the database is closed or a lifecycle transition replaces the active replica between batches, compaction abandons the remaining work; a later attempt re-selects candidates from the then-current active replica. Already committed prune batches remain valid, so abandonment requires no rollback.
 
-The amount of selection and deletion work in one batch is implementation-bounded. A `pull()` can therefore be delayed by at most one bounded compaction batch before compaction releases `daytime`; a concurrent `invalidate()` is blocked only when it contends for the serialized commit boundary.
+The amount of selection and deletion work in one batch is implementation-bounded. Consequently compaction itself can add at most the remainder of one bounded compaction batch to a `pull()` which begins waiting during a batch; consecutive compaction batches may not overtake that waiting `nighttime` acquisition. Other delays permitted by the general locking/lifecycle model are outside this compaction-specific bound.
 
 A failure after one or more batches have committed leaves those already-committed prune steps in place. Every committed intermediate state is a supported journal state with identical graph/synchronization semantics, so a later compaction attempt may simply continue from the remaining historical records.
 
