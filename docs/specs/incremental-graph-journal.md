@@ -42,7 +42,7 @@ The journal never stores a `ComputedValue` payload or a copy of one. A current p
 
 ## Local journals
 
-Every writable database has one durable journal writer identity, normally its `DatabaseFingerprint`. Journal semantic events authored by that database have writer-local history and a monotonically increasing writer-local semantic event sequence.
+Every writable database has one durable journal writer identity, normally its `DatabaseFingerprint`. Journal semantic events authored by that database have writer-local history and a monotonically increasing writer-local semantic event sequence along one continuing writer state.
 
 Journal 2 deliberately does **not** make sequence magnitudes globally comparable. Event identity, exact causality, and conflict authority are separate:
 
@@ -259,13 +259,33 @@ Every supported transition which installs or adopts a retained head or certifica
 
 Together with J2-INV-7, this makes the header a sufficient high-water summary of every retained semantic authority represented by the database. A consumer which joins a valid source header therefore observes at least the causal coordinate and authority time of every head/certificate reference retained in that source's node summaries.
 
+### J2-INV-10: writer-local causal coordinate ownership
+
+For every supported writable Journal 2 state:
+
+```text
+header.causalSummary[header.writer] == header.localJournalCounter
+```
+
+with a missing coordinate interpreted as zero. The writer's own causal coordinate is exactly its local event-allocation frontier. Local semantic event publication advances both fields to the same next sequence in one publication; ordinary source observation never raises the local writer coordinate independently.
+
+Before a writable state R joins a source header S, the observing transition MUST require:
+
+```text
+S.causalSummary[R.header.writer] <= R.header.localJournalCounter
+```
+
+If this fails, S contains evidence of later same-writer history than R can safely continue. The transition rejects the observation rather than raising R's local counter, joining the greater own-writer coordinate, or allocating beneath it. This rule applies even when `S.header.writer != R.header.writer`, because a foreign writer may itself have observed later events from R's writer identity.
+
+Fresh initialization, initial bootstrap, local event allocation, controlled reset, Journal-2-aware migration, synchronization, same-host restoration, and compaction preserve this invariant. Same-host restoration may resume an older authoritative published frontier only under the no-surviving-copy recovery rule in `incremental-graph-journal-reset.md`.
+
 ## Supported lifecycle
 
 Correctness guarantees apply to states produced by supported Journal 2 authoring, synchronization, migration, reset, same-host restoration, and canonical compaction. Corrupt, forged, rolled-back, partially installed, or identity-colliding states are outside the semantic model and must be rejected where practical rather than assigned invented meaning.
 
 A same-host first-boot restoration of saved Journal 2 state resumes the exact previously published writer state, including writer-local counters, incarnation, causal summary, authority-clock high-water mark, node summaries, and valid saved cursors. It does **not** mint a reset baseline merely because local live files were absent. A same-host saved state which predates Journal 2 may instead be restored as legacy state and then migrated through the normal migration gate before Journal 2 synchronization/reset is available.
 
-Arbitrary rollback to an older same-writer snapshot which could reuse already-published event IDs or move the authority clock backward is unsupported.
+Arbitrary rollback to an older same-writer snapshot is unsupported whenever later same-writer event/operation identities, incarnation state, or authority may survive outside that snapshot. Catastrophic same-host recovery may abandon a newer local-only tail only under the publication-before-propagation/no-surviving-copy rule defined by the lifecycle and reset specifications.
 
 Controlled semantic reset is different: it requires a valid compatible Journal 2 source, intentionally replaces an already-established logical database, increments the local journal incarnation, deletes receiver-local source cursors, and mints a fresh reset baseline as specified by `incremental-graph-journal-reset.md`.
 
@@ -274,6 +294,8 @@ A migration whose input already contains Journal 2 also deletes all receiver-loc
 ## Full sync before incremental sync
 
 The normative semantic synchronization operation is full synchronization. It scans the complete current journal/graph semantic domain and does not require cursors.
+
+Ordinary synchronization is between distinct Journal writer identities. Same-writer continuation is handled by restoration, while controlled reset may consume an older/equal same-writer source only under the additional allocator/incarnation preconditions in `incremental-graph-journal-reset.md`.
 
 The journal change index and cursor machinery are an optimization. Incremental source discovery uses the private `possibleMaybeChanges(sourceSnapshot, cursor)` asynchronous iterator; it is not part of the public IncrementalGraph/computor API and does not materialize the complete changed-node range in RAM. A local reverse structural-edge index lets the receiver traverse only the dependent closure reached from changed nodes instead of scanning unrelated materialized nodes merely to discover reverse dependencies.
 
