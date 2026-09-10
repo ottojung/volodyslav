@@ -147,6 +147,38 @@ When K changes at local sequence q:
 
 The exact key encoding is implementation-defined provided range iteration is ordered by the source's local sequence and every LevelDB value obeys the `O(R log H)` bit bound.
 
+## Receiver reverse structural-edge index
+
+Incremental synchronization must be able to find the receiver's materialized structural dependents of an affected NodeKey without scanning every materialized receiver node. The legacy `valid` relation cannot supply this lookup because it is a proof/invalidation-frontier relation and is deliberately incomplete for stale nodes.
+
+The Journal 2 sublevel therefore maintains a local derived reverse structural-edge index with one individually bounded record per materialized structural edge, equivalent to:
+
+```text
+journal/structural-dependents/<input NodeKey>/<dependent NodeKey> -> bounded marker
+```
+
+For every materialized dependent N and every `D in inputEdges(N)`, the index contains exactly one `(D,N)` record. It contains no other records. A prefix/range scan for D therefore yields all currently materialized structural dependents of D, including stale dependents which are absent from `valid[D]`.
+
+The index is local derived acceleration state. It is not semantic authority, is not copied from a source as synchronization meaning, does not affect conflict selection, and carries no causal or HLC coordinate. Its contents are determined entirely by the current materialized legacy graph, current schema, and semantic NodeKeys.
+
+Supported publications MUST keep the index consistent with the materialized graph. In particular:
+
+- materializing N adds one record `(D,N)` for every `D in inputEdges(N)`;
+- deleting N removes those records for N's bounded set of direct inputs;
+- value, freshness, certificate, and invalidation changes which leave N materialized and do not change schema leave its structural-edge records unchanged;
+- initial Journal 2 bootstrap, controlled reset, full synchronization target construction, and Journal-2-aware migration establish the exact index for their resulting materialized graph before publication/cutover;
+- incremental synchronization updates the working target index as materializations are added or removed.
+
+A lifecycle/schema transition may rebuild the derived index from the resulting graph. Ordinary same-schema operations maintain it incrementally. Same-host restoration restores the previously published index together with the rest of the database state, subject to ordinary consistency validation.
+
+Incremental normalization uses this index to traverse the receiver affected-dependent closure. Starting from changed source NodeKeys and any receiver nodes changed by their merge, synchronization range-scans the structural dependents of each affected key and continues through newly affected dependents until the same normalization fixed point as full synchronization is reached. It MUST NOT fall back to a complete materialized-node scan merely to discover reverse structural edges when this index is valid.
+
+The dependent closure itself may contain O(N) nodes—for example one input may structurally feed many independently parameterized dependents—so Journal 2 does not promise sublinear work when the actual affected closure is graph-sized. The index removes work proportional to unrelated receiver nodes; traversal cost is proportional to the source changes plus the structural closure those changes actually reach, apart from bounded-index lookup costs and other required synchronization work.
+
+No dependents array is stored in one LevelDB value. Under the existing bounded direct-in-degree assumption, the number of materialized structural edges is O(L): summing bounded `inputEdges(N)` over all L materialized nodes yields O(L) index records even when one input has unbounded out-degree. Each record contains only two bounded NodeKeys plus a bounded marker, so the index contributes O(L) serialized bits and does not change the compacted `O((L + T) R log H)` bound or the per-LevelDB-value `O(R log H)` bound.
+
+Canonical compaction does not alter this derived current-graph index.
+
 ## Stored source cursors
 
 A synchronization implementation may persist one cursor per remote/source writer inside the new journal sublevel, for example:
@@ -184,12 +216,12 @@ For a valid stored cursor P for source S:
 3. consume its `changes` async stream, and from the same snapshot copy/stage every legacy payload/timestamp record required by yielded present heads that the receiver cannot otherwise materialize under the full-sync rules;
 4. incorporate the returned `causalSummary` and `authorityClock` header high-water marks as one coupled observation;
 5. semantically merge the yielded node summaries into the receiver's already represented source knowledge;
-6. run the same topological normalization rules that full synchronization would run for affected nodes and their dependent closure;
+6. using the receiver reverse structural-edge index, run the same topological normalization rules that full synchronization would run for the changed nodes and every receiver dependent reached from them;
 7. materialize selected present heads using only records obtained from the fixed source snapshot or an already-matching receiver `ValueId`;
-8. atomically publish receiver graph+journal changes and any joined header high-water metadata;
+8. atomically publish receiver graph+journal changes, reverse structural-edge index updates, and any joined header high-water metadata;
 9. only then advance the stored source cursor to the returned `through` coordinate.
 
-The receiver may need to inspect local dependents outside the yielded source changed-node set because one changed input can alter downstream normalization/freshness. Any graph-sized scratch state required for normalization must be streamable/spillable to bounded-record storage rather than forcing the journal iterator to materialize all source changes in RAM.
+The receiver may need to inspect local dependents outside the yielded source changed-node set because one changed input can alter downstream normalization/freshness. Those dependents are discovered through the reverse structural-edge index rather than a whole-materialized-graph scan. Any graph-sized scratch state required when the actual affected closure is graph-sized must be streamable/spillable to bounded-record storage rather than forcing the journal iterator to materialize all source changes or all dependents in RAM.
 
 ## Full-sync equivalence invariant
 
@@ -205,14 +237,16 @@ For a changed present node, incremental synchronization reads both the current s
 
 Full synchronization does not require additional source reads merely to establish `oldValue` provenance: any selected present cache whose dependency closure survives is retainable as the node's cached `oldValue`, while certificate/input mismatches affect freshness and validity only. Therefore incremental synchronization does not need an extra witness scan beyond the changed summaries and exact payloads required by the ordinary merge.
 
-Consequently processing exactly the yielded changed source summaries after P, joining the current source causal/authority header, acquiring required payloads from the same source snapshot, and applying the same normalization closure yields an observably equivalent result to a full synchronization from the same starting receiver/source snapshots.
+The receiver reverse structural-edge index is an exact derived view of the receiver's current materialized dependency graph, so following it from every changed/affected node visits exactly the receiver-only dependents whose normalization can differ because of those changes. Source-only changed dependents are already present in the yielded source change set. Thus incremental normalization reaches the same affected fixed point as full topological normalization without inspecting unrelated receiver nodes.
+
+Consequently processing exactly the yielded changed source summaries after P, joining the current source causal/authority header, acquiring required payloads from the same source snapshot, traversing the receiver affected closure through the reverse structural-edge index, and applying the same normalization rules yields an observably equivalent result to a full synchronization from the same starting receiver/source snapshots.
 
 This is the required correctness condition for enabling the optimization.
 
 ## Invalid cursor behavior
 
-If source identity/incarnation does not match, the receiver-local cursor record is absent (including after reset or Journal-2-aware migration), progress is malformed, required cursor state is unavailable, or any validation fails, incremental synchronization must not guess. It falls back to full synchronization and, after success, stores a fresh cursor for the source's current incarnation/head.
+If source identity/incarnation does not match, the receiver-local cursor record is absent (including after reset or Journal-2-aware migration), progress is malformed, required cursor state is unavailable, the receiver reverse structural-edge index is inconsistent/unavailable, or any validation fails, incremental synchronization must not guess. It falls back to full synchronization and, after success, stores a fresh cursor for the source's current incarnation/head and establishes a correct derived reverse structural-edge index for the resulting receiver graph.
 
 ## No computor API dependency
 
-`possibleMaybeChanges` is private synchronization infrastructure. No computor or public IncrementalGraph operation may obtain its iterator, read a journal cursor, or depend on journal progress for semantic correctness. `pull()` correctness remains defined entirely by the legacy graph plus Journal 2's internally maintained sidecar consistency.
+`possibleMaybeChanges` and the reverse structural-edge index are private synchronization infrastructure. No computor or public IncrementalGraph operation may obtain the iterator, read a journal cursor/reverse index, or depend on journal progress for semantic correctness. `pull()` correctness remains defined entirely by the legacy graph plus Journal 2's internally maintained sidecar consistency.
