@@ -133,9 +133,12 @@ header {
 }
 node summary per represented NodeKey
 one current changed-node marker per represented NodeKey
+one derived reverse structural-edge record per materialized dependency edge
 optional bounded raw-history tail retained by the compacted result
 stored source cursors
 ```
+
+The reverse structural-edge records are local derived acceleration state, not synchronization authority. They exactly index the current materialized structural graph so incremental synchronization can traverse receiver dependents without scanning unrelated nodes; see `incremental-graph-journal-api.md`.
 
 The optional bounded tail above describes what a completed compaction chooses to retain; it is not a bound on raw history accumulated before the next compaction.
 
@@ -148,6 +151,8 @@ These records are journal information, not changes to the legacy graph represent
 For every supported persisted database state, the legacy materialized graph must equal the journal projection defined in `incremental-graph-journal-projection.md`, modulo local physical identifier choices explicitly excluded there.
 
 A present journal value occurrence must correspond to exactly one materialized semantic node in the legacy graph. An absent journal state must not have a materialized legacy node.
+
+The derived reverse structural-edge index must exactly equal the structural dependency edges among the current materialized nodes: for every materialized N and every `D in inputEdges(N)` it contains `(D,N)`, and it contains no edge whose dependent is not materialized or whose input is not a structural input of that dependent.
 
 ### J2-INV-2: atomic publication
 
@@ -193,6 +198,8 @@ N = L + T
 ```
 
 After canonical compaction, each represented semantic key has only a constant number of future-relevant journal records, each of serialized size `O(R log H)` bits under the assumptions in `$id-6193879998109578`.
+
+The derived reverse structural-edge index adds one constant-size record per materialized dependency edge. Because maximum direct in-degree is bounded, the number of those edges is O(L), so the index contributes only O(L) additional serialized bits.
 
 Consequently the complete compacted journal has serialized size:
 
@@ -262,13 +269,13 @@ Arbitrary rollback to an older same-writer snapshot which could reuse already-pu
 
 Controlled semantic reset is different: it requires a valid compatible Journal 2 source, intentionally replaces an already-established logical database, increments the local journal incarnation, deletes receiver-local source cursors, and mints a fresh reset baseline as specified by `incremental-graph-journal-reset.md`.
 
-A migration whose input already contains Journal 2 also deletes all receiver-local stored source cursors atomically with the migrated state. Journal 2 does not assume that a migration preserves the receiver-side incorporated-state invariant certified by those cursors. The migration itself must separately specify whatever per-node Journal 2 transformations its schema/database change requires.
+A migration whose input already contains Journal 2 also deletes all receiver-local stored source cursors atomically with the migrated state. It preserves the represented synchronization-relevant negative authority required by `incremental-graph-journal-migrations.md`; the ordinary materialized-node migration scope is not permission to discard retained tombstones or invalidation frontiers. The migration itself separately specifies whatever per-node Journal 2 transformations its schema/database change requires.
 
 ## Full sync before incremental sync
 
 The normative semantic synchronization operation is full synchronization. It scans the complete current journal/graph semantic domain and does not require cursors.
 
-The journal change index and cursor machinery are an optimization. Incremental source discovery uses the private `possibleMaybeChanges(sourceSnapshot, cursor)` asynchronous iterator; it is not part of the public IncrementalGraph/computor API and does not materialize the complete changed-node range in RAM.
+The journal change index and cursor machinery are an optimization. Incremental source discovery uses the private `possibleMaybeChanges(sourceSnapshot, cursor)` asynchronous iterator; it is not part of the public IncrementalGraph/computor API and does not materialize the complete changed-node range in RAM. A local reverse structural-edge index lets the receiver traverse only the dependent closure reached from changed nodes instead of scanning unrelated materialized nodes merely to discover reverse dependencies.
 
 For a valid cursor, incremental synchronization must be observationally equivalent to the full operation from the same source and receiver states.
 
