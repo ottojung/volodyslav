@@ -29,8 +29,6 @@ OperationTag             = bounded stable operation tag
 
 `DatabaseVersion`, `MigrationId`, and `OperationTag` are fixed/bounded serialized primitive identifiers. They are not arbitrary user payload strings. `DatabaseVersion` is the exact database-version identity used by the lifecycle compatibility boundary.
 
-A `JournalAuthor` is the durable namespace of exactly one continuing writer history. Two independently continuing writable histories MUST NOT share a `DatabaseFingerprint`: the author is part of every `JournalEventId`, indexes one dimension of every `CausalPrefix`, and is the deterministic cross-writer tie-break in `authorityCompare`. A detected fingerprint collision between distinct writer histories is therefore an unsupported identity collision and MUST be rejected; it cannot be treated merely as a physical `NodeIdentifier` lookup conflict. Fresh writer-identity generation must satisfy the collision-resistance requirement in `incremental-graph-fingerprint.md`.
-
 Missing coordinates in a `CausalPrefix` mean zero.
 
 A journal cursor is meaningful only inside one `(sourceFingerprint, incarnation)` pair.
