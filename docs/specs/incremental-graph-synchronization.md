@@ -99,9 +99,9 @@ If the cursor is invalid or unavailable, run full synchronization.
 
 For a valid cursor, synchronization owns one fixed committed source snapshot and consumes the private `possibleMaybeChanges(sourceSnapshot, cursor)` async iterator while that snapshot is alive. The iterator is internal synchronization/journal infrastructure, not part of the public IncrementalGraph/computor API, and it yields bounded changed-node summaries lazily rather than materializing the complete range in RAM.
 
-The incremental result must be observably equivalent to running full synchronization from the same starting snapshots, including transfer of current source `causalSummary` and `authorityClock` even when the async stream yields no changed node.
+The incremental result must be observably equivalent to running full synchronization from the same starting snapshots, including node-summary `createdAt` changes and transfer of current source `causalSummary` and `authorityClock` even when the async stream yields no changed node.
 
-The desired end-to-end time bound for regular incremental synchronization is intentionally not specified here; work to establish a change-sensitive bound is deferred by `$id-3572255392439745` to GitHub issue #1607.
+The current end-to-end synchronization complexity assumption is `$id-3572255392439745` in `docs/intent-records/synchronization-performance.md`. Under that accepted tradeoff, `O(N)` synchronization time is treated as an optimal target until GitHub issue #1607 is assigned; this correctness specification does not assert a stronger change-sensitive time bound.
 
 ## Semantic merge versus physical application
 
@@ -111,7 +111,7 @@ Only afterward is the plan lowered to physical storage:
 
 - choose/allocate final `NodeIdentifier`s without semantic effect;
 - copy the selected occurrence's payload and `modifiedAt`;
-- merge node-scoped `createdAt` by minimum across available receiver/source representations of the NodeKey;
+- write node-scoped `createdAt` from the merged Journal 2 node summary, whose value is the minimum over inputs carrying the selected final head;
 - delete legacy records for final tombstones;
 - write `freshness` from Journal 2 projection;
 - rebuild `valid` exactly from Journal 2 certificate projection;
@@ -142,9 +142,11 @@ Journal 2 metadata explains which value/input occurrences and invalidations just
 
 Normal synchronization which adopts a foreign `ValueId` copies that occurrence's payload and `modifiedAt`. `modifiedAt` belongs to the selected value occurrence and remains the HLC seed associated with that occurrence.
 
-`createdAt` is node-scoped rather than value-occurrence identity. For every final present NodeKey, synchronization retains the minimum creation time represented by the receiver/source inputs which materialize that NodeKey. This rule is independent of which value occurrence wins and never substitutes synchronization execution time.
+`createdAt` is node-scoped synchronization-relevant metadata retained in the Journal 2 node summary. After selecting the final head for a present NodeKey, synchronization takes the minimum `createdAt` over exactly the input summaries carrying that selected head. Losing heads and absent inputs contribute no creation time.
 
-The minimum merge is idempotent, commutative, and associative. It therefore converges without additional Journal authority and can only move creation time earlier, never later. The detailed Journal-2 timestamp rule is normative in `incremental-graph-journal-projection.md`.
+For a fixed selected head this minimum may only move earlier. If a different greater head later wins, its own retained `createdAt` replaces the losing head's creation-time metadata and may be later. Tombstones carry no `createdAt`, so rematerialization after deletion does not inherit creation time from the deleted materialization. Synchronization never substitutes its execution time.
+
+Because `createdAt` is part of `NodeJournalSemanticPart`, both full and incremental synchronization transfer it and a change to it moves the source changed-node marker. The detailed rule is normative in `incremental-graph-journal-sync.md` and `incremental-graph-journal-projection.md`.
 
 ## Failure atomicity
 
@@ -211,6 +213,6 @@ Transport identity does not replace Journal 2 writer identity or authority seman
 With no continuing graph-changing operations and fair repeated synchronization across a finite connected set of supported replicas:
 
 - synchronization-authored normalization eventually stops creating new negative authority;
-- all replicas converge to observably equivalent legacy IncrementalGraph states;
+- all replicas converge to observably equivalent legacy IncrementalGraph states, including public creation-time observations;
 - subsequent synchronization is a semantic no-op;
 - local journal histories and local physical identifiers are not required to become byte-for-byte identical.
