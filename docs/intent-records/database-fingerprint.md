@@ -1,5 +1,21 @@
 # Database fingerprint
 
+$id-9051842763146802
+title: Current database fingerprints are sufficiently collision-resistant
+ date: 2026/09/09
+source: @ottojung
+kind: accepted-tradeoff
+
+For the current supported Volodyslav deployment scale, the existing `DatabaseFingerprint` generation and format are treated as sufficiently random that accidental collisions between independently-created hosts are negligibly unlikely.
+
+Journal 2 may therefore use the existing `DatabaseFingerprint` directly as its durable `JournalAuthor`. Journal 2 does not require stronger entropy, a longer fingerprint, a separate writer identity, migration of existing fingerprints, or stricter fingerprint validation merely to use the fingerprint as a journal-author namespace.
+
+This is an explicit accepted collision-risk tradeoff rather than a proof that collisions are impossible. If distinct continuing writer histories are actually observed with the same fingerprint, the state is unsupported and must be rejected rather than reconciled as one writer history.
+
+GitHub issue [#1606](https://github.com/ottojung/volodyslav/issues/1606), "Increase database fingerprint entropy", records a possible future strengthening of this tradeoff. That issue is not a prerequisite for Journal 2.
+
+---
+
 $id-6689793911726062
 title: Defer database fingerprint entropy changes until owned
 date: 2026/09/09
