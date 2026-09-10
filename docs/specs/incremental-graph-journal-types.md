@@ -44,7 +44,15 @@ authorityClock        : AuthorityTime
 journalIncarnation    : JournalIncarnation
 ```
 
-Both local counters are monotone for the lifetime of a supported writer identity, including across controlled reset. `OperationId.incarnation` records the journal incarnation in which an operation occurred; operation-sequence uniqueness does not depend on restarting the counter in a new incarnation.
+Along one continuing writable history, both local counters are monotone, including across controlled reset. Same-host restoration is a recovery boundary: it may resume the authoritative previously published writer state and abandon a newer local-only tail only under the no-surviving-copy rule in `incremental-graph-journal-reset.md`. A numeric coordinate from such an abandoned tail may be allocated again only because no supported surviving state can contain the abandoned use of that coordinate. `OperationId.incarnation` records the journal incarnation in which an operation occurred; operation-sequence uniqueness does not depend on restarting the counter in a new incarnation.
+
+Every supported writable Journal 2 state satisfies the writer-coordinate invariant:
+
+```text
+causalSummary[localFingerprint] == localJournalCounter
+```
+
+where a missing local causal coordinate means zero. The local writer's causal coordinate is therefore owned by its event allocator, not learned from another state.
 
 The three event-ordering mechanisms have deliberately separate jobs:
 
@@ -56,12 +64,22 @@ A journal sequence from one writer is never numerically compared with a journal 
 
 ### Observation
 
-When a database observes a source Journal 2 header, it joins:
+Before a writable database observes a source Journal 2 header, it MUST require:
+
+```text
+source.causalSummary[localFingerprint] <= localJournalCounter
+```
+
+If the source claims a greater coordinate for the observer's own writer identity, the observing operation fails before modifying local state. Such a source demonstrates same-writer history beyond the observer's allocation frontier; generic observation must not repair that condition by copying the greater coordinate into `causalSummary` or `localJournalCounter`. Supported same-host continuation/recovery is handled by the restoration rules, not by importing a later local-writer coordinate through observation.
+
+After that precondition holds, observation joins:
 
 ```text
 causalSummary := componentwiseMax(causalSummary, source.causalSummary)
 authorityClock := maxAuthorityTime(authorityClock, source.authorityClock)
 ```
+
+Because the source's coordinate for `localFingerprint` is no greater than `localJournalCounter`, this join leaves the observer's own causal coordinate unchanged and preserves the writer-coordinate invariant.
 
 By J2-INV-9, every retained head/certificate reference in a supported source summary is already covered by that source header. A retained reference which is not covered indicates unsupported state; the observing transition rejects it rather than repairing the header by joining the reference.
 
@@ -79,7 +97,7 @@ id = { author: localFingerprint, sequence: nextSequence }
 context = causalSummary before publication
 ```
 
-There is deliberately no `max(causalSummary[*])` term in `nextSequence`. Remote coordinates remain remote coordinates.
+There is deliberately no `max(causalSummary[*])` term in `nextSequence`. Remote coordinates remain remote coordinates, and the observation precondition above prevents a remote/source header from advancing the local writer's causal coordinate beyond the allocator counter.
 
 Except for the initial-bootstrap value rule below, every event also receives an `authorityTime` by advancing the persisted HLC. Let `seedPhysical` be:
 
@@ -109,6 +127,8 @@ localJournalCounter = nextSequence
 causalSummary[localFingerprint] = nextSequence
 authorityClock = nextAuthorityTime
 ```
+
+This advances the local counter and its owned causal coordinate together and therefore preserves the writer-coordinate invariant.
 
 #### Initial bootstrap value authority
 
@@ -460,7 +480,7 @@ JournalCursor = {
 }
 ```
 
-A cursor is valid only for the same **source** writer and source incarnation. `through` is explicitly that source writer's local journal coordinate. Canonical compaction does not invalidate a cursor.
+A cursor is valid only for the same **source** writer and source incarnation. `through` is explicitly that source writer's local journal coordinate. Canonical compaction does not invalidate a cursor. Ordinary synchronization establishes cursors only for a source writer distinct from the receiver's own writer; same-writer continuation is restoration/reset territory rather than an incremental synchronization relationship.
 
 If that source performs controlled reset, its changed source incarnation invalidates cursors about it by field comparison.
 
