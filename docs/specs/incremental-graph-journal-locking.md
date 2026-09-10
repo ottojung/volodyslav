@@ -32,7 +32,7 @@ When a high-level operation record is persisted for a transition, its `localOper
 
 `operation` and `parent` are historical-only grouping fields with no effect on folding, authority, projection, synchronization, compaction correctness, or causality. Publication does not require the named operation record to still exist; readers must tolerate an unresolved grouping reference after historical compaction.
 
-A durable `parent` reference may name only an `OperationId` which is already guaranteed never to be reused: either the parent ID was committed by an earlier publication, or its allocation becomes durable atomically in the same publication as the child reference. If a nested child operation commits independently before its parent has such an ID, the child MUST omit `parent`. A tentative parent operation number MUST NOT escape through a durable child record.
+A durable `parent` reference may name only an `OperationId` whose allocation is already durable in the same continuing writer history: either the parent ID was committed by an earlier publication, or its allocation becomes durable atomically in the same publication as the child reference. If a nested child operation commits independently before its parent has such an ID, the child MUST omit `parent`; a tentative parent operation number MUST NOT escape through a durable child record. Same-host restoration may later abandon a local-only tail containing both the parent allocation and child reference only under the no-surviving-copy recovery rule below; no surviving child record may point to a numerically reused parent identity.
 
 ## Journal allocators
 
