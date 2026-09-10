@@ -24,7 +24,7 @@ The source database must satisfy the current legacy IncrementalGraph invariants:
 
 Corrupt legacy state is rejected rather than assigned invented journal meaning.
 
-Every legacy `modifiedAt` used to seed a bootstrap value authority time must be parseable by the canonical timestamp conversion required by Journal 2. Malformed persisted timestamps are rejected rather than assigned invented authority.
+Every legacy `createdAt` and `modifiedAt` retained by the bootstrap must be parseable by the canonical timestamp conversion required by Journal 2, and every materialized timestamp record must satisfy `createdAt <= modifiedAt`. Malformed persisted timestamps are rejected rather than assigned invented Journal metadata or authority.
 
 ## Journal-2-aware migration cursor invalidation
 
@@ -61,6 +61,7 @@ The post-migration Journal 2 state MUST preserve every pre-migration synchroniza
 - for every previously represented K, the post-migration `nodeInvalidateFrontier[K]` componentwise dominates the pre-migration `nodeInvalidateFrontier[K]`;
 - if K is absent before migration and remains absent afterward, preserve its existing tombstone head unless the migration explicitly authors a later tombstone which supersedes that head; its node-scoped invalidation frontier remains componentwise preserved by the preceding rule;
 - when `keep`, replica-stable `override`, or `invalidate` preserves K's current `ValueId`, preserve that value's existing `valueInvalidateFrontier` componentwise and join any migration-authored current-value invalidations into it;
+- when a present K remains continuously materialized through migration, preserve its retained node-summary `createdAt` even if the migration authors a replacement `ValueId`; a newly materialized K created from absence sets a new `createdAt` from its new legacy timestamp record, and an absent result retains none;
 - when migration creates a genuinely new `ValueId` for K, the old value-scoped frontier may be discarded because it is scoped only to the replaced value occurrence;
 - a migration-created tombstone still retains the pre-migration node-scoped invalidation frontier for K, because that frontier is independent of the selected head/value occurrence.
 
@@ -68,13 +69,13 @@ An existing tombstoned K which is outside the ordinary materialized-node migrati
 
 A Journal-2-aware migration also starts from the existing writer/header allocation state. It preserves `writer`, `journalIncarnation`, `localJournalCounter`, `localOperationCounter`, `causalSummary`, and `authorityClock` as the migration baseline and only advances those fields through ordinary migration-authored publications. It MUST NOT reinitialize writer-local counters or lower causal/authority high-water marks.
 
-The resulting state must preserve J2-INV-7, J2-INV-8, and J2-INV-9. Migration may use a stronger migration-specific subsumption rule only when that migration explicitly proves that the replacement state preserves future synchronization behavior, including synchronization with delayed replicas.
+The resulting state must preserve J2-INV-7, J2-INV-8, J2-INV-9, and J2-INV-10. Migration may use a stronger migration-specific subsumption rule only when that migration explicitly proves that the replacement state preserves future synchronization behavior, including synchronization with delayed replicas.
 
 Before cutover, every Journal-2-aware migration also establishes the exact derived reverse structural-edge index required by `incremental-graph-journal-api.md` for its resulting materialized graph. The index is rebuilt or transformed according to the new schema; pre-migration reverse-edge records are not synchronization authority and are not preserved when they disagree with the resulting graph.
 
 ## Journal-2-aware migration event mapping
 
-A migration whose input already contains Journal 2 MUST publish Journal 2 state whose projection exactly matches the migration's resulting legacy value, freshness, and validity state. The migration decision semantics in `migration.md` determine whether an invalidation is node-scoped or value-scoped; the `reason="migration"` tag records that the event was authored by migration and does not replace that scope distinction.
+A migration whose input already contains Journal 2 MUST publish Journal 2 state whose projection exactly matches the migration's resulting legacy value, freshness, validity, and creation-time state. The migration decision semantics in `migration.md` determine whether an invalidation is node-scoped or value-scoped; the `reason="migration"` tag records that the event was authored by migration and does not replace that scope distinction.
 
 For semantic-value identity:
 
@@ -84,7 +85,7 @@ For semantic-value identity:
 - `create` authors a new `ValueEvent(reason="migration")` for the created value occurrence;
 - `delete` authors a `DeleteEvent(reason="migration")` whose tombstone becomes the final head.
 
-Preserving a `ValueId` across migration is a cross-replica assertion, not merely a local optimization. If two supported replicas carry the same pre-migration `ValueId` V and independently apply the same identity-preserving migration into the same target version/schema, every supported result which still names V MUST carry the same exact migrated payload and `modifiedAt`. The node-scoped legacy `createdAt` is not part of V and may differ between replicas until ordinary Journal 2 synchronization merges it by minimum. Physical `NodeIdentifier` differences or host-local inputs must not make two copies of V diverge in payload or `modifiedAt` while retaining that identity.
+Preserving a `ValueId` across migration is a cross-replica assertion, not merely a local optimization. If two supported replicas carry the same pre-migration `ValueId` V and independently apply the same identity-preserving migration into the same target version/schema, every supported result which still names V MUST carry the same exact migrated payload and `modifiedAt`. The node-summary `createdAt` is not part of V and may differ between replicas; ordinary Journal 2 synchronization joins it only among summaries carrying the same selected head, as specified by `incremental-graph-journal-sync.md`. Physical `NodeIdentifier` differences or host-local inputs must not make two copies of V diverge in payload or `modifiedAt` while retaining that identity.
 
 A transformation which cannot satisfy that rule MUST NOT preserve V. If the migration itself installs a replacement value, it must author a new `ValueEvent(reason="migration")` and treat the result as a new semantic value occurrence, including the ordinary stale/invalidation effects on affected dependents. Otherwise the migration must invalidate or delete the old cache so later ordinary recomputation creates the replacement value occurrence. It is invalid to keep V while storing a replica-dependent replacement payload beneath it.
 
@@ -153,9 +154,12 @@ For each K:
    as specified by the initial-bootstrap allocator;
 3. assign its event ID as K's initial Journal 2 `ValueId`;
 4. do not rewrite K's legacy payload or timestamps;
-5. set the present semantic head to that ValueRef.
+5. set the present semantic head to that ValueRef;
+6. set `S[K].createdAt = canonical(K.createdAt)` in the new node summary.
 
 Two independently migrating hosts which contain the same converged legacy value occurrence therefore assign the same `AuthorityTime` to that occurrence regardless of unrelated host-local nodes. When shared occurrences have equal `modifiedAt`, their bootstrap authority times tie across hosts, so the durable writer-fingerprint tie-break selects one writer consistently across the shared equal-time group rather than allowing unrelated local enumeration positions to create different per-node winners. Same-writer bootstrap events remain strictly ordered by writer-local sequence when their authority times tie.
+
+The two hosts may nevertheless have different legacy `createdAt` values for that occurrence because creation time records when each current materialization lineage began. That does not change `ValueId` identity. If the same selected bootstrap head is later represented on both sides, synchronization takes the head-scoped minimum of those retained creation times.
 
 This avoids making a derived shared node stale merely because its bootstrap certificate came from one host while an input with the same legacy timestamp was selected from another host solely due to host-local enumeration differences.
 
@@ -219,11 +223,12 @@ Once Journal 2 is established, ordinary deletions/reset/migrations retain explic
 Before cutover, derive the Journal 2 projection and require exact agreement with the unchanged legacy graph for:
 
 - materialized semantic node set;
+- each materialized node's retained `createdAt` and selected occurrence `modifiedAt`;
 - current `freshness` of every materialized node;
 - every `valid` edge;
 - dependency closure.
 
-Payload/timestamp records are not regenerated by projection and must remain the source records.
+Payload records are not regenerated by projection and must remain the source records.
 
 If the projection does not match, migration fails before publication.
 
@@ -236,7 +241,7 @@ The bootstrap passes themselves publish the synchronization-relevant Journal 2 b
 After such immediate compaction, the retained journal contains:
 
 - header, including the final local sequence, causal summary, and HLC authority high-water mark;
-- one node summary per materialized node;
+- one node summary per materialized node, including its retained `createdAt`;
 - one changed-node marker per represented node;
 - one reverse structural-edge record per materialized dependency edge;
 - no required historical raw event/operation prefix.
@@ -260,6 +265,8 @@ A later migration from one Journal-2-aware database version to another deletes r
 ## Size
 
 Let L be the number of materialized nodes in the legacy state being migrated. The initial migration baseline has no historical Journal-2 tombstone domain, so its bootstrap work is O(L) semantic events plus at most O(1) high-level operation records and O(L) reverse structural-edge records under the bounded direct-in-degree assumption.
+
+Each present node summary additionally retains one bounded `createdAt` scalar. This is `O(log H)` bits per present summary and does not change either the per-value or compacted asymptotic bound.
 
 Each event/index record is individually within the Journal 2 per-value bound, and after canonical compaction O(L) bounded summaries/markers/reverse-edge records plus one bounded header remain.
 
