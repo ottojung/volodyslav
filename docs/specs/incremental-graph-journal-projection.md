@@ -156,7 +156,7 @@ Replicas which already represent the same `ValueId` are required by the supporte
 
 ## Consistency validation
 
-Opening, staging, migration, synchronization, restoration, reset, and compaction may validate that:
+Opening, staging, restoration, and compaction MAY validate the following. Migration, synchronization, and reset MUST validate all of it before cutting over to a constructed target state; failure aborts the transition and leaves the active replica pointer unchanged:
 
 - every present journal summary has a legacy materialization;
 - every absent journal summary is absent from legacy materialized storage;
@@ -168,8 +168,13 @@ Opening, staging, migration, synchronization, restoration, reset, and compaction
 - journal references are well-formed and bounded by represented causal/authority knowledge;
 - every node-summary invalidation frontier coordinate is bounded by the corresponding header `causalSummary` coordinate as required by J2-INV-8;
 - every retained head/certificate EventRef is bounded by the local header causal/authority high-water marks as required by J2-INV-9;
-- `header.causalSummary[header.writer] == header.localJournalCounter` as required by J2-INV-10; and
-- locally witnessed header/event facts are consistent with J2-INV-7: whenever a retained event is covered by `causalSummary`, its authority time is not greater than `authorityClock`.
+- `header.causalSummary[header.writer] == header.localJournalCounter` as required by J2-INV-10;
+- locally witnessed header/event facts are consistent with J2-INV-7: whenever a retained event is covered by `causalSummary`, its authority time is not greater than `authorityClock`;
+- no physical `NodeIdentifier` absent from the final `identifiers_keys_map` appears as a key in `values`, `freshness`, `timestamps`, or `valid`, or as a dependent identifier stored inside `valid`;
+- the final `identifiers_keys_map` is bijective between exactly the semantic keys whose journal head is present and their surviving physical `NodeIdentifier`s; and
+- every present semantic key's legacy value, freshness, and timestamp records are reachable under exactly one physical `NodeIdentifier`, with no losing/orphaned identifier retaining legacy records.
+
+The final three checks are deliberately physical-identifier checks. Journal projection is keyed by `NodeKey` and therefore cannot by itself detect an orphaned losing `NodeIdentifier` whose surviving semantic key is otherwise represented correctly.
 
 J2-INV-7 also covers events whose raw EventRefs were removed by compaction. Supported readers may rely on that transition-maintained invariant; consistency validation is not required to reconstruct compacted-away history solely to prove the header pairing again.
 
