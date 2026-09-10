@@ -480,7 +480,7 @@ interface IncrementalGraph {
   getModificationTime(nodeName: NodeName, bindings?: BindingEnvironment): Promise<DateTime>;
 
   // Inspection API (read-only)
-  getFreshness(nodeName, bindings?): Promise<"up-to-date" | "potentially-outdated" | undefined>;
+  getFreshness(nodeName: NodeName, bindings?: BindingEnvironment): Promise<"up-to-date" | "potentially-outdated" | undefined>;
   getValue(nodeName: NodeName, bindings?: BindingEnvironment): Promise<ComputedValue | undefined>;
   listMaterializedNodes(): Promise<Array<[NodeName, BindingEnvironment]>>;
   getSchemas(): Array<CompiledNode>;
@@ -621,8 +621,8 @@ type Computor = (
 
 Formally: For any sequence of operations `Op₁, Op₂, ..., Opₙ` where each `Opᵢ` is either `pull(nodeName, bindings)` or `invalidate(nodeName, bindings)`, the following two executions MUST produce observably equivalent results:
 
-1. **Without restart:** Execute `Op₁, Op₂, ..., Opₙ` consecutively
-2. **With restart:** Execute `Op₁, Op₂, ..., Opₖ`, then shutdown and restart the graph with the same `RootDatabase` and schema, then execute `Opₖ₊₁, ..., Opₙ`
+1. **Without restart:** Execute `Op₁, Op₂, ..., Opₖ`, then continue with `Opₖ₊₁, ..., Opₙ` without restarting.
+2. **With restart:** Execute `Op₁, Op₂, ..., Opₖ`, then shutdown and restart the graph with the same `RootDatabase` and schema, then execute `Opₖ₊₁, ..., Opₙ`.
 
 **Observable equivalence** means:
 * All `pull()` calls return equal values (according to `isEqual`)
@@ -728,3 +728,4 @@ Dynamically-pulled nodes are not part of the flag-based validity algorithm. They
 performed during a computor's execution and do not affect the structural dependency graph.
 
 ---
+
