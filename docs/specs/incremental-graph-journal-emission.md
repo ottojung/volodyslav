@@ -161,17 +161,18 @@ A later present semantic occurrence must have greater EventRef authority to defe
 
 ## Synchronization adoption
 
-When synchronization represents a source semantic fact without creating a new semantic fact, it authors a local `AdoptEvent` only if the receiver's synchronization-relevant node summary or legacy graph actually changes.
+When synchronization represents a source semantic fact without creating a new semantic fact, it authors a local `AdoptEvent` only if the node's own `NodeJournalSemanticPart` actually changes.
 
 Examples include:
 
 - adopting a higher foreign present head and copying its payload;
 - adopting a higher foreign tombstone;
 - adopting a greater certificate for the same current value;
-- joining previously unseen foreign invalidation frontier coordinates;
-- projecting a resulting freshness/validity change caused by those adopted facts.
+- joining previously unseen foreign invalidation frontier coordinates.
 
 The event carries bounded references/summary metadata but creates no new `ValueId`, certificate authority, invalidation authority, or tombstone authority. The adopted foreign identities and their immutable authority times remain unchanged.
+
+A node whose projected legacy freshness or validity changes only because an input's semantic summary changed authors no `AdoptEvent` of its own. Its projection is derived from the changed input summaries under J2-INV-1.
 
 All low-level events directly produced by one synchronization operation may share one local synchronization `OperationId`. When that operation record is persisted, its `source` records the exact database version and Journal 2 source-position metadata from the same fixed source snapshot used by the synchronization protocol, including writer, incarnation, local head, causal summary, and authority-clock high-water mark. That grouping is historical only and is not imported by peers.
 
@@ -220,7 +221,7 @@ The operation record remains individually bounded in graph size. It MUST NOT enu
 
 ## Summary folding
 
-Every semantic event is folded with the node's compacted state in the same transaction. Usually this changes the synchronization-relevant `NodeJournalSemanticPart`; a projection-only local transition may instead leave that semantic part unchanged. The fold rules are:
+Every semantic event is folded with the node's compacted state in the same transaction. The fold rules are:
 
 - value/delete events replace the state head when their EventRef authority is greater;
 - a value event resets value-specific certificate/invalidation state for the new `ValueId`;
@@ -228,8 +229,9 @@ Every semantic event is folded with the node's compacted state in the same trans
 - node invalidates advance `nodeInvalidateFrontier` by writer-local author coordinate;
 - current-value invalidates advance `valueInvalidateFrontier`;
 - adopt joins the bounded foreign semantic state described in the sync specification;
-- every local change to `NodeJournalSemanticPart` sets `lastLocalChange` to that local semantic-event sequence and moves that node's change-index marker atomically;
-- when a journal-relevant local synchronization event changes only the projected legacy freshness/validity state while leaving `NodeJournalSemanticPart` unchanged, the implementation MAY also set `lastLocalChange` to that event sequence and move the marker. This optional projection-only movement is harmless over-yield and is not required for incremental correctness.
+- every local change to `NodeJournalSemanticPart` sets `lastLocalChange` to that local semantic-event sequence and moves that node's change-index marker atomically.
+
+A node whose projected legacy freshness or validity changes only because an input's summary changed authors no event of its own and does not move its marker. J2-INV-1 still holds because that projection is derived from the inputs' summaries.
 
 The event's optional `operation` reference is ignored by semantic folding.
 
