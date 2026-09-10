@@ -18,6 +18,27 @@ Both the receiver and the chosen reset source MUST already contain valid compati
 
 The receiver already has an established local Journal 2 writer identity/state. If no local database exists and the system is recovering this same host's own saved state, use restoration semantics instead of semantic reset.
 
+Before any source-header observation, reset MUST require:
+
+```text
+source.causalSummary[receiver.writer] <= receiver.localJournalCounter
+```
+
+This is the canonical observation safety condition from `incremental-graph-journal-types.md`. A source which knows a later event coordinate for the receiver's own writer identity cannot be consumed by reset, because importing that coordinate without the corresponding local allocator state would permit event-ID reuse.
+
+A controlled reset source MAY have the same writer identity as the receiver only when it is not ahead of the established receiver writer state:
+
+```text
+source.writer == receiver.writer
+    => source.localJournalCounter   <= receiver.localJournalCounter
+       source.localOperationCounter <= receiver.localOperationCounter
+       source.journalIncarnation    <= receiver.journalIncarnation
+```
+
+The semantic-counter condition is implied by valid headers plus the writer-coordinate invariant, but is stated explicitly here as a reset precondition. The operation-counter condition prevents reuse of a same-writer historical `OperationId`, and the incarnation condition prevents reset from reusing a same-writer source incarnation which already exists ahead of the receiver. A same-writer source which is ahead in any of these coordinates requires supported restoration/reconciliation rather than controlled reset.
+
+These conditions still permit an already-established database to reset semantically to an older/equal authoritative snapshot of its own writer history. That is distinct from first-boot same-host restoration: reset retains the receiver's allocator frontier, increments its incarnation, and authors a fresh reset baseline rather than resuming the source counters as the active writer state.
+
 ## Resulting legacy graph
 
 Reset constructs the target legacy graph according to the existing reset semantics for values, timestamps, freshness, validity, identifiers, graph scheme, and database version.
@@ -46,18 +67,18 @@ before issuing new cursors.
 
 The local writer fingerprint remains the database's durable writer identity unless the broader database lifecycle explicitly creates a new database identity.
 
-`localJournalCounter` remains monotone across reset and is writer-local; it is not reset to zero and is not raised to remote sequence magnitudes.
+`localJournalCounter` remains monotone across the controlled reset transition and is writer-local; it is not reset to zero and is not raised to source sequence magnitudes.
 
 `localOperationCounter` also remains monotone across reset and is not restarted. `OperationId.incarnation` records the journal incarnation in which the operation occurred; uniqueness does not depend on reusing operation sequence numbers in a new incarnation.
 
-Before reset-authored events are allocated, the receiver observes the chosen source's Journal 2 causal and authority high-water knowledge:
+Before reset-authored events are allocated, the receiver observes the chosen source's Journal 2 causal and authority high-water knowledge only after the preconditions above have established that the source's coordinate for the receiver writer cannot exceed the receiver allocator frontier:
 
 ```text
 causalSummary := componentwiseMax(causalSummary, source.causalSummary)
 authorityClock := maxAuthorityTime(authorityClock, source.authorityClock)
 ```
 
-These causal and authority observations are coupled and MUST preserve J2-INV-7 and J2-INV-9 in the same publication. Every reset baseline event is therefore causally after the semantic history which reset actually observed and advances from an HLC high-water mark at least as great as every retained head/certificate authority represented by either reset input.
+The join therefore leaves `causalSummary[receiver.writer] == localJournalCounter` and cannot move the receiver's own writer coordinate ahead of its allocator. These causal and authority observations are coupled and MUST preserve J2-INV-7 and J2-INV-9 in the same publication. Every reset baseline event is therefore causally after the semantic history which reset actually observed and advances from an HLC high-water mark at least as great as every retained head/certificate authority represented by either reset input.
 
 The receiver may retain its accumulated `causalSummary` and `authorityClock`; reset does not require historical per-node reset anchors.
 
@@ -318,6 +339,7 @@ causalSummary
 authorityClock
 node summaries and immutable EventRefs
 changed-node markers
+derived reverse structural-edge index
 receiver-local source cursors
 legacy graph/value/timestamp records
 ```
@@ -330,11 +352,13 @@ A same-host saved state which predates Journal 2 may also be restored by the dat
 
 ### Restoration no-reuse invariant
 
-A supported Journal 2 restoration MUST NOT resume from a stale writer state if a later event from the same `(writer, journalIncarnation)` could already exist in supported external state while being absent from the restored snapshot. Otherwise the restored writer could reuse a committed `JournalEventId` or move its HLC high-water mark backward.
+A supported Journal 2 restoration MUST NOT resume from a stale writer state if a later semantic-event coordinate, operation coordinate, or incarnation from that writer can survive in any supported authoritative/external state while being absent from the restored snapshot. Otherwise the restored writer could assign a surviving `JournalEventId` or `OperationId` to different history, reuse a source incarnation for different reset history, or resume an HLC high-water mark below surviving same-writer authority.
 
-Therefore arbitrary rollback to an older checkpoint/snapshot of the same writer is outside the supported Journal 2 restoration transition. The supported first-boot path restores the host's authoritative previously published synchronized state; it is recovery, not time travel.
+The supported first-boot path therefore uses the host's authoritative previously published synchronized snapshot as its recovery boundary. A newer local-only tail may have committed to the lost local LevelDB after that publication. If that tail was never published to the authoritative branch and never became synchronization input under the publication-before-propagation invariant, catastrophic loss may abandon it. Restoration may then resume the older authoritative counters/HLC state, and a later event or operation may numerically reuse a coordinate which existed only in that abandoned local tail, because no supported surviving state can contain the abandoned use.
 
-If rollback to an older same-writer checkpoint while later same-writer events may survive elsewhere is ever supported, that transition must prevent ID reuse and explicitly specify reconciliation with later surviving state. It must not masquerade as ordinary restoration.
+Arbitrary rollback is different. If any later same-writer event, operation coordinate, incarnation, or authority may survive outside the restored snapshot, rollback to that older snapshot is outside the supported Journal 2 restoration transition and MUST be rejected where that evidence is available.
+
+If rollback to an older same-writer checkpoint while later same-writer state may survive elsewhere is ever supported, that transition must prevent identity/incarnation reuse and explicitly specify reconciliation with the later surviving state. It must not masquerade as ordinary restoration.
 
 ## Why reset stays within the bound
 
