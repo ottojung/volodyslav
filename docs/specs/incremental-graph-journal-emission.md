@@ -220,7 +220,7 @@ The operation record remains individually bounded in graph size. It MUST NOT enu
 
 ## Summary folding
 
-Every semantic event updates the node's compacted semantic summary in the same transaction. The fold rules are:
+Every semantic event is folded with the node's compacted state in the same transaction. Usually this changes the synchronization-relevant `NodeJournalSemanticPart`; a projection-only local transition may instead leave that semantic part unchanged while advancing only the local change-index coordinate. The fold rules are:
 
 - value/delete events replace the state head when their EventRef authority is greater;
 - a value event resets value-specific certificate/invalidation state for the new `ValueId`;
@@ -228,7 +228,7 @@ Every semantic event updates the node's compacted semantic summary in the same t
 - node invalidates advance `nodeInvalidateFrontier` by writer-local author coordinate;
 - current-value invalidates advance `valueInvalidateFrontier`;
 - adopt joins the bounded foreign semantic state described in the sync specification;
-- every local node-summary change sets `lastLocalChange` to the local semantic event sequence and moves that node's change-index marker atomically.
+- every journal-relevant local node transition which authors a semantic event and either changes `NodeJournalSemanticPart` or changes only the projected legacy freshness/validity state sets `lastLocalChange` to that local semantic-event sequence and moves that node's change-index marker atomically. In the projection-only case, the marker/index coordinate changes while the current semantic part remains unchanged; incremental iteration may therefore harmlessly over-yield that node.
 
 The event's optional `operation` reference is ignored by semantic folding.
 
