@@ -19,7 +19,6 @@ AuthorityTime            = {
 LocalOperationSequence   = positive arbitrary-precision integer
 OperationId              = {
     author: JournalAuthor,
-    incarnation: JournalIncarnation,
     sequence: LocalOperationSequence
 }
 DatabaseVersion          = bounded exact persisted global/version identity
@@ -45,7 +44,7 @@ authorityClock        : AuthorityTime
 journalIncarnation    : JournalIncarnation
 ```
 
-Along one continuing writable history, both local counters are monotone, including across controlled reset. Same-host restoration is a recovery boundary: it may resume the authoritative previously published writer state and abandon a newer local-only tail only under the no-surviving-copy rule in `incremental-graph-journal-reset.md`. A numeric coordinate from such an abandoned tail may be allocated again only because no supported surviving state can contain the abandoned use of that coordinate. `OperationId.incarnation` records the journal incarnation in which an operation occurred; operation-sequence uniqueness does not depend on restarting the counter in a new incarnation.
+Along one continuing writable history, both local counters are monotone, including across controlled reset. Same-host restoration is a recovery boundary: it may resume the authoritative previously published writer state and abandon a newer local-only tail only under the no-surviving-copy rule in `incremental-graph-journal-reset.md`. A numeric coordinate from such an abandoned tail may be allocated again only because no supported surviving state can contain the abandoned use of that coordinate. `OperationRecord.incarnation` records the journal incarnation in which an operation occurred; operation-sequence uniqueness does not depend on restarting the counter in a new incarnation.
 
 Every supported writable Journal 2 state satisfies the writer-coordinate invariant:
 
@@ -237,7 +236,9 @@ A locally authored semantic value occurrence uses the ID of its `value` event as
 
 The value payload is not part of `ValueRef` and is never journaled.
 
-For supported state, one `ValueId` denotes one exact semantic value occurrence at one semantic `NodeKey`. Every replica currently materializing that `ValueId` must therefore hold the same exact value/timestamp record for that occurrence and preserve the same immutable `ValueRef.context` and `ValueRef.authorityTime`. This includes identity-preserving Journal-2-aware migrations: if a migration keeps a `ValueId`, its migration contract must guarantee replica-stable transformation of that occurrence. Ordinary synchronization need not compare payloads to verify this invariant.
+For supported state, one `ValueId` denotes one exact semantic value occurrence at one semantic `NodeKey`. Every replica currently materializing that `ValueId` must therefore hold the same exact payload and `modifiedAt` for that occurrence and preserve the same immutable `ValueRef.context` and `ValueRef.authorityTime`. This includes identity-preserving Journal-2-aware migrations: if a migration keeps a `ValueId`, its migration contract must guarantee replica-stable transformation of that payload and `modifiedAt`. Ordinary synchronization need not compare payloads to verify this invariant.
+
+The legacy `createdAt` field is node-scoped metadata rather than value-occurrence identity. It is not compared, copied, or validated as part of `ValueId`; Journal 2 synchronization combines it separately according to the creation-time merge rule in `incremental-graph-journal-projection.md`.
 
 ## Certificate basis
 
@@ -359,6 +360,7 @@ Operation records are a tagged union:
 ```text
 OperationRecordBase = {
     id: OperationId,
+    incarnation: JournalIncarnation,
 
     // Optional direct high-level caller. This is historical structure only.
     parent?: OperationId
@@ -391,6 +393,8 @@ OperationRecord =
         subject?: NodeKey
       }
 ```
+
+`OperationRecord.incarnation` is the local journal incarnation in which that high-level operation was recorded. It is historical metadata and is not part of `OperationId` equality. Because `localOperationCounter` is monotone across controlled reset, `{ author, sequence }` is already a unique operation identity along the continuing writer history.
 
 An operation record is local historical/debugging structure. It is **not** synchronization authority, has no causal authority of its own, and is never imported as semantic state. A source-bearing operation record may nevertheless store source causal/authority high-water metadata as bounded historical invocation metadata.
 
