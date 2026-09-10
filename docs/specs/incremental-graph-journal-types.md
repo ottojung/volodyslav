@@ -162,7 +162,7 @@ Clock skew can therefore influence concurrent conflict selection. Journal 2 assu
 
 High-level operation IDs use the separate `localOperationCounter`. Allocating an operation ID does **not** change `localJournalCounter`, `causalSummary`, `authorityClock`, semantic event authority, or happened-before. This separation is required so operation grouping cannot affect synchronization outcomes.
 
-## Event references
+## Event references and immutable event identity
 
 Every semantic authority reference is:
 
@@ -176,7 +176,17 @@ EventRef = {
 
 The context and authority time are immutable semantic metadata of the original event. Copying a reference through synchronization never changes them.
 
-Two supported copies of the same `JournalEventId` must carry exactly the same immutable `context` and `authorityTime`; disagreement is corrupt/unsupported state.
+A `JournalEventId` identifies exactly one immutable semantic journal event. Any two supported representations which claim the same `JournalEventId` MUST agree on:
+
+- immutable `context` and `authorityTime`;
+- the event's `node` and semantic event `kind`; and
+- every kind-specific semantic body field: `reason`, `value` and `basis` for validation, invalidation `scope`, and `source`/`adopted` information for adoption as applicable.
+
+The optional `operation` grouping reference is historical-only metadata and is not part of this semantic event-identity invariant.
+
+A compacted representation need not retain every raw event body merely to re-prove this invariant. But whenever a supported transition has two retained/raw structures which expose semantic claims about the same event ID, detectable disagreement means corrupt/unsupported state and MUST be rejected rather than resolved by authority tie-break, payload equality, or arbitrary choice.
+
+In particular, two retained validation certificates whose `event.id` is equal MUST have the same event context/authority time, current-value target, and exact basis. Likewise, one `ValueId` cannot denote different nodes or different semantic value occurrences on different replicas.
 
 ## Exact happened-before
 
@@ -227,7 +237,7 @@ A locally authored semantic value occurrence uses the ID of its `value` event as
 
 The value payload is not part of `ValueRef` and is never journaled.
 
-For supported state, one `ValueId` denotes one exact semantic value occurrence. Every replica currently materializing that `ValueId` must therefore hold the value/timestamp record copied from that occurrence or a reset/migration record which locally created that same ID, and must preserve the same immutable `ValueRef.context` and `ValueRef.authorityTime`. Ordinary synchronization need not compare payloads to verify this invariant.
+For supported state, one `ValueId` denotes one exact semantic value occurrence at one semantic `NodeKey`. Every replica currently materializing that `ValueId` must therefore hold the same exact value/timestamp record for that occurrence and preserve the same immutable `ValueRef.context` and `ValueRef.authorityTime`. This includes identity-preserving Journal-2-aware migrations: if a migration keeps a `ValueId`, its migration contract must guarantee replica-stable transformation of that occurrence. Ordinary synchronization need not compare payloads to verify this invariant.
 
 ## Certificate basis
 
@@ -257,7 +267,7 @@ ValidationCertificate = {
 
 The certificate's own causal context is the clearing evidence for invalidations it genuinely observed. Separate `clearsThrough` metadata is unnecessary in Journal 2.
 
-For a fixed current value, only the greatest certificate by `authorityCompare(certificate.event, ...)` is semantically active. Lower certificates remain historical until compaction but are not consulted by projection or synchronization.
+For a fixed current value, only the greatest certificate by `authorityCompare(certificate.event, ...)` is semantically active. If two represented certificates have the same `event.id`, the immutable-event-identity rule above requires their `value` and `basis` to be identical; disagreement is unsupported state, not a certificate tie to resolve. Lower certificates remain historical until compaction but are not consulted by projection or synchronization.
 
 ## Invalidation scopes
 
@@ -297,7 +307,7 @@ SemanticHead = PresentHead | AbsentHead
 
 The head authority reference is `value` for present state and `tombstone` for absent state.
 
-When two heads compete, compare those `EventRef`s with `authorityCompare`; the greater authority wins. A normal synchronization adoption preserves the winning foreign head exactly; the local adoption event does not become the new head.
+When two heads compete, compare those `EventRef`s with `authorityCompare`; the greater authority wins. If two heads expose the same `JournalEventId`, the immutable-event-identity rule requires them to describe the same semantic event/node/head meaning; disagreement is unsupported state. A normal synchronization adoption preserves the winning foreign head exactly; the local adoption event does not become the new head.
 
 ## Per-node compacted summary
 
