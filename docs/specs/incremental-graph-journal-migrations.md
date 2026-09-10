@@ -111,7 +111,7 @@ Initialize:
 
 ```text
 header.writer = existing DatabaseFingerprint
-header.incarnation = 1
+header.journalIncarnation = 1
 header.localJournalCounter = 0
 header.localOperationCounter = 0
 header.causalSummary = {}
