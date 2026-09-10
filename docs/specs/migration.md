@@ -99,7 +99,7 @@ The intended use case is format migration: the database version changes the seri
 
 An `override()` which preserves the identity of an existing semantic value occurrence MUST be replica-stable. Given two supported replicas which represent the same pre-migration semantic value occurrence and run the same migration into the same target database/schema version, the override must produce the same exact post-migration payload and `modifiedAt` on both replicas.
 
-The legacy `createdAt` field is excluded from this requirement. It is node-scoped metadata describing when that replica first materialized the semantic node, not part of the identity of one value occurrence. For database versions using Journal 2, ordinary synchronization may later move it earlier under the creation-time minimum rule in `incremental-graph-journal-projection.md`.
+The legacy `createdAt` field is excluded from this requirement. It is node-scoped metadata for the current materialization/head lineage, not part of the identity of one value occurrence. For database versions using Journal 2, synchronization retains it in the node summary and merges it by the head-scoped rule in `incremental-graph-journal-projection.md`; it may move earlier for a fixed selected head or later when head selection changes.
 
 This requirement is about the value-occurrence output, not merely about programmer intent. The transformation may receive a physical `NodeIdentifier`, but it MUST NOT allow differences in that identifier, hostname, local wall clock, randomness, mutable host-local state, external service state, iteration order, or other replica-local inputs to make one preserved semantic occurrence migrate to different post-migration payloads or `modifiedAt` values. Any such migration is not a semantic-preserving representation rewrite in the sense required by `override()`.
 
@@ -140,7 +140,7 @@ This preserves the materialization invariant that every materialized node has al
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
 | `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
 | `InvalidMigrationDecisionError` | `override` or `create` called without the cache-state proof required by its API. |
-| `GetMissingNodeError` | `get()`/traversal called for node not in `S`. |
+| `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 
 ---
