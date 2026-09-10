@@ -30,11 +30,14 @@ A canonically compacted state retains:
 2. one `NodeJournalSummary` per represented semantic node/key, including retained absent/tombstoned keys;
 3. one current changed-node marker per represented semantic node/key;
 4. stored source cursors, one bounded record per known source;
-5. optionally, a bounded implementation-defined raw history tail consisting of small operation records and low-level semantic events; canonical size analysis may take this tail to be empty.
+5. the exact derived reverse structural-edge index for the current materialized graph, one bounded record per materialized dependency edge;
+6. optionally, a bounded implementation-defined raw history tail consisting of small operation records and low-level semantic events; canonical size analysis may take this tail to be empty.
 
-The optional bound in item 5 constrains only the raw tail deliberately retained **after a compaction has completed**. It does not impose a bound on the amount of raw history that may have accumulated immediately before that compaction.
+The optional bound in item 6 constrains only the raw tail deliberately retained **after a compaction has completed**. It does not impose a bound on the amount of raw history that may have accumulated immediately before that compaction.
 
 Historical raw semantic events whose effects are represented by these records may be deleted. Historical operation records may also be deleted once their grouping value is no longer worth retaining.
+
+The reverse structural-edge index is current derived acceleration state rather than historical state. Canonical compaction preserves it unchanged; maintenance of that index belongs to graph/journal publication as specified in `incremental-graph-journal-api.md` and `incremental-graph-journal-locking.md`.
 
 Compaction does not synthesize a giant high-level `compiled` list.
 
@@ -140,7 +143,8 @@ Canonical compaction does not change:
 - node `lastLocalChange` coordinates;
 - causal summary coordinates;
 - authority-clock high-water mark;
-- receiver-local stored source cursor coordinates.
+- receiver-local stored source cursor coordinates;
+- the derived reverse structural-edge index.
 
 Therefore a cursor whose source relationship was valid before compaction remains valid afterward.
 
@@ -205,6 +209,7 @@ Sketch:
 - exact causal allocation safety is preserved by `causalSummary`;
 - future total-authority allocation safety is preserved by `authorityClock` even when high-authority raw events were compacted away;
 - changed-node markers preserve every valid cursor's semantic suffix until a lifecycle transition intentionally deletes those cursors;
+- the derived reverse structural-edge index remains the same exact view of the unchanged current materialized graph;
 - no future operation requires an old payload because the journal never promises one;
 - operation records/IDs do not participate in any of the above semantic rules.
 
@@ -251,6 +256,8 @@ size(NodeJournalSummary) = O(R log H) bits
 
 There are O(L + T) node summaries and O(L + T) changed-node markers. Markers cost only `O(log H)` bits plus bounded NodeKey storage. The header costs `O(R log H)` including `causalSummary`, `authorityClock`, and scalar local counters. Source cursors contribute at most `O(R log H)` when there is at most one stored cursor per durable source identity.
 
+The reverse structural-edge index contains one constant-size record for every materialized structural edge. Bounded direct in-degree gives at most O(L) such edges even when one input has unbounded out-degree, so the entire reverse index costs O(L) bits under the bounded-NodeKey assumption. This is subsumed by `O((L + T) R log H)` because a writable Journal 2 database has at least one represented writer and `H >= 2`.
+
 A canonical compacted journal may take its raw history tail to be empty. Any implementation which retains a bounded raw tail in the compacted result retains only individually bounded operation/event records; that optional bounded tail does not change the asymptotic compacted-state bound.
 
 Therefore:
@@ -282,13 +289,15 @@ size(OperationRecord) = O(R log H) bits
 
 in the worst case, still exactly within the required per-LevelDB-value bound. Non-source operation records remain smaller.
 
+Each reverse structural-edge index entry contains only a bounded pair of NodeKeys and bounded marker data, so it is O(1) and therefore within the `O(R log H)` per-value bound.
+
 Graph-wide indexes and high-level-operation expansions are represented as many small LevelDB records rather than one giant map/list value.
 
 The per-LevelDB-value bound applies equally before and after compaction. Unbounded uncompacted journal size is permitted only through an unbounded **number** of individually bounded records, never through one unbounded record.
 
 ## Compaction publication
 
-Compaction modifies only the historical part of the new journal sublevel and must not change the representation or semantic contents of existing graph sublevels, `JournalHeader`, node summaries, changed-node markers, or stored source cursors.
+Compaction modifies only the historical part of the new journal sublevel and must not change the representation or semantic contents of existing graph sublevels, `JournalHeader`, node summaries, changed-node markers, the derived reverse structural-edge index, or stored source cursors.
 
 Compaction is not a seventh database lifecycle transition and does not require inactive-replica construction or lifecycle cutover. Each batch runs against the current active database in IncrementalGraph `daytime` mode and under the ordinary per-replica commit serialization specified in `incremental-graph-journal-locking.md`.
 
@@ -296,4 +305,4 @@ For each implementation-bounded batch, `daytime` mode and commit serialization a
 
 No candidate set is carried across a lifecycle cutover or database close. If the active replica is replaced or closed between batches, the remaining compaction work is abandoned and a later attempt re-selects from the then-current active replica.
 
-Because compaction does not rewrite semantic summaries, markers, headers, cursors, or legacy graph state, it cannot publish a journal summary paired with incompatible graph state. A failure may leave earlier prune batches committed; those intermediate states are semantically equivalent supported states, and a later compaction attempt may continue from the remaining history.
+Because compaction does not rewrite semantic summaries, markers, headers, the reverse structural-edge index, cursors, or legacy graph state, it cannot publish a journal summary paired with incompatible graph state. A failure may leave earlier prune batches committed; those intermediate states are semantically equivalent supported states, and a later compaction attempt may continue from the remaining history.
