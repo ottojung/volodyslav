@@ -167,10 +167,11 @@ The semantic plan is keyed by NodeKey. Physical `NodeIdentifier` selection follo
 - a source identifier may be reused when collision-free;
 - otherwise allocate a valid local identifier;
 - rebuild the final identifier lookup and `valid` relation from the semantic plan;
+- rebuild the derived reverse structural-edge index so it exactly represents every materialized `D -> N` structural edge in the final graph;
 - copy selected payload/timestamps as a complete record;
-- deleted nodes have no legacy identifier/value/freshness/timestamp/validity records.
+- deleted nodes have no legacy identifier/value/freshness/timestamp/validity records and no reverse-edge records in which they are the dependent.
 
-Physical choices do not participate in semantic conflict precedence.
+Physical choices do not participate in semantic conflict precedence. The reverse structural-edge index is likewise derived local acceleration state and carries no synchronization authority.
 
 ## Ordinary equality prohibition
 
