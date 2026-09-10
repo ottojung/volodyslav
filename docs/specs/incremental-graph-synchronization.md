@@ -50,17 +50,22 @@ A normal synchronization cycle follows this lifecycle:
 
 1. acquire the required synchronization/exclusive lifecycle boundary;
 2. checkpoint the active local database according to the repository lifecycle;
-3. exchange/fetch transport snapshots as needed;
-4. stage one stable source hostname snapshot;
-5. validate exact database/schema compatibility and persisted invariants;
-6. construct an inactive target from the local receiver snapshot;
-7. run Journal 2 full semantic synchronization `receiver <- source`, joining source causal and HLC authority high-water metadata;
-8. project/rebuild unchanged legacy graph sublevels from the resulting semantic plan;
-9. validate final graph/journal consistency;
-10. durably flush the target and atomically cut it over as active;
-11. reopen/rebind active database state where the lifecycle requires it;
-12. clear source staging state;
-13. continue with other source hosts or report per-host failures according to the existing synchronization caller contract.
+3. publish the local host's own state by advancing this host's authoritative synchronization branch to include the checkpoint from step 2, before any peer state is fetched or staged; this is the enforcement point for the publication-before-propagation rule in `database-lifecycle.md` §14 rule 13;
+4. fetch participating peer host branches from the repository;
+5. stage one stable source hostname snapshot;
+6. validate exact database/schema compatibility and persisted invariants;
+7. construct an inactive target from the local receiver snapshot;
+8. run Journal 2 full semantic synchronization `receiver <- source`, joining source causal and HLC authority high-water metadata;
+9. project/rebuild unchanged legacy graph sublevels from the resulting semantic plan;
+10. validate final graph/journal consistency;
+11. when the merge changed a receiver journal node summary, the receiver journal header causal/authority high-water state, or a legacy graph record, durably flush the target and atomically cut it over as active; when none of those changed, leave the active replica pointer unchanged, as required by `database-lifecycle.md` §7.2 step 7;
+12. reopen/rebind active database state where the lifecycle requires it;
+13. clear source staging state;
+14. continue with other source hosts or report per-host failures according to the existing synchronization caller contract.
+
+Advancing the receiver's `causalSummary` or `authorityClock` counts as a merge change requiring cutover even when no node summary or legacy graph record changed, because those retained high-water marks affect future local event allocation. A receiver-local cursor/diagnostic update alone is optimization state and does not make an otherwise no-op semantic merge require active-replica cutover.
+
+Per-host success reporting is implementation-defined diagnostics rather than Journal 2 semantic state. An implementation may report bounded counts or flags such as adopted head/summary changes, receiver-authored normalization events, header-only advancement, and unchanged merges, but synchronization correctness, convergence, and cutover decisions MUST NOT depend on a particular diagnostic summary shape.
 
 Each per-host merge is directional because the receiver alone can author new negative Journal 2 authority during normalization. Directionality does not weaken convergence: fair repeated synchronization is required to propagate those authorities to the other replicas.
 
