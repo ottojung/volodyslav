@@ -12,7 +12,13 @@ For a `NodeKey K`, let `S[K]` be its `NodeJournalSummary`.
 
 If `S[K].head.kind == "absent"`, K must be unmaterialized in the legacy graph and `S[K].createdAt` must be absent.
 
-If `S[K].head.kind == "present"`, K must be materialized, its legacy payload and `modifiedAt` must be those associated with `S[K].head.value.id` under the supported lifecycle, and its legacy `createdAt` must equal the `createdAt` retained in `S[K]`.
+If `S[K].head.kind == "present"`, K must be materialized, its legacy payload and `modifiedAt` must be those associated with `S[K].head.value.id` under the supported lifecycle, and the legacy `createdAt` record must encode the same instant as the `CreationTime` retained in `S[K]`:
+
+```text
+canonical(legacyCreatedAt(K)) == S[K].createdAt
+```
+
+Here and below `canonical(timestamp)` means the exact epoch-millisecond instant defined for `CreationTime` in `incremental-graph-journal-types.md`; it compares timestamp meaning, not textual ISO spelling.
 
 The current `ValueRef` carries immutable origin `context` and `authorityTime`; those are journal metadata for the exact value occurrence and are not reconstructed from the current receiver's wall clock.
 
@@ -150,9 +156,21 @@ The final `identifiers_keys_map`, `values`, `freshness`, `timestamps`, and `vali
 
 ## Timestamp records and value authority
 
-For Journal 2, `modifiedAt` belongs to the selected value occurrence. `createdAt` is node-scoped metadata retained in `NodeJournalSummary`, but it is scoped to the currently selected present head/materialization rather than surviving arbitrary head replacement.
+For Journal 2, `modifiedAt` belongs to the selected value occurrence. `createdAt` is node/materialization-lineage metadata retained as a `CreationTime` in `NodeJournalSummary` and carried by the current present head. Ordinary local value replacement may carry that lineage timestamp forward even though it creates a new head; deletion clears it, and rematerialization from absence starts a new lineage timestamp.
 
-For a final present K with selected head H, synchronization computes:
+Synchronization joins the pair `(head, createdAt)` with the following rule. First compare heads by ordinary semantic-head authority. A strictly greater head wins together with its own creation-time metadata. If the heads are the same present head, retain the earlier `CreationTime`. If the same selected head is absent, retain no creation time:
+
+```text
+joinCreation((H1,C1), (H2,C2)) =
+    (H1,C1)              if H1 > H2
+    (H2,C2)              if H2 > H1
+    (H1,min(C1,C2))      if H1 == H2 and H1 is present
+    (H1,none)            if H1 == H2 and H1 is absent
+```
+
+Equality of heads here is semantic head equality under the immutable-event-identity rule, not payload equality. This is a lexicographic join: the totally ordered head is the primary coordinate and reverse-time minimum is used only inside an equal present head. It is therefore deterministic, idempotent, commutative, and associative. In particular, a losing head's earlier creation time cannot leak through a tombstone or later winning materialization merely because synchronizations are grouped in a different order.
+
+Equivalently, for a final present K with selected head H:
 
 ```text
 S[K].createdAt = min(
@@ -160,17 +178,25 @@ S[K].createdAt = min(
 )
 ```
 
-An input whose head loses selection contributes no creation time, and neither does an input where K is absent. Every supported present input summary carries a `createdAt`, so the selected present head always has at least one contributing creation time. The legacy `createdAt` of every present K MUST equal `S[K].createdAt`.
+An input whose head loses selection contributes no creation time, and neither does an input where K is absent. Every supported present input summary carries a `createdAt`, so the selected present head always has at least one contributing creation time.
 
-This minimum is idempotent, commutative, and associative after deterministic head selection. For a fixed selected head it may only move earlier as more copies of that head are represented. If a greater head later replaces it, the old head's creation-time metadata is discarded and the newly selected head's retained creation time may be numerically later. An absent/tombstone head carries no creation time, so a later rematerialization does not inherit `createdAt` from the deleted materialization.
+For a fixed selected head, the retained creation instant may only move earlier as more copies of that head are represented. If a greater head later replaces it, the old head's creation metadata is discarded and the newly selected head's carried lineage timestamp may be numerically later. An absent/tombstone head carries no creation time, so a later rematerialization does not inherit `createdAt` from the deleted materialization.
 
-The selected head's own contributing representation satisfies `createdAt <= modifiedAt`. Taking a minimum over copies of that same head cannot increase the creation time, so the resulting legacy timestamp record continues to satisfy `createdAt <= modifiedAt`. Synchronization never substitutes its execution time for either timestamp.
+The legacy timestamp record for every final present K MUST encode exactly `S[K].createdAt`:
+
+```text
+canonical(legacyCreatedAt(K)) == S[K].createdAt
+```
+
+When synchronization must rewrite the legacy timestamp record, it serializes a valid legacy `createdAt` representing that exact instant; the textual timezone spelling of an equivalent ISO representation has no Journal meaning. It MUST NOT substitute synchronization execution time.
+
+The selected head's own contributing representation satisfies `canonical(createdAt) <= canonical(modifiedAt)`. Taking a minimum over copies of that same head cannot increase the creation instant, so the resulting legacy timestamp record continues to satisfy `createdAt <= modifiedAt` by instant comparison.
 
 A normal synchronization which adopts a foreign `ValueId` copies the selected occurrence's payload and `modifiedAt`; the final `createdAt` comes from the merged summary rule above rather than from value-occurrence identity. A `createdAt` change is therefore synchronization-relevant `NodeJournalSemanticPart` state and is transferred by both full and incremental synchronization.
 
 The origin value event's HLC physical seed was the occurrence's `modifiedAt`, but its persisted `authorityTime` may be later because HLC monotonicity must extend happened-before. Projection does not recompute or normalize that authority from the timestamp after the event has been authored.
 
-Replicas which already represent the same `ValueId` are required by the supported-state invariant to carry the same semantic payload and `modifiedAt` and the same immutable `ValueRef.context`/`authorityTime` for that occurrence. Their head-scoped `createdAt` values may differ until synchronization joins them by minimum. Identity-preserving Journal-2-aware migration must preserve the payload/`modifiedAt` invariant through its replica-stability requirement.
+Replicas which already represent the same `ValueId` are required by the supported-state invariant to carry the same semantic payload and `modifiedAt` and the same immutable `ValueRef.context`/`authorityTime` for that occurrence. Their carried materialization-lineage `createdAt` values may differ until synchronization joins equal selected heads by minimum. Identity-preserving Journal-2-aware migration must preserve the payload/`modifiedAt` invariant through its replica-stability requirement.
 
 ## Consistency validation
 
@@ -178,14 +204,14 @@ Opening, staging, restoration, and compaction MAY validate the following. Migrat
 
 - every present journal summary has a legacy materialization and a retained `createdAt`;
 - every absent journal summary is absent from legacy materialized storage and has no retained `createdAt`;
-- every present node summary's retained `createdAt` equals the legacy `createdAt` record;
+- every present node summary's retained `createdAt` equals `canonical(legacyCreatedAt(K))`;
 - every fresh legacy node equals the journal-derived freshness;
 - every legacy validity edge equals `edgeValid`;
 - every materialized dependency is materialized;
 - current certificates name the current value and have the exact schema-derived basis arity;
 - all retained/raw structures available to the transition which claim the same `JournalEventId` agree on the immutable semantic event identity defined in `incremental-graph-journal-types.md`, including context/authority time, node, event kind, and all exposed kind-specific semantic body fields; in particular equal certificate event IDs require equal `value` and `basis`;
 - every repeated `ValueId` identifies the same semantic NodeKey, exact payload, and `modifiedAt`; `createdAt` is deliberately excluded from value-occurrence identity;
-- every present legacy timestamp record satisfies `createdAt <= modifiedAt`;
+- every present legacy timestamp record is parseable and satisfies `canonical(createdAt) <= canonical(modifiedAt)`;
 - journal references are well-formed and bounded by represented causal/authority knowledge;
 - every node-summary invalidation frontier coordinate is bounded by the corresponding header `causalSummary` coordinate as required by J2-INV-8;
 - every retained head/certificate EventRef is bounded by the local header causal/authority high-water marks as required by J2-INV-9;
