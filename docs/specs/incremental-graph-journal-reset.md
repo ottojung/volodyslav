@@ -37,6 +37,10 @@ source.writer == receiver.writer
 
 The semantic-counter condition is implied by valid headers plus the writer-coordinate invariant, but is stated explicitly here as a reset precondition. The operation-counter condition prevents reuse of a same-writer historical `OperationId`, and the incarnation condition prevents reset from reusing a same-writer source incarnation which already exists ahead of the receiver. A same-writer source which is ahead in any of these coordinates requires supported restoration/reconciliation rather than controlled reset.
 
+In addition to those numeric conditions, a same-writer reset source MUST be an authoritative snapshot from that writer's own continuing history under the supported database lifecycle. A snapshot from a distinct installation or continuing host history which merely shares the same `DatabaseFingerprint` is not a supported same-writer reset source, even if all three coordinates above are less than or equal to the receiver's. Cross-host snapshot cloning is outside the supported lifecycle as specified in `incremental-graph-fingerprint.md`; reset does not reinterpret such a clone as an older state of the receiver's writer history.
+
+This provenance condition is a supported-lifecycle precondition, not a claim that the Journal header can cryptographically prove snapshot origin. Reset may rely on the controlled lifecycle path which selected the source; it is not required to infer clone provenance from the equal writer identity alone.
+
 These conditions still permit an already-established database to reset semantically to an older/equal authoritative snapshot of its own writer history. That is distinct from first-boot same-host restoration: reset retains the receiver's allocator frontier, increments its incarnation, and authors a fresh reset baseline rather than resuming the source counters as the active writer state.
 
 ## Resulting legacy graph
