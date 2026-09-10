@@ -95,6 +95,16 @@ Within a **preexisting stale `keep`/`override` region**, every stale node loses 
 
 The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
 
+#### Replica-stability of identity-preserving override
+
+An `override()` which preserves the identity of an existing semantic value occurrence MUST be replica-stable. Given two supported replicas which represent the same pre-migration semantic value occurrence and run the same migration into the same target database/schema version, the override must produce the same exact post-migration semantic value/timestamp record on both replicas.
+
+This requirement is about the output, not merely about programmer intent. The transformation may receive a physical `NodeIdentifier`, but it MUST NOT allow differences in that identifier, hostname, local wall clock, randomness, mutable host-local state, external service state, iteration order, or other replica-local inputs to make one preserved semantic occurrence migrate to different post-migration values. Any such migration is not a semantic-preserving representation rewrite in the sense required by `override()`.
+
+For a Journal-2-aware migration this rule is load-bearing: `override()` preserves the existing `ValueId`, and one `ValueId` denotes one exact semantic value occurrence. Synchronization is therefore allowed to assume that replicas carrying the same `ValueId` also carry the same migrated value/timestamp record without comparing payloads.
+
+If a transformation cannot guarantee replica-stable output, it MUST NOT use identity-preserving `override()`. The migration must instead model the result as a semantic replacement which receives a new value identity under the version's migration rules, or invalidate/delete the old cache so ordinary recomputation creates the replacement. The generic `MigrationStorage` API does not turn an arbitrary host-dependent override into a safe identity-preserving rewrite.
+
 `invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 
 **Explicit invalidation** removes only the explicitly named node's incoming validity proofs. Its outgoing proofs remain intact because its stored semantic value has not changed.
