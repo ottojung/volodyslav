@@ -36,7 +36,7 @@ valid
 
 No version, causal, provenance, journal, cursor, or synchronization-only field is added to those records. Journal 2 is a sidecar which supplies information that the existing representation cannot express.
 
-In particular, the journal can distinguish two occurrences of equal `ComputedValue` payloads without comparing those payloads, identify the exact input value occurrences against which a cache was certified, and retain negative authority after a materialization has been deleted from the legacy graph.
+In particular, the journal can distinguish two occurrences of equal `ComputedValue` payloads without comparing those payloads, identify the exact input value occurrences against which a cache was certified, retain the current materialization's synchronization-relevant creation time, and retain negative authority after a materialization has been deleted from the legacy graph.
 
 The journal never stores a `ComputedValue` payload or a copy of one. A current present journal state therefore requires the corresponding payload and timestamp record to exist in the unchanged legacy sublevels.
 
@@ -150,7 +150,7 @@ These records are journal information, not changes to the legacy graph represent
 
 For every supported persisted database state, the legacy materialized graph must equal the journal projection defined in `incremental-graph-journal-projection.md`, modulo local physical identifier choices explicitly excluded there.
 
-A present journal value occurrence must correspond to exactly one materialized semantic node in the legacy graph. An absent journal state must not have a materialized legacy node.
+A present journal value occurrence must correspond to exactly one materialized semantic node in the legacy graph. For every present K, the legacy `createdAt` record must equal the node summary's retained `createdAt`. An absent journal state must not have a materialized legacy node and must retain no `createdAt`.
 
 The derived reverse structural-edge index must exactly equal the structural dependency edges among the current materialized nodes: for every materialized N and every `D in inputEdges(N)` it contains `(D,N)`, and it contains no edge whose dependent is not materialized or whose input is not a structural input of that dependent.
 
@@ -168,7 +168,7 @@ Journal keys and values contain no `ComputedValue` payload. Historical payloads 
 
 A semantic value occurrence has one immutable `ValueId` and one immutable `ValueRef` context/authority time. Normal synchronization preserves all of those fields when the value is copied between databases. Receiver-local adoption event IDs do not become new `ValueId`s.
 
-A successful local computation which changes the semantic value creates a new `ValueId`. A successful computation or cache revalidation which returns the existing semantic value preserves its `ValueId` and original value authority and creates only a new validation certificate.
+A successful local computation which changes the semantic value creates a new `ValueId`. A successful computation or cache revalidation which returns the existing semantic value preserves its `ValueId` and original value authority and creates only a new validation certificate. Node-summary `createdAt` is synchronization-relevant materialization metadata but is not part of `ValueId` identity.
 
 ### J2-INV-5: causality-respecting deterministic authority
 
@@ -200,6 +200,8 @@ N = L + T
 After canonical compaction, each represented semantic key has only a constant number of future-relevant journal records, each of serialized size `O(R log H)` bits under the assumptions in `$id-6193879998109578`.
 
 The derived reverse structural-edge index adds one constant-size record per materialized dependency edge. Because maximum direct in-degree is bounded, the number of those edges is O(L), so the index contributes only O(L) additional serialized bits.
+
+The retained `createdAt` adds only one `O(log H)` scalar for each present node summary and therefore does not change the asymptotic bound.
 
 Consequently the complete compacted journal has serialized size:
 
@@ -301,11 +303,13 @@ The journal change index and cursor machinery are an optimization. Incremental s
 
 For a valid cursor, incremental synchronization must be observationally equivalent to the full operation from the same source and receiver states.
 
-Receiver reset and migration from an already-Journal-2 state explicitly clear stored source cursors when they invalidate the receiver-side invariant those cursors certify. The next synchronization with each source falls back to full synchronization and may establish a fresh cursor after success. Incremental synchronization otherwise acquires required source payload/timestamp records while consuming `possibleMaybeChanges` from the same fixed caller-owned source snapshot and transfers both source causal and HLC authority header high-water state.
+Receiver reset and migration from an already-Journal-2 state explicitly clear stored source cursors when they invalidate the receiver-side invariant those cursors certify. The next synchronization with each source falls back to full synchronization and may establish a fresh cursor after success. Incremental synchronization otherwise acquires required source payload/`modifiedAt` records while consuming `possibleMaybeChanges` from the same fixed caller-owned source snapshot; present-head `createdAt` travels inside the yielded node summary. Every handshake also transfers source causal and HLC authority header high-water state.
 
 Journal 2 does not impose a synchronization-only provenance restriction on retained `oldValue`. A selected present `ValueId` is already a supported cached value of that semantic node. If its final inputs differ from the certificate basis, projection makes the node stale and removes incompatible validity edges; the ordinary next pull may then invoke the computor with the final inputs and that retained cache as `oldValue`. The computor's normal `Unchanged` contract decides whether the value can be reused for those current inputs. Consequently mixed replica provenance, concurrency, multiple inputs, and `"unknown"` bootstrap bases do not by themselves justify cache deletion.
 
 Structural dependency closure remains separate: if a selected present node has a finally absent required input, synchronization must remove the non-materializable cache and author sufficient tombstone authority as specified by the full-sync normalization rules.
+
+The current end-to-end synchronization complexity assumption is recorded by `$id-3572255392439745` in `docs/intent-records/synchronization-performance.md`; it is separate from the correctness equivalence above.
 
 ## Rejection conditions
 
@@ -317,7 +321,7 @@ Journal 2 uses the following canonical named rejection conditions so lifecycle i
 | `JournalOwnWriterCoordinateError` | A source claims `causalSummary[receiver.writer] > receiver.localJournalCounter`, demonstrating later same-writer event history than the receiver can safely continue. |
 | `JournalUncoveredReferenceError` | A retained source head/certificate EventRef is not covered by the source header as required by J2-INV-9. |
 | `JournalEventIdentityConflictError` | Two retained/raw claims available to the transition use the same `JournalEventId` but disagree on immutable semantic event identity, including detectable same-`ValueId` payload/`modifiedAt` disagreement. |
-| `JournalTimestampParseError` | A legacy `modifiedAt` required for initial bootstrap cannot be converted by the canonical Journal timestamp conversion. |
+| `JournalTimestampParseError` | A legacy `createdAt` or `modifiedAt` required for Journal bootstrap/projection cannot be converted by the canonical Journal timestamp conversion. |
 | `JournalProjectionMismatchError` | A constructed migration/reset/synchronization target fails required graph/journal projection or physical-consistency validation before cutover. |
 | `JournalResetSourceError` | A reset source is journal-less, pre-Journal-2, version/schema-incompatible, violates same-writer provenance, or is ahead of the receiver where the reset preconditions forbid that. |
 | `JournalStructuralIndexError` | The required reverse structural-edge index is missing, malformed, or inconsistent with the materialized structural graph. |
