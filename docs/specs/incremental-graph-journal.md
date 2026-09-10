@@ -42,7 +42,7 @@ The journal never stores a `ComputedValue` payload or a copy of one. A current p
 
 ## Local journals
 
-Every writable Journal 2 database has one durable `JournalAuthor` stored in its Journal header. This identity is generated specifically for Journal 2 and is independent of the legacy `DatabaseFingerprint`, which remains only the physical `NodeIdentifier` allocation namespace. Journal semantic events authored by the database have writer-local history and a monotonically increasing writer-local semantic event sequence along one continuing writer state.
+Every writable database has one durable journal writer identity, normally its `DatabaseFingerprint`. Journal semantic events authored by that database have writer-local history and a monotonically increasing writer-local semantic event sequence along one continuing writer state.
 
 Journal 2 deliberately does **not** make sequence magnitudes globally comparable. Event identity, exact causality, and conflict authority are separate:
 
@@ -54,7 +54,7 @@ AuthorityTime                          // HLC conflict precedence
 
 A local event gets `localSequence + 1` regardless of remote sequence magnitudes. Exact causal observation is represented by the vector context. Deterministic conflict authority is represented by a hybrid logical clock which extends happened-before together with the EventRef tie-breakers and is seeded from legacy `modifiedAt` for value occurrences.
 
-For concurrent authorities, the total order compares causality-adjusted authority time, then `JournalAuthor`, then writer-local sequence. The final sequence comparison therefore occurs only within one writer.
+For concurrent authorities, the total order compares causality-adjusted authority time, then writer fingerprint, then writer-local sequence. The final sequence comparison therefore occurs only within one writer.
 
 Normal synchronization does not import source event history into the receiver journal. It may adopt foreign semantic references and bounded foreign metadata into receiver summaries. If this changes receiver state, the receiver records a local adoption event so its own change stream reflects the transition. The adoption event is not a new value occurrence and does not replace or inflate the adopted foreign semantic authority.
 
@@ -183,7 +183,7 @@ happenedBefore(E,F)
 
 The HLC coordinate is a conflict-resolution component. Exact causal tests still use explicit vector context; HLC comparison is not used to infer happened-before. Initial-bootstrap value events with equal legacy `modifiedAt` may share the same HLC `AuthorityTime`; same-writer sequence still makes their complete EventRef authority strictly ordered.
 
-Writer-local journal sequences from different authors are not compared for conflict precedence. `JournalAuthor` is the cross-writer deterministic tie-break after HLC authority time.
+Writer-local journal sequences from different authors are not compared for conflict precedence. Writer fingerprint is the cross-host deterministic tie-break after HLC authority time.
 
 High-level operation IDs are excluded from this authority order.
 
@@ -283,7 +283,7 @@ Fresh initialization, initial bootstrap, local event allocation, controlled rese
 
 Correctness guarantees apply to states produced by supported Journal 2 authoring, synchronization, migration, reset, same-host restoration, and canonical compaction. Corrupt, forged, rolled-back, partially installed, or identity-colliding states are outside the semantic model and must be rejected where practical rather than assigned invented meaning.
 
-A same-host first-boot restoration of saved Journal 2 state resumes the exact previously published writer state, including writer-local counters, incarnation, causal summary, authority-clock high-water mark, node summaries, and valid saved cursors. It does **not** mint a reset baseline merely because local live files were absent. A same-host saved state which predates Journal 2 may instead be restored as legacy state and then migrated through the normal migration gate, which creates a fresh `JournalAuthor`, before Journal 2 synchronization/reset is available.
+A same-host first-boot restoration of saved Journal 2 state resumes the exact previously published writer state, including writer-local counters, incarnation, causal summary, authority-clock high-water mark, node summaries, and valid saved cursors. It does **not** mint a reset baseline merely because local live files were absent. A same-host saved state which predates Journal 2 may instead be restored as legacy state and then migrated through the normal migration gate before Journal 2 synchronization/reset is available.
 
 Arbitrary rollback to an older same-writer snapshot is unsupported whenever later same-writer event/operation identities, incarnation state, or authority may survive outside that snapshot. Catastrophic same-host recovery may abandon a newer local-only tail only under the publication-before-propagation/no-surviving-copy rule defined by the lifecycle and reset specifications.
 

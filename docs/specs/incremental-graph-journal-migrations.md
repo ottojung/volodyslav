@@ -103,14 +103,14 @@ The migration must not rewrite a value merely to add Journal 2 metadata.
 
 Except for ordinary lifecycle metadata whose value necessarily changes when the database version advances, all existing graph sublevel records retain their established representation and semantic contents.
 
-In particular, no journal envelope is wrapped around `values`, `freshness`, `timestamps`, `valid`, or identifiers. The existing `DatabaseFingerprint` remains unchanged and continues to identify only the legacy physical `NodeIdentifier` allocation namespace.
+In particular, no journal envelope is wrapped around `values`, `freshness`, `timestamps`, `valid`, or identifiers.
 
 ## Bootstrap writer state
 
-The initial pre-Journal-2 migration creates a new Journal-specific writer identity. Before any bootstrap semantic event is allocated, generate one fresh `JournalAuthor` satisfying the 128-bit entropy and canonical encoding requirement in `incremental-graph-journal-types.md`, then initialize:
+Initialize:
 
 ```text
-header.writer = newlyGeneratedJournalAuthor
+header.writer = existing DatabaseFingerprint
 header.journalIncarnation = 1
 header.localJournalCounter = 0
 header.localOperationCounter = 0
@@ -118,23 +118,13 @@ header.causalSummary = {}
 header.authorityClock = { physical: 0, logical: 0 }
 ```
 
-The legacy `DatabaseFingerprint` is not changed, reinterpreted, or required to satisfy the Journal-author entropy rule. It remains the existing physical identifier-allocation namespace. This avoids grandfathering pre-Journal-2 fingerprints into semantic event identity and keeps the frozen legacy representation unchanged.
+When this bootstrap follows same-host restoration of a pre-Journal-2 snapshot, reuse of the existing `DatabaseFingerprint` is supported under the publication-before-propagation lifecycle invariant in `database-lifecycle.md`: no Journal 2 event from that writer can exist in supported external state unless this host's own authoritative published snapshot had first advanced to Journal 2.
 
-When this bootstrap follows same-host restoration of a pre-Journal-2 snapshot, minting a new `JournalAuthor` is safe under the publication-before-propagation lifecycle invariant in `database-lifecycle.md`: because the authoritative restored snapshot is still pre-Journal-2, no Journal 2 event or Journal author from this continuing database can already exist in supported external state. There is therefore no prior Journal writer identity to resume or collide with as same-writer history.
-
-This remains a supported-state invariant rather than a global discovery protocol. Migration MUST NOT scan, contact, or wait for every possible peer merely to prove that no unsupported Journal-2 state exists elsewhere. If locally available evidence actually demonstrates that the publication-before-propagation invariant was bypassed—for example, incompatible Journal-2 state claiming to continue this pre-Journal-2 database is already present in the state being processed—then the input is outside the supported lifecycle and the migration MUST reject it rather than inventing a reconciliation.
-
-A generated author is tentative until the migration cutover commits. If migration fails before publication, that tentative identity may be discarded and a retry may generate another one because no supported observer could have seen the abandoned author.
+This is a supported-state invariant, not a global discovery protocol. If the authoritative same-host snapshot is pre-Journal-2, migration MAY rely on the lifecycle invariant and MUST NOT scan, contact, or wait for every possible peer merely to prove the absence of unsupported same-writer Journal 2 events. If locally available evidence actually demonstrates that the invariant was bypassed—for example, a state being processed already contains incompatible same-writer Journal 2 evidence not represented by the authoritative snapshot—then the state is outside the supported lifecycle and bootstrap under that writer identity MUST be rejected. Journal 2 does not require detecting every unsupported external manipulation which is not locally observable.
 
 Bootstrap semantic events use the canonical local semantic-event allocator from `incremental-graph-journal-types.md`, including its special initial-bootstrap value-authority rule. The initially empty causal summary contains no remote coordinates. Writer-local sequences and causal contexts still advance in normal bootstrap event order; only equal-`modifiedAt` bootstrap value occurrences are permitted to share an `AuthorityTime`.
 
 If the initial bootstrap persists a high-level operation record, it uses `kind="migration"` and carries this migration's stable `MigrationId`. The semantic events it expands retain `reason="bootstrap"`; operation grouping is local history only and does not affect semantic allocation.
-
-### Bootstrap pass ordering is strict
-
-The four bootstrap passes below are one strict global sequence, not per-node phases which may be interleaved. The migration MUST complete Pass 1 for every materialized node before authoring any Pass 2 event, complete Pass 2 before Pass 3, and complete Pass 3 before Pass 4.
-
-This ordering is required by the initial-bootstrap value-authority exception. Pass 1 value events may receive deterministic `AuthorityTime = { physical: canonical(modifiedAt), logical: 0 }`, while the later validate/invalidate events use the ordinary HLC allocator and may advance the authority clock to migration/publication wall time. If one of those later events were interleaved before an as-yet-unallocated bootstrap value, the following deterministic bootstrap authority could move backward relative to an earlier same-writer event and violate J2-INV-5. Completing all bootstrap value allocation first makes the exception safe.
 
 ## Pass 1: assign current value occurrences
 
@@ -155,7 +145,7 @@ For each K:
 4. do not rewrite K's legacy payload or timestamps;
 5. set the present semantic head to that ValueRef.
 
-Two independently migrating hosts which contain the same converged legacy value occurrence therefore assign the same `AuthorityTime` to that occurrence regardless of unrelated host-local nodes. When shared occurrences have equal `modifiedAt`, their bootstrap authority times tie across hosts, so the durable `JournalAuthor` tie-break selects one writer consistently across the shared equal-time group rather than allowing unrelated local enumeration positions to create different per-node winners. Same-writer bootstrap events remain strictly ordered by writer-local sequence when their authority times tie.
+Two independently migrating hosts which contain the same converged legacy value occurrence therefore assign the same `AuthorityTime` to that occurrence regardless of unrelated host-local nodes. When shared occurrences have equal `modifiedAt`, their bootstrap authority times tie across hosts, so the durable writer-fingerprint tie-break selects one writer consistently across the shared equal-time group rather than allowing unrelated local enumeration positions to create different per-node winners. Same-writer bootstrap events remain strictly ordered by writer-local sequence when their authority times tie.
 
 This avoids making a derived shared node stale merely because its bootstrap certificate came from one host while an input with the same legacy timestamp was selected from another host solely due to host-local enumeration differences.
 
