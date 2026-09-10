@@ -167,9 +167,10 @@ Opening, staging, migration, synchronization, restoration, reset, and compaction
 - all copies of one `JournalEventId` agree on immutable context/authority time;
 - journal references are well-formed and bounded by represented causal/authority knowledge;
 - every node-summary invalidation frontier coordinate is bounded by the corresponding header `causalSummary` coordinate as required by J2-INV-8;
-- every retained head/certificate EventRef is bounded by the local header causal/authority high-water marks as required by J2-INV-9; and
+- every retained head/certificate EventRef is bounded by the local header causal/authority high-water marks as required by J2-INV-9;
+- `header.causalSummary[header.writer] == header.localJournalCounter` as required by J2-INV-10; and
 - locally witnessed header/event facts are consistent with J2-INV-7: whenever a retained event is covered by `causalSummary`, its authority time is not greater than `authorityClock`.
 
 J2-INV-7 also covers events whose raw EventRefs were removed by compaction. Supported readers may rely on that transition-maintained invariant; consistency validation is not required to reconstruct compacted-away history solely to prove the header pairing again.
 
-Unsupported inconsistencies are errors. Synchronization must not repair them by payload equality or by inventing provenance.
+Unsupported inconsistencies are errors. Synchronization must not repair them by payload equality, by inventing provenance, or by raising a writer-local allocator counter from foreign/same-writer observation.
