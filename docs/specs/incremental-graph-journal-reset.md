@@ -221,6 +221,8 @@ The distinction in condition 3 is essential. A causal header can prove that an o
 
 The header conditions are also essential: synchronization-relevant source knowledge can grow without changing any node or authoring a local semantic event. A state is not fully absorbed by the reset merely because its per-node semantic events are old if its header would still advance B's future causal or authority allocation state.
 
+The synchronization theorems below quantify only over U which is a valid ordinary synchronization input for B, including the distinct-writer and own-writer-coordinate preconditions from `incremental-graph-journal-sync.md`. A same-writer U is not redelivered through ordinary `Sync(B <- U)`; same-writer history is handled by controlled reset or same-host restoration under their dedicated rules.
+
 ### R1. Projection replacement law
 
 Reset installs exactly the chosen target graph:
@@ -253,13 +255,13 @@ This is the anti-resurrection and absorption guarantee which motivates reauthori
 
 ### R4. Covered-state absorption theorem
 
-For any supported U such that:
+For any supported U which satisfies the ordinary synchronization preconditions for B and:
 
 ```text
 CoveredState(U, B)
 ```
 
-and U contains no genuinely post-reset semantic event, normal synchronization of U into B is a semantic no-op:
+and contains no genuinely post-reset semantic event, normal synchronization of U into B is a semantic no-op:
 
 ```text
 observe(Sync(B <- U)) = observe(B)
@@ -273,9 +275,9 @@ This theorem is stronger than merely saying that old values do not win: covered 
 
 ### R5. Unseen-concurrency non-guarantee
 
-Journal 2 reset does **not** guarantee universal absorption of arbitrary state which was not represented by the reset cut.
+Journal 2 reset does **not** guarantee universal absorption of arbitrary synchronization-compatible state which was not represented by the reset cut.
 
-If U later presents a semantic authority E for which:
+If such a U later presents a semantic authority E for which:
 
 ```text
 !coveredByReset(E, B)
@@ -287,7 +289,7 @@ then E may be concurrent with the reset baseline. Ordinary Journal 2 synchroniza
 observe(Sync(B <- U)) != observe(B)
 ```
 
-Likewise, a state whose ordinary semantic facts are causally covered but whose per-node `nodeInvalidateFrontier` is not dominated by B is not `CoveredState(U,B)`: synchronizing it may extend B's node summary even when B's reset certificate already causally covers that invalidation and the legacy graph projection therefore remains unchanged. A state whose node facts are absorbed but whose causal/authority header exceeds the reset cut is also not `CoveredState(U,B)` and may advance B's header.
+Likewise, a synchronization-compatible state whose ordinary semantic facts are causally covered but whose per-node `nodeInvalidateFrontier` is not dominated by B is not `CoveredState(U,B)`: synchronizing it may extend B's node summary even when B's reset certificate already causally covers that invalidation and the legacy graph projection therefore remains unchanged. A state whose node facts are absorbed but whose causal/authority header exceeds the reset cut is also not `CoveredState(U,B)` and may advance B's header.
 
 This is the specified boundary of reset: it dominates the synchronization-relevant history and per-node frontier state it represented, not arbitrary unseen concurrent authority or per-node facts known only indirectly through a causal header.
 
@@ -399,9 +401,9 @@ No term depends linearly on the number of prior resets or historical reset ancho
 
 A replica which has not participated since before reset may later present old semantic authorities after an arbitrarily long delay.
 
-If those authorities and per-node frontier coordinates satisfy `CoveredState`, R3/R4 apply: redelivery cannot undo or semantically extend the reset state merely by restoring already-represented node-frontier coordinates.
+If those authorities and per-node frontier coordinates satisfy `CoveredState` and the replica satisfies ordinary synchronization preconditions, R3/R4 apply: redelivery cannot undo or semantically extend the reset state merely by restoring already-represented node-frontier coordinates.
 
-A genuinely unseen remote authority or a previously unrepresented node-frontier coordinate is resolved by ordinary Journal 2 synchronization rules when eventually observed, as stated by R5. Reset does not absorb state outside its represented reset cut.
+A genuinely unseen remote authority or a previously unrepresented node-frontier coordinate from a synchronization-compatible replica is resolved by ordinary Journal 2 synchronization rules when eventually observed, as stated by R5. Reset does not absorb state outside its represented reset cut.
 
 No correctness argument in this reset design assumes that such a delayed replica eventually returns at all; this follows the liveness-independent intent `$id-4719065396881648`.
 
