@@ -60,6 +60,7 @@ When one atomic transaction authors multiple semantic events, their allocation o
 - a `ValueEvent` precedes every `ValidateEvent` which names that new `ValueId`;
 - an invalidating/value-changing transition precedes any propagated `InvalidateEvent` whose stale transition it causes;
 - reset/bootstrap `ValueEvent`s for input nodes precede certificates whose basis refers to those new input `ValueId`s;
+- for every legacy-stale node in the initial bootstrap, its conservative node-scoped bootstrap invalidation precedes its bootstrap certificate, and its value-scoped bootstrap stale assertion follows that certificate;
 - a synchronization normalization event which makes a dependent non-materializable precedes a dependent destructive event authored because of that fact.
 
 Events not ordered by such semantic dependencies are tie-broken according to the deterministic ordering required by the operation-specific specification. Ordinary local operations use canonical `NodeKey`/event-kind tie-breakers; the initial bootstrap migration uses the timestamp-first value order specified by its migration document, while reset baseline values use canonical NodeKey order. No deterministic tie-break may reverse a required semantic dependency merely to obtain stable IDs.
