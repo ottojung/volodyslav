@@ -77,7 +77,7 @@ When a successful computor returns a semantic value different from the currently
 2. author `ValueEvent V`, seeding its HLC physical component from that record's `modifiedAt`;
 3. `V.id` becomes the new `ValueId` and `V` becomes the present-head authority reference;
 4. write the new payload only to the unchanged legacy `values` sublevel;
-5. preserve/update timestamps according to the existing IncrementalGraph rules; when K was already materialized, preserve its retained summary `createdAt`; when K was previously unmaterialized, set the summary `createdAt` to the new timestamp record's `createdAt`;
+5. preserve/update timestamps according to the existing IncrementalGraph rules; when K was already materialized, preserve its retained summary `CreationTime`; when K was previously unmaterialized, set `summary.createdAt = canonical(newTimestampRecord.createdAt)`;
 6. if K was previously unmaterialized, add one derived reverse structural-edge record `(D,K)` for every `D in inputEdges(K)`;
 7. author `ValidateEvent C` for `V.id`;
 8. set `C.basis[i] = currentValueId(inputEdges(K)[i])` for every direct input;
@@ -94,7 +94,7 @@ The new value event itself explains loss of incoming validity edges in dependent
 
 When the computor is invoked and returns `Unchanged`:
 
-- preserve the current `ValueId`, original `ValueRef.authorityTime`, and summary `createdAt`;
+- preserve the current `ValueId`, original `ValueRef.authorityTime`, and summary `CreationTime`;
 - author a new `ValidateEvent` for that `ValueId` using the current operation time as its HLC physical seed;
 - record the exact current direct-input `ValueId`s in its basis;
 - its context clears every applicable invalidation which the operation observed;
@@ -106,7 +106,7 @@ No `ValueEvent` is authored and the legacy value's `modifiedAt` does not change.
 
 When a stale derived node has complete current incoming validity and revalidates without invoking its computor:
 
-- preserve the current `ValueId`, original value authority, and summary `createdAt`;
+- preserve the current `ValueId`, original value authority, and summary `CreationTime`;
 - author a new `ValidateEvent` with the current direct-input `ValueId` basis;
 - mark the node fresh in the legacy graph;
 - preserve its outgoing validity frontier according to the existing graph algorithm.
@@ -169,7 +169,7 @@ Examples include:
 - adopting a higher foreign tombstone;
 - adopting a greater certificate for the same current value;
 - joining previously unseen foreign invalidation frontier coordinates;
-- adopting a smaller head-scoped `createdAt` for the selected present head.
+- learning an earlier retained `CreationTime` for the same selected present head.
 
 The event carries bounded references/summary metadata but creates no new `ValueId`, certificate authority, invalidation authority, tombstone authority, or creation-time authority. The adopted foreign identities and their immutable authority times remain unchanged.
 
@@ -225,13 +225,13 @@ The operation record remains individually bounded in graph size. It MUST NOT enu
 Every semantic event is folded with the node's compacted state in the same transaction. The fold rules are:
 
 - value/delete events replace the state head when their EventRef authority is greater;
-- a value event resets value-specific certificate/invalidation state for the new `ValueId`; if it materializes a previously absent node, it also sets `createdAt` from the new legacy timestamp record, while a value change on an already materialized node preserves the existing `createdAt`;
+- a value event resets value-specific certificate/invalidation state for the new `ValueId`; if it materializes a previously absent node, it also sets `createdAt = canonical(newTimestampRecord.createdAt)`, while a value change on an already materialized node preserves the existing `CreationTime`;
 - validate retains only the greatest certificate for the current `ValueId` by certificate EventRef authority;
 - node invalidates advance `nodeInvalidateFrontier` by writer-local author coordinate;
 - current-value invalidates advance `valueInvalidateFrontier`;
-- adopt joins the bounded foreign semantic state described in the sync specification, including the head-scoped `createdAt` minimum for the selected present head;
+- adopt joins the bounded foreign semantic state described in the sync specification, including `joinCreation` for the selected head;
 - a delete event drops `createdAt` together with value-specific certificate/invalidation state;
-- every local change to `NodeJournalSemanticPart`, including a change to `createdAt`, sets `lastLocalChange` to that local semantic-event sequence and moves that node's change-index marker atomically.
+- every local change to `NodeJournalSemanticPart`, including a change to retained `CreationTime`, sets `lastLocalChange` to that local semantic-event sequence and moves that node's change-index marker atomically.
 
 A node whose projected legacy freshness or validity changes only because an input's summary changed authors no event of its own and does not move its marker. J2-INV-1 still holds because that projection is derived from the inputs' summaries.
 
