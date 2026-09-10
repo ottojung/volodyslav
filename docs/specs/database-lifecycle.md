@@ -96,7 +96,7 @@ When the running database version includes Journal 2, that same fresh-initializa
 
 ```text
 header.writer = DatabaseFingerprint
-header.incarnation = 1
+header.journalIncarnation = 1
 header.localJournalCounter = 0
 header.localOperationCounter = 0
 header.causalSummary = {}
