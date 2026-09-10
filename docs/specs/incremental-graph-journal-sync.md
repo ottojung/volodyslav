@@ -90,7 +90,8 @@ If the selected head is present with ValueId V:
 - consider value-specific metadata only from summaries whose current head is V;
 - join their value invalidate frontiers componentwise;
 - choose the greatest certificate event among certificates naming V by `authorityCompare(certificate.event, ...)`;
-- all copies of the same `ValueRef` must carry the same immutable origin context and authority time.
+- if two candidate certificates have the same `certificate.event.id`, require their immutable event metadata, `value`, and exact `basis` to agree; disagreement is corrupt/unsupported state rather than a tie to resolve;
+- all copies of the same `ValueRef` must carry the same immutable origin context and authority time and, by the ValueId invariant, correspond to the same semantic NodeKey and exact value/timestamp record.
 
 Metadata scoped to losing value occurrences is not a candidate for the selected value.
 
@@ -102,13 +103,15 @@ Metadata scoped to losing value occurrences is not a candidate for the selected 
 
 A selected present head V must be carried by at least one input snapshot as a current materialized value. The selected complete value/timestamp record is copied from such a snapshot when the receiver does not already materialize V.
 
-If both snapshots claim the same V, supported-state invariants guarantee the same semantic payload/timestamps and immutable `ValueRef` metadata; ordinary synchronization does not compare payloads to establish identity.
+If both snapshots claim the same V, supported-state invariants guarantee the same semantic payload/timestamps and immutable `ValueRef` metadata; ordinary synchronization does not compare payloads to establish identity. A detectable disagreement means the input is unsupported and synchronization fails rather than choosing one payload arbitrarily.
 
 The journal contains no fallback payload.
 
 ## Canonical certificate
 
 Only the greatest certificate for the selected current ValueId is considered, even if a lower historical certificate would happen to fit the merged inputs better.
+
+Equality of certificate authority is not an independent conflict-resolution case. Because `authorityCompare` is total over `EventRef`, equal authority means the same event identity; the immutable-event-identity invariant therefore requires the certificates to have the same value and basis. If retained copies expose different bodies for that event ID, synchronization rejects the source/merge as unsupported state.
 
 This rule is part of synchronization semantics before compaction; compaction does not create it.
 
