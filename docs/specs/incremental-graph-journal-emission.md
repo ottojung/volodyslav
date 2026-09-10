@@ -77,10 +77,11 @@ When a successful computor returns a semantic value different from the currently
 3. `V.id` becomes the new `ValueId` and `V` becomes the present-head authority reference;
 4. write the new payload only to the unchanged legacy `values` sublevel;
 5. preserve/update timestamps according to the existing IncrementalGraph rules;
-6. author `ValidateEvent C` for `V.id`;
-7. set `C.basis[i] = currentValueId(inputEdges(K)[i])` for every direct input;
-8. project K fresh and restore its incoming validity edges;
-9. perform ordinary outgoing invalidation propagation caused by the value change.
+6. if K was previously unmaterialized, add one derived reverse structural-edge record `(D,K)` for every `D in inputEdges(K)`;
+7. author `ValidateEvent C` for `V.id`;
+8. set `C.basis[i] = currentValueId(inputEdges(K)[i])` for every direct input;
+9. project K fresh and restore its incoming validity edges;
+10. perform ordinary outgoing invalidation propagation caused by the value change.
 
 The directly authored `ValueEvent`, `ValidateEvent`, and propagated low-level events carry the current high-level operation ID when one was allocated for the pull.
 
@@ -151,7 +152,7 @@ A dependent already stale does not receive another invalidation merely because t
 
 A semantic deletion authors `DeleteEvent D`; `D` becomes the absent-head authority reference for the node.
 
-Publication removes the node's legacy materialization and validity entries while preserving the compacted node summary/tombstone in the new journal sublevel.
+Publication removes the node's legacy materialization and validity entries while preserving the compacted node summary/tombstone in the new journal sublevel. It also removes every derived reverse structural-edge record `(I,K)` for `I in inputEdges(K)`; any cascading dependent removals perform the corresponding bounded edge cleanup for those dependents as well.
 
 The journal stores no deleted payload.
 
@@ -249,6 +250,7 @@ For any operation which changes both old graph sublevels and journal state, the 
 - raw newly authored semantic journal events;
 - updated node summaries;
 - moved changed-node markers;
+- derived reverse structural-edge index additions/removals required by the resulting materialized graph;
 - header local sequence, causal-summary, and authority-clock metadata;
 - any identifier-map changes required by the legacy graph.
 
