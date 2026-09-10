@@ -99,7 +99,7 @@ If the cursor is invalid or unavailable, run full synchronization.
 
 For a valid cursor, synchronization owns one fixed committed source snapshot and consumes the private `possibleMaybeChanges(sourceSnapshot, cursor)` async iterator while that snapshot is alive. The iterator is internal synchronization/journal infrastructure, not part of the public IncrementalGraph/computor API, and it yields bounded changed-node summaries lazily rather than materializing the complete range in RAM.
 
-The incremental result must be observably equivalent to running full synchronization from the same starting snapshots, including node-summary `createdAt` changes and transfer of current source `causalSummary` and `authorityClock` even when the async stream yields no changed node.
+The incremental result must be observably equivalent to running full synchronization from the same starting snapshots, including retained `CreationTime` changes and transfer of current source `causalSummary` and `authorityClock` even when the async stream yields no changed node.
 
 The current end-to-end synchronization complexity assumption is `$id-3572255392439745` in `docs/intent-records/synchronization-performance.md`. Under that accepted tradeoff, `O(N)` synchronization time is treated as an optimal target until GitHub issue #1607 is assigned; this correctness specification does not assert a stronger change-sensitive time bound.
 
@@ -111,7 +111,7 @@ Only afterward is the plan lowered to physical storage:
 
 - choose/allocate final `NodeIdentifier`s without semantic effect;
 - copy the selected occurrence's payload and `modifiedAt`;
-- write node-scoped `createdAt` from the merged Journal 2 node summary, whose value is the minimum over inputs carrying the selected final head;
+- serialize legacy `createdAt` from the merged node summary's canonical `CreationTime`, which is selected by `joinCreation` in `incremental-graph-journal-projection.md`;
 - delete legacy records for final tombstones;
 - write `freshness` from Journal 2 projection;
 - rebuild `valid` exactly from Journal 2 certificate projection;
@@ -142,9 +142,9 @@ Journal 2 metadata explains which value/input occurrences and invalidations just
 
 Normal synchronization which adopts a foreign `ValueId` copies that occurrence's payload and `modifiedAt`. `modifiedAt` belongs to the selected value occurrence and remains the HLC seed associated with that occurrence.
 
-`createdAt` is node-scoped synchronization-relevant metadata retained in the Journal 2 node summary. After selecting the final head for a present NodeKey, synchronization takes the minimum `createdAt` over exactly the input summaries carrying that selected head. Losing heads and absent inputs contribute no creation time.
+`createdAt` is materialization-lineage synchronization metadata retained as canonical `CreationTime` in the Journal 2 node summary. Synchronization uses the `(head, createdAt)` join defined by `joinCreation`: a greater head wins with its carried creation metadata, and only equal selected present heads combine creation times by taking the earlier instant. Losing heads and absent inputs contribute no creation time.
 
-For a fixed selected head this minimum may only move earlier. If a different greater head later wins, its own retained `createdAt` replaces the losing head's creation-time metadata and may be later. Tombstones carry no `createdAt`, so rematerialization after deletion does not inherit creation time from the deleted materialization. Synchronization never substitutes its execution time.
+For a fixed selected head the retained `CreationTime` may only move earlier. If a different greater head later wins, its own retained `CreationTime` replaces the losing head's creation metadata and may be later. Tombstones carry no `createdAt`, so rematerialization after deletion does not inherit creation time from the deleted materialization. Synchronization never substitutes its execution time.
 
 Because `createdAt` is part of `NodeJournalSemanticPart`, both full and incremental synchronization transfer it and a change to it moves the source changed-node marker. The detailed rule is normative in `incremental-graph-journal-sync.md` and `incremental-graph-journal-projection.md`.
 
@@ -188,7 +188,7 @@ localJournalCounter
 localOperationCounter
 causalSummary
 authorityClock
-node summaries/EventRefs
+node summaries/EventRefs, including retained CreationTime
 changed-node markers
 stored source cursors
 legacy graph/value/timestamp state
