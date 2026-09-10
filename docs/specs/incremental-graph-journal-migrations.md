@@ -60,7 +60,7 @@ The post-migration Journal 2 state MUST preserve every pre-migration synchroniza
 
 - for every previously represented K, the post-migration `nodeInvalidateFrontier[K]` componentwise dominates the pre-migration `nodeInvalidateFrontier[K]`;
 - if K is absent before migration and remains absent afterward, preserve its existing tombstone head unless the migration explicitly authors a later tombstone which supersedes that head; its node-scoped invalidation frontier remains componentwise preserved by the preceding rule;
-- when `keep`, `override`, or `invalidate` preserves K's current `ValueId`, preserve that value's existing `valueInvalidateFrontier` componentwise and join any migration-authored current-value invalidations into it;
+- when `keep`, replica-stable `override`, or `invalidate` preserves K's current `ValueId`, preserve that value's existing `valueInvalidateFrontier` componentwise and join any migration-authored current-value invalidations into it;
 - when migration creates a genuinely new `ValueId` for K, the old value-scoped frontier may be discarded because it is scoped only to the replaced value occurrence;
 - a migration-created tombstone still retains the pre-migration node-scoped invalidation frontier for K, because that frontier is independent of the selected head/value occurrence.
 
@@ -79,10 +79,14 @@ A migration whose input already contains Journal 2 MUST publish Journal 2 state 
 For semantic-value identity:
 
 - `keep` preserves the current `ValueId` and head authority;
-- `override` is a semantic-preserving representation rewrite and therefore also preserves the current `ValueId` and head authority;
+- `override` preserves the current `ValueId` and head authority **only** when it satisfies the replica-stability contract for identity-preserving override in `migration.md`;
 - `invalidate` preserves the current cached value and therefore preserves its `ValueId` and head authority;
 - `create` authors a new `ValueEvent(reason="migration")` for the created value occurrence;
 - `delete` authors a `DeleteEvent(reason="migration")` whose tombstone becomes the final head.
+
+Preserving a `ValueId` across migration is a cross-replica assertion, not merely a local optimization. If two supported replicas carry the same pre-migration `ValueId` V and independently apply the same identity-preserving migration into the same target version/schema, every supported result which still names V MUST carry the same exact migrated semantic value/timestamp record. Physical `NodeIdentifier` differences or host-local inputs must not make two copies of V diverge while retaining that identity.
+
+A transformation which cannot satisfy that rule MUST NOT preserve V. If the migration itself installs a replacement value, it must author a new `ValueEvent(reason="migration")` and treat the result as a new semantic value occurrence, including the ordinary stale/invalidation effects on affected dependents. Otherwise the migration must invalidate or delete the old cache so later ordinary recomputation creates the replacement value occurrence. It is invalid to keep V while storing a replica-dependent replacement payload beneath it.
 
 These operations apply inside `migrationSemanticDomain`; they do not authorize discarding synchronization-relevant summaries for represented keys which the ordinary materialized-node callback never visits.
 
@@ -92,7 +96,7 @@ Migration invalidation maps as follows:
 
 - an explicit callback `invalidate(K)` authors a node-scoped `InvalidateEvent(reason="migration")` for K. It is ordered after any migration certificate whose incoming proof it invalidates. This removes K's incoming validity proofs while leaving its outgoing proofs intact, matching explicit migration invalidation;
 - each automatic downstream invalidation propagated from that explicit decision authors a value-scoped `InvalidateEvent(reason="migration")` for the dependent's current ValueId. It marks that dependent stale without removing its retained validity proofs;
-- a preexisting stale node carried through `keep` or `override` is conservatively treated by `migration.md` as a direct invalidation root because persisted legacy state does not retain its staleness provenance. Its migrated Journal 2 state therefore contains a node-scoped `InvalidateEvent(reason="migration")` not covered by the final certificate, so its incoming proofs are absent;
+- a preexisting stale node carried through `keep` or replica-stable `override` is conservatively treated by `migration.md` as a direct invalidation root because persisted legacy state does not retain its staleness provenance. Its migrated Journal 2 state therefore contains a node-scoped `InvalidateEvent(reason="migration")` not covered by the final certificate, so its incoming proofs are absent;
 - `create(..., "potentially-outdated")` authors its migration value/certificate baseline with no claimed incoming validity proofs and then a value-scoped `InvalidateEvent(reason="migration")` for the newly created ValueId. This keeps the new cache stale, including for zero-input nodes. `create(..., "up-to-date")` requires the ordinary complete current-input basis and no migration invalidation.
 
 Migration-specific transformations may require additional `ValueEvent(reason="migration")`, `ValidateEvent(reason="migration")`, `InvalidateEvent(reason="migration")`, or `DeleteEvent(reason="migration")` events, but they MUST preserve these scope semantics and the graph/journal projection invariant. In particular, a migration MUST NOT use a value-scoped invalidation where the migration contract removes incoming proofs, or a node-scoped invalidation where the contract requires freshness-only propagation with proofs retained.
