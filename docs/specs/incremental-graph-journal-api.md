@@ -81,7 +81,7 @@ and lazily reads the current `NodeJournalSummary` for each marker's NodeKey from
 
 `lastLocalChange` is local index metadata and need not be copied inside `summary` because the enclosing range metadata establishes the source interval.
 
-The iterator is metadata-only. It does not yield `ComputedValue` payloads or timestamp/value records from legacy sublevels.
+The iterator is journal-metadata-only. For a present summary it includes the retained head-scoped `createdAt` because that is part of `NodeJournalSemanticPart`; it does not yield `ComputedValue` payloads or read legacy timestamp/value records merely to discover changes.
 
 The iterator MUST NOT materialize the complete changed-node range as one array or other graph-sized in-memory collection. Aside from implementation/runtime iterator buffers and downstream synchronization state required for other reasons, the change-discovery layer need retain only a constant number of bounded journal records at a time.
 
@@ -97,7 +97,7 @@ If iteration completes, fails, or is abandoned, the caller must finish/close the
 
 The compacted index contains only the latest marker for each represented node. Therefore the stream yields a node at most once per call even if that node changed arbitrarily many times after the cursor.
 
-The yielded summary is the node's complete current synchronization-relevant semantic state at snapshot S, not a replay of each historical event.
+The yielded summary is the node's complete current synchronization-relevant semantic state at snapshot S, including retained `createdAt` for a present head, not a replay of each historical event.
 
 ## Empty ranges and consumption
 
@@ -165,7 +165,7 @@ Supported publications MUST keep the index consistent with the materialized grap
 
 - materializing N adds one record `(D,N)` for every `D in inputEdges(N)`;
 - deleting N removes those records for N's bounded set of direct inputs;
-- value, freshness, certificate, and invalidation changes which leave N materialized and do not change schema leave its structural-edge records unchanged;
+- value, freshness, certificate, invalidation, and `createdAt` changes which leave N materialized and do not change schema leave its structural-edge records unchanged;
 - initial Journal 2 bootstrap, controlled reset, full synchronization target construction, and Journal-2-aware migration establish the exact index for their resulting materialized graph before publication/cutover;
 - incremental synchronization updates the working target index as materializations are added or removed.
 
@@ -173,7 +173,7 @@ A lifecycle/schema transition may rebuild the derived index from the resulting g
 
 Incremental normalization uses this index to traverse the receiver affected-dependent closure. Starting from changed source NodeKeys and any receiver nodes changed by their merge, synchronization range-scans the structural dependents of each affected key and continues through newly affected dependents until the same normalization fixed point as full synchronization is reached. It MUST NOT fall back to a complete materialized-node scan merely to discover reverse structural edges when this index is valid.
 
-The dependent closure itself may contain O(N) nodes—for example one input may structurally feed many independently parameterized dependents—so Journal 2 does not promise sublinear work when the actual affected closure is graph-sized. The index removes work proportional to unrelated receiver nodes; traversal cost is proportional to the source changes plus the structural closure those changes actually reach, apart from bounded-index lookup costs and other required synchronization work.
+The dependent closure itself may contain O(N) nodes—for example one input may structurally feed many independently parameterized dependents—so Journal 2 does not promise sublinear work when the actual affected closure is graph-sized. The index removes work proportional to unrelated receiver nodes; traversal cost is proportional to the source changes plus the structural closure those changes actually reach, apart from bounded-index lookup costs and other required synchronization work. The current end-to-end synchronization complexity assumption is separately recorded by `$id-3572255392439745` in `docs/intent-records/synchronization-performance.md`.
 
 No dependents array is stored in one LevelDB value. Under the existing bounded direct-in-degree assumption, the number of materialized structural edges is O(L): summing bounded `inputEdges(N)` over all L materialized nodes yields O(L) index records even when one input has unbounded out-degree. Each record contains only two bounded NodeKeys plus a bounded marker, so the index contributes O(L) serialized bits and does not change the compacted `O((L + T) R log H)` bound or the per-LevelDB-value `O(R log H)` bound.
 
@@ -195,13 +195,13 @@ Controlled receiver reset and every migration whose input already contains Journ
 
 Incremental synchronization owns one fixed committed source snapshot for the complete source-read phase. It passes that same snapshot to `possibleMaybeChanges` and consumes the returned async stream while the snapshot remains alive.
 
-A yielded changed summary may select a present `ValueId` which the receiver does not materialize. The payload/timestamp record for that exact `ValueId` must come from the **same fixed source snapshot** from which the summary was read. Otherwise the source could replace/delete the value between metadata iteration and payload fetch, yielding a payload from a different semantic state.
+A yielded changed summary may select a present `ValueId` which the receiver does not materialize. The payload and `modifiedAt` for that exact `ValueId` must come from the **same fixed source snapshot** from which the summary was read. Otherwise the source could replace/delete the value between metadata iteration and payload fetch, yielding a payload from a different semantic state. The head-scoped `createdAt` does not need a second legacy timestamp lookup because it is carried in the yielded summary itself.
 
 While the snapshot is held, incremental synchronization must:
 
 1. read the source header and initialize `possibleMaybeChanges` for the cursor range;
 2. consume each changed-node summary lazily;
-3. for each yielded present head that may need source materialization, copy or stage the required exact legacy value/timestamp record from that same snapshot;
+3. for each yielded present head that may need source materialization, copy or stage the required exact legacy payload and `modifiedAt` from that same snapshot; retain the summary's `createdAt` independently of whether the receiver already materializes that `ValueId`;
 4. finish the iterator;
 5. only then release the source snapshot after all source data needed for the operation has been copied/staged safely.
 
@@ -213,11 +213,11 @@ For a valid stored cursor P for source S:
 
 1. take one fixed committed source snapshot;
 2. initialize `possibleMaybeChanges` for P on that snapshot;
-3. consume its `changes` async stream, and from the same snapshot copy/stage every legacy payload/timestamp record required by yielded present heads that the receiver cannot otherwise materialize under the full-sync rules;
+3. consume its `changes` async stream; merge every yielded summary including its head-scoped `createdAt`, and from the same snapshot copy/stage every legacy payload/`modifiedAt` required by yielded present heads that the receiver cannot otherwise materialize under the full-sync rules;
 4. incorporate the returned `causalSummary` and `authorityClock` header high-water marks as one coupled observation;
 5. semantically merge the yielded node summaries into the receiver's already represented source knowledge;
 6. using the receiver reverse structural-edge index, run the same topological normalization rules that full synchronization would run for the changed nodes and every receiver dependent reached from them;
-7. materialize selected present heads using only records obtained from the fixed source snapshot or an already-matching receiver `ValueId`;
+7. materialize selected present heads using only payload/`modifiedAt` records obtained from the fixed source snapshot or an already-matching receiver `ValueId`, and write `createdAt` from the merged node summary;
 8. atomically publish receiver graph+journal changes, reverse structural-edge index updates, and any joined header high-water metadata;
 9. only then advance the stored source cursor to the returned `through` coordinate.
 
@@ -227,13 +227,15 @@ The receiver may need to inspect local dependents outside the yielded source cha
 
 The source cursor P certifies that every source node summary with `lastLocalChange <= P.through` was already incorporated by the receiver at P.
 
-For a source node unchanged after P, its source semantic authority/frontiers/certificate have not grown. Receiver-local state may have grown, but Journal 2's head/frontier/certificate orders are monotone, so re-reading that unchanged older source summary in a full sync cannot introduce information that the receiver did not already incorporate at P.
+For a source node unchanged after P, its complete `NodeJournalSemanticPart`—including head, frontiers, certificate, and retained present-head `createdAt`—has not changed. Receiver-local state may have grown, but re-reading that unchanged older source summary in a full sync cannot introduce per-node information that the receiver did not already incorporate at P.
+
+Conversely, if the source learns a different head-scoped `createdAt` for K after P while its head/frontiers/certificate stay unchanged, that still changes K's `NodeJournalSemanticPart`, authors the ordinary local adoption event/marker movement, and causes K to be yielded. Incremental synchronization therefore cannot miss an observable creation-time change which full synchronization from the same snapshots would apply.
 
 Source-global causal or HLC high-water knowledge may nevertheless have grown without changing any node. Because every incremental range transfers the current `causalSummary` and `authorityClock`, incremental synchronization observes the same source-global allocation knowledge that full synchronization would observe from the same source snapshot.
 
 By J2-INV-9, that source header also dominates every retained head and certificate EventRef in the summaries yielded from the same snapshot. Joining the source header therefore gives incremental synchronization at least the causal/authority knowledge that full synchronization would obtain by directly inspecting those retained references.
 
-For a changed present node, incremental synchronization reads both the current semantic summary and any required payload/timestamp record from the same source snapshot. Therefore it materializes the same selected source occurrence that full synchronization would inspect from that snapshot.
+For a changed present node, incremental synchronization reads the current semantic summary—including `createdAt`—and any required payload/`modifiedAt` from the same source snapshot. Therefore it materializes the same selected source occurrence and timestamp state that full synchronization would inspect from that snapshot.
 
 Full synchronization does not require additional source reads merely to establish `oldValue` provenance: any selected present cache whose dependency closure survives is retainable as the node's cached `oldValue`, while certificate/input mismatches affect freshness and validity only. Therefore incremental synchronization does not need an extra witness scan beyond the changed summaries and exact payloads required by the ordinary merge.
 
