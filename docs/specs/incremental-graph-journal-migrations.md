@@ -149,9 +149,19 @@ Two independently migrating hosts which contain the same converged legacy value 
 
 This avoids making a derived shared node stale merely because its bootstrap certificate came from one host while an input with the same legacy timestamp was selected from another host solely due to host-local enumeration differences.
 
-All current ValueIds are known before certificate bases are constructed.
+All current ValueIds are known before invalidation frontiers and certificate bases are constructed.
 
-## Pass 2: encode incoming validity
+## Pass 2: preserve ambiguous stale provenance
+
+Enumerate every legacy node whose freshness is `potentially-outdated` in canonical NodeKey order. For each such K, author one node-scoped `InvalidateEvent(reason="bootstrap")` after the bootstrap ValueEvents and before K's bootstrap certificate.
+
+The pre-Journal-2 representation records that K is stale but does not retain whether that stale transition originated as an explicit/direct invalidation or only as downstream propagation. Bootstrap therefore conservatively records every legacy-stale K as a node-scoped invalidation root for future synchronization. This prevents the stale fact from disappearing merely because another independently bootstrapped replica represents the same legacy cached occurrence under a different bootstrap `ValueId`.
+
+This conservative node invalidation does not remove any legacy incoming validity edge from the final bootstrap projection. The certificate authored for K in Pass 3 is causally after this invalidation and therefore covers it; the certificate basis then reconstructs the exact legacy `valid` relation. Pass 4 separately authors a later value-scoped invalidation so K remains stale without removing those reconstructed incoming proofs.
+
+For a legacy fresh node, author no bootstrap node-scoped invalidation.
+
+## Pass 3: encode incoming validity
 
 Enumerate every materialized K in canonical NodeKey order. For each K, create one `ValidateEvent(reason="bootstrap")` using the migration/publication wall-clock time as its physical HLC seed.
 
@@ -168,19 +178,21 @@ This exactly represents the current legacy incoming validity relation without pr
 
 For a fresh node, the legacy invariant guarantees every basis entry is the current input ValueId.
 
-For a stale node, partial validity is preserved exactly.
+For a stale node, partial validity is preserved exactly. Its bootstrap certificate covers the conservative node-scoped invalidation authored for that same node in Pass 2, so node invalidation does not itself remove any incoming edge represented by the basis.
 
 The bootstrap certificate does not claim that an `"unknown"` basis entry was historically validated against the migration-time input. `"unknown"` records unavailable historical validity provenance only. It does not make the migrated cached value unsafe to retain or to supply later as `oldValue`: the existing IncrementalGraph algorithm permits a stale cached value to remain while dependencies change, and passes that cache to the computor when revalidation cannot prove reuse.
 
-## Pass 3: encode stale state
+## Pass 4: encode stale state
 
 Enumerate legacy nodes whose freshness is `potentially-outdated` in canonical NodeKey order. For each such node, author one value-scoped `InvalidateEvent(reason="bootstrap")` after its bootstrap certificate.
 
-This is necessary even when the node currently has complete incoming validity: the existing flag algorithm deliberately keeps such a node stale until it is itself pulled/cache-revalidated.
+This is necessary even when the node currently has complete incoming validity: the existing flag algorithm deliberately keeps such a node stale until it is itself pulled/cache-revalidated. Together with Pass 2, the two bootstrap invalidations distinguish the future-relevant uncertainty about stale provenance from the current-value stale assertion required for exact local projection.
 
-For a fresh node, author no bootstrap invalidation.
+For a fresh node, author no bootstrap value-scoped invalidation.
 
 Zero-input stale nodes are therefore also represented correctly.
+
+After independently bootstrapped replicas synchronize, every node-scoped bootstrap frontier is joined regardless of which bootstrap `ValueId` wins head selection. A certificate from another bootstrap writer does not cover that frontier unless it actually observed the invalidation, so legacy stale knowledge cannot disappear solely because a different writer's equal-timestamp bootstrap value wins the deterministic head tie-break. A later genuine validation/cache-revalidation may cover the frontier normally.
 
 ## Projection check
 
