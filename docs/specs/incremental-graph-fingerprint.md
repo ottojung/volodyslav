@@ -12,6 +12,13 @@ transition (fresh creation). The fingerprint is stored in replica-global
 metadata and is generated once during first database initialization. It never
 changes during the lifetime of a live database.
 
+When the running database version includes Journal 2, this same
+`DatabaseFingerprint` is also the database's `JournalAuthor`. It therefore
+names the writer-local semantic event history and the corresponding causal
+vector dimension in addition to its existing physical identifier-allocation
+role. This additional Journal 2 meaning does not change the fingerprint's
+format, generation, validation, or lifecycle rules.
+
 ## Storage location
 
 ```
@@ -51,11 +58,21 @@ the project's seeded PRNG. It is generated exactly once:
 
 Taking a rendered snapshot from one host and using it to bootstrap a second,
 concurrently-writing host is outside the supported lifecycle model (see
-`database-lifecycle.md` §10). If performed anyway, the two hosts would share
-a fingerprint and could allocate colliding identifiers. Sync merge would
-detect this as an `IdentifierLookupConflictError` (the same identifier
-mapped to different semantic keys) and fail cleanly for the affected host
-without corrupting either side.
+`database-lifecycle.md` §10). If Journal 2 is present, the two hosts would
+share one `JournalAuthor` even though they are distinct continuing writer
+histories. Ordinary Journal 2 synchronization requires distinct source and
+receiver writer identities and therefore rejects such a source before merging
+its semantic state. A shared Journal author across distinct continuing
+histories is an unsupported identity collision; it cannot be treated merely as
+a physical `NodeIdentifier` lookup conflict because the two histories could
+otherwise allocate colliding `JournalEventId`s or collapse into one
+`CausalPrefix` dimension even without allocating the same physical node ID.
+
+Outside that Journal 2 semantic identity check, sharing a fingerprint can also
+produce colliding physical node identifiers. The existing identifier lookup
+may detect such a collision as `IdentifierLookupConflictError` when the same
+identifier maps to different semantic keys, but that physical check is not the
+Journal 2 identity-safety mechanism.
 
 New hosts obtain a distinct fingerprint through the fresh-creation path
 (`database-lifecycle.md` §4.3). There is no supported "clone this database
@@ -98,8 +115,10 @@ remote hosts during sync/reset. However:
 
 - **Normal sync merge**: A host's staged snapshot may contain a different
   fingerprint. The local active replica keeps its own fingerprint; the
-  remote host fingerprint is not adopted. Merge does not modify the local
-  fingerprint.
+  remote host fingerprint is not adopted. Under Journal 2 the local and remote
+  fingerprints are also their Journal writer identities, so normal Journal 2
+  synchronization requires them to be distinct. Merge does not modify the
+  local fingerprint.
 
 - **Reset/import into existing live DB**: The snapshot may contain a remote
   fingerprint. After import, the live database preserves its pre-import
@@ -113,4 +132,6 @@ remote hosts during sync/reset. However:
 
 Through the supported lifecycle transitions, each independently-created host
 obtains a distinct fingerprint. This is what makes node identifiers globally
-unique across hosts even when the same local index values are allocated.
+unique across hosts even when the same local index values are allocated and,
+under Journal 2, keeps independently continuing writer histories in distinct
+Journal author namespaces.
