@@ -57,7 +57,9 @@ isEqual(receiverValue, sourceValue)
 
 for the corresponding semantic node. This is the one Journal 2 synchronization/lifecycle operation allowed to use `ComputedValue` equality for this purpose.
 
-Equality merely permits leaving already-equal payload bytes in place. It does not prove shared ValueId, provenance, causal history, validation history, journal identity, or authority time.
+Equality merely permits leaving already-equal payload bytes in place. It does not prove shared ValueId, provenance, causal history, validation history, journal identity, authority time, or creation time.
+
+Every materialized reset target must contain a valid legacy timestamp record satisfying `createdAt <= modifiedAt`. The reset baseline retains that target `createdAt` in the node summary exactly; it does not manufacture a creation time from reset execution time.
 
 ## New journal incarnation
 
@@ -132,17 +134,20 @@ where a missing summary contributes the zero/empty frontier. This retained front
 First enumerate every materialized target semantic node in canonical NodeKey order. For every such K:
 
 1. retain/construct the target legacy value/timestamp record according to reset semantics;
-2. author a new local `ValueEvent(reason="reset")`, using the ordinary ValueEvent HLC seed from that target record's unchanged/copied `modifiedAt`;
-3. that new event ID becomes K's new `ValueId`, even if equal payload bytes were reused without rewriting.
+2. set the reset node summary's `createdAt` to the canonical `createdAt` of that target timestamp record;
+3. author a new local `ValueEvent(reason="reset")`, using the ordinary ValueEvent HLC seed from that target record's unchanged/copied `modifiedAt`;
+4. that new event ID becomes K's new `ValueId`, even if equal payload bytes were reused without rewriting.
+
+The new reset `ValueId` identifies the reset-authored value occurrence, not the node's creation time. `createdAt` remains node/materialization metadata and exactly follows the reset target. A later synchronization may merge it only with another summary carrying this same selected reset head; a pre-reset losing head or tombstone cannot contribute its old creation time.
 
 The `modifiedAt` seed does not determine reset enumeration or distinguish reset value authorities. Each target value/timestamp record comes from a value occurrence represented by the pre-reset receiver or reset source; that occurrence's authority time is at least its own `modifiedAt`, and J2-INV-9 places that authority beneath the corresponding input header. Reset joins both input authority clocks before authoring the baseline, so the joined `authorityClock.physical` already dominates every target `modifiedAt`. The ordinary HLC allocator therefore keeps reset value events on that joined physical high-water coordinate and advances their logical coordinate in canonical NodeKey order. Reset authority is deliberately above the observed cut without assigning additional conflict meaning to target timestamp order.
 
 After all target present nodes have their reset ValueIds, author the validation/invalidation baseline in deterministic semantic topological order:
 
-4. author a local `ValidateEvent(reason="reset")` whose basis encodes the resulting legacy incoming validity relation as described below;
-5. if the resulting target node is stale, author a local value-scoped `InvalidateEvent(reason="reset")` after the validation so the projection remains stale.
+5. author a local `ValidateEvent(reason="reset")` whose basis encodes the resulting legacy incoming validity relation as described below;
+6. if the resulting target node is stale, author a local value-scoped `InvalidateEvent(reason="reset")` after the validation so the projection remains stale.
 
-For every K in `ResetKeys` which is absent from the resulting target legacy graph, author a local `DeleteEvent(reason="reset")` in deterministic canonical NodeKey order.
+For every K in `ResetKeys` which is absent from the resulting target legacy graph, author a local `DeleteEvent(reason="reset")` in deterministic canonical NodeKey order. The resulting absent summary retains no `createdAt`.
 
 This includes a node which is represented only by a tombstone in the chosen source and was completely unknown to the pre-reset receiver. Such a source tombstone has been observed by reset and must be represented by the new local reset baseline; otherwise an older delayed value could later resurrect the node.
 
@@ -237,13 +242,15 @@ project(Reset(R,S)) = resetTarget(R,S)
 
 modulo physical storage identities and host-local metadata which the lifecycle explicitly preserves without semantic graph effect.
 
+This includes the target legacy timestamp state: every present K has `B[K].createdAt == resetTarget(R,S)[K].createdAt` and the selected reset occurrence's `modifiedAt`.
+
 This is the primary user-visible meaning of reset.
 
 ### R2. Fresh-baseline identity law
 
-For every K materialized in `resetTarget(R,S)`, B contains a newly authored local reset `ValueId` for K rather than reusing S's source `ValueId` merely because the payload came from S.
+For every K materialized in `resetTarget(R,S)`, B contains a newly authored local reset `ValueId` for K rather than reusing S's source `ValueId` merely because the payload came from S. B also retains that target materialization's `createdAt` in the present node summary; the creation time is not part of the new `ValueId`.
 
-For every K in `ResetKeys` absent from `resetTarget(R,S)`, B contains a newly authored local reset tombstone.
+For every K in `ResetKeys` absent from `resetTarget(R,S)`, B contains a newly authored local reset tombstone and no retained `createdAt`.
 
 Therefore reset is a semantic rebaseline, not a journal-identity copy.
 
@@ -343,7 +350,7 @@ localJournalCounter
 localOperationCounter
 causalSummary
 authorityClock
-node summaries and immutable EventRefs
+node summaries and immutable EventRefs, including retained createdAt
 changed-node markers
 derived reverse structural-edge index
 receiver-local source cursors
@@ -380,10 +387,11 @@ Reset creates or retains only a constant number of event/summary components per 
 - one componentwise-max node-scoped invalidation frontier;
 - one certificate for a present value;
 - at most one initial value-scoped stale assertion;
+- one bounded `createdAt` scalar for a present summary;
 - bounded input ValueId basis;
 - ordinary bounded causal metadata and constant-many HLC authority scalars.
 
-The retained node frontier is one `CausalPrefix`, hence `O(R log H)` bits per represented key, exactly the same asymptotic per-summary cost already assumed by Journal 2.
+The retained node frontier is one `CausalPrefix`, hence `O(R log H)` bits per represented key, exactly the same asymptotic per-summary cost already assumed by Journal 2. The retained `createdAt` contributes only another `O(log H)` scalar for a present node.
 
 Receiver-local source cursors are deleted rather than accumulated across resets.
 
