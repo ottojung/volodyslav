@@ -22,11 +22,12 @@ OperationId              = {
     incarnation: JournalIncarnation,
     sequence: LocalOperationSequence
 }
+DatabaseVersion          = bounded exact persisted global/version identity
 MigrationId              = bounded stable migration tag
 OperationTag             = bounded stable operation tag
 ```
 
-`MigrationId` and `OperationTag` are fixed/bounded serialized primitive identifiers. They are not arbitrary user payload strings.
+`DatabaseVersion`, `MigrationId`, and `OperationTag` are fixed/bounded serialized primitive identifiers. They are not arbitrary user payload strings. `DatabaseVersion` is the exact database-version identity used by the lifecycle compatibility boundary.
 
 Missing coordinates in a `CausalPrefix` mean zero.
 
@@ -328,6 +329,7 @@ A source-bearing operation uses:
 
 ```text
 OperationSourceRef = {
+    databaseVersion: DatabaseVersion,
     writer: JournalAuthor,
     incarnation: JournalIncarnation,
     through: JournalSequence | 0,
@@ -336,7 +338,11 @@ OperationSourceRef = {
 }
 ```
 
-Journal 2 source-bearing operations require a valid Journal 2 source snapshot. The five fields above record the synchronization-relevant Journal 2 header state of the stable source snapshot consumed by the operation: `through` identifies the source's local semantic head, while `causalSummary` and `authorityClock` capture causal/authority knowledge which may grow without advancing that local head. They do not claim byte-exact snapshot identity or encode database/schema version; compatibility is established separately by the operation's lifecycle preconditions.
+Journal 2 source-bearing operations require a valid Journal 2 source snapshot. `databaseVersion` is the exact database version under which that source snapshot was interpreted by the operation. The remaining fields record the synchronization-relevant Journal 2 header state of the same stable source snapshot: `through` identifies the source's local semantic head, while `causalSummary` and `authorityClock` capture causal/authority knowledge which may grow without advancing that local head.
+
+Together these fields identify the supported source invocation state relevant to synchronization/reset history. A Journal-2-aware migration may change `databaseVersion` while preserving the writer, incarnation, journal counter, causal summary, and authority clock, so version is not derivable from the Journal header coordinates and MUST be recorded separately.
+
+No separate graph-schema field is required in `OperationSourceRef`. Under `database-lifecycle.md`, database version is the compatibility boundary identifying the interpretation of synchronized graph state, and a supported synchronization/reset source must independently satisfy the exact graph-schema precondition for that version. A snapshot whose persisted graph scheme does not match the schema accepted for its database version is not a supported source invocation merely because its Journal header fields match.
 
 Operation records are a tagged union:
 
@@ -378,7 +384,7 @@ OperationRecord =
 
 An operation record is local historical/debugging structure. It is **not** synchronization authority, has no causal authority of its own, and is never imported as semantic state. A source-bearing operation record may nevertheless store source causal/authority high-water metadata as bounded historical invocation metadata.
 
-The tagged fields identify the high-level invocation itself rather than only its operation kind. In particular, synchronization/reset records identify their source synchronization-relevant snapshot state, and migration records identify the migration being run.
+The tagged fields identify the high-level invocation itself rather than only its operation kind. In particular, synchronization/reset records identify their source database version and synchronization-relevant snapshot state, and migration records identify the migration being run.
 
 `parent`, when present, names the direct high-level caller known to the implementation. It does not imply semantic happened-before, does not affect event authority, and does not require the parent record to enumerate children. Parent recording is optional because independently committing nested operations need not share one publication transaction; Journal 2 does not require a complete transitive call tree.
 
