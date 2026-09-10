@@ -150,7 +150,7 @@ These records are journal information, not changes to the legacy graph represent
 
 For every supported persisted database state, the legacy materialized graph must equal the journal projection defined in `incremental-graph-journal-projection.md`, modulo local physical identifier choices explicitly excluded there.
 
-A present journal value occurrence must correspond to exactly one materialized semantic node in the legacy graph. For every present K, the legacy `createdAt` record must equal the node summary's retained `createdAt`. An absent journal state must not have a materialized legacy node and must retain no `createdAt`.
+A present journal value occurrence must correspond to exactly one materialized semantic node in the legacy graph. For every present K, `canonical(legacyCreatedAt(K))` must equal the node summary's retained `CreationTime`. An absent journal state must not have a materialized legacy node and must retain no `createdAt`.
 
 The derived reverse structural-edge index must exactly equal the structural dependency edges among the current materialized nodes: for every materialized N and every `D in inputEdges(N)` it contains `(D,N)`, and it contains no edge whose dependent is not materialized or whose input is not a structural input of that dependent.
 
@@ -168,7 +168,7 @@ Journal keys and values contain no `ComputedValue` payload. Historical payloads 
 
 A semantic value occurrence has one immutable `ValueId` and one immutable `ValueRef` context/authority time. Normal synchronization preserves all of those fields when the value is copied between databases. Receiver-local adoption event IDs do not become new `ValueId`s.
 
-A successful local computation which changes the semantic value creates a new `ValueId`. A successful computation or cache revalidation which returns the existing semantic value preserves its `ValueId` and original value authority and creates only a new validation certificate. Node-summary `createdAt` is synchronization-relevant materialization metadata but is not part of `ValueId` identity.
+A successful local computation which changes the semantic value creates a new `ValueId`. A successful computation or cache revalidation which returns the existing semantic value preserves its `ValueId` and original value authority and creates only a new validation certificate. Node-summary `createdAt` is synchronization-relevant materialization-lineage metadata but is not part of `ValueId` identity or EventRef authority.
 
 ### J2-INV-5: causality-respecting deterministic authority
 
@@ -201,7 +201,7 @@ After canonical compaction, each represented semantic key has only a constant nu
 
 The derived reverse structural-edge index adds one constant-size record per materialized dependency edge. Because maximum direct in-degree is bounded, the number of those edges is O(L), so the index contributes only O(L) additional serialized bits.
 
-The retained `createdAt` adds only one `O(log H)` scalar for each present node summary and therefore does not change the asymptotic bound.
+The retained `CreationTime` adds one fixed/bounded `O(1)` primitive for each present node summary. It therefore does not extend the intent record's `H` parameter and does not change the asymptotic bound.
 
 Consequently the complete compacted journal has serialized size:
 
