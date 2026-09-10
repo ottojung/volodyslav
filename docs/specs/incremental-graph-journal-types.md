@@ -238,7 +238,7 @@ The value payload is not part of `ValueRef` and is never journaled.
 
 For supported state, one `ValueId` denotes one exact semantic value occurrence at one semantic `NodeKey`. Every replica currently materializing that `ValueId` must therefore hold the same exact payload and `modifiedAt` for that occurrence and preserve the same immutable `ValueRef.context` and `ValueRef.authorityTime`. This includes identity-preserving Journal-2-aware migrations: if a migration keeps a `ValueId`, its migration contract must guarantee replica-stable transformation of that payload and `modifiedAt`. Ordinary synchronization need not compare payloads to verify this invariant.
 
-The legacy `createdAt` field is node-scoped metadata rather than value-occurrence identity. It is not compared, copied, or validated as part of `ValueId`; Journal 2 synchronization combines it separately according to the creation-time merge rule in `incremental-graph-journal-projection.md`.
+The legacy `createdAt` field is node-scoped metadata rather than value-occurrence identity. It is not compared, copied, or validated as part of `ValueId`; it is retained in `NodeJournalSummary` and merged by the head-scoped minimum rule in `incremental-graph-journal-sync.md` and `incremental-graph-journal-projection.md`.
 
 ## Certificate basis
 
@@ -322,15 +322,16 @@ NodeJournalSummary = {
     // Present only when head.kind == "present".
     certificate?: ValidationCertificate,
     valueInvalidateFrontier?: CausalPrefix,
+    createdAt?: AuthorityPhysicalTime,
 
     // Local change-index coordinate, never imported as semantic authority.
     lastLocalChange: JournalSequence
 }
 ```
 
-The `certificate`, when present, must name the current `head.value.id`.
+The `certificate`, when present, must name the current `head.value.id`. `createdAt` is present exactly when the head is present and is the earliest represented creation time for the current materialization/head of K, in canonical epoch milliseconds. It is node-scoped rather than value-occurrence identity and carries no Journal event authority. Synchronization merges it only among input summaries carrying the selected head, so a tombstone or replacement head does not inherit creation time from a losing materialization.
 
-The two invalidation vectors and the contexts inside the current value/certificate dominate the summary size. `authorityTime` contributes only a constant number of `O(log H)` scalar coordinates per retained reference. Under bounded NodeKey and in-degree assumptions, one summary is `O(R log H)` bits.
+The two invalidation vectors and the contexts inside the current value/certificate dominate the summary size. `authorityTime` and `createdAt` each contribute only a constant number of `O(log H)` scalar coordinates per retained summary/reference. Under bounded NodeKey and in-degree assumptions, one summary is `O(R log H)` bits.
 
 ## High-level operation records
 
@@ -458,9 +459,9 @@ AdoptEvent = JournalEventBase & {
 
 `InvalidateEvent.reason` records why the event was authored; `scope` determines its projection semantics. Initial bootstrap uses both scopes for each legacy-stale node: a conservative node-scoped `reason="bootstrap"` invalidation is authored before that node's bootstrap certificate, and a value-scoped `reason="bootstrap"` invalidation is authored after the certificate to preserve stale freshness. Reset stale-baseline invalidations are value-scoped. Journal-2-aware migration may author either node-scoped or value-scoped `reason="migration"` invalidations according to the migration semantics specified in `incremental-graph-journal-migrations.md`.
 
-`NodeJournalSemanticPart` is `NodeJournalSummary` without `node` and `lastLocalChange`.
+`NodeJournalSemanticPart` is `NodeJournalSummary` without `node` and `lastLocalChange`; it therefore includes the present-head `createdAt` field. A change to `createdAt` is a semantic-part change for incremental change discovery even though `createdAt` itself carries no Journal event authority.
 
-An `AdoptEvent` is local history but creates no new foreign value, certificate, invalidation, or tombstone authority. It records that those authorities became represented by this database.
+An `AdoptEvent` is local history but creates no new foreign value, certificate, invalidation, tombstone, or creation-time authority. It records that bounded source semantic state became represented by this database.
 
 The optional `operation` field has no effect on folding, authority, projection, synchronization, compaction correctness, or causality.
 
