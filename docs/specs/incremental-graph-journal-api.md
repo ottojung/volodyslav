@@ -260,9 +260,11 @@ This is the required correctness condition for enabling the optimization.
 
 ## Invalid cursor behavior
 
-If source identity/incarnation does not match, the receiver-local cursor record is absent (including after reset or Journal-2-aware migration), progress is malformed, required cursor state is unavailable, or the receiver reverse structural-edge index is absent/not yet built, incremental synchronization must not guess. It falls back to full synchronization and, after success, stores a fresh cursor for the source's current incarnation/head and establishes a correct derived reverse structural-edge index for the resulting receiver graph.
+If source identity/incarnation does not match, the receiver-local cursor record is absent (including after reset or Journal-2-aware migration), progress is malformed, or required cursor state is unavailable, incremental synchronization must not guess. It falls back to full synchronization and, after success, stores a fresh cursor for the source's current incarnation/head.
 
-A reverse structural-edge index which is present but disagrees with the materialized graph is a detected J2-INV-1 violation, not an optimization miss. It MUST be rejected as unsupported state under the projection consistency rules (normally as `JournalStructuralIndexError`) rather than repaired or hidden by falling back to full synchronization. More generally, a detected graph/journal consistency violation is rejected rather than converted into an incremental-to-full fallback.
+The reverse structural-edge index is not optional cursor state. J2-INV-1 requires every supported Journal 2 replica to contain the exact index for its current materialized structural graph. If the index is missing, unreadable/malformed, or disagrees with the materialized graph, that is a detected supported-state violation (normally `JournalStructuralIndexError`). Synchronization MUST reject it under the projection consistency rules rather than hide or repair it by falling back from incremental to full synchronization.
+
+More generally, a detected graph/journal consistency violation is rejected rather than converted into an incremental-to-full fallback.
 
 ## No computor API dependency
 
