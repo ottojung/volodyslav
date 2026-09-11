@@ -52,9 +52,9 @@ A normal synchronization cycle follows this lifecycle:
 2. checkpoint the active local database according to the repository lifecycle;
 3. publish the local host's own state by advancing this host's authoritative synchronization branch to include the checkpoint from step 2, before any peer state is fetched or staged; this is the enforcement point for the publication-before-propagation rule in `database-lifecycle.md` §14 rule 13;
 4. fetch participating peer host branches from the repository;
-5. stage one stable source hostname snapshot;
-6. classify the staged durable database identity before treating the hostname branch as a peer: if its Journal writer equals the receiver writer, apply the same-writer branch-alias rules below and do not invoke ordinary semantic synchronization for that source;
-7. for a distinct-writer peer, validate exact database/schema compatibility and persisted invariants;
+5. inspect/stage stable source metadata sufficient to classify participating hostname branches by persisted durable database identity and Journal writer before any member of a same-writer branch group is semantically merged;
+6. apply the same-writer branch-alias rules below: classify branches carrying the receiver's own writer against the receiver, and for each other Journal writer with multiple participating branches select one safe dominating representative or fail that writer group;
+7. for each selected distinct-writer peer, validate exact database/schema compatibility and persisted invariants;
 8. construct an inactive target from the local receiver snapshot;
 9. run either Journal 2 full semantic synchronization from `incremental-graph-journal-sync.md` or, when a valid cursor permits it, the cursor-based incremental protocol from `incremental-graph-journal-api.md`; both paths join source causal and HLC authority high-water metadata under the same observation preconditions;
 10. project/rebuild unchanged legacy graph sublevels from the resulting semantic plan;
@@ -62,7 +62,7 @@ A normal synchronization cycle follows this lifecycle:
 12. when the merge changed a receiver journal node summary, the receiver journal header causal/authority high-water state, or a legacy graph record, durably flush the target and atomically cut it over as active; when none of those changed, leave the active replica pointer unchanged, as required by `database-lifecycle.md` §7.2 step 7;
 13. reopen/rebind active database state where the lifecycle requires it;
 14. clear source staging state;
-15. continue with other source hosts or report per-host failures according to the existing synchronization caller contract.
+15. continue with other selected source writers or report per-host/per-writer failures according to the existing synchronization caller contract.
 
 Advancing the receiver's `causalSummary` or `authorityClock` counts as a merge change requiring cutover even when no node summary or legacy graph record changed, because those retained high-water marks affect future local event allocation. A receiver-local cursor/diagnostic update alone is optimization state and does not make an otherwise no-op semantic merge require active-replica cutover.
 
@@ -93,6 +93,8 @@ If any of those same-writer coordinates is ahead of the receiver, the source is 
 A staged pre-Journal-2 snapshot which carries the receiver's same durable `DatabaseFingerprint` is likewise not an ordinary peer input. Under the supported hostname-change lifecycle it may be skipped as historical self-branch state; it is not cross-version merged into Journal 2. Same-host restoration and controlled reset are the only operations which may deliberately consume same-writer state, under their own provenance and allocator rules.
 
 The skip rule does not weaken the fingerprint-cloning boundary. Independent installations which continue under one `DatabaseFingerprint` remain unsupported. Normal synchronization does not use hostname inequality to manufacture distinct Journal identity and does not attempt to reconcile two such continuing histories.
+
+The same transport-alias issue can appear from a third receiver's perspective: several participating hostname branches may carry the same `JournalAuthor` even though that author is distinct from the receiver. Before semantically merging any member of such a writer group, synchronization MUST choose one representative branch whose header **dominates every other branch in that group** under the same five coordinates used above: `localJournalCounter`, `localOperationCounter`, `journalIncarnation`, componentwise `causalSummary`, and `authorityClock`. Every dominated branch is then cleared as an older alias and is not counted as a failure. If no one branch dominates all other branches, the group contains incomparable same-writer continuations and synchronization MUST fail that writer group rather than choose by hostname, transport order, or `localJournalCounter` alone. This rule keeps the writer-keyed cursor `journal/cursors/<sourceFingerprint>` monotone and, more importantly, prevents synchronization from discarding causal/HLC or incarnation state that a simple greatest-counter rule could miss.
 
 ## Full sync is normative
 
