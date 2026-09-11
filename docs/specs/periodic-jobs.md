@@ -26,3 +26,15 @@ A failed compaction attempt is recorded as its own hourly-responsibility failure
 The hourly cadence is an operational Volodyslav policy, not part of Journal 2 semantic identity, synchronization, conflict authority, or convergence. Journal 2 correctness must remain independent of the exact instant at which an hourly compaction attempt actually runs.
 
 See `$id-2399748558090155`.
+
+## Daily job
+
+Volodyslav also registers the existing `daily-2am` periodic job with the POSIX cron schedule:
+
+```text
+0 2 * * *
+```
+
+Each execution runs the application's daily-tasks responsibility through the existing daily task runner. This job has no Journal 2 compaction responsibility; canonical Journal 2 compaction remains part of `every-hour` only.
+
+The daily registration uses the declarative scheduler's ordinary cron, retry, and missed-run semantics. This section documents the existing application registration and does not change those generic scheduler rules.
