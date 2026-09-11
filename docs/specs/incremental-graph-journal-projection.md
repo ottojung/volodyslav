@@ -208,6 +208,7 @@ Opening, staging, restoration, and compaction MAY validate the following. Migrat
 - every fresh legacy node equals the journal-derived freshness;
 - every legacy validity edge equals `edgeValid`;
 - every materialized dependency is materialized;
+- the derived reverse structural-edge index exactly equals the structural dependency edges of the current materialized graph as required by J2-INV-1: it contains `(D,N)` for every materialized N and every `D in inputEdges(N)`, and no other record;
 - current certificates name the current value and have the exact schema-derived basis arity;
 - all retained/raw structures available to the transition which claim the same `JournalEventId` agree on the immutable semantic event identity defined in `incremental-graph-journal-types.md`, including context/authority time, node, event kind, and all exposed kind-specific semantic body fields; in particular equal certificate event IDs require equal `value` and `basis`;
 - every repeated `ValueId` identifies the same semantic NodeKey, exact payload, and `modifiedAt`; `createdAt` is deliberately excluded from value-occurrence identity;
