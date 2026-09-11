@@ -128,11 +128,11 @@ For one incremental `R <- S`, synchronization owns one fixed committed source sn
 
 - the source header, including causal and HLC authority high-water metadata;
 - changed-node markers and current changed-node summaries;
-- every source legacy value/timestamp record required to materialize a selected present `ValueId`.
+- every source legacy payload and `modifiedAt` required to materialize a selected present `ValueId`.
 
 It is invalid to consume change metadata from one snapshot, release that snapshot, reopen the live source database, and then fetch a payload by NodeKey or current identifier. The reopened source may have advanced to another `ValueId` or deleted the node.
 
-The synchronization procedure may release its source snapshot only after the private async iterator is finished and every required payload/timestamp record has been copied or safely staged. Payload records may be streamed directly into an inactive target replica so no requirement exists to hold all payloads in RAM simultaneously.
+The synchronization procedure may release its source snapshot only after the private async iterator is finished and every required payload/`modifiedAt` pair has been copied or safely staged. Payload records may be streamed directly into an inactive target replica so no requirement exists to hold all payloads in RAM simultaneously. The selected head's retained `CreationTime` travels in the node summary and does not require a second legacy timestamp read.
 
 The source snapshot remains internal to the synchronization procedure and is never exposed through a public iterator API.
 
