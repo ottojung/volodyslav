@@ -138,7 +138,7 @@ optional bounded raw-history tail retained by the compacted result
 stored source cursors
 ```
 
-The reverse structural-edge records are local derived acceleration state, not synchronization authority. They exactly index the current materialized structural graph so incremental synchronization can traverse receiver dependents without scanning unrelated nodes; see `incremental-graph-journal-api.md`.
+The reverse structural-edge records are local derived acceleration state, not synchronization authority. They exactly index the current materialized structural graph and provide direct reverse-dependency lookup for incremental normalization. Their existence does not impose an end-to-end incremental-synchronization running-time bound; see `incremental-graph-journal-api.md` and `$id-3572255392439745`.
 
 The optional bounded tail above describes what a completed compaction chooses to retain; it is not a bound on raw history accumulated before the next compaction.
 
@@ -253,13 +253,16 @@ Every retained head authority reference (`S[K].head.value` when present, `S[K].h
 ```text
 E.id.sequence <= header.causalSummary[E.id.author]
 E.authorityTime <= header.authorityClock
+E.context[A] <= header.causalSummary[A]    for every author A
 ```
 
-where `E` denotes the retained reference being quantified and the second comparison is the canonical `AuthorityTime` order.
+where `E` denotes the retained reference being quantified, the second comparison is the canonical `AuthorityTime` order, and missing causal coordinates are zero.
 
-Every supported transition which installs or adopts a retained head or certificate reference MUST join that reference's writer coordinate and authority time into the header in the same atomic publication. Local authoring, synchronization adoption, reset, migration from existing Journal 2, same-host restoration, and compaction preserve this invariant.
+Every supported transition which installs or adopts a retained head or certificate reference MUST join that reference's writer coordinate, authority time, and full immutable `context` componentwise into the header in the same atomic publication. Local authoring, synchronization adoption, reset, migration from existing Journal 2, same-host restoration, and compaction preserve this invariant.
 
-Together with J2-INV-7, this makes the header a sufficient high-water summary of every retained semantic authority represented by the database. A consumer which joins a valid source header therefore observes at least the causal coordinate and authority time of every head/certificate reference retained in that source's node summaries.
+Together with J2-INV-7, this makes the header a sufficient high-water summary of every retained semantic authority represented by the database. A consumer which joins a valid source header therefore observes at least the event coordinate, full immutable context, and authority time of every head/certificate reference retained in that source's node summaries.
+
+Because a supported source header componentwise dominates every retained reference context in that source, the own-writer observation precondition `S.causalSummary[R.header.writer] <= R.header.localJournalCounter` also transitively bounds every retained reference's `context[R.header.writer]` by the receiver's allocation frontier before observation.
 
 ### J2-INV-10: writer-local causal coordinate ownership
 
@@ -299,7 +302,7 @@ The normative semantic synchronization operation is full synchronization. It sca
 
 Ordinary synchronization is between distinct Journal writer identities. Same-writer continuation is handled by restoration, while controlled reset may consume an older/equal same-writer source only under the additional allocator/incarnation preconditions in `incremental-graph-journal-reset.md`.
 
-The journal change index and cursor machinery are an optimization. Incremental source discovery uses the private `possibleMaybeChanges(sourceSnapshot, cursor)` asynchronous iterator; it is not part of the public IncrementalGraph/computor API and does not materialize the complete changed-node range in RAM. A local reverse structural-edge index lets the receiver traverse only the dependent closure reached from changed nodes instead of scanning unrelated materialized nodes merely to discover reverse dependencies.
+The journal change index and cursor machinery are an optimization. Incremental source discovery uses the private `possibleMaybeChanges(sourceSnapshot, cursor)` asynchronous iterator; it is not part of the public IncrementalGraph/computor API and does not materialize the complete changed-node range in RAM. A local reverse structural-edge index provides exact reverse-dependency lookup for affected-closure normalization. These structures do not currently imply an end-to-end incremental-synchronization running-time guarantee; `$id-3572255392439745` leaves that contract to GitHub issue #1607.
 
 For a valid cursor, incremental synchronization must be observationally equivalent to the full operation from the same source and receiver states.
 
@@ -309,7 +312,7 @@ Journal 2 does not impose a synchronization-only provenance restriction on retai
 
 Structural dependency closure remains separate: if a selected present node has a finally absent required input, synchronization must remove the non-materializable cache and author sufficient tombstone authority as specified by the full-sync normalization rules.
 
-The current end-to-end synchronization complexity assumption is recorded by `$id-3572255392439745` in `docs/intent-records/synchronization-performance.md`; it is separate from the correctness equivalence above.
+No end-to-end asymptotic running-time bound is currently required for valid-cursor incremental synchronization. Whole-replica validation, inactive-target construction, or other graph-sized work remains permitted by the current specification; see `$id-3572255392439745` and GitHub issue #1607.
 
 ## Rejection conditions
 

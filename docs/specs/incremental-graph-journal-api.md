@@ -119,7 +119,16 @@ The iterator itself does not mutate remote source state.
 
 Both may grow on a source merely because it observed another replica, without the source authoring a node-semantic event and therefore without advancing `localJournalCounter` or moving a changed-node marker.
 
-Transferring these header high-water marks separately prevents global causal/authority knowledge from requiring a graph-wide change marker and avoids event-echo protocols. Receiver growth of these header fields alone does not create a local semantic event. The two header fields are joined as one coupled observation and must preserve J2-INV-7 from `incremental-graph-journal.md`.
+Before the receiver joins either source header field, it MUST require the canonical Observation precondition from `incremental-graph-journal-types.md`:
+
+```text
+source.causalSummary[receiver.header.writer]
+    <= receiver.header.localJournalCounter
+```
+
+If this fails, synchronization fails for that source before any receiver state change or cursor advance. The failure MUST NOT be converted into a full-synchronization fallback because full synchronization applies the same precondition and fails identically.
+
+Transferring these header high-water marks separately prevents global causal/authority knowledge from requiring a graph-wide change marker and avoids event-echo protocols. Receiver growth of these header fields alone does not create a local semantic event. After the precondition above holds, the two header fields are joined as one coupled observation and must preserve J2-INV-7 and J2-INV-10 from `incremental-graph-journal.md`.
 
 ## Compaction-aware semantics
 
@@ -149,7 +158,7 @@ The exact key encoding is implementation-defined provided range iteration is ord
 
 ## Receiver reverse structural-edge index
 
-Incremental synchronization must be able to find the receiver's materialized structural dependents of an affected NodeKey without scanning every materialized receiver node. The legacy `valid` relation cannot supply this lookup because it is a proof/invalidation-frontier relation and is deliberately incomplete for stale nodes.
+Incremental synchronization uses an exact receiver-side lookup from an affected NodeKey to its currently materialized structural dependents. The legacy `valid` relation cannot supply this lookup because it is a proof/invalidation-frontier relation and is deliberately incomplete for stale nodes.
 
 The Journal 2 sublevel therefore maintains a local derived reverse structural-edge index with one individually bounded record per materialized structural edge, equivalent to:
 
@@ -171,9 +180,9 @@ Supported publications MUST keep the index consistent with the materialized grap
 
 A lifecycle/schema transition may rebuild the derived index from the resulting graph. Ordinary same-schema operations maintain it incrementally. Same-host restoration restores the previously published index together with the rest of the database state, subject to ordinary consistency validation.
 
-Incremental normalization uses this index to traverse the receiver affected-dependent closure. Starting from changed source NodeKeys and any receiver nodes changed by their merge, synchronization range-scans the structural dependents of each affected key and continues through newly affected dependents until the same normalization fixed point as full synchronization is reached. It MUST NOT fall back to a complete materialized-node scan merely to discover reverse structural edges when this index is valid.
+Incremental normalization uses this index to determine the receiver affected-dependent closure. Starting from changed source NodeKeys and any receiver nodes changed by their merge, synchronization follows structural dependents and continues through newly affected dependents until the same normalization fixed point as full synchronization is reached.
 
-The dependent closure itself may contain O(N) nodes—for example one input may structurally feed many independently parameterized dependents—so Journal 2 does not promise sublinear work when the actual affected closure is graph-sized. The index removes work proportional to unrelated receiver nodes; traversal cost is proportional to the source changes plus the structural closure those changes actually reach, apart from bounded-index lookup costs and other required synchronization work. The current end-to-end synchronization complexity assumption is separately recorded by `$id-3572255392439745` in `docs/intent-records/synchronization-performance.md`.
+This defines the dependent set whose semantics may need normalization; it is not an end-to-end running-time guarantee. The current specification does not prohibit additional receiver scans or whole-replica work for validation, inactive-target construction, lifecycle processing, or other correctness requirements. The future incremental-synchronization time bound is owned by `$id-3572255392439745` and GitHub issue #1607.
 
 No dependents array is stored in one LevelDB value. Under the existing bounded direct-in-degree assumption, the number of materialized structural edges is O(L): summing bounded `inputEdges(N)` over all L materialized nodes yields O(L) index records even when one input has unbounded out-degree. Each record contains only two bounded NodeKeys plus a bounded marker, so the index contributes O(L) serialized bits and does not change the compacted `O((L + T) R log H)` bound or the per-LevelDB-value `O(R log H)` bound.
 
@@ -199,11 +208,13 @@ A yielded changed summary may select a present `ValueId` which the receiver does
 
 While the snapshot is held, incremental synchronization must:
 
-1. read the source header and initialize `possibleMaybeChanges` for the cursor range;
-2. consume each changed-node summary lazily and stage the bounded summary information required by the target construction;
-3. for each yielded present head that may need source materialization, copy or stage the required exact legacy payload and `modifiedAt` from that same snapshot; retain the summary's `createdAt` independently of whether the receiver already materializes that `ValueId`;
-4. finish the iterator;
-5. only then release the source snapshot after all source data needed for the operation has been copied/staged safely.
+1. read the source header;
+2. require `source.causalSummary[receiver.header.writer] <= receiver.header.localJournalCounter` before using the source header or consuming source changes for a merge; failure aborts this source without receiver state change or cursor advance and is not a full-sync fallback;
+3. initialize `possibleMaybeChanges` for the cursor range;
+4. consume each changed-node summary lazily and stage the bounded summary information required by the target construction;
+5. for each yielded present head that may need source materialization, copy or stage the required exact legacy payload and `modifiedAt` from that same snapshot; retain the summary's `createdAt` independently of whether the receiver already materializes that `ValueId`;
+6. finish the iterator;
+7. only then release the source snapshot after all source data needed for the operation has been copied/staged safely.
 
 The copied/staged payloads are transient synchronization data, not journal records. They may be streamed directly into an inactive target replica rather than accumulated in RAM. The journal no-payload constraint and per-LevelDB journal-value size bound do not apply to these ordinary legacy value transfers.
 
@@ -212,16 +223,18 @@ The copied/staged payloads are transient synchronization data, not journal recor
 For a valid stored cursor P for source S:
 
 1. take one fixed committed source snapshot;
-2. initialize `possibleMaybeChanges` for P on that snapshot;
-3. consume its `changes` async stream and, from the same snapshot, copy/stage every legacy payload/`modifiedAt` required by yielded present heads that the receiver cannot otherwise materialize under the full-sync rules; do not yet author receiver-local semantic events from the yielded summaries;
-4. incorporate the returned `causalSummary` and `authorityClock` header high-water marks as one coupled observation;
-5. semantically merge the yielded node summaries, including each present summary's retained `CreationTime`, into the receiver's already represented source knowledge; any resulting receiver-local `AdoptEvent` is therefore allocated only after the source observation in step 4;
-6. using the receiver reverse structural-edge index, run the same topological normalization rules that full synchronization would run for the changed nodes and every receiver dependent reached from them;
-7. materialize selected present heads using only payload/`modifiedAt` records obtained from the fixed source snapshot or an already-matching receiver `ValueId`, and serialize legacy `createdAt` from the merged summary's exact `CreationTime`;
-8. atomically publish receiver graph+journal changes, reverse structural-edge index updates, and any joined header high-water metadata;
-9. only then advance the stored source cursor to the returned `through` coordinate.
+2. read its header and require `S.causalSummary[R.header.writer] <= R.header.localJournalCounter` as the canonical Observation precondition from `incremental-graph-journal-types.md`; if this fails, fail synchronization for that source before any receiver state change or cursor advance, and MUST NOT fall back to full synchronization because full synchronization applies the identical precondition and fails identically;
+3. initialize `possibleMaybeChanges` for P on that snapshot;
+4. consume its `changes` async stream and, from the same snapshot, copy/stage every legacy payload/`modifiedAt` required by yielded present heads that the receiver cannot otherwise materialize under the full-sync rules; do not yet author receiver-local semantic events from the yielded summaries;
+5. incorporate the returned `causalSummary` and `authorityClock` header high-water marks as one coupled observation;
+6. semantically merge the yielded node summaries, including each present summary's retained `CreationTime`, into the receiver's already represented source knowledge; any resulting receiver-local `AdoptEvent` is therefore allocated only after the source observation in step 5;
+7. using the receiver reverse structural-edge index, run the same topological normalization rules that full synchronization would run for the changed nodes and every receiver dependent reached from them;
+8. materialize selected present heads using only payload/`modifiedAt` records obtained from the fixed source snapshot or an already-matching receiver `ValueId`, and serialize legacy `createdAt` from the merged summary's exact `CreationTime`;
+9. perform the mandatory target consistency validation from `incremental-graph-journal-projection.md`;
+10. atomically publish receiver graph/journal changes, reverse structural-edge index updates, and any joined header high-water metadata through the surrounding inactive-target cutover protocol;
+11. only then advance the stored source cursor to the returned `through` coordinate.
 
-The receiver may need to inspect local dependents outside the yielded source changed-node set because one changed input can alter downstream normalization/freshness. Those dependents are discovered through the reverse structural-edge index rather than a whole-materialized-graph scan. Any graph-sized scratch state required when the actual affected closure is graph-sized must be streamable/spillable to bounded-record storage rather than forcing the journal iterator to materialize all source changes or all dependents in RAM.
+The receiver may need to inspect local dependents outside the yielded source changed-node set because one changed input can alter downstream normalization/freshness. The reverse structural-edge index defines the affected-dependent closure used by semantic normalization. Additional whole-replica validation or lifecycle work may inspect unrelated nodes; Journal 2 currently imposes no end-to-end running-time bound on valid-cursor incremental synchronization. Any graph-sized scratch state required by such work must still obey the independent streaming/space requirements where those requirements apply.
 
 ## Full-sync equivalence invariant
 
@@ -233,21 +246,23 @@ Conversely, if the source learns a different retained `CreationTime` for K while
 
 Source-global causal or HLC high-water knowledge may nevertheless have grown without changing any node. Because every incremental range transfers the current `causalSummary` and `authorityClock`, incremental synchronization observes the same source-global allocation knowledge that full synchronization would observe from the same source snapshot.
 
-By J2-INV-9, that source header also dominates every retained head and certificate EventRef in the summaries yielded from the same snapshot. Joining the source header therefore gives incremental synchronization at least the causal/authority knowledge that full synchronization would obtain by directly inspecting those retained references.
+By J2-INV-9, that source header dominates the event coordinate, authority time, and complete immutable context of every retained head and certificate EventRef in the summaries yielded from the same snapshot. Together with the own-writer Observation precondition, joining the source header therefore cannot hide a retained reference context which is ahead of the receiver's own writer allocation frontier.
 
 For a changed present node, incremental synchronization reads the current semantic summary—including its retained `CreationTime`—and any required payload/`modifiedAt` from the same source snapshot. Therefore it materializes the same selected source occurrence and timestamp state that full synchronization would inspect from that snapshot.
 
 Full synchronization does not require additional source reads merely to establish `oldValue` provenance: any selected present cache whose dependency closure survives is retainable as the node's cached `oldValue`, while certificate/input mismatches affect freshness and validity only. Therefore incremental synchronization does not need an extra witness scan beyond the changed summaries and exact payloads required by the ordinary merge.
 
-The receiver reverse structural-edge index is an exact derived view of the receiver's current materialized dependency graph, so following it from every changed/affected node visits exactly the receiver-only dependents whose normalization can differ because of those changes. Source-only changed dependents are already present in the yielded source change set. Thus incremental normalization reaches the same affected fixed point as full topological normalization without inspecting unrelated receiver nodes.
+The receiver reverse structural-edge index is an exact derived view of the receiver's current materialized dependency graph, so following it from every changed/affected node identifies every receiver-only dependent whose normalization can differ because of those changes. Source-only changed dependents are already present in the yielded source change set. Thus the index identifies the same semantic affected fixed point as full topological normalization.
 
-Consequently processing exactly the yielded changed source summaries after P, joining the current source causal/authority header, acquiring required payloads from the same source snapshot, traversing the receiver affected closure through the reverse structural-edge index, and applying the same normalization rules yields an observably equivalent result to a full synchronization from the same starting receiver/source snapshots.
+Consequently processing the yielded changed source summaries after P, joining the current source causal/authority header, acquiring required payloads from the same source snapshot, traversing the receiver affected closure through the reverse structural-edge index, applying the same normalization rules, and validating the resulting target yields an observably equivalent result to a full synchronization from the same starting receiver/source snapshots. This semantic sufficiency statement does not constrain additional receiver validation, target-construction, or lifecycle scans and does not imply an incremental-synchronization running-time bound.
 
 This is the required correctness condition for enabling the optimization.
 
 ## Invalid cursor behavior
 
-If source identity/incarnation does not match, the receiver-local cursor record is absent (including after reset or Journal-2-aware migration), progress is malformed, required cursor state is unavailable, the receiver reverse structural-edge index is inconsistent/unavailable, or any validation fails, incremental synchronization must not guess. It falls back to full synchronization and, after success, stores a fresh cursor for the source's current incarnation/head and establishes a correct derived reverse structural-edge index for the resulting receiver graph.
+If source identity/incarnation does not match, the receiver-local cursor record is absent (including after reset or Journal-2-aware migration), progress is malformed, required cursor state is unavailable, or the receiver reverse structural-edge index is absent/not yet built, incremental synchronization must not guess. It falls back to full synchronization and, after success, stores a fresh cursor for the source's current incarnation/head and establishes a correct derived reverse structural-edge index for the resulting receiver graph.
+
+A reverse structural-edge index which is present but disagrees with the materialized graph is a detected J2-INV-1 violation, not an optimization miss. It MUST be rejected as unsupported state under the projection consistency rules (normally as `JournalStructuralIndexError`) rather than repaired or hidden by falling back to full synchronization. More generally, a detected graph/journal consistency violation is rejected rather than converted into an incremental-to-full fallback.
 
 ## No computor API dependency
 

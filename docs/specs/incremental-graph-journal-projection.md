@@ -200,7 +200,7 @@ Replicas which already represent the same `ValueId` are required by the supporte
 
 ## Consistency validation
 
-Opening, staging, restoration, and compaction MAY validate the following. Migration, synchronization, and reset MUST validate all of it before cutting over to a constructed target state; failure aborts the transition and leaves the active replica pointer unchanged:
+Opening, staging, restoration, and compaction MAY validate the following. Migration, synchronization (both full and incremental), and reset MUST validate all of it over the constructed target before cutting over; failure aborts the transition and leaves the active replica pointer unchanged. This whole-target validation requirement intentionally remains in force for incremental synchronization. Journal 2 currently imposes no end-to-end incremental-synchronization running-time bound, so validation, inactive-target construction, or other correctness work may inspect the complete replica; see `$id-3572255392439745`.
 
 - every present journal summary has a legacy materialization and a retained `createdAt`;
 - every absent journal summary is absent from legacy materialized storage and has no retained `createdAt`;
@@ -212,9 +212,8 @@ Opening, staging, restoration, and compaction MAY validate the following. Migrat
 - all retained/raw structures available to the transition which claim the same `JournalEventId` agree on the immutable semantic event identity defined in `incremental-graph-journal-types.md`, including context/authority time, node, event kind, and all exposed kind-specific semantic body fields; in particular equal certificate event IDs require equal `value` and `basis`;
 - every repeated `ValueId` identifies the same semantic NodeKey, exact payload, and `modifiedAt`; `createdAt` is deliberately excluded from value-occurrence identity;
 - every present legacy timestamp record is parseable and satisfies `canonical(createdAt) <= canonical(modifiedAt)`;
-- journal references are well-formed and bounded by represented causal/authority knowledge;
+- every retained head/certificate EventRef E satisfies `E.id.sequence <= header.causalSummary[E.id.author]`, `E.authorityTime <= header.authorityClock`, and `E.context[A] <= header.causalSummary[A]` for every author A, with missing causal coordinates interpreted as zero, as required by J2-INV-9;
 - every node-summary invalidation frontier coordinate is bounded by the corresponding header `causalSummary` coordinate as required by J2-INV-8;
-- every retained head/certificate EventRef is bounded by the local header causal/authority high-water marks as required by J2-INV-9;
 - `header.causalSummary[header.writer] == header.localJournalCounter` as required by J2-INV-10;
 - locally witnessed header/event facts are consistent with J2-INV-7: whenever a retained event is covered by `causalSummary`, its authority time is not greater than `authorityClock`;
 - no physical `NodeIdentifier` absent from the final `identifiers_keys_map` appears as a key in `values`, `freshness`, `timestamps`, or `valid`, or as a dependent identifier stored inside `valid`;

@@ -1,13 +1,15 @@
 # Synchronization performance
 
 $id-3572255392439745
-title: Treat linear-time synchronization as optimal until owned
+title: Defer incremental synchronization time bound to issue 1607
 date: 2026/09/10
 source: @ottojung
 kind: accepted-tradeoff
 
-Until someone is assigned to GitHub issue [#1607](https://github.com/ottojung/volodyslav/issues/1607), "Make incremental synchronization cost depend on changes, not graph size", `O(N)` synchronization time in the total represented graph size `N` is to be treated as an optimal complexity target for design and review purposes.
+Journal 2 currently imposes no end-to-end asymptotic running-time requirement on valid-cursor incremental synchronization. In particular, the current specification does not require `O(N)`, `o(N)`, affected-closure-proportional, change-sensitive, or any other running-time bound.
 
-Issue #1607 records the possible stronger direction: regular valid-cursor incremental synchronization should ideally scale with the amount of synchronization-relevant change and affected dependent closure rather than with unrelated graph state. The exact change-sensitive bound, and whether the implementation should be required to satisfy it, remain outside the currently assumed performance model until that issue has an assignee.
+GitHub issue [#1607](https://github.com/ottojung/volodyslav/issues/1607), "Make incremental synchronization cost depend on changes, not graph size", owns the future incremental-synchronization performance contract. That issue explicitly includes receiver validation, inactive-target construction/cutover, identifier/index maintenance, source processing, and other lifecycle work which could introduce graph-sized work. Until #1607 is resolved and this intent is superseded or updated, correctness-oriented Journal 2 specifications may require or permit whole-replica work even on a valid-cursor incremental synchronization.
 
-This intent does not prescribe whether optimization work should or should not be undertaken. It only defines the complexity assumption under which current Journal and synchronization design is evaluated. Once #1607 is assigned, this intent should be reconsidered or superseded so that the active performance assumption reflects the outcome of that work.
+The change-index iterator and reverse structural-edge index remain required synchronization structures because they define source-change discovery and affected-dependent semantics, but their existence does not currently imply an end-to-end time guarantee or prohibit additional scans of unrelated graph state for validation, target construction, lifecycle, or other correctness work.
+
+This deferral concerns running time only. Existing space and streaming requirements remain normative, including bounded individual journal values, compacted-journal size bounds, and the requirement that `possibleMaybeChanges` itself not materialize the complete changed-node range in RAM.

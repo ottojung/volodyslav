@@ -55,7 +55,7 @@ A normal synchronization cycle follows this lifecycle:
 5. stage one stable source hostname snapshot;
 6. validate exact database/schema compatibility and persisted invariants;
 7. construct an inactive target from the local receiver snapshot;
-8. run Journal 2 full semantic synchronization `receiver <- source`, joining source causal and HLC authority high-water metadata;
+8. run either Journal 2 full semantic synchronization from `incremental-graph-journal-sync.md` or, when a valid cursor permits it, the cursor-based incremental protocol from `incremental-graph-journal-api.md`; both paths join source causal and HLC authority high-water metadata under the same observation preconditions;
 9. project/rebuild unchanged legacy graph sublevels from the resulting semantic plan;
 10. validate final graph/journal consistency;
 11. when the merge changed a receiver journal node summary, the receiver journal header causal/authority high-water state, or a legacy graph record, durably flush the target and atomically cut it over as active; when none of those changed, leave the active replica pointer unchanged, as required by `database-lifecycle.md` §7.2 step 7;
@@ -101,7 +101,9 @@ For a valid cursor, synchronization owns one fixed committed source snapshot and
 
 The incremental result must be observably equivalent to running full synchronization from the same starting snapshots, including retained `CreationTime` changes and transfer of current source `causalSummary` and `authorityClock` even when the async stream yields no changed node.
 
-The current end-to-end synchronization complexity assumption is `$id-3572255392439745` in `docs/intent-records/synchronization-performance.md`. Under that accepted tradeoff, `O(N)` synchronization time is treated as an optimal target until GitHub issue #1607 is assigned; this correctness specification does not assert a stronger change-sensitive time bound.
+Incremental synchronization uses the same inactive-target construction, lifecycle exclusion, final consistency validation, durable flush, and atomic active-replica cutover protocol as full synchronization. It does not publish graph/journal changes in place against the active replica. Therefore the **Failure atomicity** rules below and `database-lifecycle.md` §7.2 apply unchanged to both full and incremental source merges.
+
+Journal 2 currently specifies no end-to-end asymptotic running-time bound for valid-cursor incremental synchronization. In particular, whole-replica validation, inactive-target construction, or other graph-sized work is permitted by the current correctness specification. GitHub issue #1607 owns the future change-sensitive performance contract; see `$id-3572255392439745` in `docs/intent-records/synchronization-performance.md`.
 
 ## Semantic merge versus physical application
 
