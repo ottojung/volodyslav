@@ -320,7 +320,7 @@ Journal 2 uses the following canonical named rejection conditions so lifecycle i
 
 | Condition | Meaning |
 | --- | --- |
-| `JournalWriterIdentityCollision` | An ordinary synchronization source claims the receiver's durable Journal writer identity but is not a valid same-host restoration or controlled-reset input. Ordinary sync rejects it rather than merging two histories into one writer dimension. This condition MUST be distinguishable from legitimate same-writer restoration/reset paths. |
+| `JournalWriterIdentityCollisionError` | An ordinary synchronization source claims the receiver's durable Journal writer identity but is not a valid same-host restoration or controlled-reset input. Ordinary sync rejects it rather than merging two histories into one writer dimension. This condition MUST be distinguishable from legitimate same-writer restoration/reset paths. |
 | `JournalOwnWriterCoordinateError` | A source claims `causalSummary[receiver.writer] > receiver.localJournalCounter`, demonstrating later same-writer event history than the receiver can safely continue. |
 | `JournalUncoveredReferenceError` | A retained source head/certificate EventRef is not covered by the source header as required by J2-INV-9. |
 | `JournalEventIdentityConflictError` | Two retained/raw claims available to the transition use the same `JournalEventId` but disagree on immutable semantic event identity, including detectable same-`ValueId` payload/`modifiedAt` disagreement. |
