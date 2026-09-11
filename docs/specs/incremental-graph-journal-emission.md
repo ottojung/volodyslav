@@ -233,7 +233,7 @@ Every semantic event is folded with the node's compacted state in the same trans
 - a delete event drops `createdAt` together with value-specific certificate/invalidation state;
 - every local change to `NodeJournalSemanticPart`, including a change to retained `CreationTime`, sets `lastLocalChange` to that local semantic-event sequence and moves that node's change-index marker atomically.
 
-A node whose projected legacy freshness or validity changes only because an input's summary changed authors no event of its own and does not move its marker. J2-INV-1 still holds because that projection is derived from the inputs' summaries.
+A node whose projected legacy freshness or validity changes only because an input's summary changed authors no `AdoptEvent` and moves no marker on that basis alone, unless its own `NodeJournalSemanticPart` also changes or another emission/normalization rule authors a semantic event for it. In particular, the propagated value-scoped invalidations from value-changing computation and explicit invalidation, and the value-scoped invalidation in **Synchronization-authored stale invalidation**, are such events and therefore do move that dependent's marker when authored. J2-INV-1 still holds because projection-only freshness/validity changes that require no such event remain derived from the inputs' summaries.
 
 The event's optional `operation` reference is ignored by semantic folding.
 
