@@ -6,7 +6,7 @@ This specification defines migration from a pre-Journal-2 database representatio
 
 Migration adds only the new journal sublevel and advances the database version according to the normal exact-version lifecycle.
 
-The migration implementation has one stable bounded `MigrationId` supplied by the database migration/lifecycle registry. If this migration persists a high-level `OperationRecord(kind="migration")`, that record MUST contain this `MigrationId`; the operation envelope must not collapse all migrations into an indistinguishable generic `migration` kind.
+A migration's stable bounded `MigrationId` is the exact ordered database-version transition `{ fromVersion, toVersion }` defined in `incremental-graph-journal-types.md`. Both values already belong to the migration lifecycle: `fromVersion` is the persisted source database version and `toVersion` is the running target database version. No separate migration registry or callback-derived tag is required. If a migration persists a high-level `OperationRecord(kind="migration")`, that record MUST contain this `MigrationId`; the operation envelope must not collapse distinct version transitions into an indistinguishable generic `migration` kind.
 
 `ValueEvent(reason="migration")`, `ValidateEvent(reason="migration")`, `DeleteEvent(reason="migration")`, and `InvalidateEvent(reason="migration")` are reserved for Journal-2-aware migrations which create/rematerialize, revalidate, remove, or invalidate already represented semantic nodes under the general database migration lifecycle. The initial pre-Journal-2 bootstrap defined here uses the distinct `reason="bootstrap"` events because it begins with no prior Journal 2 semantic baseline.
 
@@ -24,7 +24,7 @@ The source database must satisfy the current legacy IncrementalGraph invariants:
 
 Corrupt legacy state is rejected rather than assigned invented journal meaning.
 
-Every legacy `createdAt` and `modifiedAt` retained by the bootstrap must be parseable by the canonical timestamp conversion required by Journal 2, and every materialized timestamp record must satisfy `canonical(createdAt) <= canonical(modifiedAt)`. Malformed persisted timestamps are rejected rather than assigned invented Journal metadata or authority.
+Every legacy `createdAt` and `modifiedAt` retained by the bootstrap must be accepted by `canonical(t)` as defined in `incremental-graph-journal-types.md`, and every materialized timestamp record must satisfy `canonical(createdAt) <= canonical(modifiedAt)`. A timestamp rejected by that conversion is malformed persisted state; migration does not clamp, round, or invent Journal metadata or authority for it.
 
 ## Journal-2-aware migration cursor invalidation
 
@@ -129,7 +129,7 @@ This is a supported-state invariant, not a global discovery protocol. If the aut
 
 Bootstrap semantic events use the canonical local semantic-event allocator from `incremental-graph-journal-types.md`, including its special initial-bootstrap value-authority rule. The initially empty causal summary contains no remote coordinates. Writer-local sequences and causal contexts still advance in normal bootstrap event order; only equal-`modifiedAt` bootstrap value occurrences are permitted to share an `AuthorityTime`.
 
-If the initial bootstrap persists a high-level operation record, it uses `kind="migration"` and carries this migration's stable `MigrationId`. The semantic events it expands retain `reason="bootstrap"`; operation grouping is local history only and does not affect semantic allocation.
+If the initial bootstrap persists a high-level operation record, it uses `kind="migration"` and carries `MigrationId = { fromVersion: sourceDatabaseVersion, toVersion: runningTargetDatabaseVersion }`. The semantic events it expands retain `reason="bootstrap"`; operation grouping is local history only and does not affect semantic allocation.
 
 ### Bootstrap pass ordering is strict
 
