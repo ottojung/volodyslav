@@ -145,6 +145,12 @@ This preserves the materialization invariant that every materialized node has al
 
 ---
 
+### Migration version identity
+
+The migration lifecycle already supplies the exact persisted source database version and the exact running target database version. Those two values identify the declared version transition; `runMigration()` does not accept or allocate a separate migration registry ID.
+
+For database versions using Journal 2, the historical `MigrationId` stored in an optional high-level migration operation record is exactly `{ fromVersion, toVersion }` as defined in `incremental-graph-journal-types.md`. It is derived from lifecycle version metadata, not from callback identity, registration order, or an additional migration registry. If two migrations would need incompatible semantics while claiming the same source and target version, the versioning contract itself is insufficiently specific and the target database version must change.
+
 ## Running a migration
 
 Use `runMigration()` from the `incremental_graph` module:
