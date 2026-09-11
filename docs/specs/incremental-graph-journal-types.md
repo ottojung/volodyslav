@@ -23,13 +23,22 @@ OperationId              = {
     sequence: LocalOperationSequence
 }
 DatabaseVersion          = bounded exact persisted global/version identity
-MigrationId              = bounded stable migration tag
+MigrationId              = {
+    fromVersion: DatabaseVersion,
+    toVersion: DatabaseVersion
+}
 OperationTag             = bounded stable operation tag
 ```
 
-`CreationTime` is the exact instant represented by a parseable legacy `createdAt`, canonically reduced to epoch milliseconds. `CreationTime` and `AuthorityPhysicalTime` are physical real-time values accounted as fixed-width `O(1)` serialized space under `$id-5823796411086523`. `CreationTime` is not an HLC coordinate or semantic event authority; `AuthorityPhysicalTime` is only the physical coordinate of `AuthorityTime`. Two legacy timestamp strings which encode the same instant therefore map to the same `CreationTime` even if their textual timezone representation differs.
+`canonical(t)` is the Journal 2 conversion from one persisted legacy timestamp string to its exact epoch-millisecond instant. The input must be a valid ISO timestamp representing an instant exactly on a whole-millisecond boundary within the fixed-width non-negative epoch-millisecond domain used by `CreationTime` and `AuthorityPhysicalTime`. The conversion is a pure function of the persisted timestamp value: timezone-equivalent spellings of the same instant map to the same integer, and no hostname, local timezone, wall clock, locale, or current time participates.
 
-`DatabaseVersion`, `MigrationId`, and `OperationTag` are fixed/bounded serialized primitive identifiers. They are not arbitrary user payload strings. `DatabaseVersion` is the exact database-version identity used by the lifecycle compatibility boundary.
+A timestamp is rejected as malformed Journal state if it is unparseable, represents an instant before the Unix epoch, lies outside the fixed-width representable epoch-millisecond range, or contains sub-millisecond precision that is not exactly representable in that domain. Journal 2 does not clamp or round such input. Supported Volodyslav writers use the existing millisecond-precision ISO timestamp representation, so this rejection rule does not alter timestamps produced by the supported lifecycle.
+
+`CreationTime` is the exact instant represented by a legacy `createdAt` after `canonical(t)`. `CreationTime` and `AuthorityPhysicalTime` are physical real-time values accounted as fixed-width `O(1)` serialized space under `$id-5823796411086523`. `CreationTime` is not an HLC coordinate or semantic event authority; `AuthorityPhysicalTime` is only the physical coordinate of `AuthorityTime`.
+
+`DatabaseVersion` and `OperationTag` are fixed/bounded serialized primitive identifiers. They are not arbitrary user payload strings. `DatabaseVersion` is the exact database-version identity used by the lifecycle compatibility boundary.
+
+A `MigrationId` is the exact ordered database-version transition `{ fromVersion, toVersion }`. It is available from the migration lifecycle itself and is stable across replicas without a separate migration registry, callback-derived tag, or ordering-dependent allocation. Two implementations which claim the same `MigrationId` are claiming to implement the same declared version transition. If migration semantics change incompatibly, the target `DatabaseVersion` must change rather than inventing a second hidden migration identity for the same version pair.
 
 Missing coordinates in a `CausalPrefix` mean zero.
 
@@ -104,8 +113,8 @@ There is deliberately no `max(causalSummary[*])` term in `nextSequence`. Remote 
 
 Except for the initial-bootstrap value rule below, every event also receives an `authorityTime` by advancing the persisted HLC. Let `seedPhysical` be:
 
-- for a `ValueEvent`, the exact legacy value occurrence's `modifiedAt`, canonically converted to epoch milliseconds;
-- for other locally authored semantic events, the operation/publication wall-clock time supplied by the existing datetime capability.
+- for a `ValueEvent`, `canonical(modifiedAt)` for the exact legacy value occurrence;
+- for other locally authored semantic events, the operation/publication wall-clock time supplied by the existing datetime capability, converted to the same epoch-millisecond domain.
 
 Advance the persisted HLC from its current high-water mark:
 
@@ -402,7 +411,7 @@ OperationRecord =
 
 An operation record is local historical/debugging structure. It is **not** synchronization authority, has no causal authority of its own, and is never imported as semantic state. A source-bearing operation record may nevertheless store source causal/authority high-water metadata as bounded historical invocation metadata.
 
-The tagged fields identify the high-level invocation itself rather than only its operation kind. In particular, synchronization/reset records identify their source database version and synchronization-relevant snapshot state, and migration records identify the migration being run.
+The tagged fields identify the high-level invocation itself rather than only its operation kind. In particular, synchronization/reset records identify their source database version and synchronization-relevant snapshot state, and migration records identify the exact source-to-target database-version transition being run.
 
 `parent`, when present, names the direct high-level caller known to the implementation. It does not imply semantic happened-before, does not affect event authority, and does not require the parent record to enumerate children. Parent recording is optional because independently committing nested operations need not share one publication transaction; Journal 2 does not require a complete transitive call tree.
 
