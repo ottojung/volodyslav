@@ -139,6 +139,14 @@ Ordinary evolution preserves these lifecycle invariants:
 
 These invariants are obligations of supported write paths. If a supported operation reports success while violating one of them, that is a lifecycle bug.
 
+### 5.1 Background Journal housekeeping
+
+Canonical Journal 2 compaction is a supported durable housekeeping operation against the current active database, but it is **not** one of the six lifecycle transitions in §2. It does not construct replacement state, change the selected active replica, change the database version, or change the active logical graph/synchronization state. Its durable writes are confined to pruning historical Journal records whose future-relevant meaning is already represented elsewhere in the current Journal 2 state.
+
+Accordingly, canonical compaction is not an exclusive maintenance transition under §5 invariant 5 or §14 rule 7 merely because it writes persistent bytes. It MAY overlap ordinary graph activity only where the Journal locking specification permits that overlap. `incremental-graph-journal-locking.md` defines its `daytime` mode, per-replica commit serialization, cross-mode handoff, batch boundaries, and failure atomicity.
+
+Compaction MUST NOT change legacy graph sublevels, `JournalHeader`, node summaries, changed-node markers, the reverse structural-edge index, stored source cursors, or any other synchronization-relevant current meaning. A lifecycle transition MUST NOT require a particular compaction point as one of its preconditions or postconditions.
+
 ## 6. Migration
 
 Migration is the supported transition between database versions. It is part of startup and of reopening after synchronization; it is not a separate user-facing repair or import tool.
@@ -215,6 +223,8 @@ Normal synchronization performs these lifecycle steps:
 
 The merge resolves state according to the synchronization specification selected by the current database version, not textual repository merge rules. A successful merge preserves graph coherence and does not make a partially constructed target active.
 
+A staged branch which belongs to the receiver's own durable database identity is not an ordinary peer input. The version-specific synchronization specification classifies and handles such a same-writer branch before semantic peer merge; a branch skipped as covered self-history is not a per-host synchronization failure under §7.3.
+
 ### 7.3 Per-host failure behavior
 
 Host branches are processed independently. A failure for one host is recorded, staging cleanup is attempted, and synchronization continues with the remaining hosts. Successful earlier or later host merges remain committed. After all hosts have been attempted, Volodyslav reports an aggregate synchronization failure if any host failed.
@@ -232,6 +242,26 @@ A reset selects one source snapshot as the new logical graph state rather than c
 The reset is installed through a non-active target state followed by cutover. Host-local state which the lifecycle requires to remain local is preserved according to the reset specification, and the reset establishes whatever fresh local semantic baseline that database version requires.
 
 After reset, the database is reopened through the migration gate as a normal lifecycle safety boundary, but semantic reset itself is not a cross-version migration mechanism. Recovering an older same-host saved snapshot and then migrating it is restoration under §4.2, not controlled reset.
+
+### 7.5 Hostname changes and same-writer branch aliases
+
+The configured hostname is a transport/history label, not the durable database writer identity. Changing the hostname of an established installation while retaining its local database does not mint a new `DatabaseFingerprint` or fork the local Journal allocator. A later checkpoint may therefore publish the same durable database identity under the new hostname while an older branch under the former hostname remains in the repository.
+
+Such an older branch is a **same-writer branch alias**, not an ordinary peer merely because its hostname differs. Normal synchronization MUST NOT feed it into the distinct-writer semantic merge. When both the receiver and staged alias contain Journal 2, the alias may be silently skipped as covered self-history only when its writer-local allocator/incarnation state and retained header knowledge are no greater than the receiver's continuing state:
+
+```text
+source.localJournalCounter   <= receiver.localJournalCounter
+source.localOperationCounter <= receiver.localOperationCounter
+source.journalIncarnation    <= receiver.journalIncarnation
+source.causalSummary         <= receiver.causalSummary    componentwise
+source.authorityClock        <= receiver.authorityClock
+```
+
+A covered alias is cleaned up like any skipped staging input and is not counted as a per-host failure. If a same-writer staged Journal 2 branch is ahead in any of these coordinates, it is evidence of a later or divergent same-writer continuation which this receiver cannot safely absorb through ordinary synchronization. That host branch MUST fail rather than be skipped, merged, or used to raise the receiver's writer-local allocator state.
+
+A pre-Journal-2 staged branch with the receiver's same durable `DatabaseFingerprint` is likewise not a normal peer input; it may remain as historical transport state after a hostname change and is skipped rather than used for cross-version or same-writer merge. Controlled reset and same-host restoration retain their own dedicated provenance and allocator preconditions and are not weakened by this branch-alias rule.
+
+This rule does not make cross-installation database cloning supported. Distinct installations which continue independently under one `DatabaseFingerprint` remain outside the supported lifecycle. A hostname difference alone is not proof of distinct Journal identity, so ordinary synchronization neither reconciles nor invents a second writer identity for such state.
 
 ## 8. Version compatibility
 
@@ -360,6 +390,8 @@ Implementations and future changes MUST preserve the following lifecycle propert
 12. Storage refactors MAY change physical artifacts without changing this specification, provided these lifecycle preconditions, transitions, and postconditions remain true.
 13. Normal synchronization MUST preserve publication-before-propagation: a host's Journal 2 state MUST NOT be obtainable by another host as synchronization input through any supported transport path unless that state has first been published to the author's own authoritative synchronization branch.
 14. Fresh creation MUST establish the running database version and all version-required initial metadata before the fresh database participates in normal synchronization.
+15. Durable background Journal housekeeping which is not a lifecycle transition MUST preserve the active logical state and synchronization-relevant current Journal meaning, obey its own concurrency/atomicity specification, and MUST NOT be required by any lifecycle transition's preconditions or postconditions.
+16. A hostname change on an established installation MUST NOT change that database's durable identity. Normal synchronization MUST NOT merge a same-identity branch as an ordinary peer; covered historical aliases may be skipped, while evidence of later/divergent same-writer continuation must fail rather than advance the receiver's local allocator frontier.
 
 ## 15. Known boundaries
 
