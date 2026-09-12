@@ -14,9 +14,9 @@ For one directional synchronization `R <- S`:
 - `S` is one source snapshot;
 - both satisfy Journal 2 graph/journal consistency;
 - both use the same graph schema and database version; and
-- `R.header.writer != S.header.writer`.
+- under the supported host lifecycle, `R.header.writer != S.header.writer`.
 
-Ordinary synchronization does not merge two snapshots which claim the same durable Journal writer identity. Same-writer continuation/recovery uses the same-host restoration rules; controlled reset has its own explicitly bounded same-writer-source rule. A same-writer source presented to ordinary full or incremental synchronization is an incompatible synchronization input rather than another replica.
+The final condition is a lifecycle invariant, not a synchronization-time identity check. `database-lifecycle.md` assigns each supported hostname to one immutable host history and fresh host creation gives distinct histories distinct fingerprints/Journal authors. Full and incremental synchronization may rely on that guarantee without comparing fingerprints to detect hostname reassignment, branch copying/forking, database cloning, or other unsupported manipulation. Same-host restoration and controlled reset remain separate transitions with their own same-writer rules.
 
 Full synchronization does not require or consult a journal cursor.
 
