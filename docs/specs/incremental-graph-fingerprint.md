@@ -58,21 +58,30 @@ the project's seeded PRNG. It is generated exactly once:
 
 Taking a rendered snapshot from one host and using it to bootstrap a second,
 concurrently-writing host is outside the supported lifecycle model (see
-`database-lifecycle.md` §10). If Journal 2 is present, the two hosts would
-share one `JournalAuthor` even though they are distinct continuing writer
-histories. Ordinary Journal 2 synchronization requires distinct source and
-receiver writer identities and therefore rejects such a source before merging
-its semantic state. A shared Journal author across distinct continuing
-histories is an unsupported identity collision; it cannot be treated merely as
-a physical `NodeIdentifier` lookup conflict because the two histories could
-otherwise allocate colliding `JournalEventId`s or collapse into one
-`CausalPrefix` dimension even without allocating the same physical node ID.
+`database-lifecycle.md` §10). If Journal 2 is present, the two installations
+would share one `JournalAuthor` even though they are distinct continuing writer
+histories and could allocate colliding `JournalEventId`s or collapse into one
+`CausalPrefix` dimension.
 
-Outside that Journal 2 semantic identity check, sharing a fingerprint can also
-produce colliding physical node identifiers. The existing identifier lookup
-may detect such a collision as `IdentifierLookupConflictError` when the same
-identifier maps to different semantic keys, but that physical check is not the
-Journal 2 identity-safety mechanism.
+The supported lifecycle prevents this situation by construction: a new host is
+created under its own immutable hostname and receives a fresh fingerprint,
+while first-boot restoration under an existing hostname resumes that same
+host's authoritative prior state and fingerprint. No supported transition
+renames/forks a host branch onto another hostname or clones one live database
+into another independently continuing installation.
+
+Ordinary synchronization may therefore rely on distinct participating host
+histories having distinct fingerprints/Journal authors. It is not required to
+compare fingerprints in order to detect unsupported cloning, branch surgery,
+hostname reassignment, or an accidental identity collision. If such unsupported
+state is manufactured externally, Journal 2 does not promise to interpret or
+reconcile it as two valid writers.
+
+Sharing a fingerprint can also produce colliding physical node identifiers.
+Existing identifier validation may incidentally detect a concrete physical
+collision such as one identifier mapping to different semantic keys, but such a
+failure is not a required detector for the unsupported shared-fingerprint
+situation.
 
 New hosts obtain a distinct fingerprint through the fresh-creation path
 (`database-lifecycle.md` §4.3). There is no supported "clone this database
@@ -113,12 +122,12 @@ fail hard instead of being silently accepted or replaced.
 The fingerprint is included in rendered snapshots and may be staged from
 remote hosts during sync/reset. However:
 
-- **Normal sync merge**: A host's staged snapshot may contain a different
-  fingerprint. The local active replica keeps its own fingerprint; the
-  remote host fingerprint is not adopted. Under Journal 2 the local and remote
-  fingerprints are also their Journal writer identities, so normal Journal 2
-  synchronization requires them to be distinct. Merge does not modify the
-  local fingerprint.
+- **Normal sync merge**: Under the supported lifecycle, every distinct remote
+  host history has a fingerprint different from the local active replica's
+  fingerprint. The local active replica keeps its own fingerprint; the remote
+  fingerprint is not adopted. Under Journal 2 these fingerprints are also the
+  distinct Journal writer identities. Normal synchronization relies on this
+  lifecycle invariant rather than validating it by comparing host fingerprints.
 
 - **Reset/import into existing live DB**: The snapshot may contain a remote
   fingerprint. After import, the live database preserves its pre-import
