@@ -286,7 +286,7 @@ Fresh initialization, initial bootstrap, local event allocation, controlled rese
 
 ## Supported lifecycle
 
-Correctness guarantees apply to states produced by supported Journal 2 authoring, synchronization, migration, reset, same-host restoration, and canonical compaction. Corrupt, forged, rolled-back, partially installed, or identity-colliding states are outside the semantic model and must be rejected where practical rather than assigned invented meaning.
+Correctness guarantees apply to states produced by supported Journal 2 authoring, synchronization, migration, reset, same-host restoration, and canonical compaction. Corrupt, forged, rolled-back, partially installed, or identity-colliding states are outside the semantic model; `database-lifecycle.md` defines which such violations must be detected and which unsupported manipulations may simply be assumed absent.
 
 A same-host first-boot restoration of saved Journal 2 state resumes the exact previously published writer state, including writer-local counters, incarnation, causal summary, authority-clock high-water mark, node summaries, and valid saved cursors. It does **not** mint a reset baseline merely because local live files were absent. A same-host saved state which predates Journal 2 may instead be restored as legacy state and then migrated through the normal migration gate before Journal 2 synchronization/reset is available.
 
@@ -300,7 +300,7 @@ A migration whose input already contains Journal 2 also deletes all receiver-loc
 
 The normative semantic synchronization operation is full synchronization. It scans the complete current journal/graph semantic domain and does not require cursors.
 
-Ordinary synchronization is between distinct Journal writer identities. Same-writer continuation is handled by restoration, while controlled reset may consume an older/equal same-writer source only under the additional allocator/incarnation preconditions in `incremental-graph-journal-reset.md`.
+Under the supported lifecycle, ordinary synchronization is between distinct Journal writer identities because distinct hostnames denote distinct host histories and fresh host creation assigns distinct database fingerprints. Full/incremental synchronization relies on this lifecycle invariant; it does not need a same-writer branch classification or fingerprint-equality rejection path. Same-host continuation is handled by restoration, while controlled reset may deliberately consume an older/equal same-writer source under the additional allocator/incarnation preconditions in `incremental-graph-journal-reset.md`.
 
 The journal change index and cursor machinery are an optimization. Incremental source discovery uses the private `possibleMaybeChanges(sourceSnapshot, cursor)` asynchronous iterator; it is not part of the public IncrementalGraph/computor API and does not materialize the complete changed-node range in RAM. A local reverse structural-edge index provides exact reverse-dependency lookup for affected-closure normalization. These structures do not currently imply an end-to-end incremental-synchronization running-time guarantee; `$id-3572255392439745` leaves that contract to GitHub issue #1607.
 
@@ -320,7 +320,6 @@ Journal 2 uses the following canonical named rejection conditions so lifecycle i
 
 | Condition | Meaning |
 | --- | --- |
-| `JournalWriterIdentityCollisionError` | An ordinary synchronization source claims the receiver's durable Journal writer identity but is not a valid same-host restoration or controlled-reset input. Ordinary sync rejects it rather than merging two histories into one writer dimension. This condition MUST be distinguishable from legitimate same-writer restoration/reset paths. |
 | `JournalOwnWriterCoordinateError` | A source claims `causalSummary[receiver.writer] > receiver.localJournalCounter`, demonstrating later same-writer event history than the receiver can safely continue. |
 | `JournalUncoveredReferenceError` | A retained source head/certificate EventRef is not covered by the source header as required by J2-INV-9. |
 | `JournalEventIdentityConflictError` | Two retained/raw claims available to the transition use the same `JournalEventId` but disagree on immutable semantic event identity, including detectable same-`ValueId` payload/`modifiedAt` disagreement. |
@@ -333,4 +332,4 @@ These names classify Journal-specific failure conditions; they do not turn unsup
 
 ## Transport independence
 
-Git branches, hashes, commits, repository ancestry, checkpoint names, and transport ordering do not participate in journal identity or semantics. They may transport stable snapshots, but all journal reasoning uses only Journal 2 state and the IncrementalGraph schema.
+Git branches, hashes, commits, repository ancestry, checkpoint names, and transport ordering do not participate in journal identity or semantics. They may transport stable snapshots, but all journal reasoning uses only Journal 2 state and the IncrementalGraph schema. The lifecycle, not Journal synchronization, is responsible for the invariant that distinct participating hostname branches denote distinct writer identities.
