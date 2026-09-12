@@ -505,23 +505,24 @@ interface IncrementalGraph {
 
 **REQ-IFACE-05 (Timestamp API):** Implementations MUST record timestamps for each node instance when its value is first set or changed.
 
-**REQ-IFACE-06 (getCreationTime):** `getCreationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance was first given a value. MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
+**REQ-IFACE-06 (getCreationTime):** `getCreationTime(nodeName, bindings?)` MUST return the retained creation time of the node's current materialization. Under ordinary local evolution this is the `DateTime` at which that materialization was first given a value; Journal-2 synchronization may reconcile it according to REQ-IFACE-08. MUST throw `MissingTimestampError` if the node instance is not materialized or if no timestamp record exists for it.
 
 **REQ-IFACE-07 (getModificationTime):** `getModificationTime(nodeName, bindings?)` MUST return the `DateTime` at which the node instance's stored semantic value last changed. MUST throw `MissingTimestampError` if the node instance has never been computed or if no timestamp record exists for it.
 
 **REQ-IFACE-08 (Timestamp Invariants):**
 * `getCreationTime(N, B) <= getModificationTime(N, B)` for any materialized node instance `N@B`.
-* `getCreationTime(N, B)` MUST NOT change once set.
+* `getCreationTime(N, B)` MUST NOT be set to a manufactured or synchronization-execution-time value, and MUST NOT change under ordinary local evolution while the materialization remains present. For database versions which include Journal 2, synchronization MAY change it according to the selected-head creation-time rule in `incremental-graph-journal-projection.md`: for a fixed selected head it may move earlier, while selecting a different materialization/head may move it later. The invariant `getCreationTime(N, B) <= getModificationTime(N, B)` always holds.
 * `getModificationTime(N, B)` is a version timestamp for the stored semantic value.
 * A **new timestamp record** is created when a semantic value is first stored for a node (including migration `create` and the node's initial computation). `createdAt` and `modifiedAt` are both set to the current time at this point.
-* An existing `modifiedAt` **advances** only when a computor produces a changed value that replaces the previous stored value. `modifiedAt` MUST NOT advance in any other circumstance.
-* Synchronization may replace a local node value and timestamp with another replica's existing value-version pair (the `take` decision). This copies the existing timestamp; it does not mint a new one. Synchronization MUST NOT replace a timestamp with the merge execution time or any other manufactured value.
+* An existing `modifiedAt` **advances** only when a computor produces a changed value that replaces the previous stored value. `modifiedAt` MUST NOT advance in any other ordinary local circumstance.
+* Synchronization may replace a local node value with another replica's selected existing value occurrence (the historical `take` decision). It copies that selected occurrence's existing `modifiedAt`; it does not mint a new modification timestamp or substitute synchronization execution time.
+* `createdAt` is node-scoped materialization metadata and is resolved separately from the selected value occurrence. For database versions using Journal 2, it is retained in `NodeJournalSummary` and follows the head-scoped rule in `incremental-graph-journal-projection.md`; synchronization never substitutes its execution time.
 * `modifiedAt` MUST NOT change when:
   * a node becomes `potentially-outdated` (invalidation);
   * invalidation propagates to dependent nodes;
   * validity flags are added, removed, transported, or rebuilt;
   * a computor returns `Unchanged`;
-  * synchronization keeps an existing value (the `keep` decision);
+  * synchronization keeps an existing selected value occurrence;
   * identifier reconciliation occurs;
   * dependency identifiers are relowered;
   * a cached value is deleted because the old value is not valid for the final dependency structure;

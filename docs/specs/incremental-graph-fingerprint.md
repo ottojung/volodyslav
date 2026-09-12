@@ -12,6 +12,13 @@ transition (fresh creation). The fingerprint is stored in replica-global
 metadata and is generated once during first database initialization. It never
 changes during the lifetime of a live database.
 
+When the running database version includes Journal 2, this same
+`DatabaseFingerprint` is also the database's `JournalAuthor`. It therefore
+names the writer-local semantic event history and the corresponding causal
+vector dimension in addition to its existing physical identifier-allocation
+role. This additional Journal 2 meaning does not change the fingerprint's
+format, generation, validation, or lifecycle rules.
+
 ## Storage location
 
 ```
@@ -51,11 +58,30 @@ the project's seeded PRNG. It is generated exactly once:
 
 Taking a rendered snapshot from one host and using it to bootstrap a second,
 concurrently-writing host is outside the supported lifecycle model (see
-`database-lifecycle.md` §10). If performed anyway, the two hosts would share
-a fingerprint and could allocate colliding identifiers. Sync merge would
-detect this as an `IdentifierLookupConflictError` (the same identifier
-mapped to different semantic keys) and fail cleanly for the affected host
-without corrupting either side.
+`database-lifecycle.md` §10). If Journal 2 is present, the two installations
+would share one `JournalAuthor` even though they are distinct continuing writer
+histories and could allocate colliding `JournalEventId`s or collapse into one
+`CausalPrefix` dimension.
+
+The supported lifecycle prevents this situation by construction: a new host is
+created under its own immutable hostname and receives a fresh fingerprint,
+while first-boot restoration under an existing hostname resumes that same
+host's authoritative prior state and fingerprint. No supported transition
+renames/forks a host branch onto another hostname or clones one live database
+into another independently continuing installation.
+
+Ordinary synchronization may therefore rely on distinct participating host
+histories having distinct fingerprints/Journal authors. It is not required to
+compare fingerprints in order to detect unsupported cloning, branch surgery,
+hostname reassignment, or an accidental identity collision. If such unsupported
+state is manufactured externally, Journal 2 does not promise to interpret or
+reconcile it as two valid writers.
+
+Sharing a fingerprint can also produce colliding physical node identifiers.
+Existing identifier validation may incidentally detect a concrete physical
+collision such as one identifier mapping to different semantic keys, but such a
+failure is not a required detector for the unsupported shared-fingerprint
+situation.
 
 New hosts obtain a distinct fingerprint through the fresh-creation path
 (`database-lifecycle.md` §4.3). There is no supported "clone this database
@@ -96,10 +122,12 @@ fail hard instead of being silently accepted or replaced.
 The fingerprint is included in rendered snapshots and may be staged from
 remote hosts during sync/reset. However:
 
-- **Normal sync merge**: A host's staged snapshot may contain a different
-  fingerprint. The local active replica keeps its own fingerprint; the
-  remote host fingerprint is not adopted. Merge does not modify the local
-  fingerprint.
+- **Normal sync merge**: Under the supported lifecycle, every distinct remote
+  host history has a fingerprint different from the local active replica's
+  fingerprint. The local active replica keeps its own fingerprint; the remote
+  fingerprint is not adopted. Under Journal 2 these fingerprints are also the
+  distinct Journal writer identities. Normal synchronization relies on this
+  lifecycle invariant rather than validating it by comparing host fingerprints.
 
 - **Reset/import into existing live DB**: The snapshot may contain a remote
   fingerprint. After import, the live database preserves its pre-import
@@ -113,4 +141,6 @@ remote hosts during sync/reset. However:
 
 Through the supported lifecycle transitions, each independently-created host
 obtains a distinct fingerprint. This is what makes node identifiers globally
-unique across hosts even when the same local index values are allocated.
+unique across hosts even when the same local index values are allocated and,
+under Journal 2, keeps independently continuing writer histories in distinct
+Journal author namespaces.

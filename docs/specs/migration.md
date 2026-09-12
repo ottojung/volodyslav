@@ -95,6 +95,18 @@ Within a **preexisting stale `keep`/`override` region**, every stale node loses 
 
 The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
 
+#### Replica-stability of identity-preserving override
+
+An `override()` which preserves the identity of an existing semantic value occurrence MUST be replica-stable. Given two supported replicas which represent the same pre-migration semantic value occurrence and run the same migration into the same target database/schema version, the override must produce the same exact post-migration payload and `modifiedAt` on both replicas.
+
+The legacy `createdAt` field is excluded from this requirement. It is node-scoped metadata for the current materialization/head lineage, not part of the identity of one value occurrence. For database versions using Journal 2, synchronization retains it in the node summary and merges it by the head-scoped rule in `incremental-graph-journal-projection.md`; it may move earlier for a fixed selected head or later when head selection changes.
+
+This requirement is about the value-occurrence output, not merely about programmer intent. The transformation may receive a physical `NodeIdentifier`, but it MUST NOT allow differences in that identifier, hostname, local wall clock, randomness, mutable host-local state, external service state, iteration order, or other replica-local inputs to make one preserved semantic occurrence migrate to different post-migration payloads or `modifiedAt` values. Any such migration is not a semantic-preserving representation rewrite in the sense required by `override()`.
+
+For a Journal-2-aware migration this rule is load-bearing: `override()` preserves the existing `ValueId`, and one `ValueId` denotes one exact semantic value occurrence. Synchronization is therefore allowed to assume that replicas carrying the same `ValueId` also carry the same migrated payload and `modifiedAt` without comparing payloads.
+
+If a transformation cannot guarantee replica-stable output, it MUST NOT use identity-preserving `override()`. The migration must instead model the result as a semantic replacement which receives a new value identity under the version's migration rules, or invalidate/delete the old cache so ordinary recomputation creates the replacement. The generic `MigrationStorage` API does not turn an arbitrary host-dependent override into a safe identity-preserving rewrite.
+
 `invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 
 **Explicit invalidation** removes only the explicitly named node's incoming validity proofs. Its outgoing proofs remain intact because its stored semantic value has not changed.
@@ -132,6 +144,12 @@ This preserves the materialization invariant that every materialized node has al
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 
 ---
+
+### Migration version identity
+
+The migration lifecycle already supplies the exact persisted source database version and the exact running target database version. Those two values identify the declared version transition; `runMigration()` does not accept or allocate a separate migration registry ID.
+
+For database versions using Journal 2, the historical `MigrationId` stored in an optional high-level migration operation record is exactly `{ fromVersion, toVersion }` as defined in `incremental-graph-journal-types.md`. It is derived from lifecycle version metadata, not from callback identity, registration order, or an additional migration registry. If two migrations would need incompatible semantics while claiming the same source and target version, the versioning contract itself is insufficiently specific and the target database version must change.
 
 ## Running a migration
 
