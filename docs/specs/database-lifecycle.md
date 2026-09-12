@@ -72,6 +72,8 @@ Supported creation requires:
 - functioning required filesystem, database, and Git capabilities; and
 - exclusive execution of the bootstrap transition for the working location.
 
+The hostname is host identity configuration, not mutable runtime metadata. It is chosen/configured before this host's first supported bootstrap and is thereafter immutable for that host history. Distinct supported host histories use distinct hostnames. Changing `VOLODYSLAV_HOSTNAME` while retaining an established live database does not rename that host; it leaves the supported lifecycle.
+
 The synchronization repository is part of creation even when the resulting database is empty. Absence of local state does not authorize bypassing repository or hostname checks.
 
 ### 4.2 Restoring this host's synchronized state
@@ -91,6 +93,8 @@ Any failure to query, obtain, parse, or install the authoritative same-host stat
 ### 4.3 Creating a new host state
 
 If the current hostname has no synchronized branch, startup creates a fresh empty local database. Fresh initialization MUST atomically establish the running database version and all version-required initial metadata before the database is marked current or used by normal synchronization.
+
+This is the only supported way to establish a new host history under a hostname which has no authoritative synchronized state. It does not reuse another host's live database or branch. Under Journal 2, fresh creation gives the new host its own `DatabaseFingerprint`/`JournalAuthor`; through the supported lifecycle, distinct hostnames therefore denote distinct writer identities.
 
 When the running database version includes Journal 2, that same fresh-initialization publication establishes the database's durable `DatabaseFingerprint` and persists:
 
@@ -119,6 +123,7 @@ After successful creation and startup:
 - its active logical state is structurally loadable;
 - it records the database version expected by the running application;
 - when that version includes Journal 2, its valid Journal 2 writer/header state has been established before the database became current, writable, or synchronization input;
+- its configured hostname remains the immutable name of this host history for later startup and synchronization;
 - its synchronization identity and history were established by Volodyslav; and
 - the graph interface is initialized from that state.
 
@@ -205,6 +210,8 @@ Normal synchronization requires:
 - remote snapshots that can be parsed into staging state; and
 - exact database-version compatibility for every host state that is merged.
 
+Under the supported lifecycle, every participating hostname branch denotes one distinct host history. When Journal 2 is present, distinct host histories therefore have distinct `DatabaseFingerprint`/`JournalAuthor` identities. Synchronization may rely on that invariant; it is not required to compare fingerprints across hostname branches to detect unsupported hostname reassignment, branch copying, database cloning, or manual repository surgery.
+
 The in-process database is closed before synchronization changes its durable state. The operation is serialized against graph activity so checkpointing and merging see stable transition boundaries.
 
 ### 7.2 Normal synchronization flow
@@ -222,8 +229,6 @@ Normal synchronization performs these lifecycle steps:
 9. Reopen the application database and run the migration gate before exposing it again.
 
 The merge resolves state according to the synchronization specification selected by the current database version, not textual repository merge rules. A successful merge preserves graph coherence and does not make a partially constructed target active.
-
-A staged branch which belongs to the receiver's own durable database identity is not an ordinary peer input. The version-specific synchronization specification classifies and handles such a same-writer branch before semantic peer merge; a branch skipped as covered self-history is not a per-host synchronization failure under §7.3.
 
 ### 7.3 Per-host failure behavior
 
@@ -243,25 +248,13 @@ The reset is installed through a non-active target state followed by cutover. Ho
 
 After reset, the database is reopened through the migration gate as a normal lifecycle safety boundary, but semantic reset itself is not a cross-version migration mechanism. Recovering an older same-host saved snapshot and then migrating it is restoration under §4.2, not controlled reset.
 
-### 7.5 Hostname changes and same-writer branch aliases
+### 7.5 Hostname identity is immutable
 
-The configured hostname is a transport/history label, not the durable database writer identity. Changing the hostname of an established installation while retaining its local database does not mint a new `DatabaseFingerprint` or fork the local Journal allocator. A later checkpoint may therefore publish the same durable database identity under the new hostname while an older branch under the former hostname remains in the repository.
+A hostname names one host history for the supported lifecycle. Once a host has been established under that hostname, there is no supported rename transition. Migration, synchronization, controlled reset, restart, and ordinary evolution preserve the hostname identity of the installation; they do not move its authoritative history to another hostname.
 
-Such an older branch is a **same-writer branch alias**, not an ordinary peer merely because its hostname differs. Normal synchronization MUST NOT feed it into the distinct-writer semantic merge. When both the receiver and staged alias contain Journal 2, the alias may be silently skipped as covered self-history only when its writer-local allocator/incarnation state and retained header knowledge are no greater than the receiver's continuing state:
+Starting with a different configured hostname is a different host identity. If no live database exists and that hostname already has an authoritative branch, §4.2 restores that host. If no live database exists and that hostname has no authoritative branch, §4.3 creates a new host history with a fresh database identity. Reusing an existing live database while changing the configured hostname is not either creation path and is unsupported.
 
-```text
-source.localJournalCounter   <= receiver.localJournalCounter
-source.localOperationCounter <= receiver.localOperationCounter
-source.journalIncarnation    <= receiver.journalIncarnation
-source.causalSummary         <= receiver.causalSummary    componentwise
-source.authorityClock        <= receiver.authorityClock
-```
-
-A covered alias is cleaned up like any skipped staging input and is not counted as a per-host failure. If a same-writer staged Journal 2 branch is ahead in any of these coordinates, it is evidence of a later or divergent same-writer continuation which this receiver cannot safely absorb through ordinary synchronization. That host branch MUST fail rather than be skipped, merged, or used to raise the receiver's writer-local allocator state.
-
-A pre-Journal-2 staged branch with the receiver's same durable `DatabaseFingerprint` is likewise not a normal peer input; it may remain as historical transport state after a hostname change and is skipped rather than used for cross-version or same-writer merge. Controlled reset and same-host restoration retain their own dedicated provenance and allocator preconditions and are not weakened by this branch-alias rule.
-
-This rule does not make cross-installation database cloning supported. Distinct installations which continue independently under one `DatabaseFingerprint` remain outside the supported lifecycle. A hostname difference alone is not proof of distinct Journal identity, so ordinary synchronization neither reconciles nor invents a second writer identity for such state.
+The supported repository therefore has no hostname aliases for one writer and no two independently participating hostname branches with the same `DatabaseFingerprint`/`JournalAuthor`. Synchronization is not responsible for discovering, grouping, comparing, skipping, or reconciling such branches. Manually renaming/copying/forking branches or changing host configuration to manufacture them is outside the lifecycle.
 
 ## 8. Version compatibility
 
@@ -303,14 +296,16 @@ The following are outside the supported database lifecycle model:
 
 - copying a live database directory between installations;
 - manually replacing, restoring, or combining database directories;
+- changing `VOLODYSLAV_HOSTNAME` for an established host while retaining its live database;
+- assigning one hostname to multiple independently continuing host installations;
+- renaming, copying, forking, or otherwise constructing/modifying host branches outside Volodyslav;
 - editing a rendered synchronization snapshot;
-- constructing or modifying host branches outside Volodyslav;
 - changing database files while Volodyslav is running;
 - bypassing the startup migration gate;
 - forcing synchronization between versions that fail compatibility checks; and
 - treating checkpoint history as a user-facing backup/restore interface.
 
-Such actions may happen at the operating-system level, but Volodyslav does not promise to interpret, validate, preserve, migrate, synchronize, or recover the resulting state. If file-level recovery or import becomes a product requirement, it must be introduced as a new Volodyslav-controlled transition with explicit preconditions and postconditions.
+Such actions may happen at the operating-system or repository level, but Volodyslav does not promise to detect, interpret, validate, preserve, migrate, synchronize, or recover the resulting state. If hostname reassignment, branch migration, file-level recovery, or import becomes a product requirement, it must be introduced as a new Volodyslav-controlled transition with explicit preconditions and postconditions.
 
 ## 11. Corruption model
 
@@ -337,7 +332,7 @@ A state is not corruption merely because an operation refuses it. Exact version 
 
 Volodyslav validates at lifecycle boundaries where validation establishes a guarantee needed by the next transition. Examples include:
 
-- environment and hostname validation before bootstrap or synchronization;
+- environment and hostname syntax validation before bootstrap or synchronization;
 - structural validation needed to open the active state;
 - migration completeness and new-schema compatibility;
 - synchronized host version equality and merge preconditions;
@@ -347,6 +342,8 @@ Volodyslav validates at lifecycle boundaries where validation establishes a guar
 Within those boundaries, Volodyslav may trust persistent state produced by supported Volodyslav transitions. It is not required to revalidate every internal consequence on every read or to defend against arbitrary storage tampering.
 
 In particular, a transition whose correctness relies on a supported-lifecycle invariant may rely on that invariant without discovering every external state which could hypothetically violate it. Validation is local to the state and evidence the transition actually has available unless another specification explicitly requires communication. Unsupported remote states do not create an obligation to search the universe for them.
+
+The hostname/fingerprint uniqueness invariant is such a lifecycle guarantee. Synchronization is not required to compare fingerprints across different hostname branches, search for hostname aliases, or detect a manually cloned database merely to establish that its supported inputs are distinct host histories.
 
 Validation remains appropriate when it provides:
 
@@ -370,7 +367,7 @@ When reviewing a failure, classify it by the transition being attempted:
 | Migration precondition failure | Previous state is usable, but the migration policy cannot completely and coherently represent it under the target schema. | Fail migration without selecting an incomplete target; revise the migration or its declared support. |
 | Synchronization precondition failure | Repository, host snapshot, version, graph, or operational prerequisites for sync are not satisfied. | Fail or isolate the affected host according to sync semantics; do not force a merge. |
 | Corruption | The state is outside the closure of supported transitions, or a transition precondition was bypassed. | Fail loudly where detected; no general interpretation or recovery is promised. |
-| Unsupported manipulation | State was produced by direct filesystem, snapshot, or repository editing rather than a Volodyslav transition. | Treat it as outside the model; define a controlled import/recovery transition before supporting it. |
+| Unsupported manipulation | State was produced by direct filesystem, snapshot, hostname, or repository editing rather than a Volodyslav transition. | Treat it as outside the model; define a controlled import/recovery transition before supporting it. |
 
 ## 14. Implementation consequences
 
@@ -391,13 +388,14 @@ Implementations and future changes MUST preserve the following lifecycle propert
 13. Normal synchronization MUST preserve publication-before-propagation: a host's Journal 2 state MUST NOT be obtainable by another host as synchronization input through any supported transport path unless that state has first been published to the author's own authoritative synchronization branch.
 14. Fresh creation MUST establish the running database version and all version-required initial metadata before the fresh database participates in normal synchronization.
 15. Durable background Journal housekeeping which is not a lifecycle transition MUST preserve the active logical state and synchronization-relevant current Journal meaning, obey its own concurrency/atomicity specification, and MUST NOT be required by any lifecycle transition's preconditions or postconditions.
-16. A hostname change on an established installation MUST NOT change that database's durable identity. Normal synchronization MUST NOT merge a same-identity branch as an ordinary peer; covered historical aliases may be skipped, while evidence of later/divergent same-writer continuation must fail rather than advance the receiver's local allocator frontier.
+16. A host's configured hostname is fixed for that host history once bootstrap establishes or restores it. Distinct supported host histories have distinct hostnames and, under Journal 2, distinct `DatabaseFingerprint`/`JournalAuthor` identities. No synchronization path is required to detect violations of this invariant caused by unsupported configuration, database cloning, or repository manipulation.
 
 ## 15. Known boundaries
 
 The current lifecycle does not define:
 
 - arbitrary corruption repair;
+- hostname rename or host-branch reassignment;
 - a user-facing database backup or import command;
 - cross-version synchronization;
 - malicious-host detection or containment;
