@@ -34,6 +34,8 @@ Possible cases include:
 - `Unchanged`: existing ValueId is preserved and a validation is committed when required;
 - cache revalidation: existing ValueId is preserved and stale->fresh proof is committed.
 
+Validation history is self-describing: certificate basis entries explicitly name semantic input NodeKeys and their ValueIds rather than relying on positional schema ordering.
+
 A caller does not observe a successful new graph value whose journal history failed to commit.
 
 ## `invalidate()`
@@ -83,6 +85,19 @@ Synchronization may observably change:
 - validity/proof state.
 
 These changes arise from replayed/normalized history, not from running application computors.
+
+### Synchronization normalization is durable history
+
+A synchronization may itself create a real graph transition required by the ordinary IncrementalGraph contract, for example:
+
+- deleting a cached dependent whose required input is now absent; or
+- recording a receiver-only cached value's propagated fresh->stale transition.
+
+Those transitions are committed as ordinary receiver-authored Journal 3 events. They are not temporary acknowledgements or merge scratch metadata.
+
+If previously unseen concurrent history is learned later, normal Journal 3 replay may change the current graph again, but an already committed normalization event is not retroactively erased from history merely because a different source-observation order could have avoided authoring it.
+
+Consequently the convergence promise is about the **actual execution**: once non-normalization graph-changing activity stops, fair synchronization eventually finishes the finite remaining normalization consequences, disseminates all actually authored records, and makes participating replicas observably equivalent. Journal 3 does not promise that counterfactual executions which really authored different normalization histories would have identical final states.
 
 ## Synchronization failure
 
@@ -137,6 +152,8 @@ A Journal-3-aware application does not expose an initialized graph until require
 Initial conversion from a supported pre-Journal-3 database records a replay baseline equivalent to the legacy graph.
 
 Later migrations retain old history and record their settled target result. Future startup/replay does not rerun historical migration callbacks merely to reconstruct current state.
+
+Historical validation certificates remain decodable because they explicitly identify the semantic input NodeKeys they referred to; current replay only uses a certificate as current proof when its input-key set matches the current schema.
 
 ## Projection rebuild
 
