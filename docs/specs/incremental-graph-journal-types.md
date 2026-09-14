@@ -21,58 +21,78 @@ AuthorityTime = {
 }
 ```
 
-Missing coordinates in a `JournalFrontier` mean zero.
+Missing frontier coordinates mean zero.
 
-A journal writer stream for author `A` is a contiguous sequence:
+A writer A owns one contiguous stream:
 
 ```text
 A:1, A:2, ..., A:n
 ```
 
-No supported stream contains a hole. A local implementation may stage records temporarily, but a committed supported journal exposes only complete prefixes.
+A supported committed stream contains no holes.
 
-## Journal replica
+## Retained JournalReplica
 
-A retained journal replica is conceptually:
+Conceptually:
 
 ```text
 JournalReplica = Map<JournalAuthor, Array<JournalRecord>>
 ```
 
-where each array is exactly the immutable prefix named by the replica frontier.
+where every array is exactly one immutable prefix.
 
-The physical LevelDB layout is implementation-defined. It should permit ordered per-author range iteration without materializing the whole journal in RAM.
+The physical key/value layout is implementation-defined, but it must support ordered per-writer range iteration without requiring the complete journal in RAM.
 
-A supported journal replica satisfies:
+A supported retained journal satisfies:
 
-1. record `(A,q)` is stored under writer `A` and has `id.author == A`, `id.sequence == q`;
-2. for every retained writer `A`, records exist for every sequence from `1` through `frontier[A]`;
-3. two structures claiming the same `JournalRecordId` have byte-for-byte equivalent canonical record meaning;
-4. semantic-event contexts are causally covered by the retained frontier.
+1. record `(A,q)` has `id.author == A` and `id.sequence == q`;
+2. for every retained A, every sequence `1..frontier[A]` exists;
+3. one `JournalRecordId` has one canonical immutable meaning;
+4. every retained semantic-event context is covered by the retained frontier;
+5. all record versions are decodable under the current supported interpretation.
+
+## Record version
+
+Every persisted Journal 3 record carries an explicit format discriminator:
+
+```text
+JournalRecordVersion = positive integer
+```
+
+The initial Journal 3 persisted format uses:
+
+```text
+recordVersion = 1
+```
+
+`recordVersion` selects the immutable record codec/meaning for that record. Future versions may add a decoder/upcaster, but may not destructively rewrite an existing `(author,sequence)` into new meaning.
+
+A pure upcaster converts one historical record representation into the current in-memory semantic model without external I/O, clock reads, computor calls, migration callbacks, or changing the historical fact represented by that ID.
 
 ## Record classes
 
-Journal 3 distinguishes semantic events from non-semantic writer-state/history records.
+Core Journal 3 records are:
 
 ```text
 JournalRecord = SemanticEvent | WriterStateRecord
 ```
 
-High-level operation grouping may be added as another immutable record class later. It is not required for core replay.
+High-level operation/tracing records may be added later as additional immutable non-semantic record classes.
 
-Every record has one writer-local stream identity:
+Every record starts with:
 
 ```text
 JournalRecordBase = {
+    recordVersion: JournalRecordVersion,
     id: JournalRecordId
 }
 ```
 
-Every local record, including non-semantic writer-state records, consumes the next writer-stream sequence. Therefore `sequence` is fundamentally a writer-local log position, not a count of semantic value changes.
+All local record classes consume writer-local stream positions. Therefore `JournalSequence` is a log coordinate, not a count of semantic value changes.
 
-## Semantic event reference
+## Semantic EventRef
 
-Semantic events additionally carry exact causal and conflict-authority metadata:
+Semantic events additionally carry:
 
 ```text
 EventRef = {
@@ -82,17 +102,18 @@ EventRef = {
 }
 ```
 
-The `context` and `authorityTime` of a semantic event are immutable parts of that event's identity/meaning.
+`context` and `authorityTime` are immutable event meaning.
 
-Two retained semantic-event representations which claim the same `id` must agree on:
+Two representations claiming one semantic event ID must agree on:
 
-- `context`;
-- `authorityTime`;
-- `node`;
-- event kind; and
+- record version/decoded meaning;
+- context;
+- authority time;
+- node;
+- event kind;
 - every kind-specific body field.
 
-Disagreement is unsupported/corrupt state, not a conflict to resolve by authority ordering.
+Disagreement is a writer fork/corruption error, not a graph conflict.
 
 ## Value identity
 
@@ -100,28 +121,30 @@ Disagreement is unsupported/corrupt state, not a conflict to resolve by authorit
 ValueId = JournalRecordId
 ```
 
-A `ValueId` is valid only when its record is a `ValueEvent`.
+A `ValueId` is valid only when its record decodes to a `ValueEvent`.
 
-One `ValueId` identifies exactly one immutable semantic value occurrence at one semantic `NodeKey`.
+One ValueId denotes exactly one immutable semantic value occurrence for one semantic `NodeKey`.
+
+Payload equality never creates ValueId equality.
 
 ## Timestamp representation
 
-Journal timestamps use canonical whole-millisecond epoch instants.
-
 ```text
-CreationTime = fixed-width canonical epoch-millisecond instant
-ModifiedTime = fixed-width canonical epoch-millisecond instant
+CreationTime = fixed-width canonical whole-millisecond epoch instant
+ModifiedTime = fixed-width canonical whole-millisecond epoch instant
 ```
 
-The canonical conversion from the legacy timestamp string is pure and timezone-independent. Supported Journal 3 state rejects malformed timestamps, sub-millisecond timestamps which cannot be represented exactly, and timestamp pairs with:
+Canonical conversion from legacy timestamp strings is pure/timezone-independent.
+
+Supported records reject malformed or non-exactly-representable timestamps and value occurrences with:
 
 ```text
 createdAt > modifiedAt
 ```
 
-Physical time is treated as fixed-width for the repository's asymptotic accounting; journal-history growth is represented by sequence/HLC logical coordinates instead.
+Physical time is fixed-width for asymptotic accounting. History growth appears in journal sequence and HLC logical coordinates.
 
-## Semantic event base
+## SemanticEventBase
 
 ```text
 SemanticEventBase = JournalRecordBase & {
@@ -131,7 +154,7 @@ SemanticEventBase = JournalRecordBase & {
 }
 ```
 
-The core event kinds are:
+Core semantic events are:
 
 ```text
 SemanticEvent =
@@ -154,13 +177,17 @@ ValueEvent = SemanticEventBase & {
 }
 ```
 
-The `ValueEvent.id` is the `ValueId` of this exact value occurrence.
+`ValueEvent.id` is the exact ValueId.
 
-A value event is replay-complete: replay must not read the mutable legacy `values` or `timestamps` sublevels in order to discover the payload or timestamps represented by this occurrence.
+The event is replay-complete: replay must not read mutable `values`/`timestamps` to discover this occurrence's payload/timestamps.
 
-For one continuing materialization lineage, a local semantic value replacement normally carries the existing `createdAt` into the new value event while giving the new occurrence its own `modifiedAt`. Deletion ends that materialization lineage. A later materialization from semantic absence receives a new `createdAt` according to the ordinary graph timestamp rules.
+For a continuing materialization lineage, local semantic replacement normally preserves the current `createdAt` and `NodeIdentifier` while creating a new payload/`modifiedAt` occurrence.
 
-If synchronization copies a foreign value occurrence, it copies the original immutable `ValueEvent` rather than creating a new local `ValueEvent` merely to transport that value.
+Deletion ends that materialization lineage. Later materialization from semantic absence follows ordinary graph rules for a new creation time/identifier allocation.
+
+Synchronization copies a foreign ValueEvent unchanged. Receipt does not create another local ValueEvent.
+
+Reset/migration may intentionally create new baseline ValueEvents carrying an already-existing physical NodeIdentifier and target payload/timestamps; those new event IDs are distinct new semantic occurrences.
 
 ## DeleteEvent
 
@@ -171,30 +198,32 @@ DeleteEvent = SemanticEventBase & {
 }
 ```
 
-A delete event is semantic absence authority for its `node`.
+DeleteEvent is semantic absence authority for its NodeKey.
 
-Deletion does not erase historical value events or their payloads. Replay can therefore inspect or reconstruct earlier node history while selecting the delete event as the current head when its authority wins.
+It never erases old ValueEvents/payloads from history.
 
 ## Validation basis
 
-For concrete node `K`, let the fixed schema determine ordered distinct direct semantic input edges:
+For concrete K, let current schema define ordered distinct direct semantic edges:
 
 ```text
 inputEdges(K) = [D0, D1, ...]
 ```
 
-The basis has one entry per direct input:
+A certificate basis has one entry per edge:
 
 ```text
 BasisEntry = ValueId | "unknown"
 ValidationBasis = Array<BasisEntry>
 ```
 
-A normal Journal-3-native validation records the exact current `ValueId` for every direct input. The `"unknown"` sentinel exists only for controlled bootstrap/reset/migration baselines which must reproduce a legacy missing incoming proof but do not possess the historical value occurrence against which that proof was last absent.
+A normal Journal-3-native validation records the exact current ValueId for every direct input.
 
-`"unknown"` never equals any current `ValueId`. It therefore reconstructs a missing validity edge without inventing provenance.
+`"unknown"` is restricted to controlled bootstrap/reset/migration baselines which must reproduce an intentionally missing legacy validity proof when the historical occurrence against which that proof was absent is unavailable.
 
-The basis length and order must exactly match `inputEdges(K)`.
+`"unknown"` never equals a ValueId and therefore produces no incoming validity edge.
+
+Basis order/length must exactly match `inputEdges(K)` under the interpretation that authored the baseline/current state.
 
 ## ValidateEvent
 
@@ -207,13 +236,15 @@ ValidateEvent = SemanticEventBase & {
 }
 ```
 
-A validation applies only to the named value occurrence.
+A validation applies only to its named value occurrence.
 
-A local value-changing computation normally authors its `ValueEvent` before its matching `ValidateEvent`, and the validation context includes the value event.
+Its `value` must name a retained ValueEvent for the same semantic node.
 
-A successful computation which preserves the current semantic value does not author another `ValueEvent`; it authors a new `ValidateEvent` for the existing `ValueId`.
+Every non-unknown basis entry must name a retained ValueEvent for the corresponding direct input semantic node.
 
-## Invalidation scope
+A newly computed changed value normally authors its ValueEvent before this ValidateEvent. `Unchanged`/cache revalidation author a new validation for the existing ValueId without a new ValueEvent.
+
+## Invalidation scopes
 
 ```text
 InvalidateScope =
@@ -221,9 +252,19 @@ InvalidateScope =
     | { kind: "value", value: ValueId }
 ```
 
-Node-scoped invalidation is independent of a particular selected value occurrence. It is used when the named node itself has been explicitly/directly invalidated and its incoming cache proof must not be accepted until a later validation has observed that invalidation.
+### Node scope
 
-Value-scoped invalidation marks one particular cached value occurrence stale without changing its value identity. It is used for persistent freshness transitions such as propagated invalidation or synchronization normalization where the incoming proof relation itself is not removed.
+Node-scoped invalidation is independent of the selected value occurrence.
+
+It represents direct/explicit invalidation of the node's incoming cache proof. A validation clears its effect only when the validation causally observes/covers that invalidation.
+
+### Value scope
+
+Value-scoped invalidation marks one exact cached occurrence stale without removing its incoming validity proof by itself.
+
+It represents persistent freshness transitions such as propagated invalidation, synchronization propagation, or stale baseline state.
+
+It stops applying when another ValueId becomes the selected current occurrence.
 
 ## InvalidateEvent
 
@@ -235,11 +276,13 @@ InvalidateEvent = SemanticEventBase & {
 }
 ```
 
-The `reason` is historical/debugging metadata. Projection semantics are determined by `scope`, event causality, and the selected value/certificate history.
+`reason` is historical/debugging classification. Replay behavior comes from scope, causality, selected value, and certificates.
+
+A value-scoped invalidation must name a retained ValueEvent for the same semantic node.
 
 ## WriterStateRecord
 
-Some current persisted graph metadata is host-local allocator state rather than cross-replica semantic graph authority. Journal 3 nevertheless records it so same-host replay can reconstruct the complete supported persisted database state without consulting the old mutable value.
+Host-local allocation metadata must also be replayable.
 
 Core Journal 3 defines:
 
@@ -250,15 +293,17 @@ WriterStateRecord = JournalRecordBase & {
 }
 ```
 
-A writer-state record belongs to its author's local stream and records that author's durable `last_node_index` watermark after the publication which contains it.
+A writer-state record is authored only in its own writer stream.
 
-`lastNodeIndex` is monotone within one continuing writer stream. Foreign writer-state records are retained for historical completeness but do not replace the receiver's own host-local `last_node_index`.
+For one continuing writer, `lastNodeIndex` records are monotone nondecreasing.
 
-A publication which durably advances the local allocation watermark must include a writer-state record carrying the new watermark unless the same value is already reconstructible from a later record in the same atomic publication. The replay rule is defined in `incremental-graph-journal-replay.md`.
+Foreign writer-state records are retained/relayed but never replace the receiver's own `last_node_index`.
+
+When a local publication durably advances the local allocation watermark, that publication records a writer-state value sufficient for replay to reconstruct the resulting watermark.
 
 ## Causal context
 
-For distinct semantic events `E` and `F`:
+For distinct semantic events E and F:
 
 ```text
 happenedBefore(E,F) iff
@@ -267,28 +312,28 @@ happenedBefore(E,F) iff
         : E.id.sequence <= F.context[E.id.author]
 ```
 
-The same-writer relation uses stream sequence even though non-semantic records may occur between two semantic events. This is valid because stream order is the writer's durable publication order.
+Same-writer semantic order follows immutable writer-stream order even when non-semantic records lie between two events.
 
-A semantic event context is the complete journal frontier causally observed by the author before that event is published, extended within one atomic publication by earlier same-publication records/events as appropriate.
+A semantic event's context is the complete retained journal frontier causally observed before that event, extended to include earlier same-publication records as appropriate.
 
-For every semantic event `E`:
+For semantic E:
 
 ```text
 E.context[E.id.author] < E.id.sequence
 ```
 
-and a supported retained journal covers every coordinate in `E.context`.
+and every coordinate in E.context must be retained in a supported journal.
 
-## Authority clock
+## Ordinary authority allocation
 
-Each writable replica maintains a derived/cached authority-clock high-water value equal to at least the greatest `AuthorityTime` among semantic events it has causally observed.
+Each writable database maintains/derives an observed semantic-authority high-water H equal to at least the greatest `AuthorityTime` among semantic events it has observed.
 
-Before authoring a local semantic event, let `seedPhysical` be:
+For an ordinary new semantic event choose `seedPhysical`:
 
-- the event's exact `modifiedAt` for `ValueEvent`;
-- the operation/publication wall-clock instant for other locally authored semantic events.
+- exact `modifiedAt` for ValueEvent;
+- operation/publication wall-clock instant for other events.
 
-Let `H` be the current observed authority high-water. Allocate:
+Allocate:
 
 ```text
 p = max(seedPhysical, H.physical)
@@ -302,59 +347,88 @@ else:
     }
 ```
 
-The event receives `nextAuthorityTime` and the local high-water advances to it.
+Then advance H to at least that authority.
 
-The persisted/cached high-water is an acceleration/allocator state, not independent replay authority: it can be recomputed as the maximum authority time of retained semantic history.
+The cached high-water is derived allocator state, not independent semantic authority. It can be reconstructed from retained semantic events.
 
 Journal 3 imposes no maximum-clock-skew rejection rule.
 
+## Initial-bootstrap ValueEvent authority exception
+
+Only the initial pre-Journal-3 bootstrap baseline defined by `incremental-graph-journal-migrations.md` may allocate bootstrap ValueEvents with:
+
+```text
+authorityTime = {
+    physical: canonical(modifiedAt),
+    logical: 0
+}
+```
+
+without incrementing H for every equal-time bootstrap value.
+
+This exception is valid only because:
+
+1. bootstrap ValueEvents are allocated before later bootstrap semantic events;
+2. they are enumerated in nondecreasing modifiedAt order;
+3. equal-time same-writer events remain strictly ordered by writer-local sequence in the total EventRef authority order;
+4. later bootstrap Validate/Invalidate events return to ordinary HLC allocation after H has been raised to the maximum bootstrap value authority/time.
+
+No ordinary pull, sync, reset, or later migration may use this exception.
+
 ## Total semantic authority order
 
-Conflict selection uses this total order over semantic `EventRef`s:
+Conflict precedence compares EventRefs by:
 
 ```text
 authorityCompare(E,F):
-    compare E.authorityTime.physical numerically;
-    on equality compare E.authorityTime.logical numerically;
-    on equality compare E.id.author lexicographically;
-    on equality compare E.id.sequence numerically
+    1. authorityTime.physical numerically
+    2. authorityTime.logical numerically
+    3. id.author lexicographically
+    4. id.sequence numerically
 ```
 
-The final sequence comparison occurs only after writer identity is equal.
+Sequence is compared only after author equality (because distinct writers have distinct author strings at step 3).
 
-Because an author joins all causally observed authority high-water state before allocating a later semantic event:
+For every supported pair:
 
 ```text
 happenedBefore(E,F)
     => authorityCompare(E,F) < 0
 ```
 
-for supported semantic events.
+Ordinary HLC allocation guarantees this across observed writers and unequal/successive authority coordinates; bootstrap's equal-time same-writer case is completed by step 4.
 
-Concurrent events are deterministically ordered by authority time and then writer identity. This is conflict precedence, not a claim that one concurrent event physically happened later in real time.
+Concurrent events are deterministically ordered by this rule. The order is conflict authority, not guaranteed real-world chronology.
 
-## Record publication ordering
+## Publication ordering
 
-When one atomic graph operation produces multiple records, it allocates consecutive writer-stream positions in a deterministic order which extends semantic happened-before requirements.
+One atomic local publication allocates a contiguous writer sequence range in deterministic order extending semantic dependency/happened-before constraints.
 
 At minimum:
 
-- a new `ValueEvent` precedes every `ValidateEvent` naming that new `ValueId`;
-- a direct invalidation/value change precedes any locally authored propagated invalidation caused by it;
-- an event must never reference a same-publication `ValueId` or other semantic record allocated after it.
+- a ValueEvent precedes each same-publication ValidateEvent naming its new ValueId;
+- a root/direct change precedes propagated invalidations caused by it;
+- a dependency structural deletion precedes dependent deletions authored solely because of that absence;
+- a record never references a same-publication record allocated after it.
 
-Records not ordered by semantic dependency use a stable operation-specific tie-breaker, normally canonical `NodeKey` and record kind.
+When semantics do not constrain two records, use a stable operation-specific ordering, normally canonical NodeKey then record kind.
 
-## Journal frontier join
+Final sequence allocation occurs during serialized publication finalization as defined by the Journal API/locking specs, so failed transactions leave no durable holes.
 
-For two compatible journal frontiers `F` and `G`:
+## Frontier join
+
+For compatible frontiers F and G:
 
 ```text
 join(F,G)[A] = max(F[A], G[A])
 ```
 
-The numerical frontier join alone is meaningful only when the corresponding immutable records are available and agree on overlapping IDs.
+A numerical frontier is meaningful only together with actual immutable records through every coordinate.
 
-For causally closed immutable-prefix journals, union of the actual records corresponding to this componentwise maximum is again causally closed.
+If two causally closed prefix journals have agreeing overlap, the union represented by the componentwise max is causally closed.
 
-This prefix-union operation is idempotent, commutative, and associative at the journal-information level.
+At retained-information level, compatible prefix union is:
+
+- idempotent;
+- commutative;
+- associative.
