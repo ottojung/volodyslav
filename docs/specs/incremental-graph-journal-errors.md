@@ -58,7 +58,7 @@ retained frontier B = 95
 
 Required behavior:
 
-- fetch/complete missing required source history if it is part of the same valid source snapshot and transfer is still in staging;
+- complete missing required source history if it is part of the same valid source snapshot and transfer is still in staging;
 - otherwise reject the final active target.
 
 ## JournalReferenceCausalityError
@@ -69,7 +69,7 @@ Meaning:
 
 Examples:
 
-- ValidateEvent basis references concurrent ValueEvent;
+- ValidateEvent basis references a concurrent ValueEvent;
 - validation targets a future same-writer value;
 - value-scoped invalidation names a concurrent/future occurrence.
 
@@ -77,7 +77,7 @@ Required behavior:
 
 - reject the record/history;
 - do not substitute another current ValueId;
-- do not salvage only the non-bad basis positions.
+- do not salvage only the non-bad basis entries.
 
 ## JournalRecordValidationError
 
@@ -90,13 +90,18 @@ Examples:
 - unknown unsupported record version;
 - malformed fields;
 - invalid timestamps;
-- validation basis wrong arity under its applicable interpretation;
-- ValueId names non-ValueEvent or wrong semantic node;
+- duplicate validation-basis input NodeKeys;
+- validation-basis entries not in canonical NodeKey order for the record version;
+- ordinary validation using `"unknown"`;
+- known basis ValueId names a ValueEvent for a different semantic input NodeKey;
+- validation target ValueId names a non-ValueEvent or wrong semantic node;
 - invalid NodeIdentifier representation.
+
+A historical certificate whose explicit input-key set differs from the **current** schema is not malformed solely for that reason. It remains valid historical evidence; replay simply does not treat it as current-shape-compatible proof.
 
 Required behavior:
 
-- fail before activating the history;
+- fail before activating malformed history;
 - surface enough record identity/context to diagnose the bad record without leaking unrelated payloads unnecessarily.
 
 ## JournalVersionCompatibilityError
