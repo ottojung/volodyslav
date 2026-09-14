@@ -34,6 +34,24 @@ The surrounding lifecycle documents are:
 The retained immutable journal is authority; the current IncrementalGraph database is project(journal).
 ```
 
+## Specification completeness
+
+Within the Journal 3 scope, the semantic design now specifies:
+
+- persisted record identities/shapes and record-version evolution;
+- causal/reference well-formedness and conflict authority;
+- replay/projection, including self-describing validation certificates;
+- ordinary local event emission and commit-time allocation;
+- graph+journal locking and atomic publication;
+- stable-snapshot/range software interfaces and failure categories;
+- suffix synchronization, same-writer recovery, semantic normalization, and convergence;
+- reset/rebaseline semantics;
+- pre-Journal-3 bootstrap and later schema/version migration;
+- local storage/codec requirements;
+- correctness laws, worked traces, tests, and implementation acceptance criteria.
+
+An implementer should not need to invent additional Journal semantics for those paths. Production implementation details may vary where the specifications explicitly leave representation or optimization choices open.
+
 ## Scope boundary
 
 The Journal 3 specification deliberately stops at the semantic stable-snapshot boundary.
@@ -54,4 +72,4 @@ Also deliberately outside core correctness:
 - high-level operation grouping/history UI (optional non-authoritative diagnostics);
 - the end-to-end change-sensitive synchronization time bound owned by #1607.
 
-Those are not prerequisites for implementing the Journal 3 semantic model specified here.
+Those are intentional non-requirements/deferred optimizations, not missing Journal 3 semantic specification.
