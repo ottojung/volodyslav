@@ -115,10 +115,11 @@ For every ValidateEvent C:
 happenedBefore(valueEvent(C.value), C)
 ```
 
-and for every non-unknown basis entry B:
+and for every basis entry B whose `B.value` is not `"unknown"`:
 
 ```text
-happenedBefore(valueEvent(B), C)
+happenedBefore(valueEvent(B.value), C)
+valueEvent(B.value).node == B.input
 ```
 
 For every value-scoped InvalidateEvent I:
@@ -239,11 +240,17 @@ Every replayed legacy validity edge:
 D -> K
 ```
 
-is justified by one selected eligible ValidateEvent C for K whose basis position for D equals D's current ValueId.
+is justified by one selected eligible ValidateEvent C for K containing exactly one basis entry:
+
+```text
+{ input: D, value: currentValueId(D) }
+```
 
 Replay must never synthesize one certificate by taking different input edges from unrelated ValidateEvents.
 
 The selected certificate policy may prefer the eligible certificate with the greatest number of current-basis matches, but the resulting validity relation always comes from that one certificate.
+
+For a certificate to be current-schema eligible, its explicit set of `basis[*].input` NodeKeys must equal the current distinct direct-input set for K. Historical certificates for an old schema remain decodable history but cannot silently become proof for a different current input set.
 
 ## Law 15: explicit invalidation is causal
 
@@ -304,7 +311,7 @@ project(bootstrap(G)) == G
 
 including current materialization, identifiers, payloads, timestamps, freshness, validity, and local allocation watermark.
 
-Missing historical proof provenance is represented only by the controlled `"unknown"` basis sentinel; bootstrap must not invent historical ValueIds.
+Missing historical proof provenance is represented only by the controlled `"unknown"` basis-value sentinel; bootstrap must not invent historical ValueIds.
 
 ## Law 20: migration equivalence
 
@@ -316,7 +323,7 @@ project(Jafter, targetSchema) == Gtarget
 
 Future replay does not execute the old migration callback.
 
-Old records retain their IDs and historical meaning.
+Old records retain their IDs and historical meaning. Their explicit certificate input NodeKeys remain interpretable even when the current schema has changed.
 
 ## Law 21: writer sequence contiguity
 
@@ -371,6 +378,7 @@ At minimum, implementation work should include tests/models which exercise:
 - causal overwrite after observing a remote value;
 - node invalidation concurrent with validation;
 - multi-input certificates with competing partial basis matches;
+- current-schema rejection of old-schema certificate input sets;
 - receiver-only dependent stale propagation;
 - dependency deletion closure;
 - repeat synchronization;
