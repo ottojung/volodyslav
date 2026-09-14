@@ -2,13 +2,25 @@
 
 ## Status and scope
 
-This document defines the core Journal 3 model for one fixed compatible IncrementalGraph database version and graph schema.
+Journal 3 is the append-only replay log for IncrementalGraph state.
 
-Journal 3 is an append-only replay log. It is the semantic source of truth for persisted IncrementalGraph state. The existing IncrementalGraph sublevels remain the efficient materialized representation used by the runtime, but their semantic contents are derived from Journal 3 rather than carrying independent synchronization authority.
+The journal is the semantic source of truth. The existing IncrementalGraph persistence remains the efficient materialized representation used by the runtime, but its semantic contents are derived from Journal 3 rather than carrying independent synchronization authority.
 
-The detailed record types and ordering rules are defined by `incremental-graph-journal-types.md`. The deterministic projection is defined by `incremental-graph-journal-replay.md`. Replication of journal history is defined by `incremental-graph-journal-sync.md`.
+This branch specifies the journal itself and its integration with IncrementalGraph. It intentionally does **not** specify a concrete remote/backend product protocol.
 
-Migration between database/schema versions, controlled reset, replay checkpoints, and the concrete remote storage protocol are separate specifications. They must preserve the core laws in this document.
+The Journal 3 specification is split by responsibility:
+
+- `incremental-graph-journal-types.md` — immutable record identities, event shapes, causal context, authority ordering;
+- `incremental-graph-journal-emission.md` — mapping ordinary graph transitions to journal records;
+- `incremental-graph-journal-replay.md` — deterministic projection from retained history to the legacy graph representation;
+- `incremental-graph-journal-sync.md` — history replication and synchronization normalization;
+- `incremental-graph-journal-api.md` — internal/public software-facing boundaries and error/result semantics;
+- `incremental-graph-journal-reset.md` — append-only controlled reset/rebaseline;
+- `incremental-graph-journal-migrations.md` — initial bootstrap and later replay-complete migrations;
+- `incremental-graph-journal-locking.md` — integration with the existing graph locking/publication model;
+- `incremental-graph-synchronization.md` — lifecycle-facing synchronization shell built on Journal 3.
+
+Replay checkpoints may be added later as derived accelerators. They are not required for correctness and never replace authoritative history.
 
 ## Fundamental model
 
@@ -18,7 +30,7 @@ A Journal 3 database has one durable writer identity:
 JournalAuthor = DatabaseFingerprint
 ```
 
-Each author owns one immutable append-only writer stream:
+Each author owns one immutable append-only stream:
 
 ```text
 A:1, A:2, A:3, ...
@@ -26,17 +38,25 @@ B:1, B:2, B:3, ...
 C:1, C:2, C:3, ...
 ```
 
-A local Journal 3 replica may retain prefixes of many writer streams. A writer may append new records only to its own stream. Synchronization copies foreign records verbatim; it does not rename, re-author, or summarize them into receiver-local history.
+A local database may retain prefixes of many writer streams.
 
-The complete retained journal is therefore a set of immutable per-writer prefixes. Its frontier is:
+A writer may create new records only under its own identity. Synchronization copies foreign records verbatim; it does not rename, summarize, or re-author them merely because another database learned them.
+
+The retained history is therefore conceptually:
+
+```text
+JournalReplica = Map<JournalAuthor, immutable contiguous prefix>
+```
+
+with frontier:
 
 ```text
 JournalFrontier = Map<JournalAuthor, JournalSequence>
 ```
 
-where a missing author coordinate means zero.
+A missing coordinate means zero.
 
-For example:
+Example:
 
 ```text
 {
@@ -46,18 +66,16 @@ For example:
 }
 ```
 
-means that the local replica contains exactly records `A:1..417`, `B:1..93`, and `C:1..51` for those writers.
+means records `A:1..417`, `B:1..93`, and `C:1..51` are retained.
 
-A supported journal frontier is causally closed: if a retained semantic event claims to have observed another writer through coordinate `q`, then the retained journal also contains that writer through `q`.
+A supported retained frontier is causally closed: if a semantic event claims to have observed another writer through q, that writer's records through q are also retained.
 
 ## Journal-first state
 
-Let `J` be a supported causally closed Journal 3 replica under one fixed compatible graph schema.
-
-Define:
+For one compatible current database/schema interpretation define:
 
 ```text
-project(J) = the persisted IncrementalGraph semantic state determined by replay
+project(J) = persisted IncrementalGraph state determined by replay of J
 ```
 
 The central Journal 3 law is:
@@ -66,111 +84,133 @@ The central Journal 3 law is:
 currentGraph == project(retainedJournal)
 ```
 
-The existing graph database is therefore a materialized view of the journal.
+This is a reconstruction/determinism requirement, not mathematical injectivity from history to current graph.
 
-This is a reconstruction requirement, not a requirement that the mapping from history to current graph be mathematically injective. Different histories may legitimately project to the same current graph. The required direction is that the journal contains all semantic information necessary to determine the graph; the graph contributes no additional semantic fact which replay would need to guess.
+Different histories may legitimately end in the same graph state. The required direction is:
 
-In particular, a supported implementation must be able to discard the materialized graph representation and rebuild an observationally equivalent one from the journal under the same database version/schema interpretation.
+> the journal contains every semantic fact necessary to determine the graph, while the graph contributes no additional semantic fact that replay would need to guess.
+
+A supported implementation must therefore be able to discard the materialized graph and rebuild an observationally equivalent one from retained journal history under the compatible current schema/version interpretation.
 
 ## Core invariants
 
 ### J3-INV-1: replay completeness
 
-For every supported committed Journal 3 database state:
+For every supported committed Journal 3 database:
 
 ```text
-semanticGraph(persistedLegacySublevels)
+semanticGraph(persistedGraph)
     == semanticGraph(project(retainedJournal))
 ```
 
-Replay must determine, for every materialized semantic node:
+Replay determines at least:
 
-- whether it is materialized;
-- its selected value occurrence and exact `ComputedValue` payload;
-- its `createdAt` and `modifiedAt` timestamps;
-- its freshness;
-- its incoming validity relation;
-- the selected physical `NodeIdentifier` carried by the winning materialization occurrence.
+- which semantic nodes are materialized;
+- selected current `ValueId`s;
+- exact `ComputedValue` payloads;
+- selected physical `NodeIdentifier`s;
+- `createdAt` and `modifiedAt`;
+- freshness;
+- semantic validity edges;
+- receiver-local allocation watermark through writer-state history.
 
-The legacy `identifiers_keys_map`, `values`, `timestamps`, `freshness`, and `valid` records must be the lowering of that replay result into the unchanged legacy storage representation.
-
-Host-local allocation metadata such as `last_node_index` is replayed from journal writer-state records as defined by the types/replay specifications.
+The existing `identifiers_keys_map`, `values`, `timestamps`, `freshness`, `valid`, and local `last_node_index` are a lowering/materialization of these replay facts plus current schema-derived structure.
 
 ### J3-INV-2: no independent graph authority
 
-No existing IncrementalGraph sublevel may contain synchronization or semantic authority absent from the retained journal.
+No persisted graph sublevel may contain synchronization/semantic authority absent from the retained journal.
 
-A mismatch between the journal projection and persisted graph sublevels is unsupported/corrupt state. Opening code may detect and reject such a mismatch or rebuild derived projection state according to a separately specified repair/replay procedure; it must not resolve the disagreement by treating the legacy graph as an additional source of truth.
+A graph/journal mismatch is unsupported/corrupt state or derived-state damage. It is not resolved by preferring the mutable graph over history.
 
-### J3-INV-3: append-only immutable history
+A repair/rebuild procedure may recreate graph/index state from valid history, but it may not invent missing journal semantics from the graph once Journal 3 is established.
 
-Once a journal record has become durable under `(author, sequence)`, its identity and content never change and the record is not destructively removed by Journal 3 maintenance.
+### J3-INV-3: immutable append-only identity
 
-A supported writer stream is a contiguous prefix beginning at sequence 1. Reusing a durable record identity for different content is forbidden.
+Once `(author, sequence)` is durably published, that record's canonical meaning never changes and the record is not destructively removed by Journal 3 maintenance.
 
-Derived checkpoints or indexes may be deleted and regenerated. Authoritative journal records may not.
+A supported writer stream is a contiguous prefix from 1. There are no durable holes.
 
-### J3-INV-4: writer ownership
+Derived indexes/checkpoints may be rebuilt or deleted. Authoritative records may not.
 
-Only database `A` may append new records under author `A`.
+### J3-INV-4: one continuing writer stream per writer identity
 
-A receiver may retain and relay immutable records from another author, but doing so does not make those records receiver-authored. If synchronization itself causes a genuinely new semantic transition which requires a new record, that record is appended under the receiver's own writer identity.
+Only writer A may create new A-authored records.
 
-A writable database must not continue authoring beneath a later surviving prefix of its own writer stream. Discovery of later same-writer history is a recovery/fork condition, not ordinary foreign synchronization.
+Foreign replicas may retain and relay A's immutable records.
+
+If a writable A database discovers a longer exact prefix of its own immutable A stream, it may recover/import that suffix under exclusive maintenance and continue authoring strictly after the recovered head.
+
+If two copies disagree on any overlapping A record, A's history has forked or storage is corrupt; the disagreement is rejected rather than merged.
+
+Two independently live writable installations intentionally sharing one `DatabaseFingerprint` are outside the supported lifecycle.
 
 ### J3-INV-5: causal closure
 
-Every retained semantic event's causal context is covered by the retained journal frontier.
+Every retained semantic event context is covered by the retained frontier.
 
-For event `E` and every author `A`:
+For E and writer A:
 
 ```text
 E.context[A] <= retainedFrontier[A]
 ```
 
-A synchronization implementation may receive records out of network order, but it must not expose a committed supported journal/projection state in which retained semantic events have missing causal prerequisites.
+Staging may temporarily receive records out of order, but unsupported partial history is not exposed as an active committed journal/projection.
 
 ### J3-INV-6: atomic journal/projection publication
 
-Whenever an ordinary local operation appends journal records and changes the materialized graph projection, the appended records and the matching projection changes become durable atomically.
+Whenever a supported operation appends/imports journal history and changes the materialized graph, history and matching projection become durable/active together.
 
-No supported committed state exposes the graph effect without the journal records which determine it, or the journal records without the corresponding materialized projection.
+There is no supported observation point containing:
 
-Synchronization may build an inactive target and cut over atomically. Ordinary graph transactions may use the existing graph commit boundary. The physical mechanism is implementation-specific; the observable atomicity is normative.
+```text
+new journal + old graph
+```
+
+or:
+
+```text
+old journal + new graph
+```
+
+Ordinary graph transactions use the per-replica commit boundary. Synchronization/reset/migration may build inactive targets and cut over under exclusive maintenance.
 
 ### J3-INV-7: deterministic replay
 
-For one fixed compatible database version/schema and one supported causally closed journal `J`, replay is deterministic.
+For one compatible current interpretation and one supported causally closed journal J:
 
-Two implementations replaying the same journal under the same interpretation must select the same semantic node heads, values, timestamps, freshness, and validity relation. Local filesystem paths, temporary replica-slot names, and other non-graph operational artifacts are outside this equality.
+```text
+project(J)
+```
 
-### J3-INV-8: replay has no external side effects
+is deterministic.
 
-Replay never invokes a computor and never re-executes the historical external operation which originally produced an event.
+Arrival order, synchronization source order, filesystem layout, inactive replica names, and transport IDs do not change semantic replay.
 
-Replay must not depend on current wall-clock time, random numbers, network services, files outside the database, or other ambient external state.
+### J3-INV-8: replay performs no historical external work
 
-Historical nondeterministic choices are data in journal records. A `ValueEvent`, for example, contains the actual value occurrence produced historically; replay uses that recorded payload rather than calling the computor again.
+Replay never calls computors and never reruns historical reset/migration/synchronization/application operations.
 
-## Journal records versus derived state
+Replay must not depend on current wall time, randomness, network services, or ambient application state.
 
-Journal 3 distinguishes authoritative history from disposable acceleration state.
+Historical nondeterministic outcomes are data in records. A `ValueEvent` carries the actual payload produced historically.
 
-Authoritative history includes the immutable writer streams and every payload/timestamp/causal fact required by replay.
+## Authoritative history versus derived acceleration
+
+Authoritative history consists of immutable writer records and every payload/timestamp/causal fact needed by replay.
 
 Derived state may include:
 
-- the current legacy IncrementalGraph sublevels;
-- per-node current-head indexes;
-- per-node event indexes;
+- legacy graph sublevels;
+- current-head/value indexes;
+- per-node history indexes;
 - reverse structural-edge indexes;
-- cached causal/high-water summaries;
-- replay checkpoints/snapshots;
-- synchronization progress/frontier indexes.
+- cached frontier/high-water summaries;
+- synchronization scratch state;
+- replay checkpoints.
 
-Derived structures may be maintained transactionally for performance, but correctness must not depend on information existing only in them.
+Correctness must not depend on semantic information existing only in a derived accelerator.
 
-A checkpoint is therefore conceptually:
+A checkpoint may say:
 
 ```text
 Checkpoint {
@@ -179,11 +219,11 @@ Checkpoint {
 }
 ```
 
-It may accelerate restoration by loading `derivedProjection` and replaying only records after `frontier`. Deleting the checkpoint must not destroy history. Deleting authoritative records before the checkpoint is not Journal 3 checkpointing and is outside the base design.
+and permit loading the projection then replaying the suffix. Deleting that checkpoint is harmless to correctness. Deleting the authoritative records it summarizes is not Journal 3 checkpointing.
 
-## Semantic records
+## Semantic event model
 
-The core semantic history consists of low-level immutable events sufficient to reconstruct graph meaning. Journal 3 initially uses these semantic event classes:
+Core replay history uses:
 
 ```text
 ValueEvent
@@ -192,63 +232,99 @@ ValidateEvent
 InvalidateEvent
 ```
 
-Their exact fields are defined in `incremental-graph-journal-types.md`.
+plus writer-state records for local allocator reconstruction.
 
-The important distinction is:
+The semantic meanings are:
 
-- a `ValueEvent` records one exact semantic value occurrence, including payload and timestamps;
-- a `DeleteEvent` records semantic absence authority;
-- a `ValidateEvent` records validation of one value occurrence against exact input value occurrences;
-- an `InvalidateEvent` records a stale/recompute obligation with its scope.
+- `ValueEvent` — one exact historical value occurrence including payload/timestamps/identifier;
+- `DeleteEvent` — semantic absence authority for one NodeKey;
+- `ValidateEvent` — proof that one exact value occurrence was validated against an input-occurrence basis;
+- `InvalidateEvent` — persisted recomputation/staleness obligation with node/value scope.
 
-High-level operation grouping may be recorded as additional historical metadata, but replay authority belongs to the low-level semantic events. Replaying a historical `pull`, migration, synchronization, or reset must never mean re-running that high-level operation.
+High-level operation grouping may be added as non-authoritative history metadata, but replay is driven by the low-level records. Replaying an old pull/migration/reset/sync never means rerunning that old operation.
 
-## Value occurrence identity
+## Value identity
 
-A successful computation which changes the semantic value creates a new immutable value occurrence. Its `ValueId` is the journal identity of its `ValueEvent`.
+A new semantic value occurrence creates a new `ValueEvent` and therefore a new `ValueId`.
 
-The value event contains the exact payload and timestamp facts needed to reconstruct that occurrence. Copies of a `ValueId` across replicas therefore necessarily refer to the same payload and `modifiedAt`/`createdAt` carried by that occurrence.
+Equal payload bytes do not imply equal occurrence identity.
 
-Payload equality does not create value identity. Two independently authored equal `ComputedValue`s remain distinct occurrences unless they are literally the same retained `ValueEvent`/`ValueId`.
+A computation which legitimately preserves the current semantic value (`Unchanged` or cache revalidation) preserves the existing ValueId and records a new validation when persisted graph state changes from stale to fresh.
 
-A computation which returns `Unchanged`, or otherwise preserves the current semantic value under the IncrementalGraph contract, preserves the existing `ValueId` and records only the validation required by that transition.
+## Conflict authority
 
-## Physical NodeIdentifier ownership
+Journal semantic authority extends exact happened-before.
 
-A `ValueEvent` records the `NodeIdentifier` of the materialization occurrence it creates or preserves as specified by the emission rules.
+A semantic event causally after another must compare later in the total authority order.
 
-The selected present value occurrence therefore supplies the physical identifier used by the legacy projection. When synchronization selects a foreign value occurrence, the projection may use that occurrence's globally namespaced identifier because identifiers include the allocating database fingerprint.
+Concurrent value occurrences normally prefer later legacy `modifiedAt` through the physical seed of the HLC. Causal monotonicity may raise that seed. Remaining ties use durable writer identity, and writer-local sequence is compared only after writer identity is equal.
 
-If two retained present occurrences for different semantic nodes claim the same physical identifier, or one writer reuses an identifier incompatibly, the journal is unsupported/corrupt rather than resolved by payload equality or arbitrary reassignment.
+The authority order is deterministic conflict precedence, not a promise of true real-time ordering under arbitrary clock skew.
 
-Writer-local allocation-watermark history is retained separately so `last_node_index` can also be reconstructed without treating the current legacy value as authority.
+## Synchronization model
+
+Synchronization transfers the immutable suffixes missing from one stable source snapshot and unions them with receiver history.
+
+Because history itself is transferred:
+
+- there is no `possibleMaybeChanges()` summary protocol;
+- there are no compacted changed-node markers;
+- there is no semantic `AdoptEvent` merely for receipt;
+- "full" synchronization is the same algorithm from frontier zero.
+
+Raw history union may require explicit receiver-authored normalization to preserve existing IncrementalGraph semantics, especially:
+
+- dependency-closure deletion when a selected cached node has a missing input; and
+- persistent fresh-to-stale invalidation for receiver-only dependents affected by newly learned history.
+
+Those normalization events are ordinary immutable history and converge through later synchronization.
+
+## Reset model
+
+Reset retains history.
+
+It first observes/imports the chosen source history, then appends a receiver-authored causally later baseline whose projection matches the requested source graph semantics.
+
+Old receiver events remain replay/debug history. There is no new journal incarnation and no cursor reset because immutable frontiers remain true statements about retained history.
+
+Same-writer restoration which merely catches up an exact missing local suffix does not require a reset baseline.
+
+## Migration model
+
+Initial pre-Journal-3 bootstrap constructs a replay baseline from the supported legacy graph.
+
+Later Journal-3-aware migration retains all old history and appends a complete current-state migration baseline for the target graph. Future replay uses the recorded migration result rather than rerunning historical migration callbacks.
+
+Cross-version ordinary synchronization remains disallowed until both sides have a compatible current interpretation.
 
 ## History retention
 
 Journal 3 has no destructive compaction operation.
 
-The retained history may grow without a total-size bound independent of the number or size of historical events. This is intentional: replayability and debuggability are semantic properties of the design rather than temporary implementation conveniences.
+Retained history may grow with historical activity and payload volume.
 
-Future storage optimizations may include compression, immutable blob deduplication, archival tiers, checkpoints, indexes, or transport batching. Such optimizations must preserve the logical immutable record history and replay result.
+Future compression, blob deduplication, archival, indexes, and checkpoints are permitted only when the logical immutable history and replay meaning remain intact.
 
 ## Transport independence
 
-The journal model does not depend on Git, Supabase, PostgreSQL, filesystem snapshots, or another transport/storage product.
+Journal semantics do not depend on Git, a SQL database, a hosted service, filesystem snapshots, or another transport/storage product.
 
-A transport may publish and fetch writer-stream prefixes, but transport identifiers do not become journal identities or conflict authority.
+Journal 3 requires only transport-neutral properties such as stable source snapshots and ordered immutable writer-prefix reads.
 
-The long-term remote synchronization payload is the journal history itself (and optional replay accelerators), not a rendered copy of the mutable current graph.
+Concrete remote/backend publication protocols are intentionally outside the current scope.
 
 ## Convergence target
 
-Journal replication has a simple information-level join: compatible replicas retain immutable prefixes and synchronization obtains missing suffixes. For a fixed set of immutable records, union is idempotent, commutative, and associative.
+At the retained-history level, compatible immutable prefix union is idempotent, commutative, and associative.
 
-The harder Journal 3 requirement is that the graph projection of the resulting causally closed history is deterministic and respects the IncrementalGraph operational contract.
+The graph-level requirement is stronger: synchronization normalization must terminate, and deterministic replay of converged history must yield observably equivalent IncrementalGraph states.
 
-Therefore, once graph-changing operations and synchronization-authored semantic normalization (if any is required by later synchronization specifications) stop, fair dissemination of all retained journal records must bring every supported replica to the same semantic journal history and hence the same observable IncrementalGraph projection.
+Once ordinary graph changes and required normalization stop, fair repeated synchronization must disseminate all retained records and then become a semantic no-op.
 
-## Fixed-version boundary
+## Current-version replay boundary
 
-This core specification assumes one exact compatible database version and graph schema while replaying the semantic events described here.
+Core current-state replay operates under one compatible current database version and graph schema.
 
-A Journal-3-aware migration specification must define how version/schema transitions themselves become replayable history. It must not weaken replay completeness by requiring a future restorer to execute historical application code whose output was not recorded.
+Journal-aware migration records complete target baselines so current replay never needs to rerun old application migrations.
+
+Because old authoritative records remain stored indefinitely, future record-format evolution must preserve the ability to decode/upcast historical immutable records according to their recorded format contract.
