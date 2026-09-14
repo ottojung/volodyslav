@@ -29,16 +29,16 @@ This is a replay-completeness requirement. It does not require the mathematical 
 ---
 
 $id-1235084615014938
-title: Journal is the replicated backend state
+title: Journal is the replicated synchronization state
 date: 2026/09/13
 source: @ottojung
 kind: requirement
 
-The long-term synchronization architecture should upload and replicate the journal rather than uploading the rendered current IncrementalGraph database as the synchronization payload.
+The long-term synchronization architecture should replicate the journal rather than treating the rendered current IncrementalGraph database as semantic synchronization authority.
 
-A local host may keep derived materialized graph state for efficient operation, but the durable remote synchronization state must be sufficient to recover that host's journal history and reconstruct its supported graph state.
+A local host may keep derived materialized graph state for efficient operation, but synchronized durable state must be sufficient to recover retained journal history and reconstruct the supported graph state.
 
-This intent does not require a particular remote storage product or transport protocol.
+This intent does not require a particular remote storage product, transport protocol, or change to the current Git transport mechanism. Journal 3 itself stops at the stable journal-snapshot semantic boundary.
 
 ---
 
@@ -74,9 +74,11 @@ kind: requirement
 
 Synchronization must converge.
 
-For any finite set of supported replicas, once graph-changing operations stop, fair repeated synchronization must eventually bring all replicas to observably equivalent IncrementalGraph states. Once this state has been reached, further synchronization without intervening graph changes must be a semantic no-op.
+For any finite set of supported replicas, once graph-changing operations stop, fair repeated synchronization must eventually bring all replicas participating in that actual execution to observably equivalent IncrementalGraph states. Once this state has been reached, further synchronization without intervening graph changes must be a semantic no-op.
 
-This requirement does not prescribe associativity, commutativity, idempotence, CRDTs, or any particular convergence mechanism.
+Synchronization itself may author real semantic normalization events required by IncrementalGraph semantics. Consequently this requirement is convergence of each actual fair execution; it does not require two counterfactual executions which observed sources in different orders and therefore genuinely authored different normalization histories to end identically.
+
+This requirement does not prescribe CRDTs or another particular convergence mechanism.
 
 ---
 
@@ -213,3 +215,5 @@ kind: requirement
 The IncrementalGraph journal is transport-independent.
 
 Journal identity, event semantics, replay, synchronization, and conflict authority must not depend on Git hashes, commits, branches, ancestry, repository revisions, Supabase-specific identifiers, or other transport-specific identities. Transport mechanisms may carry or persist journal records, but they do not participate in journal semantics.
+
+Journal 3 does not require changing the existing Git transport protocol; such transport changes, if ever desired, are separate work.
