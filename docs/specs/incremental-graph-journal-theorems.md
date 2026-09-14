@@ -21,12 +21,14 @@ has one unique semantic result.
 In particular, replay cannot depend on:
 
 - record arrival order across writers;
-- synchronization source enumeration order;
+- synchronization source enumeration order used to obtain that same final J;
 - current wall time;
 - random choices;
 - computor execution;
 - transport ancestry; or
 - mutable graph bytes used as a second authority.
+
+This law is about replay of a fixed retained history. It does not claim that two counterfactual synchronization executions which authored different normalization records have the same J.
 
 ## Law 2: graph/journal isomorphism at commit boundaries
 
@@ -252,6 +254,8 @@ The selected certificate policy may prefer the eligible certificate with the gre
 
 For a certificate to be current-schema eligible, its explicit set of `basis[*].input` NodeKeys must equal the current distinct direct-input set for K. Historical certificates for an old schema remain decodable history but cannot silently become proof for a different current input set.
 
+Every persisted basis has unique input NodeKeys serialized in canonical semantic NodeKey order, so record decoding/canonical comparison does not require historical schema input ordering.
+
 ## Law 15: explicit invalidation is causal
 
 A node-scoped invalidation I for K remains effective against a certificate C unless:
@@ -369,6 +373,29 @@ must denote the same historical event/record identified by the original `(author
 
 Upcasting is pure interpretation, not a new semantic event and not a migration callback.
 
+## Law 25: fair-execution synchronization convergence
+
+Consider one actual execution with finitely many supported replicas and a finite current schema DAG.
+
+Assume that after time T all **non-normalization graph-changing operations stop**. In particular, after T there are no new ordinary ValueEvent/ValidateEvent-producing graph changes, resets, or migrations; synchronization may continue and may author only its defined normalization records.
+
+Under fair synchronization after T:
+
+1. only finitely many `DeleteEvent(reason="sync")` and value-scoped `InvalidateEvent(reason="sync")` records are required;
+2. normalization eventually reaches a fixed point;
+3. every actually authored immutable record is eventually disseminated to every connected participating replica;
+4. every such replica eventually has an observably equivalent projection; and
+5. further synchronization without new non-normalization history is a semantic no-op.
+
+The finiteness argument is:
+
+- normalization creates no new ValueEvent or ValidateEvent;
+- a sync delete defeats the already-observed positive head which required structural repair, and another repair for that node can require only some previously unseen finite positive history;
+- a sync value-scoped invalidation fixes one exact ValueId stale and normalization cannot clear it because it creates no validation;
+- each newly learned finite fact has only a finite dependent closure in the finite DAG.
+
+This law does **not** require counterfactual confluence. Two different synchronization schedules may have committed different real normalization events before all concurrent facts were observed, and therefore may define different histories/results. Each actual fair execution must converge relative to the events it actually authored.
+
 ## Suggested implementation verification
 
 At minimum, implementation work should include tests/models which exercise:
@@ -378,10 +405,11 @@ At minimum, implementation work should include tests/models which exercise:
 - causal overwrite after observing a remote value;
 - node invalidation concurrent with validation;
 - multi-input certificates with competing partial basis matches;
-- current-schema rejection of old-schema certificate input sets;
+- canonical self-describing basis encoding and current-schema eligibility;
 - receiver-only dependent stale propagation;
 - dependency deletion closure;
 - repeat synchronization;
+- fair-execution normalization termination with multiple source orders;
 - same-writer exact-prefix recovery and fork rejection;
 - bootstrap of stale nodes with partial validity;
 - reset target equivalence;
