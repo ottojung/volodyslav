@@ -16,6 +16,8 @@ A -> B -> C
 
 unless a trace says otherwise.
 
+Certificate bases are written explicitly as `{ input, value }` records. The basis is self-describing historical evidence; it is not interpreted by remembering an old positional schema order.
+
 ## Trace 1: first materialization
 
 Writer X pulls previously absent A and the computor returns payload `a1`.
@@ -42,8 +44,8 @@ Before:
 
 ```text
 A = X:1, fresh
-B = X:3, fresh, validated against [X:1]
-C = X:5, fresh, validated against [X:3]
+B = X:3, fresh, basis [{ input:A, value:X:1 }]
+C = X:5, fresh, basis [{ input:B, value:X:3 }]
 ```
 
 A recomputes to `a2`.
@@ -73,7 +75,7 @@ Before:
 
 ```text
 A = X:1, fresh
-B = X:3, fresh, basis [X:1]
+B = X:3, fresh, basis [{ input:A, value:X:1 }]
 ```
 
 Explicitly invalidate A:
@@ -108,7 +110,11 @@ The later A validation causally covers A's node invalidation, but it does not re
 Only when B itself is pulled and cache-revalidates/recomputes can B become fresh:
 
 ```text
-X:10 Validate(B, value=X:3, basis=[X:1])
+X:10 Validate(
+    B,
+    value=X:3,
+    basis=[{ input:A, value:X:1 }]
+)
 ```
 
 Projection then has A/B fresh.
@@ -160,7 +166,11 @@ even though Y's physical seed alone would have looked older.
 Suppose retained union contains:
 
 ```text
-X:5 Validate(B, value=X:3, basis=[Y:9])
+X:5 Validate(
+    B,
+    value=X:3,
+    basis=[{ input:A, value:Y:9 }]
+)
 Y:9 Value(A, ...)
 ```
 
@@ -170,7 +180,7 @@ This is malformed history.
 
 The eventual presence of Y:9 in the union does not retroactively make X:5 valid evidence.
 
-Synchronization/replay rejects the certificate rather than substituting some other ValueId or dropping only that basis edge.
+Synchronization/replay rejects the certificate rather than substituting some other ValueId or dropping only that basis entry.
 
 ## Trace 7: receiver-only dependent becomes persistently stale
 
@@ -178,7 +188,7 @@ Receiver X has:
 
 ```text
 A = A1, fresh
-B = B1, fresh, basis [A1]
+B = B1, fresh, basis [{ input:A, value:A1 }]
 ```
 
 A remote source contains a new selected A2 but never materialized B:
@@ -193,7 +203,7 @@ After raw history union:
 ```text
 A selects Y:10
 B still selects B1
-B's old basis [A1] no longer matches current A
+B's old basis entry for A names A1 rather than current Y:10
 ```
 
 Tentative replay makes B stale.
@@ -313,7 +323,7 @@ If source A:87 differs from local A:87, recovery fails with a writer-fork/corrup
 
 ## Trace 12: multi-input competing certificates
 
-Node K has inputs:
+Node K has current direct inputs:
 
 ```text
 A, B
@@ -327,28 +337,64 @@ A2, B2
 
 Current selected K value is K1.
 
-History has two causally eligible certificates:
+History has two causally eligible certificates with the same explicit input-key set:
 
 ```text
-C1 basis=[A2, B1]
-C2 basis=[A1, B2]
+C1 basis=[
+  { input:A, value:A2 },
+  { input:B, value:B1 }
+]
+
+C2 basis=[
+  { input:A, value:A1 },
+  { input:B, value:B2 }
+]
 ```
 
 Each matches one current input.
 
-Neither certificate may be split/combined into fictitious basis `[A2,B2]`.
+Neither certificate may be split/combined into fictitious evidence:
+
+```text
+[
+  { input:A, value:A2 },
+  { input:B, value:B2 }
+]
+```
 
 Journal 3 chooses one complete certificate using the specified basis-match-count then authority tie-break. The resulting `valid` projection contains only the matching edge(s) represented by that one chosen certificate.
 
 If later C3 appears with:
 
 ```text
-basis=[A2,B2]
+basis=[
+  { input:A, value:A2 },
+  { input:B, value:B2 }
+]
 ```
 
 and is eligible, it has two matches and becomes the preferred certificate.
 
-## Trace 13: concurrent node invalidation and validation
+## Trace 13: historical certificate from an old schema
+
+Suppose an old schema for K had direct inputs A/B, and retained history includes:
+
+```text
+C_old basis=[
+  { input:A, value:A1 },
+  { input:B, value:B1 }
+]
+```
+
+A later migration changes K's current direct-input set to A/C and emits a new migration ValueId/certificate baseline.
+
+`C_old` remains fully decodable historical evidence: it unambiguously says it validated against A and B.
+
+But it is not eligible proof for the current A/C schema because its explicit basis input-key set does not equal the current direct-input set.
+
+Journal 3 therefore does not need the historical schema's positional input ordering merely to understand the old record, and it does not accidentally reinterpret old B evidence as current C evidence.
+
+## Trace 14: concurrent node invalidation and validation
 
 K has value K1.
 
@@ -369,7 +415,7 @@ A later validation Z which observes Y:7 can cover it.
 
 This is why certificate clearing uses causality, not last-writer-wins authority.
 
-## Trace 14: value-scoped invalidation dies with old occurrence
+## Trace 15: value-scoped invalidation dies with old occurrence
 
 K currently selects K1 and has:
 
@@ -383,7 +429,7 @@ Later a new current K2 ValueEvent wins.
 
 The old K1 invalidation remains historical, but it does not make K2 stale. K2's freshness follows certificates/invalidation applicable to K2.
 
-## Trace 15: reset is a new baseline, not history deletion
+## Trace 16: reset is a new baseline, not history deletion
 
 Receiver has current A=X:20.
 
@@ -393,7 +439,7 @@ Reset first observes/imports source history, then authors a new receiver baselin
 
 ```text
 X:30 Value(A, payload copied from Y:8, reason=reset)
-X:31 Validate(A, value=X:30, ...)
+X:31 Validate(A, value=X:30, basis=[])
 ```
 
 X:20 and Y:8 remain in history.
@@ -402,9 +448,9 @@ X:30 is causally after all history reset observed, so it establishes the request
 
 An unseen concurrent event from writer Z can still affect later ordinary synchronization when it is finally learned.
 
-## Trace 16: bootstrap stale node with partial proof
+## Trace 17: bootstrap stale node with partial proof
 
-Legacy graph has K with two inputs A/B:
+Legacy graph has K with two current inputs A/B:
 
 ```text
 K stale
@@ -417,7 +463,15 @@ Bootstrap first creates ValueIds A0, B0, K0.
 Then it records:
 
 ```text
-Validate(K, value=K0, basis=[A0, "unknown"], reason=bootstrap)
+Validate(
+  K,
+  value=K0,
+  basis=[
+    { input:A, value:A0 },
+    { input:B, value:"unknown" }
+  ],
+  reason=bootstrap
+)
 Invalidate(K, scope=value(K0), reason=bootstrap)
 ```
 
@@ -431,17 +485,17 @@ B -> K validity edge absent
 
 without inventing an unknown historical B occurrence.
 
-## Trace 17: migration records results, not old code
+## Trace 18: migration records results, not old code
 
 Journal-aware migration computes target graph with K payload `new`.
 
-It authors a new migration ValueEvent carrying the actual target payload/timestamps plus a target validation baseline.
+It authors a new migration ValueEvent carrying the actual target payload/timestamps plus a target validation baseline whose explicit basis input keys describe the target schema.
 
 Years later replay uses those immutable records.
 
 It does not load or execute the historical migration callback which once computed `new`.
 
-## Trace 18: projection rebuild
+## Trace 19: projection rebuild
 
 Assume authoritative journal is valid but a derived `freshness` LevelDB record is damaged.
 
