@@ -51,29 +51,36 @@ Otherwise:
 head(K) = greatest event in HeadCandidates(K) by authorityCompare
 ```
 
-If `head(K)` is a `DeleteEvent`, K is semantically absent.
+If `head(K)` is a `DeleteEvent`, K is absent.
 
-If `head(K)` is a `ValueEvent`, its event ID is the current `ValueId(K)` and it supplies the candidate current payload, timestamps, and physical `NodeIdentifier`.
+If `head(K)` is a `ValueEvent`, K has a present semantic head. Its event ID is the current `ValueId(K)` and it supplies the candidate current payload, timestamps, and physical `NodeIdentifier`.
 
 A losing value event remains historical and inspectable but supplies no current graph payload merely because its payload compares equal to the winner.
 
-## Dependency-closed effective presence
+## Dependency closure is a supported-state condition
 
-The legacy IncrementalGraph requires materialized nodes to form a dependency-closed set.
+The existing IncrementalGraph requires materialized nodes to be dependency-closed.
 
-Define recursively over the fixed schema DAG:
+Journal 3 therefore requires the selected semantic heads of every supported committed projection to satisfy:
 
 ```text
-present(K) iff
-    head(K) is ValueEvent
-    and for every D in inputEdges(K): present(D)
+head(K) is ValueEvent
+    => for every D in inputEdges(K): head(D) is ValueEvent
 ```
 
-Thus a selected value occurrence may remain in journal history while being structurally unmaterializable because a required input is absent. The journal retains the occurrence and its payload; the legacy graph projection omits K until the semantic history again yields a dependency-closed present result.
+A raw union of two valid journals may temporarily violate this condition while synchronization is constructing an inactive target. Such a union is not yet a publishable graph projection.
 
-This structural omission is derived projection state, not an implicit `DeleteEvent`. It creates no new conflict authority and does not erase the retained cached value occurrence from history.
+Before cutover, synchronization must normalize the journal by authoring whatever causally-later `DeleteEvent`/other semantic events are required by the synchronization specification so that the final selected heads are dependency-closed.
 
-A later specification may impose additional `oldValue`-safety conditions before permitting such a retained occurrence to rematerialize. Journal 3 must prefer the existing IncrementalGraph `oldValue` contract over cache retention.
+Journal 3 deliberately does not hide a selected value merely because an input is absent while keeping that value as a latent current cache outside the legacy graph. Doing so could later rematerialize a value which the ordinary IncrementalGraph would have structurally removed and would weaken the existing `oldValue` contract. Structural removal is represented explicitly in journal history.
+
+After normalization, define:
+
+```text
+present(K) iff head(K) is ValueEvent
+```
+
+and dependency closure guarantees that every input of a present node is also present.
 
 ## Selected value occurrence
 
@@ -109,7 +116,7 @@ Validations(K) = {
 }
 ```
 
-A validation is structurally well formed only when its basis length equals `inputEdges(K).length` and every basis entry names a retained `ValueEvent` for the corresponding semantic input node.
+A validation is structurally well formed only when its basis length equals `inputEdges(K).length` and every non-`"unknown"` basis entry names a retained `ValueEvent` for the corresponding semantic input node.
 
 For deterministic current-proof selection, Journal 3 core projection chooses:
 
@@ -120,7 +127,7 @@ certificate(K) =
 
 if any exists.
 
-Retaining the full history still matters: replay can validate the certificate's causal relationship against every historical invalidation instead of relying on compacted frontiers.
+Retaining the full history still matters: replay validates the certificate's causal relationship against historical invalidations instead of relying on compacted frontiers.
 
 ## Invalidation coverage
 
@@ -173,6 +180,8 @@ edgeValid(Di,K) iff
     and not uncoveredNodeInvalidation(K, certificate(K))
     and certificate(K).basis[i] == valueId(Di)
 ```
+
+`"unknown"` never equals a current `ValueId`, so it reproduces an absent incoming proof.
 
 A value-scoped invalidation does not by itself remove incoming validity proof. This preserves the existing flag-based distinction between proof invalidation and freshness-only staleness.
 
@@ -335,7 +344,7 @@ The normative projection above is declarative. Implementations may realize it by
 - loading a verified checkpoint and replaying the suffix; or
 - another algorithm proven observationally equivalent.
 
-An implementation must not change semantics merely because records arrived in a different network order. It must wait for causal closure and compute the same result for the same retained journal.
+An implementation must not change semantics merely because records arrived in a different network order. It must wait for causal closure, complete any required synchronization normalization, and compute the same result for the same final retained journal.
 
 ## Replay checkpoint correctness
 
@@ -359,7 +368,8 @@ Replay rejects rather than guesses when it encounters, among other things:
 - conflicting content for one `JournalRecordId`;
 - an event whose causal context is not retained;
 - a `ValidateEvent` targeting a non-ValueEvent ID;
-- a validation basis with wrong arity or wrong semantic input identity;
+- a validation basis with wrong arity or a non-unknown entry naming the wrong semantic input;
+- a final selected-head set which is not dependency-closed;
 - malformed timestamps;
 - incompatible reuse of one `NodeIdentifier`;
 - decreasing same-writer allocation watermark;
