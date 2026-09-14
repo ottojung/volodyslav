@@ -1,41 +1,32 @@
 # Journal 3 Specification Reading Order
 
-Journal 3 is split by responsibility so the semantic core stays reviewable without one monolithic document.
+Journal 3 is split by semantic responsibility so an implementer can follow one deliberate path from record model to lifecycle behavior.
 
-## Core implementation path
+For a first implementation pass, read them in this order:
 
-For a first implementation pass, read these in order:
+1. `incremental-graph-journal.md` — conceptual model, scope, and global invariants.
+2. `incremental-graph-journal-types.md` — persisted records, self-describing certificates, causality, and conflict authority.
+3. `incremental-graph-journal-well-formedness.md` — cross-record reference validity and canonical certificate rules.
+4. `incremental-graph-journal-replay.md` — how retained history deterministically produces current graph state.
+5. `incremental-graph-journal-emission.md` — how ordinary graph operations create replay-complete history.
+6. `incremental-graph-journal-locking.md` — how staged effects become one atomic graph+journal publication.
+7. `incremental-graph-journal-api.md` — software boundaries, snapshots, import/publication APIs, results, and errors.
+8. `incremental-graph-journal-sync.md` — pairwise history replication, normalization, and fair-execution convergence.
+9. `incremental-graph-journal-reset.md` — controlled semantic rebaseline without history deletion.
+10. `incremental-graph-journal-migrations.md` — initial bootstrap and future version/schema migration.
+11. `incremental-graph-journal-properties.md` — retained-history algebra and the distinction between union and semantic normalization.
+12. `incremental-graph-journal-theorems.md` — proof obligations for implementation/tests.
+13. `incremental-graph-journal-examples.md` — worked traces of difficult cases.
+14. `incremental-graph-journal-errors.md` — operationally meaningful failure categories.
+15. `incremental-graph-journal-storage.md` — local persistence/codec requirements without transport design.
+16. `incremental-graph-journal-user-contract.md` — observable expectations of graph/lifecycle callers.
+17. `incremental-graph-journal-testing.md` — differential/property/convergence/corruption test strategy.
+18. `incremental-graph-journal-checklist.md` — suggested implementation sequence and acceptance checks.
 
-1. `incremental-graph-journal.md` — conceptual model and global invariants.
-2. `incremental-graph-journal-types.md` — persisted records, causality, conflict authority, record versioning.
-3. `incremental-graph-journal-well-formedness.md` — cross-record reference and causal validity.
-4. `incremental-graph-journal-replay.md` — deterministic projection from retained history to current graph state.
-5. `incremental-graph-journal-emission.md` — how ordinary graph transitions create journal history.
-6. `incremental-graph-journal-locking.md` — serialized record allocation and atomic graph+journal publication.
-7. `incremental-graph-journal-api.md` — JournalStore/snapshot/publication/import/sync/reset software boundaries.
-8. `incremental-graph-journal-errors.md` — lifecycle-relevant failure categories.
-9. `incremental-graph-journal-storage.md` — abstract local storage/codec/index requirements without choosing a remote backend.
-10. `incremental-graph-journal-sync.md` — pairwise immutable-history replication and synchronization normalization.
-11. `incremental-graph-journal-reset.md` — controlled semantic rebaseline without history deletion.
-12. `incremental-graph-journal-migrations.md` — initial legacy bootstrap and later Journal-3-aware migration.
+The surrounding lifecycle documents are:
 
-## Correctness/review material
-
-After the core model:
-
-- `incremental-graph-journal-properties.md` — separates immutable-history algebra from graph projection/normalization semantics;
-- `incremental-graph-journal-theorems.md` — proof obligations every implementation must satisfy;
-- `incremental-graph-journal-examples.md` — worked traces of difficult causal/synchronization cases;
-- `incremental-graph-journal-testing.md` — differential/model/integration testing expectations;
-- `incremental-graph-journal-checklist.md` — suggested implementation sequence and acceptance checks;
-- `incremental-graph-journal-user-contract.md` — observable expectations for pull/invalidate/sync/reset/startup/rebuild.
-
-## Surrounding lifecycle specifications
-
-- `incremental-graph-synchronization.md` — lifecycle-facing synchronization contract built on Journal 3;
+- `incremental-graph-synchronization.md` — lifecycle-facing synchronization contract;
 - `database-lifecycle.md` — open/start/migrate/sync/reset/rebuild lifecycle.
-
-The existing IncrementalGraph semantics remain authoritative for ordinary graph computation/validity behavior; Journal 3 must project exactly into that contract rather than silently redefining it.
 
 ## One-sentence model
 
@@ -43,8 +34,24 @@ The existing IncrementalGraph semantics remain authoritative for ordinary graph 
 The retained immutable journal is authority; the current IncrementalGraph database is project(journal).
 ```
 
-## Deliberately outside this work
+## Scope boundary
 
-The Journal 3 semantic specification does not require a concrete hosted backend protocol such as Supabase/PostgreSQL/HTTP, a Git-specific branch/commit synchronization protocol, or destructive journal compaction.
+The Journal 3 specification deliberately stops at the semantic stable-snapshot boundary.
 
-A future transport only needs to satisfy the stable immutable `JournalSyncSource` / `JournalSnapshot` behavior required by the Journal 3 API/synchronization specifications.
+It does **not** specify or require changes to:
+
+- Git branch/commit/file transport behavior;
+- a hosted synchronization backend;
+- Supabase/PostgreSQL/HTTP schemas or RPCs;
+- authentication/deployment topology.
+
+A transport may continue to work as it does today as long as its adapter can provide the stable immutable journal snapshot semantics required by Journal 3.
+
+Also deliberately outside core correctness:
+
+- destructive compaction (there is none);
+- a persisted checkpoint format (checkpoints are optional derived acceleration);
+- high-level operation grouping/history UI (optional non-authoritative diagnostics);
+- the end-to-end change-sensitive synchronization time bound owned by #1607.
+
+Those are not prerequisites for implementing the Journal 3 semantic model specified here.
