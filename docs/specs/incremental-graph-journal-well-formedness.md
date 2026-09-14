@@ -4,7 +4,7 @@
 
 This document defines cross-record validity rules which are stronger than syntactic decoding.
 
-A record can have a valid JSON/object shape yet still be impossible Journal 3 history—for example, a validation which names a value occurrence the validating writer had not observed yet.
+A record can have a valid object shape yet still be impossible Journal 3 history—for example, a validation which names a value occurrence the validating writer had not observed yet.
 
 Supported retained history must satisfy these rules before replay or synchronization may treat the records as semantic evidence.
 
@@ -12,7 +12,9 @@ Supported retained history must satisfy these rules before replay or synchroniza
 
 For semantic events E and F, `happenedBefore(E,F)` is defined by `incremental-graph-journal-types.md`.
 
-Whenever one semantic event contains a `ValueId` reference to a historical value occurrence V, that reference is admissible only when V actually happened before the referencing event, except where the referenced ValueEvent is an earlier record in the same atomic publication—in which case same-writer sequence order itself establishes `happenedBefore`.
+Whenever one semantic event contains a `ValueId` reference to a historical value occurrence V, that reference is admissible only when V actually happened before the referencing event.
+
+An earlier record in the same atomic publication satisfies this through same-writer sequence order.
 
 Thus Journal 3 never permits an event to claim knowledge of a concurrent or future value occurrence merely because that occurrence happens to be retained in the same eventual journal union.
 
@@ -28,7 +30,7 @@ C = ValidateEvent {
 }
 ```
 
-let `event(V)` be the ValueEvent named by `V`.
+let `event(V)` be the ValueEvent named by V.
 
 C is well formed only when:
 
@@ -37,32 +39,82 @@ event(V).node == K
 happenedBefore(event(V), C)
 ```
 
-A validation cannot target a concurrent value, a later same-writer value, or a value from a different semantic node.
+A validation cannot target a concurrent value, a later same-writer value, or a value from another semantic node.
 
-## ValidateEvent basis rules
+## Self-describing ValidateEvent basis rules
 
-Let:
-
-```text
-inputEdges(K) = [D0, D1, ...]
-C.basis       = [B0, B1, ...]
-```
-
-under the schema interpretation applicable to C's current baseline/state.
-
-For every position i:
-
-- `Bi == "unknown"` is permitted only where `incremental-graph-journal-types.md` permits the unknown sentinel;
-- otherwise `Bi` must name a retained ValueEvent Vi such that:
+A validation basis is an array of explicit semantic-input claims:
 
 ```text
-Vi.node == Di
-happenedBefore(Vi, C)
+{
+    input: NodeKey,
+    value: ValueId | "unknown"
+}
 ```
 
-Therefore a certificate is actual historical evidence of the input occurrences it claims to validate against.
+The basis must not contain two entries with the same `input` NodeKey.
 
-A malformed certificate is rejected; replay must not merely ignore the impossible reference and salvage the rest of the certificate.
+For each entry B:
+
+### Known value
+
+If:
+
+```text
+B.value = V
+```
+
+then V must name a retained ValueEvent E satisfying:
+
+```text
+E.node == B.input
+happenedBefore(E, C)
+```
+
+The certificate therefore proves exactly which semantic input node and which historical occurrence it claims to validate against.
+
+### Unknown value
+
+If:
+
+```text
+B.value == "unknown"
+```
+
+then `C.reason` must be one of the controlled baseline reasons for which the type specification permits unknown proof provenance:
+
+```text
+bootstrap
+reset
+migration
+```
+
+An ordinary `compute`, `unchanged`, or `cache-revalidate` validation must not contain `"unknown"`.
+
+### Current-schema completeness
+
+When C is authored by an ordinary operation under the current schema, its basis input-key set must equal the current distinct direct structural input set:
+
+```text
+set(C.basis.input) == set(inputEdges(C.node))
+```
+
+and serialization order follows current `inputEdges(C.node)` order.
+
+A controlled bootstrap/reset/migration baseline likewise records one basis entry for every direct input in its **target** schema interpretation, with `"unknown"` where the target legacy validity edge is intentionally absent.
+
+An old historical certificate remains intelligible after a later schema migration because its basis records its own semantic input NodeKeys explicitly. It is not retroactively malformed merely because the current schema now gives that node a different input set; migration creates a new current ValueId/certificate baseline for the new schema.
+
+## No partial salvage of malformed certificates
+
+A malformed certificate is rejected as an immutable historical record.
+
+Replay/import must not:
+
+- drop one impossible basis entry and keep the others;
+- substitute the currently selected ValueId for the named historical one;
+- use payload equality to find a replacement occurrence; or
+- reinterpret an explicit old input NodeKey as a different current input.
 
 ## Value-scoped InvalidateEvent rule
 
@@ -94,7 +146,7 @@ Its effect is deliberately independent of which value occurrence is currently se
 
 ## DeleteEvent and ValueEvent
 
-Core `DeleteEvent` and `ValueEvent` contain no semantic-event ID references, so their cross-record well-formedness is determined by:
+Core DeleteEvent and ValueEvent contain no semantic-event-ID references, so their cross-record well-formedness is determined by:
 
 - valid record identity/version;
 - valid causal context;
@@ -110,7 +162,7 @@ For every semantic event E and writer A:
 E.context[A] <= retainedFrontier[A]
 ```
 
-is necessary but not sufficient for well-formed references.
+is necessary but not sufficient for reference validity.
 
 A referenced event must additionally be in E's causal past according to `happenedBefore`; mere eventual retention somewhere in the journal does not prove observation.
 
@@ -125,25 +177,30 @@ At serialized finalization:
 3. symbolic references resolve to those exact IDs;
 4. the resulting persisted records satisfy `happenedBefore` through same-writer sequence order.
 
-No persisted forward reference within one writer publication is permitted.
+No persisted forward ValueId reference within one writer publication is permitted.
 
-## WriterStateRecord references
+## WriterStateRecord rules
 
-Core `WriterStateRecord` contains no semantic-event references and has no causal context.
+Core WriterStateRecord contains no semantic-event references and has no causal context.
 
-Its meaning is writer-local monotone allocator state at its stream position. Replay validates monotonicity by writer sequence.
+Its meaning is writer-local monotone allocator state at its stream position.
+
+Within one continuing writer stream:
+
+```text
+later WriterStateRecord.lastNodeIndex
+    >= earlier WriterStateRecord.lastNodeIndex
+```
+
+Replay rejects a decreasing watermark.
 
 ## Imported-record validation
 
 Synchronization/import must validate these rules before activating imported history.
 
-If a source provides a syntactically valid record whose reference causality is impossible, the source history is unsupported/corrupt. The receiver must not:
+If a source provides a syntactically valid record whose reference causality or self-described basis is impossible, the source history is unsupported/corrupt.
 
-- rewrite the event context;
-- replace the referenced ValueId with the receiver's current value;
-- use payload equality to find a substitute;
-- drop only the bad basis element and keep the rest of the certificate; or
-- re-author the source record under a new receiver ID.
+The receiver must not rewrite/re-author the source event to make it fit its current graph.
 
 ## Replay assumption
 
