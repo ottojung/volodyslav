@@ -14,6 +14,20 @@ The current IncrementalGraph database may maintain efficient materialized state 
 
 ---
 
+$id-6180473925618407
+title: IncrementalGraph state is a projection of the journal
+date: 2026/09/14
+source: @ottojung
+kind: requirement
+
+Journal 3 is journal-first: the persisted IncrementalGraph state must be a materialized projection of retained journal history rather than an independent semantic source of truth.
+
+The journal must contain enough information to reconstruct the supported persisted graph state without guessing semantic facts from the current `values`, `freshness`, `valid`, `timestamps`, or identifier records. Those graph records may be maintained eagerly for efficient operation, but when journal and graph disagree, the design must treat the journal replay meaning as authoritative rather than combining two independent authorities.
+
+This is a replay-completeness requirement. It does not require the mathematical mapping from histories to current graph states to be injective: distinct histories may legitimately project to the same current graph.
+
+---
+
 $id-1235084615014938
 title: Journal is the replicated backend state
 date: 2026/09/13
