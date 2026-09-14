@@ -202,28 +202,50 @@ DeleteEvent is semantic absence authority for its NodeKey.
 
 It never erases old ValueEvents/payloads from history.
 
-## Validation basis
+## Self-describing validation basis
 
-For concrete K, let current schema define ordered distinct direct semantic edges:
+A replay log must preserve what one historical validation actually claimed without requiring future software to recover the graph schema which happened to be active when that validation was authored.
+
+Therefore validation bases name semantic input nodes explicitly:
+
+```text
+ValidationBasisValue = ValueId | "unknown"
+
+ValidationBasisEntry = {
+    input: NodeKey,
+    value: ValidationBasisValue
+}
+
+ValidationBasis = Array<ValidationBasisEntry>
+```
+
+A basis has at most one entry for each semantic input NodeKey.
+
+For a normal Journal-3-native validation under current schema with distinct direct edges:
 
 ```text
 inputEdges(K) = [D0, D1, ...]
 ```
 
-A certificate basis has one entry per edge:
+its basis contains exactly one entry for every current direct input:
 
 ```text
-BasisEntry = ValueId | "unknown"
-ValidationBasis = Array<BasisEntry>
+[
+    { input: D0, value: currentValueId(D0) },
+    { input: D1, value: currentValueId(D1) },
+    ...
+]
 ```
 
-A normal Journal-3-native validation records the exact current ValueId for every direct input.
+Entries are persisted in deterministic current `inputEdges(K)` order for stable serialization/debugging, but replay meaning is keyed by the explicit `input` NodeKey rather than positional coincidence.
 
-`"unknown"` is restricted to controlled bootstrap/reset/migration baselines which must reproduce an intentionally missing legacy validity proof when the historical occurrence against which that proof was absent is unavailable.
+This makes an old certificate historically intelligible after a later schema changes K's direct input set/order.
+
+`"unknown"` is restricted to controlled bootstrap/reset/migration baselines which must reproduce an intentionally missing legacy validity proof when the exact historical occurrence against which that proof was absent is unavailable.
 
 `"unknown"` never equals a ValueId and therefore produces no incoming validity edge.
 
-Basis order/length must exactly match `inputEdges(K)` under the interpretation that authored the baseline/current state.
+A normal compute/unchanged/cache-revalidate certificate must not use `"unknown"`.
 
 ## ValidateEvent
 
@@ -238,9 +260,9 @@ ValidateEvent = SemanticEventBase & {
 
 A validation applies only to its named value occurrence.
 
-Its `value` must name a retained ValueEvent for the same semantic node.
+Its `value` must name a retained ValueEvent for the same semantic node and must causally precede the validation as specified by `incremental-graph-journal-well-formedness.md`.
 
-Every non-unknown basis entry must name a retained ValueEvent for the corresponding direct input semantic node.
+Every non-unknown basis entry must name a causally prior retained ValueEvent whose semantic node equals that entry's explicit `input` NodeKey.
 
 A newly computed changed value normally authors its ValueEvent before this ValidateEvent. `Unchanged`/cache revalidation author a new validation for the existing ValueId without a new ValueEvent.
 
@@ -278,7 +300,7 @@ InvalidateEvent = SemanticEventBase & {
 
 `reason` is historical/debugging classification. Replay behavior comes from scope, causality, selected value, and certificates.
 
-A value-scoped invalidation must name a retained ValueEvent for the same semantic node.
+A value-scoped invalidation must name a causally prior retained ValueEvent for the same semantic node.
 
 ## WriterStateRecord
 
@@ -407,6 +429,7 @@ One atomic local publication allocates a contiguous writer sequence range in det
 At minimum:
 
 - a ValueEvent precedes each same-publication ValidateEvent naming its new ValueId;
+- every same-publication input ValueEvent referenced by a validation basis precedes that validation;
 - a root/direct change precedes propagated invalidations caused by it;
 - a dependency structural deletion precedes dependent deletions authored solely because of that absence;
 - a record never references a same-publication record allocated after it.
