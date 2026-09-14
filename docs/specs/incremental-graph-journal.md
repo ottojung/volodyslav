@@ -6,19 +6,21 @@ Journal 3 is the append-only replay log for IncrementalGraph state.
 
 The journal is the semantic source of truth. The existing IncrementalGraph persistence remains the efficient materialized representation used by the runtime, but its semantic contents are derived from Journal 3 rather than carrying independent synchronization authority.
 
-This branch specifies the journal itself and its integration with IncrementalGraph. It intentionally does **not** specify a concrete remote/backend product protocol.
+This branch specifies the journal itself and its integration with IncrementalGraph. It intentionally does **not** specify a concrete remote/backend product protocol and does not redefine how an existing transport such as Git discovers or carries a stable journal snapshot.
 
 The Journal 3 specification is split by responsibility:
 
 - `incremental-graph-journal-types.md` — immutable record identities, event shapes, causal context, authority ordering;
-- `incremental-graph-journal-emission.md` — mapping ordinary graph transitions to journal records;
+- `incremental-graph-journal-well-formedness.md` — cross-record/reference validity;
 - `incremental-graph-journal-replay.md` — deterministic projection from retained history to the legacy graph representation;
-- `incremental-graph-journal-sync.md` — history replication and synchronization normalization;
+- `incremental-graph-journal-emission.md` — mapping ordinary graph transitions to journal records;
+- `incremental-graph-journal-locking.md` — integration with the existing graph locking/publication model;
 - `incremental-graph-journal-api.md` — internal/public software-facing boundaries and error/result semantics;
+- `incremental-graph-journal-sync.md` — history replication and synchronization normalization;
 - `incremental-graph-journal-reset.md` — append-only controlled reset/rebaseline;
 - `incremental-graph-journal-migrations.md` — initial bootstrap and later replay-complete migrations;
-- `incremental-graph-journal-locking.md` — integration with the existing graph locking/publication model;
-- `incremental-graph-synchronization.md` — lifecycle-facing synchronization shell built on Journal 3.
+- `incremental-graph-journal-theorems.md` — correctness laws/proof obligations;
+- `incremental-graph-journal-examples.md` — worked semantic traces.
 
 Replay checkpoints may be added later as derived accelerators. They are not required for correctness and never replace authoritative history.
 
@@ -184,7 +186,9 @@ project(J)
 
 is deterministic.
 
-Arrival order, synchronization source order, filesystem layout, inactive replica names, and transport IDs do not change semantic replay.
+Arrival order, filesystem layout, inactive replica names, and transport IDs do not change replay of that fixed retained J.
+
+This does not imply that two different historical executions which actually authored different semantic normalization events must have the same J or projection.
 
 ### J3-INV-8: replay performs no historical external work
 
@@ -193,6 +197,23 @@ Replay never calls computors and never reruns historical reset/migration/synchro
 Replay must not depend on current wall time, randomness, network services, or ambient application state.
 
 Historical nondeterministic outcomes are data in records. A `ValueEvent` carries the actual payload produced historically.
+
+### J3-INV-9: validation history is self-describing
+
+A `ValidateEvent` identifies each semantic input explicitly:
+
+```text
+{
+    input: NodeKey,
+    value: ValueId | "unknown"
+}
+```
+
+Basis input NodeKeys are unique and entries are serialized in canonical semantic NodeKey order, independent of graph-schema input enumeration order.
+
+Known ValueIds are causally prior occurrences of the named semantic input. `"unknown"` is allowed only in controlled bootstrap/reset/migration baselines.
+
+Current replay uses a certificate as current structural proof only when its explicit input-key set equals the current node's distinct direct-input set. Thus old certificates remain intelligible history across schema evolution without future software needing the historical positional input ordering.
 
 ## Authoritative history versus derived acceleration
 
@@ -238,7 +259,7 @@ The semantic meanings are:
 
 - `ValueEvent` — one exact historical value occurrence including payload/timestamps/identifier;
 - `DeleteEvent` — semantic absence authority for one NodeKey;
-- `ValidateEvent` — proof that one exact value occurrence was validated against an input-occurrence basis;
+- `ValidateEvent` — proof that one exact value occurrence was validated against explicitly named input occurrences;
 - `InvalidateEvent` — persisted recomputation/staleness obligation with node/value scope.
 
 High-level operation grouping may be added as non-authoritative history metadata, but replay is driven by the low-level records. Replaying an old pull/migration/reset/sync never means rerunning that old operation.
@@ -277,7 +298,19 @@ Raw history union may require explicit receiver-authored normalization to preser
 - dependency-closure deletion when a selected cached node has a missing input; and
 - persistent fresh-to-stale invalidation for receiver-only dependents affected by newly learned history.
 
-Those normalization events are ordinary immutable history and converge through later synchronization.
+Those normalization records are ordinary semantic history after commit, not transport acknowledgements.
+
+## Synchronization convergence model
+
+At the retained imported-history level, compatible immutable prefix union is idempotent, commutative, and associative.
+
+Normalization is different: synchronization may itself author real `DeleteEvent(reason="sync")` or value-scoped `InvalidateEvent(reason="sync")` records because a real receiver graph transition occurred at that synchronization boundary.
+
+Therefore Journal 3 guarantees convergence of each actual fair execution, not counterfactual confluence across executions which really authored different normalization events.
+
+Once ordinary graph changes, reset, migration, and other non-normalization graph-changing operations stop, synchronization creates no new positive value/validation history. Only finitely many structural-deletion and exact-ValueId stale normalization consequences can arise from the finite already-authored positive history and finite schema DAG. Fair synchronization eventually disseminates that finite closure, after which all participating replicas have observably equivalent projections and further synchronization is a semantic no-op.
+
+The precise law/proof obligation is specified in `incremental-graph-journal-sync.md` and `incremental-graph-journal-theorems.md`.
 
 ## Reset model
 
@@ -311,15 +344,7 @@ Journal semantics do not depend on Git, a SQL database, a hosted service, filesy
 
 Journal 3 requires only transport-neutral properties such as stable source snapshots and ordered immutable writer-prefix reads.
 
-Concrete remote/backend publication protocols are intentionally outside the current scope.
-
-## Convergence target
-
-At the retained-history level, compatible immutable prefix union is idempotent, commutative, and associative.
-
-The graph-level requirement is stronger: synchronization normalization must terminate, and deterministic replay of converged history must yield observably equivalent IncrementalGraph states.
-
-Once ordinary graph changes and required normalization stop, fair repeated synchronization must disseminate all retained records and then become a semantic no-op.
+Concrete remote/backend publication protocols and changes to existing transport behavior are intentionally outside the current scope.
 
 ## Current-version replay boundary
 
