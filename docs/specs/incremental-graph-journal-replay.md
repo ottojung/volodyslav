@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines the deterministic projection from a supported causally closed Journal 3 history into the existing persisted IncrementalGraph representation.
+This document defines the deterministic projection from supported Journal 3 history into the existing persisted IncrementalGraph representation.
 
 The journal is authoritative. The legacy graph sublevels are a materialized view.
 
@@ -10,99 +10,102 @@ The projection is defined semantically over immutable journal history. An implem
 
 ## Inputs to replay
 
-Core replay operates under one exact compatible database version and graph schema and takes:
+Core current-state replay operates under one compatible current database version and graph schema:
 
 ```text
-replay(
+project(
     journal: JournalReplica,
     localWriter: JournalAuthor,
-    graphSchema
+    currentGraphSchema
 )
 ```
 
-The `localWriter` identifies the database whose host-local allocator projection is being reconstructed. It does not affect semantic conflict selection.
+`localWriter` identifies the database whose host-local allocator projection is being reconstructed. It does not affect semantic conflict selection.
 
-Before replay, the journal must satisfy the stream-identity, prefix-contiguity, immutable-record, timestamp, and causal-closure invariants in `incremental-graph-journal-types.md`.
+Before replay, the retained journal must satisfy:
+
+- stream identity/prefix contiguity;
+- immutable-record/version decoding;
+- timestamp/authority invariants;
+- causal closure; and
+- the cross-record rules in `incremental-graph-journal-well-formedness.md`.
+
+The current schema is application/version interpretation, not an additional mutable synchronization authority. It defines current structural `inputEdges(K)` and the persisted `graph_scheme` lowering.
+
+Historical ValidateEvents are self-describing with explicit input NodeKeys, so merely decoding old certificate claims does not require historical schema ordering.
 
 ## Semantic history of one node
 
-For semantic `NodeKey K`, define:
+For semantic `NodeKey K`:
 
 ```text
-History(K) = all SemanticEvent records whose node == K
+History(K) = all retained SemanticEvents whose node == K
 ```
 
-Journal 3 retains this complete history. Projection does not require a compacted `NodeJournalSummary` to stand in for discarded events.
+Journal 3 retains this history rather than replacing it with a compacted summary.
 
-## Semantic head
+## Semantic value/absence head
 
-Let:
+Define:
 
 ```text
 HeadCandidates(K) =
     ValueEvents(K) union DeleteEvents(K)
 ```
 
-If `HeadCandidates(K)` is empty, K has no semantic head and is absent.
+If empty, K has no semantic head and is absent.
 
 Otherwise:
 
 ```text
-head(K) = greatest event in HeadCandidates(K) by authorityCompare
+head(K) = greatest HeadCandidate by authorityCompare
 ```
 
-If `head(K)` is a `DeleteEvent`, K is absent.
+If `head(K)` is DeleteEvent, K is absent.
 
-If `head(K)` is a `ValueEvent`, K has a present semantic head. Its event ID is the current `ValueId(K)` and it supplies the candidate current payload, timestamps, and physical `NodeIdentifier`.
+If it is ValueEvent, K has a present semantic head and:
 
-A losing value event remains historical and inspectable but supplies no current graph payload merely because its payload compares equal to the winner.
+```text
+valueId(K)        = head(K).id
+payload(K)        = head(K).payload
+nodeIdentifier(K) = head(K).nodeIdentifier
+createdAt(K)      = head(K).createdAt
+modifiedAt(K)     = head(K).modifiedAt
+```
 
-## Dependency closure is a supported-state condition
+A losing ValueEvent remains historical but supplies no current payload merely because its payload is deeply equal to the winner.
 
-The existing IncrementalGraph requires materialized nodes to be dependency-closed.
+## Dependency closure is a publishable-state condition
 
-Journal 3 therefore requires the selected semantic heads of every supported committed projection to satisfy:
+The legacy IncrementalGraph requires materialized nodes to be dependency-closed under the **current** schema.
+
+Therefore every supported committed current projection satisfies:
 
 ```text
 head(K) is ValueEvent
-    => for every D in inputEdges(K): head(D) is ValueEvent
+    => for every D in currentInputEdges(K):
+        head(D) is ValueEvent
 ```
 
-A raw union of two valid journals may temporarily violate this condition while synchronization is constructing an inactive target. Such a union is not yet a publishable graph projection.
+A raw journal union may temporarily violate this while synchronization constructs an inactive target. That union is not publishable yet.
 
-Before cutover, synchronization must normalize the journal by authoring whatever causally-later `DeleteEvent`/other semantic events are required by the synchronization specification so that the final selected heads are dependency-closed.
+Synchronization/reset/migration normalization must author explicit semantic removal authority as required by their specifications before cutover.
 
-Journal 3 deliberately does not hide a selected value merely because an input is absent while keeping that value as a latent current cache outside the legacy graph. Doing so could later rematerialize a value which the ordinary IncrementalGraph would have structurally removed and would weaken the existing `oldValue` contract. Structural removal is represented explicitly in journal history.
+Journal 3 does not silently hide a selected ValueEvent from the legacy graph while leaving it as a latent current cache that could reappear automatically. Structural removal is explicit history, preserving ordinary `oldValue` semantics.
 
-After normalization, define:
+After normalization:
 
 ```text
 present(K) iff head(K) is ValueEvent
 ```
 
-and dependency closure guarantees that every input of a present node is also present.
+## Physical identifier consistency
 
-## Selected value occurrence
+Every present K uses the `NodeIdentifier` carried by its selected ValueEvent.
 
-When `present(K)` holds, let:
+If two distinct present semantic NodeKeys select the same incompatible physical NodeIdentifier, projection fails as unsupported/corrupt current state.
 
-```text
-V(K) = head(K) as ValueEvent
-```
-
-The projected current occurrence is exactly:
-
-```text
-valueId(K)        = V(K).id
-payload(K)        = V(K).payload
-nodeIdentifier(K) = V(K).nodeIdentifier
-createdAt(K)      = V(K).createdAt
-modifiedAt(K)     = V(K).modifiedAt
-```
-
-Replay does not obtain any of these fields from the current legacy graph.
-
-If two present semantic nodes select the same `NodeIdentifier`, replay rejects the journal as unsupported/corrupt. The physical identifier map must remain bijective.
+The final `identifiers_keys_map` must be bijective over current present keys.
 
 ## Invalidation coverage
 
@@ -112,34 +115,34 @@ For semantic events I and C:
 coveredBy(I,C) iff happenedBefore(I,C)
 ```
 
-A validation does not clear a concurrent invalidation merely because its `authorityTime` happens to compare greater. Clearing is causal, not last-writer-wins.
+A concurrent validation does not clear an invalidation merely because its total AuthorityTime compares later.
 
-For present K and validation C, define:
+For K and validation C:
 
 ```text
 uncoveredNodeInvalidation(K,C) iff
     exists InvalidateEvent I in History(K) such that
         I.scope.kind == "node"
-        and not coveredBy(I,C)
+        and not happenedBefore(I,C)
 ```
 
-For present K with current value V and validation C, define:
+For current value V(K) and validation C:
 
 ```text
-uncoveredValueInvalidation(K,V,C) iff
+uncoveredValueInvalidation(K,C) iff
     exists InvalidateEvent I in History(K) such that
         I.scope.kind == "value"
-        and I.scope.value == V.id
-        and not coveredBy(I,C)
+        and I.scope.value == valueId(K)
+        and not happenedBefore(I,C)
 ```
 
-Node-scoped invalidations remain relevant across value changes until a later validation causally observes them. Value-scoped invalidations apply only to their named value occurrence.
+Node-scoped invalidation remains relevant across value changes until a later validation causally covers it.
 
-Invalidations scoped to losing historical ValueIds remain part of replay/debug history but do not directly stale the current different value occurrence.
+Value-scoped invalidation applies only to the named ValueId and stops affecting projection when another ValueId becomes current.
 
-## Validation candidates
+## Current validation candidates
 
-For present K, define:
+For present K:
 
 ```text
 Validations(K) = {
@@ -149,98 +152,130 @@ Validations(K) = {
 }
 ```
 
-A validation is structurally well formed only when its basis length equals `inputEdges(K).length` and every non-`"unknown"` basis entry names a retained `ValueEvent` for the corresponding semantic input node.
+Every retained C is already assumed well formed as historical evidence.
 
-A validation whose basis contains a non-unknown `ValueId` belonging to another semantic input is corrupt rather than merely inapplicable.
+For current projection define:
 
-A certificate is eligible only when it clears every node-scoped invalidation represented for K:
+```text
+currentInputs(K) = set(currentInputEdges(K))
+certificateInputs(C) = set(entry.input for entry in C.basis)
+```
+
+A validation is **current-shape-compatible** iff:
+
+```text
+certificateInputs(C) == currentInputs(K)
+```
+
+Because basis input NodeKeys are explicit, order changes alone do not invalidate a certificate; input-set changes do.
+
+A supported Journal-3-aware schema migration creates new migration ValueIds/certificates for target-present nodes, so an old-schema certificate is not expected to be the only certificate for a selected current migration ValueId.
+
+A validation for the current ValueId with a different historical input set remains inspectable history but is not current structural proof.
+
+## Basis lookup
+
+Because basis input keys are unique, define:
+
+```text
+basisValue(C,D) =
+    C.basis entry with input == D .value
+```
+
+for D contained in `certificateInputs(C)`.
+
+For a current-shape-compatible certificate this is defined for every direct current input.
+
+`"unknown"` is a defined basis value but never equals a current ValueId.
+
+## Eligible certificate
+
+A certificate can be selected for current proof only when:
 
 ```text
 eligibleCertificate(K,C) iff
     C in Validations(K)
+    and current-shape-compatible(C,K)
     and not uncoveredNodeInvalidation(K,C)
 ```
 
-For eligible C, define its current basis-match count:
+Thus a node-scoped invalidation destroys applicability of every certificate which did not causally observe it.
+
+## Current basis-match count
+
+For eligible C:
 
 ```text
 basisMatchCount(K,C) =
-    number of direct input positions i such that
-        C.basis[i] == valueId(inputEdges(K)[i])
+    number of D in currentInputEdges(K) such that
+        basisValue(C,D) == valueId(D)
 ```
 
 `"unknown"` contributes no match.
 
-Journal 3 selects one current certificate, so the legacy incoming proof relation is never synthesized by mixing incompatible basis edges from separate historical validations.
+## Certificate selection
 
-Choose:
+Journal 3 retains all certificates, so it may preserve the strongest sound partial proof available after histories converge.
+
+Choose exactly one certificate:
 
 ```text
-certificate(K) = eligible C maximizing, lexicographically:
+certificate(K) = eligible C maximizing lexicographically:
     1. basisMatchCount(K,C)
     2. authorityCompare(C, ...)
 ```
 
-If no eligible certificate exists, K has no current certificate.
+If there is no eligible certificate, K has no current certificate.
 
-This uses retained history more precisely than simply taking the newest/highest-authority validation. A concurrent validation against a losing input history must not erase an older sound proof which matches more of the final selected input occurrences. Authority remains the deterministic tie-break between equally applicable proofs.
+This deliberately differs from Journal 2's compaction-oriented “greatest certificate only” rule. Journal 3 does not need to discard a better-matching concurrent historical proof merely so lower certificates can be compacted away.
 
-For ordinary single-host evolution, the most recent successful validation normally has a complete current basis and therefore remains the selected certificate.
+Authority is the deterministic tie-break among equally applicable certificates.
+
+Replay never synthesizes a certificate by combining basis entries from different validations.
+
+For ordinary single-writer evolution, the latest successful validation normally has the complete current input basis and therefore wins naturally.
 
 ## Incoming validity edge
 
-Let:
+For current structural edge `D -> K`:
 
 ```text
-inputEdges(K) = [D0, D1, ...]
-```
-
-For current present nodes `Di` and K, the legacy validity edge `Di -> K` exists exactly when:
-
-```text
-edgeValid(Di,K) iff
-    present(K)
-    and present(Di)
+edgeValid(D,K) iff
+    present(D)
+    and present(K)
     and certificate(K) exists
-    and certificate(K).basis[i] == valueId(Di)
+    and basisValue(certificate(K), D) == valueId(D)
 ```
 
-`"unknown"` never equals a current `ValueId`, so it reproduces an absent incoming proof.
+A value-scoped invalidation does not by itself remove incoming validity proof. This preserves the existing distinction between proof validity and persistent stale freshness.
 
-A value-scoped invalidation does not by itself remove incoming validity proof. This preserves the existing flag-based distinction between proof invalidation and freshness-only staleness.
-
-The projected legacy inverse relation is:
+The legacy inverse relation is:
 
 ```text
-K_identifier in valid[D_identifier]
+nodeIdentifier(K) in valid[nodeIdentifier(D)]
     iff edgeValid(D,K)
 ```
 
-where identifiers are the selected current `nodeIdentifier` values.
-
-Because all edges come from one selected certificate, complete incoming validity implies that one historical validation actually certified the current complete direct-input value vector. Replay never fabricates a multi-input proof by combining separate certificates.
+All validity edges for K come from one selected certificate.
 
 ## Freshness
 
-Freshness is recursively derived over the fixed schema DAG.
+Freshness is derived recursively over the current schema DAG.
 
 For present K:
 
 ```text
 fresh(K) iff
     certificate(K) exists
-    and basisMatchCount(K, certificate(K)) == inputEdges(K).length
-    and not uncoveredValueInvalidation(
-        K,
-        V(K),
-        certificate(K)
-    )
-    and for every direct input Di:
-        present(Di)
-        and fresh(Di)
+    and basisMatchCount(K, certificate(K))
+        == currentInputEdges(K).length
+    and not uncoveredValueInvalidation(K, certificate(K))
+    and for every D in currentInputEdges(K):
+        present(D)
+        and fresh(D)
 ```
 
-For zero-input nodes, the full-basis condition is vacuously satisfied. They still require an eligible certificate which causally covers all applicable invalidation history.
+For a zero-input node, the full-basis/input condition is vacuous; it still requires an eligible certificate and no uncovered current-value invalidation.
 
 The legacy freshness projection is:
 
@@ -254,15 +289,15 @@ freshness[nodeIdentifier(K)] = "potentially-outdated"
 
 ## Persistent propagated staleness
 
-The existing IncrementalGraph algorithm distinguishes explicit invalidation from propagated staleness. A propagated stale transition may need to persist even if the upstream node later revalidates without changing value.
+The existing flag-based algorithm requires propagated stale state to persist even if an upstream node later revalidates unchanged.
 
-Journal 3 represents such a transition with a value-scoped `InvalidateEvent` for the affected cached value occurrence. Therefore replay does not infer or forget propagated staleness merely from the current freshness of inputs.
+Journal 3 records that transition using a value-scoped InvalidateEvent for the affected cached occurrence.
 
-Emission rules for local pull/invalidate operations and synchronization normalization must author the required value-scoped invalidations whenever the existing IncrementalGraph semantics create such persistent stale state.
+Therefore replay does not make a stale dependent fresh merely because all its inputs later become fresh again. The dependent itself needs a causally later validation covering its stale marker.
 
-This is a historical advantage of replay: the stale transition itself remains visible instead of being collapsed into a current boolean whose provenance is lost.
+Ordinary emission and synchronization normalization must author these events whenever the existing graph semantics create such a persistent fresh-to-stale transition.
 
-## Legacy sublevel projection
+## Lowering to existing graph storage
 
 Let:
 
@@ -270,33 +305,27 @@ Let:
 PresentKeys = { K | present(K) }
 ```
 
-Replay lowers semantic state into the unchanged legacy storage as follows.
-
 ### identifiers_keys_map
 
-For every K in `PresentKeys`:
+For every K in PresentKeys:
 
 ```text
 identifiers_keys_map[nodeIdentifier(K)] = K
 ```
 
-There are no other entries.
-
-The mapping must be bijective.
+and there are no other entries.
 
 ### values
 
-For every K in `PresentKeys`:
+For every K in PresentKeys:
 
 ```text
 values[nodeIdentifier(K)] = payload(K)
 ```
 
-There are no values for absent keys.
-
 ### timestamps
 
-For every K in `PresentKeys`:
+For every K in PresentKeys:
 
 ```text
 timestamps[nodeIdentifier(K)] = {
@@ -305,99 +334,110 @@ timestamps[nodeIdentifier(K)] = {
 }
 ```
 
-The textual serialization may use the project's canonical supported timestamp spelling; replay meaning is the exact instant carried by the selected `ValueEvent`.
+The semantic timestamp is the exact instant carried by the selected ValueEvent; replay does not substitute current synchronization/replay time.
 
 ### freshness
 
-For every K in `PresentKeys`, write the freshness value defined above.
+Write the freshness state derived above for every present K.
 
 ### valid
 
-For every current present structural edge `D -> K`, include K's current identifier in `valid[D]` exactly when `edgeValid(D,K)` holds.
+For every current structural edge D -> K, include K's selected identifier in `valid[D]` exactly when `edgeValid(D,K)`.
 
-No validity edge may mention an absent or losing physical identifier.
+No validity entry may mention an absent/losing identifier.
 
-### structural dependency relation
+### graph_scheme / structural dependency relation
 
-There is no persisted per-node input list. As in the existing graph design, structural dependencies are derived from the fixed `graph_scheme`, semantic NodeKeys, and the identifier lookup.
+Structural dependencies are derived from the current application/schema interpretation exactly as in the existing graph design.
+
+The persisted current `graph_scheme` representation is the lowering of that current schema/version contract. Journal history does not treat mutable `graph_scheme` bytes as conflict authority.
+
+Schema migration is responsible for creating a new current baseline compatible with the target schema before that target becomes active.
 
 ## Host-local allocation watermark
 
-For local writer A, define:
+For local writer A:
 
 ```text
-WriterState(A) = all WriterStateRecord records authored by A
+WriterState(A) = all WriterStateRecords authored by A
 ```
 
-If none exist, the replayed `last_node_index` is zero.
+If none exist, replay uses the defined initial local `last_node_index` (currently zero).
 
 Otherwise:
 
 ```text
 last_node_index =
-    WriterStateRecord with greatest A-local sequence .lastNodeIndex
+    lastNodeIndex from the greatest A-local WriterStateRecord by sequence
 ```
 
-The record values must be monotone; replay rejects a decreasing local watermark.
+WriterState values must be monotone nondecreasing.
 
-Foreign writers' watermark records do not change this database's `last_node_index`.
-
-Because `NodeIdentifier` allocation itself is represented by the identifiers carried in historical value occurrences while the watermark is recorded explicitly, replay can reconstruct both current identifier mapping and local allocation safety without trusting current mutable allocator metadata.
+Foreign writer-state records do not change this database's local watermark.
 
 ## Replay equality
 
-Two replay results are semantically equivalent when they agree on:
+Two current projections are semantically equivalent when they agree on:
 
-- present semantic NodeKeys;
-- selected `ValueId` for every present node;
-- exact payloads;
-- `createdAt` and `modifiedAt` instants;
+- current present semantic NodeKeys;
+- selected ValueId for every present node;
+- exact payload;
+- createdAt/modifiedAt instants;
+- selected NodeIdentifier;
 - freshness;
-- validity edges by semantic NodeKey;
-- selected current physical `NodeIdentifier`s;
-- local writer `last_node_index` when comparing the same local writer projection.
+- semantic validity edges;
+- local writer last_node_index when comparing the same local-writer projection; and
+- current schema-derived structural representation required by the existing graph storage contract.
 
-Temporary storage paths, inactive replica names, LevelDB internal sequence numbers, and transport metadata are excluded.
+Temporary paths, inactive replica-slot names, transport metadata, LevelDB internal sequence numbers, and derived Journal index layouts are excluded.
 
 ## Replay algorithms
 
-The normative projection above is declarative. Implementations may realize it by:
+The definitions above are declarative.
 
-- replaying records from an empty projection;
-- incrementally folding newly appended/imported records;
-- maintaining per-node indexes;
-- loading a verified checkpoint and replaying the suffix; or
+A conforming implementation may use:
+
+- whole-history reference replay;
+- incremental folding;
+- per-node current-head/certificate indexes;
+- verified replay checkpoints;
 - another algorithm proven observationally equivalent.
 
-An implementation must not change semantics merely because records arrived in a different network order. It must wait for causal closure, complete any required synchronization normalization, and compute the same result for the same final retained journal.
+Record arrival order must not change the final result for one final supported journal.
+
+A clear whole-history/reference path should remain available as an implementation/test oracle even if production projection is incremental.
 
 ## Replay checkpoint correctness
 
-A replay checkpoint names an exact journal frontier F and contains a derived projection equivalent to replaying the journal through F.
+A checkpoint names an exact JournalFrontier F and contains derived state equivalent to replaying history through F under the compatible schema interpretation for that checkpoint.
 
-Using a checkpoint is correct only when:
+It is usable only when:
 
 ```text
 checkpointProjection == project(journal through F)
 ```
 
-and all replay after F consumes immutable records from the same writer histories.
+and later replay consumes immutable suffix history from the same writer streams.
 
-A checkpoint may be regenerated or discarded. It carries no semantic authority beyond the journal records it summarizes.
+Checkpoint loss is harmless to authority. Authoritative record loss is not.
 
 ## Corruption/inconsistency handling
 
-Replay rejects rather than guesses when it encounters, among other things:
+Replay/import rejects rather than guesses when it encounters, among other things:
 
 - a writer-stream hole;
-- conflicting content for one `JournalRecordId`;
-- an event whose causal context is not retained;
-- a `ValidateEvent` targeting a non-ValueEvent ID;
-- a validation basis with wrong arity or a non-unknown entry naming the wrong semantic input;
+- conflicting canonical meaning for one JournalRecordId;
+- undecodable/unsupported record version;
+- an event whose claimed causal context is not retained;
+- a ValueId reference which is not causally prior to the referencing event;
+- a validation target naming a non-ValueEvent or another semantic node;
+- duplicate input NodeKeys in one validation basis;
+- a known basis ValueId whose ValueEvent node differs from the entry's explicit input NodeKey;
+- illegal `"unknown"` use by an ordinary validation;
 - a final selected-head set which is not dependency-closed;
 - malformed timestamps;
-- incompatible reuse of one `NodeIdentifier`;
+- incompatible current reuse of one NodeIdentifier;
 - decreasing same-writer allocation watermark;
-- a legacy persisted graph which disagrees with the journal projection at a boundary where graph/journal consistency is being validated.
+- a persisted current graph known to disagree with replay.
 
-Payload equality is never a repair mechanism for journal identity or provenance conflicts.
+Payload equality is never a repair mechanism for journal identity, reference, or provenance conflicts.
