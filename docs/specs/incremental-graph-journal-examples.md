@@ -16,7 +16,7 @@ A -> B -> C
 
 unless a trace says otherwise.
 
-Certificate bases are written explicitly as `{ input, value }` records. The basis is self-describing historical evidence; it is not interpreted by remembering an old positional schema order.
+Certificate bases are written explicitly as `{ input, value }` records. The basis is self-describing historical evidence; it is not interpreted by remembering an old positional schema order. Persisted basis entries are canonically ordered by semantic NodeKey.
 
 ## Trace 1: first materialization
 
@@ -510,3 +510,31 @@ materializedGraph == project(journal)
 No journal event is authored merely because a derived cache was repaired.
 
 If the journal itself contains a fork/impossible causal reference, rebuild fails instead of changing history to match the damaged graph.
+
+## Trace 20: synchronization normalization is real history
+
+Assume structural edge:
+
+```text
+A -> B
+```
+
+Receiver X currently has fresh A1/B1.
+
+Source Y contains a higher-authority DeleteEvent for A but has never materialized B. Source Z contains an even higher-authority concurrent ValueEvent A2.
+
+If X synchronizes Y first, the observed state genuinely has A absent while B1 is selected. X must preserve dependency closure and authors:
+
+```text
+X:n Delete(B, reason=sync)
+```
+
+That delete is a real committed semantic event.
+
+Later X synchronizes Z. A2 may now become the selected A head, but the already-authored X:n deletion of B is not retracted merely because the previously unseen A2 changed the later projection.
+
+In a counterfactual execution that incorporated Z before Y, A might never have become absent at a committed synchronization boundary, so X:n might never have been authored.
+
+Journal 3 does **not** claim those two counterfactual executions have identical history/result. It claims that in either actual execution, every committed normalization event is immutable history and fair synchronization eventually disseminates it so all replicas in that execution converge.
+
+This is not an acknowledgement artifact: the deletion records a state transition that really occurred under the receiver's then-observed supported history.
