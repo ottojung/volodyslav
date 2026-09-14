@@ -54,6 +54,8 @@ A validation basis is an array of explicit semantic-input claims:
 
 The basis must not contain two entries with the same `input` NodeKey.
 
+Entries must be serialized in canonical semantic `NodeKey` order. This ordering is independent of the graph-schema input order which existed when the validation was authored, so a future decoder can validate/canonicalize the immutable record without requiring that historical schema.
+
 For each entry B:
 
 ### Known value
@@ -99,11 +101,13 @@ When C is authored by an ordinary operation under the current schema, its basis 
 set(C.basis.input) == set(inputEdges(C.node))
 ```
 
-and serialization order follows current `inputEdges(C.node)` order.
+A controlled bootstrap/reset/migration baseline likewise records one basis entry for every direct input in its target schema interpretation, with `"unknown"` where the target legacy validity edge is intentionally absent.
 
-A controlled bootstrap/reset/migration baseline likewise records one basis entry for every direct input in its **target** schema interpretation, with `"unknown"` where the target legacy validity edge is intentionally absent.
+In all cases the resulting entries are serialized by canonical NodeKey order after that set has been constructed.
 
 An old historical certificate remains intelligible after a later schema migration because its basis records its own semantic input NodeKeys explicitly. It is not retroactively malformed merely because the current schema now gives that node a different input set; migration creates a new current ValueId/certificate baseline for the new schema.
+
+For current replay, such an old certificate is eligible only if its explicit basis input-key set equals the current direct-input set for its node, as defined by the replay specification.
 
 ## No partial salvage of malformed certificates
 
