@@ -237,9 +237,11 @@ its basis contains exactly one entry for every current direct input:
 ]
 ```
 
-Entries are persisted in deterministic current `inputEdges(K)` order for stable serialization/debugging, but replay meaning is keyed by the explicit `input` NodeKey rather than positional coincidence.
+The displayed `D0,D1,...` order is illustrative only. Persisted `ValidationBasis` entries are always sorted by the project's canonical semantic `NodeKey` order, independent of graph-schema input ordering.
 
-This makes an old certificate historically intelligible after a later schema changes K's direct input set/order.
+Replay meaning is keyed by the explicit `input` NodeKey. Canonical NodeKey ordering gives one stable serialization/meaning which future decoders can validate without possessing the historical schema that authored the certificate.
+
+The current schema is used separately to determine whether the certificate's explicit input-key set is complete/applicable to the current node interpretation.
 
 `"unknown"` is restricted to controlled bootstrap/reset/migration baselines which must reproduce an intentionally missing legacy validity proof when the exact historical occurrence against which that proof was absent is unavailable.
 
