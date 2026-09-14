@@ -131,10 +131,10 @@ An implementation may omit a redundant delete when the observed union already se
 
 After every source-present node has its new reset ValueId, reset represents PS's exact validity relation with new reset certificates.
 
-For source-present K let current target schema define:
+For source-present K let current target schema define the distinct direct input set:
 
 ```text
-inputEdges(K) = [D0, D1, ...]
+inputSet(K) = set(inputEdges(K))
 ```
 
 Author one:
@@ -146,13 +146,15 @@ ValidateEvent {
     reason: "reset",
     basis: [
         {
-            input: D0,
-            value: resetValueId(D0) | "unknown"
+            input: D,
+            value: resetValueId(D) | "unknown"
         },
         ...
     ]
 }
 ```
+
+with exactly one entry for every `D in inputSet(K)`.
 
 For each direct input D:
 
@@ -164,7 +166,7 @@ basisEntry(D).value = "unknown"
     otherwise
 ```
 
-Basis entry order follows current `inputEdges(K)` order, but each entry carries D explicitly so the historical reset certificate remains self-describing if a later migration changes input order/schema.
+After constructing the entries, serialize them in canonical semantic NodeKey order as required by the Journal 3 type contract. Their order therefore does not depend on the target schema's input enumeration order.
 
 Because PS is dependency-closed, every direct input of a source-present K is also source-present and has a reset ValueId from Pass 1.
 
