@@ -59,6 +59,29 @@ At minimum:
 
 When two records are otherwise unordered, use a stable operation-specific tie-breaker such as canonical NodeKey then record kind.
 
+## Canonical validation-basis construction
+
+Whenever ordinary emission authors a `ValidateEvent` for node K, construct its basis from the **finalized current** direct semantic input set:
+
+```text
+inputSet(K) = set(inputEdges(K))
+```
+
+For every `D in inputSet(K)`, ordinary compute/unchanged/cache-revalidate validation contains exactly:
+
+```text
+{
+    input: D,
+    value: finalizedCurrentValueId(D)
+}
+```
+
+Ordinary operation certificates never use `"unknown"`.
+
+After constructing all entries, serialize the basis in canonical semantic NodeKey order, independent of schema input enumeration order.
+
+This rule applies identically to first materialization, changed recomputation, `Unchanged`, and cache revalidation.
+
 ## Successful pull: new materialization
 
 Suppose pulling K materializes a previously absent node and its computor returns payload P.
@@ -81,7 +104,7 @@ ValueEvent {
 ```
 
 4. uses that finalized event ID as the new `ValueId(K)`;
-5. authors a same-publication `ValidateEvent(reason="compute")` for that ValueId whose basis contains the current finalized `ValueId` of every direct semantic input in `inputEdges(K)`;
+5. authors a same-publication `ValidateEvent(reason="compute")` for that ValueId using the canonical finalized current-input basis defined above;
 6. projects K as fresh with complete incoming validity; and
 7. records any required local allocation-watermark advance with a `WriterStateRecord` in the same publication.
 
@@ -98,7 +121,7 @@ If finalization still commits that changed value transition, publication:
 3. obtains the ordinary new `modifiedAt` for the changed semantic value;
 4. authors a new `ValueEvent(reason="compute")` containing the new payload, preserved identifier/creation time, and new modification time;
 5. uses its finalized event ID as the new `ValueId(K)`;
-6. authors a new `ValidateEvent(reason="compute")` with the exact finalized current direct-input ValueId basis; and
+6. authors a new `ValidateEvent(reason="compute")` using the canonical finalized current-input basis; and
 7. authors value-scoped propagated invalidation events for every dependent whose persisted freshness actually transitions from fresh to stale because of this committed value change.
 
 The old value occurrence remains permanently present in journal history. It ceases to be the selected head when the new value event has greater authority.
@@ -110,7 +133,7 @@ When a stale node's computor returns `Unchanged` and finalization commits the co
 - preserve the current selected `ValueId`;
 - preserve its ValueEvent payload, `NodeIdentifier`, `createdAt`, and `modifiedAt`;
 - author a new `ValidateEvent(reason="unchanged")` targeting that same ValueId;
-- record the exact finalized current direct-input ValueIds in its basis;
+- use the canonical finalized current-input basis;
 - do not author a ValueEvent.
 
 Replay therefore reconstructs the same cached occurrence with a later validation certificate.
@@ -123,7 +146,7 @@ When a stale non-zero-input node has complete current incoming validity and the 
 
 - preserve the current ValueId and all value/timestamp fields;
 - author `ValidateEvent(reason="cache-revalidate")` targeting the current value;
-- use the exact finalized current direct-input ValueId basis;
+- use the canonical finalized current-input basis;
 - do not author a ValueEvent.
 
 The validation event is required when freshness actually changes from stale to fresh because replay must explain that transition.
