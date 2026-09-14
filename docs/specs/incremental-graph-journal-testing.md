@@ -30,6 +30,13 @@ For each ordinary graph operation:
 
 Cover first materialization, changed value, `Unchanged`, cache revalidation, explicit invalidation, transitive stale propagation, deletion, and concurrent transaction finalization.
 
+Every ordinary ValidateEvent test also asserts that the basis:
+
+- contains exactly one entry per current distinct direct input NodeKey;
+- uses no `"unknown"` values;
+- names the finalized current ValueId for each input; and
+- is serialized in canonical NodeKey order.
+
 ## Interleaving/model exploration
 
 Generate small acyclic graph schemes and short histories across 2–3 writers.
@@ -74,13 +81,15 @@ Include receiver-only dependent graphs specifically to exercise sync-authored pe
 For 2–4 small replicas:
 
 1. generate local changes while disconnected;
-2. stop ordinary changes;
+2. stop ordinary/reset/migration graph-changing operations;
 3. repeatedly synchronize replicas in varying fair orders;
 4. permit generated sync normalization;
 5. continue until no operation changes state;
-6. assert observable graph equivalence and retained-history convergence.
+6. assert observable graph equivalence and retained-history convergence for that execution.
 
-Run multiple source-order schedules over the same initial histories.
+Run multiple source-order schedules over the same initial positive histories, but interpret them correctly: different schedules may legitimately author different real sync-normalization histories. Each schedule must converge internally; the test must not require counterfactual schedules with different authored normalization events to finish in identical projections.
+
+Also assert that once one schedule reaches its normalization fixed point, redelivery of the same facts creates no acknowledgement/delete/invalidation chain.
 
 ## Same-writer recovery tests
 
@@ -101,6 +110,7 @@ For generated receiver/source projections:
 - old receiver/source history retained;
 - receiver local watermark semantics preserved;
 - stale/partial validity target reconstructed;
+- reset certificate bases use explicit input NodeKeys in canonical order;
 - repeated already-satisfied reset can no-op;
 - unseen third-writer concurrent event learned later participates in ordinary conflict semantics.
 
@@ -118,6 +128,8 @@ Construct supported legacy graph states covering:
 
 Bootstrap then assert exact replay equivalence to the original legacy graph.
 
+Bootstrap basis tests also cover canonical NodeKey ordering and `"unknown"` only for missing legacy proof.
+
 ## Migration tests
 
 For every implemented Journal-3-aware migration:
@@ -128,6 +140,8 @@ For every implemented Journal-3-aware migration:
 - replay from retained old+journal migration history under target schema;
 - assert target equivalence;
 - assert old record IDs/bodies unchanged;
+- assert old certificates remain self-describing after input order/set changes;
+- assert target certificates use target input keys in canonical NodeKey order;
 - assert old migration callback is not needed during replay.
 
 ## Codec/version tests
@@ -140,6 +154,8 @@ For every supported `recordVersion`:
 - historical decoder/upcaster determinism;
 - cross-version record ID meaning preservation.
 
+For validation records include fixtures proving that basis canonicalization does not require a historical graph schema.
+
 ## Corruption tests
 
 Explicitly verify rejection of:
@@ -148,12 +164,17 @@ Explicitly verify rejection of:
 - conflicting same-ID bodies;
 - causal-context frontier holes;
 - validation target wrong node;
-- basis ValueId wrong input node;
+- duplicate basis input NodeKeys;
+- noncanonical basis entry ordering;
+- basis ValueId whose ValueEvent belongs to another input NodeKey;
 - basis reference concurrent/future to certificate;
+- ordinary validation containing `"unknown"`;
 - value-scoped invalidation referencing future/concurrent value;
 - selected NodeIdentifier collision;
 - decreasing WriterStateRecord watermark;
 - known graph/journal projection mismatch.
+
+A historical certificate whose explicit input-key set differs from the **current** schema is not corrupt solely for that reason; it is retained history and simply is not current-shape-compatible proof.
 
 ## Transaction failure tests
 
