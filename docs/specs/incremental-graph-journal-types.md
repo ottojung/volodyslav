@@ -183,15 +183,18 @@ For concrete node `K`, let the fixed schema determine ordered distinct direct se
 inputEdges(K) = [D0, D1, ...]
 ```
 
-A validation records the exact value occurrence observed for every direct input:
+The basis has one entry per direct input:
 
 ```text
-ValidationBasis = Array<ValueId>
+BasisEntry = ValueId | "unknown"
+ValidationBasis = Array<BasisEntry>
 ```
 
-The basis length and order must exactly match `inputEdges(K)`.
+A normal Journal-3-native validation records the exact current `ValueId` for every direct input. The `"unknown"` sentinel exists only for controlled bootstrap/reset/migration baselines which must reproduce a legacy missing incoming proof but do not possess the historical value occurrence against which that proof was last absent.
 
-Journal 3 core replay does not need an `unknown` basis sentinel. A Journal-3-native validation is historical evidence and therefore records the exact input occurrences it actually validated. Bootstrap/migration procedures which cannot provide such exact evidence must represent that limitation through explicit stale/invalidation history rather than inventing a value occurrence.
+`"unknown"` never equals any current `ValueId`. It therefore reconstructs a missing validity edge without inventing provenance.
+
+The basis length and order must exactly match `inputEdges(K)`.
 
 ## ValidateEvent
 
