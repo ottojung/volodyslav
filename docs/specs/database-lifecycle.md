@@ -6,340 +6,358 @@ title: Database Lifecycle
 
 ## 1. Overview
 
-This document specifies the supported lifecycle of Volodyslav's synchronized incremental database. It describes how the database is created, opened, changed, migrated, synchronized, and rejected when its state is incompatible with the requested operation.
+This document specifies the supported lifecycle of Volodyslav's synchronized IncrementalGraph database under Journal 3.
 
-This is a lifecycle specification, not a storage-format specification. Physical directories, rendered snapshots, replica names, key layouts, indexes, and allocation mechanisms are implementation details unless another specification explicitly makes one of them normative. The lifecycle rules in this document must continue to hold if those mechanisms change.
+It describes creation/open, ordinary evolution, migration, synchronization, controlled reset, recovery, and rejection of unsupported state.
 
-The normal user-facing operation is:
+The key Journal 3 lifecycle law is:
+
+```text
+for every current Journal-3-aware database:
+    persisted materialized graph == project(retained journal)
+```
+
+The journal is semantic authority. The current IncrementalGraph sublevels are a materialized projection.
+
+This is a lifecycle specification, not a transport/backend specification. A source journal might currently be carried by one mechanism and later by another. The lifecycle requires stable Journal 3 snapshots/prefixes and atomic local publication; it does not prescribe a hosted database, Git layout, HTTP protocol, or remote schema.
+
+The normal user-facing startup operation remains:
 
 ```sh
 volodyslav start
 ```
 
-Creation, restoration from a synchronized host, migration, and other import-like behavior are Volodyslav-controlled transitions reached through startup or synchronization. Raw filesystem manipulation is not a database lifecycle operation.
+Raw filesystem/database manipulation is not a supported lifecycle transition.
 
-Other persistent subsystems, such as assets and runtime scheduler state, have their own lifecycle rules. They may be synchronized during the same application operation, but they are outside the database state governed by this specification.
+## 2. Lifecycle states
 
-Normative terms such as **MUST**, **MUST NOT**, **SHOULD**, and **MAY** describe the supported model. A statement that a state "cannot happen" means that it cannot happen through a supported Volodyslav lifecycle transition.
+At the lifecycle level a local database is one of:
 
-## 2. Lifecycle states and transitions
+- **Absent** — no local supported database has been established for this installation.
+- **Legacy/migratable** — a structurally valid older database exists and the running version supplies a supported migration into the current representation.
+- **Current** — database version/schema match the running application and, when Journal 3 is established, its materialized graph matches its retained journal projection.
+- **Incompatible for an operation** — the database may be valid independently but a requested synchronization/reset/migration compatibility precondition is not satisfied.
+- **Corrupted/unsupported** — required invariants fail, writer history forks, graph and authoritative journal disagree without a supported rebuild path, or the state was produced outside the supported lifecycle.
 
-At the lifecycle level, a database is in one of these states:
+Supported transitions are:
 
-- **Absent**: no local live database has been established for this installation.
-- **Current**: the local database is openable, structurally usable, and recorded at the database version expected by the running application.
-- **Migratable**: the local database is structurally usable but records a different database version for which the running application supplies a migration procedure.
-- **Incompatible for an operation**: the database may be meaningful on its own, but a requested migration or synchronization does not have satisfied compatibility preconditions.
-- **Corrupted or unsupported**: the state was not produced by a supported lifecycle transition, or a lifecycle precondition was violated while producing it.
+1. **fresh bootstrap** — absent state becomes a new empty current database;
+2. **same-writer restoration/recovery** — an absent/behind installation resumes an exact immutable prefix of its continuing writer history;
+3. **open** — an existing state is validated and interpreted;
+4. **ordinary evolution** — graph operations transactionally append journal history and matching projection changes;
+5. **migration/bootstrap-to-Journal-3** — an older valid representation becomes current through the migration gate;
+6. **synchronization** — missing immutable history is incorporated and replayed;
+7. **controlled reset** — the current observed history is rebaselined to a chosen source projection without deleting history;
+8. **projection rebuild** — derived graph/index state is reconstructed from retained authoritative Journal 3 history.
 
-The supported transitions are:
-
-1. **Bootstrap**: absent local state becomes a local database through a Volodyslav-controlled restore or fresh creation path.
-2. **Open**: existing local state is opened and its required lifecycle metadata is interpreted.
-3. **Ordinary evolution**: application operations transactionally update the current database while preserving graph and persistence invariants.
-4. **Migration**: a usable older database is transformed to the current application version and committed by a controlled cutover.
-5. **Synchronization**: a stable local database is checkpointed and exchanged with compatible host states, then reopened through the migration gate.
-6. **Controlled reset**: a synchronization path selects a host snapshot as the new logical state and commits it through the database abstraction.
-
-A successful startup ends in the **Current** state before the database-backed application interface is exposed as initialized. Failure to satisfy a transition's preconditions aborts that transition; Volodyslav MUST NOT silently reinterpret an incompatible or unsupported state as a fresh database.
+A successful startup ends in **Current** before database-backed application APIs are exposed as initialized.
 
 ## 3. Startup flow
 
-`volodyslav start` initializes the server and its required environment, system capabilities, and application services. Database initialization is a required startup dependency. If database initialization fails, application initialization does not complete successfully.
+`volodyslav start` initializes environment/capabilities and establishes one current database before exposing the application graph.
 
-Database startup follows this sequence:
+Conceptually:
 
-1. **Validate operating context.** Required environment configuration is read before normal database use. This includes a working location, synchronization repository, and a valid local hostname. Required external capabilities, including Git, must be available.
-2. **Determine whether local live state exists.** Existence is a bootstrap decision only. Existing state is opened; it is not overwritten by a remote snapshot merely because startup is occurring.
-3. **Bootstrap when absent.** Volodyslav selects one of the controlled creation paths described in [Database creation](#4-database-creation).
-4. **Open the local database.** The database implementation opens the durable state and establishes the active logical state. Required structural metadata must be valid enough to identify and load that state.
-5. **Run the migration gate.** A fresh database is marked with the running database version. A database already at that version proceeds unchanged. A database at a different version must complete migration.
-6. **Construct and expose the incremental graph.** The database-backed graph interface becomes initialized only after opening and migration have succeeded.
+1. validate required local operating context;
+2. determine whether supported local state exists;
+3. if absent, run the configured controlled creation/recovery path;
+4. open local persistence;
+5. run the database-version migration gate;
+6. for Journal-3-aware state, validate/reconstruct required journal-derived caches/projection invariants;
+7. construct/expose the IncrementalGraph interface.
 
-Startup does **not** perform an ordinary synchronization when local live state already exists. Synchronization is a separate controlled operation. This distinction prevents routine startup from unexpectedly replacing or merging local state and makes migration the only version-changing startup transition.
+Startup does not silently reinterpret malformed/incompatible existing state as an empty database.
 
-Initialization is exclusive with database maintenance operations. Concurrent ordinary reads or writes must not observe a partially bootstrapped, migrating, resetting, or synchronizing database.
+Routine startup of an already-current local database does not imply ordinary multi-source synchronization unless an outer application policy explicitly requests it. Synchronization remains a controlled administrative operation.
 
-## 4. Database creation
+Startup/migration/rebuild/cutover are exclusive with ordinary graph activity.
 
-### 4.1 Preconditions
+## 4. Fresh database creation
 
-Supported creation requires:
+### 4.1 Fresh identity
 
-- an initialized Volodyslav environment;
-- a valid local hostname, used to identify this host's synchronized history;
-- an accessible configured synchronization repository;
-- functioning required filesystem, database, and Git capabilities; and
-- exclusive execution of the bootstrap transition for the working location.
+A genuinely new writable database receives one durable `DatabaseFingerprint`, which is its Journal 3 writer identity.
 
-The synchronization repository is part of creation even when the resulting database is empty. Absence of local state does not authorize bypassing repository or hostname checks.
+It begins with:
 
-### 4.2 Restoring this host's synchronized state
+```text
+local writer frontier = 0
+retained foreign frontiers = 0
+materialized graph = empty
+```
 
-When local live state is absent, Volodyslav first asks whether the synchronization repository contains state previously published for the current hostname.
+and therefore:
 
-If it does, startup uses the controlled reset-to-host path to restore that snapshot into a newly opened local database. The imported state is committed through the database's normal cutover mechanism, then the database is reopened and passed through the migration gate. Thus a host can recover its own synchronized state and then migrate it to the running version.
+```text
+project(empty journal) = empty graph
+```
 
-Any failure to query, obtain, parse, or install that state is fatal to bootstrap. Volodyslav does not silently fall back to an empty database after discovering that the host is supposed to have synchronized state.
+The database records the running database version/schema metadata required by the existing graph lifecycle.
 
-### 4.3 Creating a new host state
+No semantic event is required merely to state that infinitely many possible semantic nodes are absent.
 
-If the current hostname has no synchronized branch, startup initializes the local synchronization working state and runs normal synchronization from an empty local database. This establishes the host's synchronization history and then considers other host branches under the ordinary synchronization rules.
+### 4.2 Local allocation state
 
-The empty database is a legitimate initial state. On the first migration gate, absence of a stored database version means **fresh database**, and the running version is recorded without running a data migration.
+A fresh local `last_node_index` begins according to the ordinary identifier-allocation specification (currently zero).
 
-This fallback is not a general-purpose import from an arbitrary host. Other host states are accepted only through normal synchronization, including its exact version-compatibility requirement. In particular, an unversioned fresh database is not implicitly treated as compatible with a versioned remote host.
+Journal writer-state history need only be written when required by the Journal 3 writer-state representation. Replay of a genuinely empty fresh database must reconstruct the initial allocator state deterministically.
 
-### 4.4 Creation postconditions
+## 5. Same-writer restoration and recovery
 
-After successful creation and startup:
+Journal 3 treats restoration primarily as immutable prefix recovery rather than graph snapshot replacement.
 
-- a local live database exists and is openable;
-- its active logical state is structurally loadable;
-- it records the database version expected by the running application;
-- its synchronization identity and history were established by Volodyslav; and
-- the graph interface is initialized from that state.
+Suppose local writer A is absent/behind and a controlled source retains:
 
-Copying database files or directories is not an alternative creation path and does not establish these postconditions.
+```text
+A:1..q
+```
 
-## 5. Ordinary database evolution
+If the local copy is empty or an exact prefix of that same history, the lifecycle may import/recover the missing A suffix under exclusive maintenance, together with all causally required retained foreign history.
 
-After startup, database state evolves through the incremental graph and its domain-facing interface. Supported mutations include changes to source values, invalidation, recomputation, and deletion through Volodyslav APIs. Callers do not directly edit persisted representations.
+After recovery it reconstructs:
 
-Ordinary evolution preserves these lifecycle invariants:
+- local writer head;
+- local `last_node_index`;
+- authority high-water;
+- materialized graph projection;
+- derived indexes/caches.
 
-1. **Version ownership.** Writes target the active state associated with the running database version. A write path that discovers a different stored version fails rather than writing across that boundary.
-2. **Durable-before-visible commit.** A successful transaction persists its settled state before corresponding volatile state is treated as committed.
-3. **Coherent graph state.** Values, dependency relationships, freshness, and associated derived metadata describe one settled graph state after a successful transaction.
-4. **Atomic transaction boundary.** Other operations observe the state before or after a transaction's finalization, not a deliberately exposed partial finalization.
-5. **Exclusive maintenance boundary.** Migration, synchronization, reset, and active-state cutover wait for ordinary graph activity and prevent new ordinary activity until maintenance completes.
-6. **Schema-mediated access.** Runtime operations use the graph schema and database abstraction to address and evolve state. They do not infer a new schema from arbitrary persisted contents.
+New A-authored records begin after q.
 
-These invariants are obligations of supported write paths. If a supported operation reports success while violating one of them, that is a lifecycle bug.
+No reset baseline is necessary when the requested operation is simply resuming the continuing immutable history.
 
-## 6. Migration
+If overlapping A records disagree, the writer history has forked/corrupted. Restoration fails; it must not choose one body by timestamp or payload equality.
 
-Migration is the supported transition between database versions. It is part of startup and of reopening after synchronization; it is not a separate user-facing repair or import tool.
+Two independently live installations intentionally authoring under one fingerprint are outside the supported lifecycle.
 
-### 6.1 Migration decision
+## 6. Opening Journal-3-aware state
 
-The running application supplies the target database version and current graph schema. After opening the active state:
+Opening a current Journal 3 database establishes one coherent pair:
 
-- if no version is recorded, the database is treated as fresh and is marked current;
-- if the stored version equals the running version, migration is a no-op; and
-- if the versions differ, migration is required before the graph interface can be initialized.
+```text
+(retained journal, materialized projection)
+```
 
-Version inequality requests migration; it does not by itself prove that migration can succeed. The migration procedure must still establish all migration preconditions.
+Required checks/rebuild policy may be staged for performance, but the supported result must satisfy:
 
-### 6.2 Migration procedure and invariants
+- writer streams are structurally valid/contiguous;
+- journal record decoding/compatibility succeeds;
+- persisted current database version/schema is compatible with the running interpretation;
+- materialized graph is observationally equivalent to Journal 3 replay, or a supported projection-rebuild path reconstructs it before exposure;
+- local writer allocator state is consistent with retained local history.
 
-A migration examines the materialized state from the previous version and makes an explicit disposition for it under the new schema. Depending on the migration policy, state may be retained, transformed, invalidated for recomputation, created, or removed.
+The graph must not be exposed if the implementation knows journal/projection state disagree and has not successfully rebuilt/validated the projection.
 
-The migration framework enforces lifecycle-level compatibility conditions, including:
+## 7. Ordinary database evolution
 
-- every materialized part of the previous graph must receive a complete and non-conflicting decision;
-- retained or transformed state must be representable by the new schema;
-- dependency changes must remain coherent, including deletion propagation and fan-in constraints; and
-- the target state must carry the running database version and the metadata required to reopen it.
+After startup, graph state changes through supported IncrementalGraph APIs such as pull/recompute/invalidate and domain operations built on them.
 
-Migration constructs the target state away from the currently active state. It makes that target active only after validation, transformation, durable writes, and flushing succeed. Therefore, a failure before cutover leaves the previously active state selected and available for a later retry or diagnosis.
+For every successful semantic transition:
 
-Migration checkpointing records the state around the migration as part of the controlled lifecycle. Checkpoint publication is operational bookkeeping around the database transition, not an independent restore API. A failure reported after the database cutover may mean that the database transition committed but its post-migration checkpoint did not; callers and operators must not assume that every reported migration failure implies an unchanged database.
+```text
+project(journalAfter) == graphAfter
+```
 
-### 6.3 Migration failures
+Journal 3 event emission is defined by `incremental-graph-journal-emission.md`.
 
-The following are migration precondition or execution failures, not corruption by definition:
+Publication/locking is defined by `incremental-graph-journal-locking.md`.
 
-- the migration policy does not decide all previous materialized state;
-- decisions conflict or violate dependency constraints;
-- previous state cannot be represented under the new schema;
-- a durable write or cutover fails; or
-- required checkpoint operations fail.
+Lifecycle invariants include:
 
-They become evidence of corruption only if the failure shows that the input was outside the states producible by supported earlier transitions.
+1. **version ownership** — writes target the current running database/schema version;
+2. **journal-first semantic authority** — every persisted graph change has replay explanation;
+3. **atomic publication** — journal and graph transition commit together;
+4. **durable-before-visible state** — matching volatile caches publish only after durable success;
+5. **exclusive maintenance** — migration/sync/reset/rebuild cannot overlap ordinary graph activity at cutover;
+6. **schema-mediated access** — callers do not mutate persistence/journal records directly.
 
-## 7. Synchronization
+A successful ordinary operation which changes no persisted semantic graph fact need not append a semantic event merely because the API was called.
 
-Synchronization exchanges database state among host-specific histories in the configured repository. The repository is a transport and checkpoint boundary; synchronization semantics are defined by Volodyslav's structured database merge, not by treating database state as arbitrary user-editable files.
+## 8. Migration
 
-### 7.1 Synchronization preconditions
+Migration is the controlled transition between database versions/schema interpretations.
 
-Normal synchronization requires:
+Detailed Journal 3 rules are normative in `incremental-graph-journal-migrations.md`.
 
-- a configured, reachable synchronization repository;
-- a valid hostname for the local host and recognizable host identities for participating branches;
-- exclusive maintenance access to the database;
-- an openable local state that can be checkpointed;
-- remote snapshots that can be parsed into staging state; and
-- exact database-version compatibility for every host state that is merged.
+### 8.1 Migration gate
 
-The in-process database is closed before synchronization changes its durable state. The operation is serialized against graph activity so checkpointing and merging see stable transition boundaries.
+After open:
 
-### 7.2 Normal synchronization flow
+- matching version -> no migration;
+- supported older version -> run its migration;
+- unsupported/incompatible version -> fail startup;
+- legacy/pre-Journal-3 version which has a supported Journal 3 bootstrap migration -> validate legacy state then construct the replay baseline defined by the Journal 3 migration spec.
 
-Normal synchronization performs these lifecycle steps:
+Absence of a stored version is treated as fresh only under the existing fresh-database lifecycle rules; it must not be used to erase an existing structured database which merely has malformed/missing metadata.
 
-1. Open a stable local database state if necessary.
-2. Render and checkpoint the local state, then synchronize the local host's branch with the repository.
-3. Fetch the participating host branches.
-4. For each other recognized host, load its snapshot into isolated staging state.
-5. Check version and structural merge preconditions.
-6. Compute and commit a graph-aware merge into a non-active target state.
-7. Cut over to the merged state only when the merge produced changes and completed successfully.
-8. Remove the host's staging state.
-9. Reopen the application database and run the migration gate before exposing it again.
+### 8.2 Journal 3 migration meaning
 
-The merge resolves state according to graph timestamps and dependency semantics, not textual repository merge rules. Locally newer state is retained, remotely newer compatible state may be taken, and affected derived state may be invalidated so that it is recomputed from the merged dependencies. A successful merge preserves graph coherence and does not make a partially constructed target active.
+A Journal-3-aware migration:
 
-### 7.3 Per-host failure behavior
+1. starts from a valid source pair `Gbefore = project(Jbefore)`;
+2. computes the ordinary migration target `Gtarget` under isolated target storage;
+3. appends replay-complete migration baseline records causally after the source history;
+4. verifies `project(Jafter,targetSchema) == Gtarget`;
+5. atomically cuts over to the target version/journal/projection.
 
-Host branches are processed independently. A failure for one host is recorded, staging cleanup is attempted, and synchronization continues with the remaining hosts. Successful earlier or later host merges remain committed. After all hosts have been attempted, Volodyslav reports an aggregate synchronization failure if any host failed.
+Old journal history is retained.
 
-Synchronization is therefore not globally atomic across all remote hosts. Its postcondition on aggregate failure may include successful merges from compatible hosts. Reviewers must not classify this documented partial-success behavior as corruption.
+Future replay uses the recorded migration result; it does not rerun the historical migration callback.
 
-After an initiated synchronization, Volodyslav attempts to reopen the local database and rerun the migration gate even if synchronization itself failed. If both synchronization and reopening fail, both failures are relevant. A synchronization error does not justify leaving the application interface attached to a closed database.
+### 8.3 Failure
 
-### 7.4 Controlled reset
+Failure before cutover leaves the previous active supported database selected.
 
-A reset-to-host synchronization selects a host snapshot and installs it through a non-active target state followed by cutover. It is used during restoration and may also be invoked through a Volodyslav-controlled synchronization path.
+Operational work after a successful durable cutover may fail independently; callers must distinguish a failed post-cutover bookkeeping step from a migration whose database transition never committed.
 
-Reset is intentionally different from normal merge: it selects the snapshot as the logical source rather than combining it node by node with the current state. The selected snapshot must still be structurally importable and must pass required database identity checks. When reset is applied to an already-existing local database, implementation-defined host-local state that must remain local is preserved by the reset path. When reset is used during absent-local-state bootstrap, there is no previous local database identity to preserve; the selected synchronized host snapshot is installed according to the bootstrap protocol.
+## 9. Synchronization
 
-After reset, the database is reopened through the migration gate. A reset snapshot may therefore be older than the running application if the supported migration can bring it forward. This does not weaken the normal synchronization rule that peer-to-peer merging requires matching versions before merge.
+Journal 3 synchronization is specified by `incremental-graph-journal-sync.md` and the lifecycle shell in `incremental-graph-synchronization.md`.
 
-## 8. Version compatibility
+### 9.1 Compatibility
 
-A database version identifies the interpretation of synchronized graph state, not merely the application executable that wrote a file. Version checks protect boundaries where two pieces of state would otherwise be interpreted together.
+Ordinary synchronization requires compatible current database/schema interpretation.
 
-### 8.1 Local open and migration
+A version mismatch is an incompatibility condition, not permission to perform migration implicitly inside sync.
 
-A local stored version that differs from the running version enters the migration transition. The running application must not use the old state as current before migration succeeds.
+Both replicas must first reach a supported compatible version through migration.
 
-### 8.2 Synchronization boundary
+### 9.2 Pairwise source flow
 
-Before merging a staged host, Volodyslav compares the local and remote global database versions. In the current rendered synchronization representation, this is the value represented at `r/global/version` for each host snapshot. If the values differ—including one being absent while the other is present—the host merge fails.
+For one stable source snapshot:
 
-This exact-match rule is a lifecycle invariant. Hosts with different global database versions may assign different meaning, schema, or dependency behavior to synchronized state. Merging across that boundary is not a supported transition. A supported migration or upgrade path must first establish compatible versions; synchronization is not itself a cross-version migration mechanism.
+1. enter exclusive synchronization maintenance ownership as required by the locking design;
+2. open/capture the receiver's current journal/projection;
+3. stream missing immutable writer suffixes into inactive staging;
+4. reject any same-ID content disagreement;
+5. validate causal closure/prefix integrity;
+6. author required receiver-local sync normalization events;
+7. compute/validate the final replay projection;
+8. atomically cut over to `(targetJournal, project(targetJournal))`.
 
-A version mismatch is an **incompatible-version situation**, not automatically corruption. It should fail clearly for the affected host and leave non-active merge work unselected.
+No computor is invoked.
 
-### 8.3 Version checks on writes
+### 9.3 Multi-source partial success
 
-Ordinary write paths also enforce the running version when they first write to a logical target. This catches incorrect use of a state prepared for another version. It is a guard against lifecycle implementation errors, not a promise to validate arbitrary persistence damage.
+An outer synchronization operation may process several sources independently.
 
-## 9. Trust and threat model
+Each successful pairwise source commit remains valid even if a later source fails, unless the outer lifecycle explicitly implements one stronger all-sources transaction.
 
-Volodyslav assumes participating hosts and the local client are **non-adversarial**. A host may be offline, stale, interrupted, temporarily unreachable, or running an incompatible version. It is not assumed to intentionally forge a hostname, craft malicious graph state, lie about timestamps, or attack resource consumption.
+Therefore an aggregate sync error may coexist with successfully incorporated history from earlier sources.
 
-Consequences of this model include:
+### 9.4 No transport authority
 
-- synchronization checks compatibility and structural preconditions for correctness, not authenticity or authorization;
-- host names, published state, and merge metadata are trusted once they pass the checks required by the lifecycle operation;
-- conflict resolution assumes timestamps and graph state were produced honestly by Volodyslav;
-- there is no requirement for Byzantine fault tolerance, malicious-peer isolation, cryptographic provenance, or recovery from intentionally crafted database contents; and
-- a failure caused by an outdated or interrupted non-adversarial host should be reported and isolated to that host where the current synchronization design permits it.
+Transport may discover/carry stable Journal 3 source snapshots, but transport branches/commits/files/IDs do not decide graph conflicts.
 
-Non-adversarial does not mean perfectly reliable. The lifecycle must still handle ordinary operational failures without deliberately exposing partially committed state, and must fail when compatibility preconditions are not met.
+Graph meaning is determined by journal record identity/causality/authority and replay.
 
-## 10. Unsupported operations
+## 10. Controlled reset
 
-The following are outside the supported database lifecycle model:
+Controlled reset is specified by `incremental-graph-journal-reset.md`.
 
-- copying a live database directory between installations;
-- manually replacing, restoring, or combining database directories;
-- editing a rendered synchronization snapshot;
-- constructing or modifying host branches outside Volodyslav;
-- changing database files while Volodyslav is running;
-- bypassing the startup migration gate;
-- forcing synchronization between versions that fail compatibility checks; and
-- treating checkpoint history as a user-facing backup/restore interface.
+Reset means:
 
-Such actions may happen at the operating-system level, but Volodyslav does not promise to interpret, validate, preserve, migrate, synchronize, or recover the resulting state. If file-level recovery or import becomes a product requirement, it must be introduced as a new Volodyslav-controlled transition with explicit preconditions and postconditions.
+> make the receiver's projected semantic graph equal to a chosen source projection relative to all history currently observed by reset
 
-## 11. Corruption model
+It does **not** mean delete/replace journal history.
 
-For this specification, **corruption** means either:
+Reset:
 
-1. a database state that was not produced by a supported Volodyslav lifecycle transition; or
-2. a state produced after a required lifecycle precondition was violated.
+1. obtains/imports the chosen stable source history;
+2. observes receiver + source history;
+3. appends a causally later receiver-authored baseline representing the chosen source graph state;
+4. atomically publishes the retained history + reset baseline + matching projection.
 
-This definition is intentionally independent of current storage artifacts. Corruption is not a catalog of malformed keys, missing files, or inconsistent internal indexes.
+A future unseen concurrent event may still conflict normally when learned later. Reset cannot dominate history it never observed without violating the no-remote-participation design.
 
-Volodyslav may detect some corrupted states while opening, migrating, resetting, or synchronizing and fail loudly. Examples at the lifecycle level include inability to identify the active logical state, inability to load metadata required by a non-fresh state, a structurally invalid graph, or state that cannot satisfy a transition's declared invariants. These checks improve locality and diagnostics.
+Same-writer prefix catch-up without semantic replacement is restoration, not reset.
 
-Volodyslav is not required to:
+## 11. Projection rebuild
 
-- detect every state outside the model;
-- assign meaning to arbitrary damaged state;
-- infer which unsupported filesystem manipulation occurred;
-- repair corruption automatically; or
-- preserve corrupted input while attempting a supported transition.
+Journal 3 permits an administrative maintenance operation equivalent to:
 
-A state is not corruption merely because an operation refuses it. Exact version mismatch, migration incompatibility, unavailable remotes, and per-host synchronization failures each have their own failure classification when their inputs were otherwise produced by supported transitions.
+```text
+rebuildProjectionFromJournal()
+```
 
-## 12. Validation assumptions
+under exclusive maintenance.
 
-Volodyslav validates at lifecycle boundaries where validation establishes a guarantee needed by the next transition. Examples include:
+Its input is the valid retained journal + current compatible schema/version interpretation.
 
-- environment and hostname validation before bootstrap or synchronization;
-- structural validation needed to open the active state;
-- migration completeness and new-schema compatibility;
-- synchronized host version equality and merge preconditions;
-- graph acyclicity and metadata required to construct a coherent merged target; and
-- persistence and cutover success before exposing a new active state.
+It may discard/recreate derived:
 
-Within those boundaries, Volodyslav may trust persistent state produced by supported Volodyslav transitions. It is not required to revalidate every internal consequence on every read or to defend against arbitrary storage tampering.
+- identifiers/value/freshness/timestamp/valid sublevels;
+- reverse indexes;
+- cached current-head/frontier/high-water state;
+- other replay accelerators.
 
-Validation remains appropriate when it provides:
+It must not rewrite authoritative journal records merely to make replay succeed.
 
-- a compatibility decision;
-- a migration precondition;
-- a synchronization precondition;
-- a clear, local diagnostic for an invariant violation;
-- protection against an implementation bug crossing a version or cutover boundary; or
-- test evidence that a supported transition preserves its postconditions.
+If replay itself detects invalid/forked/corrupt authoritative history, rebuild fails.
 
-Adding validation does not expand the supported threat model by itself. Conversely, omitting exhaustive validation of unsupported states is not a lifecycle bug unless the omitted check is required to keep a supported transition from violating its own invariants.
+## 12. User/API expectations
 
-## 13. Failure classification for reviewers
+### `pull()` / graph `POST`
 
-When reviewing a failure, classify it by the transition being attempted:
+May recompute and therefore append Journal 3 events. Success means the returned/inspectable materialized graph is already atomically consistent with retained journal history.
 
-| Classification | Meaning | Expected response |
-| --- | --- | --- |
-| Supported-transition bug | Valid preconditions were met, but the transition violated a lifecycle invariant or reported success without its postconditions. | Fix the implementation and add transition-level regression coverage. |
-| Incompatible version | Independently valid states have unequal global database versions at a synchronization boundary. | Fail the affected merge; migrate or upgrade through a supported path. |
-| Migration precondition failure | Previous state is usable, but the migration policy cannot completely and coherently represent it under the target schema. | Fail migration without selecting an incomplete target; revise the migration or its declared support. |
-| Synchronization precondition failure | Repository, host snapshot, version, graph, or operational prerequisites for sync are not satisfied. | Fail or isolate the affected host according to sync semantics; do not force a merge. |
-| Corruption | The state is outside the closure of supported transitions, or a transition precondition was bypassed. | Fail loudly where detected; no general interpretation or recovery is promised. |
-| Unsupported manipulation | State was produced by direct filesystem, snapshot, or repository editing rather than a Volodyslav transition. | Treat it as outside the model; define a controlled import/recovery transition before supporting it. |
+### `invalidate()` / graph `DELETE`
 
-## 14. Implementation consequences
+Does not recompute. It records the invalidation/staleness transition and publishes its graph/journal effect atomically.
 
-Implementations and future changes MUST preserve the following lifecycle properties:
+### graph inspection `GET`
 
-1. Startup MUST distinguish existing local state from absent local state before choosing bootstrap behavior.
-2. Discovering expected synchronized state for the current host MUST NOT silently degrade to fresh creation when restoration fails.
-3. The graph interface MUST NOT become initialized before the database is open and current, including successful completion of any required migration.
-4. Version-changing local use MUST go through migration; version-different peer state MUST NOT be merged by normal synchronization.
-5. Normal synchronization MUST checkpoint stable local state and perform structured database merge rather than exposing textual repository merge as database semantics.
-6. Migration and synchronization MUST construct replacement state away from the selected active state and cut over only after their state-building preconditions succeed.
-7. Maintenance transitions MUST be exclusive with ordinary graph activity.
-8. Per-host synchronization failures MAY coexist with successful merges from other hosts, but the aggregate result MUST report the failures.
-9. Reopening after synchronization or reset MUST pass through the migration gate before database-backed services resume.
-10. Tests and diagnostics SHOULD distinguish incompatibility, failed preconditions, corruption, and unsupported manipulation rather than using those terms interchangeably.
-11. New recovery, import, or restore behavior MUST be implemented as a Volodyslav-controlled lifecycle transition. Documentation alone MUST NOT redefine raw file manipulation as supported.
-12. Storage refactors MAY change physical artifacts without changing this specification, provided these lifecycle preconditions, transitions, and postconditions remain true.
+Remains non-triggering. It reads the materialized projection; it does not call computors merely to answer diagnostics.
 
-## 15. Known boundaries
+### synchronization
 
-The current lifecycle does not define:
+May change cached values, identifiers, freshness, validity, and materialization by importing/replaying history, but never invokes computors. A successful pairwise sync leaves one valid journal/projection pair. Repeating against an unchanged already-incorporated source is a semantic no-op.
 
-- arbitrary corruption repair;
-- a user-facing database backup or import command;
-- cross-version synchronization;
-- malicious-host detection or containment;
-- global all-host atomicity for synchronization; or
-- automatic rollback of a database transition whose state cutover succeeded but whose subsequent checkpoint bookkeeping failed.
+### reset
 
-These are deliberate boundaries of the present model, not implied future requirements. Any proposal to add one should specify a new supported transition and how it composes with startup, migration, synchronization, and version compatibility.
+May replace the observable projected graph with the chosen source target without erasing old history. Success is atomic.
+
+### migration/startup
+
+Application graph APIs are not considered initialized until required migration/bootstrap/replay validation has completed.
+
+## 13. Trust and threat model
+
+Volodyslav assumes supported participants are non-adversarial.
+
+Hosts may be stale, interrupted, offline, delayed, or incompatible. They are not assumed to forge records deliberately or launch Byzantine/resource attacks.
+
+Correctness still requires rejection of observable malformed state, writer forks, broken causal closure, and journal/projection invariant failures.
+
+Journal 3 does not require cryptographic Byzantine provenance merely to distinguish supported immutable record identity.
+
+## 14. Unsupported operations
+
+Outside the supported lifecycle:
+
+- manually editing journal records;
+- changing one record body while retaining its `(author,sequence)` ID;
+- destructively truncating established authoritative history and then continuing the same writer as if nothing happened;
+- independently cloning one writer identity into multiple live writers;
+- manually editing graph sublevels so they disagree with their authoritative Journal 3 projection;
+- bypassing required version migration;
+- forcing ordinary sync across incompatible versions;
+- treating a replay checkpoint/cache as replacement authority for missing journal history.
+
+If such recovery/import behavior becomes required, it must be introduced as an explicit controlled lifecycle transition with stated invariants.
+
+## 15. Corruption/incompatibility distinction
+
+A state can be valid yet incompatible with a requested operation, for example a supported peer at another database version.
+
+Corruption/unsupported state includes observable violations such as:
+
+- same writer/sequence with different record bodies;
+- impossible stream holes in a committed prefix;
+- malformed historical record encoding;
+- a semantic event whose required causal context is permanently absent from the claimed supported journal;
+- incompatible current `NodeIdentifier` reuse;
+- graph materialization known to disagree with replay when no supported derived-state rebuild has repaired it;
+- writer allocator state which would reuse already-retained local journal IDs.
+
+Operations fail at the boundary where such evidence becomes relevant. They must not silently convert corruption into a fresh database or a normal graph conflict.
