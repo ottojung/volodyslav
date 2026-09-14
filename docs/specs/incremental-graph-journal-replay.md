@@ -104,6 +104,39 @@ Replay does not obtain any of these fields from the current legacy graph.
 
 If two present semantic nodes select the same `NodeIdentifier`, replay rejects the journal as unsupported/corrupt. The physical identifier map must remain bijective.
 
+## Invalidation coverage
+
+For semantic events I and C:
+
+```text
+coveredBy(I,C) iff happenedBefore(I,C)
+```
+
+A validation does not clear a concurrent invalidation merely because its `authorityTime` happens to compare greater. Clearing is causal, not last-writer-wins.
+
+For present K and validation C, define:
+
+```text
+uncoveredNodeInvalidation(K,C) iff
+    exists InvalidateEvent I in History(K) such that
+        I.scope.kind == "node"
+        and not coveredBy(I,C)
+```
+
+For present K with current value V and validation C, define:
+
+```text
+uncoveredValueInvalidation(K,V,C) iff
+    exists InvalidateEvent I in History(K) such that
+        I.scope.kind == "value"
+        and I.scope.value == V.id
+        and not coveredBy(I,C)
+```
+
+Node-scoped invalidations remain relevant across value changes until a later validation causally observes them. Value-scoped invalidations apply only to their named value occurrence.
+
+Invalidations scoped to losing historical ValueIds remain part of replay/debug history but do not directly stale the current different value occurrence.
+
 ## Validation candidates
 
 For present K, define:
@@ -118,49 +151,41 @@ Validations(K) = {
 
 A validation is structurally well formed only when its basis length equals `inputEdges(K).length` and every non-`"unknown"` basis entry names a retained `ValueEvent` for the corresponding semantic input node.
 
-For deterministic current-proof selection, Journal 3 core projection chooses:
+A validation whose basis contains a non-unknown `ValueId` belonging to another semantic input is corrupt rather than merely inapplicable.
+
+A certificate is eligible only when it clears every node-scoped invalidation represented for K:
 
 ```text
-certificate(K) =
-    greatest C in Validations(K) by authorityCompare(C, ...)
+eligibleCertificate(K,C) iff
+    C in Validations(K)
+    and not uncoveredNodeInvalidation(K,C)
 ```
 
-if any exists.
-
-Retaining the full history still matters: replay validates the certificate's causal relationship against historical invalidations instead of relying on compacted frontiers.
-
-## Invalidation coverage
-
-For semantic events I and C:
+For eligible C, define its current basis-match count:
 
 ```text
-coveredBy(I,C) iff happenedBefore(I,C)
+basisMatchCount(K,C) =
+    number of direct input positions i such that
+        C.basis[i] == valueId(inputEdges(K)[i])
 ```
 
-A validation does not clear a concurrent invalidation merely because its `authorityTime` happens to compare greater. Clearing is causal, not last-writer-wins.
+`"unknown"` contributes no match.
 
-For present K with current value V and selected certificate C, define:
+Journal 3 selects one current certificate, so the legacy incoming proof relation is never synthesized by mixing incompatible basis edges from separate historical validations.
+
+Choose:
 
 ```text
-uncoveredNodeInvalidation(K,C) iff
-    exists InvalidateEvent I in History(K) such that
-        I.scope.kind == "node"
-        and not coveredBy(I,C)
+certificate(K) = eligible C maximizing, lexicographically:
+    1. basisMatchCount(K,C)
+    2. authorityCompare(C, ...)
 ```
 
-and:
+If no eligible certificate exists, K has no current certificate.
 
-```text
-uncoveredValueInvalidation(K,V,C) iff
-    exists InvalidateEvent I in History(K) such that
-        I.scope.kind == "value"
-        and I.scope.value == V.id
-        and not coveredBy(I,C)
-```
+This uses retained history more precisely than simply taking the newest/highest-authority validation. A concurrent validation against a losing input history must not erase an older sound proof which matches more of the final selected input occurrences. Authority remains the deterministic tie-break between equally applicable proofs.
 
-Node-scoped invalidations remain relevant across value changes until a later validation causally observes them. Value-scoped invalidations apply only to their named value occurrence.
-
-Invalidations scoped to losing historical ValueIds remain part of replay/debug history but do not directly stale the current different value occurrence.
+For ordinary single-host evolution, the most recent successful validation normally has a complete current basis and therefore remains the selected certificate.
 
 ## Incoming validity edge
 
@@ -177,7 +202,6 @@ edgeValid(Di,K) iff
     present(K)
     and present(Di)
     and certificate(K) exists
-    and not uncoveredNodeInvalidation(K, certificate(K))
     and certificate(K).basis[i] == valueId(Di)
 ```
 
@@ -194,6 +218,8 @@ K_identifier in valid[D_identifier]
 
 where identifiers are the selected current `nodeIdentifier` values.
 
+Because all edges come from one selected certificate, complete incoming validity implies that one historical validation actually certified the current complete direct-input value vector. Replay never fabricates a multi-input proof by combining separate certificates.
+
 ## Freshness
 
 Freshness is recursively derived over the fixed schema DAG.
@@ -203,7 +229,7 @@ For present K:
 ```text
 fresh(K) iff
     certificate(K) exists
-    and not uncoveredNodeInvalidation(K, certificate(K))
+    and basisMatchCount(K, certificate(K)) == inputEdges(K).length
     and not uncoveredValueInvalidation(
         K,
         V(K),
@@ -212,10 +238,9 @@ fresh(K) iff
     and for every direct input Di:
         present(Di)
         and fresh(Di)
-        and certificate(K).basis[i] == valueId(Di)
 ```
 
-For zero-input nodes, the final universal condition is vacuous. They still require a certificate which causally covers all applicable invalidation history.
+For zero-input nodes, the full-basis condition is vacuously satisfied. They still require an eligible certificate which causally covers all applicable invalidation history.
 
 The legacy freshness projection is:
 
