@@ -108,7 +108,8 @@ During serialized finalization:
 1. V receives its exact record ID;
 2. the staged validation reference resolves to that ID;
 3. V is ordered before C;
-4. both are written atomically.
+4. the validation basis is finalized from the then-current semantic input ValueIds and canonicalized by NodeKey;
+5. both are written atomically.
 
 These temporary handles are not persisted Journal 3 identities and must not escape the transaction.
 
@@ -140,7 +141,7 @@ After restart they may be reconstructed from the retained journal rather than tr
 
 Synchronization runs under the exclusive holiday/maintenance boundary.
 
-Remote/source journal records may be streamed into inactive durable staging without holding the active replica darkroom for the entire transfer.
+Source journal records may be streamed into inactive durable staging without holding the active replica darkroom for the entire transfer.
 
 Before cutover, the synchronization operation:
 
@@ -225,11 +226,13 @@ Journal data structures must be accessed within these existing ownership boundar
 
 A `JournalSnapshot` represents one exact committed frontier.
 
-Creating such a snapshot must establish that later commits cannot change the meaning of records/frontier visible through it. This may be implemented by backend snapshot primitives, immutable prefix handles, inactive replica references, or another mechanism.
+Creating such a snapshot must establish that later commits cannot change the meaning of records/frontier visible through it. This may be implemented by storage-engine snapshot primitives, immutable prefix handles, inactive replica references, or another mechanism.
 
 Consuming a snapshot does not hold a telescope lock and does not invoke computors.
 
-A long-lived synchronization source snapshot must not block unrelated source authoring if the underlying storage can provide immutable snapshot semantics; this is a performance preference, not a semantic requirement.
+A long-lived synchronization source snapshot need not block unrelated source authoring when the existing storage/transport can provide immutable snapshot semantics; this is a performance preference, not a semantic requirement.
+
+This document intentionally does not prescribe how Git or another transport obtains/carries that stable snapshot.
 
 ## Atomicity theorem
 
