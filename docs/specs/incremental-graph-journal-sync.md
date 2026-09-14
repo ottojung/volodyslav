@@ -218,6 +218,8 @@ The existing graph contract removes a materialization when a required dependency
 
 Therefore Journal 3 records the structural removal as an actual delete event.
 
+A later unseen/concurrent higher-authority positive history may cause another real graph transition after it is learned. Journal 3 does not retroactively erase a structural deletion which was correctly authored from the receiver's then-observed supported state.
+
 ## Tentative replay after closure
 
 Compute:
@@ -292,7 +294,9 @@ Before cutover, verify at least:
 - every event context is covered by the final frontier;
 - selected present heads are dependency-closed;
 - selected physical `NodeIdentifier`s are bijective across current materialized nodes;
-- every selected certificate/basis is structurally well formed;
+- every retained record satisfies cross-record/reference-causality rules;
+- every validation basis has unique explicit input NodeKeys in canonical NodeKey order;
+- every certificate selected as current proof has exactly the current direct-input NodeKey set;
 - all legacy graph invariants required by the IncrementalGraph specs hold in Pfinal;
 - `oldValue` safety is not weakened;
 - local writer state is at least as advanced as every retained local-writer record requires.
@@ -388,21 +392,45 @@ Then:
 
 The fifth law follows because all source suffixes are already retained and the normalization obligations produced by their first incorporation are already represented in history.
 
-## Convergence
+## Convergence and termination
 
-Assume a finite set of supported replicas and that ordinary graph-changing operations eventually stop.
+Journal 3 guarantees **convergence of an actual fair execution**, not counterfactual confluence between executions which authored different real normalization events.
 
-Fair synchronization disseminates every immutable authored record. Receiver normalization may add finitely many records when newly learned history causes structural deletion or fresh-to-stale propagation.
+Synchronization itself may author semantic `DeleteEvent(reason="sync")` and `InvalidateEvent(reason="sync")` records. Once such a record is committed it is history, just as a locally authored invalidation is history. A different ordering of earlier source observations might have avoided or changed which normalization records were needed; Journal 3 does not erase an already-correctly-authored event merely because later unseen concurrent history changes the current projection.
 
-Normalization is monotone with respect to the condition it repairs:
+The required convergence claim is:
 
-- a sync delete is causally after the absent dependency history which required structural removal;
-- a sync value-scoped invalidation records a specific current occurrence's stale transition;
-- receiving another copy of the same causal information does not require another equivalent record.
+> For any finite set of supported replicas, once non-normalization graph-changing operations stop, every fair execution of Journal 3 synchronization eventually reaches a point where no new normalization record is required, all authored records disseminate, all replicas have observably equivalent projections, and further synchronization is a semantic no-op.
 
-A conforming implementation must not author acknowledgement chains merely because it learns another receiver's normalization record.
+Here non-normalization graph-changing operations include ordinary pull/invalidate changes, reset, migration, and any other operation capable of authoring ValueEvent/ValidateEvent or explicit application semantic history.
 
-Once all ordinary and normalization records have disseminated, every replica retains the same immutable history and deterministic replay yields observably equivalent IncrementalGraph state. Further synchronization is a semantic no-op.
+### Why normalization is finite after quiescence
+
+After that quiescence point, synchronization normalization can author only:
+
+1. `DeleteEvent(reason="sync")`; and
+2. value-scoped `InvalidateEvent(reason="sync")`.
+
+It never authors a new `ValueEvent` or `ValidateEvent`.
+
+For structural deletion:
+
+- a sync delete is causally after the selected present head and absent-input history which required it;
+- once that delete is retained, those already-observed facts cannot make the same value occurrence current again over that delete;
+- another delete for the same node can become necessary only after learning some previously unseen higher-authority positive ValueEvent for that node (or another newly learned finite structural cause);
+- after quiescence there are only finitely many such pre-existing positive records across finitely many replicas;
+- sync deletes themselves create absence, never a new positive head.
+
+For persistent staleness:
+
+- a sync invalidation names one exact current ValueId;
+- once an uncovered value-scoped invalidation for that ValueId is retained, learning only normalization history cannot make that occurrence fresh again;
+- clearing it requires a causally later `ValidateEvent`, and normalization never authors validations;
+- therefore the same already-observed stale transition cannot generate an acknowledgement/invalidation chain.
+
+Each newly learned finite ordinary record may expose a finite dependent closure in the finite current schema DAG. Consequently only finitely many normalization records can be required after quiescence.
+
+Once that finite closure has been authored, fair synchronization disseminates a finite immutable record set. Every replica then retains the same compatible prefixes, deterministic replay yields the same observable IncrementalGraph projection, and further synchronization authors nothing.
 
 ## Delayed and absent replicas
 
@@ -418,9 +446,11 @@ The core operation is pairwise against one stable source snapshot.
 
 An outer synchronization procedure may process multiple sources sequentially. Each successful source may commit independently. Therefore if source 1 succeeds and source 2 fails, source 1's committed journal/projection changes may remain.
 
-This preserves the existing lifecycle's partial-success model without weakening the atomicity of any individual source synchronization.
+The immutable source-record union itself is independent of source processing order. However, synchronization-authored normalization is real semantic history, so different counterfactual source-processing schedules may author different normalization histories before all source facts are known.
 
-Order of temporary source processing must not determine the final converged result after fair repeated synchronization. The retained-history union is order-independent; any receiver-authored normalization events created in one order are themselves immutable history and must converge under the ordinary replay rules.
+Journal 3 requires every such supported fair execution to converge after its actually authored records disseminate; it does not require two counterfactual executions with different authored normalization records to end in byte-identical history or the same projection.
+
+This distinction is intentional and matches the existing IncrementalGraph rule that a structural deletion or propagated stale transition, once actually committed, is a real state transition rather than a tentative acknowledgement to be retracted later.
 
 ## Version boundary
 
