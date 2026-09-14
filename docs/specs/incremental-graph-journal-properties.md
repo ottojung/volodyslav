@@ -57,7 +57,7 @@ for mutually compatible histories.
 
 The join never rewrites a record.
 
-## Replay is a deterministic function, not a join homomorphism requirement
+## Replay is deterministic, not a join-homomorphism requirement
 
 Journal 3 requires:
 
@@ -139,27 +139,58 @@ This deterministic order does not turn concurrency into historical causality.
 
 Consequently, causal rules such as "validation covers invalidation" use `happenedBefore`, not merely total authority ordering.
 
-## Normalization as append-only closure
+## Normalization is semantic authoring, not a pure join
 
-Synchronization may compute a normalization operator relative to receiver history:
+Synchronization may append receiver-authored semantic records required to make newly combined history obey the existing IncrementalGraph state-transition rules.
+
+Core normalization records are:
+
+- `DeleteEvent(reason="sync")` for structural dependency-closure removal; and
+- value-scoped `InvalidateEvent(reason="sync")` for persistent fresh-to-stale propagation.
+
+These are ordinary immutable events after commit. They are not temporary merge annotations and are not retracted when later unseen concurrent history arrives.
+
+Therefore define normalization operationally over one actual receiver execution rather than pretending it is a pure mathematical function only of an eventual raw history set.
+
+For an unchanged receiver/history state, normalization has the fixed-point property:
 
 ```text
-N_R(J)
+normalize(normalizedState, sameSourceFacts)
+    = normalizedState
 ```
 
-which appends receiver-authored semantic records required to make J publishable under IncrementalGraph semantics.
+meaning no semantically redundant acknowledgement/delete/invalidation chain is authored merely by receiving the same facts again.
 
-The required fixed-point property is:
+## Convergence is not counterfactual confluence
+
+The immutable imported-record union is order-independent.
+
+Synchronization-authored normalization is different because the synchronization call itself is a graph-changing historical operation.
+
+Two counterfactual executions may observe sources in different orders and therefore commit different real normalization events before all concurrent positive facts are known. Journal 3 does **not** require those counterfactual executions to have byte-identical histories or identical final projections.
+
+The required property is execution convergence:
+
+> For every one supported fair execution, once non-normalization graph-changing operations stop, normalization eventually stops, all actually authored records disseminate, all replicas become observably equivalent, and further synchronization is a semantic no-op.
+
+This is the same distinction as ordinary application history: two executions in which the user really called `invalidate()` at different times are not required to end identically merely because some earlier value history was the same.
+
+## Why normalization terminates after quiescence
+
+After non-normalization graph-changing operations stop, synchronization normalization never creates a new `ValueEvent` or `ValidateEvent`.
+
+It can only add negative state transitions:
 
 ```text
-N_R(N_R(J)) = N_R(J)
+sync DeleteEvent
+sync value-scoped InvalidateEvent
 ```
 
-when no new history is introduced between applications.
+For deletion, a newly authored delete causally/authoritatively defeats the already-observed selected value whose structural retention became impossible. Another delete can become necessary only if some previously unseen finite positive history later selects another value occurrence. Normalization itself never creates such a positive occurrence.
 
-Operationally this means repeating synchronization against an unchanged already-incorporated source produces no new normalization records.
+For staleness, an uncovered value-scoped invalidation fixes one exact ValueId stale. Normalization cannot clear it because clearing requires a causally later validation, and normalization does not create validations.
 
-Normalization may differ in record identity/order across different receivers because each authors its own required local records. After those records disseminate, deterministic replay must still converge.
+With finitely many replicas, finite retained positive history after quiescence, and a finite dependency DAG, only finitely many such new normalization obligations can arise. Fair synchronization therefore eventually reaches a fixed point.
 
 ## Reset is not information replacement
 
@@ -184,6 +215,8 @@ Jsource   <= Jafter
 
 while projection intentionally becomes source-target-equivalent relative to observed history.
 
+Reset is itself a non-normalization graph-changing operation for the convergence/quiescence statement above.
+
 ## Migration is not history rewriting
 
 Similarly:
@@ -195,6 +228,8 @@ Jafter = Jbefore + migration baseline
 and the current target schema interprets the new baseline as current state.
 
 Old events remain immutable historical facts even when a new schema no longer selects/materializes their old semantic nodes.
+
+Migration is also outside post-quiescence synchronization normalization.
 
 ## Checkpoint/index state is outside this algebra
 
