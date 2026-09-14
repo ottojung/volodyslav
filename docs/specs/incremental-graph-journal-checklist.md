@@ -25,6 +25,7 @@ Acceptance:
 - one writer range can be iterated in sequence order;
 - records round-trip exactly through the codec;
 - invalid/malformed record versions and bodies are rejected with specific errors;
+- validation bases are self-describing, duplicate-free, and canonical-NodeKey ordered;
 - no public API permits arbitrary journal mutation.
 
 ## 2. Journal snapshot
@@ -47,6 +48,7 @@ Acceptance:
 - failed transactions leave no durable journal sequence hole;
 - concurrent successful transactions receive disjoint contiguous writer ranges in commit order;
 - same-publication ValueId references resolve only after final IDs are allocated;
+- exact validation bases are rebuilt/confirmed from finalized current inputs at commit time;
 - graph+journal commit atomically;
 - volatile journal allocator caches publish only after durable success.
 
@@ -80,7 +82,8 @@ Acceptance:
 
 - value/delete head selection is deterministic;
 - reference-causality rules are enforced;
-- certificate eligibility/selection is deterministic;
+- historical certificate records are understood from their explicit input NodeKeys without historical positional schema ordering;
+- current certificate shape compatibility/selection is deterministic;
 - freshness/validity exactly match the flag-based graph contract;
 - physical identifiers/timestamps/payloads come from selected ValueEvents;
 - local writer watermark comes from local WriterStateRecords;
@@ -95,7 +98,8 @@ Implement pre-Journal-3 bootstrap.
 Acceptance:
 
 - all existing materialized values/payloads/timestamps/identifiers are represented;
-- stale nodes with partial validity use the controlled `"unknown"` basis correctly;
+- stale nodes with partial validity use the controlled `"unknown"` basis value correctly;
+- bootstrap basis entries explicitly name every direct input and use canonical NodeKey order;
 - bootstrap authority allocation follows the modifiedAt-preserving special rule;
 - replayed graph equals the legacy graph exactly;
 - local allocation watermark is preserved;
@@ -126,7 +130,9 @@ Acceptance:
 - cause-before-dependent delete ordering is deterministic;
 - receiver-only fresh dependents which become stale retain persistent value-scoped sync invalidations;
 - nodes already stale do not receive duplicate stale-transition events merely from repeated sync;
-- repeat synchronization against unchanged source is a semantic no-op.
+- repeat synchronization against unchanged source is a semantic no-op;
+- after non-normalization changes stop, generated sync normalization reaches a finite fixed point under fair dissemination;
+- tests do not incorrectly require counterfactual source schedules which authored different normalization events to have identical final histories.
 
 ## 9. Reset
 
@@ -138,6 +144,7 @@ Acceptance:
 - old receiver history remains retained;
 - source-present target nodes receive new reset ValueIds;
 - source validity/freshness are rebaselined exactly;
+- reset certificate basis keys equal target direct-input keys and are canonically ordered;
 - receiver-local allocator watermark remains local;
 - replayed result is observationally equal to source target;
 - repeated reset to already-equal unchanged target may no-op.
@@ -152,6 +159,8 @@ Acceptance:
 - target-present nodes receive new migration occurrences;
 - removed current nodes receive migration DeleteEvents;
 - target validity/freshness are reproduced by baseline certificate + optional invalidation;
+- target certificate input-key sets match target schema and use canonical NodeKey ordering;
+- historical old-schema certificates remain decodable without old positional input ordering;
 - target schema replay equals migration target;
 - replay never reruns historical migration callbacks.
 
@@ -173,7 +182,7 @@ Provide specific errors/values sufficient to distinguish:
 - writer fork;
 - stream gap;
 - causal-closure/reference-causality violation;
-- record codec/version violation;
+- record codec/version/self-described-basis violation;
 - database/schema version incompatibility;
 - projection invariant failure;
 - durable publication/I/O failure.
@@ -192,7 +201,7 @@ Priority properties:
 - local emission preservation;
 - certificate soundness;
 - repeat-sync no-op;
-- normalization fixed point;
+- normalization fixed-point/termination for each actual fair execution;
 - reset target theorem;
 - bootstrap equivalence;
 - migration equivalence.
