@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document specifies storage properties required by Journal 3 without choosing a concrete backend/remote product or prescribing exact LevelDB key names.
+This document specifies storage properties required by Journal 3 without choosing a concrete backend/remote product, changing an existing transport protocol, or prescribing exact LevelDB key names.
 
 The current implementation is expected to use new local database sublevels consistent with the intent that existing graph sublevel representations remain unchanged during Journal 3 work.
 
@@ -64,6 +64,14 @@ The codec must preserve exactly:
 - reasons/scopes/bases;
 - writer-state fields.
 
+For `ValidateEvent`, v1 basis encoding is self-describing and canonical:
+
+- each entry stores `{ input: NodeKey, value: ValueId | "unknown" }`;
+- input NodeKeys are unique;
+- entries are serialized in canonical semantic NodeKey order rather than graph-schema input order.
+
+Therefore decoding/canonical comparison of a historical validation record does not require the historical graph schema merely to determine what its basis entries meant or whether their order is canonical.
+
 Round-trip decode/encode must preserve semantic equality.
 
 If multiple byte encodings are technically accepted for one old version, fork comparison uses canonical decoded meaning, not accidental byte spelling, unless that version explicitly defines byte identity as semantic.
@@ -123,9 +131,11 @@ A corrupted index does not authorize changing immutable history.
 
 ## Source snapshots from local storage
 
-When one local database is used as a JournalSyncSource, storage must provide a stable snapshot/immutable prefix handle satisfying `incremental-graph-journal-api.md`.
+When one local database is used as a `JournalSyncSource`, storage must provide a stable snapshot/immutable prefix handle satisfying `incremental-graph-journal-api.md`.
 
 The implementation may use native database snapshot semantics or another mechanism which guarantees that all reads belong to one fixed frontier.
+
+Journal 3 does not specify how an external transport such as Git packages or exposes an equivalent stable source snapshot.
 
 ## Startup validation
 
