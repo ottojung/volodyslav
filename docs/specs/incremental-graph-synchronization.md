@@ -13,7 +13,7 @@ The semantic protocol is defined by:
 - `incremental-graph-journal-api.md`; and
 - `incremental-graph-journal-locking.md`.
 
-This document defines the surrounding IncrementalGraph lifecycle obligations. It intentionally does not specify a concrete remote/backend protocol.
+This document defines the surrounding IncrementalGraph lifecycle obligations. It intentionally does not specify a concrete remote/backend protocol or change how an existing transport carries snapshots.
 
 The public `pull()` and `invalidate()` semantics remain defined by the ordinary IncrementalGraph specifications.
 
@@ -53,6 +53,7 @@ A target may be committed only when:
 - any same-writer missing suffix is an exact continuation rather than a conflicting fork;
 - every record/payload needed by replay is present;
 - synchronization normalization has made selected present heads dependency-closed;
+- every current validation certificate is interpreted through its explicit input NodeKeys rather than historical positional schema ordering;
 - the resulting projection satisfies ordinary IncrementalGraph storage/`oldValue` invariants.
 
 Malformed/conflicting history is rejected rather than repaired with payload equality, transport ancestry, timestamp preference, or arbitrary source preference.
@@ -103,6 +104,8 @@ Equal payloads remain distinct value occurrences unless they are the same `Value
 
 Validation, invalidation, freshness, and validity are replayed from historical certificates/invalidation events rather than merged from legacy booleans/arrays.
 
+A historical validation basis names its semantic inputs explicitly and is stored in canonical NodeKey order. Current replay accepts it as current proof only when its explicit input-key set matches the current direct-input set.
+
 ## Synchronization normalization
 
 History union can reveal receiver-side semantic transitions which were never authored on the source because the source did not materialize the same dependent set.
@@ -112,7 +115,7 @@ Journal 3 therefore defines two explicit normalization families:
 1. **dependency-closure deletion** — when a selected cached node has a missing selected input, the receiver authors causally later `DeleteEvent(reason="sync")` records over the required structural dependent closure;
 2. **persistent fresh-to-stale propagation** — when synchronization keeps a receiver's current ValueId but changes that cached node from fresh to stale, the receiver authors a value-scoped `InvalidateEvent(reason="sync")` unless the final history already contains an uncovered current invalidation which persistently represents the transition.
 
-These events are genuine receiver-authored history. They are not acknowledgement records.
+These events are genuine receiver-authored history. They are not acknowledgement records and are not retroactively withdrawn if later unseen concurrent history changes the selected graph state.
 
 Detailed detection/order/termination rules are normative in `incremental-graph-journal-sync.md`.
 
@@ -167,8 +170,9 @@ Synchronization does not textually merge `freshness`/`valid`.
 Replay derives them from:
 
 - selected current ValueIds;
-- selected validation certificate;
-- exact basis matches;
+- one selected validation certificate;
+- the certificate's explicit semantic input-key set;
+- exact basis ValueId matches;
 - uncovered node/value invalidations;
 - current direct-input freshness;
 - sync-authored persistent stale events where required.
@@ -201,13 +205,15 @@ Authoritative journal records are not destructively reclaimed merely because cur
 
 ## Convergence
 
-Compatible immutable writer-prefix union is idempotent, commutative, and associative at the information level.
+Compatible immutable writer-prefix union is idempotent, commutative, and associative at the retained-information level.
 
-Replay is deterministic.
+Replay of one fixed retained history is deterministic.
 
-Synchronization normalization must be monotone/terminating: learning the same history again cannot require another semantically redundant repair/acknowledgement chain.
+Synchronization normalization is real semantic authoring rather than a temporary merge annotation. Therefore Journal 3 does not claim that two counterfactual executions which process sources in different orders and consequently author different normalization records must end with identical histories or projections.
 
-Once ordinary graph changes and the finite normalization consequences of those changes stop, fair dissemination of retained records brings supported replicas to observably equivalent IncrementalGraph projections. Further synchronization without new history is a semantic no-op.
+The required convergence property is per actual supported execution: once ordinary graph changes, reset, migration, and other non-normalization graph-changing operations stop, only finitely many synchronization `DeleteEvent`/value-scoped `InvalidateEvent` repairs can still be required. Under fair dissemination those repairs eventually stop, all actually authored records become shared, all replicas reach observably equivalent projections, and further synchronization becomes a semantic no-op.
+
+The finite-normalization proof is normative in `incremental-graph-journal-sync.md` and `incremental-graph-journal-theorems.md`.
 
 ## Reset and migration
 
