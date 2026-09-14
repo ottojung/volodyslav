@@ -8,6 +8,8 @@ Journal 3 deliberately does not expose raw journal mutation to ordinary computor
 
 The API shapes below are semantic interfaces. Exact JavaScript class/function names may differ, but an implementation must preserve the ownership, snapshot, streaming, atomicity, and error behavior specified here.
 
+They do not prescribe or replace a Git/remote/backend protocol. An existing transport may adapt its stable snapshot into these semantic interfaces without Journal 3 specifying how that transport discovers, stores, or publishes the bytes.
+
 ## Public IncrementalGraph behavior
 
 Journal 3 does not add a new way for ordinary callers to mutate graph state.
@@ -102,11 +104,11 @@ JournalSyncSource {
 }
 ```
 
-The returned snapshot stays stable until released by the synchronization caller. How a Git repository, another local database, a file, or a future remote service implements that snapshot is outside Journal 3 semantics.
+The returned snapshot stays stable until released by the synchronization caller. How Git, another local database, a file, or another transport provides that snapshot is outside Journal 3 semantics.
 
 A synchronization algorithm may issue many range reads against the snapshot. All of those reads belong to the same frozen source frontier.
 
-This is the only stability property synchronization requires from transport: one operation must not accidentally read writer heads from one source state and records from a later incompatible source state.
+This is the only source-read stability property synchronization requires semantically: one operation must not accidentally read writer heads from one source state and records from a later incompatible source state.
 
 ## JournalPublication
 
@@ -138,11 +140,12 @@ At finalization, while the local writer commit frontier is serialized, the imple
 3. determines the actual finalized graph transition after commit-time reconciliation;
 4. removes staged effects which did not actually occur;
 5. creates any additional replay records required by the finalized transition, including propagated stale transitions discovered only at commit time;
-6. allocates one contiguous block of writer-local sequence numbers;
-7. assigns exact `JournalRecordId`s, `ValueId`s, causal contexts, and `AuthorityTime`s in the required deterministic topological order;
-8. resolves same-publication references such as a `ValidateEvent` naming a newly allocated `ValueEvent`;
-9. adds the finalized journal writes to the same durable graph batch/publication;
-10. commits journal and graph atomically.
+6. constructs each ordinary validation basis from the finalized current direct-input NodeKeys/ValueIds and canonicalizes entries by NodeKey;
+7. allocates one contiguous block of writer-local sequence numbers;
+8. assigns exact `JournalRecordId`s, `ValueId`s, causal contexts, and `AuthorityTime`s in the required deterministic topological order;
+9. resolves same-publication references such as a `ValidateEvent` naming a newly allocated `ValueEvent`;
+10. adds the finalized journal writes to the same durable graph batch/publication;
+11. commits journal and graph atomically.
 
 If finalization fails, none of the staged intents become durable journal history.
 
@@ -192,14 +195,17 @@ JournalImportTarget {
 }
 ```
 
-Imported records preserve their exact IDs and bodies. The import path must reject:
+Imported records preserve their exact IDs and canonical meanings. The import path must reject:
 
 - a hole in a claimed writer prefix;
 - conflicting content for an already-retained ID;
-- malformed record encoding;
-- invalid same-record references;
+- malformed/unsupported record encoding;
+- impossible ValueId reference causality;
+- duplicate/noncanonical self-describing validation-basis entries;
 - a final frontier which is not causally closed;
 - a final replay/projection which violates Journal 3 or IncrementalGraph invariants.
+
+A historical validation record is not invalid merely because its explicit input-key set differs from the current schema. It remains retained history; replay simply does not use it as current-shape-compatible proof.
 
 The target may be durable scratch/inactive storage and may be populated incrementally. It becomes active only through one atomic cutover which installs both retained journal state and its matching graph projection.
 
@@ -256,6 +262,8 @@ A successful call means the receiver has atomically committed a valid causally c
 
 A source which contributes no missing records and requires no normalization is a semantic no-op.
 
+Synchronization-authored normalization is real journal history. The API does not promise to retract it if later unseen concurrent history changes current graph selection.
+
 For an outer operation synchronizing multiple sources, each `synchronizeFrom` may be its own atomic commit. Therefore an aggregate multi-source failure may coexist with earlier successful source synchronizations unless the outer lifecycle explicitly provides a stronger all-sources transaction.
 
 ## Synchronization errors
@@ -266,6 +274,7 @@ Implementations should expose specific error classes/values for at least these c
 JournalForkError
 JournalGapError
 JournalCausalClosureError
+JournalReferenceCausalityError
 JournalRecordValidationError
 JournalVersionCompatibilityError
 JournalProjectionError
