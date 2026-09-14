@@ -125,10 +125,10 @@ Pass 1 completes for **all** materialized nodes before bootstrap validation even
 
 Process materialized nodes in deterministic semantic/topological order under the legacy bootstrap schema.
 
-For K with:
+For K let the legacy bootstrap schema define the distinct direct input set:
 
 ```text
-inputEdges(K) = [D0, D1, ...]
+inputSet(K) = set(inputEdges(K))
 ```
 
 author:
@@ -140,13 +140,15 @@ ValidateEvent {
     reason: "bootstrap",
     basis: [
         {
-            input: D0,
-            value: bootstrapValueId(D0) | "unknown"
+            input: D,
+            value: bootstrapValueId(D) | "unknown"
         },
         ...
     ]
 }
 ```
+
+with exactly one entry for every `D in inputSet(K)`.
 
 For each D:
 
@@ -158,9 +160,7 @@ basisEntry(D).value = "unknown"
     otherwise
 ```
 
-Basis order follows the source schema's distinct `inputEdges(K)` order for deterministic serialization, while each entry explicitly stores D.
-
-Thus the historical certificate remains understandable after future schema changes without requiring future software to reconstruct the old positional input ordering.
+After constructing the complete entry set, serialize it in canonical semantic NodeKey order. The persisted historical certificate therefore does not depend on the source schema's positional input ordering.
 
 For a fresh legacy node, existing invariants require every entry to contain the current bootstrap ValueId.
 
@@ -343,10 +343,10 @@ Use deterministic ordering extending reference/dependency constraints, with cano
 
 ## Migration Pass 2: self-describing target validity
 
-After every target-present node has its migration ValueId, for each target-present K with target-schema:
+After every target-present node has its migration ValueId, for each target-present K let the target schema define:
 
 ```text
-inputEdges(K) = [D0, D1, ...]
+inputSet(K) = set(inputEdges(K))
 ```
 
 author:
@@ -358,13 +358,15 @@ ValidateEvent {
     reason: "migration",
     basis: [
         {
-            input: D0,
-            value: migrationValueId(D0) | "unknown"
+            input: D,
+            value: migrationValueId(D) | "unknown"
         },
         ...
     ]
 }
 ```
+
+with exactly one entry for every `D in inputSet(K)`.
 
 For each target direct input D:
 
@@ -376,7 +378,7 @@ basisEntry(D).value = "unknown"
     otherwise
 ```
 
-This reproduces target validity exactly and records the target schema's semantic input identities directly in the event.
+Serialize the completed basis in canonical semantic NodeKey order. This reproduces target validity exactly while keeping the immutable certificate independent of target-schema input enumeration order.
 
 No pre-migration ValidateEvent is reused as the target current certificate merely because a payload survived migration.
 
