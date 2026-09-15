@@ -135,7 +135,8 @@ For a created artifact assert:
 - reads are bounded to that frontier and do not expose later records;
 - `databaseVersion` and `graphSchemeString` are the original bootstrap target compatibility metadata;
 - ordinary Journal authoring cannot begin before the artifact is durably established;
-- the artifact remains immutable/usable after the creator later changes graph state or migrates its active database.
+- the configured cohort source can still retrieve exactly that artifact after the creator has authored later Journal history and after active cohort replicas have migrated to newer versions;
+- artifact bytes/meaning do not change as active cohort state advances.
 
 A normal current `JournalSnapshot` containing the bootstrap prefix must be rejected as a substitute for the canonical artifact.
 
