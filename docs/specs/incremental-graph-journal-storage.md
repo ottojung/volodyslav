@@ -2,176 +2,195 @@
 
 ## Purpose
 
-This document specifies storage properties required by Journal 3 without choosing a concrete backend/remote product, changing an existing transport protocol, or prescribing exact LevelDB key names.
+This document specifies local storage properties required by Journal 3 without choosing a remote/backend product, changing transport behavior, or prescribing exact LevelDB key names.
 
-The current implementation is expected to use new local database sublevels consistent with the intent that existing graph sublevel representations remain unchanged during Journal 3 work.
+Existing IncrementalGraph sublevel formats remain unchanged during Journal 3 work; Journal-specific authoritative/derived state lives in new storage namespaces.
 
-## Required logical collections
+## Required logical state
 
-A conforming local implementation must persist enough information to recover:
+A conforming local implementation persists enough information to recover:
 
-- every journal record by `JournalRecordId`;
-- ordered per-writer range iteration;
-- the retained frontier (either explicitly or derivably);
+- every retained Journal record by `JournalRecordId`;
+- ordered per-writer ranges;
+- retained frontier, explicitly or derivably;
 - current local writer identity;
-- existing durable compatibility metadata `global/version` and `global/graph_scheme` as part of the selected replica state;
-- any derived indexes chosen for performance.
+- existing durable compatibility metadata (`global/version`, `global/graph_scheme`);
+- matching materialized graph projection;
+- optional derived indexes/caches.
 
-Journal records are authoritative historical state.
-
-A frontier/index cache may be reconstructed by scanning records if necessary; its physical presence is not semantic authority.
+Journal records are authoritative semantic history. Index/frontier caches are rebuildable derived state.
 
 ## Existing graph sublevels remain projections
 
-Journal 3 work must not embed journal metadata into existing persisted graph record formats such as:
+Do not embed Journal provenance/causal/synchronization metadata into existing `values`, `freshness`, `valid`, `timestamps`, or identifier record formats.
 
-- `values`;
-- `freshness`;
-- `valid`;
-- `timestamps`;
-- identifier-map entries.
+The materialized graph stores replay output; authoritative history remains in Journal storage.
 
-Journal records and journal-derived indexes live in new storage namespaces/sublevels.
+## One current format per active replica
 
-The exact names/layout are implementation choices unless separately standardized.
+The active replica's existing `global/version` selects the complete persisted representation, including Journal records/derived metadata.
 
-## One format per replica
+Journal records carry no independent format discriminator.
 
-The current replica's existing `global/version` value selects the persisted representation of the entire replica, including journal records and journal-derived metadata.
+During database migration, source active and inactive target replicas may temporarily use different whole-database versions, but each replica individually remains homogeneous.
 
-A supported active replica contains only that version's current journal record format. Journal records do not carry their own version discriminator, and ordinary storage/replay code does not retain compatibility codecs for multiple record formats inside one replica.
-
-`global/graph_scheme` is likewise part of the selected replica's durable interpretation boundary. Ordinary synchronization/reset requires exact source/receiver equality of both the current version and exact stored graph-scheme string.
-
-During a database migration, the old active replica and an inactive target replica may temporarily be at different whole-database versions. The migration must finish rewriting retained history into the target format before the target can become active.
+A target becomes active only after all retained records are rewritten into target canonical representation and semantic migration replay validates.
 
 ## Ordered writer ranges
 
-The storage key design must allow efficient logical iteration:
+Storage must support logical iteration:
 
 ```text
 records(author, afterExclusive, throughInclusive)
 ```
 
-in ascending writer sequence order.
+in ascending sequence order without scanning unrelated writers.
 
-A conforming implementation must not require decoding/scanning every other writer merely to read one known writer suffix.
-
-This local-index requirement does not by itself establish the end-to-end complexity theorem deferred to #1607.
+This local requirement does not establish the future end-to-end sync time theorem deferred to #1607.
 
 ## Canonical current record codec
 
-For one database version, each journal record has one canonical persisted representation and meaning.
+For one database version each Journal record has one canonical persisted representation/meaning.
 
-The codec must preserve exactly:
+The codec preserves exactly:
 
 - record ID;
 - event kind/body;
-- causal frontier;
+- causal context;
 - authority time;
 - NodeKey/NodeIdentifier/ValueId references;
 - payload/timestamps;
-- reasons/scopes/bases;
+- reasons/scopes/certificate bases;
 - writer-state fields.
 
-For `ValidateEvent`, the current basis encoding is self-describing and canonical:
+ValidateEvent basis encoding is self-describing:
 
-- each entry stores `{ input: NodeKey, value: ValueId | "unknown" }`;
-- input NodeKeys are unique;
-- entries are serialized by lexicographic canonical persisted `NodeKeyString` order as defined in the types spec, rather than graph-schema input order.
+```text
+{ input: NodeKey, value: ValueId | "unknown" }
+```
 
-Therefore decoding/canonical comparison of a retained validation record does not require the historical graph schema merely to determine what its basis entries meant or whether their order is canonical.
+with unique input keys serialized by canonical persisted NodeKeyString order.
 
-Round-trip decode/encode must preserve semantic equality.
+No historical schema input ordering is required merely to decode/canonicalize a retained certificate.
 
-There is no normal mixed-version fallback path: bytes which are not valid for the replica's current `global/version` are malformed/incompatible state unless they are being read by the explicit source-version migration routine.
+## Causal-context validation support
+
+Storage/import/open validation must be able to verify that semantic-event contexts are genuine closed cuts.
+
+For F=(W,q):
+
+```text
+F.context[W] == q - 1
+```
+
+and every semantic event E included by F.context must satisfy:
+
+```text
+E.context <= F.context
+```
+
+componentwise.
+
+It is therefore insufficient to validate only:
+
+```text
+F.context[A] <= retainedFrontier[A]
+```
+
+A context which points entirely at retained coordinates but omits a transitive causal predecessor is malformed.
+
+Derived validation caches/indexes may accelerate this check, but their corruption cannot redefine event causality.
 
 ## Individual record sizing
 
-Journal 3 does not impose the old compacted-journal asymptotic size bound.
+Journal 3 imposes no compacted-journal total-size bound.
 
-A ValueEvent may legitimately contain a `ComputedValue` whose size is application-defined. Therefore an individual authoritative record may be proportional to its payload.
+A ValueEvent may contain an application-sized `ComputedValue`, so one record may scale with payload size.
 
-Implementations should still store events as individually addressable records rather than one monolithic ever-growing journal value, so suffix streaming/recovery does not require rewriting or loading the entire history.
+Records should remain individually addressable rather than one monolithic ever-growing value so range streaming/recovery does not require rewriting/loading complete history.
 
 ## Atomic local publication
 
-Local storage must provide a publication mechanism sufficient to make graph writes and finalized journal records durable atomically at the supported observation boundary.
+Local storage must support atomic publication of matching graph and finalized Journal records at the supported observation boundary.
 
-For ordinary graph transactions, the logical effect is one atomic batch/publication.
+Ordinary operations may use one storage transaction/batch.
 
-For synchronization/reset/migration, inactive target construction plus atomic selected-target cutover is acceptable.
+Synchronization/reset/bootstrap/migration may build inactive target state and atomically cut over.
 
-Journal 3 does not require all implementations/storage engines to expose identical fsync primitives; it requires the graph+journal atomicity contract defined elsewhere.
+The requirement is semantic atomicity, not one mandated fsync/storage-engine API.
 
-## Historical identity is immutable; migration may rewrite representation
+## Immutable historical identity
 
-Outside explicit database migration, a committed record key/ID is never updated with different representation or historical meaning.
+Outside explicit database-format migration, a committed `(author,sequence)` body/meaning is never mutated.
 
-Allowed ordinary physical operations include:
+Allowed ordinary physical operations include read/copy/backup and derived index creation/rebuild/removal.
 
-- read;
-- copy/backup;
-- derived index creation/deletion/rebuild.
+A version migration may rewrite every retained record representation only when it deterministically preserves record identity, historical meaning, causal/reference relationships, and writer coordinate.
 
-A database-version migration is the controlled exception for representation evolution. It may rewrite every retained record body into the target version's canonical format, including adding/removing/changing representation fields, provided that for each pre-existing `(author,sequence)` it preserves the same historical semantic fact and every identity/reference relation.
+Representation rewrite itself is not a semantic Journal event.
 
-The rewrite must be deterministic/canonical: independently migrating the same source-version record with the same source/target migration definition must produce the same target-version record. This is required so later same-ID overlap comparison does not manufacture a fork merely because two replicas migrated independently.
+## Semantic migration identity
 
-Representation migration does not append a semantic event merely because bytes changed. If the application/schema migration changes current graph semantics, those changes are represented separately by the migration baseline events defined in the migration spec.
+Database migration must preserve existing ValueIds for semantic value occurrences it keeps unchanged.
 
-## Whole-journal migration is permitted
+Changing schema/proof/freshness alone may append new Validate/Invalidate history but does not justify replacing the ValueEvent record.
 
-A format-changing migration may stream across and rewrite the complete retained journal. Time and I/O proportional to retained journal length/serialized size are explicitly accepted by repository intent in exchange for the single-format invariant.
+When migration genuinely creates/replaces semantic occurrences, peers in one synchronization cohort retain the canonical semantic migration records defined by the migration lifecycle rather than storing independently-created equivalent occurrences.
 
-This does not require loading the complete journal in RAM; the rewrite should remain streamable where practical.
+Storage layout does not prescribe how those canonical records are transported.
+
+## Canonical pre-Journal bootstrap storage
+
+For initial legacy->Journal transition, cohort peers retain one canonical semantic bootstrap history rather than separately-created equivalent baselines.
+
+A joining host may additionally author/persist its own local WriterStateRecord to preserve its own allocation watermark while retaining the shared semantic bootstrap ValueIds/certificates unchanged.
 
 ## No destructive replay-history GC
 
-Base Journal 3 storage does not delete old authoritative historical facts merely because their current effect is summarized elsewhere.
+Base Journal 3 does not delete authoritative historical records merely because their current effect can be summarized.
 
-A version migration may replace the source replica's old-format encoding with a target replica containing the same retained historical identities/facts in the new format. That is representation replacement, not history compaction.
+A version migration replacing source-format encodings with target-format encodings of the same records is representation replacement, not semantic compaction.
 
-A future archival tier may move physical storage if every retained historical record remains recoverable with its identity/meaning intact. Such archival protocol is outside the current core.
+Future archival is allowed only if retained historical identity/meaning remains recoverable; an archival protocol is outside this core specification.
 
 ## Derived indexes
 
-Useful optional derived local indexes include:
+Optional rebuildable indexes may include:
 
-- retained writer frontier/head;
-- record-by-node history index;
-- current Value/Delete head per node;
-- candidate Validate/Invalidate event indexes;
-- reverse structural-edge index;
+- per-writer head/frontier;
+- record-by-node history;
+- selected current Value/Delete head;
+- candidate certificate/invalidation indexes;
+- reverse structural edges;
 - cached authority high-water;
+- context-closure validation summaries;
 - replay checkpoint references.
 
-Derived indexes must be rebuildable from authoritative records plus current schema where applicable.
+Derived data never becomes independent semantic authority.
 
-A corrupted index does not authorize changing historical journal meaning.
+## Stable local snapshots
 
-## Source snapshots from local storage
+When local storage supplies a `JournalSyncSource`, it must provide one stable snapshot containing from the same committed state:
 
-When one local database is used as a `JournalSyncSource`, storage must provide a stable snapshot/immutable selected-replica handle satisfying `incremental-graph-journal-api.md`.
+- exact `databaseVersion`;
+- exact `graphSchemeString`;
+- `localWriter`;
+- fixed frontier;
+- corresponding immutable records.
 
-That snapshot must freeze together:
-
-```text
-global/version
-global/graph_scheme
-local writer identity
-journal frontier
-journal records through that frontier
-```
-
-All of those values must come from one committed selected replica state. It is not sufficient to read version/schema first and later open a journal snapshot which could refer to a post-migration/post-cutover replica.
-
-The implementation may use native database snapshot semantics, an immutable selected-replica handle, or another mechanism which guarantees that all reads belong to one fixed committed state.
-
-Journal 3 does not specify how an external transport such as Git packages or exposes an equivalent stable source snapshot. It specifies only the semantic requirement that an adapter expose compatibility metadata and journal content from one stable source cut.
+Journal 3 does not specify how an external transport supplies an equivalent stable snapshot.
 
 ## Startup validation
 
-Local open may validate incrementally for performance, but before relying on a record/range as supported history it must enforce the current-version codec, contiguity, causal closure, and cross-record reference rules.
+Validation may be incremental/cached for performance, but before retained history is relied on as supported semantic evidence the implementation must enforce:
 
-Cached derived validation results are allowed if invalidated correctly when new records arrive.
+- current-format decoding;
+- writer contiguity;
+- exact own-prefix event contexts;
+- transitive context closure;
+- authority extension of happened-before;
+- ValueId reference causality;
+- canonical certificate shape;
+- Journal/projection consistency or successful rebuild.
+
+Malformed authoritative history is rejected rather than repaired from mutable graph bytes.
