@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Journal 3 is primarily persistence/synchronization infrastructure, but it changes what callers can rely on after lifecycle operations.
+Journal 3 is persistence/synchronization infrastructure, but callers need stable expectations around ordinary graph operations and lifecycle operations.
 
-This document collects those observable expectations without exposing raw journal internals as application APIs.
+Raw Journal IDs/contexts/HLCs remain internal infrastructure rather than ordinary application API parameters.
 
-## Ordinary graph APIs remain the application interface
+## Ordinary graph APIs
 
-Application code continues to use the ordinary IncrementalGraph operations defined elsewhere, principally:
+Application code continues to use ordinary IncrementalGraph operations such as:
 
 ```text
 pull(nodeName, bindings?)
@@ -16,46 +16,29 @@ invalidate(nodeName, bindings?)
 inspection/read operations
 ```
 
-Application code does not need to supply journal IDs, causal contexts, HLC coordinates, writer identities, or ValueIds.
+### `pull()`
 
-## `pull()`
+A successful pull has the same semantic result required by the existing IncrementalGraph contract.
 
-A successful `pull()` returns the same semantic result required by the ordinary IncrementalGraph contract.
+If persisted graph state changes, replay-complete Journal history describing that state is committed atomically before success is observable.
 
-Journal 3 adds this durability expectation:
+Cases include:
 
-> if the pull changes persisted graph state, the replay-complete journal history describing that state is already committed atomically before success is observable.
+- already-fresh no-op -> no semantic event required;
+- first materialization -> new value occurrence + validation;
+- changed recomputation -> new occurrence + validation + required propagated stale events;
+- `Unchanged` -> preserve ValueId and append required validation;
+- cache revalidation -> preserve ValueId and append proof needed to become fresh.
 
-Possible cases include:
+### `invalidate()`
 
-- already-fresh fast path: no persisted semantic change, therefore no semantic journal event required;
-- first materialization: value + validation history is committed;
-- changed recomputation: new value occurrence + validation + actual propagated stale transitions are committed;
-- `Unchanged`: existing ValueId is preserved and a validation is committed when required;
-- cache revalidation: existing ValueId is preserved and stale->fresh proof is committed.
+A successful explicit invalidation does not run the target computor.
 
-Validation history is self-describing: certificate basis entries explicitly name semantic input NodeKeys and their ValueIds rather than relying on positional schema ordering.
+It records enough history to reproduce target invalidation and actual propagated fresh->stale transitions while retaining safe cached `oldValue` state as required by the existing graph contract.
 
-A caller does not observe a successful new graph value whose journal history failed to commit.
+### Inspection
 
-## `invalidate()`
-
-A successful explicit invalidation does not execute the target computor.
-
-It commits replay history sufficient to reproduce:
-
-- target staleness/direct proof invalidation; and
-- every actual propagated fresh->stale transition required by the current graph state.
-
-The target's cached payload normally remains available as `oldValue` for a future pull according to the ordinary graph contract.
-
-## Inspection/read APIs
-
-Read-only graph inspection observes the current materialized projection.
-
-It does not invoke computors merely to make the graph fresh and does not append semantic journal history merely because a value was inspected.
-
-A diagnostic journal-history viewer may be added separately, but is not part of ordinary graph computation APIs.
+Inspection reads the current materialized projection. It does not execute computors or author semantic Journal records merely because data was inspected.
 
 ## Synchronization
 
@@ -65,83 +48,118 @@ Conceptually:
 synchronizeFrom(source)
 ```
 
-is an administrative operation, not a computor call.
+requires an already-established writable receiver.
 
-The operation opens one stable `JournalSnapshot`. The source's compatibility decision comes from that snapshot itself:
+A successful pairwise synchronization means:
+
+- source version/schema compatibility came from the same held stable snapshot as imported history;
+- every imported writer record retains its original identity/body;
+- all retained semantic-event contexts are valid causally closed cuts;
+- required receiver normalization is committed;
+- the active graph equals replay of active Journal history;
+- no computor ran;
+- repeating against the unchanged incorporated source is a semantic no-op.
+
+Synchronization may change current values, identifiers, presence, freshness, and validity through replay/normalization.
+
+When the selected current occurrence is stale solely because a direct input is stale, synchronization persists that exact occurrence's staleness even when the occurrence was newly imported/selected.
+
+Synchronization does not migrate record formats or infer provenance from payload equality.
+
+## Synchronization normalization is durable semantic history
+
+Synchronization may author real receiver events, principally:
+
+- `DeleteEvent(reason="sync")` for structural cache removal; and
+- value-scoped `InvalidateEvent(reason="sync")` for persistent propagated staleness.
+
+Those are not temporary acknowledgements. Once committed, they remain historical facts and synchronize normally.
+
+Convergence is therefore required per actual fair execution rather than between counterfactual executions which actually authored different normalization events.
+
+## Synchronization failures
+
+Failure before pairwise cutover leaves the previous active Journal/projection pair supported.
+
+An outer operation may process several sources independently, so earlier successful pairwise commits may remain when a later source fails.
+
+Lifecycle callers must be able to distinguish operational failure, compatibility failure, writer fork, malformed causal/reference history, and projection failure.
+
+## Absent-installation startup
+
+A machine with **no local database/writer identity** does not begin by creating a fresh fingerprint and then ordinary-syncing.
+
+Startup first queries the configured recovery source for synchronized state belonging to this installation.
+
+If it exists, receiver-less restoration conceptually performs:
 
 ```text
-snapshot.databaseVersion
-snapshot.graphSchemeString
+restoreAbsentFrom(source)
 ```
 
-These are compared exactly with the receiver's active `global/version` and exact persisted `global/graph_scheme` string before source journal records are interpreted/imported.
+and:
 
-Ordinary synchronization therefore requires source and receiver to already use one compatible current database/schema representation. It does not migrate or convert individual journal records on the fly.
+- adopts the held snapshot's `localWriter` as the continuing local fingerprint;
+- restores retained history and graph projection;
+- reconstructs local writer head/allocator/high-water before new writes;
+- runs the normal migration gate if the restored database is older.
 
-A caller or transport may have separately observed source metadata earlier, but Journal 3 synchronization does not rely on that earlier mutable observation. If the source migrated before `openSnapshot()`, the held snapshot's compatibility metadata governs the operation.
+If the recovery-source query/read fails, startup fails. It must not silently create a new identity.
 
-After a successful pairwise synchronization:
+Only a definite “no synchronized state for this installation” result permits genuine fresh creation.
 
-- the compatibility metadata and imported journal history came from one stable source snapshot;
-- the receiver retains every compatible source historical record through the captured source frontier;
-- any required receiver normalization history is committed;
-- the active graph equals replay of the active journal;
-- no computor was invoked;
-- source payloads are taken from ValueEvents, not recomputed;
-- repeating against the same unchanged already-incorporated source is a semantic no-op.
+## Same-writer restoration of an existing database
 
-Synchronization may observably change:
+An existing local database which is merely behind its own writer history may import a longer agreeing exact prefix under exclusive maintenance.
 
-- cached values;
-- selected physical NodeIdentifiers;
-- materialization presence;
-- freshness;
-- validity/proof state.
+After recovery, allocation continues strictly after the recovered head. Any overlapping disagreement is a writer fork.
 
-These changes arise from replayed/normalized history, not from running application computors.
+## Initial Journal bootstrap from legacy state
 
-### Synchronization normalization is durable history
+Pre-Journal replicas expected to synchronize after the transition use one canonical semantic bootstrap history for the reconciled legacy state.
 
-A synchronization may itself create a real graph transition required by the ordinary IncrementalGraph contract, for example:
+The canonical source authors the semantic Value/Validate/Invalidate bootstrap records once.
 
-- deleting a cached dependent whose required input is now absent; or
-- persistently marking the **selected current cached occurrence** stale when its own certificate exactly matches the selected input ValueIds but a direct input is stale.
+Other cohort installations:
 
-The second case applies even when synchronization has just selected a new remote ValueId for the dependent. It is not limited to dependents whose ValueId was already selected on the receiver.
+- verify their legacy graph matches the canonical target;
+- retain those exact semantic bootstrap records/ValueIds;
+- preserve their own local writer fingerprint;
+- preserve their own allocator watermark through local writer-state history;
+- do **not** mint equivalent semantic bootstrap ValueIds independently.
 
-For example, with `A -> B`, if the receiver has stale `A=a1` and the source contributes fresh `B=b2` validated exactly against `A=a1`, the synchronized receiver selects `b2` but must persistently invalidate that `b2` occurrence. If A later becomes fresh through `Unchanged` without changing its ValueId, B remains stale until B itself is pulled/revalidated/recomputed.
+A divergent legacy installation must be explicitly reconciled/rebaselined or fail automatic upgrade rather than create competing baseline identities.
 
-Those transitions are committed as ordinary receiver-authored Journal 3 events. They are not temporary acknowledgements or merge scratch metadata.
+## Journal-aware migration
 
-If previously unseen concurrent history is learned later, normal Journal 3 replay may change the current graph again, but an already committed normalization event is not retroactively erased from history merely because a different source-observation order could have avoided authoring it.
+A database migration may rewrite the physical representation of every retained Journal record into the target current format while preserving existing record IDs and historical meaning.
 
-Consequently the convergence promise is about the **actual execution**: once non-normalization graph-changing activity stops, fair synchronization eventually finishes the finite remaining normalization consequences, disseminates all actually authored records, and makes participating replicas observably equivalent. Journal 3 does not promise that counterfactual executions which really authored different normalization histories would have identical final states.
+Semantic migration then applies only the target changes actually required.
 
-## Synchronization failure
+### Preserved cached occurrences
 
-A failed source synchronization does not expose a half-imported active state.
+If migration keeps one current cached occurrence's:
 
-The previously active journal/projection pair remains supported if failure occurs before cutover.
+- NodeIdentifier;
+- payload;
+- createdAt;
+- modifiedAt;
 
-An outer operation processing multiple sources may have committed earlier sources before a later source fails; callers must not assume all-source rollback unless the outer API explicitly promises it.
+then its selected ValueId is preserved.
 
-Failures distinguish incompatibility, writer fork/corruption, malformed history, projection failure, and ordinary publication/I/O failure sufficiently for lifecycle code to respond appropriately.
+Schema/proof/freshness changes alone do not manufacture a replacement value occurrence.
 
-A snapshot database-version or exact graph-scheme mismatch is a `JournalVersionCompatibilityError` / migrate-first incompatibility rather than permission for synchronization to upcast/downcast records.
+Migration may append a new ValidateEvent or value-scoped InvalidateEvent targeting that same preserved ValueId.
 
-## Same-writer restoration
+### New/replaced occurrences
 
-A controlled installation which has an exact prefix of its own writer history may recover a longer exact suffix at the same compatible current database version/schema.
+A new migration ValueEvent is authored only when migration actually creates/replaces/transforms the semantic occurrence.
 
-After successful recovery:
+When a version transition does create/rewrite semantic occurrences, replicas expected to synchronize use one canonical semantic migration history for the reconciled source state rather than independently minting equivalent new ValueIds.
 
-- the restored writer history is retained exactly in the current representation;
-- graph state is replayed from it;
-- local allocator/writer state is restored before new allocation;
-- new local events continue after the recovered head;
-- no synthetic reset is required solely because history was temporarily missing locally.
+Representation-only or occurrence-preserving migrations may be performed independently because shared ValueIds stay shared.
 
-If overlapping same-writer records disagree, recovery fails rather than choosing one branch.
+Future replay never reruns the historical migration callback.
 
 ## Reset
 
@@ -151,59 +169,35 @@ Conceptually:
 resetTo(source)
 ```
 
-requests the source's projected graph state relative to all history reset currently observes.
+requires an established writable receiver and one held compatible source snapshot.
 
-Reset uses one held `JournalSnapshot`. Its exact `databaseVersion` and `graphSchemeString` must match the receiver's active metadata, and that same snapshot supplies the source journal and target projection. Reset does not accept an independently checked earlier compatibility result if the source may have changed before snapshot acquisition.
+Reset retains receiver/source history and makes the receiver projection source-target-equivalent relative to all observed history.
 
-After success:
+Reset is **minimal by semantic layer**:
 
-- old receiver history is still retained;
-- compatible-version source history is retained/imported;
-- a new local reset baseline establishes source-equivalent payload/timestamp/freshness/validity semantics;
-- current ValueIds may differ from the source because reset authors new baseline occurrences;
-- the operation is atomic;
-- no computor ran.
+- if the union already selects the requested immutable value occurrence, preserve its ValueId;
+- if value state actually differs, author a new reset ValueEvent;
+- if only proof differs, author the required ValidateEvent for the preserved/current ValueId;
+- if only freshness differs, use the required value-scoped InvalidateEvent or later validation;
+- if target requires absence while union selects a value, author exactly one reset DeleteEvent;
+- if target absence is already selected, author no redundant delete.
 
-Reset does not promise to dominate an unseen concurrent event from a third replica forever. If such history is learned later, ordinary synchronization conflict semantics apply.
+Thus a reset does not replace the whole graph with fresh ValueIds merely because it is a reset.
 
-Repeated reset to an unchanged target which is already satisfied may report no change without appending redundant semantic history.
+Repeated reset to an unchanged already-satisfied target may return `changed=false` and author nothing.
 
-## Startup/migration
-
-A Journal-3-aware application does not expose an initialized graph until required version migration/bootstrap and journal/projection validation succeed.
-
-The active replica has one persisted representation selected by its existing `global/version`. Journal records do not carry independent format versions, and normal startup/replay does not maintain a mixture of old/new journal formats or invoke per-record upcasters.
-
-Initial conversion from a supported pre-Journal-3 database records a replay baseline directly in the target current format equivalent to the legacy graph.
-
-For a later Journal-3-aware database-version migration:
-
-1. the old active replica remains in its source format while an inactive target is built;
-2. every retained journal record is deterministically rewritten into the target version's canonical representation while preserving its `JournalRecordId`, historical semantic fact, causal identity, and references;
-3. semantic graph/schema changes are recorded separately by a new migration baseline;
-4. the target graph/journal pair is verified; and
-5. cutover is atomic.
-
-After cutover the target contains only the target current representation. Future startup/replay neither decodes the old record format nor reruns historical migration callbacks merely to reconstruct current state.
-
-Because representation migration may touch every retained record, migration time and I/O may grow with the complete journal. That cost is an accepted trade-off for keeping the database single-format; implementations should still stream the rewrite where practical rather than requiring the complete journal in RAM.
-
-Historical validation certificates remain semantically intelligible because they explicitly identify the semantic input NodeKeys they referred to. Their representation is rewritten into the target current format during migration, while current replay only uses a certificate as current proof when its input-key set matches the current schema.
+No computor runs during reset.
 
 ## Projection rebuild
 
-An administrative projection rebuild may reconstruct graph/index state from authoritative journal history.
+An administrative rebuild may discard/reconstruct derived graph/index state from authoritative current-format Journal history.
 
-For valid history, successful rebuild is semantically invisible to application callers: the rebuilt graph is equivalent to the graph the journal already determines.
+For valid history, successful rebuild is semantically invisible to ordinary callers.
 
-If authoritative history itself is malformed/forked, rebuild fails rather than changing history to match damaged graph bytes.
+If authoritative Journal history itself is malformed—such as a writer fork, non-transitively-closed event context, or impossible ValueId reference—rebuild fails instead of changing history to match graph bytes.
 
-Projection rebuild does not rewrite journal record format; representation changes belong to the explicit database-version migration path.
+## No destructive compaction expectation
 
-## No journal-compaction maintenance expectation
+Journal 3 has no periodic destructive history-compaction obligation.
 
-Journal 3 has no user-visible hourly/periodic destructive compaction obligation.
-
-A caller does not need to ensure that old peers acknowledge history before old historical facts remain correct. Authoritative replay history is retained.
-
-Derived maintenance such as checkpoints/index rebuilding may be introduced independently and must not change semantic history.
+Derived checkpoints/indexes may be added independently, but replay/debug history remains authoritative and retained.
