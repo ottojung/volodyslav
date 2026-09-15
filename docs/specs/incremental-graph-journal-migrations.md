@@ -13,29 +13,31 @@ Both preserve:
 persistedGraph == project(retainedJournal)
 ```
 
-Journal history is retained semantically across migration, but its persisted representation is not frozen forever. A database-version migration may rewrite every retained journal record into the target version's one canonical format while preserving record identity and historical meaning.
+The central identity rule is:
+
+> migration must not manufacture a new ValueId merely because the database version, schema, proof state, or freshness changed. A new ValueEvent is required only when the semantic value occurrence itself is replaced/created.
+
+That rule prevents version transitions from gratuitously destroying shared occurrence identity and then making otherwise-valid downstream certificates disagree after replicas synchronize.
 
 ## Relationship to the existing migration framework
 
 The existing migration framework decides the target IncrementalGraph state: values may be kept/replaced/created/deleted/invalidated and relowered under a new schema according to `migration.md`.
 
-Journal 3 adds two distinct responsibilities to that version transition:
+Journal 3 adds two responsibilities:
 
 ```text
 source replica
     -> deterministically rewrite retained journal representation
        into the target database format
     -> controlled migration computes target graph
-    -> append Journal 3 records settling target semantic facts
+    -> append only the semantic records required to establish that target
     -> verify target replay
     -> atomically cut over
 ```
 
-The first step is representation migration. It changes how already-existing historical records are stored, not what historical facts their IDs denote.
+Representation migration changes how already-existing historical records are stored, not what historical facts their IDs denote.
 
-The later migration baseline is semantic migration history. It records the actual new target graph state rather than pretending that the target state had always existed.
-
-Future replay does not rerun the old application migration callback.
+Semantic migration records only actual target-state changes/proof changes. Future replay never reruns the old migration callback.
 
 ## One-format migration invariant
 
@@ -44,8 +46,6 @@ The active source replica is interpreted entirely according to its source `globa
 The inactive target replica is constructed entirely according to the target `global/version`.
 
 No active or completed target replica may contain a mixture of source-format and target-format journal records. Journal records have no independent `recordVersion` field and ordinary replay has no per-record upcast/downcast path.
-
-It is acceptable for old active and new inactive replicas to coexist temporarily during the migration transaction, because each replica individually has one coherent format and only one becomes active at cutover.
 
 ## Representation rewrite contract
 
@@ -69,19 +69,13 @@ such that:
 - every `ValueId`/record reference continues to name the same journal identity;
 - writer-stream sequence/contiguity is unchanged.
 
-The target representation may add, remove, rename, normalize, or otherwise transform fields required by the target database version.
+The rewrite is canonical and deterministic. Given the same source-version record and the same source->target migration definition, independently migrating replicas must produce the same target-format record.
 
-The rewrite is canonical and deterministic. Given the same source-version record and the same source->target migration definition, independently migrating replicas must produce the same target-format record. It must not depend on wall clock, randomness, external services, mutable graph cache bytes, or unrelated locally-retained concurrent history.
-
-If semantic application/schema behavior changes, do not encode that change by silently changing the historical fact represented by an old `(author,sequence)`. Append new migration events as defined below.
+If application/schema semantics change, that change is represented by newly appended migration events. It must not be smuggled into the rewritten meaning of an old record.
 
 ## Whole-journal rewrite trade-off
 
-A format-changing migration may have to inspect and rewrite every retained record before cutover.
-
-Therefore migration time and I/O may be proportional to the number and serialized size of retained journal records. This is an accepted trade-off for the simpler invariant that a database contains only one current representation and never needs permanent historical record-version decoders.
-
-The rewrite should remain streamable where practical; accepted whole-history time does not imply loading the complete journal into RAM.
+A format-changing migration may inspect/rewrite every retained record before cutover. Time and I/O proportional to retained journal size are accepted. The rewrite should still be streamable where practical.
 
 ## Common preconditions
 
@@ -96,41 +90,61 @@ For a legacy graph being converted into Journal 3 this includes at least:
 - parseable timestamps with `createdAt <= modifiedAt`;
 - valid local `last_node_index`.
 
-For Journal-3-aware input, source journal streams must additionally be valid under the source database format before they are rewritten.
+For Journal-3-aware input, source journal streams must additionally be valid under the source database format, including transitively closed event contexts.
 
-Malformed state is rejected rather than converted into journal history that merely makes corruption self-consistent.
+Malformed state is rejected rather than converted into history that merely makes corruption self-consistent.
 
 # Part I: initial pre-Journal-3 bootstrap
 
 ## Goal
 
-Given supported legacy graph Glegacy with no Journal 3 history, construct Jbootstrap directly in the target database's current Journal 3 format such that:
+Given one supported canonical legacy graph Glegacy with no Journal 3 history, construct Jbootstrap directly in the target current format such that:
 
 ```text
-project(Jbootstrap, legacy/current bootstrap schema) == Glegacy
+project(Jbootstrap) == Glegacy
 ```
 
 without changing graph semantics merely to accommodate journaling.
 
-There is no intermediate historical Journal-3 record format to preserve because the source has no Journal 3 history yet.
+## Why bootstrap must be canonical across a synchronization cohort
 
-## Writer identity
+Two legacy replicas may already represent the **same shared cached occurrence** but have no ValueId because ValueIds did not exist before Journal 3.
 
-Use the database's existing durable `DatabaseFingerprint` as JournalAuthor.
+If each host independently minted its own bootstrap ValueIds, later synchronization could select an input occurrence from one host and a dependent occurrence from another. The dependent certificate would then point at the losing bootstrap ValueId even though the legacy graph had been mutually valid before upgrade.
 
-The initial writer stream starts at zero and bootstrap authors its first records.
+Therefore replicas expected to synchronize after the transition must not independently mint semantic bootstrap histories for equivalent shared legacy state.
 
-A supported lifecycle must not independently bootstrap two continuing writable installations under one fingerprint. Discovery of divergent same-writer Journal 3 records is a fork.
+A synchronization cohort uses one **canonical bootstrap history**.
 
-Fingerprint collisions between independently-created databases are handled by the accepted collision-risk intent in `docs/intent-records/database-fingerprint.md`; Journal 3 does not introduce another writer identity solely for bootstrap.
+This is a migration/lifecycle rule, not a transport protocol. How the configured lifecycle chooses/carries the canonical bootstrap source is outside Journal semantics.
+
+## Preparing the canonical legacy state
+
+Before the cohort crosses the Journal-3 boundary, any legacy changes that must survive the transition must be reconciled using the supported pre-Journal-3 synchronization behavior while compatible legacy software/state is still available.
+
+The canonical bootstrap source must represent the legacy state chosen for the transition.
+
+A legacy installation whose local graph is not observationally equivalent to that canonical legacy state must not silently perform an independent Journal-3 bootstrap and later rely on normal Journal synchronization to reconcile the artificial ValueId divergence.
+
+It must instead do one of:
+
+- reconcile its intended legacy changes before the Journal-3 transition;
+- explicitly discard/rebaseline those local legacy differences to the canonical bootstrap state; or
+- fail the automatic migration and require an explicitly specified recovery/import transition.
+
+Journal 3 does not invent a hidden payload-equality merge to recover independently-created bootstrap identities later.
+
+## Canonical bootstrap writer
+
+The installation which creates the canonical semantic bootstrap uses its existing durable `DatabaseFingerprint` as JournalAuthor.
+
+Its journal stream starts at zero and authors the semantic baseline below.
+
+Other installations in the cohort retain these exact semantic bootstrap records; they do not re-author equivalent ValueEvents/ValidateEvents under their own writers.
 
 ## Bootstrap authority for value occurrences
 
-Pre-Journal-3 replicas may contain analogous current values with the same legacy `modifiedAt` but different unrelated materialized-node counts/enumeration history.
-
-If equal-time bootstrap values consumed ordinary global HLC logical increments, cross-host value precedence could depend on how many unrelated nodes one host enumerated first.
-
-Therefore initial bootstrap ValueEvents use the special rule from the types spec:
+Bootstrap ValueEvents use:
 
 ```text
 authorityTime = {
@@ -141,21 +155,13 @@ authorityTime = {
 
 and are allocated in nondecreasing `(modifiedAt, canonical NodeKey)` order.
 
-Equal-time values from different writers then tie-break by writer fingerprint rather than unrelated enumeration depth. Equal-time values within one writer still have total same-writer order through sequence.
+This avoids making equal-time bootstrap precedence depend on unrelated enumeration depth.
 
-After all bootstrap ValueEvents, bootstrap returns to ordinary HLC allocation for validation/invalidation events with high-water raised to at least the greatest bootstrap value authority.
+After all bootstrap ValueEvents, ordinary HLC allocation resumes for validation/invalidation events with high-water raised to at least the greatest bootstrap value authority.
 
 ## Bootstrap Pass 1: value occurrences
 
-Enumerate every legacy materialized node K in deterministic:
-
-```text
-(canonical modifiedAt, canonical NodeKey)
-```
-
-order.
-
-Author in the target database's current record format:
+For every materialized legacy node K in deterministic `(modifiedAt, canonical NodeKey)` order, author:
 
 ```text
 ValueEvent {
@@ -175,19 +181,19 @@ Record its ID as:
 bootstrapValueId(K)
 ```
 
-Pass 1 completes for **all** materialized nodes before bootstrap validation events, so every known basis occurrence is causally earlier in the same writer stream.
+All bootstrap ValueEvents are created before bootstrap validation events.
 
-## Bootstrap Pass 2: self-describing validation baseline
+## Bootstrap Pass 2: validation baseline
 
-Process materialized nodes in deterministic semantic/topological order under the legacy bootstrap schema.
-
-For K let the legacy bootstrap schema define the distinct direct input set:
+For every materialized K, let:
 
 ```text
 inputSet(K) = set(inputEdges(K))
 ```
 
-author:
+under the legacy/bootstrap schema.
+
+Author:
 
 ```text
 ValidateEvent {
@@ -204,102 +210,79 @@ ValidateEvent {
 }
 ```
 
-with exactly one entry for every `D in inputSet(K)`.
+with exactly one entry per direct input D, in canonical persisted NodeKey order.
 
-For each D:
+Use `bootstrapValueId(D)` when the legacy `valid[D]` contains K, otherwise `"unknown"`.
 
-```text
-basisEntry(D).value = bootstrapValueId(D)
-    if legacy valid[D] contains K
-
-basisEntry(D).value = "unknown"
-    otherwise
-```
-
-After constructing the complete entry set, serialize it in the current canonical persisted NodeKeyString order defined by the types spec.
-
-For a fresh legacy node, existing invariants require every entry to contain the current bootstrap ValueId.
-
-For a stale node, complete/partial/absent incoming proof is represented exactly without inventing historical occurrences which pre-Journal-3 storage never recorded.
+A fresh node therefore has a complete current basis. A stale node reproduces its exact retained partial validity without inventing pre-Journal historical occurrences.
 
 ## Bootstrap Pass 3: stale state
 
-For every legacy stale K, author after its bootstrap certificate:
+For every legacy stale K, author:
 
 ```text
 InvalidateEvent {
     node: K,
-    scope: {
-        kind: "value",
-        value: bootstrapValueId(K)
-    },
+    scope: { kind: "value", value: bootstrapValueId(K) },
     reason: "bootstrap"
 }
 ```
 
-This reproduces stale freshness while preserving exactly the incoming validity edges represented by known/unknown basis entries.
+after its bootstrap certificate.
 
-No node-scoped bootstrap invalidation is required merely because legacy state cannot reveal the original cause of stale status.
+## Bootstrap Pass 4: canonical writer allocation state
 
-## Bootstrap Pass 4: writer allocation state
+The canonical bootstrap writer records its own legacy allocation watermark with a `WriterStateRecord`.
 
-Record the legacy local allocation watermark:
+## Joining the canonical bootstrap from another legacy installation
 
-```text
-WriterStateRecord {
-    lastNodeIndex: legacy last_node_index
-}
-```
+Another installation in the same cohort keeps its **own** existing `DatabaseFingerprint`; it must not clone the canonical source's local writer identity.
 
-unless an equivalent writer-state record is already canonically represented by the same atomic bootstrap publication format.
+To join the canonical bootstrap automatically:
 
-Replay must reconstruct exactly the same local allocator safety state. Because local NodeIdentifiers use the database fingerprint plus a strictly growing local index, preserving this watermark is what prevents future reuse within the continuing host namespace.
+1. validate that its legacy semantic graph is observationally equivalent to the canonical bootstrap projection for materialization, NodeIdentifiers, payloads, timestamps, freshness, and validity;
+2. retain the canonical bootstrap journal records verbatim;
+3. set `localWriter` to the joining installation's existing fingerprint;
+4. append only the joining writer's required `WriterStateRecord` preserving its own legacy `last_node_index` when that writer state is not already represented;
+5. materialize `project(canonicalJournal, localWriter=joiningFingerprint)` and atomically cut over.
+
+The joining installation does **not** mint a second semantic bootstrap baseline.
+
+This preserves shared ValueIds across the cohort while preserving each installation's local allocation namespace.
+
+If the legacy graph equivalence check fails, automatic join fails rather than creating competing bootstrap identities.
 
 ## Absent legacy nodes
 
-Legacy storage has no authoritative history for arbitrary unmaterialized semantic keys.
-
-Bootstrap does not manufacture DeleteEvents for every theoretically absent node in the infinite graph. Its initial semantic domain is the finite state actually represented by the legacy database.
+Bootstrap does not manufacture DeleteEvents for arbitrary unmaterialized keys. Its initial semantic domain is the finite state represented by the chosen legacy graph.
 
 ## Bootstrap postcondition
 
-Before cutover:
+The canonical semantic bootstrap satisfies:
 
 ```text
-project(Jbootstrap) == Glegacy
+semanticGraph(project(Jbootstrap)) == semanticGraph(Glegacy)
 ```
 
-including:
-
-- materialization set;
-- selected NodeIdentifiers;
-- exact payloads;
-- timestamps;
-- freshness;
-- semantic validity edges;
-- local `last_node_index`.
-
-Bootstrap history and equivalent graph projection become durable atomically with the target `global/version` migration/cutover.
+and each joining installation additionally reconstructs its own local allocator watermark from its own WriterStateRecord.
 
 # Part II: Journal-3-aware migration
 
 ## Principle
 
-A later migration starts from source-version history/state:
+A later migration starts from:
 
 ```text
 Gbefore = project(Jbefore, sourceSchema)
 ```
 
-First, rewrite the retained source journal into the target database representation:
+rewrites retained history into the target representation:
 
 ```text
 Jconverted = rewriteJournalFormat(Jbefore, sourceVersion, targetVersion)
 ```
 
-where Jconverted has exactly the same retained record IDs and historical semantic facts as Jbefore, but every record is encoded canonically for the target version.
-
-The controlled application migration computes:
+and computes target graph:
 
 ```text
 Gtarget
@@ -307,7 +290,7 @@ Gtarget
 
 under the target schema/version.
 
-Journal 3 then appends a complete migration baseline establishing:
+The semantic migration then appends only the records required so that:
 
 ```text
 project(Jafter, targetSchema) == Gtarget
@@ -319,53 +302,84 @@ where:
 Jafter = Jconverted + migration-authored records
 ```
 
-The historical facts from Jbefore remain retained through Jconverted; only their database representation changed.
+## Preserve value occurrence identity whenever the value is preserved
 
-## Why use a full current-state migration baseline
+For every node K present before and after migration, distinguish **value occurrence state** from proof/freshness state.
 
-Migration may change schema structure, dependency edges, materialization, payloads, timestamps, freshness, validity, and physical identifiers.
+The selected ValueId is preserved when the migration policy keeps the same semantic cached occurrence. In particular, schema change, validation change, or invalidation/freshness change alone does not create a new ValueEvent.
 
-Trying to prove which old certificates/ValueIds remain reusable across arbitrary semantic migrations would make current replay depend on migration-specific historical reasoning.
+A migration may preserve the source ValueId only when the target keeps that occurrence's immutable value fields:
 
-Journal 3 uses a simpler rule:
+```text
+nodeIdentifier
+payload
+createdAt
+modifiedAt
+```
 
-> every target-present node receives a new migration ValueEvent plus a target-schema baseline certificate, even if migration physically reused equal payload bytes.
+The migration framework's explicit keep/invalidate disposition is the authority for that decision; ordinary synchronization must not infer it later from payload equality.
 
-This makes the semantic schema/version cut explicit and ensures current proof never relies on an old structural interpretation.
+A new migration ValueEvent is required only when migration:
 
-The cost is O(current target materialization) new baseline records in addition to any O(retained journal size) representation rewrite. Both are acceptable for a controlled version transition.
+- creates a previously absent materialization;
+- replaces/transforms the cached value occurrence;
+- changes the selected NodeIdentifier;
+- changes the occurrence's persisted payload/timestamps; or
+- otherwise explicitly defines a new semantic occurrence.
+
+## Canonical semantic migration across a synchronization cohort
+
+A semantic migration which creates new ValueEvents can otherwise reproduce the same artificial cross-host occurrence split as independent bootstrap.
+
+Therefore a synchronization cohort must use one canonical semantic migration result for a given source->target version transition when that transition creates/replaces semantic value occurrences.
+
+Before that transition, changes which must survive should be reconciled while peers still share the compatible source version. The canonical migration source then produces the semantic migration records once; other cohort members deterministically rewrite their shared retained old records and retain the canonical semantic migration records rather than independently minting equivalent new ValueIds.
+
+Peers which cannot establish the required compatible source state must not silently create an independent equivalent-looking semantic baseline. They require an explicit recovery/reset/import decision.
+
+A migration which performs only canonical representation rewrite and preserves every selected value occurrence may be carried out independently, because shared pre-migration ValueIds remain shared. New proof records may be independently authored only when doing so cannot create new value occurrence identity; normal certificate selection then handles those proofs deterministically.
+
+This rule is transport-neutral and does not prescribe Git/backend behavior.
 
 ## Migration observation cut
 
-Migration runs under exclusive maintenance and observes one complete source frontier:
+The semantic migration observes one complete source frontier:
 
 ```text
 Fmigrate = frontier(Jbefore) = frontier(Jconverted)
 ```
 
-Every migration-authored semantic event is causally after Fmigrate plus earlier same-migration records it references.
-
-The ordinary authority allocator begins after the greatest observed semantic authority. Representation rewriting must not itself create new authority coordinates or journal positions.
+Every migration-authored semantic event is causally after that closed frontier plus earlier same-migration records it references.
 
 ## Migration target domain
 
 Let:
 
 ```text
-BeforePresent = semantic NodeKeys present in Gbefore
-TargetPresent = semantic NodeKeys present in Gtarget
+BeforePresent = present keys in Gbefore
+TargetPresent = present keys in Gtarget
 MigrationDomain = BeforePresent union TargetPresent
 ```
 
-A key already absent before and still absent needs no new delete merely because old historical records exist.
+A key absent before and after needs no event solely because historical records exist.
 
-A current source-schema key removed/renamed by migration belongs to BeforePresent and receives explicit target absence authority.
+## Migration Pass 1: establish target value/absence heads
 
-## Migration Pass 1: target heads
+For every K in TargetPresent:
 
-### Target-present K
+### Preserved occurrence
 
-For every K in TargetPresent author:
+If migration keeps the same occurrence, define:
+
+```text
+targetValueId(K) = valueId_Gbefore(K)
+```
+
+and author no ValueEvent for K.
+
+### New/replaced occurrence
+
+Otherwise author:
 
 ```text
 ValueEvent {
@@ -378,17 +392,9 @@ ValueEvent {
 }
 ```
 
-The new record ID is K's target migration ValueId, even if payload bytes were unchanged physically.
+and define its ID as `targetValueId(K)`.
 
-### Removed K
-
-For every:
-
-```text
-K in BeforePresent - TargetPresent
-```
-
-author:
+For every K in `BeforePresent - TargetPresent`, author exactly one required:
 
 ```text
 DeleteEvent {
@@ -397,147 +403,120 @@ DeleteEvent {
 }
 ```
 
-The target must not merely rely on the new schema ignoring an old selected current ValueEvent. Removal is explicit history.
+unless the converted history already selects absence after all migration-observed history. The rule is deterministic: no delete is emitted for a node already absent in the migration observation cut; a delete is emitted when a selected source value must become target absence.
 
-### Ordering
+## Migration Pass 2: target proof baseline
 
-All target value/delete heads are allocated before validation baselines which reference migration ValueIds.
+Proof state is independent from value occurrence identity.
 
-Use deterministic ordering extending reference/dependency constraints, with canonical NodeKey as final tie-break where semantics do not impose order.
+After every `targetValueId(K)` is known, migration MAY reuse an existing eligible current-shape certificate only when replay under the target schema already yields exactly Gtarget's validity for K and the certificate covers the migration-observed node/value invalidations required for the target state.
 
-## Migration Pass 2: self-describing target validity
-
-After every target-present node has its migration ValueId, for each target-present K let the target schema define:
-
-```text
-inputSet(K) = set(inputEdges(K))
-```
-
-author:
+Otherwise author one migration `ValidateEvent` targeting the preserved-or-new `targetValueId(K)`:
 
 ```text
 ValidateEvent {
     node: K,
-    value: migrationValueId(K),
+    value: targetValueId(K),
     reason: "migration",
     basis: [
         {
             input: D,
-            value: migrationValueId(D) | "unknown"
+            value: targetValueId(D) | "unknown"
         },
         ...
     ]
 }
 ```
 
-with exactly one entry for every `D in inputSet(K)`.
+with one entry for every target direct input D in canonical NodeKey order.
 
-For each target direct input D:
+Use `targetValueId(D)` exactly when Gtarget contains validity edge `D -> K`; otherwise use `"unknown"`.
 
-```text
-basisEntry(D).value = migrationValueId(D)
-    if Gtarget contains validity edge D -> K
+This allows schema/proof migration to create a new certificate for an existing ValueId without pretending the value itself changed.
 
-basisEntry(D).value = "unknown"
-    otherwise
-```
+## Migration Pass 3: target freshness
 
-Serialize the completed basis in the target version's current canonical persisted NodeKeyString order. This reproduces target validity exactly while keeping the certificate independent of target-schema input enumeration order.
+After target proof selection:
 
-No pre-migration ValidateEvent is reused as the target current certificate merely because a payload survived migration.
-
-## Migration Pass 3: target stale state
-
-For every target-present K whose Gtarget freshness is `"potentially-outdated"`, author after its migration validation:
+- if Gtarget says K is fresh and the selected certificate already yields fresh replay, author no invalidation;
+- if Gtarget says K is stale and replay would otherwise be fresh, author:
 
 ```text
 InvalidateEvent {
     node: K,
-    scope: {
-        kind: "value",
-        value: migrationValueId(K)
-    },
+    scope: { kind: "value", value: targetValueId(K) },
     reason: "migration"
 }
 ```
 
-Fresh target nodes receive no migration invalidation.
+- if retained current-value invalidation already makes K stale exactly as required, do not duplicate it.
 
-Migration certificates are causally after the full observed pre-migration frontier, so they cover prior node-scoped invalidations. The target's current proof state is represented explicitly by the new certificate plus optional current-value stale marker.
+Thus invalidation/freshness changes do not require a replacement ValueEvent.
 
 ## Migration writer state
 
 Migration preserves continuing writer identity/sequence and retained foreign histories.
 
-Representation rewriting must not reset or renumber:
+Representation rewriting must not reset or renumber journal positions or semantic authority coordinates.
 
-- `DatabaseFingerprint`;
-- any retained journal sequence;
-- retained foreign writer streams;
-- semantic authority coordinates.
-
-The existing local NodeIdentifier allocator namespace continues across migration. Local `last_node_index` follows ordinary target migration allocation rules and may only stay the same or advance. If its durable value changes, the migration publication includes a WriterStateRecord for the resulting watermark.
-
-This monotone allocator, together with the accepted DatabaseFingerprint collision assumption, is the uniqueness basis for future local NodeIdentifiers.
+The local NodeIdentifier allocation watermark may stay the same or advance according to the target migration. If its durable value changes, record the resulting local watermark with `WriterStateRecord`.
 
 ## Migration postcondition
 
-Before cutover all of the following hold:
+Before cutover:
 
 ```text
 target global/version == targetVersion
-all retained journal records use targetVersion's canonical format
-frontier(Jafter) extends frontier(Jbefore) without renumbering old IDs
+all retained journal records use targetVersion canonical format
+old JournalRecordIds are preserved
 project(Jafter, targetSchema) == Gtarget
 ```
 
-The migration baseline and target graph become active atomically.
+The target journal/projection pair becomes active atomically.
 
-Failure before cutover leaves the old source-version Jbefore/Gbefore replica selected and unchanged.
+Failure before cutover leaves the old source-version pair selected.
 
 ## Synchronization across migration
 
-Journal writer frontiers remain identity coordinates across migration because existing `(author,sequence)` IDs are preserved by format rewrite.
+Ordinary synchronization requires compatible current database/schema interpretation and compatible current record format.
 
-However, ordinary synchronization requires compatible **current** database/schema interpretation and therefore compatible current record format.
+Replicas at different versions do not ordinary-sync until a supported migration path has brought them to a compatible target interpretation.
 
-Replicas at different database versions do not semantically synchronize until supported migration brings them to the same compatible current version. Ordinary sync must not upcast/downcast source records on the fly.
+Shared pre-migration records independently rewritten through the same migration must compare identically after rewrite.
 
-Once both replicas have independently migrated, the same shared pre-migration records must have the same canonical target-format representation. Overlap comparison therefore remains exact rather than reporting a false fork.
+Canonical semantic migration records are then ordinary immutable history and synchronize exactly like any other records.
 
-Their migration baselines are ordinary causally later events and synchronization unions them normally.
-
-Independent semantic migrations may produce concurrent target baselines. Ordinary authority/certificate replay resolves their union, possibly making derived caches stale when the independently migrated histories selected different input occurrences.
+A delayed pre-migration host which did not participate in the canonical source-state reconciliation may still remain a valid old database, but it cannot independently manufacture an equivalent-looking target semantic baseline and expect occurrence identity to reconcile later. It must follow an explicit supported recovery/rebaseline/import path.
 
 ## Historical certificates after schema change
 
-Representation migration preserves the historical semantic claim of each old ValidateEvent while re-encoding it into the target database format.
+Old ValidateEvents remain intelligible historical evidence because their input NodeKeys are explicit.
 
-Because each certificate stores explicit semantic input NodeKeys, an old certificate remains intelligible historical evidence after schema migration.
+Current replay uses an old certificate only when:
 
-Current replay does **not** apply it merely because it targets an old ValueId whose node name still exists. Current proof uses certificates for the selected current ValueId whose input-key set is compatible with current `inputEdges(K)`.
+- it targets the selected current ValueId;
+- its explicit input-key set equals the current target input set;
+- ordinary invalidation/certificate-selection rules accept it.
 
-The semantic migration baseline ensures every target-present current node has a new target-schema ValueId/certificate.
-
-A future feature that reconstructs an arbitrary historical pre-migration graph cut may still require the historical graph schema to know the complete structural graph at that cut. That diagnostic capability is separate from current-state recovery.
+Otherwise migration authors the target proof certificate required for the preserved/new ValueId.
 
 ## No historical migration execution during replay
 
-Future replay of Jafter does not call old migration callbacks and does not maintain old record-format interpreters.
+Future replay does not call old migration callbacks.
 
-The settled semantic migration output is data in current-format migration Value/Delete/Validate/Invalidate/WriterState records. Historical source records have already been rewritten into the same current representation.
-
-Replay therefore applies one current record model only.
+The settled migration result is data in retained current-format records. Historical source records have already been deterministically rewritten into the target representation.
 
 ## Database-format evolution rule
 
-When a future database version changes journal record representation:
+When a future database version changes journal representation:
 
-1. open the old replica under its declared old `global/version` through the supported migration gate;
-2. stream/rewrite every retained journal record into the target canonical representation while preserving ID and historical meaning;
-3. construct any semantic migration baseline required by graph/schema changes;
-4. verify target journal/projection invariants;
-5. write only the target `global/version` for the target replica; and
-6. atomically cut over.
+1. open the old replica under its declared source `global/version`;
+2. rewrite every retained record into the target canonical representation while preserving identity/meaning;
+3. compute the target graph;
+4. preserve existing ValueIds for preserved occurrences;
+5. append only the semantic value/delete/proof/freshness records needed for the target state;
+6. obey the canonical-cohort rule when the migration creates/replaces value occurrences;
+7. verify replay equivalence and journal invariants;
+8. atomically cut over.
 
-Do not add per-record version stamps, permanent decoder/upcaster chains, mixed-format journals, or synchronization-time record conversion as an alternative to this whole-database migration model.
+Do not add per-record version stamps, permanent decoder chains, mixed-format active journals, or synchronization-time conversion as an alternative.
