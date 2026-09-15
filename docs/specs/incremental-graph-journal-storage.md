@@ -34,6 +34,8 @@ During database migration, source active and inactive target replicas may tempor
 
 A target becomes active only after all retained records are rewritten into target canonical representation and semantic migration replay validates.
 
+A frozen `CanonicalBootstrapSnapshot` is a lifecycle artifact, not an active JournalReplica. It may remain encoded at the original bootstrap target version after active replicas migrate forward; that does not create mixed formats inside an active database.
+
 ## Ordered writer ranges
 
 Storage supports logical iteration:
@@ -72,6 +74,8 @@ and every semantic event E included by F.context satisfies `E.context <= F.conte
 
 It is insufficient to validate only that coordinates are within retained frontier.
 
+The controlled pre-Journal bootstrap conversion rule may intentionally leave canonical foreign coordinates out of a joining legacy ValueEvent's context so a pre-existing legacy value remains concurrent with the canonical value. The resulting context is still validated for own-prefix exactness and transitive closure over every coordinate it actually includes.
+
 ## Individual record sizing
 
 Journal 3 imposes no compacted-journal total-size bound.
@@ -94,13 +98,27 @@ A version migration may rewrite every retained record representation only when i
 
 Representation rewrite itself is not a semantic Journal event.
 
+## Pure payload representation rewrite
+
+When a database-version migration changes `ComputedValue` representation, one pure per-record codec determines the target payload representation of every affected retained `ValueEvent`.
+
+The codec result depends only on the source record and version-migration definition. It does not depend on whether the record is selected on the current replica, on callback traversal order, or on replica-local mutable state.
+
+Therefore two replicas retaining the same historical `JournalRecordId` rewrite that record identically even when only one replica currently selects it.
+
 ## Semantic-preserving `override()` storage rewrite
 
-`MigrationStorage.override()` is a semantic-preserving representation rewrite.
+`MigrationStorage.override()` is a semantic-preserving representation decision.
 
-If target database format represents a `ComputedValue` differently, the whole-history representation migration may rewrite the payload representation of retained `ValueEvent`s while preserving each record's `JournalRecordId` and semantic meaning.
+For Journal-aware migration it does not directly supply the bytes/body of an immutable retained ValueEvent. The whole-history per-record codec already determines that target representation.
 
-For the currently selected overridden occurrence, the rewritten target record must agree with the migration's `override()` result while preserving:
+For the selected overridden occurrence, the migration verifies:
+
+```text
+overrideResult == canonicalRewrittenPayload(selectedValueEvent)
+```
+
+while preserving:
 
 - selected ValueId;
 - NodeIdentifier;
@@ -108,7 +126,7 @@ For the currently selected overridden occurrence, the rewritten target record mu
 - causal context and authority meaning;
 - cross-record references.
 
-A representation-changing override therefore does not append a replacement ValueEvent.
+Mismatch fails migration before cutover. A representation-changing override therefore does not append a replacement ValueEvent and cannot cause one historical ID to acquire replica-dependent bodies.
 
 ## Semantic migration identity
 
@@ -118,18 +136,31 @@ When migration genuinely creates/replaces a semantic occurrence, the local migra
 
 Storage does not require or encode a canonical remote migration author.
 
-## Canonical pre-Journal bootstrap storage
+## Frozen canonical pre-Journal bootstrap artifact
 
-For initial legacy->Journal transition, one canonical semantic bootstrap history supplies the shared ValueId basis for a cohort.
+For initial legacy->Journal transition, one canonical semantic bootstrap cut supplies the shared ValueId basis for a cohort.
 
-A joining host retains those canonical records verbatim, then may additionally persist:
+The configured cohort bootstrap source must be able to return an immutable `CanonicalBootstrapSnapshot` containing:
 
-- local bootstrap Value/Delete/Validate/Invalidate delta records required to reproduce its own supported legacy graph;
-- its local WriterStateRecord preserving its allocator watermark.
+- exact bootstrap target `databaseVersion`;
+- exact bootstrap target `graphSchemeString`;
+- canonical creator writer identity;
+- exact `bootstrapFrontier` captured immediately after bootstrap publication;
+- exactly the records through that frontier, with no post-bootstrap records.
 
-Unaffected equal occurrences continue to reference canonical bootstrap ValueIds.
+The artifact remains stable/retrievable for late legacy installations even after ordinary cohort history grows or active replicas migrate to newer versions.
 
-The configured cohort bootstrap source decides whether the host joins an existing canonical snapshot or is permitted to create the first one. Indeterminate source state never authorizes a second canonical history.
+A current `JournalSnapshot` which merely contains the canonical records as a prefix is not equivalent to this artifact.
+
+A joining host retains the canonical cut verbatim and may additionally persist:
+
+- historical joining-writer bootstrap ValueEvents for local-only/different legacy occurrences;
+- bootstrap proof/freshness records derived from its legacy evidence;
+- its local WriterStateRecord preserving allocator watermark.
+
+Equal occurrences continue to reference canonical bootstrap ValueIds. A local absence does not create a bootstrap DeleteEvent against a canonical materialization merely to force equality with the joining legacy cache.
+
+The joining historical ValueEvents may omit canonical foreign coordinates so conflicting legacy values remain concurrent; their authority is seeded from their own legacy `modifiedAt` as defined by the migration/type specifications.
 
 ## No destructive replay-history GC
 
@@ -153,7 +184,9 @@ When local storage supplies a `JournalSyncSource`, it provides one stable snapsh
 - fixed frontier;
 - corresponding immutable records.
 
-Journal 3 does not specify how an external transport supplies an equivalent stable snapshot.
+An ordinary `JournalSnapshot` represents current state. It is distinct from the frozen canonical bootstrap artifact used by pre-Journal join.
+
+Journal 3 does not specify how an external transport supplies either abstraction.
 
 ## Startup validation
 
