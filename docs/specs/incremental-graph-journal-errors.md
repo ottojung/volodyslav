@@ -49,19 +49,38 @@ Required behavior:
 
 Meaning:
 
-> A retained semantic event claims causal observation not covered by the retained journal.
+> A semantic event context is not a genuine causally closed observed frontier.
 
-Example:
+This category covers both missing retained coordinates and transitive-context omissions.
+
+Examples:
 
 ```text
 E.context[B] = 100
 retained frontier B = 95
 ```
 
+and:
+
+```text
+A:1
+B:1 context = { A:1 }
+C:1 context = { B:1, A:0 }
+```
+
+The second history is malformed even though all named coordinates are retained: C:1 claims to have observed B:1 while omitting A:1, which B:1 had already observed.
+
+For semantic event F=(W,q), these are also causal-closure violations:
+
+- `F.context[W] != q - 1`;
+- some semantic E included by F's context has an `E.context[A]` coordinate greater than `F.context[A]`;
+- `happenedBefore(E,F)` but F's authority does not compare later than E's authority.
+
 Required behavior:
 
-- complete missing required source history if it is part of the same valid source snapshot and transfer is still in staging;
-- otherwise reject the final active target.
+- complete missing records only when the source snapshot itself supplies the absent prefix and the candidate event context then satisfies closure;
+- never repair a transitive omission by silently expanding an immutable imported event's context;
+- reject the final active target if the event itself encodes a non-closed context.
 
 ## JournalReferenceCausalityError
 
