@@ -6,13 +6,7 @@ This checklist translates the normative Journal 3 specifications into implementa
 
 ## 1. Persisted journal primitives
 
-Implement durable current-version representations for:
-
-- `JournalRecordId`;
-- `JournalFrontier`;
-- `AuthorityTime`;
-- Value/Delete/Validate/Invalidate events;
-- `WriterStateRecord`.
+Implement durable current-version representations for `JournalRecordId`, `JournalFrontier`, `AuthorityTime`, Value/Delete/Validate/Invalidate events, and `WriterStateRecord`.
 
 Acceptance:
 
@@ -29,22 +23,16 @@ Acceptance:
 
 - semantic event `(W,q)` has `context[W] == q-1`;
 - every context coordinate is retained;
-- if F's context includes semantic E, every coordinate of E.context is <= F.context;
-- malformed `A:1 -> B:1 -> C:1` transitive omission is rejected;
+- if F includes semantic E, every coordinate of E.context is <= F.context;
+- malformed transitive omission is rejected;
 - `happenedBefore` is transitive in generated supported histories;
 - happened-before always implies increasing authority.
 
 ## 3. Journal snapshot
 
-Implement `JournalSnapshot` with:
+Implement `JournalSnapshot` with exact source `databaseVersion`, exact `graphSchemeString`, `localWriter`, immutable frontier, and stable range reads.
 
-- exact source `databaseVersion`;
-- exact `graphSchemeString`;
-- `localWriter`;
-- immutable frontier;
-- stable range reads.
-
-Compatibility metadata/frontier/records must belong to one immutable committed source cut.
+Compatibility metadata/frontier/records belong to one immutable committed source cut.
 
 ## 4. Local publication finalization
 
@@ -52,7 +40,7 @@ Acceptance:
 
 - failed transactions leave no durable sequence hole;
 - successful concurrent transactions get disjoint contiguous writer ranges;
-- final event IDs/contexts/HLCs are allocated inside serialized finalization;
+- event IDs/contexts/HLCs are allocated inside serialized finalization;
 - own-writer context is exact after final ordering;
 - graph+journal publish atomically;
 - volatile allocator state advances only after durable success.
@@ -74,40 +62,36 @@ Acceptance:
 - deterministic value/delete head selection;
 - transitive/reference causality enforced;
 - certificate shape compatibility deterministic;
-- certificate selection key is exactly:
-
-```text
-basisMatchCount
-coversValueInvalidations
-then authority
-```
-
+- certificate selection key exactly `basisMatchCount`, then `coversValueInvalidations`, then authority;
 - no certificate mixing;
 - freshness/validity reproduce graph semantics;
 - full rebuild from Journal works.
 
 ## 7. Absent-installation restore
 
-Implement the receiver-less startup transition before fresh fingerprint generation.
-
 Acceptance:
 
 - configured installation recovery source is queried first;
 - source exists -> restore and adopt held snapshot `localWriter`;
-- source definitively absent -> fresh fingerprint may be generated;
+- source definitely absent -> fresh fingerprint may be generated;
 - source query/read failure -> startup fails and MUST NOT fall back to fresh;
 - restored writer head/watermark/high-water/projection are reconstructed before new allocation.
 
-## 8. Canonical pre-Journal bootstrap
+## 8. Pre-Journal bootstrap
 
 Acceptance:
 
-- one canonical semantic bootstrap history exists per synchronization cohort;
-- participating legacy changes intended to survive are reconciled before the cohort crosses the boundary;
-- canonical bootstrap represents payloads/timestamps/identifiers/freshness/validity exactly;
-- joining installations retain exact canonical semantic ValueIds/certificates rather than re-authoring equivalents;
-- joining installations preserve their own local writer fingerprint and allocator watermark;
-- joining legacy graph mismatch fails automatic canonical join;
+- a configured transport-neutral **cohort bootstrap source** returns exactly exists / definitely absent / indeterminate-or-error;
+- exists -> join canonical bootstrap;
+- definitely absent -> create canonical bootstrap;
+- indeterminate/error -> migration fails and MUST NOT create competing canonical history;
+- the source's definite-absence semantics arbitrate first creation; competing canonical histories are unsupported;
+- creator bootstrap represents payloads/timestamps/identifiers/freshness/validity exactly;
+- joining installations retain canonical semantic records verbatim and preserve their own local writer fingerprint/watermark;
+- join computes `Pc = project(canonicalJournal, localWriter=joiningFingerprint)` and applies minimal reset-style Pass 1–3 rules to target local `Glegacy` with reason `"bootstrap"`;
+- unaffected equal occurrences keep canonical ValueIds;
+- locally changed occurrences get only the required joining-writer ValueEvents;
+- local presence/absence and validity/freshness deltas use minimal Delete/Validate/Invalidate records;
 - stale partial validity uses controlled `"unknown"`;
 - cutover is atomic.
 
@@ -143,12 +127,12 @@ Acceptance:
 Acceptance:
 
 - source target/compatibility from one held snapshot;
-- J0 source+receiver history retained;
-- if P0 already selects the target semantic occurrence, reset preserves its ValueId;
-- new ValueEvent only when payload/identifier/timestamps/presence must actually change;
-- validity/freshness-only changes use ValidateEvent/InvalidateEvent;
+- source+receiver history retained;
+- already-selected target semantic occurrence preserves ValueId;
+- new ValueEvent only when semantic occurrence must actually change;
+- validity/freshness-only changes use Validate/Invalidate;
 - dependents may retain own ValueId while certificates update for changed input ValueIds;
-- exactly one reset delete iff P0 present and target absent;
+- exactly one reset delete iff current union present and target absent;
 - repeated satisfied reset may no-op;
 - receiver allocator remains local;
 - replayed result equals target semantic graph.
@@ -159,13 +143,18 @@ Acceptance:
 
 - complete retained old history is deterministically rewritten into target format preserving IDs/meaning;
 - target has one format only;
-- preserved semantic value occurrences preserve ValueIds;
+- `keep` preserves selected ValueId;
+- `override()` preserves selected ValueId and semantic value even when target-version payload representation changes;
+- whole-history representation rewrite provides deterministic target-format payload conversion for retained ValueEvents affected by representation changes;
+- selected override record after rewrite agrees with migration's override result;
+- `invalidate` preserves cached occurrence ValueId;
 - schema/proof/freshness change alone does not create ValueEvent;
-- new ValueEvent only for actual create/replace/transform occurrence change;
 - target proof may be re-established with ValidateEvent targeting preserved ValueId;
 - target stale state may use value-scoped migration invalidation on preserved ValueId;
-- semantic migration which creates/replaces occurrences uses one canonical semantic migration history across a reconciled synchronization cohort;
-- representation-only/occurrence-preserving migrations may run independently while preserving shared ValueIds;
+- new ValueEvent only for actual create/replace semantic occurrence change;
+- replicas may independently author distinct new ValueIds for genuine replacements;
+- later sync of distinct replacement occurrences may stale dependents and that is accepted;
+- no particular peer is required to participate in migration;
 - target replay equals migration target;
 - historical migration callbacks are not needed for replay;
 - whole-journal rewrite may be O(history) and streamable.
@@ -182,16 +171,7 @@ Acceptance:
 
 ## 14. Error model
 
-Provide actionable categories for:
-
-- writer fork;
-- stream gap;
-- transitive causal-context closure failure;
-- ValueId reference causality failure;
-- current-format record validation;
-- snapshot version/schema incompatibility;
-- projection invariant failure;
-- publication/source-read failure.
+Provide actionable categories for writer fork, stream gap, transitive causal-context closure failure, ValueId reference causality failure, current-format record validation, snapshot version/schema incompatibility, projection invariant failure, and publication/source-read failure.
 
 ## 15. Reference model / property verification
 
@@ -207,8 +187,9 @@ Priority properties:
 - repeat-sync no-op;
 - normalization convergence;
 - absent restore vs fresh creation;
-- canonical multi-host bootstrap;
-- occurrence-preserving migration and canonical semantic migration;
+- canonical bootstrap source decision and join-with-delta;
+- occurrence-preserving `override()` and migration;
+- accepted independent-replacement migration staleness;
 - minimal deterministic reset;
 - deterministic whole-journal representation migration.
 
