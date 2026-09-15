@@ -15,7 +15,7 @@ The Journal 3 specification is split by responsibility:
 - `incremental-graph-journal-replay.md` — deterministic projection from retained history to the legacy graph representation;
 - `incremental-graph-journal-emission.md` — mapping ordinary graph transitions to journal records;
 - `incremental-graph-journal-locking.md` — integration with the existing graph locking/publication model;
-- `incremental-graph-journal-api.md` — internal/public software-facing boundaries and error/result semantics;
+- `incremental-graph-journal-api.md` — internal/public software-facing boundaries, stable snapshots, and error/result semantics;
 - `incremental-graph-journal-sync.md` — history replication and synchronization normalization;
 - `incremental-graph-journal-reset.md` — append-only controlled reset/rebaseline;
 - `incremental-graph-journal-migrations.md` — initial bootstrap, whole-format rewrite, and later replay-complete migrations;
@@ -227,6 +227,24 @@ Known ValueIds are causally prior occurrences of the named semantic input. `"unk
 
 Current replay uses a certificate as current structural proof only when its explicit input-key set equals the current node's distinct direct-input set. Thus old certificates remain intelligible history across schema evolution without future software needing the historical positional input ordering.
 
+### J3-INV-10: source compatibility belongs to the stable snapshot
+
+A Journal 3 source snapshot exposes, from one immutable committed source state:
+
+```text
+databaseVersion   = exact global/version
+graphSchemeString = exact persisted global/graph_scheme
+localWriter
+frontier
+journal records through frontier
+```
+
+Ordinary synchronization/reset may interpret/import source history only after comparing the snapshot's exact `databaseVersion` and `graphSchemeString` with the receiver's active metadata.
+
+The compatibility decision must use metadata from the held snapshot itself. A separate mutable metadata read before `openSnapshot()` is insufficient because the source could migrate/cut over between the check and journal reads.
+
+This requirement is transport-neutral: it constrains the semantic snapshot cut, not how Git or another carrier provides it.
+
 ## Authoritative history versus derived acceleration
 
 Authoritative history consists of writer records and every payload/timestamp/causal fact needed by replay.
@@ -310,7 +328,7 @@ The authority order is deterministic conflict precedence, not a promise of true 
 
 ## Synchronization model
 
-Synchronization transfers the current-format suffixes missing from one stable compatible-version source snapshot and unions them with receiver history.
+Synchronization opens one stable source snapshot, verifies exact source/receiver version and graph-scheme compatibility from that snapshot, then transfers the current-format suffixes missing from that same snapshot and unions them with receiver history.
 
 Because history itself is transferred:
 
@@ -322,7 +340,9 @@ Because history itself is transferred:
 Raw history union may require explicit receiver-authored normalization to preserve existing IncrementalGraph semantics, especially:
 
 - dependency-closure deletion when a selected cached node has a missing input; and
-- persistent fresh-to-stale invalidation for receiver-only dependents affected by newly learned history.
+- persistent value-scoped invalidation for **any selected current occurrence** whose own selected certificate exactly matches the current input ValueIds but which is stale because a direct input is stale.
+
+The latter rule is not limited to receiver-preexisting ValueIds. If synchronization selects a remote occurrence and merged receiver-side input freshness makes that occurrence stale solely through recursive input freshness, synchronization persists that stale transition on the selected remote ValueId too.
 
 Those normalization records are ordinary semantic history after commit, not transport acknowledgements.
 
@@ -344,7 +364,7 @@ The precise law/proof obligation is specified in `incremental-graph-journal-sync
 
 Reset retains history.
 
-It first observes/imports the chosen compatible-version source history, then appends a receiver-authored causally later baseline whose projection matches the requested source graph semantics.
+It opens one held compatible source snapshot, with compatibility metadata and source history/target all belonging to the same stable source state. It then appends a receiver-authored causally later baseline whose projection matches the requested source graph semantics.
 
 Old receiver events remain replay/debug history. There is no new journal incarnation and no cursor reset because immutable frontiers remain true statements about retained history.
 
@@ -360,7 +380,7 @@ Future replay uses only the one target current representation and the recorded m
 
 The format rewrite must be deterministic so replicas which independently migrate shared history later agree exactly on overlapping same-ID target records.
 
-Cross-version ordinary synchronization remains disallowed until both sides have a compatible current interpretation.
+Cross-version ordinary synchronization/reset remains disallowed until both sides have a compatible current interpretation.
 
 ## History retention
 
@@ -376,7 +396,7 @@ A whole-database migration may replace an old physical encoding with the target 
 
 Journal semantics do not depend on Git, a SQL database, a hosted service, filesystem snapshots, or another transport/storage product.
 
-Journal 3 requires only transport-neutral properties such as stable source snapshots and ordered current-format writer-prefix reads.
+Journal 3 requires only transport-neutral properties such as a stable source snapshot containing exact current compatibility metadata plus ordered current-format writer-prefix reads.
 
 Concrete remote/backend publication protocols and changes to existing transport behavior are intentionally outside the current scope.
 
