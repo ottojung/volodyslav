@@ -2,249 +2,176 @@
 
 ## Status and scope
 
-For database versions using Journal 3, synchronization is journal replication followed by deterministic replay/projection.
+For database versions using Journal 3, synchronization is immutable Journal replication followed by Journal-defined normalization and deterministic replay/projection.
 
-The semantic protocol is defined by:
+This document states the surrounding IncrementalGraph lifecycle obligations. The detailed semantic algorithm is normative in `incremental-graph-journal-sync.md`.
 
-- `incremental-graph-journal.md`;
-- `incremental-graph-journal-types.md`;
-- `incremental-graph-journal-sync.md`;
-- `incremental-graph-journal-replay.md`;
-- `incremental-graph-journal-api.md`; and
-- `incremental-graph-journal-locking.md`.
-
-This document defines the surrounding IncrementalGraph lifecycle obligations. It intentionally does not specify a concrete remote/backend protocol or change how an existing transport carries snapshots.
-
-The public `pull()` and `invalidate()` semantics remain defined by the ordinary IncrementalGraph specifications.
+It intentionally does not define or require a new Git/backend transport protocol.
 
 ## Journal-first synchronization
 
-A Journal 3 database consists semantically of:
+A supported current database is semantically:
 
 ```text
-retained immutable journal history
-+ derived materialized graph projection
+retained immutable Journal history
++ derived materialized IncrementalGraph projection
 ```
 
-Normal synchronization does not merge `values`, `freshness`, `timestamps`, `valid`, or `identifiers_keys_map` as independent authorities.
+Synchronization does not merge `values`, `freshness`, `timestamps`, `valid`, or identifier maps as independent authorities.
 
-Instead, one pairwise synchronization:
+For an already-established receiver it:
 
 1. opens one stable source `JournalSnapshot`;
-2. reads the source's exact `databaseVersion` and `graphSchemeString` **from that snapshot** and compares them with the receiver's active `global/version` / `global/graph_scheme` values;
-3. only after compatibility succeeds, streams every writer suffix missing from the receiver from that same snapshot;
-4. validates immutable overlap and prefix integrity;
-5. forms the target retained history by prefix union;
-6. performs the synchronization normalization required by `incremental-graph-journal-sync.md`;
-7. deterministically replays/projects the resulting history;
-8. validates ordinary IncrementalGraph invariants;
-9. atomically publishes the target journal and matching graph projection.
+2. checks exact source snapshot `databaseVersion` / `graphSchemeString` against receiver metadata;
+3. imports every missing writer suffix;
+4. validates overlap, contiguity, transitively closed event contexts, authority extension, and ValueId reference causality;
+5. performs required Journal synchronization normalization;
+6. deterministically replays/projects final retained history;
+7. validates ordinary graph invariants;
+8. atomically publishes Journal + matching graph projection.
 
-A receiver with zero retained history follows the same operation from frontier zero. There is no separate semantic full-sync algorithm.
+An established fresh receiver with frontier zero uses the same algorithm. A completely absent installation first uses the receiver-less restoration lifecycle in `database-lifecycle.md`; ordinary synchronization does not invent its writer identity.
 
-## Preconditions
+## Stable compatibility boundary
 
-A target may be committed only when:
+The held source snapshot contains from one immutable committed source state:
 
-- the held source `JournalSnapshot.databaseVersion` exactly equals the receiver's active `global/version`;
-- the held source `JournalSnapshot.graphSchemeString` exactly equals the receiver's active persisted `global/graph_scheme` string;
-- those source compatibility values and the journal frontier/records come from the same immutable committed source snapshot;
-- every retained writer history is one contiguous immutable prefix;
-- overlapping `JournalRecordId`s have identical canonical meaning;
-- the final retained frontier is causally closed;
-- any same-writer missing suffix is an exact continuation rather than a conflicting fork;
-- every record/payload needed by replay is present;
-- synchronization normalization has made selected present heads dependency-closed;
-- every current validation certificate is interpreted through its explicit input NodeKeys rather than historical positional schema ordering;
-- every selected current occurrence which would otherwise be stale solely because a direct input is stale has persistent current-value invalidation history as required by phase 2;
-- the resulting projection satisfies ordinary IncrementalGraph storage/`oldValue` invariants.
+```text
+databaseVersion
+graphSchemeString
+localWriter
+frontier
+records
+```
 
-Compatibility must not be established by a separate mutable metadata read before `openSnapshot()`: a source migration/cutover between that read and snapshot acquisition would make the result stale. A mismatch from the held snapshot is `JournalVersionCompatibilityError`, not permission for implicit migration.
+Sync must not authorize journal interpretation from metadata read before opening that snapshot.
 
-Malformed/conflicting history is rejected rather than repaired with payload equality, transport ancestry, timestamp preference, or arbitrary source preference.
+Version/schema mismatch is `JournalVersionCompatibilityError`, not implicit migration.
+
+## Causal-history requirements
+
+Every imported semantic event F=(W,q) must satisfy:
+
+```text
+F.context[W] == q - 1
+```
+
+and, for every semantic event E included by F.context:
+
+```text
+E.context <= F.context
+```
+
+componentwise.
+
+Thus `happenedBefore` is transitive and invalidation coverage/proof causality remain reliable after histories merge.
+
+A malformed immutable source context is rejected; it is never expanded/rewritten by the receiver.
+
+## History transfer
+
+Imported records keep exact writer/sequence/body.
+
+Receiving B:73 means retaining B:73, not authoring a receiver-side adoption event.
+
+A source with a longer exact prefix of the receiver's own writer stream may restore that suffix under exclusive maintenance. Any overlapping disagreement is a writer fork.
+
+## Graph conflict/proof semantics
+
+Value/Delete heads use Journal authority.
+
+Equal payloads do not collapse distinct ValueIds.
+
+Validation/freshness/validity come from retained certificates and invalidations.
+
+For one current occurrence, replay selects an eligible certificate by:
+
+```text
+1. greatest basisMatchCount
+2. coversValueInvalidations == true over false
+3. greatest authority
+```
+
+so a greater-clock concurrent validation cannot defeat an equally matching causally later validation which actually covered the occurrence's invalidation.
+
+## Synchronization normalization
+
+History union may reveal graph transitions neither input had separately persisted for the receiver's materialized dependent set.
+
+Journal 3 therefore permits exactly the required semantic repairs, principally:
+
+1. **dependency-closure deletion** — explicit `DeleteEvent(reason="sync")` over selected cached nodes whose required inputs are absent;
+2. **persistent input-staleness propagation** — value-scoped `InvalidateEvent(reason="sync")` for every selected occurrence whose own selected certificate is complete/covering but whose direct input is stale.
+
+The second rule applies even when synchronization selected a new imported ValueId.
+
+These events are real receiver-authored semantic history, not transport acknowledgements.
 
 ## Computor prohibition
 
 Synchronization MUST NOT invoke computors.
 
-All synchronized value occurrences already exist in immutable `ValueEvent`s.
-
-Synchronization may author receiver-local structural/freshness normalization events defined by the Journal 3 sync rules, but it must never create a new `ComputedValue` by executing application computation.
-
-## History transfer
-
-Imported records retain their original identities and bodies.
-
-Receiving:
-
-```text
-B:73 ValueEvent(...)
-```
-
-means retaining that same B-authored record.
-
-Receipt alone does not create an A-authored adoption/acknowledgement event.
-
-A receiver may relay B:73 later without changing its author identity.
-
-Conflicting bodies under B:73 indicate a writer fork/corruption, not an ordinary graph value conflict.
-
-## Same-writer recovery
-
-If the source contains a longer exact prefix of the receiver's own writer stream, synchronization may recover/import that suffix while under exclusive maintenance.
-
-After recovery, local writer sequence, local allocation watermark, authority high-water, and other derived writer allocator state are reconstructed from the recovered history before any new receiver-authored normalization record is allocated.
-
-If overlapping same-writer records disagree, synchronization fails.
-
-This prefix-recovery case is not a second merge algorithm; it is ordinary immutable history union under the one-writer-stream invariant.
-
-## Graph conflict semantics
-
-Graph conflicts are resolved by Journal 3 replay over retained history.
-
-Value/delete head selection uses the causality-respecting authority order from `incremental-graph-journal-types.md`.
-
-Equal payloads remain distinct value occurrences unless they are the same `ValueId`.
-
-Validation, invalidation, freshness, and validity are replayed from historical certificates/invalidation events rather than merged from legacy booleans/arrays.
-
-A historical validation basis names its semantic inputs explicitly and is stored in canonical NodeKey order. Current replay accepts it as current proof only when its explicit input-key set matches the current direct-input set.
-
-## Synchronization normalization
-
-History union can reveal semantic transitions which were never explicitly authored on either side in exactly the receiver's final selected combination.
-
-Journal 3 therefore defines two explicit normalization families:
-
-1. **dependency-closure deletion** — when a selected cached node has a missing selected input, the receiver authors causally later `DeleteEvent(reason="sync")` records over the required structural dependent closure;
-2. **persistent stale-input propagation** — for every **selected current occurrence after union/closure** whose selected eligible certificate exactly matches all current input ValueIds, whose own history does not already contain an uncovered current-value invalidation, and which is stale because at least one direct input is stale, the receiver authors a value-scoped `InvalidateEvent(reason="sync")`.
-
-The second rule is deliberately independent of whether the selected `ValueId` was already selected on the receiver before synchronization. A newly selected remote occurrence must also receive the marker when merged receiver-side input freshness makes it stale solely through recursive input freshness.
-
-Example:
-
-```text
-A -> B
-receiver: A=a1 stale
-source:   B=b2 fresh, validated exactly against A=a1
-```
-
-After union, B=b2 is selected and is stale because A is stale. Sync must persistently invalidate b2. If A later validates `Unchanged` and becomes fresh with the same ValueId, B remains stale until B itself revalidates/recomputes.
-
-No extra marker is needed when staleness is already persistent through a basis mismatch, uncovered node invalidation, or uncovered current-value invalidation.
-
-These events are genuine receiver-authored history. They are not acknowledgement records and are not retroactively withdrawn if later unseen concurrent history changes the selected graph state.
-
-Detailed detection/order/termination rules are normative in `incremental-graph-journal-sync.md`.
-
-## Inactive target construction
-
-Synchronization may take substantial time and may stream many records.
-
-It therefore uses isolated target/staging state while ordinary graph activity continues to refer only to the old active supported database, subject to the lifecycle's exclusive maintenance rules during replacement/cutover.
-
-Conceptually:
-
-```text
-old active state
-    + stable source snapshot
-        -> snapshot-bound version/schema compatibility check
-        -> staged journal union
-        -> local normalization records
-        -> replayed target graph
-        -> validation
-        -> atomic cutover
-```
-
-Intermediate incomplete history/projection is never exposed as the active supported graph.
+Imported ValueEvents already contain payloads/timestamps. Normalization is structural/proof/freshness history only.
 
 ## Atomic publication
 
-Successful synchronization publishes exactly one matching pair:
+Transfer may construct an inactive target.
+
+Successful cutover publishes exactly:
 
 ```text
 (targetJournal, project(targetJournal))
 ```
 
-No active state may expose imported history without its projection consequences or projection consequences whose records are not durably retained.
+plus matching local writer allocator/high-water/derived state.
 
-Failure before cutover leaves the previous active supported state selected, apart from disposable staging data.
+Failure before cutover leaves the previous active supported pair selected apart from disposable staging.
 
-An outer multi-source synchronization may commit sources one at a time. Therefore aggregate failure may coexist with prior successfully committed source synchronizations.
+## Full/initial synchronization
 
-## Physical identifiers and writer allocation
+For an **established receiver**:
 
-The selected current `ValueEvent` supplies its exact physical `NodeIdentifier`.
+```text
+frontier 0 -> source q
+```
 
-Synchronization does not mint an arbitrary replacement merely because another replica allocated a different identifier for the same semantic NodeKey.
+is the same suffix algorithm as:
 
-The conflict is resolved at value-occurrence authority; the winning occurrence's identifier becomes the selected identifier in the materialized projection.
+```text
+frontier p -> source q
+```
 
-The receiver-local `last_node_index` remains local writer state reconstructed from receiver-writer `WriterStateRecord`s. Foreign writer watermarks do not advance it.
+Only the starting frontier differs.
 
-## Freshness and validity
+This statement does not replace the separate absent-installation restore transition.
 
-Synchronization does not textually merge `freshness`/`valid`.
+## Streamability/performance
 
-Replay derives them from:
+Missing writer suffixes are streamable by writer range without loading the whole history/suffix into RAM.
 
-- selected current ValueIds;
-- one selected validation certificate;
-- the certificate's explicit semantic input-key set;
-- exact basis ValueId matches;
-- uncovered node/value invalidations;
-- current direct-input freshness;
-- sync-authored persistent stale events where required.
+Normalization may currently require graph-sized derived/scratch work. #1607 owns a future end-to-end change-sensitive time theorem.
 
-A selected current occurrence must not be allowed to become fresh automatically merely because an upstream input later revalidates unchanged when synchronization had previously propagated staleness into that occurrence.
+## Delayed replicas and convergence
 
-The final legacy sublevels are merely the frozen storage encoding of the replay result.
+Correctness does not require every peer to acknowledge or return.
 
-## Timestamps
+A delayed replica can later obtain missing immutable suffixes.
 
-The selected current `ValueEvent` supplies exact historical `createdAt` and `modifiedAt`.
+After non-normalization graph changes stop, synchronization can author only finite negative normalization consequences over finite positive history/schema. Under fair dissemination all participating replicas in that actual execution eventually reach equivalent projections and repeated sync becomes a no-op.
 
-Synchronization does not combine timestamp bytes from unrelated occurrences or manufacture a merge timestamp for the legacy graph.
+Different counterfactual source schedules may have authored different real normalization history; Journal 3 does not claim counterfactual confluence across those different executions.
 
-`AuthorityTime` is separate conflict metadata. It may be causally advanced beyond `modifiedAt` without changing the historical legacy timestamp.
+## Multi-source partial success
 
-## Streamability and performance
+An outer procedure may process source snapshots sequentially. Each successful pairwise source commit may remain even if a later source fails, unless the outer API explicitly promises a stronger all-sources transaction.
 
-Missing writer suffixes must be streamable without materializing the entire journal or suffix in RAM.
+## Reset, restore, bootstrap, migration
 
-Target construction may use durable staging and derived indexes.
+These are separate lifecycle transitions:
 
-Journal 3 currently imposes no end-to-end change-sensitive running-time theorem; issue #1607 owns that future performance contract.
+- **absent restore** — recovers this installation's continuing writer identity/history before ordinary sync;
+- **reset** — minimally rebaselines an established receiver to a source projection while retaining history;
+- **pre-Journal bootstrap** — a reconciled cohort shares one canonical semantic bootstrap history rather than independently minting baseline ValueIds;
+- **Journal-aware migration** — rewrites retained representation deterministically, preserves ValueIds for preserved occurrences, and authors only required semantic changes; migrations which genuinely create/replace occurrences use one canonical semantic migration history across the cohort.
 
-## Delayed replicas
-
-Correctness does not depend on every replica participating, acknowledging history, or returning.
-
-A delayed supported replica may later obtain the immutable writer suffixes it missed.
-
-Authoritative journal records are not destructively reclaimed merely because currently active replicas appear to have passed them.
-
-## Convergence
-
-Compatible immutable writer-prefix union is idempotent, commutative, and associative at the retained-information level.
-
-Replay of one fixed retained history is deterministic.
-
-Synchronization normalization is real semantic authoring rather than a temporary merge annotation. Therefore Journal 3 does not claim that two counterfactual executions which process sources in different orders and consequently author different normalization records must end with identical histories or projections.
-
-The required convergence property is per actual supported execution: once ordinary graph changes, reset, migration, and other non-normalization graph-changing operations stop, only finitely many synchronization `DeleteEvent`/value-scoped `InvalidateEvent` repairs can still be required. Under fair dissemination those repairs eventually stop, all actually authored records become shared, all replicas reach observably equivalent projections, and further synchronization becomes a semantic no-op.
-
-The finite-normalization proof is normative in `incremental-graph-journal-sync.md` and `incremental-graph-journal-theorems.md`.
-
-## Reset and migration
-
-Controlled reset is specified by `incremental-graph-journal-reset.md`.
-
-Reset uses one held `JournalSnapshot`; the exact source `databaseVersion`/`graphSchemeString` compatibility check and the source target/history come from that same snapshot. It retains history and appends a causally later receiver baseline whose projection matches the chosen source target.
-
-Initial Journal 3 bootstrap and later version/schema migration are specified by `incremental-graph-journal-migrations.md`.
-
-They record replay-complete target state; future replay does not rerun old migration callbacks.
-
-Ordinary synchronization/reset do not cross a database/schema mismatch. Both sides must first reach a compatible current interpretation through the supported migration lifecycle.
+Ordinary synchronization itself never performs these transitions implicitly.
