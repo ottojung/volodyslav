@@ -90,7 +90,7 @@ Replay determines current presence, selected ValueIds, payloads, identifiers, ti
 
 ### J3-INV-2: no independent graph authority
 
-A persisted graph/Journ​​al mismatch is derived-state damage or unsupported state. Repair rebuilds graph state from valid Journal history; it does not prefer mutable graph bytes over history.
+A persisted graph/Journal mismatch is derived-state damage or unsupported state. Repair rebuilds graph state from valid Journal history; it does not prefer mutable graph bytes over history.
 
 ### J3-INV-3: immutable journal identity
 
@@ -193,7 +193,7 @@ Ordinary synchronization:
 4. authors only required receiver semantic normalization;
 5. replays and atomically publishes Journal + projection.
 
-Full synchronization is the same operation from frontier zero.
+For an already-established receiver, full synchronization is this same operation starting from frontier zero. A completely absent installation first goes through receiver-less restoration or fresh creation so it has a local writer identity.
 
 Synchronization copies foreign records unchanged and creates no receipt/adoption event merely for transport.
 
