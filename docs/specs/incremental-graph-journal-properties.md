@@ -13,13 +13,7 @@ These layers have different algebraic behavior and must not be conflated.
 
 ## Same-version retained-information order
 
-For compatible retained journals J and K in one current database format, define:
-
-```text
-J <= K
-```
-
-iff every writer prefix in J is a prefix of the same writer in K and every overlapping record has identical canonical meaning.
+For compatible retained journals J and K in one current database format, define `J <= K` iff every writer prefix in J is a prefix of the same writer in K and every overlapping record has identical canonical meaning.
 
 If overlapping content differs, the journals are not compatible under this relation; that is a writer fork/corruption condition.
 
@@ -33,17 +27,9 @@ For F=(W,q):
 F.context[W] == q - 1
 ```
 
-and if F.context includes E then:
-
-```text
-E.context <= F.context
-```
-
-componentwise.
+and if F.context includes E then `E.context <= F.context` componentwise.
 
 Therefore the direct context/same-writer definition of `happenedBefore` is transitive.
-
-This closure is essential to the algebra below: a numerical prefix containing malformed non-closed event contexts is not a supported Journal element merely because every referenced coordinate exists.
 
 ## Information join
 
@@ -55,65 +41,25 @@ J join K = immutable prefix union
 
 with componentwise max frontier and actual records retained through every coordinate.
 
-Then:
-
-```text
-J join J = J
-J join K = K join J
-(J join K) join L = J join (K join L)
-```
-
-for mutually compatible histories.
-
-Because event contexts are closed cuts in the inputs, their agreeing prefix union remains causally closed.
+Then join is idempotent, commutative, and associative for mutually compatible histories.
 
 The join never rewrites a record.
 
 ## Replay is deterministic, not a fieldwise join
 
-`project(J)` is deterministic, but Journal 3 does not require:
-
-```text
-project(J join K)
-```
-
-to be a fieldwise merge of `project(J)` and `project(K)`.
+`project(J)` is deterministic, but `project(J join K)` is not required to be a fieldwise merge of `project(J)` and `project(K)`.
 
 Union can select another current occurrence, change the strongest certificate, reveal invalidation, make dependents stale, or require explicit structural normalization.
 
-Those consequences are determined by replay/synchronization rules rather than graph-field algebra.
-
 ## Information growth versus semantic state
 
-Within one version, ordinary authoring, synchronization, and reset are monotone in retained information:
-
-```text
-Jbefore <= Jafter
-```
-
-but projection is not monotone in presence/freshness/value terms:
-
-- DeleteEvent can make a node absent;
-- ValueEvent can replace current occurrence;
-- InvalidateEvent can make a cached occurrence stale;
-- a later covering ValidateEvent can make it fresh again.
-
-Information growth describes semantic transitions; it does not mean “more present/fresh.”
+Within one version, ordinary authoring, synchronization, and reset are monotone in retained information, but projection is not monotone in presence/freshness/value terms.
 
 ## Causal relation versus total authority
 
-`happenedBefore` is a transitive partial causal order.
+`happenedBefore` is a transitive partial causal order. `authorityCompare` is a deterministic total conflict-precedence order extending it.
 
-`authorityCompare` is a deterministic total conflict-precedence order extending it:
-
-```text
-happenedBefore(E,F)
-    => authorityCompare(E,F) < 0
-```
-
-Concurrent events remain historically concurrent even though authority chooses one deterministic order between them.
-
-Coverage rules therefore use causal order, not merely authority.
+Coverage rules use causal order, not merely authority.
 
 ## Certificate proof order
 
@@ -125,56 +71,25 @@ coversValueInvalidations
 then authority
 ```
 
-This is not arbitrary clock preference: an equally matching certificate which causally covers the current occurrence's value invalidations carries stronger proof than a concurrent certificate which does not.
-
 Authority resolves only the remaining tie.
 
 ## Normalization is semantic authoring, not pure join
 
-Synchronization may append receiver-authored:
-
-```text
-DeleteEvent(reason="sync")
-InvalidateEvent(reason="sync", scope=value(...))
-```
-
-when the newly combined history creates a real graph transition that must persist under IncrementalGraph semantics.
+Synchronization may append receiver-authored `DeleteEvent(reason="sync")` and value-scoped `InvalidateEvent(reason="sync")` when combined history creates a real graph transition that must persist.
 
 These are immutable semantic events, not temporary merge annotations.
 
 Therefore normalization is operational relative to one actual receiver execution rather than a pure function only of an eventual raw set of imported records.
 
-For an unchanged already-normalized receiver/source state:
-
-```text
-normalize(normalizedState, sameSourceFacts)
-    = normalizedState
-```
-
-in the sense that no new semantic record is required.
-
 ## Convergence is not counterfactual confluence
 
 Raw compatible history union is order-independent.
 
-Different synchronization schedules may nevertheless commit different real normalization events before all concurrent facts are observed. Journal 3 does not require those counterfactual executions to have identical final histories/projections.
-
-It requires every actual fair supported execution to reach a finite normalization fixed point after non-normalization graph changes stop.
+Different synchronization schedules may commit different real normalization events before all concurrent facts are observed. Journal 3 requires every actual fair supported execution to reach a finite normalization fixed point after non-normalization graph changes stop; it does not require counterfactual executions to author identical history.
 
 ## Why normalization terminates after quiescence
 
-After quiescence synchronization creates no ValueEvent or ValidateEvent, only negative repairs:
-
-```text
-sync DeleteEvent
-sync value-scoped InvalidateEvent
-```
-
-A delete can require another future repair only if previously unseen finite positive history later selects another occurrence.
-
-A value-scoped invalidation fixes one exact occurrence stale and synchronization cannot clear it because clearing requires a validation.
-
-With finite pre-existing positive history and finite schema DAG, only finitely many repair obligations arise.
+After quiescence synchronization creates no ValueEvent or ValidateEvent, only negative repairs. With finite pre-existing positive history and finite schema DAG, only finitely many repair obligations arise.
 
 ## Reset is monotone history plus minimal semantic repair
 
@@ -187,25 +102,23 @@ J0 = Jreceiver join Jsource
 Jafter = J0 + only required reset events
 ```
 
-For a target-present K:
+If J0 already selects the requested semantic occurrence, reset preserves its ValueId. Proof/freshness differences are represented without changing ValueId unnecessarily. Target absence gets a DeleteEvent exactly when J0 currently selects a value.
 
-- if J0 already selects the requested immutable semantic occurrence, reset preserves its ValueId;
-- if value state differs, reset may append a new ValueEvent;
-- proof/freshness differences are represented with Validate/Invalidate history without changing ValueId unnecessarily.
+## Canonical initial bootstrap plus local delta
 
-Target absence gets a DeleteEvent exactly when J0 currently selects a value.
+Pre-Journal replicas have no pre-existing ValueIds for shared cached occurrences.
 
-Thus reset is retained-information growth, but it does not create graph-wide duplicate occurrences merely to establish a target projection.
+A cohort therefore establishes one canonical semantic bootstrap basis. The cohort-bootstrap-source decision chooses whether an installation joins an existing basis or is allowed to create the first one.
 
-## Canonical initial bootstrap
+A joining installation need not be observationally identical to the canonical projection. It retains canonical history, then appends a local bootstrap delta using minimal reset-like rules to reproduce its supported legacy graph.
 
-Pre-Journal replicas in one synchronization cohort have no pre-existing ValueIds for their shared cached occurrences.
+Consequently:
 
-If they independently minted equivalent bootstrap ValueIds, later same-version union could split input/dependent heads across writers and invalidate certificates artificially.
+- unaffected equal occurrences share canonical ValueIds;
+- local legacy differences survive as joining-writer semantic records;
+- validity/freshness-only differences do not replace otherwise-equal occurrences.
 
-The supported transition therefore produces one canonical semantic bootstrap history for the reconciled legacy state. Joining installations retain those same semantic records while preserving their own local writer/allocator state.
-
-This establishes one occurrence identity basis before ordinary Journal union begins.
+This gives ordinary Journal union a shared identity basis without requiring all hosts to have reconciled before upgrade.
 
 ## Migration representation is not same-version join
 
@@ -219,23 +132,36 @@ preserving every old JournalRecordId and historical semantic/causal/reference fa
 
 The same-version `<=`/join relation is not applied across the two physical representations.
 
-After rewrite, target semantic migration appends only required new semantic facts.
+## `override()` is representation change, not occurrence change
+
+The existing migration contract defines `override()` as semantic-preserving.
+
+Therefore if selected occurrence V is overridden from `oldEncoding(x)` to `newEncoding(x)`, the target-format rewrite changes the representation of record V but preserves:
+
+```text
+ValueId = V
+semantic value = x
+NodeIdentifier
+createdAt
+modifiedAt
+causal identity
+```
+
+Two replicas independently applying the same deterministic representation migration retain shared V rather than minting V_A and V_B.
 
 ## Migration preserves occurrence identity when semantics preserve the occurrence
 
-If target migration keeps K's current immutable occurrence fields, then:
+`keep`, `override`, `invalidate`, schema-only changes, proof-only changes, and freshness-only changes preserve the selected ValueId when the semantic cached occurrence survives.
 
-```text
-targetValueId(K) == sourceValueId(K)
-```
+This prevents version transitions from gratuitously turning one shared occurrence into unrelated per-host occurrences.
 
-Schema/proof/freshness change alone may append Validate/Invalidate events without changing that occurrence.
+## Genuine replacement migration may split identity
 
-This property prevents database-version transitions from gratuitously turning one shared cached occurrence into unrelated per-host occurrences.
+If migration genuinely creates/replaces a semantic occurrence, independently migrating replicas may author different new ValueIds.
 
-If migration truly creates/replaces semantic occurrences, a synchronization cohort retains one canonical semantic migration history for its reconciled source state rather than independently minting equivalent new ValueIds.
+When those histories later join, ordinary authority selects the current occurrence. A dependent certificate naming a losing replacement may stop matching and make that dependent stale until revalidated/recomputed.
 
-Occurrence-preserving / representation-only migration may run independently because existing shared identities remain shared.
+This is an accepted migration trade-off. Journal-aware migration does not require a remote canonical migration participant.
 
 ## Derived state is outside the retained-history algebra
 
