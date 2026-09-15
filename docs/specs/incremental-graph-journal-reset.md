@@ -10,6 +10,14 @@ The receiver keeps retained history, imports missing source history, and appends
 
 There is no journal incarnation, history truncation, cursor invalidation, or replacement of the receiver stream.
 
+## Reset is not pre-Journal bootstrap merge
+
+Reset intentionally means “make this target state true after the history I have observed.” Its authored repair records are therefore causally after the complete source/receiver history used by reset.
+
+That semantic MUST NOT be reused for the pre-Journal canonical-bootstrap join. A late legacy value may predate and be concurrent with a canonical bootstrap value even though migration code reads the canonical artifact later. Bootstrap conflict conversion is specified separately in `incremental-graph-journal-migrations.md`.
+
+In particular, reset's target-absence deletion rule is not evidence that a legacy host's missing cache entry should delete a canonical bootstrap materialization.
+
 ## Semantic API
 
 Conceptually:
@@ -72,6 +80,8 @@ P0 = project(J0)
 All imported records retain their original writers.
 
 Reset-authored events are causally after the complete observed J0 frontier. J0 is staging state and need not be exposed as active before reset finishes.
+
+This causal-later rule is fundamental reset semantics, not a generic lifecycle-publication rule.
 
 ## Core identity rule
 
@@ -157,6 +167,8 @@ DeleteEvent {
 ```
 
 There is no alternative strategy. Repeated reset to the same absent target therefore does not accumulate redundant deletes.
+
+Again, this is explicit reset targeting. It is not the rule for comparing two pre-Journal legacy caches during canonical bootstrap.
 
 ## Pass 2: establish target validity/proof
 
