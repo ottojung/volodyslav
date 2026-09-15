@@ -10,7 +10,7 @@ The laws are semantic: an optimized implementation may use indexes/checkpoints/i
 
 ## Law 1: deterministic replay
 
-For one compatible current interpretation and one supported well-formed causally closed journal J:
+For one compatible current database version/schema interpretation and one supported well-formed causally closed journal J:
 
 ```text
 project(J) = P
@@ -27,6 +27,8 @@ In particular, replay cannot depend on:
 - computor execution;
 - transport ancestry; or
 - mutable graph bytes used as a second authority.
+
+Every record in J is already in the one canonical format selected by the replica's current `global/version`; replay does not choose per-record decoders/upcasters.
 
 This law is about replay of a fixed retained history. It does not claim that two counterfactual synchronization executions which authored different normalization records have the same J.
 
@@ -134,7 +136,7 @@ A journal violating these conditions is unsupported rather than replayed with gu
 
 ## Law 7: compatible prefix union
 
-For causally closed journals J1 and J2 whose overlapping record IDs agree, define:
+For causally closed current-format journals J1 and J2 whose overlapping record IDs agree, define:
 
 ```text
 U = union(J1,J2)
@@ -152,6 +154,8 @@ union(union(J1,J2),J3)
 when all overlaps are compatible.
 
 U retains every record from both inputs and remains causally closed once all suffix ranges through the joined frontier are present.
+
+Cross-version peers must migrate before ordinary union/synchronization; union does not reinterpret record formats.
 
 ## Law 8: exact-prefix same-writer recovery
 
@@ -175,7 +179,7 @@ If any overlapping A record differs, recovery must fail.
 
 ## Law 9: synchronization projection law
 
-Let R and S be compatible supported journals.
+Let R and S be compatible supported journals at one current database version.
 
 Let J0 be their compatible prefix union, and let `normalizeSync(R,J0)` append exactly the receiver-authored normalization required by the sync specification, producing Jfinal.
 
@@ -186,9 +190,9 @@ receiverJournal = Jfinal
 receiverGraph   = project(Jfinal)
 ```
 
-and retains every immutable source/receiver record.
+and retains every source/receiver historical record unchanged by synchronization.
 
-No imported record body is modified.
+No imported record body is modified by sync.
 
 ## Law 10: repeat synchronization no-op
 
@@ -252,9 +256,9 @@ Replay must never synthesize one certificate by taking different input edges fro
 
 The selected certificate policy may prefer the eligible certificate with the greatest number of current-basis matches, but the resulting validity relation always comes from that one certificate.
 
-For a certificate to be current-schema eligible, its explicit set of `basis[*].input` NodeKeys must equal the current distinct direct-input set for K. Historical certificates for an old schema remain decodable history but cannot silently become proof for a different current input set.
+For a certificate to be current-schema eligible, its explicit set of `basis[*].input` NodeKeys must equal the current distinct direct-input set for K. Historical certificates for an old schema remain intelligible history but cannot silently become proof for a different current input set.
 
-Every persisted basis has unique input NodeKeys serialized in canonical semantic NodeKey order, so record decoding/canonical comparison does not require historical schema input ordering.
+Every persisted basis has unique input NodeKeys serialized by the current canonical persisted NodeKeyString order, so record decoding/canonical comparison does not require historical schema input ordering.
 
 ## Law 15: explicit invalidation is causal
 
@@ -317,17 +321,26 @@ including current materialization, identifiers, payloads, timestamps, freshness,
 
 Missing historical proof provenance is represented only by the controlled `"unknown"` basis-value sentinel; bootstrap must not invent historical ValueIds.
 
+Bootstrap writes records directly in the target database's one current format.
+
 ## Law 20: migration equivalence
 
-For a Journal-3-aware migration producing target graph Gtarget and appended migration history Jafter:
+For a Journal-3-aware migration:
+
+```text
+Jconverted = rewriteJournalFormat(Jbefore, sourceVersion, targetVersion)
+Jafter = Jconverted + semantic migration baseline
+```
+
+The format rewrite preserves every pre-existing `(author,sequence)`, causal/reference identity, and historical semantic fact. The semantic baseline then establishes target graph Gtarget such that:
 
 ```text
 project(Jafter, targetSchema) == Gtarget
 ```
 
-Future replay does not execute the old migration callback.
+Future replay does not execute the old migration callback and does not need source-format record decoders.
 
-Old records retain their IDs and historical meaning. Their explicit certificate input NodeKeys remain interpretable even when the current schema has changed.
+Historical certificates retain their semantic input NodeKeys after representation rewrite even when the current schema has changed.
 
 ## Law 21: writer sequence contiguity
 
@@ -343,6 +356,8 @@ Failed local transactions consume no durable journal position.
 
 One successful atomic publication allocates one contiguous block after the latest committed/recovered local head.
 
+Database-format migration may rewrite bodies but must not insert, remove, or renumber pre-existing writer coordinates.
+
 ## Law 22: writer-state monotonicity
 
 Within one writer stream, `WriterStateRecord.lastNodeIndex` is nondecreasing.
@@ -351,27 +366,45 @@ Replay of writer A's local projection uses the latest retained A writer-state re
 
 Foreign writer-state records never advance another writer's local allocator watermark.
 
+Together with the accepted collision resistance of `DatabaseFingerprint`, monotone non-reuse of the local allocation index is the NodeIdentifier uniqueness basis for continuing local allocation.
+
 ## Law 23: replay rebuild safety
 
-If authoritative journal J is valid, rebuilding all derived graph/index state from J yields a graph observationally equivalent to the pre-rebuild supported graph:
+If authoritative current-format journal J is valid, rebuilding all derived graph/index state from J yields a graph observationally equivalent to the pre-rebuild supported graph:
 
 ```text
 rebuild(project(J)) == project(J)
 ```
 
-A rebuild may fix derived-state damage; it may not mutate J to hide journal corruption.
+A rebuild may fix derived-state damage; it may not mutate J to hide journal corruption. Journal representation changes belong only to the explicit database migration path.
 
-## Law 24: version decoding preservation
+## Law 24: single-format migration preservation
 
-A historical record's semantic meaning is stable under future supported decoding/upcasting:
+For a supported source->target database migration, define the canonical record transformation:
 
 ```text
-decodeCurrent(oldRecordBytes)
+migrateRecord(sourceVersion, targetVersion, R) = R'
 ```
 
-must denote the same historical event/record identified by the original `(author,sequence)`.
+For every pre-existing source record R:
 
-Upcasting is pure interpretation, not a new semantic event and not a migration callback.
+```text
+R'.id == R.id
+historicalMeaning(R') == historicalMeaning(R)
+```
+
+and the transformation is deterministic:
+
+```text
+same source record + same migration definition
+    => same canonical target record
+```
+
+It may change representation fields but not journal identity, writer position, causal fact, authority fact, or reference identity.
+
+After successful migration, every retained record in the target replica is in the target `global/version` format. There are no per-record version stamps and ordinary replay/synchronization has no mixed-version upcast/downcast semantics.
+
+Whole-journal time/I/O for satisfying this law is an accepted trade-off.
 
 ## Law 25: fair-execution synchronization convergence
 
@@ -383,7 +416,7 @@ Under fair synchronization after T:
 
 1. only finitely many `DeleteEvent(reason="sync")` and value-scoped `InvalidateEvent(reason="sync")` records are required;
 2. normalization eventually reaches a fixed point;
-3. every actually authored immutable record is eventually disseminated to every connected participating replica;
+3. every actually authored immutable historical record is eventually disseminated to every connected participating replica;
 4. every such replica eventually has an observably equivalent projection; and
 5. further synchronization without new non-normalization history is a semantic no-op.
 
@@ -414,6 +447,7 @@ At minimum, implementation work should include tests/models which exercise:
 - bootstrap of stale nodes with partial validity;
 - reset target equivalence;
 - migration target equivalence;
+- deterministic whole-journal format rewrite preserving IDs;
 - rebuild from journal only;
 - malformed future/concurrent ValueId references.
 
