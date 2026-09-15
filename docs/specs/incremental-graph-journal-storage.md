@@ -10,13 +10,13 @@ The current implementation is expected to use new local database sublevels consi
 
 A conforming local implementation must persist enough information to recover:
 
-- every immutable journal record by `JournalRecordId`;
+- every journal record by `JournalRecordId`;
 - ordered per-writer range iteration;
 - the retained frontier (either explicitly or derivably);
 - current local writer identity;
 - any derived indexes chosen for performance.
 
-Only immutable journal records are authoritative.
+Journal records are authoritative historical state.
 
 A frontier/index cache may be reconstructed by scanning records if necessary; its physical presence is not semantic authority.
 
@@ -34,6 +34,14 @@ Journal records and journal-derived indexes live in new storage namespaces/suble
 
 The exact names/layout are implementation choices unless separately standardized.
 
+## One format per replica
+
+The current replica's existing `global/version` value selects the persisted representation of the entire replica, including journal records and journal-derived metadata.
+
+A supported active replica contains only that version's current journal record format. Journal records do not carry their own version discriminator, and ordinary storage/replay code does not retain compatibility codecs for multiple record formats inside one replica.
+
+During a database migration, the old active replica and an inactive target replica may temporarily be at different whole-database versions. The migration must finish rewriting retained history into the target format before the target can become active.
+
 ## Ordered writer ranges
 
 The storage key design must allow efficient logical iteration:
@@ -48,14 +56,13 @@ A conforming implementation must not require decoding/scanning every other write
 
 This local-index requirement does not by itself establish the end-to-end complexity theorem deferred to #1607.
 
-## Canonical record codec
+## Canonical current record codec
 
-Each immutable record has one canonical persisted meaning selected by `recordVersion`.
+For one database version, each journal record has one canonical persisted representation and meaning.
 
 The codec must preserve exactly:
 
 - record ID;
-- record version;
 - event kind/body;
 - causal frontier;
 - authority time;
@@ -64,17 +71,17 @@ The codec must preserve exactly:
 - reasons/scopes/bases;
 - writer-state fields.
 
-For `ValidateEvent`, v1 basis encoding is self-describing and canonical:
+For `ValidateEvent`, the current basis encoding is self-describing and canonical:
 
 - each entry stores `{ input: NodeKey, value: ValueId | "unknown" }`;
 - input NodeKeys are unique;
-- entries are serialized in canonical semantic NodeKey order rather than graph-schema input order.
+- entries are serialized by lexicographic canonical persisted `NodeKeyString` order as defined in the types spec, rather than graph-schema input order.
 
-Therefore decoding/canonical comparison of a historical validation record does not require the historical graph schema merely to determine what its basis entries meant or whether their order is canonical.
+Therefore decoding/canonical comparison of a retained validation record does not require the historical graph schema merely to determine what its basis entries meant or whether their order is canonical.
 
 Round-trip decode/encode must preserve semantic equality.
 
-If multiple byte encodings are technically accepted for one old version, fork comparison uses canonical decoded meaning, not accidental byte spelling, unless that version explicitly defines byte identity as semantic.
+There is no normal mixed-version fallback path: bytes which are not valid for the replica's current `global/version` are malformed/incompatible state unless they are being read by the explicit source-version migration routine.
 
 ## Individual record sizing
 
@@ -94,22 +101,33 @@ For synchronization/reset/migration, inactive target construction plus atomic se
 
 Journal 3 does not require all implementations/storage engines to expose identical fsync primitives; it requires the graph+journal atomicity contract defined elsewhere.
 
-## Immutable records after commit
+## Historical identity is immutable; migration may rewrite representation
 
-A committed record key/ID is never updated with different historical meaning.
+Outside explicit database migration, a committed record key/ID is never updated with different representation or historical meaning.
 
-Allowed physical operations include:
+Allowed ordinary physical operations include:
 
 - read;
 - copy/backup;
-- re-encoding through a lossless storage migration which preserves the same logical record identity/meaning;
 - derived index creation/deletion/rebuild.
 
-A storage migration which changes physical bytes without changing logical JournalRecord meaning is not a semantic Journal 3 event.
+A database-version migration is the controlled exception for representation evolution. It may rewrite every retained record body into the target version's canonical format, including adding/removing/changing representation fields, provided that for each pre-existing `(author,sequence)` it preserves the same historical semantic fact and every identity/reference relation.
+
+The rewrite must be deterministic/canonical: independently migrating the same source-version record with the same source/target migration definition must produce the same target-version record. This is required so later same-ID overlap comparison does not manufacture a fork merely because two replicas migrated independently.
+
+Representation migration does not append a semantic event merely because bytes changed. If the application/schema migration changes current graph semantics, those changes are represented separately by the migration baseline events defined in the migration spec.
+
+## Whole-journal migration is permitted
+
+A format-changing migration may stream across and rewrite the complete retained journal. Time and I/O proportional to retained journal length/serialized size are explicitly accepted by repository intent in exchange for the single-format invariant.
+
+This does not require loading the complete journal in RAM; the rewrite should remain streamable where practical.
 
 ## No destructive replay-history GC
 
-Base Journal 3 storage does not delete old authoritative records merely because their current effect is summarized elsewhere.
+Base Journal 3 storage does not delete old authoritative historical facts merely because their current effect is summarized elsewhere.
+
+A version migration may replace the source replica's old-format encoding with a target replica containing the same retained historical identities/facts in the new format. That is representation replacement, not history compaction.
 
 A future archival tier may move physical storage if every retained historical record remains recoverable with its identity/meaning intact. Such archival protocol is outside the current core.
 
@@ -127,7 +145,7 @@ Useful optional derived local indexes include:
 
 Derived indexes must be rebuildable from authoritative records plus current schema where applicable.
 
-A corrupted index does not authorize changing immutable history.
+A corrupted index does not authorize changing historical journal meaning.
 
 ## Source snapshots from local storage
 
@@ -139,6 +157,6 @@ Journal 3 does not specify how an external transport such as Git packages or exp
 
 ## Startup validation
 
-Local open may validate incrementally for performance, but before relying on a record/range as supported history it must enforce the relevant codec, contiguity, causal closure, and cross-record reference rules.
+Local open may validate incrementally for performance, but before relying on a record/range as supported history it must enforce the current-version codec, contiguity, causal closure, and cross-record reference rules.
 
 Cached derived validation results are allowed if invalidated correctly when new records arrive.
