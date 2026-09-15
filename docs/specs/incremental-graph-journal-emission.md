@@ -41,19 +41,21 @@ At finalization:
 context[W] = q - 1
 ```
 
-and the complete observed causally closed cross-writer frontier;
+and the complete semantically observed causally closed cross-writer frontier;
 7. allocate AuthorityTimes extending all causal predecessors;
 8. atomically publish graph + Journal records.
 
 Failed transactions consume no durable sequence positions.
 
-## Contexts record complete observation
+## Contexts record complete ordinary semantic observation
 
-An event context is never merely the set of writers explicitly referenced by its body.
+For ordinary graph operations, an event context is never merely the set of writers explicitly referenced by its body.
 
-If the operation observed B:7 and B:7 had observed A:11, the new event context includes A through at least 11 even when the new event body directly references only B.
+If the operation semantically observed B:7 and B:7 had observed A:11, the new event context includes A through at least 11 even when the new event body directly references only B.
 
 All ordinary emission therefore preserves transitive `happenedBefore`.
+
+The controlled pre-Journal conversion of historical legacy values is not ordinary emission and is specified separately in `incremental-graph-journal-migrations.md`. Migration's physical act of reading the canonical bootstrap artifact does not by itself become causal history for a legacy value which pre-existed that read.
 
 ## Fresh pull fast path
 
@@ -208,13 +210,8 @@ ValueId preservation happens only when the graph operation semantically preserve
 
 Synchronization, reset, bootstrap, and migration have separate authoring rules because they operate over retained histories/source targets rather than ordinary computor transitions.
 
-Those maintenance rules decide whether a semantic value occurrence is preserved or replaced. In particular, reset/migration do not create a new ValueEvent merely because proof, freshness, schema, database version, or stored representation changes; semantic-preserving migration `override()` keeps the existing ValueId through target-format representation rewrite. A maintenance ValueEvent is authored only when the corresponding lifecycle rule genuinely creates/replaces the semantic occurrence.
+Those maintenance rules decide whether a semantic value occurrence is preserved or replaced. Reset/migration do not create a new ValueEvent merely because proof, freshness, schema, database version, or stored representation changes; semantic-preserving migration `override()` keeps the existing ValueId through target-format representation rewrite. A maintenance ValueEvent is authored only when the corresponding lifecycle rule genuinely creates/replaces the semantic occurrence.
 
-Maintenance still obeys the same core event rules:
+Bootstrap additionally has a historical-conversion rule for pre-Journal legacy ValueEvents: the event may represent a value which existed before the canonical artifact was read, so bootstrap does not infer foreign causality from migration execution order.
 
-- immutable writer identity;
-- contiguous sequences;
-- closed event contexts;
-- causality-respecting authority;
-- reference causality;
-- atomic Journal/projection publication.
+Maintenance still obeys immutable writer identity, contiguous sequences, closed stored contexts, authority extending actual happened-before, reference causality, and atomic Journal/projection publication, subject only to that explicitly defined historical bootstrap context/authority rule.
