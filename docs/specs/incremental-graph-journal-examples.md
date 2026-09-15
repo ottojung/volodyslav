@@ -6,7 +6,7 @@ These traces are explanatory tests of the normative Journal 3 rules.
 
 They do not replace the formal specifications. When a trace and a normative rule appear to disagree, the normative rule wins and the trace must be corrected.
 
-For brevity, record version, exact HLC values, complete contexts, physical identifiers, and timestamps are omitted where they are not the point of the example. Sequence order shown within one writer is authoritative.
+For brevity, exact HLC values, complete contexts, physical identifiers, and timestamps are omitted where they are not the point of the example. Sequence order shown within one writer is authoritative. Journal records are assumed to use the one canonical format selected by the replica's current `global/version`.
 
 Assume structural dependency:
 
@@ -16,7 +16,7 @@ A -> B -> C
 
 unless a trace says otherwise.
 
-Certificate bases are written explicitly as `{ input, value }` records. The basis is self-describing historical evidence; it is not interpreted by remembering an old positional schema order. Persisted basis entries are canonically ordered by semantic NodeKey.
+Certificate bases are written explicitly as `{ input, value }` records. The basis is self-describing historical evidence; it is not interpreted by remembering an old positional schema order. Persisted basis entries are canonically ordered by persisted NodeKeyString identity.
 
 ## Trace 1: first materialization
 
@@ -386,9 +386,9 @@ C_old basis=[
 ]
 ```
 
-A later migration changes K's current direct-input set to A/C and emits a new migration ValueId/certificate baseline.
+A later migration changes K's current direct-input set to A/C. During the database-version transition, C_old is deterministically rewritten into the target current record representation without changing its historical claim. The semantic migration then emits a new migration ValueId/certificate baseline for A/C.
 
-`C_old` remains fully decodable historical evidence: it unambiguously says it validated against A and B.
+`C_old` remains fully intelligible historical evidence: it unambiguously says it validated against A and B.
 
 But it is not eligible proof for the current A/C schema because its explicit basis input-key set does not equal the current direct-input set.
 
@@ -485,15 +485,23 @@ B -> K validity edge absent
 
 without inventing an unknown historical B occurrence.
 
-## Trace 18: migration records results, not old code
+## Trace 18: migration rewrites format and records semantic results
 
-Journal-aware migration computes target graph with K payload `new`.
+Suppose source database version V1 has retained records including X:1..100. Target version V2 changes the journal record representation and the graph migration computes K payload `new`.
 
-It authors a new migration ValueEvent carrying the actual target payload/timestamps plus a target validation baseline whose explicit basis input keys describe the target schema.
+Migration first rewrites every retained V1 record into V2's one canonical format:
 
-Years later replay uses those immutable records.
+```text
+X:1(V1 representation)   -> X:1(V2 representation)
+...
+X:100(V1 representation) -> X:100(V2 representation)
+```
 
-It does not load or execute the historical migration callback which once computed `new`.
+The IDs, causal facts, ValueId references, and historical semantic meanings remain unchanged. Independently migrating another replica with the same X:1 must produce the same canonical V2 X:1.
+
+The semantic migration then appends a new migration ValueEvent carrying K's actual target payload/timestamps plus a target validation baseline whose explicit basis input keys describe the target schema.
+
+Years later replay uses one V2/current record model. It neither decodes V1 records nor loads or executes the historical migration callback which once computed `new`.
 
 ## Trace 19: projection rebuild
 
@@ -510,6 +518,8 @@ materializedGraph == project(journal)
 No journal event is authored merely because a derived cache was repaired.
 
 If the journal itself contains a fork/impossible causal reference, rebuild fails instead of changing history to match the damaged graph.
+
+Projection rebuild does not rewrite journal format; that is reserved for the database migration path.
 
 ## Trace 20: synchronization normalization is real history
 
@@ -535,6 +545,6 @@ Later X synchronizes Z. A2 may now become the selected A head, but the already-a
 
 In a counterfactual execution that incorporated Z before Y, A might never have become absent at a committed synchronization boundary, so X:n might never have been authored.
 
-Journal 3 does **not** claim those two counterfactual executions have identical history/result. It claims that in either actual execution, every committed normalization event is immutable history and fair synchronization eventually disseminates it so all replicas in that execution converge.
+Journal 3 does **not** claim those two counterfactual executions have identical history/result. It claims that in either actual execution, every committed normalization event is historical truth and fair synchronization eventually disseminates it so all replicas in that execution converge.
 
 This is not an acknowledgement artifact: the deletion records a state transition that really occurred under the receiver's then-observed supported history.
