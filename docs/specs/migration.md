@@ -95,6 +95,25 @@ Within a **preexisting stale `keep`/`override` region**, every stale node loses 
 
 The intended use case is format migration: the database version changes the serialization format but the represented value is still meaningfully the same value. In that scenario missing invalidation in `override()` is correct by design — not a bug.
 
+### Journal-aware `override()` constraint
+
+When the source database already contains Journal history, one historical `JournalRecordId` may be retained on many replicas even when that occurrence is selected on only some of them. Its target-version record body therefore cannot depend on replica-local selection or on arbitrary callback state.
+
+For a Journal-aware migration, the version migration defines one pure per-record payload codec for retained `ValueEvent`s whose representation changes. The codec is applied identically to every affected retained ValueEvent, selected or historical.
+
+`override(nodeIdentifier, value)` remains the migration author's semantic-preserving decision for the selected cached occurrence, but its callback result is an **assertion** about the canonical rewritten payload, not the source of bytes for that immutable historical record:
+
+```text
+overrideResult(selected V)
+    == rewriteValuePayload(sourceVersion, targetVersion, V)
+```
+
+If the values differ, migration fails with `InvalidMigrationDecisionError` before cutover.
+
+The callback may still be asynchronous and may inspect migration state, but replica-local differences can only cause the migration to fail this assertion; they cannot cause the same `JournalRecordId` to acquire different target bodies on different replicas.
+
+This additional constraint applies only once Journal history exists. It does not retroactively change how a supported pre-Journal database is interpreted during its one-time bootstrap conversion.
+
 `invalidate` preserves the cached value if it exists, marks nodes as `"potentially-outdated"`, and preserves `modifiedAt`.
 
 **Explicit invalidation** removes only the explicitly named node's incoming validity proofs. Its outgoing proofs remain intact because its stored semantic value has not changed.
@@ -127,7 +146,7 @@ This preserves the materialization invariant that every materialized node has al
 | `CreateExistingNodeError` | `create()` called for a node that already exists in the previous version. |
 | `UndecidedNodesError` | Some nodes in `S` have no decision after the callback. |
 | `SchemaCompatibilityError` | `keep`/`override`/`invalidate`/`create` on a node absent from the new schema. |
-| `InvalidMigrationDecisionError` | `override` or `create` called without the cache-state proof required by its API. |
+| `InvalidMigrationDecisionError` | `override` or `create` violates the semantic/cache-state contract, including a Journal-aware override result which disagrees with the canonical per-record rewrite. |
 | `GetMissingNodeError` | `get()`/traversal called for a node not in `S`. |
 | `MissingDependencyMetadataError` | A materialized node has missing or corrupted dependency metadata. |
 
