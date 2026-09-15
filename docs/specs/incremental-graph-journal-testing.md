@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Journal 3 correctness depends on interleavings, causal relationships, and replay equivalence which are easy to under-test with only example-based integration tests.
+Journal 3 correctness depends on interleavings, causal relationships, migration identity, and replay equivalence which are easy to under-test with only example integration tests.
 
-This document specifies the minimum categories of verification expected from an implementation. Exact framework/tooling is implementation-defined.
+This document specifies the minimum verification categories expected from an implementation. Exact framework/tooling is implementation-defined.
 
 ## Reference replay oracle
 
@@ -16,7 +16,7 @@ project(J)
 
 which favors clarity over production performance.
 
-Optimized incremental projection/index code should be checked against this reference behavior over generated/bounded histories.
+Optimized projection/index code is checked against this reference over generated/bounded histories.
 
 ## Local operation differential tests
 
@@ -30,14 +30,61 @@ For each ordinary graph operation:
 
 Cover first materialization, changed value, `Unchanged`, cache revalidation, explicit invalidation, transitive stale propagation, deletion, and concurrent transaction finalization.
 
-Every ordinary ValidateEvent test also asserts that the basis:
+Every ordinary ValidateEvent test asserts that the basis:
 
 - contains exactly one entry per current distinct direct input NodeKey;
 - uses no `"unknown"` values;
 - names the finalized current ValueId for each input; and
 - is serialized in canonical persisted `NodeKeyString` order.
 
-Include fixtures where typed `compareNodeKey()` ordering differs from lexicographic serialized NodeKeyString ordering, and assert that the persisted-basis rule follows the latter.
+## Causal-context closure tests
+
+Contexts must be genuine causally closed cuts, not merely in-range coordinates.
+
+Reject exactly this malformed chain:
+
+```text
+A:1
+
+B:1
+context = { A:1 }
+
+C:1
+context = { B:1, A:0 }
+```
+
+Even though all named coordinates exist, C:1 includes B:1 while omitting B:1's causal predecessor A:1.
+
+Also reject a same-writer omission:
+
+```text
+A:1 context = { X:1 }
+A:2 context = { A:0, X:0 }
+```
+
+because every semantic event `(A,q)` must satisfy:
+
+```text
+context[A] == q - 1
+```
+
+and therefore A:2 must transitively include X:1.
+
+Generated context tests must assert:
+
+```text
+happenedBefore(E,F) && happenedBefore(F,G)
+    => happenedBefore(E,G)
+```
+
+and:
+
+```text
+happenedBefore(E,F)
+    => authorityCompare(E,F) < 0
+```
+
+for every supported generated history.
 
 ## Interleaving/model exploration
 
@@ -50,10 +97,42 @@ Explore interleavings of:
 - validation concurrent with node invalidation;
 - multiple validations for one current ValueId;
 - partial multi-input basis matches;
+- value-scoped invalidation followed by one covering and one concurrent validation;
 - remote delete/value conflicts;
 - propagated stale transitions.
 
 For every supported generated journal assert deterministic replay and the laws in `incremental-graph-journal-theorems.md`.
+
+## Certificate-selection regression
+
+Explicitly test `coversValueInvalidations` as the second certificate-selection key.
+
+Fixture:
+
+```text
+current occurrence V of K
+inputs unchanged
+
+R2: I = Invalidate(K, scope=value(V))
+R2: C2 = Validate(K, value=V, full current basis), causally after I
+
+R1 concurrently:
+    C1 = Validate(K, value=V, same full basis)
+    C1 has greater authority than C2
+    C1 does not observe I
+```
+
+Expected:
+
+```text
+basisMatchCount(K,C1) == basisMatchCount(K,C2)
+coversValueInvalidations(K,C1) == false
+coversValueInvalidations(K,C2) == true
+certificate(K) == C2
+K fresh
+```
+
+The test must fail if authority is consulted before value-invalidation coverage.
 
 ## Prefix-union property tests
 
@@ -65,32 +144,20 @@ J join K == K join J
 (J join K) join L == J join (K join L)
 ```
 
-and verify all overlap conflicts are rejected rather than semantically merged.
+and verify overlap conflicts are rejected rather than semantically merged.
 
 ## Stable source compatibility tests
 
-A `JournalSnapshot` must bind its compatibility metadata to the same frozen source state as its frontier/records.
+A `JournalSnapshot` binds compatibility metadata to the same frozen source state as its frontier/records.
 
-Tests must assert:
+Tests assert:
 
-- snapshot `databaseVersion` equals the exact persisted source `global/version` value;
-- snapshot `graphSchemeString` equals the exact persisted source `global/graph_scheme` string;
-- both fields remain stable for the snapshot lifetime;
-- exact version mismatch fails ordinary synchronization with `JournalVersionCompatibilityError` before active import/cutover;
-- exact graph-scheme-string mismatch likewise fails, including textually different strings which are otherwise parseable;
-- the same compatibility rules apply to `resetTo()`;
-- a source migration/cutover between an **external/preliminary metadata read** and `openSnapshot()` cannot trick sync/reset into accepting a later incompatible snapshot, because the operation must ignore the preliminary read and compare the metadata carried by the held snapshot itself;
-- an unchanged compatible source with zero missing records still undergoes the same snapshot compatibility check.
-
-A useful race fixture is:
-
-```text
-caller observes old source version/schema
-source migrates and atomically selects new version/schema+journal
-caller opens JournalSnapshot
-```
-
-The operation must compare the **new snapshot's** compatibility metadata and reject if it differs from the receiver. It must never reuse the old preliminary compatibility decision.
+- snapshot `databaseVersion` equals exact persisted source `global/version`;
+- snapshot `graphSchemeString` equals exact persisted `global/graph_scheme`;
+- fields remain stable for snapshot lifetime;
+- version/schema mismatch fails sync/reset before active import/cutover;
+- an external metadata read followed by source migration cannot authorize a later incompatible snapshot;
+- unchanged compatible sources still use the held snapshot compatibility check.
 
 ## Synchronization fixed-point tests
 
@@ -98,162 +165,150 @@ For generated compatible receiver/source pairs:
 
 1. run pairwise synchronization;
 2. record final journal/projection;
-3. synchronize again against the unchanged source;
+3. synchronize again against unchanged source;
 4. assert no new semantic records and no projected change.
 
-Include receiver-only dependent graphs specifically to exercise sync-authored persistent stale invalidations.
-
-Also include the critical **newly selected remote occurrence** regression:
+Include the critical newly-selected-remote-occurrence regression:
 
 ```text
 A -> B
-
-common:
-    A = a1, fresh
-
-source Y:
-    computes B = b2 from A=a1
-    B is fresh with certificate { input:A, value:a1 }
-
-receiver X:
-    invalidates A
-    A is stale, same ValueId a1
-
-X synchronizes from Y:
-    selected B changes from absent/other value to remote b2
-    B's certificate exactly matches current A=a1
-    B is stale solely because A is stale
+common: A=a1 fresh
+source Y: B=b2 fresh, validated against A=a1
+receiver X: A=a1 stale
 ```
 
-Assert synchronization authors or already finds an uncovered current-value invalidation for `b2` **even though `Pbefore.valueId(B) != P1.valueId(B)` (or B was absent before)**.
+After sync B=b2 must be persistently stale even if B was absent/different before. Later `Unchanged` revalidation of A must not freshen B until B itself validates/recomputes.
 
-Then pull A on X and force its computor to return `Unchanged`, producing a later validation that makes A fresh without changing A's ValueId.
-
-Assert:
-
-```text
-A fresh
-B still stale
-```
-
-until B itself is pulled/revalidated/recomputed.
-
-This regression must fail if sync phase 2 is incorrectly conditioned on the selected B ValueId being unchanged from the receiver's pre-sync projection.
-
-Also cover a stale K caused only by basis mismatch and assert sync does **not** need a value-scoped marker merely for that mismatch, because upstream freshness recovery cannot clear the mismatch.
+Also cover stale-by-basis-mismatch and assert no extra value-scoped marker is required merely for that mismatch.
 
 ## Synchronization convergence tests
 
-For 2–4 small replicas:
+For 2–4 replicas:
 
 1. generate local changes while disconnected;
-2. stop ordinary/reset/migration graph-changing operations;
-3. repeatedly synchronize replicas in varying fair orders;
-4. permit generated sync normalization;
-5. continue until no operation changes state;
-6. assert observable graph equivalence and retained-history convergence for that execution.
+2. stop non-normalization graph changes;
+3. synchronize in varying fair orders;
+4. permit sync normalization;
+5. continue to fixed point;
+6. assert observable graph equivalence for that actual execution.
 
-Run multiple source-order schedules over the same initial positive histories, but interpret them correctly: different schedules may legitimately author different real sync-normalization histories. Each schedule must converge internally; the test must not require counterfactual schedules with different authored normalization events to finish in identical projections.
-
-Also assert that once one schedule reaches its normalization fixed point, redelivery of the same facts creates no acknowledgement/delete/invalidation chain.
+Different schedules may author different real normalization history. Each schedule must converge internally; tests do not require counterfactual histories to end identically.
 
 ## Same-writer recovery tests
 
 Cover:
 
-- exact empty->prefix restoration;
+- exact empty->prefix restoration of an already-known local writer;
 - shorter exact prefix->longer prefix catch-up;
-- local allocator/high-water restoration;
-- new local authoring starts after recovered head;
+- allocator/high-water reconstruction;
+- new authoring starts after recovered head;
 - same-ID body disagreement fails;
-- no duplicate/re-authored local records during recovery.
+- no re-authored duplicates.
 
-For NodeIdentifier allocation, verify that restoration recovers a watermark high enough that the continuing fingerprint namespace never reuses a retired local allocation index.
+## Absent-installation restoration tests
+
+Startup with no local database must test the three-way absent-state decision:
+
+1. configured installation recovery source exists -> restore it and adopt `snapshot.localWriter`;
+2. source definitely absent -> and only then generate a fresh fingerprint;
+3. recovery-source query/read fails -> startup fails and **MUST NOT fall back** to fresh creation.
+
+After receiver-less restore, assert the local writer fingerprint, writer head, allocator watermark, graph projection, and retained history reconstruct the restored installation before new local allocation.
 
 ## Reset tests
 
-For generated receiver/source projections:
+For generated receiver/source projections assert:
 
-- source `databaseVersion` and `graphSchemeString` are read from the same held `JournalSnapshot` used for the target;
-- exact compatibility mismatch fails before reset baseline authoring/cutover;
+- compatibility metadata comes from the same held source snapshot;
 - reset result matches source semantic graph;
-- old receiver/source history retained;
-- receiver local watermark semantics preserved;
-- stale/partial validity target reconstructed;
-- reset certificate bases use explicit input NodeKeys in canonical order;
-- repeated already-satisfied reset can no-op;
-- unseen third-writer concurrent event learned later participates in ordinary conflict semantics.
+- old history remains retained;
+- receiver local watermark remains local;
+- repeated already-satisfied reset authors no semantic records;
+- a target-present node whose P0 occurrence already has the same payload/identifier/timestamps preserves its current ValueId;
+- changing only validity/freshness uses ValidateEvent/InvalidateEvent without manufacturing a new ValueEvent;
+- a dependent whose input resetValueId changes may keep its own ValueId and receive only a new certificate;
+- target-absent node gets exactly one DeleteEvent iff P0 currently selects a value;
+- stale/partial validity target is reconstructed exactly;
+- unseen later concurrent history participates normally.
 
-## Bootstrap tests
+## Canonical multi-host bootstrap tests
 
-Construct supported legacy graph states covering:
+Create legacy replicas X and Y which previously synchronized.
 
-- fresh zero-input node;
-- stale zero-input node;
-- fresh dependency chain;
-- stale chain with complete validity;
-- stale node with partial validity;
-- multiple equal modifiedAt values on unrelated nodes;
-- nonzero/gapped last_node_index.
+Use a chain:
 
-Bootstrap then assert exact replay equivalence to the original legacy graph.
+```text
+A -> B
+```
 
-Bootstrap basis tests also cover canonical NodeKeyString ordering and `"unknown"` only for missing legacy proof.
+with the same legacy A occurrence on both hosts and a later B modification on X.
+
+First demonstrate that **independent semantic bootstrap is forbidden**: the implementation must not let X and Y mint separate equivalent bootstrap ValueIds and later rely on ordinary Journal sync.
+
+Then exercise the supported cohort path:
+
+1. choose/reconcile one canonical legacy state;
+2. canonical source bootstraps semantic history once;
+3. joining host retains those exact ValueIds/certificates rather than re-authoring them;
+4. joining host preserves its own `DatabaseFingerprint` as localWriter and records its own allocator watermark;
+5. after both hosts are current, synchronization does not stale B merely because A came from a different host bootstrap.
+
+If a joining legacy graph differs from the canonical bootstrap projection, automatic join must fail rather than minting a competing semantic baseline.
 
 ## Migration tests
 
-For every implemented Journal-3-aware migration:
+For every Journal-aware migration:
 
-- start from a source replica containing only the source `global/version` representation;
-- run the journal representation rewrite into inactive target storage;
-- assert every pre-existing `(author,sequence)` still exists exactly once in the target and no existing coordinate was renumbered;
-- assert semantic causal/reference meaning of every pre-existing record is preserved;
-- migrate the same source record/history independently twice and assert byte/canonical target-record equality;
-- assert the target contains only target-version journal representations and no per-record version fields;
-- run semantic migration target construction and record the migration baseline;
-- discard target graph materialization;
-- replay from the rewritten retained history + migration baseline under target schema;
-- assert target equivalence;
-- assert historical certificates remain self-describing after input order/set changes;
-- assert target certificates use target input keys in canonical NodeKeyString order;
-- assert old migration callback is not needed during replay;
-- inject failure before cutover and assert the source-format active replica remains selected.
+- rewrite every pre-existing record deterministically into target format preserving IDs/meaning;
+- target contains no mixed formats/per-record version tags;
+- source failure before cutover leaves source active;
+- replay target equals migration target;
+- historical certificates remain self-describing.
 
-Include a migration with enough retained records to exercise streaming whole-journal rewrite rather than assuming only current graph state must be visited.
+Identity-specific tests must assert:
+
+- a `keep`/proof-only/freshness-only migration preserves the selected ValueId;
+- schema input-set change may create a new ValidateEvent for the preserved ValueId without a new ValueEvent;
+- invalidating a preserved occurrence uses value-scoped invalidation rather than replacing it;
+- create/replace/transform operations which genuinely change occurrence fields create a new ValueEvent;
+- independently upgrading a synchronization cohort does not create duplicate equivalent new value occurrences: semantic migrations that create/replace occurrences use one canonical semantic migration history retained by the peers;
+- two independently performed **representation-only / occurrence-preserving** migrations keep shared pre-migration ValueIds shared.
+
+Include a multi-host trace where a version bump leaves A/B values semantically unchanged. After migration and sync, the old shared ValueIds must still be selected and B must not become stale merely because hosts migrated separately.
 
 ## Current-format codec tests
 
-For each current database version supported by a migration boundary:
+For each current database version:
 
-- golden serialized fixtures for that version's one journal representation;
+- golden current-format fixtures;
 - round-trip semantic equality;
 - malformed-field rejection;
-- no `recordVersion`/per-record format discriminator in journal records;
-- ordinary current-version replay rejects old-format/mixed-format record bytes rather than invoking an upcaster;
-- explicit source-version migration accepts the old representation only through the migration path and rewrites it completely into target format.
-
-For validation records include fixtures proving that basis canonicalization does not require a historical graph schema.
+- no per-record format discriminator;
+- ordinary replay rejects mixed old/new bytes;
+- explicit migration rewrites old representation completely.
 
 ## Corruption tests
 
-Explicitly verify rejection of:
+Explicitly reject:
 
 - writer gaps;
-- conflicting same-ID bodies under one current database version;
-- causal-context frontier holes;
+- conflicting same-ID bodies;
+- causal-context coordinates beyond retained frontier;
+- context including an event while omitting that event's causal predecessors;
+- semantic event with own-writer context not equal to sequence minus one;
+- happened-before edge whose authority order does not increase;
 - validation target wrong node;
-- duplicate basis input NodeKeys;
-- noncanonical basis entry ordering;
-- basis ValueId whose ValueEvent belongs to another input NodeKey;
-- basis reference concurrent/future to certificate;
-- ordinary validation containing `"unknown"`;
-- value-scoped invalidation referencing future/concurrent value;
+- duplicate/noncanonical basis entries;
+- basis ValueId from wrong input node;
+- concurrent/future basis reference;
+- illegal ordinary `"unknown"`;
+- future/concurrent value-scoped invalidation reference;
 - selected NodeIdentifier collision;
-- decreasing WriterStateRecord watermark;
-- known graph/journal projection mismatch;
-- mixed old/new journal record representations inside one active replica.
+- decreasing WriterState watermark;
+- known graph/journal mismatch;
+- mixed record formats.
 
-A historical certificate whose explicit input-key set differs from the **current** schema is not corrupt solely for that reason; it is retained history and simply is not current-shape-compatible proof.
+A historical certificate whose explicit input set differs from the current schema is not corrupt solely for that reason; it simply is not current-shape-compatible proof.
 
 ## Transaction failure tests
 
@@ -261,15 +316,11 @@ Inject failures before/during durable publication and assert:
 
 - no half graph/journal commit;
 - failed ordinary operation consumes no durable journal sequence;
-- volatile journal caches do not advance past disk;
-- failed sync/reset/migration before cutover leaves old active supported pair selected.
-
-For a format-changing migration, partial inactive-target rewrite is discardable staging and must never become the active current database.
+- volatile allocator/cache state does not advance past disk;
+- failed sync/reset/migration before cutover leaves old active pair selected.
 
 ## Performance tests are separate from correctness
 
-Issue #1607 may later add asymptotic/performance acceptance tests for synchronization.
+Issue #1607 owns future synchronization performance bounds.
 
-Separately, whole-journal time/I/O for a format-changing migration is an explicit accepted trade-off. Migration tests should not require change-sensitive migration time, though they should verify streaming/bounded-memory behavior where implemented.
-
-Do not weaken correctness/property tests to achieve an optimization. Optimized code should remain differential-testable against the clear reference replay model.
+Whole-journal representation migration cost is separately accepted. Do not weaken correctness/property tests to achieve an optimization.
