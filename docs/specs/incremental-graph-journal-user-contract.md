@@ -113,6 +113,8 @@ Before choosing create versus join, startup queries the configured transport-neu
 
 The artifact is the original bootstrap target version/schema plus exactly the records through the creator's frontier immediately after bootstrap. It does not advance with current cohort state.
 
+The configured cohort source must keep that immutable artifact obtainable for supported late legacy joins. Journal 3 does not prescribe whether the existing transport stores/carries it as a file, branch state, or another mechanism.
+
 A late legacy host therefore never interprets months of post-bootstrap history as part of its bootstrap comparison.
 
 ### Equal legacy occurrences
