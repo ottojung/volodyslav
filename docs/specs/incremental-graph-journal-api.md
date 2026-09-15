@@ -191,7 +191,8 @@ Laws:
 2. reads expose exactly records through that frontier and never post-bootstrap records;
 3. the artifact stays immutable even when the cohort later authors Journal history or migrates active databases;
 4. `databaseVersion` / `graphSchemeString` are the original bootstrap target compatibility metadata;
-5. the artifact is not interchangeable with a later `JournalSnapshot` which merely contains the bootstrap records as a prefix.
+5. the artifact is not interchangeable with a later `JournalSnapshot` which merely contains the bootstrap records as a prefix;
+6. the configured cohort bootstrap source keeps this artifact durably obtainable for supported late legacy joins. The mechanism providing that durability is outside Journal semantics.
 
 ### Cohort bootstrap source decision
 
