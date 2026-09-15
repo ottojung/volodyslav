@@ -217,21 +217,36 @@ Detailed rules are normative in `incremental-graph-journal-migrations.md`.
 After reading the stored database version:
 
 - matching version -> no migration;
-- supported older version -> run its migration;
+- supported older Journal version -> run its Journal-aware migration independently;
 - unsupported version -> fail;
-- supported pre-Journal state -> enter the canonical Journal bootstrap transition.
+- supported pre-Journal state -> run the canonical-bootstrap-source decision below.
 
 Absence of stored version is treated as fresh only under the genuine fresh-creation rules; it does not erase structured existing state whose metadata is malformed/missing.
 
 ### 8.2 Pre-Journal multi-host bootstrap
 
-Replicas expected to synchronize after Journal bootstrap must share one canonical semantic bootstrap history rather than independently minting ValueIds for equivalent legacy state.
+Replicas expected to synchronize after Journal bootstrap use one canonical semantic bootstrap history as the shared ValueId basis, but a late/divergent legacy host may preserve its local legacy delta on top of that basis.
 
-Before crossing that boundary, legacy changes intended to survive must be reconciled while the old compatible synchronization semantics are still available.
+The lifecycle has a configured transport-neutral **cohort bootstrap source**. Before creating or joining bootstrap history, startup obtains exactly one of three outcomes:
 
-One canonical source creates the semantic bootstrap history. Other installations whose reconciled legacy graph matches that canonical state retain the exact same semantic Journal records while preserving their own local writer fingerprint and allocator watermark as specified by `incremental-graph-journal-migrations.md`.
+1. **canonical source exists** -> hold its stable snapshot and `joinCanonicalBootstrap`;
+2. **source definitively does not exist** -> `createCanonicalBootstrap` is allowed;
+3. **query failed or result is indeterminate** -> startup/migration fails and MUST NOT create a competing canonical history.
 
-A divergent legacy installation must not silently bootstrap independently and rely on later Journal synchronization to repair artificial ValueId divergence.
+The cohort bootstrap source is responsible only for the lifecycle decision/canonical snapshot abstraction. Journal 3 does not prescribe how Git or another transport implements it.
+
+A source may report definite absence only when that answer is suitable for first-creator selection; otherwise it must report indeterminate. Distinct canonical bootstrap histories for one cohort are unsupported and require explicit recovery rather than payload-based merge.
+
+When joining an existing canonical bootstrap, the installation:
+
+- retains the canonical semantic records verbatim;
+- preserves its own local writer fingerprint and allocator watermark;
+- compares the canonical projection with its supported local legacy graph;
+- authors only the minimal `reason="bootstrap"` Value/Delete/Validate/Invalidate delta needed to reach that local legacy graph.
+
+Nodes whose immutable semantic occurrence fields match the canonical projection retain the canonical ValueIds. Local legacy changes therefore survive without forcing every unaffected node to acquire a host-local bootstrap identity.
+
+No other host needs to reconcile, acknowledge, or return merely for this installation to complete bootstrap.
 
 ### 8.3 Journal-aware migration
 
@@ -240,12 +255,14 @@ A Journal-aware migration:
 1. validates source Journal/projection under source version;
 2. deterministically rewrites retained records into target representation, preserving old IDs/meaning;
 3. computes target graph under isolated target storage;
-4. preserves existing ValueIds for semantic value occurrences migration keeps;
-5. creates new ValueEvents only for actual new/replaced occurrences;
-6. uses validation/invalidation records for proof/freshness changes without replacing values unnecessarily;
-7. uses one canonical semantic migration result across a synchronization cohort when the transition creates/replaces occurrences;
+4. preserves existing ValueIds for semantic occurrences kept by `keep`, `override`, `invalidate`, or equivalent occurrence-preserving migration decisions;
+5. treats `override()` as a representation rewrite of the same occurrence, not as a new ValueEvent;
+6. creates new ValueEvents only for actual new/replaced semantic occurrences;
+7. uses validation/invalidation records for proof/freshness changes without replacing values unnecessarily;
 8. verifies target replay;
 9. atomically cuts over.
+
+Journal-aware migration does not require one canonical migration participant. Independently migrated replicas may author different ValueIds for genuinely replaced occurrences. When those histories later synchronize, ordinary conflict/certificate rules may make affected dependents stale and require later recomputation/revalidation; that consequence is accepted.
 
 Future replay does not rerun historical migration callbacks.
 
@@ -351,14 +368,15 @@ Journal 3 does not require Byzantine provenance or malicious-peer containment.
 Unsupported operations include:
 
 - manually editing Journal records;
-- changing one record's meaning while keeping its ID;
+- changing one same-version record's semantic meaning while keeping its ID;
 - mixed record formats in one active replica;
 - destructive authoritative-history truncation followed by continued same-writer authoring;
 - independently cloning one writer identity into multiple live writers;
 - manually editing graph sublevels away from Journal replay;
 - bypassing required version migration;
 - forcing ordinary sync/reset across incompatible snapshot metadata;
-- independently creating semantic bootstrap/migration baselines where the canonical cohort rules require one shared baseline;
+- independently creating a second canonical pre-Journal bootstrap after a canonical source already exists;
+- treating semantic-changing `override()` as a representation-only rewrite;
 - treating a checkpoint as replacement authority for missing history.
 
 New recovery/import behavior must be introduced as an explicit controlled transition with stated invariants.
