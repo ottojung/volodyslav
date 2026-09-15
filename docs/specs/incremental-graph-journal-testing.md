@@ -35,7 +35,9 @@ Every ordinary ValidateEvent test also asserts that the basis:
 - contains exactly one entry per current distinct direct input NodeKey;
 - uses no `"unknown"` values;
 - names the finalized current ValueId for each input; and
-- is serialized in canonical NodeKey order.
+- is serialized in canonical persisted `NodeKeyString` order.
+
+Include fixtures where typed `compareNodeKey()` ordering differs from lexicographic serialized NodeKeyString ordering, and assert that the persisted-basis rule follows the latter.
 
 ## Interleaving/model exploration
 
@@ -102,6 +104,8 @@ Cover:
 - same-ID body disagreement fails;
 - no duplicate/re-authored local records during recovery.
 
+For NodeIdentifier allocation, verify that restoration recovers a watermark high enough that the continuing fingerprint namespace never reuses a retired local allocation index.
+
 ## Reset tests
 
 For generated receiver/source projections:
@@ -128,31 +132,39 @@ Construct supported legacy graph states covering:
 
 Bootstrap then assert exact replay equivalence to the original legacy graph.
 
-Bootstrap basis tests also cover canonical NodeKey ordering and `"unknown"` only for missing legacy proof.
+Bootstrap basis tests also cover canonical NodeKeyString ordering and `"unknown"` only for missing legacy proof.
 
 ## Migration tests
 
 For every implemented Journal-3-aware migration:
 
-- run migration target construction;
-- record migration baseline;
-- discard target graph;
-- replay from retained old+journal migration history under target schema;
+- start from a source replica containing only the source `global/version` representation;
+- run the journal representation rewrite into inactive target storage;
+- assert every pre-existing `(author,sequence)` still exists exactly once in the target and no existing coordinate was renumbered;
+- assert semantic causal/reference meaning of every pre-existing record is preserved;
+- migrate the same source record/history independently twice and assert byte/canonical target-record equality;
+- assert the target contains only target-version journal representations and no per-record version fields;
+- run semantic migration target construction and record the migration baseline;
+- discard target graph materialization;
+- replay from the rewritten retained history + migration baseline under target schema;
 - assert target equivalence;
-- assert old record IDs/bodies unchanged;
-- assert old certificates remain self-describing after input order/set changes;
-- assert target certificates use target input keys in canonical NodeKey order;
-- assert old migration callback is not needed during replay.
+- assert historical certificates remain self-describing after input order/set changes;
+- assert target certificates use target input keys in canonical NodeKeyString order;
+- assert old migration callback is not needed during replay;
+- inject failure before cutover and assert the source-format active replica remains selected.
 
-## Codec/version tests
+Include a migration with enough retained records to exercise streaming whole-journal rewrite rather than assuming only current graph state must be visited.
 
-For every supported `recordVersion`:
+## Current-format codec tests
 
-- golden serialized fixtures;
+For each current database version supported by a migration boundary:
+
+- golden serialized fixtures for that version's one journal representation;
 - round-trip semantic equality;
 - malformed-field rejection;
-- historical decoder/upcaster determinism;
-- cross-version record ID meaning preservation.
+- no `recordVersion`/per-record format discriminator in journal records;
+- ordinary current-version replay rejects old-format/mixed-format record bytes rather than invoking an upcaster;
+- explicit source-version migration accepts the old representation only through the migration path and rewrites it completely into target format.
 
 For validation records include fixtures proving that basis canonicalization does not require a historical graph schema.
 
@@ -161,7 +173,7 @@ For validation records include fixtures proving that basis canonicalization does
 Explicitly verify rejection of:
 
 - writer gaps;
-- conflicting same-ID bodies;
+- conflicting same-ID bodies under one current database version;
 - causal-context frontier holes;
 - validation target wrong node;
 - duplicate basis input NodeKeys;
@@ -172,7 +184,8 @@ Explicitly verify rejection of:
 - value-scoped invalidation referencing future/concurrent value;
 - selected NodeIdentifier collision;
 - decreasing WriterStateRecord watermark;
-- known graph/journal projection mismatch.
+- known graph/journal projection mismatch;
+- mixed old/new journal record representations inside one active replica.
 
 A historical certificate whose explicit input-key set differs from the **current** schema is not corrupt solely for that reason; it is retained history and simply is not current-shape-compatible proof.
 
@@ -185,8 +198,12 @@ Inject failures before/during durable publication and assert:
 - volatile journal caches do not advance past disk;
 - failed sync/reset/migration before cutover leaves old active supported pair selected.
 
+For a format-changing migration, partial inactive-target rewrite is discardable staging and must never become the active current database.
+
 ## Performance tests are separate from correctness
 
-Issue #1607 may later add asymptotic/performance acceptance tests.
+Issue #1607 may later add asymptotic/performance acceptance tests for synchronization.
+
+Separately, whole-journal time/I/O for a format-changing migration is an explicit accepted trade-off. Migration tests should not require change-sensitive migration time, though they should verify streaming/bounded-memory behavior where implemented.
 
 Do not weaken correctness/property tests to achieve an optimization. Optimized code should remain differential-testable against the clear reference replay model.
