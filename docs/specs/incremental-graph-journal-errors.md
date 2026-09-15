@@ -10,20 +10,22 @@ Exact JavaScript class names may differ, but the categories below are normative.
 
 Meaning:
 
-> Two records claim the same `(author, sequence)` identity but have different canonical meaning.
+> Two records claim the same `(author, sequence)` identity but have different canonical current-format meaning.
 
 Examples:
 
 - receiver and source disagree on `A:42` body;
-- record version/body/context/authority differs for one ID;
+- body/context/authority differs for one ID;
 - same-writer restoration discovers divergent overlapping prefixes.
 
 Required behavior:
 
 - do not merge by conflict authority;
 - do not compare payloads to choose one;
-- do not rewrite either record ID;
+- do not rewrite either record ID during ordinary sync/recovery;
 - fail the operation before active cutover.
+
+A supported database migration may deterministically rewrite the representation of both copies from one whole-database version to another while preserving the same ID/historical meaning. That controlled format migration is not a fork.
 
 ## JournalGapError
 
@@ -83,21 +85,23 @@ Required behavior:
 
 Meaning:
 
-> A record cannot be decoded/validated according to its persisted record version and kind contract.
+> A record cannot be decoded/validated according to the replica's current `global/version` journal contract.
 
 Examples:
 
-- unknown unsupported record version;
+- bytes/body shape not valid for the current database version;
 - malformed fields;
 - invalid timestamps;
 - duplicate validation-basis input NodeKeys;
-- validation-basis entries not in canonical NodeKey order for the record version;
+- validation-basis entries not in canonical current-version NodeKeyString order;
 - ordinary validation using `"unknown"`;
 - known basis ValueId names a ValueEvent for a different semantic input NodeKey;
 - validation target ValueId names a non-ValueEvent or wrong semantic node;
 - invalid NodeIdentifier representation.
 
 A historical certificate whose explicit input-key set differs from the **current** schema is not malformed solely for that reason. It remains valid historical evidence; replay simply does not treat it as current-shape-compatible proof.
+
+There is no ordinary per-record version fallback. Source-version bytes are read only by the explicit database migration path for that source `global/version`; a current replica containing mixed old/new record formats is unsupported.
 
 Required behavior:
 
@@ -119,14 +123,14 @@ This is incompatibility, not corruption.
 
 Required behavior:
 
-- do not attempt implicit migration inside ordinary sync;
-- lifecycle may migrate one/both sides through the supported migration path, then retry.
+- do not attempt per-record upcast/downcast or implicit migration inside ordinary sync;
+- lifecycle may migrate one/both sides through the supported whole-database migration path, then retry.
 
 ## JournalProjectionError
 
 Meaning:
 
-> Retained history decodes and is structurally journal-valid, but deterministic replay cannot produce a supported IncrementalGraph projection.
+> Retained current-format history is structurally journal-valid, but deterministic replay cannot produce a supported IncrementalGraph projection.
 
 Examples:
 
@@ -214,6 +218,6 @@ vs rebuildable derived-state mismatch
 vs authoritative corruption/fork
 ```
 
-Error messages should identify the relevant writer/sequence/node/version where possible.
+Error messages should identify the relevant writer/sequence/node/database version where possible.
 
 They must not claim a graph conflict when the actual problem is immutable writer-history disagreement.
