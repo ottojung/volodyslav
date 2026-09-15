@@ -177,11 +177,22 @@ After recovery, new local A records start strictly after q and local writer allo
 
 If any overlapping A record differs, recovery must fail.
 
-## Law 9: synchronization projection law
+## Law 9: synchronization projection and compatibility law
 
-Let R and S be compatible supported journals at one current database version.
+Let receiver R and one held source `JournalSnapshot S` be candidates for ordinary synchronization.
 
-Let J0 be their compatible prefix union, and let `normalizeSync(R,J0)` append exactly the receiver-authored normalization required by the sync specification, producing Jfinal.
+Before source records are interpreted/imported:
+
+```text
+S.databaseVersion == R.databaseVersion
+S.graphSchemeString == R.graphSchemeString
+```
+
+must hold exactly, where both source compatibility fields come from the **same immutable snapshot** as S's frontier and records.
+
+A mismatch is `JournalVersionCompatibilityError`; ordinary sync does not migrate either side.
+
+After that compatibility check, let J0 be the compatible prefix union of receiver history and S's retained history, and let `normalizeSync(R,J0)` append exactly the receiver-authored normalization required by the sync specification, producing Jfinal.
 
 A successful synchronization commits:
 
@@ -193,6 +204,8 @@ receiverGraph   = project(Jfinal)
 and retains every source/receiver historical record unchanged by synchronization.
 
 No imported record body is modified by sync.
+
+The compatibility check must not be performed against metadata read from a different mutable source state before `openSnapshot()`.
 
 ## Law 10: repeat synchronization no-op
 
@@ -216,7 +229,7 @@ For source S:
 Sync(empty,S)
 ```
 
-uses the same suffix import, validation, normalization, and replay rules as a receiver missing only a later suffix.
+uses the same compatibility check, suffix import, validation, normalization, and replay rules as a receiver missing only a later suffix.
 
 Any optimization for initial transfer must be observationally equivalent to this rule.
 
@@ -228,13 +241,27 @@ If retained union would select a current cached value K while some direct requir
 
 A value must not merely be hidden from the materialized graph while remaining the selected current semantic head in a way that would allow it to reappear automatically later.
 
-## Law 13: persistent propagated staleness
+## Law 13: persistent propagated staleness for the selected current occurrence
 
-Suppose receiver node K has current ValueId V and is fresh before synchronization.
+Let J1/P1 be the post-union, post-dependency-closure tentative synchronization state.
 
-If synchronization keeps V selected but causes K to become stale, then the final journal contains an uncovered value-scoped invalidation of V (imported or receiver-authored) sufficient to keep K stale until K itself revalidates/recomputes.
+Suppose K is present in P1 with selected current ValueId V and selected certificate C such that:
 
-Consequently, later revalidation of an upstream input without value change must not automatically make K fresh.
+```text
+C is eligible for K under the current schema
+for every direct input D:
+    basisValue(C,D) == P1.valueId(D)
+there is no uncovered value-scoped invalidation of V relative to C
+there exists a direct input D whose P1 freshness is stale
+```
+
+Then the final synchronization journal must contain an uncovered value-scoped invalidation of V sufficient to keep K stale until K itself revalidates/recomputes.
+
+This requirement is independent of whether V was selected on the receiver before synchronization. In particular it applies when synchronization selects a **new remote ValueId** for K.
+
+Consequently, if an upstream stale input later revalidates `Unchanged` without changing its ValueId, K must not become fresh automatically.
+
+No additional sync marker is required when K is stale because of a basis mismatch, an uncovered node-scoped invalidation, or an already-uncovered current-value invalidation: those causes are already persistent independently of recursive input freshness.
 
 This reproduces the existing flag-based invalidation contract.
 
@@ -280,17 +307,26 @@ If another ValueId becomes current, the old occurrence's value-scoped stale mark
 
 The historical invalidation remains retained for replay/debugging.
 
-## Law 17: reset target theorem
+## Law 17: reset target and snapshot compatibility theorem
 
-Let S be the stable reset source and:
+Let S be the one held stable reset `JournalSnapshot`.
+
+Reset first requires exact compatibility from that snapshot itself:
+
+```text
+S.databaseVersion == receiver.databaseVersion
+S.graphSchemeString == receiver.graphSchemeString
+```
+
+Then let:
 
 ```text
 PS = project(S)
 ```
 
-Let reset observe/import the defined receiver+source history and append its reset baseline Jreset.
+and let reset observe/import the defined receiver+source history and append its reset baseline Jreset.
 
-Then after successful reset:
+After successful reset:
 
 ```text
 semanticGraph(project(Jreset))
@@ -302,6 +338,8 @@ for present keys, payloads, timestamps, freshness, and validity.
 Current ValueIds may differ because reset creates new baseline occurrences. Receiver-local allocator state remains receiver-local.
 
 Unseen third-party history remains concurrent and may affect later synchronization normally.
+
+The compatibility metadata and source journal used by reset must belong to the same held snapshot; an independently mutable pre-check is insufficient.
 
 ## Law 18: repeat reset may be a no-op
 
@@ -424,7 +462,7 @@ The finiteness argument is:
 
 - normalization creates no new ValueEvent or ValidateEvent;
 - a sync delete defeats the already-observed positive head which required structural repair, and another repair for that node can require only some previously unseen finite positive history;
-- a sync value-scoped invalidation fixes one exact ValueId stale and normalization cannot clear it because it creates no validation;
+- a sync value-scoped invalidation fixes one exact current ValueId stale, including a newly selected imported occurrence, and normalization cannot clear it because it creates no validation;
 - each newly learned finite fact has only a finite dependent closure in the finite DAG.
 
 This law does **not** require counterfactual confluence. Two different synchronization schedules may have committed different real normalization events before all concurrent facts were observed, and therefore may define different histories/results. Each actual fair execution must converge relative to the events it actually authored.
@@ -440,8 +478,11 @@ At minimum, implementation work should include tests/models which exercise:
 - multi-input certificates with competing partial basis matches;
 - canonical self-describing basis encoding and current-schema eligibility;
 - receiver-only dependent stale propagation;
+- **newly selected remote dependent occurrence becoming stale solely because a receiver-local upstream occurrence is stale, followed by upstream `Unchanged`, proving the remote dependent stays stale**;
 - dependency deletion closure;
 - repeat synchronization;
+- source snapshot version/schema compatibility and migration-between-precheck-and-snapshot race prevention;
+- reset snapshot compatibility from the same held source snapshot;
 - fair-execution normalization termination with multiple source orders;
 - same-writer exact-prefix recovery and fork rejection;
 - bootstrap of stale nodes with partial validity;
