@@ -107,6 +107,8 @@ Failed operations consume no durable Journal coordinate.
 
 A persisted event context is semantic history, not merely “writers explicitly referenced by this event.” If a publication observed B:7 and B:7 observed A:11, the new event context includes A through at least 11 even if the new event directly references only B.
 
+The only controlled exception is pre-Journal legacy-value conversion described by `incremental-graph-journal-migrations.md`: a bootstrap ValueEvent represents a historical legacy occurrence and deliberately does not claim causal observation of canonical bootstrap values merely because migration code read the canonical artifact. This exception is not available to ordinary publication.
+
 ## JournalImportTarget
 
 ```text
@@ -166,6 +168,31 @@ Reset requires an already-established writable receiver and uses one held compat
 
 Bootstrap/migration is owned by database lifecycle rather than an unrestricted journal writer API.
 
+### CanonicalBootstrapSnapshot
+
+The canonical pre-Journal basis is represented by a frozen lifecycle artifact, not an ordinary current Journal snapshot:
+
+```text
+CanonicalBootstrapSnapshot {
+    databaseVersion: Version
+    graphSchemeString: string
+    creatorWriter: JournalAuthor
+    bootstrapFrontier: JournalFrontier
+
+    get(author, sequence) -> JournalRecord | undefined
+    iterate(author, afterExclusive, throughInclusive)
+        -> AsyncIterable<JournalRecord>
+}
+```
+
+Laws:
+
+1. `bootstrapFrontier` is exactly the creator frontier at the end of the canonical bootstrap publication;
+2. reads expose exactly records through that frontier and never post-bootstrap records;
+3. the artifact stays immutable even when the cohort later authors Journal history or migrates active databases;
+4. `databaseVersion` / `graphSchemeString` are the original bootstrap target compatibility metadata;
+5. the artifact is not interchangeable with a later `JournalSnapshot` which merely contains the bootstrap records as a prefix.
+
 ### Cohort bootstrap source decision
 
 Conceptually the lifecycle has:
@@ -173,7 +200,7 @@ Conceptually the lifecycle has:
 ```text
 CohortBootstrapSource {
     queryCanonicalBootstrap() ->
-        Exists(JournalSnapshot)
+        Exists(CanonicalBootstrapSnapshot)
       | DefinitelyAbsent
       | IndeterminateOrError
 }
@@ -181,29 +208,37 @@ CohortBootstrapSource {
 
 The source-discovery/carry mechanism is outside Journal semantics. The decision semantics are normative:
 
-- `Exists(snapshot)` -> `joinCanonicalBootstrap(legacyState, snapshot)`;
+- `Exists(snapshot)` -> validate exact bootstrap-target version/schema, then `joinCanonicalBootstrap(legacyState, snapshot)`;
 - `DefinitelyAbsent` -> `createCanonicalBootstrap(legacyState)`;
 - `IndeterminateOrError` -> fail; MUST NOT create.
 
-A source may return `DefinitelyAbsent` only when that result is suitable for first-creator arbitration. Competing canonical histories are unsupported.
+A source may return `DefinitelyAbsent` only when that result is suitable for first-creator arbitration. Competing canonical artifacts are unsupported.
+
+`createCanonicalBootstrap` does not complete until the immutable canonical artifact is durably established. Ordinary post-bootstrap Journal authoring begins only afterward.
 
 ### Canonical bootstrap operations
 
 ```text
 createCanonicalBootstrap(legacyState)
-joinCanonicalBootstrap(legacyState, canonicalSnapshot)
+joinCanonicalBootstrap(legacyState, canonicalBootstrapSnapshot)
 ```
 
-`createCanonicalBootstrap` authors the shared semantic basis once.
+`createCanonicalBootstrap` authors the shared semantic basis once and freezes its final frontier as the canonical artifact.
 
-`joinCanonicalBootstrap` does **not** require exact legacy graph equality. It:
+`joinCanonicalBootstrap` is **not reset**. It:
 
-1. retains canonical records verbatim;
-2. projects them with the joining installation's existing fingerprint as `localWriter`;
-3. applies the reset specification's minimal Pass 1–3 logic with the local legacy graph as target and reason `"bootstrap"`;
-4. preserves canonical ValueIds for unaffected equal occurrences;
-5. authors joining-writer Value/Delete/Validate/Invalidate records only for the local legacy delta;
-6. preserves the joining installation's allocator watermark.
+1. requires the artifact's exact `databaseVersion` / `graphSchemeString` to equal the supported legacy->Journal bootstrap target; mismatch is `JournalVersionCompatibilityError` before history is authored;
+2. retains exactly the canonical records through `bootstrapFrontier`;
+3. preserves the joining installation's own writer fingerprint/allocator state;
+4. reuses canonical ValueIds for equal legacy occurrences;
+5. converts local-only/different legacy occurrences into joining-writer `ValueEvent(reason="bootstrap")` records with authority seeded from their own legacy `modifiedAt` and without synthetic causal observation of canonical value events;
+6. lets normal Journal authority resolve conflicting concurrent legacy occurrences;
+7. establishes required bootstrap proof/freshness metadata only after the value occurrences exist;
+8. does not author a DeleteEvent merely because a node is absent from one legacy replica while present in the canonical basis.
+
+The result need not equal the joining legacy graph at conflicting values: conflict authority decides. Upgrade time never overrides the legacy modifiedAt policy.
+
+After installing the bootstrap-target database, lifecycle code runs the ordinary supported Journal-aware migration chain to the running version. Post-bootstrap cohort history is imported later only through ordinary compatible synchronization.
 
 ### Journal-aware migration operations
 
@@ -213,9 +248,11 @@ computeMigrationTarget(...)
 applyRequiredSemanticMigration(...)
 ```
 
+The representation rewrite is a canonical per-record transform. If ValueEvent payload representation changes, one pure version-migration codec is applied identically to every retained affected ValueEvent regardless of selection or replica-local state.
+
 The semantic phase preserves existing ValueIds for occurrence-preserving decisions and appends only semantic records needed for the target state.
 
-`override()` is occurrence-preserving even when target-version payload representation changes. That representation change belongs to `rewriteJournalFormat(...)`; the selected `ValueEvent` keeps its `JournalRecordId` and semantic meaning.
+`override()` is occurrence-preserving, but its callback is not authoritative record-rewrite input for Journal-aware history. Its selected-record result must equal the canonical per-record codec output; otherwise migration fails before cutover.
 
 Journal-aware migration does not require one canonical migration participant. Replicas may independently author distinct new ValueIds for genuine created/replaced occurrences; later synchronization may stale dependents whose certificates name a losing replacement occurrence.
 
