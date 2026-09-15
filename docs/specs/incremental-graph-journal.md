@@ -6,7 +6,7 @@ Journal 3 is the append-only replay log for IncrementalGraph state.
 
 The journal is the semantic source of truth. Existing IncrementalGraph persistence remains the efficient materialized representation used by the runtime, but its semantic contents are derived from retained Journal history rather than carrying independent synchronization authority.
 
-This specification defines the journal itself and its integration with IncrementalGraph. It intentionally does not define a concrete remote/backend product protocol and does not redefine how an existing transport such as Git discovers or carries a stable journal snapshot.
+This specification defines the journal itself and its integration with IncrementalGraph. It intentionally does not define a concrete remote/backend product protocol and does not redefine how an existing transport such as Git discovers or carries stable Journal lifecycle sources.
 
 The specification is split by responsibility across types/well-formedness, replay, emission, locking, API, synchronization, reset, migration, laws, examples, testing, storage, and lifecycle documents.
 
@@ -62,6 +62,8 @@ Journal records carry no per-record format version. A format-changing migration 
 
 Ordinary replay/synchronization never mixes or converts record formats.
 
+A frozen pre-Journal canonical-bootstrap artifact is lifecycle source state, not an active replica, and may remain encoded at its original bootstrap target version after active replicas migrate forward.
+
 ## Core invariants
 
 ### J3-INV-1: replay completeness
@@ -102,6 +104,8 @@ F.context[W] == q - 1
 and every semantic event included by F's context has all of its own context included componentwise in F's context.
 
 Therefore `happenedBefore` is transitive and represents genuine causal ancestry rather than one-hop observation.
+
+Pre-Journal historical conversion may deliberately omit canonical foreign coordinates from a joining legacy ValueEvent when the legacy occurrence did not actually observe that canonical value. The context stored on the event remains closed over the coordinates it does include.
 
 ### J3-INV-6: authority extends causality
 
@@ -192,21 +196,44 @@ If synchronized state exists, receiver-less restore adopts the held snapshot's `
 
 ## Canonical initial bootstrap
 
-Legacy replicas expected to synchronize after Journal introduction share one canonical semantic bootstrap basis.
+Legacy replicas expected to synchronize after Journal introduction share one canonical semantic bootstrap cut.
 
-The configured transport-neutral cohort bootstrap source yields one of: existing canonical snapshot, definite absence suitable for first creation, or indeterminate/error. Indeterminate/error fails rather than authorizing a competing canonical history.
+The configured transport-neutral cohort bootstrap source yields one of:
 
-A joining legacy installation may differ from the canonical projection. It retains canonical records verbatim and appends only a local `reason="bootstrap"` delta needed to reproduce its supported legacy graph. Unaffected equal occurrences retain canonical ValueIds; local differences survive under the joining writer.
+```text
+Exists(CanonicalBootstrapSnapshot)
+DefinitelyAbsent
+IndeterminateOrError
+```
 
-No other host must reconcile, acknowledge, or return merely for this host to finish bootstrap.
+Indeterminate/error fails rather than authorizing a competing canonical history.
+
+The canonical artifact is frozen at the creator's exact frontier immediately after bootstrap, with the bootstrap target version/schema, before any ordinary Journal authoring. A later current `JournalSnapshot` is not a substitute.
+
+A joining legacy installation is converted relative to **that historical cut only**:
+
+- an occurrence equal to the canonical occurrence reuses its canonical ValueId;
+- a local-only/different legacy occurrence becomes a joining-writer historical bootstrap ValueEvent;
+- a divergent legacy value does not become causally later than a canonical value merely because bootstrap code observed the artifact;
+- concurrent legacy value conflict uses authority seeded from each occurrence's legacy `modifiedAt`;
+- canonical presence plus joining-host cache absence does not create a DeleteEvent;
+- proof/freshness evidence is added after value occurrences are represented.
+
+Consequently bootstrap join is not reset and does not promise to reproduce the joining host's cache at conflicting values. Normal conflict authority decides.
+
+After the bootstrap-target database is installed, the host runs the supported Journal-aware migration chain to the running version. Post-bootstrap cohort history is imported only later through ordinary compatible synchronization.
+
+No particular peer must reconcile, acknowledge, or return merely for a host to finish bootstrap; the configured source must only make the immutable canonical artifact available.
 
 ## Migration model
 
 Format migration rewrites retained representation deterministically while preserving historical identities and semantic meaning.
 
+When a ValueEvent payload representation changes, one pure per-record version codec is applied to every retained affected ValueEvent regardless of whether that record is selected on the local replica.
+
 Semantic migration preserves existing selected ValueIds for occurrence-preserving decisions including `keep`, `override`, `invalidate`, schema/proof/freshness-only changes, and representation-only changes.
 
-`override()` may change target-version payload representation but does not create a new occurrence.
+For Journal-aware `override()`, callback output is an assertion that the selected record's canonical rewritten payload is correct. The callback cannot independently produce a different body for the same immutable historical ID; mismatch fails before cutover.
 
 New ValueEvents are created only for actual semantic create/replace occurrence changes.
 
@@ -217,6 +244,8 @@ Journal-aware migrations do not require one canonical migration participant. Ind
 Reset retains history and targets one compatible source projection relative to observed history.
 
 It preserves a selected current ValueId when the receiver/source union already has the same requested semantic occurrence, creates a new ValueEvent only when the occurrence must change, and uses proof/freshness records for remaining differences.
+
+Reset events intentionally causally follow the observed union they repair. That semantics is not used for pre-Journal bootstrap value conflict conversion.
 
 Repeated already-satisfied reset may be a no-op.
 
