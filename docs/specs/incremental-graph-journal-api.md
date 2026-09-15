@@ -12,15 +12,7 @@ This API does not define or replace a Git/backend protocol.
 
 Application code continues to use `pull()`, `invalidate()`, and inspection APIs.
 
-Ordinary callers never supply:
-
-- Journal IDs/sequences;
-- causal contexts;
-- authority times;
-- ValueIds;
-- writer identities.
-
-Journal emission is derived from the committed graph transition.
+Ordinary callers never supply Journal IDs/sequences, causal contexts, authority times, ValueIds, or writer identities. Journal emission is derived from the committed graph transition.
 
 No ordinary raw-journal mutation API such as `appendArbitraryJournalRecord()` or `setJournalFrontier()` is supported.
 
@@ -41,8 +33,6 @@ A supported committed database always pairs one retained journal with its matchi
 
 ## JournalSnapshot compatibility metadata
 
-A snapshot includes the existing durable interpretation metadata:
-
 ```text
 JournalSnapshot {
     databaseVersion: Version
@@ -56,9 +46,7 @@ JournalSnapshot {
 }
 ```
 
-`databaseVersion` is the exact persisted `global/version`.
-
-`graphSchemeString` is the exact persisted `global/graph_scheme` string. Textually distinct strings are distinct even if they parse to equivalent JSON under some external comparison.
+`databaseVersion` is the exact persisted `global/version`. `graphSchemeString` is the exact persisted `global/graph_scheme` string.
 
 Snapshot laws:
 
@@ -66,15 +54,13 @@ Snapshot laws:
 2. all remain stable for the snapshot lifetime;
 3. `iterate(A,p,q)` yields exactly `A:(p+1)..q` when q is within the captured frontier;
 4. ranges never silently skip coordinates;
-5. exposed semantic events have already-defined immutable bodies/contexts;
-6. the captured retained history is contiguous and every semantic-event context is a transitively causally closed cut;
+5. exposed semantic events have immutable same-version bodies/contexts;
+6. retained history is contiguous and every semantic-event context is a transitively closed cut;
 7. snapshot reads never invoke computors or mutate graph/journal state.
 
 A transport adapter may implement this abstraction using its existing mechanisms. Journal 3 does not prescribe those mechanisms.
 
 ## JournalSyncSource
-
-Conceptually:
 
 ```text
 JournalSyncSource {
@@ -82,13 +68,11 @@ JournalSyncSource {
 }
 ```
 
-Synchronization/reset obtains compatibility metadata **from the returned held snapshot itself**. An earlier mutable metadata query is not sufficient.
+Synchronization/reset obtains compatibility metadata from the returned held snapshot itself. An earlier mutable metadata query is insufficient.
 
 ## JournalPublication
 
 Ordinary graph operations stage semantic intents before commit but do not reserve durable Journal coordinates early.
-
-Conceptually:
 
 ```text
 JournalPublication {
@@ -111,25 +95,19 @@ During serialized finalization the implementation:
 4. finalizes validation bases from final current input ValueIds;
 5. allocates one contiguous writer sequence block;
 6. assigns exact event IDs/ValueIds in deterministic topological order;
-7. assigns every semantic event `(W,q)` an own-writer context coordinate exactly `q-1`;
-8. starts its cross-writer context from the complete causally closed frontier the publication observed, thereby preserving transitive closure;
+7. assigns every semantic event `(W,q)` own-writer context exactly `q-1`;
+8. starts cross-writer context from the complete causally closed frontier observed by the publication;
 9. resolves same-publication references only to earlier records;
-10. allocates AuthorityTimes which extend every causal predecessor;
-11. writes finalized Journal records and matching graph mutations atomically.
+10. allocates AuthorityTimes extending every causal predecessor;
+11. writes Journal records and matching graph mutations atomically.
 
 Failed operations consume no durable Journal coordinate.
 
-## Context construction is not optional metadata
+## Context construction is semantic
 
-A persisted event context is semantic history. It must never be populated as merely “writers explicitly referenced by this event.”
-
-If the publication observed event B:7 and B:7 observed A:11, the new event context must include A through at least 11 even if the new event directly references only B.
-
-This is what makes `happenedBefore` transitive and makes invalidation coverage trustworthy.
+A persisted event context is semantic history, not merely “writers explicitly referenced by this event.” If a publication observed B:7 and B:7 observed A:11, the new event context includes A through at least 11 even if the new event directly references only B.
 
 ## JournalImportTarget
-
-Synchronization imports foreign immutable records rather than re-authoring them:
 
 ```text
 JournalImportTarget {
@@ -140,129 +118,94 @@ JournalImportTarget {
 }
 ```
 
-Import validation rejects at least:
+Import validation rejects at least writer-prefix gaps, same-ID body disagreement, invalid current-version bytes, missing or non-transitively-closed contexts, wrong own-writer context, authority not extending causality, impossible ValueId references, malformed validation bases, and projection/invariant failure.
 
-- writer-prefix gaps;
-- same-ID body disagreement;
-- bytes invalid under the current database version;
-- event contexts whose coordinates are missing;
-- event contexts whose own-writer coordinate is not sequence minus one;
-- event contexts which include an event but omit that event's causal predecessors;
-- happened-before edges not extended by authority;
-- impossible ValueId references;
-- malformed/noncanonical validation bases;
-- projection/invariant failure.
-
-An imported record is never rewritten locally to repair any of those conditions.
-
-Staging may be incomplete while transfer is underway, but unsupported partial history is never activated.
+An imported record is never rewritten locally to repair those conditions. Staging may be incomplete during transfer, but unsupported partial history is never activated.
 
 ## Replay API
-
-Conceptually:
 
 ```text
 projectJournal(snapshot, localWriter, graphSchema)
     -> ProjectedIncrementalGraphState
 ```
 
-Production may use indexes/incremental folding/checkpoints, but an internal validation/rebuild path must remain equivalent to full normative replay.
-
-A conceptual maintenance operation is:
-
-```text
-rebuildProjectionFromJournal()
-```
-
-which may rebuild derived graph/index state but not authoritative history.
+Production may use indexes/incremental folding/checkpoints, but an internal validation/rebuild path remains equivalent to full normative replay.
 
 ## Pairwise synchronization API
-
-Conceptually:
 
 ```text
 synchronizeFrom(source: JournalSyncSource) -> Promise<SyncResult>
 ```
 
-with meanings such as:
-
-```text
-SyncResult = {
-    imported: JournalFrontierDelta,
-    authoredThrough: JournalSequence,
-    changed: boolean
-}
-```
-
-Success means:
-
-- source compatibility was checked from the held snapshot;
-- source records were retained unchanged;
-- all imported/local semantic-event contexts are valid closed cuts;
-- required receiver normalization is included;
-- active graph equals replay of active Journal.
+Success means source compatibility was checked from the held snapshot, source records were retained unchanged, all contexts are valid closed cuts, required normalization is included, and active graph equals active Journal replay.
 
 A fully absent installation cannot call this operation because no receiver writer identity exists yet.
 
 ## Receiver-less absent-state restore API
-
-The lifecycle needs a separate conceptual operation:
 
 ```text
 restoreAbsentFrom(source: InstallationRecoverySource)
     -> Promise<RestoredDatabase>
 ```
 
-where `InstallationRecoverySource` is the configured transport-neutral source for **this installation's own synchronized state**.
+`InstallationRecoverySource` is the configured transport-neutral source for this installation's own synchronized state.
 
-The operation:
+The operation adopts `snapshot.localWriter`, restores retained history/projection/allocator state, creates no semantic history merely for restoration, and then hands the restored database to the normal migration gate.
 
-1. opens one held source snapshot;
-2. adopts `snapshot.localWriter` as the continuing local `DatabaseFingerprint`/writer;
-3. restores retained history/projection/allocator state for that installation;
-4. creates no new semantic history merely for restoration;
-5. hands the restored database to the normal migration gate before graph APIs are exposed.
-
-If querying/opening known synchronized installation state fails, startup fails. This API must not silently return “fresh database.”
-
-Fresh creation is a separate lifecycle result used only when the recovery source definitively reports absence.
-
-The source-discovery mechanism itself is outside Journal semantics.
+If querying/opening known synchronized installation state fails, startup fails. Fresh creation is separate and allowed only after definite absence.
 
 ## Reset API
-
-Conceptually:
 
 ```text
 resetTo(source: JournalSyncSource) -> Promise<ResetResult>
 ```
 
-Reset requires an already-established writable receiver.
-
-It uses one held compatible source snapshot and the minimal deterministic rules in `incremental-graph-journal-reset.md`:
-
-- preserve a selected current ValueId when the union already selects the requested immutable value occurrence;
-- create a ValueEvent only when the target value occurrence must actually change;
-- use ValidateEvent/InvalidateEvent for proof/freshness changes;
-- author DeleteEvent exactly when a currently selected value must become target absence;
-- repeated already-satisfied reset may no-op.
-
-Reset retains old history; it never replaces the receiver Journal wholesale.
+Reset requires an already-established writable receiver and uses one held compatible source snapshot plus the minimal deterministic rules in `incremental-graph-journal-reset.md`.
 
 ## Bootstrap/migration API boundary
 
-Bootstrap/migration remains owned by the database lifecycle rather than an unrestricted journal writer API.
+Bootstrap/migration is owned by database lifecycle rather than an unrestricted journal writer API.
 
-Pre-Journal bootstrap has two semantic roles:
+### Cohort bootstrap source decision
+
+Conceptually the lifecycle has:
+
+```text
+CohortBootstrapSource {
+    queryCanonicalBootstrap() ->
+        Exists(JournalSnapshot)
+      | DefinitelyAbsent
+      | IndeterminateOrError
+}
+```
+
+The source-discovery/carry mechanism is outside Journal semantics. The decision semantics are normative:
+
+- `Exists(snapshot)` -> `joinCanonicalBootstrap(legacyState, snapshot)`;
+- `DefinitelyAbsent` -> `createCanonicalBootstrap(legacyState)`;
+- `IndeterminateOrError` -> fail; MUST NOT create.
+
+A source may return `DefinitelyAbsent` only when that result is suitable for first-creator arbitration. Competing canonical histories are unsupported.
+
+### Canonical bootstrap operations
 
 ```text
 createCanonicalBootstrap(legacyState)
 joinCanonicalBootstrap(legacyState, canonicalSnapshot)
 ```
 
-The first authors one canonical semantic bootstrap history for a reconciled synchronization cohort. The second verifies legacy graph equivalence, retains those exact semantic records, preserves the joining installation's own local writer/allocator state, and does not mint duplicate ValueIds.
+`createCanonicalBootstrap` authors the shared semantic basis once.
 
-Journal-aware migration separates:
+`joinCanonicalBootstrap` does **not** require exact legacy graph equality. It:
+
+1. retains canonical records verbatim;
+2. projects them with the joining installation's existing fingerprint as `localWriter`;
+3. applies the reset specification's minimal Pass 1–3 logic with the local legacy graph as target and reason `"bootstrap"`;
+4. preserves canonical ValueIds for unaffected equal occurrences;
+5. authors joining-writer Value/Delete/Validate/Invalidate records only for the local legacy delta;
+6. preserves the joining installation's allocator watermark.
+
+### Journal-aware migration operations
 
 ```text
 rewriteJournalFormat(...)
@@ -270,15 +213,17 @@ computeMigrationTarget(...)
 applyRequiredSemanticMigration(...)
 ```
 
-The semantic phase preserves existing ValueIds for preserved occurrences and appends only the value/delete/proof/freshness events actually needed for the target state.
+The semantic phase preserves existing ValueIds for occurrence-preserving decisions and appends only semantic records needed for the target state.
 
-When migration genuinely creates/replaces occurrences, the cohort uses one canonical semantic migration history as defined by the migration specification; peers do not independently mint equivalent new ValueIds.
+`override()` is occurrence-preserving even when target-version payload representation changes. That representation change belongs to `rewriteJournalFormat(...)`; the selected `ValueEvent` keeps its `JournalRecordId` and semantic meaning.
+
+Journal-aware migration does not require one canonical migration participant. Replicas may independently author distinct new ValueIds for genuine created/replaced occurrences; later synchronization may stale dependents whose certificates name a losing replacement occurrence.
 
 These are lifecycle semantics, not a remote protocol definition.
 
 ## Error categories
 
-Lifecycle/admin callers must be able to distinguish at least:
+Lifecycle/admin callers must distinguish at least:
 
 ```text
 JournalForkError
