@@ -6,7 +6,7 @@ This document defines controlled reset of an existing Journal 3 database to the 
 
 Reset is not history replacement.
 
-The receiver keeps its retained journal history, imports any missing source history, and then appends a causally later receiver-authored reset baseline whose projection has the requested source graph semantics.
+The receiver keeps retained history, imports missing source history, and appends only the receiver-authored semantic records required to make its projection observationally equal to the requested source projection.
 
 There is no journal incarnation, history truncation, cursor invalidation, or replacement of the receiver stream.
 
@@ -20,7 +20,7 @@ resetTo(source: JournalSyncSource) -> ResetResult
 
 The source provides one fixed `JournalSnapshot` as defined by `incremental-graph-journal-api.md`.
 
-The concrete outer lifecycle may identify that source by hostname, local snapshot, or another transport concept. Those transport identifiers are outside reset semantics.
+The outer lifecycle may identify that source through any configured transport-neutral mechanism. Transport identifiers are outside reset semantics.
 
 ## Preconditions
 
@@ -28,52 +28,65 @@ Reset requires:
 
 - a valid writable Journal 3 receiver;
 - one stable causally closed source snapshot;
-- exact compatibility between the source snapshot's `databaseVersion` / `graphSchemeString` and the receiver's active committed `global/version` / `global/graph_scheme` values;
+- exact compatibility between the source snapshot's `databaseVersion` / `graphSchemeString` and the receiver's active `global/version` / `global/graph_scheme`;
 - exclusive maintenance ownership of the receiver;
-- no conflicting record content for any overlapping `JournalRecordId`.
+- no conflicting content for overlapping `JournalRecordId`s.
 
-The compatibility metadata must come from the **same held `JournalSnapshot`** used to derive the reset target and import source records. Reset must not perform an earlier independent mutable metadata read and then open a later snapshot, because a source migration/cutover between those reads could pair one version/schema decision with another version's journal history.
+Compatibility metadata must come from the same held `JournalSnapshot` used to derive the target and import source records.
 
-A compatibility mismatch fails with `JournalVersionCompatibilityError`. Reset does not perform an implicit source migration.
+If the source contains a longer exact prefix of the receiver's own writer stream, reset first performs the same safe same-writer recovery defined by synchronization. A divergent overlap is a hard fork.
 
-If the source contains a longer exact prefix of the receiver's own writer stream, reset first performs the same safe same-writer prefix recovery defined by synchronization. If overlapping same-writer content disagrees, reset fails rather than forking the writer history.
+An installation with no local database/writer identity uses the absent-state restoration lifecycle in `database-lifecycle.md`; `resetTo()` does not invent a local writer identity for an absent receiver.
 
 ## Source target
 
 Let:
 
 ```text
-S = the held compatible source JournalSnapshot
+S  = held compatible source JournalSnapshot
 PS = project(S)
 ```
 
-`PS` is the semantic graph target requested by reset.
+`PS` is the semantic graph target.
 
-The reset result need not use the source's current ValueIds or host-local allocator watermark. It must have an observationally equivalent IncrementalGraph projection for semantic nodes, values, timestamps, freshness, and validity, subject only to explicitly local allocator state.
+Reset targets observable IncrementalGraph semantics:
+
+- presence;
+- payload;
+- NodeIdentifier;
+- createdAt/modifiedAt;
+- freshness;
+- semantic validity edges.
+
+It does not require the receiver to end with the same ValueIds as the source when a replacement occurrence must be authored locally.
 
 ## First retain the observed history
 
-Let receiver history before reset be JR.
-
-Reset first forms the same validated immutable union used by synchronization:
+Let receiver history before reset be JR and define:
 
 ```text
 J0 = union(JR, S)
+P0 = project(J0)
 ```
 
-All source records remain under their original writers.
+All imported records retain their original writers.
 
-The reset baseline is authored only after J0 is retained/observed conceptually, so every reset-authored semantic event is causally after the complete receiver+source frontier used to establish the target.
+Reset-authored events are causally after the complete observed J0 frontier. J0 is staging state and need not be exposed as active before reset finishes.
 
-The operation still commits atomically: J0 is not exposed as an intermediate active receiver state if its projection is not the reset target.
+## Core identity rule
 
-## Why reset needs a new baseline
+Reset distinguishes **value occurrence state** from proof/freshness state.
 
-Simply taking `union(JR,S)` does not implement reset.
+A new ValueEvent is required only when the selected current occurrence must be semantically replaced to reach PS.
 
-The receiver may contain a later/conflicting value for a node which wins normal authority over the source's current value. Reset intentionally requests the source projection anyway.
+Reset must not mint a new ValueId merely because:
 
-Therefore reset authors new local semantic events causally after both observed histories. Those events provide new authority for the selected reset result while preserving old competing events for replay/debugging.
+- validation/proof differs;
+- freshness differs;
+- an input ValueId changed and a dependent needs a new certificate; or
+- reset is being called again.
+
+Those conditions are represented with ValidateEvent/InvalidateEvent as appropriate.
 
 ## Reset semantic domain
 
@@ -81,23 +94,38 @@ Define:
 
 ```text
 ResetDomain =
-    semantic NodeKeys having any ValueEvent/DeleteEvent in J0
-    union semantic NodeKeys present in PS
+    keys having any ValueEvent/DeleteEvent in J0
+    union keys present in PS
 ```
 
-This includes receiver-only nodes which the source target does not materialize. They must not survive reset merely because the source never mentioned them.
+Historical records outside the current source projection remain retained, but current selected state over this domain must become source-target-equivalent.
 
-Keys with only old historical events remain retained, but the reset baseline needs a new event only when required to make the selected post-reset head agree with PS.
+## Pass 1: establish target presence/value occurrences
 
-## Pass 1: target value/absence heads
+Process ResetDomain in deterministic order.
 
-Reset establishes target heads for the complete reset domain before constructing validation certificates.
+### Target-present K
 
-Process nodes in deterministic order, extending current structural input-before-dependent order where applicable.
+If P0 already contains K with the same observable immutable occurrence fields as PS:
 
-### Source-present node
+```text
+P0.nodeIdentifier(K) == PS.nodeIdentifier(K)
+P0.payload(K)        == PS.payload(K)
+P0.createdAt(K)      == PS.createdAt(K)
+P0.modifiedAt(K)     == PS.modifiedAt(K)
+```
 
-For every K present in PS, author a local:
+then preserve the receiver-union selected occurrence:
+
+```text
+resetValueId(K) = P0.valueId(K)
+```
+
+and author no ValueEvent for K.
+
+This semantic comparison is part of explicit reset targeting; it is not an ordinary synchronization inference of provenance from payload equality.
+
+Otherwise author one causally-later local:
 
 ```text
 ValueEvent {
@@ -110,15 +138,16 @@ ValueEvent {
 }
 ```
 
-The new event creates a new reset ValueId even when identical payload bytes already exist in receiver/source history.
+and define its ID as `resetValueId(K)`.
 
-Payload equality does not turn an old occurrence into the reset occurrence.
+The new occurrence is required because J0 does not already select the requested semantic value state.
 
-Using the source projection's selected NodeIdentifier is valid because NodeIdentifiers are globally fingerprint-namespaced physical identities and PS is required to be bijective.
+### Target-absent K
 
-### Source-absent node
+For every K absent in PS:
 
-For every K in ResetDomain absent in PS, author:
+- if P0 already selects absence, author nothing;
+- if P0 selects a ValueEvent, author exactly one:
 
 ```text
 DeleteEvent {
@@ -127,21 +156,17 @@ DeleteEvent {
 }
 ```
 
-when new absence authority is required to make the reset target selected.
+There is no alternative strategy. Repeated reset to the same absent target therefore does not accumulate redundant deletes.
 
-An implementation may omit a redundant delete when the observed union already selects sufficiently causally/authoritatively later absence and no receiver-only current value can survive. Alternatively it may author one deterministic delete for every source-absent domain key, provided repeated already-satisfied reset can avoid unbounded duplicate no-op history.
+## Pass 2: establish target validity/proof
 
-## Pass 2: self-describing validation baselines
+After Pass 1 every source-present node has a final target occurrence `resetValueId(K)`, either preserved or newly authored.
 
-After every source-present node has its new reset ValueId, reset represents PS's exact validity relation with new reset certificates.
+For each source-present K, evaluate the selected eligible certificate that would apply after Pass 1 under the current schema.
 
-For source-present K let current target schema define the distinct direct input set:
+Reuse it only if it yields exactly PS's incoming validity relation for K and has the causal coverage required for PS's target freshness.
 
-```text
-inputSet(K) = set(inputEdges(K))
-```
-
-Author one:
+Otherwise author one:
 
 ```text
 ValidateEvent {
@@ -158,29 +183,27 @@ ValidateEvent {
 }
 ```
 
-with exactly one entry for every `D in inputSet(K)`.
+with exactly one canonical-order entry for every direct input D.
 
-For each direct input D:
+Use:
 
 ```text
-basisEntry(D).value = resetValueId(D)
-    if PS contains the legacy validity edge D -> K
-
-basisEntry(D).value = "unknown"
-    otherwise
+resetValueId(D)
 ```
 
-After constructing the entries, serialize them in canonical semantic NodeKey order as required by the Journal 3 type contract. Their order therefore does not depend on the target schema's input enumeration order.
+exactly when PS contains validity edge `D -> K`; otherwise use `"unknown"`.
 
-Because PS is dependency-closed, every direct input of a source-present K is also source-present and has a reset ValueId from Pass 1.
+This rule naturally repairs dependents whose own value occurrence was preserved but whose certificate would otherwise name an input ValueId replaced in Pass 1.
 
-For a fresh target, ordinary IncrementalGraph invariants imply a complete exact-current basis.
+A new dependent ValueEvent is not needed merely to update that proof.
 
-For a stale target, the certificate exactly reproduces whichever incoming validity edges remain in PS without inventing missing historical provenance.
+## Pass 3: establish target freshness
 
-## Pass 3: persistent stale state
+After Pass 2, compare replayed freshness with PS.
 
-For every source-present K whose target freshness in PS is `"potentially-outdated"`, author after its reset validation:
+For target-fresh K, the selected certificate must make K fresh; if an old invalidation would prevent this, Pass 2 must have authored a causally later validation rather than replacing K's value occurrence solely for freshness.
+
+For target-stale K, if replay is not already persistently stale as required, author:
 
 ```text
 InvalidateEvent {
@@ -193,86 +216,81 @@ InvalidateEvent {
 }
 ```
 
-This keeps the reset cached occurrence stale while preserving exactly the incoming validity edges encoded by the reset certificate.
+Do not duplicate an already-uncovered current-value invalidation which already establishes the requested stale state.
 
-A fresh target receives no reset invalidation.
-
-The reset validation is causally after all node-scoped invalidations in the histories reset observed, so the new baseline intentionally establishes the target's current proof state.
+Thus reset freshness changes are represented as freshness/proof history, not gratuitous value replacement.
 
 ## Resulting projection
 
-After baseline construction:
+Let:
 
 ```text
 Jreset = J0 + reset-authored records
 Preset = project(Jreset)
 ```
 
-The primary reset theorem is:
+The reset theorem is:
 
 ```text
 semanticGraph(Preset) == semanticGraph(PS)
 ```
 
-including:
+for:
 
 - present semantic NodeKeys;
-- exact ComputedValue payloads;
-- exact createdAt/modifiedAt instants;
+- payloads;
+- NodeIdentifiers;
+- createdAt/modifiedAt;
 - freshness;
 - semantic validity edges.
 
-Current ValueIds normally differ because reset authors new value occurrences.
-
-Receiver-local `last_node_index` remains receiver-local rather than adopting the source writer watermark.
+ValueIds may differ only where reset had to create a new semantic value occurrence.
 
 ## Allocation watermark
 
-Reset does not reset the receiver's `last_node_index`.
+Reset does not adopt the source writer's allocation watermark.
 
-Adopting source NodeIdentifiers from other writer namespaces does not consume the receiver's local numeric allocation namespace.
+The receiver-local `last_node_index` remains local and monotone. Reusing source NodeIdentifiers already present in PS does not consume the receiver's local numeric namespace.
 
-The local watermark remains at least its pre-reset/recovered same-writer value and advances only if reset performs a genuine local allocation which requires advancement.
-
-A WriterStateRecord is authored only when the local durable watermark changes.
+A WriterStateRecord is authored only when the receiver's own durable watermark genuinely changes.
 
 ## Reset history and future synchronization
 
-Old receiver events remain retained.
+Old receiver/source events remain retained.
 
-The reset baseline is causally after receiver/source history it observed, so reset-domain baseline heads dominate those observed competitors according to the causality-respecting authority rule.
+Reset-authored records are causally after all history reset observed, so they establish the requested target relative to that observed history.
 
-An event from a third replica which reset did **not** observe remains concurrent. If learned later, ordinary Journal 3 conflict semantics apply.
+An unseen concurrent event from another replica remains concurrent and may affect a later ordinary synchronization.
 
 Reset therefore means:
 
-> establish this source projection as the new state relative to history currently observed
+> establish this source projection relative to all history currently observed
 
 not:
 
-> permanently defeat every event which may exist anywhere but has not been observed.
-
-This satisfies no-remote-participation requirements without pretending reset knows unseen history.
+> permanently dominate every event that might exist elsewhere.
 
 ## Same-writer restoration versus reset
 
-If a receiver is merely missing an exact suffix of its own immutable writer history and no semantic replacement is requested, importing that suffix and replaying it is same-writer restoration. No reset baseline is needed.
+If a receiver only lacks an exact suffix of its own writer history, exact-prefix recovery is restoration. No reset baseline is needed.
 
-`resetTo(source)` is for intentional semantic rebaselining to the source projection when ordinary retained-history conflict selection would otherwise produce another state.
+`resetTo(source)` is for intentional semantic rebaselining when ordinary retained-history selection would otherwise produce another observable graph state.
 
 ## Repeat-reset idempotence
 
-Repeated reset to an unchanged source from an unchanged already-equal receiver projection must not require an infinite sequence of redundant reset baselines.
+If `semanticGraph(P0) == semanticGraph(PS)` and there is no outstanding reset-specific repair obligation, reset returns:
 
-If current semantic projection already equals the requested reset target and no reset-specific normalization is outstanding, reset may return `changed=false` without semantic records.
+```text
+changed = false
+```
 
-This target comparison is a reset/lifecycle decision; it does not let ordinary synchronization infer provenance/value identity from payload equality.
+and authors no semantic records.
 
-If a new baseline is required, physical payload bytes may be reused as an optimization, but each reset ValueEvent still has its own new ValueId.
+Repeated reset therefore cannot create an unbounded chain of equivalent ValueEvents/ValidateEvents/Deletes.
 
 ## Atomicity
 
-Reset may build J0/baseline/projection in inactive storage.
+Reset may construct J0 and its repairs in inactive storage.
 
 The receiver exposes either:
 
@@ -288,20 +306,18 @@ Jreset + project(Jreset)
 
 never a split/intermediate state.
 
-Failure before cutover leaves the old supported receiver active.
+Failure before cutover leaves the previous supported receiver active.
 
 ## No computor invocation
 
-Reset does not call computors.
+Reset does not invoke computors.
 
-Target payload/timestamps come from immutable source ValueEvent history through PS. Reset decisions are structural/historical.
-
-A later ordinary pull may recompute stale reset nodes normally.
+Target payload/timestamps come from PS and immutable retained ValueEvents. A later ordinary pull may recompute stale reset nodes normally.
 
 ## Reset convergence interaction
 
-Reset-authored records become ordinary immutable history.
+Reset-authored records are ordinary immutable history after commit.
 
-Other replicas learn them through normal suffix synchronization; they do not need a special reset merge algorithm.
+Other replicas learn them through normal suffix synchronization; no special reset merge algorithm exists.
 
-`reason="reset"` is historical/debugging metadata. Conflict/replay authority comes from ordinary event context/authority rules.
+`reason="reset"` is historical/debug metadata. Replay authority comes from normal event identity, context, authority, and certificate rules.
