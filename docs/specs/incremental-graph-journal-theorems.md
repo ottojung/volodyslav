@@ -44,6 +44,8 @@ For every semantic event E included by F's context, every coordinate of `E.conte
 
 Therefore `happenedBefore` is transitive. A journal violating this transitive-closure property is unsupported.
 
+Pre-Journal legacy-value conversion may deliberately omit canonical foreign coordinates so a historical legacy value remains concurrent with a canonical bootstrap value. This does not weaken the law: the context actually stored on that event must still be a closed cut over every coordinate it includes.
+
 ## Law 6: authority extends causality
 
 ```text
@@ -134,31 +136,59 @@ This applies whether K's ValueId was already local or newly selected from source
 Before pre-Journal bootstrap, the configured cohort bootstrap source yields exactly one of:
 
 ```text
-Exists(canonicalSnapshot)
+Exists(CanonicalBootstrapSnapshot)
 DefinitelyAbsent
 IndeterminateOrError
 ```
 
 `Exists` requires join, `DefinitelyAbsent` permits first canonical creation, and `IndeterminateOrError` fails without creation.
 
-The source may report `DefinitelyAbsent` only when that result is suitable for first-creator arbitration. Distinct accepted canonical bootstrap histories for one cohort are unsupported.
+The source may report `DefinitelyAbsent` only when that result is suitable for first-creator arbitration. Distinct accepted canonical bootstrap artifacts for one cohort are unsupported.
 
-## Law 22: bootstrap join preserves shared identity and local delta
+## Law 22: canonical bootstrap artifact is the original cut
 
-Let canonical history be Jc, joining fingerprint W, canonical projection `Pc = project(Jc,W)`, and joining supported legacy graph Glegacy.
+If canonical creator C finishes bootstrap at frontier Fbootstrap, the cohort artifact contains exactly the records through Fbootstrap with the bootstrap target version/schema.
 
-Join retains Jc verbatim and appends only W-authored minimal bootstrap records needed to transform Pc into Glegacy using reset-style Pass 1–3 semantics.
+Later ordinary Journal events or later database migrations do not change that artifact.
 
-Therefore:
+For every late bootstrap join:
 
-- an occurrence equal between Pc and Glegacy retains its canonical ValueId;
-- a locally changed occurrence receives a joining-writer replacement ValueEvent;
-- proof/freshness-only differences do not replace equal occurrences;
-- `project(Jjoined,W) == Glegacy`.
+```text
+Jc = records through Fbootstrap
+```
 
-No other host is required to reconcile, acknowledge, or return.
+and no record causally after Fbootstrap may affect bootstrap comparison, local bootstrap ValueEvent context, or bootstrap value conflict authority.
 
-## Law 23: bootstrap creator projection equivalence
+A current JournalSnapshot containing Jc as a prefix is not equivalent to the canonical artifact.
+
+## Law 23: bootstrap join does not invent causal succession
+
+Let Vc be a canonical bootstrap ValueEvent for K and Vl be a genuinely different legacy occurrence for K on a joining installation which did not observe Vc in legacy time.
+
+The converted local bootstrap ValueEvent Vl must not include Vc solely because migration code read the canonical artifact.
+
+Therefore, absent genuine pre-Journal causal evidence:
+
+```text
+not happenedBefore(Vc,Vl)
+not happenedBefore(Vl,Vc)
+```
+
+and conflict authority is the concurrent-value policy seeded by each legacy `modifiedAt` rather than upgrade execution time.
+
+In particular, an older late-host legacy occurrence cannot beat a newer canonical occurrence merely because its conversion was executed later.
+
+## Law 24: bootstrap join preserves shared identity without treating absence as deletion
+
+For an exact equal legacy occurrence on canonical and joining state, join reuses the canonical ValueId and creates no joining ValueEvent.
+
+A local-only legacy materialization may be represented by a joining bootstrap ValueEvent.
+
+A canonical-only materialization is not removed merely because the joining legacy cache lacks it: local absence is not a timestamped DeleteEvent and bootstrap join authors no delete solely for that asymmetry.
+
+The resulting projection need not equal the joining legacy graph where the two legacy states genuinely conflict; normal Journal authority determines the selected occurrence.
+
+## Law 25: bootstrap creator projection equivalence
 
 For canonical accepted legacy graph G:
 
@@ -168,32 +198,58 @@ semanticGraph(project(bootstrap(G))) == semanticGraph(G)
 
 including materialization, identifiers, payloads, timestamps, freshness, and validity.
 
-## Law 24: migration preserves occurrence identity for occurrence-preserving decisions
+The creator freezes the resulting frontier as the canonical artifact before ordinary Journal authoring begins.
+
+## Law 26: late bootstrap joins at bootstrap target version
+
+A canonical artifact's `databaseVersion` / `graphSchemeString` equal the configured bootstrap target compatibility metadata.
+
+A late legacy host first joins that artifact at the bootstrap target version. If running software requires later versions, it then follows supported Journal-aware migrations in order before ordinary synchronization with current peers.
+
+An artifact with mismatched target compatibility fails before bootstrap history is authored.
+
+## Law 27: migration preserves occurrence identity for occurrence-preserving decisions
 
 For Journal-aware migration, `keep`, `invalidate`, schema/proof/freshness-only change, and semantic-preserving `override()` preserve the selected ValueId when the semantic occurrence survives.
 
 A new ValueEvent is reserved for actual semantic create/replace occurrence changes.
 
-## Law 25: `override()` preserves ValueId across representation rewrite
+## Law 28: record-format rewrite is replica-independent
 
-Suppose source selected occurrence V represents semantic value x using source representation `oldEncoding(x)`, and migration validly applies:
+For every retained source record R and one source->target database migration definition:
+
+```text
+rewriteJournalRecord(R)
+```
+
+is a deterministic function of R and that migration definition, independent of whether R is selected, which other records the replica retains, callback order, and mutable replica-local state.
+
+Thus replicas which retain the same historical `JournalRecordId` produce the same target-format body for that ID.
+
+For affected ValueEvents, the payload rewrite is one pure per-record codec applied to selected and historical occurrences alike.
+
+## Law 29: `override()` preserves ValueId but cannot redefine immutable history locally
+
+Suppose source selected occurrence V represents semantic value x using source representation `oldEncoding(x)` and the canonical per-record migration codec maps V to `newEncoding(x)`.
+
+A valid Journal-aware:
 
 ```text
 override(K, () => newEncoding(x))
 ```
 
-Then after deterministic whole-history target-format rewrite:
+asserts agreement with that canonical rewrite. Then:
 
 ```text
 targetValueId(K) == V
 semanticValue(target V) == x
 ```
 
-while target-format payload representation may differ.
+and V preserves NodeIdentifier, createdAt, modifiedAt, causal identity, authority meaning, and references.
 
-The rewritten V preserves NodeIdentifier, createdAt, modifiedAt, causal identity, and references. No migration ValueEvent is authored merely because representation bytes changed.
+If the override callback result differs from the canonical codec output, migration fails before cutover. It never activates a different body for V.
 
-## Law 26: independent genuine replacement migrations are allowed
+## Law 30: independent genuine replacement migrations are allowed
 
 If migration genuinely creates/replaces an occurrence, replicas may independently author different new ValueIds.
 
@@ -201,11 +257,11 @@ After later synchronization ordinary authority selects the current occurrence. D
 
 This is accepted and does not require one canonical migration participant.
 
-## Law 27: migration proof/freshness may change independently of ValueId
+## Law 31: migration proof/freshness may change independently of ValueId
 
 Migration may author Validate/Invalidate history targeting a preserved ValueId. Therefore proof/freshness change does not imply valueId change.
 
-## Law 28: migration equivalence and representation preservation
+## Law 32: migration equivalence and representation preservation
 
 For:
 
@@ -222,7 +278,7 @@ project(Jafter,targetSchema) == Gtarget
 
 Future replay does not run historical migration callbacks.
 
-## Law 29: reset is minimal semantic rebaselining
+## Law 33: reset is minimal semantic rebaselining
 
 Let `J0 = union(receiver,source)`, `P0 = project(J0)`, and `PS = project(sourceSnapshot)`.
 
@@ -230,19 +286,23 @@ Reset preserves P0's selected ValueId when P0 already has the same target semant
 
 After reset `semanticGraph(project(Jreset)) == semanticGraph(PS)`.
 
-## Law 30: writer sequence contiguity and writer-state monotonicity
+This causal-later target-repair law applies to reset and MUST NOT be reused for pre-Journal bootstrap value conflict conversion.
+
+## Law 34: writer sequence contiguity and writer-state monotonicity
 
 For writer A with head q, records are exactly A:1..q with no durable holes. Failed transactions consume no durable coordinate. Local writer-state watermark is nondecreasing; foreign writer-state records never replace local allocator watermark.
 
-## Law 31: replay rebuild safety
+## Law 35: replay rebuild safety
 
 Valid authoritative Journal rebuilds observationally equivalent derived state without changing history. Invalid authoritative history causes rebuild failure rather than mutation to match damaged graph bytes.
 
-## Law 32: one current format per active replica
+## Law 36: one current format per active replica
 
 Every active replica contains only the representation selected by current `global/version`. Format migration deterministically rewrites old records preserving ID/meaning before target cutover. Ordinary replay/sync performs no mixed-version conversion.
 
-## Law 33: fair-execution synchronization convergence
+The frozen canonical bootstrap artifact is not an active replica and may remain in its original bootstrap target representation for late joins.
+
+## Law 37: fair-execution synchronization convergence
 
 For finitely many supported replicas and finite schema DAG, after non-normalization graph-changing operations stop, fair synchronization eventually reaches finite normalization fixed point, disseminates all actually authored records, yields equivalent projections, and makes further sync a semantic no-op.
 
@@ -264,8 +324,12 @@ At minimum exercise/model:
 - exact same-writer recovery and fork rejection;
 - absent-state restore vs fresh creation decision;
 - cohort bootstrap source three-way decision;
-- canonical bootstrap join-with-delta with one local changed node;
-- `override()` preserving ValueId while representation changes;
+- frozen canonical bootstrap cut excluding later creator history;
+- late bootstrap conflict where newer legacy `modifiedAt` wins without synthetic causality;
+- canonical-only materialization not deleted by late-host cache absence;
+- bootstrap-target-version join followed by ordinary migration chain;
+- pure per-record Journal rewrite independent of selected/non-selected status;
+- `override()` assertion against canonical codec output;
 - independently migrated genuine replacement occurrences causing allowed downstream staleness;
 - minimal reset preserving unchanged occurrences;
 - deterministic whole-journal format rewrite;
