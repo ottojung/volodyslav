@@ -107,7 +107,7 @@ A controlled bootstrap/reset/migration baseline likewise records one basis entry
 
 In all cases the resulting entries are serialized by canonical current NodeKey order after that set has been constructed.
 
-An old historical certificate remains intelligible after a later schema migration because its basis records its own semantic input NodeKeys explicitly. Database migration rewrites its representation into the target current format while preserving that historical claim. It is not retroactively malformed merely because the current schema now gives that node a different input set; semantic migration creates a new current ValueId/certificate baseline for the new schema.
+An old historical certificate remains intelligible after a later schema migration because its basis records its own semantic input NodeKeys explicitly. Database migration rewrites its representation into the target current format while preserving that historical claim. It is not retroactively malformed merely because the current schema now gives that node a different input set; semantic migration creates the target proof state required by the migration specification.
 
 For current replay, such an old certificate is eligible only if its explicit basis input-key set equals the current direct-input set for its node, as defined by the replay specification.
 
@@ -155,22 +155,85 @@ Its effect is deliberately independent of which value occurrence is currently se
 Core DeleteEvent and ValueEvent contain no semantic-event-ID references, so their cross-record well-formedness is determined by:
 
 - valid current-format record identity/body;
-- valid causal context;
+- valid causally closed context;
 - valid authority allocation/order;
 - valid NodeKey/payload/timestamp/identifier fields; and
 - the global journal invariants.
 
 ## Causal context closure
 
-For every semantic event E and writer A:
+A semantic event context is not merely a set of individually in-range coordinates. It is a causally closed journal cut.
+
+For semantic event F with:
 
 ```text
-E.context[A] <= retainedFrontier[A]
+F.id = (W,q)
 ```
 
-is necessary but not sufficient for reference validity.
+the following are all required.
 
-A referenced event must additionally be in E's causal past according to `happenedBefore`; mere eventual retention somewhere in the journal does not prove observation.
+### Retained-range coverage
+
+For every writer A:
+
+```text
+F.context[A] <= retainedFrontier[A]
+```
+
+Every record claimed by the context therefore exists in the retained journal.
+
+### Complete local prefix
+
+The writer necessarily observed its complete local stream before allocating F, including earlier records in the same serialized publication:
+
+```text
+F.context[W] == q - 1
+```
+
+A smaller own-writer coordinate is malformed even if no explicit ValueId reference happens to expose the omission.
+
+### Transitive closure
+
+For every retained semantic event E included by F's context:
+
+```text
+E.id.sequence <= F.context[E.id.author]
+```
+
+F's context must also include everything E had observed:
+
+```text
+for every writer A:
+    E.context[A] <= F.context[A]
+```
+
+Thus a context may not contain B:1 while omitting A:1 if B:1 itself observed A:1.
+
+Example malformed history:
+
+```text
+A:1
+
+B:1
+context = { A:1 }
+
+C:1
+context = { B:1, A:0 }
+```
+
+Although every coordinate is individually retained, C:1's context is not causally closed because it includes B:1 without including B:1's observed A:1.
+
+These rules ensure that the `happenedBefore` relation defined in the types specification is transitive. A later validation therefore cannot accidentally treat a genuinely transitive causal predecessor as concurrent merely because an intermediate context omitted it.
+
+### Authority consistency
+
+For every semantic event E such that `happenedBefore(E,F)`:
+
+```text
+authorityCompare(E,F) < 0
+```
+
+A context which claims causal observation but whose event authority does not extend that observation is malformed.
 
 ## Same-publication references
 
@@ -180,8 +243,10 @@ At serialized finalization:
 
 1. referenced semantic records receive earlier same-writer sequence positions;
 2. referencing records receive later positions;
-3. symbolic references resolve to those exact IDs;
-4. the resulting persisted records satisfy `happenedBefore` through same-writer sequence order.
+3. every semantic event receives an exact own-writer context coordinate equal to its sequence minus one;
+4. symbolic references resolve to those exact IDs;
+5. cross-writer context is copied from the complete causally closed frontier observed by the publication and monotonically extended by any earlier same-publication semantic observations;
+6. the resulting persisted records satisfy `happenedBefore` and authority monotonicity.
 
 No persisted forward ValueId reference within one writer publication is permitted.
 
@@ -206,7 +271,7 @@ This monotone watermark is also part of the existing NodeIdentifier uniqueness a
 
 Synchronization/import operates only between compatible current database versions and validates these rules before activating imported history.
 
-If a source provides a syntactically valid current-format record whose reference causality or self-described basis is impossible, the source history is unsupported/corrupt.
+If a source provides a syntactically valid current-format record whose context closure, authority causality, reference causality, or self-described basis is impossible, the source history is unsupported/corrupt.
 
 The receiver must not rewrite/re-author the source event to make it fit its current graph. Cross-version representation rewriting belongs only to the explicit database migration path before ordinary synchronization.
 
