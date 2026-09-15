@@ -49,7 +49,7 @@ Within Journal 3 scope the specification defines:
 - receiver-less restoration before fresh identity generation for an absent installation;
 - exact same-writer prefix recovery for an existing behind receiver;
 - suffix synchronization and persistent normalization;
-- one immutable canonical bootstrap artifact per legacy synchronization cohort, frozen at the original bootstrap frontier and target version/schema;
+- one immutable canonical bootstrap artifact per legacy synchronization cohort, frozen at the original bootstrap frontier and target version/schema and durably obtainable through the configured cohort source for supported late joins;
 - late bootstrap joining as historical legacy-state merge rather than reset: equal occurrences share ValueIds, divergent values remain concurrent, legacy modifiedAt decides normal conflict preference, and absence does not become deletion evidence;
 - post-bootstrap history entering late hosts only through later ordinary compatible synchronization;
 - preservation of ValueIds across `keep`, `override`, `invalidate`, proof-only, freshness-only, and other occurrence-preserving migration changes;
@@ -88,7 +88,7 @@ Journal 3 stops at the semantic stable-snapshot/lifecycle boundary.
 
 It does not specify or require changes to existing Git branch/commit/file transport behavior, a hosted synchronization backend, Supabase/PostgreSQL/HTTP schemas or RPCs, or authentication/deployment topology.
 
-A transport may continue to work as it does today if its adapter can provide the required stable ordinary snapshot, installation-recovery, and frozen cohort-bootstrap-artifact semantics.
+A transport may continue to work as it does today if its adapter can provide the required stable ordinary snapshot, installation-recovery, and frozen cohort-bootstrap-artifact semantics. How those abstractions are carried or persisted is outside Journal semantics.
 
 Also outside core correctness:
 
