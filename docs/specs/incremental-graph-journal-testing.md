@@ -67,6 +67,31 @@ J join K == K join J
 
 and verify all overlap conflicts are rejected rather than semantically merged.
 
+## Stable source compatibility tests
+
+A `JournalSnapshot` must bind its compatibility metadata to the same frozen source state as its frontier/records.
+
+Tests must assert:
+
+- snapshot `databaseVersion` equals the exact persisted source `global/version` value;
+- snapshot `graphSchemeString` equals the exact persisted source `global/graph_scheme` string;
+- both fields remain stable for the snapshot lifetime;
+- exact version mismatch fails ordinary synchronization with `JournalVersionCompatibilityError` before active import/cutover;
+- exact graph-scheme-string mismatch likewise fails, including textually different strings which are otherwise parseable;
+- the same compatibility rules apply to `resetTo()`;
+- a source migration/cutover between an **external/preliminary metadata read** and `openSnapshot()` cannot trick sync/reset into accepting a later incompatible snapshot, because the operation must ignore the preliminary read and compare the metadata carried by the held snapshot itself;
+- an unchanged compatible source with zero missing records still undergoes the same snapshot compatibility check.
+
+A useful race fixture is:
+
+```text
+caller observes old source version/schema
+source migrates and atomically selects new version/schema+journal
+caller opens JournalSnapshot
+```
+
+The operation must compare the **new snapshot's** compatibility metadata and reject if it differs from the receiver. It must never reuse the old preliminary compatibility decision.
+
 ## Synchronization fixed-point tests
 
 For generated compatible receiver/source pairs:
@@ -77,6 +102,45 @@ For generated compatible receiver/source pairs:
 4. assert no new semantic records and no projected change.
 
 Include receiver-only dependent graphs specifically to exercise sync-authored persistent stale invalidations.
+
+Also include the critical **newly selected remote occurrence** regression:
+
+```text
+A -> B
+
+common:
+    A = a1, fresh
+
+source Y:
+    computes B = b2 from A=a1
+    B is fresh with certificate { input:A, value:a1 }
+
+receiver X:
+    invalidates A
+    A is stale, same ValueId a1
+
+X synchronizes from Y:
+    selected B changes from absent/other value to remote b2
+    B's certificate exactly matches current A=a1
+    B is stale solely because A is stale
+```
+
+Assert synchronization authors or already finds an uncovered current-value invalidation for `b2` **even though `Pbefore.valueId(B) != P1.valueId(B)` (or B was absent before)**.
+
+Then pull A on X and force its computor to return `Unchanged`, producing a later validation that makes A fresh without changing A's ValueId.
+
+Assert:
+
+```text
+A fresh
+B still stale
+```
+
+until B itself is pulled/revalidated/recomputed.
+
+This regression must fail if sync phase 2 is incorrectly conditioned on the selected B ValueId being unchanged from the receiver's pre-sync projection.
+
+Also cover a stale K caused only by basis mismatch and assert sync does **not** need a value-scoped marker merely for that mismatch, because upstream freshness recovery cannot clear the mismatch.
 
 ## Synchronization convergence tests
 
@@ -110,6 +174,8 @@ For NodeIdentifier allocation, verify that restoration recovers a watermark high
 
 For generated receiver/source projections:
 
+- source `databaseVersion` and `graphSchemeString` are read from the same held `JournalSnapshot` used for the target;
+- exact compatibility mismatch fails before reset baseline authoring/cutover;
 - reset result matches source semantic graph;
 - old receiver/source history retained;
 - receiver local watermark semantics preserved;
