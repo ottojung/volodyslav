@@ -36,9 +36,11 @@ A failed ordinary operation consumes no durable Journal sequence position.
 
 ## Why contexts are finalized under commit boundary
 
-A context describes complete history actually observed by the committed event, not history that happened to exist when computation began.
+A context describes complete semantic history observed by an ordinary committed event, not history that happened to exist when computation began.
 
 The finalizer must never construct context only from explicit ValueId references; it retains the complete closed observed frontier.
+
+Pre-Journal legacy-value conversion is a separate historical-import lifecycle rule. It may intentionally omit a canonical bootstrap value from a joining bootstrap ValueEvent's context so migration execution read order does not invent causal succession between two pre-existing legacy values.
 
 ## Same-publication ordering
 
@@ -60,6 +62,8 @@ Reset runs as exclusive maintenance because it observes/imports one source cut a
 
 After computing source/receiver union and target projection it stages only minimal Value/Delete/Validate/Invalidate intents required by reset. Preserved ValueIds are not reallocated merely because reset is under maintenance.
 
+Reset-authored events are causally after the complete union they intentionally supersede.
+
 ## Absent-installation restore
 
 Receiver-less restoration of an absent installation does not author semantic Journal records merely to copy already-existing history.
@@ -70,19 +74,27 @@ It atomically establishes local storage containing held restored history/project
 
 The installation reaching the bootstrap gate first obtains the configured cohort-bootstrap-source decision.
 
-- existing canonical snapshot -> join it;
-- definite absence suitable for first creation -> create canonical bootstrap under exclusive migration maintenance;
+- existing immutable `CanonicalBootstrapSnapshot` -> validate its original bootstrap target version/schema and join it;
+- definite absence suitable for first creation -> create canonical bootstrap under exclusive migration maintenance and freeze its final cut before ordinary authoring;
 - indeterminate/error -> fail without creating semantic bootstrap history.
 
-A joining installation atomically installs canonical semantic history, preserves its own `localWriter`, and then stages only the joining-writer bootstrap delta required to make the projection equal its supported local legacy graph.
+The canonical artifact contains exactly the original bootstrap cut. A later current Journal snapshot is not substituted for it.
 
-That delta uses the same minimal semantic layering as reset:
+Bootstrap join is **not** reset publication:
 
-- Value/Delete only where occurrence/presence differs;
-- Validate/Invalidate for proof/freshness differences;
-- WriterState for local allocator watermark.
+- equal legacy occurrences reuse canonical ValueIds;
+- local-only or different legacy occurrences are converted into historical joining-writer bootstrap ValueEvents;
+- those divergent local ValueEvents use their legacy `modifiedAt` authority and intentionally do not observe canonical conflicting values merely because migration read the artifact;
+- canonical-present/local-absent does not author a deletion;
+- ordinary authority resolves concurrent value conflicts;
+- proof/freshness baseline records are authored afterward with normal closed contexts over the value records they reference;
+- WriterState preserves the local allocator watermark.
 
-Equal occurrences keep canonical ValueIds. The joining-writer record allocation is serialized under that installation's local publication boundary before cutover.
+The joining writer allocates its historical bootstrap ValueEvents in nondecreasing legacy `modifiedAt` order, then returns to normal HLC allocation for bootstrap proof/freshness records.
+
+The complete bootstrap-target Journal/projection pair becomes active atomically. If the running software is newer than the bootstrap target, the ordinary migration gate continues before graph APIs are exposed.
+
+Post-bootstrap cohort history is never folded into the bootstrap publication. It arrives later through ordinary compatible synchronization.
 
 ## Journal-aware migration
 
@@ -93,7 +105,9 @@ A migration may perform two physically large phases under exclusive maintenance:
 
 Representation rewrite preserves old IDs and allocates no new Journal positions.
 
-For semantic-preserving `override()`, the rewrite may change target-version payload representation of an existing ValueEvent while preserving that event's `JournalRecordId`, semantic meaning, NodeIdentifier, timestamps, causal identity, and references.
+When ValueEvent payload representation changes, one pure version-migration codec rewrites every affected retained ValueEvent identically regardless of whether that occurrence is selected on the local replica.
+
+For semantic-preserving `override()`, the callback result is checked against the already-determined canonical rewrite of the selected record. It cannot supply replica-local bytes for that immutable record. Mismatch fails migration before cutover.
 
 Semantic migration preserves selected ValueIds for occurrence-preserving decisions and stages new semantic events only for actual target changes:
 
