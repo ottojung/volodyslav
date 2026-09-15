@@ -31,6 +31,8 @@ and if F.context includes E then `E.context <= F.context` componentwise.
 
 Therefore the direct context/same-writer definition of `happenedBefore` is transitive.
 
+A historical bootstrap ValueEvent may intentionally omit canonical foreign coordinates so it remains concurrent with an independently-existing legacy value. Its stored context is still a closed cut over the coordinates it does include.
+
 ## Information join
 
 For compatible causally closed prefix journals J and K at one current database version:
@@ -104,21 +106,42 @@ Jafter = J0 + only required reset events
 
 If J0 already selects the requested semantic occurrence, reset preserves its ValueId. Proof/freshness differences are represented without changing ValueId unnecessarily. Target absence gets a DeleteEvent exactly when J0 currently selects a value.
 
-## Canonical initial bootstrap plus local delta
+Reset's authored repairs deliberately happen after J0 and therefore dominate the observed state where required.
+
+## Canonical initial bootstrap is a frozen cut plus historical merge
 
 Pre-Journal replicas have no pre-existing ValueIds for shared cached occurrences.
 
-A cohort therefore establishes one canonical semantic bootstrap basis. The cohort-bootstrap-source decision chooses whether an installation joins an existing basis or is allowed to create the first one.
+A cohort therefore establishes one canonical semantic bootstrap basis. The canonical artifact is frozen at the creator's exact bootstrap frontier and bootstrap target version/schema before ordinary Journal history begins.
 
-A joining installation need not be observationally identical to the canonical projection. It retains canonical history, then appends a local bootstrap delta using minimal reset-like rules to reproduce its supported legacy graph.
+A joining installation does **not** reset that cut to its legacy cache.
 
-Consequently:
+Instead:
 
-- unaffected equal occurrences share canonical ValueIds;
-- local legacy differences survive as joining-writer semantic records;
-- validity/freshness-only differences do not replace otherwise-equal occurrences.
+- equal legacy occurrences reuse canonical ValueIds;
+- genuinely different/local-only legacy occurrences become historical joining-writer bootstrap ValueEvents;
+- divergent canonical/local values are concurrent unless genuine pre-Journal causality says otherwise;
+- their authority is seeded from legacy `modifiedAt`, so upgrade execution time does not decide the conflict;
+- canonical presence plus local absence creates no DeleteEvent because absence is not legacy deletion evidence;
+- proof/freshness evidence is added after the value occurrences exist.
 
-This gives ordinary Journal union a shared identity basis without requiring all hosts to have reconciled before upgrade.
+Thus the joining projection may differ from the joining host's old cache at a conflicting node. That is intentional: normal conflict authority, not “who upgraded last,” decides the value.
+
+## Bootstrap artifact is not current history
+
+Let `B.bootstrapFrontier = F0` and let C later author history through F1 > F0.
+
+Bootstrap joining uses only:
+
+```text
+C through F0
+```
+
+not C through F1.
+
+Therefore post-bootstrap value changes/creations cannot be reinterpreted as state which a stale pre-Journal host should overwrite/delete during bootstrap.
+
+A late host first joins at B's original bootstrap target version, then follows ordinary database migration to current version, then ordinary synchronization imports compatible post-bootstrap history.
 
 ## Migration representation is not same-version join
 
@@ -131,6 +154,14 @@ Jconverted = rewriteJournalFormat(Jbefore, sourceVersion, targetVersion)
 preserving every old JournalRecordId and historical semantic/causal/reference fact.
 
 The same-version `<=`/join relation is not applied across the two physical representations.
+
+## Record-format migration is a function of the record
+
+For a fixed source->target migration definition, each retained record has one canonical target representation.
+
+In particular, if a ValueEvent payload representation changes, the rewrite is independent of whether the ValueEvent is currently selected, what other records exist locally, and arbitrary callback-local state.
+
+That property is required so two replicas retaining the same immutable JournalRecordId cannot correctly migrate into different target bodies and later appear forked.
 
 ## `override()` is representation change, not occurrence change
 
@@ -147,7 +178,9 @@ modifiedAt
 causal identity
 ```
 
-Two replicas independently applying the same deterministic representation migration retain shared V rather than minting V_A and V_B.
+The target bytes for V come from the canonical per-record migration codec. The `override()` callback asserts that its selected result equals that codec output; it does not make V's body replica-dependent.
+
+Two replicas independently applying the same representation migration therefore retain identical target V even when V is selected on only one of them.
 
 ## Migration preserves occurrence identity when semantics preserve the occurrence
 
@@ -167,4 +200,6 @@ This is an accepted migration trade-off. Journal-aware migration does not requir
 
 Materialized graph sublevels, indexes, checkpoints, staging replicas, transport branches/cursors, and cached validation summaries are not authoritative Journal elements.
 
-They may be created/deleted/rebuilt without changing retained semantic history, subject to atomic cutover and replay equivalence.
+The frozen canonical-bootstrap artifact is likewise lifecycle source state rather than an active current JournalReplica.
+
+Derived state may be created/deleted/rebuilt without changing retained semantic history, subject to atomic cutover and replay equivalence.
