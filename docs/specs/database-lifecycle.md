@@ -108,11 +108,13 @@ Journal writer-state history need only be written when required by the Journal 3
 
 Journal 3 treats restoration primarily as immutable prefix recovery rather than graph snapshot replacement.
 
-Suppose local writer A is absent/behind and a controlled source at the same compatible current database version retains:
+Suppose local writer A is absent/behind and a controlled source at the same compatible current database version/schema retains:
 
 ```text
 A:1..q
 ```
+
+Compatibility is established from one held source `JournalSnapshot` as described in synchronization: the source snapshot's exact `databaseVersion` and `graphSchemeString` must match the receiver's active committed metadata.
 
 If the local copy is empty or an exact prefix of that same history, the lifecycle may import/recover the missing A suffix under exclusive maintenance, together with all causally required retained foreign history.
 
@@ -234,11 +236,18 @@ Journal 3 synchronization is specified by `incremental-graph-journal-sync.md` an
 
 ### 9.1 Compatibility
 
-Ordinary synchronization requires compatible current database/schema interpretation and current journal representation.
+Ordinary synchronization requires exact compatibility with the held source `JournalSnapshot`:
 
-A version mismatch is an incompatibility condition, not permission to perform migration implicitly inside sync.
+```text
+snapshot.databaseVersion == receiver global/version
+snapshot.graphSchemeString == receiver global/graph_scheme
+```
 
-Both replicas must first reach a supported compatible version through whole-database migration. Synchronization never upcasts/downcasts individual journal records.
+The source compatibility metadata and the source journal frontier/records must belong to the same stable committed snapshot. A compatibility decision from a separate earlier source read is insufficient because the source could migrate/cut over before snapshot acquisition.
+
+A mismatch is `JournalVersionCompatibilityError`, not permission to perform migration implicitly inside sync.
+
+Both replicas must first reach a supported compatible version/schema through whole-database migration. Synchronization never upcasts/downcasts individual journal records.
 
 ### 9.2 Pairwise source flow
 
@@ -246,14 +255,15 @@ For one stable source snapshot:
 
 1. enter exclusive synchronization maintenance ownership as required by the locking design;
 2. open/capture the receiver's current journal/projection;
-3. stream missing immutable current-format writer suffixes into inactive staging;
-4. reject any same-ID content disagreement;
-5. validate causal closure/prefix integrity;
-6. author required receiver-local sync normalization events;
-7. compute/validate the final replay projection;
-8. atomically cut over to `(targetJournal, project(targetJournal))`.
+3. compare source snapshot `databaseVersion` and `graphSchemeString` with the receiver's active committed metadata;
+4. if compatible, stream missing immutable current-format writer suffixes from that same snapshot into inactive staging;
+5. reject any same-ID content disagreement;
+6. validate causal closure/prefix integrity;
+7. author required receiver-local sync normalization events, including persistent current-value invalidation for any selected occurrence stale solely because a direct input is stale;
+8. compute/validate the final replay projection;
+9. atomically cut over to `(targetJournal, project(targetJournal))`.
 
-No computor is invoked.
+The phase-2 staleness rule applies even when synchronization selected a new remote ValueId for the affected node. No computor is invoked.
 
 ### 9.3 Multi-source partial success
 
@@ -281,10 +291,12 @@ It does **not** mean delete/replace journal history.
 
 Reset:
 
-1. obtains/imports the chosen stable compatible-version source history;
-2. observes receiver + source history;
-3. appends a causally later receiver-authored baseline representing the chosen source graph state;
-4. atomically publishes the retained history + reset baseline + matching projection.
+1. opens one held stable source `JournalSnapshot`;
+2. compares that snapshot's exact `databaseVersion` / `graphSchemeString` with the receiver's active metadata;
+3. obtains/imports source history and derives the source target from that same compatible snapshot;
+4. observes receiver + source history;
+5. appends a causally later receiver-authored baseline representing the chosen source graph state;
+6. atomically publishes the retained history + reset baseline + matching projection.
 
 A future unseen concurrent event may still conflict normally when learned later. Reset cannot dominate history it never observed without violating the no-remote-participation design.
 
@@ -329,11 +341,13 @@ Remains non-triggering. It reads the materialized projection; it does not call c
 
 ### synchronization
 
-May change cached values, identifiers, freshness, validity, and materialization by importing/replaying current-format history, but never invokes computors. A successful pairwise sync leaves one valid journal/projection pair. Repeating against an unchanged already-incorporated source is a semantic no-op.
+May change cached values, identifiers, freshness, validity, and materialization by importing/replaying current-format history, but never invokes computors. The compatibility metadata and imported records come from one held stable source snapshot. A successful pairwise sync leaves one valid journal/projection pair. Repeating against an unchanged already-incorporated source is a semantic no-op.
+
+When synchronization selects a new occurrence whose exact certificate matches current inputs but an input is stale, the selected occurrence is persistently marked stale; later unchanged input revalidation does not freshen it without its own pull.
 
 ### reset
 
-May replace the observable projected graph with the chosen source target without erasing old history. Success is atomic.
+May replace the observable projected graph with the chosen source target without erasing old history. Compatibility metadata and target history come from one held source snapshot. Success is atomic.
 
 ### migration/startup
 
@@ -361,14 +375,16 @@ Outside the supported lifecycle:
 - independently cloning one writer identity into multiple live writers;
 - manually editing graph sublevels so they disagree with their authoritative Journal 3 projection;
 - bypassing required version migration;
-- forcing ordinary sync across incompatible versions;
+- forcing ordinary sync/reset across incompatible snapshot version/schema metadata;
 - treating a replay checkpoint/cache as replacement authority for missing journal history.
 
 If such recovery/import behavior becomes required, it must be introduced as an explicit controlled lifecycle transition with stated invariants.
 
 ## 15. Corruption/incompatibility distinction
 
-A state can be valid yet incompatible with a requested operation, for example a supported peer at another database version.
+A state can be valid yet incompatible with a requested operation, for example a supported peer at another database version or with a different exact persisted graph scheme.
+
+Compatibility for sync/reset is established from the held source snapshot itself. A source migration after an earlier independent metadata read cannot be hidden by reusing that stale check.
 
 Corruption/unsupported state includes observable violations such as:
 
