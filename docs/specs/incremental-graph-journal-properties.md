@@ -4,15 +4,28 @@
 
 Journal 3 deliberately separates three layers which have different algebraic behavior:
 
-1. retained-information union within one compatible current database format;
+1. retained-information union within one compatible current database format/schema snapshot;
 2. the graph projection/normalization built over that information; and
 3. whole-database format migration, which deterministically re-encodes retained history while preserving journal identities and historical meaning.
 
 This distinction prevents implementation code from assuming that because raw same-version history union is a simple semilattice-like operation, every projected graph transition or cross-version migration is automatically the same kind of merge.
 
+## Compatibility boundary before same-version algebra
+
+Ordinary synchronization/reset first obtains one held source `JournalSnapshot` and requires exact compatibility:
+
+```text
+snapshot.databaseVersion == receiver.databaseVersion
+snapshot.graphSchemeString == receiver.graphSchemeString
+```
+
+The snapshot's compatibility metadata and journal records belong to one immutable committed source cut.
+
+Only after this check succeeds do the same-version retained-information relations below apply. Journal 3 does not define ordinary cross-version/cross-schema union by silently interpreting one side through the other's metadata.
+
 ## Same-version retained-information partial order
 
-For two compatible retained journals J and K already encoded under the same current `global/version`, define:
+For two compatible retained journals J and K already encoded under the same current `global/version` and exact current `global/graph_scheme`, define:
 
 ```text
 J <= K
@@ -34,7 +47,7 @@ This relation is intentionally not used directly to compare the physical source 
 
 ## Information join
 
-For compatible causally closed prefix journals J and K at one current database version:
+For compatible causally closed prefix journals J and K at one current database version/schema:
 
 ```text
 J join K = immutable prefix union
@@ -58,7 +71,7 @@ J join K = K join J
 
 for mutually compatible histories.
 
-The join never rewrites a record. Cross-version peers migrate first; ordinary synchronization does not define a join between different persisted record formats.
+The join never rewrites a record. Cross-version/schema peers migrate first; ordinary synchronization does not define a join between incompatible persisted interpretations.
 
 ## Replay is deterministic, not a join-homomorphism requirement
 
@@ -83,14 +96,14 @@ For example, union can:
 - select a different ValueEvent head;
 - invalidate an old certificate basis;
 - reveal a node-scoped invalidation concurrent with a validation;
-- make a receiver-only dependent stale;
+- select a new remote occurrence which is stale because one of the receiver's selected inputs is stale;
 - require synchronization-authored structural deletion normalization.
 
 These are resolved by Journal 3 semantic replay/normalization, not by combining legacy graph fields algebraically.
 
 ## Monotonicity of retained information
 
-Within one current database version, normal synchronization, ordinary local authoring, and reset are monotone in retained history:
+Within one current database version/schema, normal synchronization, ordinary local authoring, and reset are monotone in retained history:
 
 ```text
 Jbefore <= Jafter
@@ -151,9 +164,13 @@ Synchronization may append receiver-authored semantic records required to make n
 Core normalization records are:
 
 - `DeleteEvent(reason="sync")` for structural dependency-closure removal; and
-- value-scoped `InvalidateEvent(reason="sync")` for persistent fresh-to-stale propagation.
+- value-scoped `InvalidateEvent(reason="sync")` for persistent staleness of the selected current occurrence when its own exact matching proof is sound but a direct input is stale.
 
-These are ordinary immutable historical events after commit. They are not temporary merge annotations and are not retracted when later unseen concurrent history arrives.
+The stale marker is about the **post-union selected ValueId**, not about whether that ValueId was already selected on the receiver. A newly selected imported occurrence is subject to the same rule.
+
+An extra marker is unnecessary when the selected occurrence is already persistently stale because of its own uncovered value invalidation, a node invalidation, or a current-basis mismatch. Those causes are not merely recursive input freshness.
+
+These are ordinary historical events after commit. They are not temporary merge annotations and are not retracted when later unseen concurrent history arrives.
 
 Therefore define normalization operationally over one actual receiver execution rather than pretending it is a pure mathematical function only of an eventual raw history set.
 
@@ -193,7 +210,7 @@ sync value-scoped InvalidateEvent
 
 For deletion, a newly authored delete causally/authoritatively defeats the already-observed selected value whose structural retention became impossible. Another delete can become necessary only if some previously unseen finite positive history later selects another value occurrence. Normalization itself never creates such a positive occurrence.
 
-For staleness, an uncovered value-scoped invalidation fixes one exact ValueId stale. Normalization cannot clear it because clearing requires a causally later validation, and normalization does not create validations.
+For staleness, an uncovered value-scoped invalidation fixes one exact selected ValueId stale, whether that ValueId was previously local or newly imported. Normalization cannot clear it because clearing requires a causally later validation, and normalization does not create validations.
 
 With finitely many replicas, finite retained positive history after quiescence, and a finite dependency DAG, only finitely many such new normalization obligations can arise. Fair synchronization therefore eventually reaches a fixed point.
 
@@ -205,13 +222,13 @@ Reset does not set:
 receiverJournal = sourceJournal
 ```
 
-Instead:
+Instead, after exact compatibility is established from one held source snapshot:
 
 ```text
 Jafter = union(Jreceiver, Jsource) + reset baseline
 ```
 
-so, within the compatible current format:
+so, within the compatible current format/schema:
 
 ```text
 Jreceiver <= Jafter
